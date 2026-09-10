@@ -1,0 +1,37 @@
+{
+  "deliverySha256": "0c2259c046f5bc384596c1c6514b259c10e63ae9cee5d755928f7ff118f74d02",
+  "expectedItems": [
+    {
+      "case_id": "case_langfuse_input_only",
+      "expected_output": null,
+      "input": {
+        "message": "=CMD|0 /x"
+      },
+      "metadata": {
+        "source": "synthetic"
+      }
+    }
+  ],
+  "report": {
+    "errors": [],
+    "rowCount": 1,
+    "valid": true
+  },
+  "schema": {
+    "expectedOutput": {
+      "type": ["string", "null"]
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["message"],
+      "type": "object"
+    },
+    "mode": "input_only"
+  },
+  "versionId": "version_langfuse_input"
+}

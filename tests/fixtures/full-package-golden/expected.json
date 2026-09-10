@@ -1,0 +1,15 @@
+{
+  "delivery_sha256": "b0f223d3341d73ffee0bb566c9b7e977c7615240b0762e9cc9be96bbc589e002",
+  "report": {
+    "counts": {
+      "asset_level": 0,
+      "items": 1,
+      "record_level": 1
+    },
+    "errors": [],
+    "package_type": "full_provenance",
+    "valid": true,
+    "verification_level": "full",
+    "warnings": []
+  }
+}

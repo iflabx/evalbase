@@ -1,0 +1,241 @@
+{
+  "contractVersion": "curation-recipe-contract-v1",
+  "fieldPath": "RFC 6901 JSON Pointer; a top-level field name is accepted for the Ticket 01 compatibility path.",
+  "filterSemantics": {
+    "missingAndNull": "Missing values never match. Explicit null matches is_null and equality with null.",
+    "contains": "A string contains a string substring; an array contains an item by canonical JSON equality; other scalars use equality.",
+    "numeric": "Numbers and canonical base-10 numeric strings are comparable. Other present values produce a type error and are excluded.",
+    "range": "Both endpoints are inclusive.",
+    "boolean": "The explicit all, any, and not tree defines precedence; no expression language is parsed.",
+    "sampling": "Records are scored by SHA-256(seed + ':' + stable record hash), selected by score, then returned in original source order. Ratio count is floor(input * ratio)."
+  },
+  "records": [
+    {
+      "id": "one",
+      "sampleKey": "371153c49a8f2e2642b361c43c2fc05d5a7eb4f8fd0cf549b9baedf73d1de7a7",
+      "ordinal": 1,
+      "fields": {
+        "kind": "alpha",
+        "score": "2",
+        "tags": ["blue"]
+      }
+    },
+    {
+      "id": "two",
+      "sampleKey": "1bda90bb43c9b6326d0642f2a2acd9e53ba9259f528bc5c10d3a7883fd6e2d40",
+      "ordinal": 2,
+      "fields": { "kind": "beta", "score": 2, "tags": "blue" }
+    },
+    {
+      "id": "three",
+      "sampleKey": "7887c768eaad3580d171cae5455ce10e53f8ddd3c154ab7d5a3efcda62e30668",
+      "ordinal": 3,
+      "fields": { "kind": "alpha", "score": "bad", "tags": ["green"] }
+    },
+    {
+      "id": "four",
+      "sampleKey": "9385b72f41778dbec48d36b3a6940072bfe147369c5e7b4c43b055b3d16e9c80",
+      "ordinal": 4,
+      "fields": { "kind": "alpha", "score": null, "tags": [] }
+    },
+    {
+      "id": "five",
+      "sampleKey": "bd9f86b70fee731d111ddf3481623a5bc8adab4602039dc35b1500cede81090c",
+      "ordinal": 5,
+      "fields": { "kind": "alpha", "tags": ["blue"] }
+    },
+    {
+      "id": "six",
+      "sampleKey": "4e26173e84e89a42d9a85b9abffbdf41b1fb4d510588bc9b9ad7c6c7bcbdd6ad",
+      "ordinal": 6,
+      "fields": {
+        "kind": "alpha",
+        "score": 5,
+        "tags": ["blue", "green"]
+      }
+    },
+    {
+      "id": "seven",
+      "sampleKey": "4e9454c0d3368398d303624480fdbc8544f5e046b3f2e19dbfeae6fddc0c43c2",
+      "ordinal": 7,
+      "fields": {
+        "kind": "alpha",
+        "score": 7,
+        "tags": ["red"],
+        "nested": [{ "value": "pointer-match" }]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "boolean filters and inclusive numeric range",
+      "steps": [
+        {
+          "kind": "filter",
+          "filter": {
+            "all": [
+              {
+                "any": [
+                  { "field": "/kind", "operator": "eq", "value": "beta" },
+                  {
+                    "field": "/tags",
+                    "operator": "contains",
+                    "value": "blue"
+                  }
+                ]
+              },
+              {
+                "field": "/kind",
+                "operator": "neq",
+                "value": "gamma"
+              },
+              { "not": { "field": "/score", "operator": "is_null" } },
+              {
+                "field": "/score",
+                "operator": "range",
+                "minimum": 2,
+                "maximum": 5
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "recordIds": ["one", "two", "six"],
+        "steps": [
+          {
+            "kind": "filter",
+            "inputCount": 7,
+            "outputCount": 3,
+            "excludedCount": 4,
+            "errorCount": 1
+          }
+        ],
+        "exits": {
+          "three": {
+            "step": 1,
+            "reason": "numeric_interpretation_failed"
+          },
+          "four": { "step": 1, "reason": "filter" },
+          "five": { "step": 1, "reason": "filter" },
+          "seven": { "step": 1, "reason": "filter" }
+        }
+      }
+    },
+    {
+      "name": "explicit null and array JSON Pointer",
+      "steps": [
+        {
+          "kind": "filter",
+          "filter": {
+            "any": [
+              { "field": "/score", "operator": "is_null" },
+              {
+                "field": "/nested/0/value",
+                "operator": "eq",
+                "value": "pointer-match"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "recordIds": ["four", "seven"],
+        "steps": [
+          {
+            "kind": "filter",
+            "inputCount": 7,
+            "outputCount": 2,
+            "excludedCount": 5,
+            "errorCount": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "stable ratio sampling",
+      "steps": [
+        {
+          "kind": "filter",
+          "filter": {
+            "all": [
+              { "field": "/kind", "operator": "eq", "value": "alpha" },
+              {
+                "field": "/tags",
+                "operator": "contains",
+                "value": "blue"
+              },
+              {
+                "field": "/score",
+                "operator": "range",
+                "minimum": 2,
+                "maximum": 5
+              }
+            ]
+          }
+        },
+        { "kind": "sample", "mode": "ratio", "value": 0.5, "seed": "fixture" }
+      ],
+      "expected": {
+        "recordIds": ["six"],
+        "steps": [
+          {
+            "kind": "filter",
+            "inputCount": 7,
+            "outputCount": 2,
+            "excludedCount": 5,
+            "errorCount": 1
+          },
+          {
+            "kind": "sample",
+            "inputCount": 2,
+            "outputCount": 1,
+            "excludedCount": 1,
+            "errorCount": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "manual include and exclude",
+      "steps": [
+        {
+          "kind": "filter",
+          "filter": { "field": "/kind", "operator": "eq", "value": "alpha" }
+        },
+        {
+          "kind": "manual",
+          "include": [{ "id": "two", "reason": "Known synthetic edge" }],
+          "exclude": [{ "id": "one", "reason": "Duplicate synthetic row" }]
+        }
+      ],
+      "expected": {
+        "recordIds": ["two", "three", "four", "five", "six", "seven"],
+        "steps": [
+          {
+            "kind": "filter",
+            "inputCount": 7,
+            "outputCount": 6,
+            "excludedCount": 1,
+            "errorCount": 0
+          },
+          {
+            "kind": "manual",
+            "inputCount": 6,
+            "outputCount": 6,
+            "excludedCount": 1,
+            "errorCount": 0
+          }
+        ],
+        "exits": {
+          "one": { "step": 2, "reason": "manual_exclude" }
+        }
+      }
+    }
+  ],
+  "lease": {
+    "durationMs": 30000,
+    "renewIntervalMs": 10000,
+    "takeoverGraceMs": 5000
+  }
+}

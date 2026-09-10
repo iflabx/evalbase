@@ -1,0 +1,539 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.976 0.004 250);
+  --foreground: oklch(0.243 0.028 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.243 0.028 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.243 0.028 260);
+  --primary: oklch(0.546 0.215 262.9);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.968 0.007 247.9);
+  --secondary-foreground: oklch(0.243 0.028 260);
+  --muted: oklch(0.968 0.007 247.9);
+  --muted-foreground: oklch(0.552 0.026 262);
+  --accent: oklch(0.955 0.014 255);
+  --accent-foreground: oklch(0.243 0.028 260);
+  --destructive: oklch(0.6 0.19 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.917 0.011 255);
+  --input: oklch(0.917 0.011 255);
+  --ring: oklch(0.546 0.215 262.9);
+  --chart-1: oklch(0.546 0.215 262.9);
+  --chart-2: oklch(0.63 0.12 152);
+  --chart-3: oklch(0.6 0.09 230);
+  --chart-4: oklch(0.66 0.16 300);
+  --chart-5: oklch(0.72 0.14 70);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.243 0.028 260);
+  --sidebar-primary: oklch(0.546 0.215 262.9);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.962 0.012 255);
+  --sidebar-accent-foreground: oklch(0.33 0.09 262);
+  --sidebar-border: oklch(0.917 0.011 255);
+  --sidebar-ring: oklch(0.546 0.215 262.9);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+}
+
+@layer base {
+  html,
+  body {
+    font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Frozen prototype v5.2 record-browser controls and table density. */
+.material-record-table {
+  min-width: 960px;
+}
+.material-record-table td {
+  max-width: 360px;
+}
+.record-cell-content {
+  display: block;
+}
+.record-table-density-compact .record-cell-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-table-density-standard td,
+.record-table-density-expanded td {
+  vertical-align: top;
+}
+.record-table-density-standard .record-cell-content,
+.record-table-density-expanded .record-cell-content {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.record-table-density-standard .record-cell-content {
+  -webkit-line-clamp: 3;
+}
+.record-table-density-expanded .record-cell-content {
+  -webkit-line-clamp: 6;
+}
+.metadata-cell {
+  position: relative;
+  min-width: 0;
+}
+.metadata-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.metadata-tag,
+.metadata-more,
+.metadata-empty {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  background: var(--secondary);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.metadata-tag-key {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+.metadata-tag-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metadata-more {
+  border-color: var(--input);
+  background: var(--card);
+  cursor: pointer;
+  font: inherit;
+}
+.metadata-more:hover,
+.metadata-more:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+  outline: 0;
+}
+.metadata-empty {
+  border-style: dashed;
+  color: var(--muted-foreground);
+}
+.record-table-density-compact .metadata-summary {
+  flex-wrap: nowrap;
+}
+.record-table-density-compact .metadata-tag {
+  max-width: 146px;
+}
+.record-table-density-standard .metadata-tag-value,
+.record-table-density-expanded .metadata-tag-value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}
+.record-table-density-standard .metadata-tag-value {
+  -webkit-line-clamp: 3;
+}
+.record-table-density-expanded .metadata-tag-value {
+  -webkit-line-clamp: 6;
+}
+.metadata-popover {
+  width: min(300px, calc(100vw - 48px));
+  padding: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+.metadata-popover h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.metadata-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+.metadata-list div {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.7fr) minmax(0, 1.3fr);
+  gap: 8px;
+}
+.metadata-list dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.metadata-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.record-row-density-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+}
+.record-row-density-button svg {
+  width: 17px;
+  height: 17px;
+}
+.record-row-density-menu {
+  display: grid;
+  min-width: 174px;
+  gap: 2px;
+  padding: 4px;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.14);
+}
+.record-row-density-menu h3 {
+  margin: 4px 8px 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.record-row-density-option {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.record-row-density-option:hover,
+.record-row-density-option:focus-visible {
+  background: var(--accent);
+  outline: 0;
+}
+.record-row-density-option svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+}
+.record-row-density-option strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.record-row-density-option small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.record-row-density-option .density-check {
+  color: var(--foreground);
+}
+
+/* Frozen prototype v5.2's selected-version summary. */
+.version-summary-card {
+  overflow: hidden;
+}
+.version-summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted), transparent 35%);
+}
+.version-summary-head strong {
+  font-size: 14px;
+}
+.version-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+.version-summary-grid > div {
+  min-width: 0;
+  padding: 14px 16px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.version-summary-grid > div:nth-child(3n) {
+  border-right: 0;
+}
+.version-summary-grid > div.wide {
+  grid-column: span 3;
+  border-right: 0;
+}
+.version-summary-grid dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.version-summary-grid dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.version-checks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 12px 16px;
+  background: color-mix(in oklab, var(--chart-2), transparent 94%);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+}
+.version-checks.warning {
+  background: color-mix(in oklab, var(--chart-5), transparent 90%);
+}
+.version-checks > b {
+  color: var(--foreground);
+}
+.version-checks small {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.move-file-name {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--secondary);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Frozen prototype v5's read-only version graph: node and edge state share one path marker. */
+.version-tree,
+.version-branch,
+.version-child {
+  display: flex;
+  align-items: center;
+}
+
+.version-branch {
+  position: relative;
+}
+
+.version-children {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  margin-left: 38px;
+}
+
+.version-children::before {
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: -20px;
+  content: "";
+  border-left: 1px solid var(--border);
+}
+
+.version-child {
+  position: relative;
+}
+
+.version-child::before {
+  position: absolute;
+  left: -38px;
+  width: 38px;
+  content: "";
+  border-top: 1px solid var(--border);
+}
+
+.version-child::after {
+  position: absolute;
+  top: calc(50% - 4px);
+  left: -8px;
+  content: "";
+  border: 4px solid transparent;
+  border-left-color: var(--border);
+}
+
+.version-child.on-path::before {
+  border-color: var(--primary);
+}
+
+.version-child.on-path::after {
+  border-left-color: var(--primary);
+}
+
+.version-child.dimmed::before {
+  border-color: color-mix(in oklab, var(--border), transparent 45%);
+}
+
+.version-child.dimmed::after {
+  border-left-color: color-mix(in oklab, var(--border), transparent 45%);
+}
+
+.version-node {
+  width: 144px;
+  min-width: 144px;
+  padding: 12px;
+  color: var(--foreground);
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground), transparent 92%);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    opacity 150ms ease;
+}
+
+.version-node:hover,
+.version-node:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+.version-node:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.version-node.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.version-node.on-path {
+  background: color-mix(in oklab, var(--primary), var(--card) 95%);
+  border-color: color-mix(in oklab, var(--primary), var(--border) 45%);
+}
+
+.version-node.dimmed {
+  opacity: 0.66;
+}
+
+.version-node.tombstoned {
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+  background: color-mix(in oklab, var(--muted), transparent 35%);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 620px) {
+  .version-summary-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .version-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .version-summary-grid > div,
+  .version-summary-grid > div:nth-child(3n) {
+    border-right: 0;
+  }
+  .version-summary-grid > div.wide {
+    grid-column: auto;
+  }
+  .version-checks small {
+    width: 100%;
+    margin-left: 0;
+  }
+}

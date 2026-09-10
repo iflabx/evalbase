@@ -1,0 +1,76 @@
+{
+  "name": "evalbase",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/iflabx/evalbase.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iflabx/evalbase/issues"
+  },
+  "homepage": "https://github.com/iflabx/evalbase#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "tsx src/dev.ts",
+    "start:web": "tsx src/server/main.ts",
+    "start:worker": "tsx src/worker/main.ts",
+    "test": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write src tests scripts README.md README.zh-CN.md docs *.ts *.json *.yaml",
+    "format:check": "prettier --check src tests scripts README.md README.zh-CN.md docs *.ts *.json *.yaml",
+    "docs:check": "node scripts/check-docs.mjs",
+    "licenses:generate": "node scripts/generate-third-party-notices.mjs",
+    "licenses:check": "node scripts/generate-third-party-notices.mjs --check",
+    "persistence:create": "node scripts/persistence-check.mjs create",
+    "persistence:verify": "node scripts/persistence-check.mjs verify",
+    "build": "npm --prefix frontend-v3 run build:formal && tsc -p tsconfig.server.json",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@fastify/static": "10.1.3",
+    "@radix-ui/react-slot": "1.2.4",
+    "@tanstack/react-query": "5.85.5",
+    "@vitejs/plugin-react": "5.2.0",
+    "ajv": "8.20.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "csv-parse": "6.1.0",
+    "fastify": "5.12.0",
+    "fflate": "0.8.3",
+    "json-canonicalize": "1.2.0",
+    "minio": "8.0.7",
+    "pg": "8.23.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "tailwind-merge": "3.5.0",
+    "vite": "8.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.32.0",
+    "@playwright/test": "1.62.1",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.15.5",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "eslint": "9.32.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "16.5.0",
+    "postcss": "8.5.26",
+    "prettier": "3.7.4",
+    "tailwindcss": "4.2.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.56.1",
+    "vitest": "4.1.11"
+  }
+}

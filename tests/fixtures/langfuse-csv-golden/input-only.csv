@@ -1,0 +1,2 @@
+input,expected_output,metadata
+"{""message"":""=CMD|0 /x""}","null","{""_agentbench"":{""case_id"":""case_langfuse_input_only"",""version_id"":""version_langfuse_input""},""source"":""synthetic""}"

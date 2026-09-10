@@ -1,0 +1,2 @@
+input,expected_output,metadata
+"{""message"":""=SUM(A1:A2), \""quote\"", and\nnewline""}","""quoted JSON remains auditable""","{""_agentbench"":{""case_id"":""case_langfuse_formula"",""version_id"":""version_langfuse_gold""},""note"":""中文"",""source"":""synthetic""}"

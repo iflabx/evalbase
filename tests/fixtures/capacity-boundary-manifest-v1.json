@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "capacity-boundary-manifest-v1",
+  "generatorVersion": "capacity-boundary-generator-v1",
+  "fixtures": {
+    "upload-exact-50mb-csv": {
+      "seed": "upload-csv-a-v1",
+      "bytes": 50000000,
+      "recordCount": 1,
+      "sha256": "1d6f3ed2d73ee9c9228fc22c998180ab9da41956df1290dc69be4838d07fdc7b"
+    },
+    "upload-over-50mb-csv": {
+      "seed": "upload-csv-a-plus-one-v1",
+      "bytes": 50000001,
+      "recordCount": 2,
+      "sha256": "6180510012a9a21c2977400699da5705dc2097ecfad10d566e904b69729ef059"
+    },
+    "draft-exact-50mb-jsonl": {
+      "seed": "draft-jsonl-padding-a-v1",
+      "bytes": 50000000,
+      "recordCount": 1,
+      "sha256": "7dee36f228a4d1cf2d376bf86f2c1e742b84e85a3de72fa5d101eff8acfe0c1e"
+    },
+    "draft-overflow-byte": {
+      "seed": "draft-jsonl-empty-line-v1",
+      "bytes": 1,
+      "recordCount": 0,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    "source-exact-5000-jsonl": {
+      "seed": "source-jsonl-5000-v1",
+      "bytes": 58890,
+      "recordCount": 5000,
+      "sha256": "7ab5f17fd6ca5094d044cacc22716997a3e68b6593783825ffa543df4e635f56"
+    },
+    "source-over-10000-jsonl": {
+      "seed": "source-jsonl-10001-v1",
+      "bytes": 120012,
+      "recordCount": 10001,
+      "sha256": "05911272dedd70cd43c093e154a2c4b80a284b42d0ecb6a2c370c11002305b46"
+    },
+    "candidate-exact-source-10000-jsonl": {
+      "seed": "candidate-source-exact-v1",
+      "bytes": 11240000,
+      "recordCount": 10000,
+      "sha256": "c3c904012dfacaec6cd8662435d0f1c23538cb57e54b1f9ed48d3fa887e83fb0"
+    },
+    "candidate-overflow-source-10000-jsonl": {
+      "seed": "candidate-source-overflow-v1",
+      "bytes": 17880001,
+      "recordCount": 10000,
+      "sha256": "c5acc00a3800447bbb756fb763979fe864543192e5dce9c46d4a81dbee88436a"
+    },
+    "g02-exact-input": {
+      "seed": "g02-input-exact-v1",
+      "bytes": 10000000,
+      "recordCount": 1,
+      "sha256": "aa27eef0f6272bc0b9885e0a47ee9143d3df9f43613a663adc59d8a90b8ccd95"
+    },
+    "g02-over-input": {
+      "seed": "g02-input-over-v1",
+      "bytes": 10000003,
+      "recordCount": 1,
+      "sha256": "00e362a9fe17a9d44fbd87a51149c62124070984f322743baf880360c12bc4c5"
+    }
+  }
+}

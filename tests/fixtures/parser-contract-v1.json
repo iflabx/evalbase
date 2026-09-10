@@ -1,0 +1,147 @@
+{
+  "contractVersion": "parser-contract-v1",
+  "decisions": {
+    "fieldPath": "RFC 6901 JSON Pointer; ~ escapes as ~0 and / as ~1",
+    "duplicateCsvHeaders": "reject with duplicate_field_name before emitting records",
+    "duplicateJsonKeys": "reject with duplicate_field_name before emitting records",
+    "jsonNumbers": "preserve finite IEEE-754 values and reject unsafe integer literals",
+    "bom": "strip one leading BOM from decoded CSV/JSON/JSONL content only",
+    "blankLines": "ignore blank CSV records and whitespace-only JSONL physical lines while retaining physical line locators",
+    "malformedRecords": "JSONL errors are located records; malformed CSV or JSON makes boundaries untrusted",
+    "nestedArrays": "accept one explicit RFC 6901 pointer to an array; reject JSONPath, wildcard, and multi-array selection",
+    "locators": "CSV uses one-based dataRow plus ending physicalLine; JSON uses RFC 6901 pointer; JSONL uses one-based physicalLine",
+    "emptyCsv": "ready with zero records and empty_source warning",
+    "headerOnlyCsv": "ready with zero records, discovered header fields, and empty_source warning"
+  },
+  "cases": [
+    {
+      "id": "F-CSV-UTF8",
+      "format": "csv",
+      "source": { "utf8": "question,answer\nWhy?,Because.\n" },
+      "config": {
+        "encoding": "utf8",
+        "delimiter": ",",
+        "headerRow": 1,
+        "quote": "\""
+      },
+      "expected": {
+        "locator": { "kind": "csv_row", "dataRow": 1, "physicalLine": 2 },
+        "fields": { "question": "Why?", "answer": "Because." },
+        "recordHash": "987f265f243a212a42fdaa33729360f8cc96b2034d481b23b200396eca9e8a19"
+      }
+    },
+    {
+      "id": "F-CSV-BOM",
+      "format": "csv",
+      "source": { "base64": "77u/cXVlc3Rpb24sYW5zd2VyCldoeT8sQmVjYXVzZS4K" },
+      "config": {
+        "encoding": "auto",
+        "delimiter": ",",
+        "headerRow": 1,
+        "quote": "\""
+      },
+      "expected": {
+        "detectedEncoding": "utf8",
+        "locator": { "kind": "csv_row", "dataRow": 1, "physicalLine": 2 },
+        "fields": { "question": "Why?", "answer": "Because." },
+        "recordHash": "987f265f243a212a42fdaa33729360f8cc96b2034d481b23b200396eca9e8a19"
+      }
+    },
+    {
+      "id": "F-CSV-GB18030",
+      "format": "csv",
+      "source": { "base64": "cXVlc3Rpb24sYW5zd2VyCs3Lv+4syP3M7Ao=" },
+      "config": {
+        "encoding": "gb18030",
+        "delimiter": ",",
+        "headerRow": 1,
+        "quote": "\""
+      },
+      "expected": {
+        "detectedEncoding": "gb18030",
+        "fields": { "question": "退款", "answer": "三天" },
+        "recordHash": "bdbc3c1a5f7e5ab8404d63ca99812f3659a99e5630c0da949b37f06fe8558ffb"
+      }
+    },
+    {
+      "id": "F-CSV-GBK",
+      "format": "csv",
+      "source": { "base64": "cXVlc3Rpb24sYW5zd2VyCs3Lv+4syP3M7Ao=" },
+      "config": {
+        "encoding": "gbk",
+        "delimiter": ",",
+        "headerRow": 1,
+        "quote": "\""
+      },
+      "expected": {
+        "detectedEncoding": "gbk",
+        "fields": { "question": "退款", "answer": "三天" },
+        "recordHash": "bdbc3c1a5f7e5ab8404d63ca99812f3659a99e5630c0da949b37f06fe8558ffb"
+      }
+    },
+    {
+      "id": "F-CSV-DIALECT",
+      "format": "csv",
+      "source": {
+        "base64": "c2tpcApxdWVzdGlvbjthbnN3ZXIKIldoeTsgbm93PyI7IkJlY2F1c2UKc29vbi4iCg=="
+      },
+      "config": {
+        "encoding": "utf8",
+        "delimiter": ";",
+        "headerRow": 2,
+        "quote": "\""
+      },
+      "expected": {
+        "locator": { "kind": "csv_row", "dataRow": 1, "physicalLine": 4 },
+        "fields": { "question": "Why; now?", "answer": "Because\nsoon." },
+        "recordHash": "15de71067c516598a52d9dfc78358678b4a500bd43a58a2640c4c1f48ebd7a13"
+      }
+    },
+    {
+      "id": "F-JSON-OBJECT",
+      "format": "json",
+      "source": { "utf8": "{\"question\":\"Why?\",\"answer\":\"Because.\"}" },
+      "config": { "recordPath": "" },
+      "expected": {
+        "locator": { "kind": "json_pointer", "pointer": "" },
+        "fields": { "question": "Why?", "answer": "Because." },
+        "recordHash": "987f265f243a212a42fdaa33729360f8cc96b2034d481b23b200396eca9e8a19"
+      }
+    },
+    {
+      "id": "F-JSON-ARRAY",
+      "format": "json",
+      "source": { "utf8": "[{\"question\":\"Why?\",\"answer\":\"Because.\"}]" },
+      "config": { "recordPath": "" },
+      "expected": {
+        "locator": { "kind": "json_pointer", "pointer": "/0" },
+        "fields": { "question": "Why?", "answer": "Because." },
+        "recordHash": "987f265f243a212a42fdaa33729360f8cc96b2034d481b23b200396eca9e8a19"
+      }
+    },
+    {
+      "id": "F-JSON-NESTED-ONE",
+      "format": "json",
+      "source": {
+        "utf8": "{\"payload\":{\"records\":[{\"question\":\"Q\",\"answer\":\"A\"}]},\"ignored\":[]}"
+      },
+      "config": { "recordPath": "/payload/records" },
+      "expected": {
+        "locator": { "kind": "json_pointer", "pointer": "/payload/records/0" },
+        "fields": { "question": "Q", "answer": "A" },
+        "recordHash": "ac964b802a43e1bd2395ceafb6bcf02bae19c8bb2ac853ef06efdeb834120011"
+      }
+    },
+    {
+      "id": "F-JSONL-NO-EOL",
+      "format": "jsonl",
+      "source": { "utf8": "\n{\"question\":\"Why?\",\"answer\":\"Because.\"}" },
+      "config": {},
+      "expected": {
+        "locator": { "kind": "jsonl_line", "physicalLine": 2 },
+        "fields": { "question": "Why?", "answer": "Because." },
+        "recordHash": "987f265f243a212a42fdaa33729360f8cc96b2034d481b23b200396eca9e8a19"
+      }
+    }
+  ]
+}

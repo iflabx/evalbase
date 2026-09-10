@@ -1,0 +1,131 @@
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-evalbase}
+      POSTGRES_USER: ${POSTGRES_USER:-evalbase}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evalbase} -d ${POSTGRES_DB:-evalbase}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-evalbase}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+    volumes:
+      - minio-data:/data
+
+  web:
+    build: .
+    command: ["sh", "-c", "npm run db:migrate && npm run start:web"]
+    environment: &app-environment
+      DATABASE_URL: postgresql://${POSTGRES_USER:-evalbase}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-evalbase}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-evalbase}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-evalbase}
+      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      NODE_ENV: development
+      SOLO_OWNER_MODE: "true"
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
+      JOB_CLAIM_DELAY_MS: ${JOB_CLAIM_DELAY_MS:-250}
+      ALLOW_TEST_IDENTITY: "false"
+      HOST: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [edge, internal]
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+
+  worker:
+    build: .
+    command: ["npm", "run", "start:worker"]
+    environment:
+      <<: *app-environment
+      WORKER_HEALTH_PORT: "3001"
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [internal]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  test:
+    build: .
+    command: ["npm", "run", "test:integration"]
+    environment:
+      <<: *app-environment
+      ALLOW_TEST_IDENTITY: "true"
+      EDITOR_PASSWORD: test-only-editor-password
+      VIEWER_PASSWORD: test-only-viewer-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [internal]
+    profiles: [test]
+
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    command: ["npm", "run", "test:e2e"]
+    environment:
+      BASE_URL: http://web:3000
+    depends_on:
+      web:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    networks: [internal]
+    profiles: [e2e]
+
+networks:
+  edge:
+  internal:
+    internal: true
+
+volumes:
+  postgres-data:
+  minio-data:

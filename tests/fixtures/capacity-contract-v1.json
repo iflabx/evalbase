@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "capacity-contract-v1",
+  "dataAssetBytes": 50000000,
+  "parsedViewRecords": 10000,
+  "draftAssets": 5,
+  "draftOriginalBytes": 100000000,
+  "draftSourceRecords": 10000,
+  "candidateItems": 10000,
+  "itemsBytes": 100000000,
+  "inputBytes": 10000000
+}

@@ -1,0 +1,38 @@
+{
+  "deliverySha256": "0a6979c50b5173ef854e621b73bb7612d10d074bfc4c4ed69935d41ceedbccf5",
+  "expectedItems": [
+    {
+      "case_id": "case_langfuse_formula",
+      "expected_output": "quoted JSON remains auditable",
+      "input": {
+        "message": "=SUM(A1:A2), \"quote\", and\nnewline"
+      },
+      "metadata": {
+        "note": "\u4e2d\u6587",
+        "source": "synthetic"
+      }
+    }
+  ],
+  "report": {
+    "errors": [],
+    "rowCount": 1,
+    "valid": true
+  },
+  "schema": {
+    "expectedOutput": {
+      "type": ["string", "null"]
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["message"],
+      "type": "object"
+    },
+    "mode": "gold_required"
+  },
+  "versionId": "version_langfuse_gold"
+}

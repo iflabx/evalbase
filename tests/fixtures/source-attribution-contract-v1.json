@@ -1,0 +1,44 @@
+{
+  "contractVersion": "source-attribution-contract-v1",
+  "requiredFields": [
+    "sourceType",
+    "sourceName",
+    "responsiblePerson",
+    "purpose",
+    "licenseStatus",
+    "sensitivity"
+  ],
+  "sourceTypes": {
+    "synthetic": { "requiredDetails": [] },
+    "public": { "requiredDetails": ["sourceAddress", "acquiredAt"] },
+    "deidentified": {
+      "requiredDetails": [
+        "sourceAddress",
+        "acquiredAt",
+        "deidentificationConfirmed"
+      ]
+    }
+  },
+  "allowed": [
+    {
+      "sourceType": "synthetic",
+      "licenseStatus": "not_applicable",
+      "sensitivity": "non_sensitive"
+    },
+    {
+      "sourceType": "public",
+      "licenseStatus": "clear",
+      "sensitivity": "non_sensitive"
+    },
+    {
+      "sourceType": "deidentified",
+      "licenseStatus": "confirmed",
+      "sensitivity": "non_sensitive",
+      "deidentificationConfirmed": true
+    }
+  ],
+  "blocked": {
+    "licenseStatus": ["unknown", "restricted"],
+    "sensitivity": ["sensitive", "production", "secret", "restricted"]
+  }
+}

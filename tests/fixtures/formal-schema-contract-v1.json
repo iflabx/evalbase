@@ -1,0 +1,116 @@
+{
+  "contractVersion": "formal-schema-contract-v1",
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "limits": {
+    "maxBytes": 32768,
+    "maxDepth": 8,
+    "maxProperties": 100,
+    "maxKeywords": 300
+  },
+  "supportedKeywords": [
+    "$schema",
+    "$defs",
+    "$ref",
+    "type",
+    "enum",
+    "const",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "minItems",
+    "maxItems",
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "minProperties",
+    "maxProperties"
+  ],
+  "schemas": {
+    "baseInput": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string", "minLength": 1 },
+        "context": { "$ref": "#/$defs/context" }
+      },
+      "required": ["message"],
+      "additionalProperties": false,
+      "$defs": {
+        "context": {
+          "type": "object",
+          "properties": { "channel": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "compatibleInput": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string", "minLength": 1 },
+        "context": { "$ref": "#/$defs/context" },
+        "locale": { "type": "string" }
+      },
+      "required": ["message"],
+      "additionalProperties": false,
+      "$defs": {
+        "context": {
+          "type": "object",
+          "properties": { "channel": { "type": "string" } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "breakingInput": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": { "message": { "type": "string", "minLength": 1 } },
+      "required": ["message", "locale"],
+      "additionalProperties": false
+    },
+    "answer": { "type": "string", "maxLength": 80 }
+  },
+  "items": [
+    {
+      "input": { "message": "hello", "context": { "channel": "web" } },
+      "expected_output": "world"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "remote reference",
+      "schema": { "$ref": "https://example.invalid/schema.json" },
+      "error": "formal_schema_remote_ref"
+    },
+    {
+      "name": "dangerous regular expression is unsupported",
+      "schema": { "type": "string", "pattern": "(a+)+$" },
+      "error": "formal_schema_keyword_unsupported"
+    },
+    {
+      "name": "unsupported unused definition",
+      "schema": { "$defs": { "unused": { "pattern": "(a+)+$" } } },
+      "error": "formal_schema_keyword_unsupported"
+    },
+    {
+      "name": "recursive local reference",
+      "schema": {
+        "$defs": { "loop": { "$ref": "#/$defs/loop" } },
+        "$ref": "#/$defs/loop"
+      },
+      "error": "formal_schema_recursive_ref"
+    }
+  ],
+  "compatibility": [
+    { "from": "baseInput", "to": "compatibleInput", "result": "compatible" },
+    {
+      "from": "baseInput",
+      "to": "breakingInput",
+      "result": "requires_new_test_set"
+    }
+  ]
+}
