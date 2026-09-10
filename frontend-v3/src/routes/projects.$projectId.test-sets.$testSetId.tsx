@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageHeader, StateView } from "@/components/state-view";
+import { createRequestId } from "@/lib/request-id";
 import {
   deriveSoloTestSetVersion,
   getSoloVersionRecord,
@@ -1575,7 +1576,7 @@ function DeriveVersionDialog({
       const result = await deriveSoloTestSetVersion(projectId, testSetId, parent.version.id, {
         selections,
         records,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: createRequestId(),
       });
       await queryClient.invalidateQueries({ queryKey: ["solo-test-sets", projectId] });
       await queryClient.invalidateQueries({

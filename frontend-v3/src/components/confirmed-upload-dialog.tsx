@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { createRequestId } from "@/lib/request-id";
 import { Label } from "@/components/ui/label";
 import { MetadataSummary } from "@/components/material-record-table";
 import {
@@ -62,7 +63,7 @@ export function ConfirmedUploadDialog({
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [current, setCurrent] = useState(0);
   const [step, setStep] = useState<"select" | "preview">("select");
-  const [confirmationKey, setConfirmationKey] = useState(() => crypto.randomUUID());
+  const [confirmationKey, setConfirmationKey] = useState(createRequestId);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [ignoredLocalCount, setIgnoredLocalCount] = useState(0);
@@ -135,7 +136,7 @@ export function ConfirmedUploadDialog({
       if (!next.length) return;
       setQueue(next);
       setCurrent(0);
-      setConfirmationKey(crypto.randomUUID());
+      setConfirmationKey(createRequestId());
       setStep("preview");
     } catch (cause) {
       if (pendingIds.length)
@@ -233,7 +234,7 @@ export function ConfirmedUploadDialog({
       await onConfirmed();
       setFiles([]);
       setQueue([]);
-      setConfirmationKey(crypto.randomUUID());
+      setConfirmationKey(createRequestId());
       setStep("select");
       onOpenChange(false);
     } catch (cause) {

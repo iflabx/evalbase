@@ -1,3 +1,5 @@
+import { createRequestId } from "@/lib/request-id";
+
 export type Project = {
   id: string;
   name: string;
@@ -330,7 +332,7 @@ export async function startPendingUpload(projectId: string, file: File): Promise
         "content-type": contentType,
         "x-agentbench-upload-encoding": "percent-utf8",
         "x-file-name": encodeURIComponent(file.name),
-        "idempotency-key": crypto.randomUUID(),
+        "idempotency-key": createRequestId(),
       },
       body: file,
     },

@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MetadataEditor } from "@/components/metadata-editor";
 import { MetadataSummary } from "@/components/material-record-table";
+import { createRequestId } from "@/lib/request-id";
 import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
 import {
   createSoloTestSet,
@@ -481,7 +482,7 @@ function CreateTestSetDialog({
   const [selections, setSelections] = useState<Array<{ assetId: string; ordinal: number }>>([]);
   const [records, setRecords] = useState<TestSetRecord[]>([]);
   const [metadataEditingIndex, setMetadataEditingIndex] = useState<number>();
-  const [idempotencyKey, setIdempotencyKey] = useState(crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState(createRequestId);
   const sources = useQuery({
     queryKey: ["solo-test-set-sources", projectId],
     queryFn: () => listTestSetSources(projectId),
@@ -506,7 +507,7 @@ function CreateTestSetDialog({
     setSelections([]);
     setRecords([]);
     setMetadataEditingIndex(undefined);
-    setIdempotencyKey(crypto.randomUUID());
+    setIdempotencyKey(createRequestId());
   }
 
   function close(value: boolean) {
