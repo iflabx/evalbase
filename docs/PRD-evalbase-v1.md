@@ -2,7 +2,7 @@
 
 | 项目         | 内容                                     |
 | ------------ | ---------------------------------------- |
-| 文档版本     | v3.2                                     |
+| 文档版本     | EvalBase v1                              |
 | 日期         | 2026-09-09                               |
 | 状态         | Approved for Non-production Development  |
 | 决策角色     | Project Owner / Sole Developer           |
@@ -21,7 +21,7 @@
 
 ## 1. 权威规则
 
-冻结原型 v5.3 是 Phase 1A 全部用户可见功能的上限和下限：
+冻结原型 v5.3 是 EvalBase v1 全部用户可见功能的上限和下限：
 
 - 原型中可见的页面、字段、操作、状态和顺序，正式产品必须提供。
 - 原型中没有的 UI、CLI 或其他 Owner 可操作能力，正式产品不得提供。
@@ -34,7 +34,7 @@
 
 ## 2. 产品目标
 
-EvalBase Phase 1A 让唯一 Owner 在浏览器中完成一个简单闭环：
+EvalBase v1 让唯一 Owner 在浏览器中完成一个简单闭环：
 
 `选择或新建项目 → 管理数据集中的原始文件 → 映射并确认上传 → 选择和编辑记录 → 创建测试集版本 → 查看版本、来源和修改 → 下载 → 回收或永久删除`
 
@@ -214,7 +214,7 @@ EvalBase Phase 1A 让唯一 Owner 在浏览器中完成一个简单闭环：
 - 历史和分支版本分别下载，不偷换成最新版本；
 - CSV 使用问题、期望输出和 Metadata，正确处理 Unicode、换行、逗号和公式前缀；Metadata 保持字段顺序并以“字段：值”文本呈现。
 
-Phase 1A 不提供 ZIP、Standard/Full Package、Offline Validator、Delivery Record、`langfuse.csv` 或 Langfuse 导入/同步。
+EvalBase v1 不提供 ZIP、Standard/Full Package、Offline Validator、Delivery Record、`langfuse.csv` 或 Langfuse 导入/同步。
 
 ### FR-08 回收站与永久删除
 
@@ -266,19 +266,13 @@ Phase 1A 不提供 ZIP、Standard/Full Package、Offline Validator、Delivery Re
 - 中间版本墓碑保留标签和父边；后代不改挂。
 - 同一测试记录在版本间保持稳定内部身份；未改变、修改、新增和移除事实可重建来源页。
 
-## 8. 明确不属于 Phase 1A
+## 8. 明确不属于 EvalBase v1
 
 - 登录、密码、SSO、成员、角色、审批、评论、共享或多人协作；
-- 项目重命名/删除/设置，数据集重命名/删除/嵌套；
-- 高级 parser 配置、任意字段映射、Schema 编辑、任意查询构建器、保存筛选器、查询表达式、抽样器、Join、测试记录自动去重；
-- 默认版本切换、归档、任意版本比较、merge、rebase；
-- 来源关系图、处理运行登记、Prompt/工具参数、血缘粒度选择；
-- ZIP、Standard/Full Package、Offline Validator、Delivery Record、Langfuse CSV 或同步；
-- 独立受控删除治理页面、影响预览、理由、审批人或外部副本清单；
+- 高级 parser 配置、任意字段映射、Schema 编辑、Langfuse CSV 或同步；
 - 评测执行、模型输出、评分和报告；
-- 生产部署、公网开放、敏感数据、备份、灾难恢复或 SLA。
 
-## 9. Phase 1A 验收
+## 9. EvalBase v1 验收
 
 Owner 必须通过正式浏览器 UI 完成：
 

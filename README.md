@@ -77,7 +77,7 @@ These are Phase 1A limits, not capacity guarantees.
 
 ## Documentation
 
-- [Product requirements](docs/PRD-v2-test-data-management.md)
+- [Product requirements](docs/PRD-evalbase-v1.md)
 - [Domain vocabulary](CONTEXT.md)
 - [Architecture](docs/architecture/phase1a-architecture.md)
 - [System flow](docs/system-flow-v2.md)

@@ -77,7 +77,7 @@ docker compose --profile test run --rm test
 
 ## 文档
 
-- [产品需求](docs/PRD-v2-test-data-management.md)
+- [产品需求](docs/PRD-evalbase-v1.md)
 - [领域词汇](CONTEXT.md)
 - [架构](docs/architecture/phase1a-architecture.md)
 - [系统流程](docs/system-flow-v2.md)
