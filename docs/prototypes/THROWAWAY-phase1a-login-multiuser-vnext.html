@@ -3339,6 +3339,28 @@
       .editor-question-link { max-width: 100%; overflow: hidden; border: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
       .editor-question-link:hover, .editor-question-link:focus-visible { color: var(--primary); text-decoration: underline; }
       .editor-selected { background: var(--accent); }
+      .editor-table tbody tr[data-editor-record] { cursor: pointer; }
+      .editor-table tbody tr[data-editor-record]:hover { background: var(--muted); }
+      .editor-table tbody tr[data-editor-record]:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+      .editor-source-cell small, .editor-draft-meta, .editor-field-author { display: block; margin-top: 3px; color: var(--muted-foreground); font-size: 11px; }
+      .editor-author { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
+      .editor-author .member-avatar, .editing-presence .member-avatar { width: 22px; height: 22px; font-size: 10px; flex: none; }
+      .editing-presence { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; vertical-align: middle; }
+      .editor-field-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .editor-field-author { min-height: 16px; }
+      .draft-node { border-style: dashed !important; }
+      .draft-node strong { color: var(--primary); }
+      .draft-list-note { display: block; margin-top: 4px; color: var(--muted-foreground); font-size: 11px; }
+      .draft-list-note .badge { margin-right: 6px; }
+      .draft-cta { margin-top: 8px; }
+      .editor-draft-meta { margin: 6px 0 0; font-size: 12px; }
+      .editor-source-cell > span, .editor-source-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .editor-question-cell > small { display: block; margin-top: 4px; }
+      .editor-table { min-width: 660px; table-layout: fixed; }
+      .editor-table th:nth-child(1) { width: 50px; }
+      .editor-table th:nth-child(2) { width: 205px; }
+      .editor-table th:nth-child(3) { width: 205px; }
+      .editor-table th:nth-child(4) { width: 200px; }
       .editor-empty { text-align: center !important; color: var(--muted-foreground); padding: 28px !important; white-space: normal !important; }
       .editor-pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 12px 16px; }
       .editor-pager span { margin-right: auto; color: var(--muted-foreground); font-size: 12px; }
@@ -4403,6 +4425,7 @@
       function refreshPresenceDom() {
         const markup = onlineUsersMarkup();
         document.querySelectorAll(".online-users").forEach((slot) => { if (slot.innerHTML !== markup) slot.innerHTML = markup; });
+        refreshEditingPresenceDom();
       }
       function collabToolbar() {
         return `<div class="collab-note"><span>同一测试集的字段输入、增删记录会在成员间实时同步。</span><span id="collab-warning" role="status">${access.editConflict ? `与 ${escape(access.editConflict.name)} 同时修改同一字段。你的输入暂时保留。` : access.publishConflict ? "另一成员已发布新版本；请退出本次编辑并从最新版本重新开始。" : ""}</span>${access.editConflict ? `<div><button class="button" onclick="app.resolveEditConflict('remote')">采用对方输入</button><button class="button" onclick="app.resolveEditConflict('local')">保留我的输入</button></div>` : ""}</div>`;
@@ -4440,6 +4463,9 @@
           }
         });
       }
+      window.addEventListener("storage", (event) => {
+        if (event.key?.startsWith(`${editorDraftPrefix}:`) && state.screen === "sets" && !activeEditingSet()) render();
+      });
       if (collabChannel) collabChannel.onmessage = ({ data }) => {
         if (!data || data.tabId === access.tabId) return;
         if (data.type === "profile") {
@@ -4451,7 +4477,7 @@
           if (data.leaving) access.peers.delete(data.tabId);
           else access.peers.set(data.tabId, { userId: data.userId, projectId: data.projectId, editingSetId: data.editingSetId, field: data.field, at: Date.now() });
           const changed = !data.leaving && applySharedProfile(data.profile, data.userId);
-          if (changed && state.screen === "settings") render(); else refreshPresenceDom();
+          if (changed && state.screen === "settings") render(); else { refreshPresenceDom(); refreshEditingPresenceDom(); }
           if (!data.leaving && currentUser() && !wasKnown) sendPresence();
           return;
         }
@@ -4469,6 +4495,9 @@
           notify("另一成员已发布版本；请退出当前编辑后查看。 "); render();
           return;
         }
+        if (data.type === "draft-closed" || data.type === "draft-state") {
+          if (!activeEditingSet() && state.screen === "sets") render();
+        }
         if (data.setId !== activeEditingSet()) return;
         if (data.type === "draft-snapshot" && data.to === access.tabId && data.revision >= access.revision && data.snapshot) {
           state.setName = data.snapshot.setName || "";
@@ -4479,7 +4508,7 @@
           state.removedRecords = data.snapshot.removedRecords || 0;
           state.editorFocusId = state.editRecords[0]?.id || null;
           access.revision = data.revision;
-          saveEditorDraft(); renderKeepingFocus(); return;
+          saveEditorDraft(false, null); renderKeepingFocus(); return;
         }
         if (data.type === "draft-state" && data.snapshot) {
           state.setName = data.snapshot.setName || "";
@@ -4487,7 +4516,7 @@
           state.setSources = data.snapshot.setSources || [];
           state.setRecords = data.snapshot.setRecords || [];
           syncEditorSourceRecords();
-          saveEditorDraft(); renderKeepingFocus(); return;
+          saveEditorDraft(false, null); renderKeepingFocus(); return;
         }
         if (data.type === "edit") {
           const record = state.editRecords.find((entry) => entry.id === data.recordId);
@@ -4499,18 +4528,22 @@
             if (warning) warning.textContent = `与 ${access.editConflict.name} 同时修改同一字段。你的输入暂时保留；离开输入框后选择采用哪一份。`;
             return;
           }
-          record[data.field] = data.value; access.revision += 1; saveEditorDraft();
+          record[data.field] = data.value;
+          markRecordEdit(record, data.field, data.userId, data.at || Date.now());
+          access.revision += 1; saveEditorDraft(false, data.userId);
+          refreshDraftAttributionDom(record);
+          refreshEditorRowDom(record);
           if (data.field === "metadata" || data.field === "metadataEntries") { renderKeepingFocus(); return; }
           const input = [...document.querySelectorAll("[data-collab-id]")].find((element) => element.dataset.collabId === data.recordId && element.dataset.collabField === data.field);
           if (input) input.value = data.value;
           return;
         }
         if (data.type === "add" && !state.editRecords.some((entry) => entry.id === data.record.id)) {
-          state.editRecords.push(data.record); access.revision += 1; saveEditorDraft(); renderKeepingFocus(); return;
+          state.editRecords.push(data.record); access.revision += 1; saveEditorDraft(false, data.userId); renderKeepingFocus(); return;
         }
         if (data.type === "remove") {
           const index = state.editRecords.findIndex((entry) => entry.id === data.recordId);
-          if (index >= 0) { state.editRecords.splice(index, 1); access.revision += 1; saveEditorDraft(); renderKeepingFocus(); }
+          if (index >= 0) { state.editRecords.splice(index, 1); access.revision += 1; saveEditorDraft(false, data.userId); renderKeepingFocus(); }
           return;
         }
       };
@@ -4661,12 +4694,16 @@
         state.metadataEditorIndex = index;
         state.metadataEditorDraft = copyMetadataEntries(record);
         state.metadataEditorError = "";
+        access.editingField = { recordId: record.id, field: "metadata" };
+        sendPresence();
         render();
       }
       function closeMetadataEditor() {
         state.metadataEditorIndex = null;
         state.metadataEditorDraft = [];
         state.metadataEditorError = "";
+        access.editingField = null;
+        sendPresence();
         render();
       }
       function updateMetadataEditor(index, field, value) {
@@ -4701,11 +4738,14 @@
         if (!record) return closeMetadataEditor();
         record.metadataEntries = entries;
         record.metadata = metadataText(entries);
+        const at = markRecordEdit(record, "metadata");
         saveEditorDraft();
-        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadataEntries", value: structuredClone(entries) }); postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadata", value: record.metadata }); }
+        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadataEntries", value: structuredClone(entries), at }); postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadata", value: record.metadata, at }); }
         state.metadataEditorIndex = null;
         state.metadataEditorDraft = [];
         state.metadataEditorError = "";
+        access.editingField = null;
+        sendPresence();
         render();
       }
       function metadataEditorModal() {
@@ -5389,14 +5429,15 @@
             ...current.sampleRecords.map((record) => ({
               id: `current-${record.sequence}`,
               caseId: record.caseId,
-              source: `当前 ${current.version} 记录`,
+              source: record.origin?.asset || "手工新增",
+              inheritedFrom: current.version,
               question: record.question,
               prediction: record.prediction,
               metadata: record.metadata,
               metadataEntries: copyMetadataEntries(record),
               origin: record.origin || {
                 asset: current.name,
-                record: `当前 ${current.version} 的统一记录 ${record.sequence}`,
+                record: `第 ${record.sequence} 条（原始来源未记录）`,
               },
               original: { ...record },
             })),
@@ -5411,8 +5452,11 @@
         const record = state.editRecords[index];
         if (!record) return;
         record[field] = value;
+        const at = markRecordEdit(record, field);
         saveEditorDraft();
-        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field, value }); }
+        refreshDraftAttributionDom(record);
+        refreshEditorRowDom(record);
+        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field, value, at }); }
       }
       function focusEdit(input) { access.editingField = { recordId: input.dataset.collabId, field: input.dataset.collabField }; sendPresence(); }
       function blurEdit() { access.editingField = null; sendPresence(); if (access.editConflict) render(); }
@@ -5429,7 +5473,10 @@
         state.editRecords.push({
           id: `new-${access.tabId}-${Date.now()}`,
           caseId: null,
-          source: "本次新增",
+          source: "手工新增",
+          origin: { asset: "手工新增", record: "本草稿添加" },
+          lastEditedBy: access.userId,
+          lastEditedAt: Date.now(),
           question: "",
           prediction: "",
           metadata: "",
@@ -5728,7 +5775,7 @@
           state.editorParentVersion = kind === "iterate" ? activeSet(selectedItem()).version : null;
           state.step = 2;
           if (!restoreEditorDraft()) beginSetEditing();
-          saveEditorDraft();
+          saveEditorDraft(false, null);
           if (kind === "iterate") postCollab("request-draft", { setId: activeEditingSet() });
         }
         render();
@@ -5962,7 +6009,7 @@
         render();
       }
       function closeModal() {
-        if (activeEditingSet()) saveEditorDraft();
+        if (activeEditingSet()) saveEditorDraft(false, null);
         state.modal = null;
         state.purgeTarget = null;
         state.purgeConfirmation = "";
@@ -6244,12 +6291,11 @@
           return '<tr><td colspan="7"><div class="empty"><div class="empty-symbol">⌕</div><h2>没有符合条件的测试集</h2><p>调整搜索条件，或新建一个测试集。</p></div></td></tr>';
         const testSetIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg>`;
         const trashIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="m19 6-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>`;
-        return sets
-          .map(
-            (item) =>
-              `<tr><td class="dataset-name-cell"><button class="dataset-name" onclick="app.select('${item.id}')"><span class="dataset-icon">${testSetIcon}</span><span>${escape(item.name)}</span></button></td><td class="dataset-count">${escape(item.version)}</td><td class="dataset-count">${item.records}</td><td class="test-set-source">${escape(item.source)}</td><td><span class="badge ${item.status === "已发布" ? "available" : item.status === "编辑中" ? "editing" : ""}">${escape(item.status)}</span></td><td class="dataset-date">${escape(item.updated)}</td><td class="dataset-action"><span class="dataset-actions"><button class="button" onclick="app.select('${item.id}')">查看</button><button class="button icon-button danger-quiet" aria-label="移入回收站" title="移入回收站" onclick="app.openSetTrash('${item.id}')">${trashIcon}</button></span></td></tr>`,
-          )
-          .join("");
+        return sets.map((item) => {
+          const drafts = draftsForSet(item);
+          const draftNote = drafts.length ? `<small class="draft-list-note"><span class="badge editing">草稿中 ${drafts.length}</span>${escape(drafts.map((draft) => `${draft.parentVersion} · ${draftSummary(draft)}`).join("；"))}</small>` : "";
+          return `<tr><td class="dataset-name-cell"><button class="dataset-name" onclick="app.select('${item.id}')"><span class="dataset-icon">${testSetIcon}</span><span>${escape(item.name)}${draftNote}</span></button></td><td class="dataset-count">${escape(item.version)}</td><td class="dataset-count">${item.records}</td><td class="test-set-source">${escape(item.source)}</td><td><span class="badge ${item.status === "已发布" ? "available" : item.status === "编辑中" ? "editing" : ""}">${escape(item.status)}</span></td><td class="dataset-date">${escape(item.updated)}</td><td class="dataset-action"><span class="dataset-actions"><button class="button" onclick="app.select('${item.id}')">查看</button><button class="button icon-button danger-quiet" aria-label="移入回收站" title="移入回收站" onclick="app.openSetTrash('${item.id}')">${trashIcon}</button></span></td></tr>`;
+        }).join("");
       }
       function testSetWorkspace() {
         const sets = filteredSets();
@@ -6257,7 +6303,8 @@
         const pageCount = Math.max(1, Math.ceil(sets.length / pageSize));
         const page = Math.min(state.setListPage, pageCount - 1);
         const current = sets.slice(page * pageSize, (page + 1) * pageSize);
-        return `<section class="dataset-index"><div class="dataset-toolbar"><div class="dataset-search"><input class="search" data-search-key="sets" aria-label="搜索测试集" placeholder="搜索测试集" value="${escape(state.listQuery)}" oninput="app.searchInput(event, 'sets')" /></div></div><div class="dataset-card"><table class="dataset-table test-set-table"><thead><tr><th>名称</th><th>当前版本</th><th>记录数</th><th>来源</th><th>状态</th><th>更新时间</th><th class="dataset-action">操作</th></tr></thead><tbody>${testSetRows(current)}</tbody></table></div><div class="dataset-pagination"><span>共 ${sets.length} 个测试集 · 第 ${page + 1}/${pageCount} 页</span><div><button class="button" ${page === 0 ? "disabled" : ""} onclick="app.setSetListPage(${page - 1})">上一页</button><button class="button" ${page === pageCount - 1 ? "disabled" : ""} onclick="app.setSetListPage(${page + 1})">下一页</button></div></div></section>`;
+        const newDraft = readDraft(draftKey(state.activeProject, "set", "new", null));
+        return `<section class="dataset-index">${newDraft ? `<div class="dataset-card editor-intro"><div><strong>未发布的测试集草稿：${escape(newDraft.setName || "未命名")}</strong><p>最近由 ${escape(draftSummary(newDraft))} 编辑</p></div><button class="button primary" onclick="app.openModal('set')">继续编辑草稿</button></div>` : ""}<div class="dataset-toolbar"><div class="dataset-search"><input class="search" data-search-key="sets" aria-label="搜索测试集" placeholder="搜索测试集" value="${escape(state.listQuery)}" oninput="app.searchInput(event, 'sets')" /></div></div><div class="dataset-card"><table class="dataset-table test-set-table"><thead><tr><th>名称</th><th>当前版本</th><th>记录数</th><th>来源</th><th>状态</th><th>更新时间</th><th class="dataset-action">操作</th></tr></thead><tbody>${testSetRows(current)}</tbody></table></div><div class="dataset-pagination"><span>共 ${sets.length} 个测试集 · 第 ${page + 1}/${pageCount} 页</span><div><button class="button" ${page === 0 ? "disabled" : ""} onclick="app.setSetListPage(${page - 1})">上一页</button><button class="button" ${page === pageCount - 1 ? "disabled" : ""} onclick="app.setSetListPage(${page + 1})">下一页</button></div></div></section>`;
       }
       function filteredProjects() {
         const query = state.projectQuery.trim().toLowerCase();
@@ -6780,7 +6827,9 @@
           (left, right) =>
             (left.publicationOrder || 0) - (right.publicationOrder || 0),
         );
-        return `<div class="version-branch">${versionNode(item, entry, current, path)}${children.length ? `<div class="version-children">${children.map((child) => `<div class="version-child ${path.has(entry.version) && path.has(child.version) ? "on-path" : "dimmed"}">${versionBranch(item, child, current, childrenByParent, path)}</div>`).join("")}</div>` : ""}</div>`;
+        const draft = entry.deleted ? null : draftForVersion(item, entry.version);
+        const draftChild = draft ? `<div class="version-child"><button type="button" class="version-node draft-node" onclick="app.openDraftFromVersion('${entry.version}')" ${canWrite() ? "" : "disabled"} aria-label="${escape(entry.version)} 的草稿，${escape(draftSummary(draft))}"><strong>草稿 · 基于 ${escape(entry.version)}</strong><small>${escape(draftSummary(draft))}</small><span class="version-flags"><span class="version-flag viewing">未发布</span></span></button></div>` : "";
+        return `<div class="version-branch">${versionNode(item, entry, current, path)}${children.length || draft ? `<div class="version-children">${children.map((child) => `<div class="version-child ${path.has(entry.version) && path.has(child.version) ? "on-path" : "dimmed"}">${versionBranch(item, child, current, childrenByParent, path)}</div>`).join("")}${draftChild}</div>` : ""}</div>`;
       }
       function versionGraph(item, current) {
         const versions = versionEntries(item);
@@ -6939,7 +6988,8 @@
         const deleteLabel = deletionPlan.isLeaf
           ? "删除此版本"
           : "处理此中间版本";
-        return `${back}<button class="button" onclick="app.openProvenance()">查看来源与修改</button><button class="button" onclick="app.download('${item.id}')">下载 CSV</button><button class="button" onclick="app.downloadWithProvenance('${item.id}')">下载数据与溯源</button><button class="button primary" onclick="app.openModal('iterate')">${createsBranch ? "基于此版本创建分支" : "继续创建新版本"}</button><details class="test-set-action-menu"><summary aria-label="删除选项" title="删除选项">⋯</summary><div class="test-set-action-options"><button class="button danger" onclick="app.openModal('delete-version')">${deleteLabel}</button></div></details>`;
+        const draft = draftForVersion(item, current.version);
+        return `${back}<button class="button" onclick="app.openProvenance()">查看来源与修改</button><button class="button" onclick="app.download('${item.id}')">下载 CSV</button><button class="button" onclick="app.downloadWithProvenance('${item.id}')">下载数据与溯源</button><button class="button primary" onclick="app.openModal('iterate')">${draft ? "继续编辑草稿" : createsBranch ? "基于此版本创建分支" : "继续创建新版本"}</button><details class="test-set-action-menu"><summary aria-label="删除选项" title="删除选项">⋯</summary><div class="test-set-action-options"><button class="button danger" onclick="app.openModal('delete-version')">${deleteLabel}</button></div></details>`;
       }
       function setBrowser(item) {
         const current = activeSet(item);
@@ -6950,7 +7000,7 @@
         const records = matching.slice(page * pageSize, (page + 1) * pageSize);
         if (current.deleted)
           return `<section class="dataset-detail test-set-detail">${versionGraph(item, current)}<div class="dataset-card deleted-version-card"><div class="danger-note"><b>${escape(current.version)} 的内容已删除。</b><br>这个节点仍保留在版本图中，以如实表示后代的父版本关系。不能浏览、下载或基于它创建新版本。</div><table class="dataset-table"><thead><tr><th>删除时间</th><th>保留的信息</th><th>后代版本</th></tr></thead><tbody><tr><td>${escape(current.deletedAt || "未记录")}</td><td>版本编号、父子关系和最小删除说明。</td><td>后代保留自己的独立快照；不会被改挂到其他父版本。</td></tr></tbody></table></div></section>`;
-        return `<section class="dataset-detail test-set-detail">${testSetVersionSummary(current)}${versionGraph(item, current)}${recordFilterToolbar(current, matching)}${materialRecordTable(records)}${collectionPagination(page, pageCount, matching.length, "条记录")}</section>`;
+        return `<section class="dataset-detail test-set-detail">${testSetVersionSummary(current)}${draftForVersion(item, current.version) ? `<div class="dataset-card editor-intro"><div><strong>此版本有未发布草稿</strong><p>基于 ${escape(current.version)} · 最近由 ${escape(draftSummary(draftForVersion(item, current.version)))} 编辑</p></div><button class="button primary" onclick="app.openModal('iterate')" ${canWrite() ? "" : "disabled"}>继续编辑草稿</button></div>` : ""}${versionGraph(item, current)}${recordFilterToolbar(current, matching)}${materialRecordTable(records)}${collectionPagination(page, pageCount, matching.length, "条记录")}</section>`;
       }
       function steps(names) {
         return `<div class="steps">${names.map((name, index) => `<div class="step ${state.step === index ? "active" : ""}"><b>${index + 1}</b>${name}</div>`).join("")}</div>`;
@@ -6987,22 +7037,54 @@
         return `<div class="parse-summary ${state.upload.issues.length ? "warning" : ""}">已映射 ${state.upload.sampleRecords.length} 条统一记录 / 共 ${state.upload.sourceRecords.length} 条原始记录${state.upload.issues.length ? ` · ${state.upload.issues.length} 条需要注意的信息` : " · 未发现可定位的解析问题"}</div>${uploadMappingWorkspace(state.upload)}${state.uploadError ? `<p class="simple-form-error">${escape(state.uploadError)}</p>` : ""}${parseIssuesMarkup(state.upload.issues)}<div class="mapping-note"><b>映射后的数据预览</b> · 当前显示前 ${Math.min(6, state.upload.sampleRecords.length)} 条，确认后将保存全部 ${state.upload.sampleRecords.length} 条统一记录。</div>${uploadRecordPreview(state.upload)}`;
       }
       const editorDraftPrefix = "evalbase-editor-draft-v1";
+      function draftKey(projectId, mode, setId, parentVersion) {
+        return `${editorDraftPrefix}:${projectId}:${mode}:${setId}:${parentVersion || "v1"}`;
+      }
       function editorDraftKey() {
         if (!activeEditingSet()) return null;
-        return `${editorDraftPrefix}:${state.activeProject}:${state.modal}:${state.modal === "set" ? "new" : state.selected}:${state.editorParentVersion || "v1"}`;
+        return draftKey(state.activeProject, state.modal, state.modal === "set" ? "new" : state.selected, state.editorParentVersion);
       }
-      function editorDraftSnapshot() {
+      function readDraft(key) {
+        try {
+          const draft = JSON.parse(localStorage.getItem(key) || "null");
+          return draft && Array.isArray(draft.editRecords) ? draft : null;
+        } catch { return null; }
+      }
+      function draftForVersion(item, version) {
+        return readDraft(draftKey(item.projectId, "iterate", item.id, version));
+      }
+      function draftsForSet(item) {
+        const prefix = `${editorDraftPrefix}:${item.projectId}:iterate:${item.id}:`;
+        return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key) => key?.startsWith(prefix))
+          .map((key) => readDraft(key)).filter(Boolean).sort((a, b) => (b.updatedAt || b.savedAt || 0) - (a.updatedAt || a.savedAt || 0));
+      }
+      function draftEditorName(draft) {
+        return access.users.find((user) => user.id === draft?.updatedBy)?.name || "其他成员";
+      }
+      function draftTime(time) {
+        return time ? new Date(time).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "刚刚";
+      }
+      function draftSummary(draft) {
+        return `${draftEditorName(draft)} · ${draftTime(draft.updatedAt || draft.savedAt)}`;
+      }
+      function editorDraftSnapshot(actorId = null) {
+        const previous = readDraft(editorDraftKey());
+        const now = Date.now();
         return {
           setName: state.setName, setPurpose: state.setPurpose,
           setSources: state.setSources, setRecords: state.setRecords,
           editRecords: state.editRecords, removedRecords: state.removedRecords,
-          parentVersion: state.editorParentVersion, savedAt: Date.now(),
+          parentVersion: state.editorParentVersion, savedAt: now,
+          createdBy: previous?.createdBy || access.userId,
+          createdAt: previous?.createdAt || now,
+          updatedBy: actorId || previous?.updatedBy || access.userId,
+          updatedAt: actorId ? now : (previous?.updatedAt || now),
         };
       }
-      function saveEditorDraft(broadcast = false) {
+      function saveEditorDraft(broadcast = false, actorId = access.userId) {
         const key = editorDraftKey();
         if (!key) return;
-        const snapshot = editorDraftSnapshot();
+        const snapshot = editorDraftSnapshot(actorId);
         try {
           localStorage.setItem(key, JSON.stringify(snapshot));
           state.editorSavedAt = snapshot.savedAt;
@@ -7019,7 +7101,7 @@
         const key = editorDraftKey();
         if (!key) return false;
         try {
-          const draft = JSON.parse(localStorage.getItem(key) || "null");
+          const draft = readDraft(key);
           if (!draft || draft.parentVersion !== state.editorParentVersion ||
               !Array.isArray(draft.setSources) || !Array.isArray(draft.setRecords) ||
               !Array.isArray(draft.editRecords)) return false;
@@ -7027,7 +7109,10 @@
           state.setPurpose = typeof draft.setPurpose === "string" ? draft.setPurpose : "";
           state.setSources = draft.setSources;
           state.setRecords = draft.setRecords;
-          state.editRecords = draft.editRecords;
+          state.editRecords = draft.editRecords.map((record) => {
+            if (state.modal !== "iterate" || !record.original) return record;
+            return { ...record, inheritedFrom: record.inheritedFrom || state.editorParentVersion, source: record.origin?.asset || "手工新增" };
+          });
           state.removedRecords = draft.removedRecords || 0;
           state.editorSavedAt = draft.savedAt || null;
           state.editorFocusId = draft.editRecords[0]?.id || null;
@@ -7037,6 +7122,7 @@
       function clearEditorDraft() {
         const key = editorDraftKey();
         if (key) localStorage.removeItem(key);
+        postCollab("draft-closed", { setId: activeEditingSet() });
         state.editorSavedAt = null;
       }
       function discardEditorDraft() {
@@ -7068,7 +7154,68 @@
       function editorPage(value) { state.editorPage = Math.max(0, value); render(); }
       function editorSourcePage(value) { state.editorSourcePage = Math.max(0, value); render(); }
       function editorPickPage(value) { state.editorPickPage = Math.max(0, value); render(); }
-      function selectEditorRecord(id) { state.editorFocusId = id; render(); if (id) document.getElementById("editor-question")?.focus(); }
+      function selectEditorRecord(id) {
+        state.editorFocusId = id;
+        render();
+        if (id && window.innerWidth <= 1080) document.querySelector(".editor-detail")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+      function openDraftFromVersion(version) {
+        if (!canWrite()) return;
+        state.setVersion = version;
+        openModal("iterate");
+      }
+      function markRecordEdit(record, field, userId = access.userId, at = Date.now()) {
+        const name = field === "metadataEntries" ? "metadata" : field;
+        record.fieldEdits ||= {};
+        record.fieldEdits[name] = { userId, at };
+        record.lastEditedBy = userId;
+        record.lastEditedAt = at;
+        return at;
+      }
+      function recordSourceMarkup(record) {
+        const origin = record.origin || {};
+        const asset = origin.asset || record.source || "手工新增";
+        const sourceRecord = origin.asset === "手工新增" && origin.record === "本次编辑"
+          ? "原版本手工新增" : origin.record || (record.inheritedFrom ? "原始来源未记录" : "本草稿添加");
+        return `<span>${escape(asset)}</span><small>${escape(sourceRecord)}${record.inheritedFrom ? ` · 继承自 ${escape(record.inheritedFrom)}` : ""}</small>`;
+      }
+      function editorAuthorMarkup(userId, at, empty = "本草稿未修改") {
+        if (!userId) return `<span class="editor-author">${escape(empty)}</span>`;
+        const user = access.users.find((entry) => entry.id === userId);
+        const name = user?.name || "其他成员";
+        return `<span class="editor-author" title="${escape(name)} · ${escape(new Date(at).toLocaleString("zh-CN"))}"><span class="member-avatar" style="${avatarStyle(user)}" aria-hidden="true">${escape(name.slice(0, 1).toUpperCase())}</span>${escape(name)} · ${escape(draftTime(at))}</span>`;
+      }
+      function fieldAuthorMarkup(record, field) {
+        const edit = record.fieldEdits?.[field];
+        return editorAuthorMarkup(edit?.userId, edit?.at);
+      }
+      function refreshDraftAttributionDom(record) {
+        document.querySelectorAll("[data-attribution-id]").forEach((slot) => {
+          if (slot.dataset.attributionId !== record.id) return;
+          slot.innerHTML = slot.dataset.attributionField ? fieldAuthorMarkup(record, slot.dataset.attributionField) : editorAuthorMarkup(record.lastEditedBy, record.lastEditedAt);
+        });
+      }
+      function refreshEditorRowDom(record) {
+        const row = [...document.querySelectorAll("[data-editor-record]")].find((entry) => entry.dataset.editorRecord === record.id);
+        if (!row) return;
+        for (const field of ["question", "prediction"]) {
+          const cell = row.querySelector(`[data-editor-value="${field}"]`);
+          if (cell) { cell.textContent = record[field] || "未填写"; cell.title = record[field] || ""; }
+        }
+      }
+      function editingPresenceMarkup(recordId, field = "") {
+        return onlinePeers().filter((peer) => peer.editingSetId === activeEditingSet() && peer.field?.recordId === recordId && (!field || peer.field.field === field)).map((peer) => {
+          const user = access.users.find((entry) => entry.id === peer.userId);
+          const name = user?.name || "其他成员";
+          const target = { question: "问题", prediction: "预测输出", metadata: "Metadata" }[peer.field.field] || "此记录";
+          return `<span class="member-avatar" style="${avatarStyle(user)}" title="${escape(name)}正在编辑${target}" role="img" aria-label="${escape(name)}正在编辑${target}">${escape(name.slice(0, 1).toUpperCase())}</span>`;
+        }).join("");
+      }
+      function refreshEditingPresenceDom() {
+        document.querySelectorAll(".editing-presence[data-record-id]").forEach((slot) => {
+          slot.innerHTML = editingPresenceMarkup(slot.dataset.recordId, slot.dataset.field || "");
+        });
+      }
       function editorFilesFiltered() {
         const query = state.editorSourceQuery.trim().toLowerCase();
         return projectMaterials().filter((item) => `${item.name} ${collectionById(item.collectionId)?.name || ""} ${item.type}`.toLowerCase().includes(query));
@@ -7114,8 +7261,8 @@
         const page = rows.slice(state.editorPage * 20, (state.editorPage + 1) * 20);
         const focusedIndex = state.editRecords.findIndex((record) => record.id === state.editorFocusId);
         const focused = state.editRecords[focusedIndex];
-        const detail = focused ? `<section class="editor-detail dataset-card" aria-label="记录编辑区"><div class="editor-card-head"><div><h2>编辑记录</h2><p>${escape(focused.source)} · 第 ${focusedIndex + 1} 条</p></div><button class="button ghost" onclick="app.selectEditorRecord(null)">收起</button></div><div class="editor-detail-body"><div class="form-field"><label for="editor-question">问题</label><textarea id="editor-question" data-collab-id="${escape(focused.id)}" data-collab-field="question" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'question', this.value)">${escape(focused.question)}</textarea></div><div class="form-field"><label for="editor-prediction">预测输出</label><textarea id="editor-prediction" data-collab-id="${escape(focused.id)}" data-collab-field="prediction" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'prediction', this.value)">${escape(focused.prediction)}</textarea></div><div class="form-field"><label>Metadata</label>${metadataEditorButton(focused, focusedIndex)}</div><div class="editor-detail-foot"><span>字段修改会保存到当前草稿。</span><button class="button ghost editor-remove" onclick="app.removeEditRecord(${focusedIndex})">移除记录</button></div></div></section>` : `<section class="editor-detail dataset-card editor-detail-empty"><h2>选择一条记录</h2><p>在左侧表格选择记录后，可在这里编辑长文本和 Metadata。</p></section>`;
-        return `<div class="editor-card dataset-card"><div class="editor-card-head"><div><h2>草稿记录</h2><p>共 ${state.editRecords.length} 条 · 新增 ${changes.added} · 修改 ${changes.modified} · 移除 ${changes.removed}</p></div><button class="button" onclick="app.addEditRecord()">＋ 新增记录</button></div><div class="editor-toolbar"><input aria-label="搜索草稿记录" data-search-key="editor-records" value="${escape(state.editorQuery)}" placeholder="搜索问题、输出或来源" oninput="app.setEditorQuery(this.value)" /><span>每页 20 条</span></div><div class="editor-table-scroll"><table class="dataset-table editor-table"><thead><tr><th>序号</th><th>问题</th><th>预测输出</th><th>来源</th><th></th></tr></thead><tbody>${page.length ? page.map(({ record, index }) => `<tr class="${record.id === state.editorFocusId ? "editor-selected" : ""}"><td>${index + 1}</td><td title="${escape(record.question)}"><button class="editor-question-link" onclick="app.selectEditorRecord('${escape(record.id)}')">${escape(record.question || "未填写")}</button></td><td title="${escape(record.prediction)}">${escape(record.prediction || "未填写")}</td><td>${escape(record.source)}</td><td><button class="button ghost" onclick="app.selectEditorRecord('${escape(record.id)}')">编辑</button></td></tr>`).join("") : `<tr><td colspan="5" class="editor-empty">${state.editRecords.length ? "没有匹配的记录。" : "草稿还没有记录；可在“添加资料”中选择，或手动新增。"}</td></tr>`}</tbody></table></div>${editorPager(rows.length, state.editorPage, 20, "editorPage")}</div>${detail}`;
+        const detail = focused ? `<section class="editor-detail dataset-card" aria-label="记录编辑区"><div class="editor-card-head"><div><h2>编辑记录</h2><p>${recordSourceMarkup(focused)} · 第 ${focusedIndex + 1} 条</p></div><button class="button ghost" onclick="app.selectEditorRecord(null)">收起</button></div><div class="editor-detail-body"><div class="form-field"><label class="editor-field-label" for="editor-question">问题<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="question">${editingPresenceMarkup(focused.id, "question")}</span></label><textarea id="editor-question" data-collab-id="${escape(focused.id)}" data-collab-field="question" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'question', this.value)">${escape(focused.question)}</textarea><small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="question">${fieldAuthorMarkup(focused, "question")}</small></div><div class="form-field"><label class="editor-field-label" for="editor-prediction">预测输出<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="prediction">${editingPresenceMarkup(focused.id, "prediction")}</span></label><textarea id="editor-prediction" data-collab-id="${escape(focused.id)}" data-collab-field="prediction" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'prediction', this.value)">${escape(focused.prediction)}</textarea><small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="prediction">${fieldAuthorMarkup(focused, "prediction")}</small></div><div class="form-field"><label class="editor-field-label">Metadata<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="metadata">${editingPresenceMarkup(focused.id, "metadata")}</span></label>${metadataEditorButton(focused, focusedIndex)}<small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="metadata">${fieldAuthorMarkup(focused, "metadata")}</small></div><div class="editor-detail-foot"><span>字段修改会保存到当前草稿。</span><button class="button ghost editor-remove" onclick="app.removeEditRecord(${focusedIndex})">移除记录</button></div></div></section>` : `<section class="editor-detail dataset-card editor-detail-empty"><h2>选择一条记录</h2><p>在左侧表格选择记录后，可在这里编辑长文本和 Metadata。</p></section>`;
+        return `<div class="editor-card dataset-card"><div class="editor-card-head"><div><h2>草稿记录</h2><p>共 ${state.editRecords.length} 条 · 新增 ${changes.added} · 修改 ${changes.modified} · 移除 ${changes.removed}</p></div><button class="button" onclick="app.addEditRecord()">＋ 新增记录</button></div><div class="editor-toolbar"><input aria-label="搜索草稿记录" data-search-key="editor-records" value="${escape(state.editorQuery)}" placeholder="搜索问题、输出或来源" oninput="app.setEditorQuery(this.value)" /><span>每页 20 条</span></div><div class="editor-table-scroll"><table class="dataset-table editor-table"><thead><tr><th>序号</th><th>问题 / 最近修改</th><th>预测输出</th><th>来源</th></tr></thead><tbody>${page.length ? page.map(({ record, index }) => `<tr data-editor-record="${escape(record.id)}" tabindex="0" aria-selected="${record.id === state.editorFocusId}" class="${record.id === state.editorFocusId ? "editor-selected" : ""}" onclick="app.selectEditorRecord('${escape(record.id)}')" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();app.selectEditorRecord('${escape(record.id)}')}"><td>${index + 1}<span class="editing-presence" data-record-id="${escape(record.id)}">${editingPresenceMarkup(record.id)}</span></td><td class="editor-question-cell"><span data-editor-value="question" title="${escape(record.question)}">${escape(record.question || "未填写")}</span><small data-attribution-id="${escape(record.id)}">${editorAuthorMarkup(record.lastEditedBy, record.lastEditedAt)}</small></td><td><span data-editor-value="prediction" title="${escape(record.prediction)}">${escape(record.prediction || "未填写")}</span></td><td class="editor-source-cell">${recordSourceMarkup(record)}</td></tr>`).join("") : `<tr><td colspan="4" class="editor-empty">${state.editRecords.length ? "没有匹配的记录。" : "草稿还没有记录；可在“添加资料”中选择，或手动新增。"}</td></tr>`}</tbody></table></div>${editorPager(rows.length, state.editorPage, 20, "editorPage")}</div>${detail}`;
       }
       function editorSourcesPanel() {
         const files = editorFilesFiltered();
@@ -7130,7 +7277,7 @@
         const iterating = state.modal === "iterate";
         const parent = iterating ? activeSet(selectedItem()) : null;
         const plan = iterating ? nextVersionPlan(selectedItem(), parent) : null;
-        return `<div class="editor-workspace"><div class="editor-intro dataset-card"><div><strong>${iterating ? `草稿基于 ${escape(state.editorParentVersion)} · 计划发布 ${escape(plan.version)}` : "测试集 v1 草稿"}</strong><p>${iterating ? `已继承父版本 ${parent.records} 条记录。编辑仅作用于草稿；发布后生成新版本。` : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}</p></div><span id="editor-save-status" role="status">${state.editorSavedAt ? "已保存草稿 · 同浏览器同步" : "尚未保存"}</span></div>${!iterating ? `<section class="editor-identity dataset-card"><div class="form-field"><label for="set-name">测试集名称</label><input id="set-name" value="${escape(state.setName)}" placeholder="例如：客服基础问答" oninput="app.setSetName(this.value)" /></div><div class="form-field"><label for="set-purpose">用途说明（可选）</label><textarea id="set-purpose" oninput="app.setSetPurpose(this.value)" placeholder="简述测试集用途">${escape(state.setPurpose)}</textarea></div></section>` : ""}<div class="editor-tabs" role="tablist" aria-label="测试集草稿工作区"><button role="tab" aria-selected="${state.editorTab === "records"}" class="${state.editorTab === "records" ? "active" : ""}" onclick="app.editorTab('records')">草稿记录 <span>${state.editRecords.length}</span></button><button role="tab" aria-selected="${state.editorTab === "sources"}" class="${state.editorTab === "sources" ? "active" : ""}" onclick="app.editorTab('sources')">添加资料 <span>${state.setSources.length}</span></button></div>${collabToolbar()}${state.setError ? `<p class="simple-form-error" role="alert">${escape(state.setError)}</p>` : ""}${state.editorTab === "records" ? `<div class="editor-record-layout">${editorRecordsPanel()}</div>` : editorSourcesPanel()}<div class="editor-bottom"><span>原型 Mock 草稿保存在当前浏览器；可用同源标签页体验协作。</span><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button></div></div>`;
+        return `<div class="editor-workspace"><div class="editor-intro dataset-card"><div><strong>${iterating ? `草稿基于 ${escape(state.editorParentVersion)} · 计划发布 ${escape(plan.version)}` : "测试集 v1 草稿"}</strong><p class="editor-draft-meta">${escape(draftSummary(readDraft(editorDraftKey())))}</p><p>${iterating ? `已继承父版本 ${parent.records} 条记录。编辑仅作用于草稿；发布后生成新版本。` : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}</p></div><span id="editor-save-status" role="status">${state.editorSavedAt ? "已保存草稿 · 同浏览器同步" : "尚未保存"}</span></div>${!iterating ? `<section class="editor-identity dataset-card"><div class="form-field"><label for="set-name">测试集名称</label><input id="set-name" value="${escape(state.setName)}" placeholder="例如：客服基础问答" oninput="app.setSetName(this.value)" /></div><div class="form-field"><label for="set-purpose">用途说明（可选）</label><textarea id="set-purpose" oninput="app.setSetPurpose(this.value)" placeholder="简述测试集用途">${escape(state.setPurpose)}</textarea></div></section>` : ""}<div class="editor-tabs" role="tablist" aria-label="测试集草稿工作区"><button role="tab" aria-selected="${state.editorTab === "records"}" class="${state.editorTab === "records" ? "active" : ""}" onclick="app.editorTab('records')">草稿记录 <span>${state.editRecords.length}</span></button><button role="tab" aria-selected="${state.editorTab === "sources"}" class="${state.editorTab === "sources" ? "active" : ""}" onclick="app.editorTab('sources')">添加资料 <span>${state.setSources.length}</span></button></div>${collabToolbar()}${state.setError ? `<p class="simple-form-error" role="alert">${escape(state.setError)}</p>` : ""}${state.editorTab === "records" ? `<div class="editor-record-layout">${editorRecordsPanel()}</div>` : editorSourcesPanel()}<div class="editor-bottom"><span>原型 Mock 草稿保存在当前浏览器；可用同源标签页体验协作。</span><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button></div></div>`;
       }
       function testSetBody() {
         const iterating = state.modal === "iterate";
@@ -7710,7 +7857,7 @@
         addEditRecord,
         removeEditRecord,
         editorTab, setEditorQuery, setEditorSourceQuery, setEditorPickQuery,
-        editorPage, editorSourcePage, editorPickPage, selectEditorRecord,
+        editorPage, editorSourcePage, editorPickPage, selectEditorRecord, openDraftFromVersion,
         toggleSourcesBulk, toggleRecordsBulk, discardEditorDraft,
         next,
         prev,
