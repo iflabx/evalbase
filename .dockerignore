@@ -6,3 +6,7 @@ frontend-v2
 src/web
 playwright-report
 test-results
+
+frontend-v3/node_modules
+frontend-v3/dist
+frontend-v3/vite.v2a.config.ts
