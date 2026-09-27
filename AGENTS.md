@@ -4,6 +4,12 @@
 
 This repository contains the EvalBase Phase 1A product definition and application implementation. Commit `92cb8a5` / `prototype/solo-workflow-v5.3` is the complete user-visible interaction contract: the product must include every frozen behavior and expose no user operation absent from that prototype. `frontend-v1/` is the immutable visual/component donor; `frontend-v2/` is deprecated history; formal frontend work occurs only under `frontend-v3/`.
 
+## EvalBase v2 work
+
+For specs, Tickets, implementation, or checkpoint work under `.scratch/evalbase-v2/`, read [v2 Implementation Spec](.scratch/evalbase-v2/spec.md) first. It defines the v2 source-of-truth overrides, four Ticket dependencies, three checkpoint batches, authorization semantics, and progress ledger. Use the v2 PRD and frozen login/multiuser prototype for changed behavior; keep v1 contracts for inherited behavior. Continue using `frontend-v1/` as the immutable donor and `frontend-v3/` as the implementation target.
+
+Apply the implementation skill pair, TDD, necessary validation, review, and resource-isolation rules below to v2 as well. For v2 only, the Spec's per-feature branch and batch authorization/checkpoint rules replace per-Ticket branching, repeated authorization within an authorized batch, and individual Owner checkpoints. Explicitly authorizing one Ticket still authorizes only that Ticket. Keep v1 history unchanged. Run docs:check and also validate v2 links, dependencies, and the Spec lifecycle table; the existing checker covers the v1 ledger only.
+
 ## Current implementation state
 
 Confirm the exact branch, `HEAD`, and [implementation progress](docs/agents/phase1a-progress.md) before making a new change. `Status:` remains the triage eligibility label defined in `docs/agents/triage-labels.md`; implementation completion is recorded separately in each Ticket's `Implementation:` line and `Comments`.

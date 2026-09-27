@@ -183,7 +183,7 @@ v2 增加登录、账号注册、管理员、成员邀请、账号设置、在�
 
 ## 10. 与后续工作的关系
 
-本次只形成 PRD、架构、测试计划和必要支持文档。后续根据批准版本编写 Implementation Spec、Ticket 和验收批次；不复用旧 Ticket 的完成状态宣称 v2 功能已完成。
+实施拆分与进度见 [v2 Implementation Spec](../.scratch/evalbase-v2/spec.md)：4 张功能 Ticket、3 个 checkpoint 批次。创建 Ticket 不等于开始实现或验收通过；不复用旧 Ticket 的完成状态宣称 v2 功能已完成。
 
 ## 11. 本草案补足的默认规则
 

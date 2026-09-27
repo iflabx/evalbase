@@ -122,4 +122,4 @@ frontend-v1 仅作为视觉与组件样式来源；正式实现落在 frontend-v
 
 ## 9. 交付与验证
 
-迁移、权限、字段 CAS、唯一发布和删除竞态必须先通过服务端集成测试，再按 [测试计划](../test-plan-evalbase-v2.md) 进行独立浏览器身份验收。本文不创建 Ticket，不改变部署。架构决策见 [ADR 0012](../adr/0012-v2-account-and-project-authorization.md) 与 [ADR 0013](../adr/0013-v2-shared-draft-publication.md)；状态均为 Proposed，产品确认项不能被技术实现弱化。
+迁移、权限、字段 CAS、唯一发布和删除竞态必须先通过服务端集成测试，再按 [测试计划](../test-plan-evalbase-v2.md) 进行独立浏览器身份验收。实施归属和阶段边界见 [Implementation Spec](../../.scratch/evalbase-v2/spec.md)，本文件不改变部署。架构决策见 [ADR 0012](../adr/0012-v2-account-and-project-authorization.md) 与 [ADR 0013](../adr/0013-v2-shared-draft-publication.md)；状态均为 Proposed，产品确认项不能被技术实现弱化。

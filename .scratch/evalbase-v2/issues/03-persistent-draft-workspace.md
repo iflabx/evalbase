@@ -1,0 +1,58 @@
+# V2-03：完整草稿工作区与可靠发布
+
+Status: ready-for-agent
+Implementation: not-started
+
+Blocked by: 批次 A 经 Owner 验收通过；获得本 Ticket/批次 B 执行授权。
+Checkpoint: B（本 Ticket 完成后一次人工验收）
+
+## Outcome
+
+用户在全页完成创建/派生、资料选择、保存退出和继续、删除及发布；草稿按父版本隔离，发布唯一，回收恢复有完整规则。
+
+## Required reading
+
+- [Implementation Spec](../spec.md)，含统一执行协议、依赖、测试归属及 checkpoint 资源回收。
+- Spec §1 链接的 PRD、CONTEXT、架构、测试计划、冻结原型与 donor 复用合同。
+- [ADR 0013](../../../docs/adr/0013-v2-shared-draft-publication.md)、[ADR 0003](../../../docs/adr/0003-atomic-publication-and-version-allocation.md)、[ADR 0004](../../../docs/adr/0004-postgres-coordination-for-jobs-and-draft-leases.md)、[ADR 0007](../../../docs/adr/0007-test-case-identity-and-revisions.md)、[ADR 0008](../../../docs/adr/0008-controlled-deletion-propagation.md)、[ADR 0010](../../../docs/adr/0010-structured-metadata-entries.md)、[ADR 0011](../../../docs/adr/0011-incremental-test-set-version-storage.md)。
+
+## Scope
+
+- 创建稳定持久化草稿身份：同父一个活动草稿、异父隔离、多个独立新建测试集草稿；列表和版本处发现、继续、显示最近修改者与时间。
+- 全页编辑与资料选择，搜索分页、固定全选范围及跨页排除；整行打开右侧记录编辑，Metadata 直接键值编辑并允许空值。
+- 完成真实保存反馈、保存退出、恢复、删除；服务端字段/行 revision 检查防止丢更新，基本冲突界面保留输入；从第一次保存起记录可信修改者 ID/时间。
+- 发布固定修订，数据库保证整个 draft 只对应一个正式版本；不同用户/幂等键/响应丢失和重启恢复复用结果。复用既有 Sparse 发布器及 Delta/Checkpoint 读取。
+- 回收父对象暂停草稿，恢复后继续；永久删除终止相关草稿并清理正文、暂存及缓存，保护其他存活依赖；处理删除/发布/保存竞态。
+
+## Acceptance Criteria
+
+1. 两个父版本的草稿互不影响，同父两账号进入同一草稿；两个新建草稿独立列出且均可继续。查看者不能访问草稿列表、正文和编辑位置。
+2. 跨页选择准确；重复同一来源不重复加入；保存失败不退出不丢输入，刷新/重启恢复服务端内容。
+3. Metadata 空值可编辑、发布、下载；空键/重复键拒绝；问题为空及内容重复仍只提示，容量沿用 v1。
+4. 不同字段并发保存均成功，同字段和删行竞争明确冲突，不静默覆盖；发布中禁止编辑/删除，失败恢复后旧任务不能提交旧快照。
+5. 两个真实账号不同请求键发布同草稿只产生一个版本且返回相同 ID；故障注入重启无半成品、不消耗失败标签。
+6. 草稿回收暂停/恢复/永久终止及迟到请求行为正确，legacy/Delta/Checkpoint 与 CSV 不回归；字段归属事实随发布保留，为 V2-04 展示提供真实数据。
+
+## Necessary tests
+
+DRAFT-01–04、EDIT-01–05、PUB-01–06、DELETE-01–03、COLLAB-01–04 的 HTTP 并发边界及 REG-01–02 受影响集合；重启持久化。首个 red 建议：同父并发创建只返回一个草稿，异父保存互不覆盖。高风险发布/删除按协议完成 Closure Review。
+
+按实际 diff 选择受影响 typecheck、lint、frontend build 和文档检查。执行前记录具体命令与公共测试边界；完成后记录真实结果、未测项及原因。Standards/Spec 复审清除 P0/P1 后提交，不用单纯按钮禁用或 Mock 代替服务端证据。
+
+## Frontend parity
+
+新建/继续草稿入口、草稿记录/添加资料、行点击右侧编辑、Metadata 行内编辑、保存状态、删除确认、发布失败恢复。B 尚无自动实时推送/在线头像，明确标注阶段范围，不显示假头像；V2-04 补齐即时更新及字段作者完整展示。
+
+实施前在本节补充 Ticket-local 对照表，逐项记录字段、顺序、标签、启用条件、空/错态和排除项；正式前端仅 frontend-v3，frontend-v1 只读。
+
+## Owner checkpoint
+
+按 Spec 的 B 准备多页资料、空 Metadata、legacy 与增量父版本、两个独立新建草稿。人工走保存→继续→编辑→发布→回收恢复；同草稿唯一发布/故障恢复另交自动化证据。使用合成数据验证永久删除，按执行时规则取得必要确认。通过后释放 B 资源。
+
+## Out of scope
+
+不改正式叶子版本、不改 CSV 格式、不重写存储协议；本 Ticket 不实现 SSE/在线心跳和完整字段头像展示。
+
+## Comments
+
+- 2026-09-28：仅创建实施 Ticket，尚未执行测试或开发。完成后在此记录实现 SHA、验证、复审和批次验收证据，并同步 Spec 进度表。
