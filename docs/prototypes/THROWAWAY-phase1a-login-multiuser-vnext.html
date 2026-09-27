@@ -3260,6 +3260,17 @@
       .collab-presence { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
       .collab-toolbar { display: grid; gap: 7px; padding: 12px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--blue-soft); font-size: 12px; }
       .collab-toolbar small { color: var(--muted); line-height: 1.5; }
+      .collab-status-card { margin-bottom: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+      .collab-status-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 18px 10px; }
+      .collab-status-head strong { font-size: 14px; font-weight: 600; }
+      .collab-status-head span, .collab-status-hint { color: var(--muted-foreground); font-size: 12px; }
+      .collab-status-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
+      .collab-status-person { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+      .collab-status-person .dot { flex: 0 0 auto; }
+      .collab-status-person b { font-weight: 500; }
+      .collab-status-person em { color: var(--muted-foreground); font-style: normal; }
+      .collab-status-hint { margin: 0; padding: 0 18px 15px; line-height: 1.5; }
+      .collab-toolbar .collab-status-card { margin: 0; background: var(--card); }
       #collab-warning:not(:empty) { color: var(--danger); font-weight: 600; }
       @media (max-width: 760px) { .member-layout { grid-template-columns: 1fr; } .account-tools { gap: 4px; } }
     </style>
@@ -4044,7 +4055,14 @@
       }
       function onlinePeers() {
         const fresh = Date.now() - 10000;
-        return [...access.peers.values()].filter((peer) => peer.projectId === state.activeProject && peer.at > fresh && peer.userId !== access.userId);
+        const byUser = new Map();
+        for (const peer of access.peers.values()) {
+          if (peer.projectId !== state.activeProject || peer.at <= fresh || peer.userId === access.userId) continue;
+          const previous = byUser.get(peer.userId);
+          const rank = (entry) => entry?.field ? 2 : entry?.editingSetId ? 1 : 0;
+          if (!previous || rank(peer) > rank(previous) || (rank(peer) === rank(previous) && peer.at > previous.at)) byUser.set(peer.userId, peer);
+        }
+        return [...byUser.values()];
       }
       function presenceMarkup() {
         const peers = onlinePeers();
@@ -4054,14 +4072,30 @@
         });
         return `<span class="dot"></span>${1 + peers.length} 人在线${names.length ? ` · ${names.join("、")}` : ""}`;
       }
+      function collabStatusMarkup() {
+        const peers = onlinePeers();
+        const person = (name, status, self = false) => `<span class="collab-status-person"><span class="dot"></span><b>${escape(name)}${self ? "（我）" : ""}</b><em>${escape(status)}</em></span>`;
+        const peerStatus = (peer) => {
+          if (!peer.editingSetId) return "在线";
+          const setName = mock.sets.find((item) => item.id === peer.editingSetId)?.name || "测试集";
+          if (!peer.field?.recordId) return `正在编辑「${setName}」`;
+          const index = activeEditingSet() === peer.editingSetId ? state.editRecords.findIndex((item) => item.id === peer.field.recordId) : -1;
+          const fieldName = { question: "问题", prediction: "预测输出", metadata: "Metadata" }[peer.field.field] || "字段";
+          return `正在修改「${setName}」${index >= 0 ? `第 ${index + 1} 条的` : "的"}${fieldName}`;
+        };
+        const names = peers.map((peer) => person(access.users.find((user) => user.id === peer.userId)?.name || "其他成员", peerStatus(peer))).join("");
+        const hint = peers.length ? "成员在编辑器中聚焦字段时，这里会显示正在修改的记录与字段。" : "目前只有你在线。要体验多人状态，请在另一个标签页登录不同的演示成员。";
+        return `<section class="collab-status-card" aria-label="协作状态"><div class="collab-status-head"><strong>协作状态</strong><span>${1 + peers.length} 人在线</span></div><div class="collab-status-list">${person(currentUser().name, activeEditingSet() ? "正在编辑当前测试集" : "在线", true)}${names}</div><p class="collab-status-hint">${hint}</p></section>`;
+      }
       function refreshPresenceDom() {
         const element = document.querySelector(".collab-presence");
         if (element) element.innerHTML = presenceMarkup();
         const toolbar = document.querySelector(".collab-online");
         if (toolbar) toolbar.innerHTML = presenceMarkup();
+        document.querySelectorAll(".collab-status-slot").forEach((slot) => { slot.innerHTML = collabStatusMarkup(); });
       }
       function collabToolbar() {
-        return `<div class="collab-toolbar"><b>共同编辑 · ${escape(selectedItem()?.name || "测试集")}</b><span class="collab-online">${presenceMarkup()}</span><small>请在第二个浏览器标签页登录另一演示成员，进入同一测试集并创建版本。字段输入、增删记录会在两个标签页同步。</small><span id="collab-warning" role="status">${access.editConflict ? `与 ${escape(access.editConflict.name)} 同时修改同一字段。你的输入暂时保留。` : access.publishConflict ? "另一成员已发布新版本；请退出本次编辑并从最新版本重新开始。" : ""}</span>${access.editConflict ? `<div><button class="button" onclick="app.resolveEditConflict('remote')">采用对方输入</button><button class="button" onclick="app.resolveEditConflict('local')">保留我的输入</button></div>` : ""}</div>`;
+        return `<div class="collab-toolbar"><div class="collab-status-slot">${collabStatusMarkup()}</div><small>在第二个标签页登录另一演示成员，进入同一测试集并点击“继续创建新版本”。字段输入、增删记录会实时同步。</small><span id="collab-warning" role="status">${access.editConflict ? `与 ${escape(access.editConflict.name)} 同时修改同一字段。你的输入暂时保留。` : access.publishConflict ? "另一成员已发布新版本；请退出本次编辑并从最新版本重新开始。" : ""}</span>${access.editConflict ? `<div><button class="button" onclick="app.resolveEditConflict('remote')">采用对方输入</button><button class="button" onclick="app.resolveEditConflict('local')">保留我的输入</button></div>` : ""}</div>`;
       }
       function renderKeepingFocus() {
         const active = document.activeElement;
@@ -6843,7 +6877,7 @@
           : workspace();
         const activeProject = projectById();
         document.getElementById("app").innerHTML =
-          `<div class="shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}"><aside class="rail"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg></div><div><strong>EvalBase</strong><span>团队测试资料库</span></div></div><div><p class="nav-label">资料库</p><nav class="nav" aria-label="主导航"><button class="${isMaterial ? "active" : ""}" onclick="app.nav('materials')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></svg></span>数据集</button><button class="${!isMaterial ? "active" : ""}" onclick="app.nav('sets')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg></span>测试集</button></nav></div><div class="rail-bottom"><nav class="nav" aria-label="设置导航"><button class="${isSettings ? "active" : ""}" title="设置" onclick="app.openSettings()"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"/><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/></svg></span>设置</button></nav><div class="rail-foot">浏览器内存 Mock</div></div></aside><main class="main"><header class="app-header"><span class="app-header-start"><button class="sidebar-toggle" aria-label="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" title="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" onclick="app.toggleSidebar()">☰</button><span>团队测试资料库 · 登录与多人原型</span></span><span class="account-tools"><span class="collab-presence">${presenceMarkup()}</span><span class="role-chip">${roleNames[roleFor()] || "成员"}</span><span>${escape(currentUser().name)}</span><button onclick="app.signOut()">退出</button></span></header><div class="page-wrap"><header class="page-head"><div><h1>${pageTitle}</h1>${pageDescription ? `<p class="subhead">${pageDescription}</p>` : ""}</div><div class="page-actions">${pageAction}</div></header>${content}</div></main></div>${modal()}${metadataEditorModal()}${state.notice ? `<div class="toast">${state.notice}</div>` : ""}`;
+          `<div class="shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}"><aside class="rail"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg></div><div><strong>EvalBase</strong><span>团队测试资料库</span></div></div><div><p class="nav-label">资料库</p><nav class="nav" aria-label="主导航"><button class="${isMaterial ? "active" : ""}" onclick="app.nav('materials')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></svg></span>数据集</button><button class="${!isMaterial ? "active" : ""}" onclick="app.nav('sets')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg></span>测试集</button></nav></div><div class="rail-bottom"><nav class="nav" aria-label="设置导航"><button class="${isSettings ? "active" : ""}" title="设置" onclick="app.openSettings()"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"/><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/></svg></span>设置</button></nav><div class="rail-foot">浏览器内存 Mock</div></div></aside><main class="main"><header class="app-header"><span class="app-header-start"><button class="sidebar-toggle" aria-label="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" title="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" onclick="app.toggleSidebar()">☰</button><span>团队测试资料库 · 登录与多人原型</span></span><span class="account-tools"><span class="collab-presence">${presenceMarkup()}</span><span class="role-chip">${roleNames[roleFor()] || "成员"}</span><span>${escape(currentUser().name)}</span><button onclick="app.signOut()">退出</button></span></header><div class="page-wrap"><header class="page-head"><div><h1>${pageTitle}</h1>${pageDescription ? `<p class="subhead">${pageDescription}</p>` : ""}</div><div class="page-actions">${pageAction}</div></header>${isSet ? `<div class="collab-status-slot">${collabStatusMarkup()}</div>` : ""}${content}</div></main></div>${modal()}${metadataEditorModal()}${state.notice ? `<div class="toast">${state.notice}</div>` : ""}`;
         const projectIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></svg>`;
         const testSetIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg>`;
         const navigation = document.querySelector(".nav");
