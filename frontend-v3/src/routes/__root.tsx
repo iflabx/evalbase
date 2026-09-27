@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { HeadContent, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 
@@ -33,14 +33,11 @@ function RootComponent() {
 }
 
 function AuthenticatedApp() {
-  const queryClient = useQueryClient();
   useEffect(() => {
-    const expired = () => {
-      void queryClient.invalidateQueries({ queryKey: ["session"] });
-    };
+    const expired = () => window.location.replace("/");
     window.addEventListener("evalbase:session-expired", expired);
     return () => window.removeEventListener("evalbase:session-expired", expired);
-  }, [queryClient]);
+  }, []);
   const status = useQuery({ queryKey: ["installation"], queryFn: installation, retry: false });
   const session = useQuery({
     queryKey: ["session"],
@@ -77,8 +74,7 @@ function AuthenticatedApp() {
                 className="ml-auto text-sm hover:text-primary"
                 onClick={async () => {
                   await logout();
-                  queryClient.removeQueries({ queryKey: ["projects"] });
-                  await queryClient.invalidateQueries({ queryKey: ["session"] });
+                  window.location.assign("/");
                 }}
               >
                 登出
