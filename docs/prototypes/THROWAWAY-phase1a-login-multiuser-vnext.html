@@ -3233,13 +3233,16 @@
       .rail-bottom .nav { display: block; }
       .rail-bottom .nav button { width: 100%; }
       .rail-foot { margin: 10px 8px 0; }
-      .settings-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 28px; max-width: 1180px; }
-      .settings-nav { padding: 4px 14px 0 0; border-right: 1px solid var(--border); }
-      .settings-nav b { display: block; margin: 0 8px 12px; color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
-      .settings-nav button { width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--foreground); text-align: left; font-size: 13px; font-weight: 500; cursor: pointer; }
-      .settings-nav button[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+      .settings-layout { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 32px; max-width: 1180px; align-items: start; }
+      .settings-nav { display: grid; gap: 20px; padding: 2px 16px 0 0; border-right: 1px solid var(--border); }
+      .settings-nav-group { display: grid; gap: 4px; min-width: 0; }
+      .settings-nav-title { overflow: hidden; margin: 0 8px 7px; color: var(--muted-foreground); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
+      .settings-nav button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--foreground); text-align: left; font-size: 13px; font-weight: 500; cursor: pointer; }
+      .settings-nav button svg { width: 16px; height: 16px; flex: 0 0 16px; color: var(--muted-foreground); }
+      .settings-nav button[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); font-weight: 600; }
+      .settings-nav button[aria-current="page"] svg { color: var(--primary); }
       .settings-nav button:hover { background: var(--sidebar-accent); }
-      .settings-stack { display: grid; align-content: start; gap: 18px; min-width: 0; }
+      .settings-stack { display: grid; align-content: start; gap: 18px; min-width: 0; max-width: 820px; }
       .member-card { border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 1px 3px rgba(15, 23, 42, .10); overflow: hidden; }
       .member-card-head { padding: 20px 24px 16px; }
       .member-card-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -3256,20 +3259,28 @@
       .member-empty { margin: 0; padding: 20px 24px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 13px; }
       .member-form { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; align-items: end; gap: 12px; padding: 0 24px 24px; }
       .member-form .button { min-height: 38px; white-space: nowrap; }
-      .profile-form { display: grid; justify-items: start; gap: 18px; padding: 0 24px 24px; }
-      .profile-form label { display: grid; gap: 7px; width: min(100%, 360px); font-size: 13px; font-weight: 500; }
-      .profile-form input[type="text"] { width: 100%; min-height: 38px; padding: 8px 11px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); font: inherit; }
-      .profile-preview { display: flex; align-items: center; gap: 12px; }
-      .profile-preview .member-avatar { width: 42px; height: 42px; flex-basis: 42px; font-size: 16px; }
+      .profile-card .member-card-head { padding-bottom: 20px; }
+      .profile-form { display: block; }
+      .profile-preview { display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-top: 1px solid var(--border); background: var(--secondary); }
+      .profile-preview .member-avatar { width: 52px; height: 52px; flex-basis: 52px; font-size: 20px; }
       .profile-preview b, .profile-preview small { display: block; }
-      .profile-preview b { font-size: 13px; font-weight: 500; }
+      .profile-preview b { font-size: 14px; font-weight: 600; }
       .profile-preview small { margin-top: 3px; color: var(--muted-foreground); font-size: 12px; }
-      .profile-color { display: flex; align-items: center; gap: 12px; }
-      .profile-color input { width: 52px; height: 38px; padding: 3px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); cursor: pointer; }
-      .profile-color span { color: var(--muted-foreground); font-size: 12px; }
+      .profile-row { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 360px); gap: 24px; padding: 20px 24px; border-top: 1px solid var(--border); }
+      .profile-row-label { display: block; padding-top: 8px; font-size: 13px; font-weight: 600; }
+      .profile-row-label small { display: block; margin-top: 5px; color: var(--muted-foreground); font-size: 12px; font-weight: 400; line-height: 1.5; }
+      .profile-form input[type="text"] { width: 100%; min-height: 38px; padding: 8px 11px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); font: inherit; }
+      .profile-color { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+      .profile-swatch { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid transparent; border-radius: 50%; box-shadow: 0 0 0 1px var(--border); color: white; cursor: pointer; font-size: 14px; }
+      .profile-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--primary); }
+      .profile-swatch[aria-pressed="true"]::after { content: "✓"; }
+      .profile-swatch:focus-visible, .profile-color-custom:focus-within { outline: 2px solid var(--primary); outline-offset: 3px; }
+      .profile-color-custom { display: flex; align-items: center; gap: 7px; min-height: 34px; margin-left: 3px; padding: 3px 8px 3px 4px; border: 1px solid var(--input); border-radius: 6px; color: var(--foreground); cursor: pointer; font-size: 12px; }
+      .profile-color-custom input { width: 26px; height: 26px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+      .profile-form-footer { display: flex; justify-content: flex-end; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--secondary); }
       .settings-help { margin: -4px 2px 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
-      @media (max-width: 860px) { .rail-bottom { margin: 0 0 0 auto; } .rail-bottom .rail-foot { display: none; } .settings-layout { grid-template-columns: 1fr; gap: 16px; } .settings-nav { display: flex; gap: 8px; padding: 0 0 12px; border-right: 0; border-bottom: 1px solid var(--border); } .settings-nav b { display: none; } .settings-nav button { width: auto; } }
-      @media (max-width: 620px) { .auth-top { height: 60px; } .auth-card { padding: 24px; } .account-tools { gap: 4px; } .member-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px 16px; } .member-row select { grid-column: 1; grid-row: 2; max-width: 160px; } .member-actions { grid-column: 2; grid-row: 1 / span 2; } .member-card-head { padding: 16px; } .member-form, .profile-form { padding: 0 16px 16px; } .member-form { grid-template-columns: 1fr; } }
+      @media (max-width: 860px) { .rail-bottom { margin: 0 0 0 auto; } .rail-bottom .rail-foot { display: none; } .settings-layout { grid-template-columns: 1fr; gap: 16px; } .settings-nav { display: flex; gap: 8px; padding: 0 0 12px; border-right: 0; border-bottom: 1px solid var(--border); } .settings-nav-group { display: flex; gap: 4px; } .settings-nav-title { display: none; } .settings-nav button { width: auto; white-space: nowrap; } }
+      @media (max-width: 620px) { .auth-top { height: 60px; } .auth-card { padding: 24px; } .account-tools { gap: 4px; } .member-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px 16px; } .member-row select { grid-column: 1; grid-row: 2; max-width: 160px; } .member-actions { grid-column: 2; grid-row: 1 / span 2; } .member-card-head { padding: 16px; } .member-form { grid-template-columns: 1fr; padding: 0 16px 16px; } .profile-preview, .profile-row { padding: 16px; } .profile-row { grid-template-columns: 1fr; gap: 10px; } .profile-row-label { padding-top: 0; } .profile-form-footer { padding: 16px; } }
       .online-users { display: inline-flex; align-items: center; gap: 5px; }
       .online-user { position: relative; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: white; font-size: 12px; font-weight: 600; cursor: default; outline-offset: 2px; }
       .online-user:focus-visible { outline: 2px solid var(--primary); }
@@ -3850,7 +3861,7 @@
         collection: "c1",
         collectionTab: "files",
         uploadCollection: "u1",
-        view: "list",
+        view: initial === "settings" && ["profile", "members"].includes(params.get("section")) ? params.get("section") : "list",
         inviteOpen: false,
         page: 0,
         projectQuery: "",
@@ -3989,10 +4000,12 @@
         if (state.screen !== "settings" || !["profile", "members"].includes(tab)) return;
         state.view = tab;
         state.inviteOpen = false;
+        updateUrl();
         render();
       }
+      const profilePalette = ["#2563eb", "#9333ea", "#0f766e", "#b45309", "#be123c", "#0369a1", "#4d7c0f"];
       function defaultAvatarColor(user) {
-        const colors = ["#2563eb", "#9333ea", "#0f766e", "#b45309", "#be123c", "#0369a1", "#4d7c0f", "#a21caf"];
+        const colors = [...profilePalette, "#a21caf"];
         return colors[Math.max(0, access.users.findIndex((entry) => entry.id === user?.id)) % colors.length];
       }
       function avatarColor(user) {
@@ -4010,6 +4023,12 @@
         if (avatar) { avatar.textContent = name.charAt(0).toUpperCase(); avatar.style.cssText = avatarStyle(currentUser(), color); }
         const label = document.getElementById("profile-preview-name");
         if (label) label.textContent = name;
+        document.querySelectorAll(".profile-swatch").forEach((swatch) => swatch.setAttribute("aria-pressed", String(swatch.dataset.color === color)));
+      }
+      function chooseProfileColor(color) {
+        if (!profilePalette.includes(color)) return;
+        document.getElementById("profile-color").value = color;
+        previewProfile();
       }
       function saveProfile(event) {
         event.preventDefault();
@@ -4079,7 +4098,8 @@
       }
       function profileWorkspace() {
         const user = currentUser();
-        return `<section class="member-card"><div class="member-card-head"><h2>个人资料</h2><p>设置其他成员看到的名称和头像颜色。</p></div><form class="profile-form" onsubmit="app.saveProfile(event)"><div class="profile-preview"><span id="profile-avatar" class="member-avatar" style="${avatarStyle(user)}" aria-hidden="true">${escape(user.name.charAt(0).toUpperCase())}</span><div><b id="profile-preview-name">${escape(user.name)}</b><small>${escape(user.email)}</small></div></div><label for="profile-name">用户名称<input id="profile-name" type="text" required maxlength="30" value="${escape(user.name)}" oninput="app.previewProfile()" /></label><label for="profile-color">头像颜色<span class="profile-color"><input id="profile-color" type="color" aria-label="头像颜色" value="${avatarColor(user)}" oninput="app.previewProfile()" /><span>点击色块选择颜色</span></span></label><button class="button primary" type="submit">保存更改</button></form></section>`;
+        const swatches = profilePalette.map((color, index) => `<button class="profile-swatch" type="button" data-color="${color}" style="background:${color}" aria-label="选择预设颜色 ${index + 1}" aria-pressed="${avatarColor(user) === color}" onclick="app.chooseProfileColor('${color}')"></button>`).join("");
+        return `<section class="member-card profile-card"><div class="member-card-head"><h2>公开资料</h2><p>其他项目成员会看到你的显示名称和头像。</p></div><form class="profile-form" onsubmit="app.saveProfile(event)"><div class="profile-preview"><span id="profile-avatar" class="member-avatar" style="${avatarStyle(user)}" aria-hidden="true">${escape(user.name.charAt(0).toUpperCase())}</span><div><b id="profile-preview-name">${escape(user.name)}</b><small>${escape(user.email)}</small></div></div><div class="profile-row"><label class="profile-row-label" for="profile-name">显示名称<small>用于成员列表和协作状态。</small></label><input id="profile-name" type="text" required maxlength="30" value="${escape(user.name)}" oninput="app.previewProfile()" /></div><div class="profile-row"><div class="profile-row-label" id="profile-color-label">头像颜色<small>选择预设颜色，或使用自定义颜色。</small></div><div class="profile-color" role="group" aria-labelledby="profile-color-label">${swatches}<label class="profile-color-custom"><input id="profile-color" type="color" aria-label="自定义头像颜色" value="${avatarColor(user)}" oninput="app.previewProfile()" />自定义</label></div></div><div class="profile-form-footer"><button class="button primary" type="submit">保存更改</button></div></form></section>`;
       }
       function membersWorkspace() {
         const members = access.members.filter((entry) => entry.projectId === state.activeProject)
@@ -4090,8 +4110,8 @@
         const invites = access.invites.filter((entry) => entry.projectId === state.activeProject).map((entry) =>
           `<div class="member-row"><div class="member-person"><span class="member-avatar" aria-hidden="true">✉</span><div><b>${escape(entry.email)}</b><small>邀请有效期 7 天</small></div></div><span class="role-chip">${roleNames[entry.role]} · ${entry.status === "pending" && entry.expires <= Date.now() ? "已过期" : { pending: "待接受", revoked: "已撤销", accepted: "已接受" }[entry.status]}</span><div class="member-actions">${canManage() && entry.status === "pending" ? `<button class="button" onclick="app.previewInvite('${entry.id}')">预览</button><button class="button" onclick="app.expireInvite('${entry.id}')">过期</button><button class="button" onclick="app.revokeInvite('${entry.id}')">撤销</button>` : ""}</div></div>`).join("");
         const body = state.view === "profile" ? profileWorkspace()
-          : `<section class="member-card"><div class="member-card-head"><h2>项目成员</h2><p>查看成员并管理其在当前项目的角色。</p></div>${members || '<p class="member-empty">暂无成员。</p>'}</section>${state.inviteOpen && canManage() ? `<section class="member-card"><div class="member-card-head"><h2>邀请成员</h2><p>设置成员在当前项目中的访问权限。</p></div><form class="member-form" onsubmit="app.inviteMember(event)"><label>邮箱<input id="member-email" type="email" required placeholder="name@example.test" /></label><label>项目角色<select id="member-role"><option value="editor">编辑者</option><option value="viewer">查看者</option></select></label><button class="button primary" type="submit">创建演示邀请</button></form></section>` : ""}<section class="member-card"><div class="member-card-head"><h2>待处理邀请</h2><p>接受邀请后，成员会出现在上方列表中。</p></div>${invites || '<p class="member-empty">目前没有邀请。</p>'}</section><p class="settings-help">负责人可邀请和管理成员；编辑者可修改项目内容；查看者只能浏览与下载。原型不会发送邮件。</p>`;
-        return `<div class="settings-layout"><aside class="settings-nav" aria-label="设置分类"><b>个人设置</b><button ${state.view === "profile" ? 'aria-current="page"' : ""} onclick="app.settingsTab('profile')">个人资料</button><b>项目设置</b><button ${state.view === "members" ? 'aria-current="page"' : ""} onclick="app.settingsTab('members')">项目成员</button></aside><div class="settings-stack">${body}</div></div>`;
+          : `<section class="member-card"><div class="member-card-head"><h2>成员与权限</h2><p>查看成员并管理其在当前项目的角色。</p></div>${members || '<p class="member-empty">暂无成员。</p>'}</section>${state.inviteOpen && canManage() ? `<section class="member-card"><div class="member-card-head"><h2>邀请成员</h2><p>设置成员在当前项目中的访问权限。</p></div><form class="member-form" onsubmit="app.inviteMember(event)"><label>邮箱<input id="member-email" type="email" required placeholder="name@example.test" /></label><label>项目角色<select id="member-role"><option value="editor">编辑者</option><option value="viewer">查看者</option></select></label><button class="button primary" type="submit">创建演示邀请</button></form></section>` : ""}<section class="member-card"><div class="member-card-head"><h2>待处理邀请</h2><p>接受邀请后，成员会出现在上方列表中。</p></div>${invites || '<p class="member-empty">目前没有邀请。</p>'}</section><p class="settings-help">负责人可邀请和管理成员；编辑者可修改项目内容；查看者只能浏览与下载。原型不会发送邮件。</p>`;
+        return `<div class="settings-layout"><aside class="settings-nav" aria-label="设置分类"><div class="settings-nav-group"><div class="settings-nav-title">我的账号</div><button ${state.view === "profile" ? 'aria-current="page"' : ""} onclick="app.settingsTab('profile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>个人资料</button></div><div class="settings-nav-group"><div class="settings-nav-title" title="${escape(projectById()?.name || "当前项目")}">${escape(projectById()?.name || "当前项目")}</div><button ${state.view === "members" ? 'aria-current="page"' : ""} onclick="app.settingsTab('members')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>项目成员</button></div></aside><div class="settings-stack">${body}</div></div>`;
       }
       const collabChannel = typeof BroadcastChannel === "function"
         ? new BroadcastChannel("evalbase-login-multiuser-prototype-vnext") : null;
@@ -4435,6 +4455,8 @@
         const url = new URL(location.href);
         url.searchParams.set("screen", state.screen);
         url.searchParams.set("project", state.activeProject);
+        if (state.screen === "settings") url.searchParams.set("section", state.view);
+        else url.searchParams.delete("section");
         history.replaceState({}, "", url);
       }
       function notify(message) {
@@ -6882,7 +6904,7 @@
         const materialBrowserItem = browsing && isMaterial ? selectedItem() : null;
         const testSetBrowserItem =
           (browsing || lineage) && isSet ? activeSet(selectedItem()) : null;
-        const pageTitle = isSettings ? "设置" : isProject
+        const pageTitle = isSettings ? (state.view === "profile" ? "个人资料" : "项目成员") : isProject
           ? title
           : lineage
             ? "来源与修改"
@@ -6893,7 +6915,7 @@
           : inCollection
             ? collectionById().name
             : title;
-        const pageDescription = isSettings ? (state.view === "profile" ? "修改你的名称和头像颜色。" : `${escape(projectById()?.name || "当前项目")} · 管理项目成员和访问权限。`) : lineage
+        const pageDescription = isSettings ? (state.view === "profile" ? "管理你的显示名称与头像颜色。" : `${escape(projectById()?.name || "当前项目")} · 管理项目成员和访问权限。`) : lineage
           ? `${escape(testSetBrowserItem.name)} · ${escape(testSetBrowserItem.version)} · 查看本版本的数据来源和改动。`
           : browsing
           ? materialBrowserItem
@@ -7239,10 +7261,10 @@
         removeEditRecord,
         next,
         prev,
-        fillLogin, signIn, signOut, backToLogin, openSettings, settingsTab, previewProfile, saveProfile, toggleInvite, inviteMember, previewInvite, revokeInvite, expireInvite, acceptInvite, changeMemberRole, removeMember, resolveEditConflict, focusEdit, blurEdit,
+        fillLogin, signIn, signOut, backToLogin, openSettings, settingsTab, previewProfile, chooseProfileColor, saveProfile, toggleInvite, inviteMember, previewInvite, revokeInvite, expireInvite, acceptInvite, changeMemberRole, removeMember, resolveEditConflict, focusEdit, blurEdit,
       };
       const baseActions = window.app;
-      const readActions = new Set(["nav", "selectProject", "backToProjects", "select", "preview", "selectCollection", "backToCollections", "setCollectionTab", "openCollectionRecord", "backToList", "setPage", "toggleSidebar", "setDatasetQuery", "setDatasetTypeFilter", "setDatasetContentFilter", "toggleDatasetSort", "setDatasetPage", "togglePrototypeSelect", "choosePrototypeSelect", "toggleRecordRowDensity", "setRecordRowDensity", "toggleMetadataDetails", "setSetListPage", "setProjectPage", "searchInput", "openRecordFilters", "cancelRecordFilters", "toggleRecordFilterSource", "setRecordFilterDraft", "applyRecordFilters", "clearRecordFilters", "removeRecordFilter", "setVersion", "fitVersionGraph", "openRecord", "openRaw", "openProvenance", "backToSetBrowser", "setLineageFilter", "openLineageRecord", "openLineageSource", "download", "downloadWithProvenance", "closeModal", "openSettings", "settingsTab", "previewProfile", "saveProfile", "runDeletionCheck", "runVersionGraphCheck", "runLineageCheck", "runRecordCountCheck"]);
+      const readActions = new Set(["nav", "selectProject", "backToProjects", "select", "preview", "selectCollection", "backToCollections", "setCollectionTab", "openCollectionRecord", "backToList", "setPage", "toggleSidebar", "setDatasetQuery", "setDatasetTypeFilter", "setDatasetContentFilter", "toggleDatasetSort", "setDatasetPage", "togglePrototypeSelect", "choosePrototypeSelect", "toggleRecordRowDensity", "setRecordRowDensity", "toggleMetadataDetails", "setSetListPage", "setProjectPage", "searchInput", "openRecordFilters", "cancelRecordFilters", "toggleRecordFilterSource", "setRecordFilterDraft", "applyRecordFilters", "clearRecordFilters", "removeRecordFilter", "setVersion", "fitVersionGraph", "openRecord", "openRaw", "openProvenance", "backToSetBrowser", "setLineageFilter", "openLineageRecord", "openLineageSource", "download", "downloadWithProvenance", "closeModal", "openSettings", "settingsTab", "previewProfile", "chooseProfileColor", "saveProfile", "runDeletionCheck", "runVersionGraphCheck", "runLineageCheck", "runRecordCountCheck"]);
       const identityActions = new Set(["fillLogin", "signIn", "signOut", "backToLogin", "acceptInvite", "resolveEditConflict", "focusEdit", "blurEdit"]);
       const ownerActions = new Set(["createProject", "openSetTrash", "trashSet", "restoreSet", "trashVersionBranch", "restoreVersionBranch", "openPurgeSet", "openPurgeVersionBranch", "openTombstoneConfirmation", "setPurgeConfirmation", "confirmPurge", "inviteMember", "toggleInvite", "previewInvite", "revokeInvite", "expireInvite", "changeMemberRole", "removeMember"]);
       function actionAllowed(name, args) {
@@ -7315,7 +7337,7 @@
             : state.screen === "sets"
               ? projectSets()[0]?.id || null
               : null;
-        state.view = "list";
+        state.view = state.screen === "settings" && ["profile", "members"].includes(params.get("section")) ? params.get("section") : "list";
         state.page = 0;
         render();
       });
