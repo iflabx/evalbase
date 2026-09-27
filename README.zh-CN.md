@@ -135,3 +135,14 @@ Phase 1A v5.3 实现序列与最终 Owner 端到端验收均已完成。实现�
 检查所有被追踪文件，移除不应公开的私有服务器地址、凭据、Cookie、内部路径、日志或数据。不要提交 `.env`、数据库/MinIO 卷、`node_modules/`、生成的 `dist/`、浏览器报告或真实数据集。请特别检查 `.scratch/`，其中保留项目的开发历史和可能带有环境信息的证据。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。
+
+## v2 规划文档（Draft）
+
+当前已交付应用仍为 v1。以下文档描述待实现的账号、多人协作与共享草稿；文档完成不代表功能已经实现或部署。
+
+- [v2 PRD](docs/PRD-evalbase-v2.md)
+- [v2 架构](docs/architecture/evalbase-v2-architecture.md)
+- [v2 测试计划](docs/test-plan-evalbase-v2.md)
+- [v2 流程图](docs/system-flow-evalbase-v2.md)
+
+历史文件 `docs/system-flow-v2.*` 沿用旧仓库命名，描述 v1 单人工作流；本次 v2 流程使用 `system-flow-evalbase-v2.*`，避免覆盖已交付基线。

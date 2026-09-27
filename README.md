@@ -135,3 +135,14 @@ The Phase 1A v5.3 implementation sequence and final Owner end-to-end acceptance 
 Review tracked files and remove any private server addresses, credentials, cookies, internal paths, logs, or data that should not be public. Do not publish `.env` files, database/MinIO volumes, `node_modules/`, generated `dist/`, browser reports, or real datasets. Review `.scratch/` before publishing because it preserves the project's development history and may contain environment-specific evidence.
 
 This project is licensed under [Apache-2.0](LICENSE).
+
+## v2 planning documents (Draft)
+
+The shipped application remains v1. The following documents describe proposed v2 account, collaboration and shared-draft behavior; they do not indicate deployment or implementation completion.
+
+- [v2 PRD](docs/PRD-evalbase-v2.md)
+- [v2 architecture](docs/architecture/evalbase-v2-architecture.md)
+- [v2 test plan](docs/test-plan-evalbase-v2.md)
+- [v2 workflow](docs/system-flow-evalbase-v2.md)
+
+The historical `docs/system-flow-v2.*` files use an older repository name and describe the v1 solo workflow. The new v2 flow uses `system-flow-evalbase-v2.*` to preserve that shipped baseline.
