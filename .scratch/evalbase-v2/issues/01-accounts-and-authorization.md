@@ -39,6 +39,8 @@ AUTH-01–05、ACL-01–03、UPGRADE-01–02；受共享授权影响的现有上
 
 ## Frontend parity
 
+**前端 UI 严格对齐冻结原型，样式严格沿用 frontend-v1。** 执行 [PRD §7](../../../docs/PRD-evalbase-v2.md#7-视觉与实现边界)，仅允许已确认产品差异及本 Ticket 明确分期项；checkpoint 前提供实际页面对照证据，修正未经确认的偏离。
+
 管理员注册、账号注册、登录、项目列表空态、登出；按冻结原型的字段顺序和错误提示，直接复用 frontend-v1 组件样式。成员邀请/个人设置在 V2-02 交付，本 Ticket 不挂可点击假设置页。
 
 实施前在本节补充 Ticket-local 对照表，逐项记录字段、顺序、标签、启用条件、空/错态和排除项；正式前端仅 frontend-v3，frontend-v1 只读。
