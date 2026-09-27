@@ -65,3 +65,5 @@ AUTH-01–05、ACL-01–03、UPGRADE-01–02；受共享授权影响的现有上
 - 2026-09-28：仅创建实施 Ticket，尚未执行测试或开发。实现验证进行中；固定 SHA、复审结论和批次验收证据在 checkpoint 准备完成后补记。
 
 - 2026-09-28：批次 A 代码固定于 `f129936`，服务端新账号集成测试 5/5、单元测试 134/134；typecheck、定向 lint、前端构建及文档检查通过。Standards/Spec 与高风险闭环结论见[批次 A 复审](../../../docs/reviews/evalbase-v2-batch-a-closure.md)。Owner checkpoint 尚未验收，故 Implementation 保持 `in-progress`。
+
+- 2026-09-28：补充 `1726f85` 合成旧版本记录读取回归，批次 A 测试 5/5 通过；应用代码仍固定于 `f129936`，Docker 构建修正为 `1aec12c`。当前等待 A 的 Owner 浏览器验收。

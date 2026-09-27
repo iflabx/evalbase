@@ -74,8 +74,8 @@ Owner 说“开发批次 A”或“开发账号与成员功能”时，授权连
 
 | Ticket | Implementation | 实现 SHA | checkpoint |
 | --- | --- | --- | --- |
-| V2-01 | in-progress | f129936 | A，待 Owner 验收 |
-| V2-02 | in-progress | f129936 | A，待 Owner 验收 |
+| V2-01 | in-progress | 1726f85 | A，待 Owner 验收 |
+| V2-02 | in-progress | 1726f85 | A，待 Owner 验收 |
 | V2-03 | not-started | - | B，待开发 |
 | V2-04 | not-started | - | C，待开发 |
 
