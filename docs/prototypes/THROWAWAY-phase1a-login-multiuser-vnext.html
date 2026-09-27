@@ -3355,6 +3355,15 @@
       .draft-cta { margin-top: 8px; }
       .editor-draft-meta { margin: 6px 0 0; font-size: 12px; }
       .editor-source-cell > span, .editor-source-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .editor-inline-metadata { display: grid; gap: 8px; }
+      .editor-inline-metadata .metadata-editor-head { margin: 0; }
+      .editor-inline-metadata .metadata-editor-row + .metadata-editor-row { margin-top: 0; }
+      .editor-inline-metadata .button { justify-self: start; margin-top: 4px; }
+      .editor-inline-metadata .simple-form-error:empty { display: none; }
+      .lineage-field-editor + .lineage-field-editor { margin-top: 7px; }
+      .lineage-field-editor > b { display: block; font-size: 12px; font-weight: 600; }
+      .lineage-field-editor > small { display: block; color: var(--muted-foreground); font-size: 11px; }
+      .lineage-field-editor .editor-author { margin-top: 2px; }
       .editor-question-cell > small { display: block; margin-top: 4px; }
       .editor-table { min-width: 660px; table-layout: fixed; }
       .editor-table th:nth-child(1) { width: 50px; }
@@ -3813,6 +3822,9 @@
       setOneV3[1] = {
         ...setOneV3[1],
         prediction: "退款通常在 3 至 5 个工作日内原路返回。",
+        fieldEdits: { prediction: { userId: "editor", at: new Date("2026-09-27T09:20:00+08:00").getTime() } },
+        lastEditedBy: "editor",
+        lastEditedAt: new Date("2026-09-27T09:20:00+08:00").getTime(),
       };
       mock.sets[0].versions = [
         {
@@ -4434,10 +4446,12 @@
         const active = document.activeElement;
         const id = active?.dataset?.collabId;
         const field = active?.dataset?.collabField;
+        const index = active?.dataset?.collabIndex;
+        const part = active?.dataset?.collabPart;
         const cursor = active?.selectionStart;
         render();
         if (!id || !field) return;
-        const input = [...document.querySelectorAll("[data-collab-id]")].find((element) => element.dataset.collabId === id && element.dataset.collabField === field);
+        const input = [...document.querySelectorAll("[data-collab-id]")].find((element) => element.dataset.collabId === id && element.dataset.collabField === field && element.dataset.collabIndex === index && element.dataset.collabPart === part);
         if (input) { input.focus(); if (cursor !== null) input.setSelectionRange(cursor, cursor); }
       }
       function resolveEditConflict(choice) {
@@ -4445,8 +4459,13 @@
         if (!conflict) return;
         const index = state.editRecords.findIndex((record) => record.id === conflict.recordId);
         if (index >= 0) {
-          if (choice === "remote") state.editRecords[index][conflict.field] = conflict.remoteValue;
-          else postCollab("edit", { setId: activeEditingSet(), recordId: conflict.recordId, field: conflict.field, value: state.editRecords[index][conflict.field] });
+          const record = state.editRecords[index];
+          if (choice === "remote") record[conflict.field] = conflict.remoteValue;
+          if (conflict.field === "metadataEntries") record.metadata = metadataText(record.metadataEntries);
+          const actor = choice === "remote" ? conflict.userId : access.userId;
+          const at = markRecordEdit(record, conflict.field, actor, choice === "remote" ? conflict.at || Date.now() : Date.now());
+          saveEditorDraft(false, actor);
+          if (choice === "local") postCollab("edit", { setId: activeEditingSet(), recordId: conflict.recordId, field: conflict.field, value: structuredClone(record[conflict.field]), at });
         }
         access.editConflict = null;
         renderKeepingFocus();
@@ -4495,9 +4514,19 @@
           notify("另一成员已发布版本；请退出当前编辑后查看。 "); render();
           return;
         }
-        if (data.type === "draft-closed" || data.type === "draft-state") {
-          if (!activeEditingSet() && state.screen === "sets") render();
+        if (data.type === "draft-closed") {
+          if (data.setId === activeEditingSet()) {
+            state.modal = null;
+            state.step = 0;
+            state.editorFocusId = null;
+            access.editingField = null;
+            notify("另一成员已删除当前草稿。");
+            sendPresence();
+            render();
+          } else if (state.screen === "sets") render();
+          return;
         }
+        if (data.type === "draft-state" && !activeEditingSet() && state.screen === "sets") render();
         if (data.setId !== activeEditingSet()) return;
         if (data.type === "draft-snapshot" && data.to === access.tabId && data.revision >= access.revision && data.snapshot) {
           state.setName = data.snapshot.setName || "";
@@ -4523,12 +4552,13 @@
           if (!record) return;
           const active = document.activeElement;
           if (active?.dataset?.collabId === data.recordId && active?.dataset?.collabField === data.field) {
-            access.editConflict = { recordId: data.recordId, field: data.field, remoteValue: data.value, name: access.users.find((user) => user.id === data.userId)?.name || "另一成员" };
+            access.editConflict = { recordId: data.recordId, field: data.field, remoteValue: data.value, userId: data.userId, at: data.at, name: access.users.find((user) => user.id === data.userId)?.name || "另一成员" };
             const warning = document.getElementById("collab-warning");
             if (warning) warning.textContent = `与 ${access.editConflict.name} 同时修改同一字段。你的输入暂时保留；离开输入框后选择采用哪一份。`;
             return;
           }
           record[data.field] = data.value;
+          if (data.field === "metadataEntries") record.metadata = metadataText(data.value);
           markRecordEdit(record, data.field, data.userId, data.at || Date.now());
           access.revision += 1; saveEditorDraft(false, data.userId);
           refreshDraftAttributionDom(record);
@@ -6076,6 +6106,18 @@
           render();
           return;
         }
+        if ((state.modal === "set" || state.modal === "iterate") && state.step === 2) {
+          const index = state.editRecords.findIndex((record) => inlineMetadataProblem(record));
+          if (index >= 0) {
+            state.setError = `第 ${index + 1} 条记录：${inlineMetadataProblem(state.editRecords[index])}`;
+            state.editorFocusId = state.editRecords[index].id;
+            state.editorTab = "records";
+            state.editorQuery = "";
+            state.editorPage = Math.floor(index / 20);
+            render();
+            return;
+          }
+        }
         if (
           state.modal === "set" &&
           state.step === 1 &&
@@ -6124,7 +6166,7 @@
           notify(`${uploads.length} 个文件已确认保存到“${collectionById(state.uploadCollection).name}”。`);
         } else if (state.modal === "set") {
           const sources = selectedMaterials();
-          const edited = state.editRecords;
+          const edited = state.editRecords.map((record) => ({ ...record, metadataEntries: copyMetadataEntries(record), metadata: metadataText(record) }));
           const id = `s${mock.sets.length + 1}`;
           const lineage = buildVersionLineage(id, "v1", null, edited);
           const added = lineage.sampleRecords.length;
@@ -6160,7 +6202,7 @@
           const parent = activeSet(source);
           const priorVersions = versionEntries(source);
           const versionPlan = nextVersionPlan(source, parent);
-          const edited = state.editRecords;
+          const edited = state.editRecords.map((record) => ({ ...record, metadataEntries: copyMetadataEntries(record), metadata: metadataText(record) }));
           const additions = selectedRecordEntries().length;
           const lineage = buildVersionLineage(
             source.id,
@@ -6963,10 +7005,25 @@
             .includes(query);
         });
       }
+      function lineageFieldEditorsMarkup(record) {
+        const names = { question: "问题", prediction: "预测输出", metadata: "Metadata" };
+        const fields = record.changedFields || [];
+        if (!fields.length) {
+          if (record.changeType === "added" && record.lastEditedBy)
+            return `<div class="lineage-field-editor"><b>新增记录</b>${editorAuthorMarkup(record.lastEditedBy, record.lastEditedAt)}</div>`;
+          if (record.changeType === "added") return "<small>新增操作者未记录</small>";
+          if (record.changeType === "deleted") return "<small>移除操作者未记录</small>";
+          return "<small>本版本无字段变化</small>";
+        }
+        return fields.map((field) => {
+          const edit = record.fieldEdits?.[field];
+          return `<div class="lineage-field-editor"><b>${names[field] || escape(field)}</b>${edit?.userId ? editorAuthorMarkup(edit.userId, edit.at) : "<small>修改者未记录</small>"}</div>`;
+        }).join("");
+      }
       function lineageRecordTable(records) {
         if (!records.length)
           return '<div class="dataset-card"><table class="dataset-table"><tbody><tr><td>没有匹配的溯源记录。</td></tr></tbody></table></div>';
-        return `<div class="dataset-card"><table class="dataset-table"><thead><tr><th>记录</th><th>状态</th><th>来源</th><th>变更字段</th><th class="dataset-action">操作</th></tr></thead><tbody>${records.map((record) => { const origin = record.origin || {}; const status = record.changeType || "inherited"; const fields = (record.changedFields || []).map((field) => ({ question: "问题", prediction: "预测输出", metadata: "Metadata" })[field]).join("、") || "--"; return `<tr><td>${status === "deleted" ? "已移除：" : ""}${escape(record.question || "未记录内容")}</td><td><span class="lineage-status ${status}">${escape(lineageLabels[status] || "未记录")}</span></td><td class="lineage-record-source">${escape(origin.asset || "手工新增")}<small>${escape(origin.record || "本次编辑")}</small></td><td class="lineage-change-fields">${escape(fields)}</td><td class="dataset-action"><button class="button" onclick="app.openLineageRecord('${record.lineageFactId}')">查看</button></td></tr>`; }).join("")}</tbody></table></div>`;
+        return `<div class="dataset-card"><table class="dataset-table"><thead><tr><th>记录</th><th>状态</th><th>来源</th><th>变更字段 / 修改者</th><th class="dataset-action">操作</th></tr></thead><tbody>${records.map((record) => { const origin = record.origin || {}; const status = record.changeType || "inherited"; return `<tr><td>${status === "deleted" ? "已移除：" : ""}${escape(record.question || "未记录内容")}</td><td><span class="lineage-status ${status}">${escape(lineageLabels[status] || "未记录")}</span></td><td class="lineage-record-source">${escape(origin.asset || "手工新增")}<small>${escape(origin.record || "本次编辑")}</small></td><td class="lineage-change-fields">${lineageFieldEditorsMarkup(record)}</td><td class="dataset-action"><button class="button" onclick="app.openLineageRecord('${record.lineageFactId}')">查看</button></td></tr>`; }).join("")}</tbody></table></div>`;
       }
       function lineageBrowser(item) {
         const current = activeSet(item);
@@ -7126,7 +7183,7 @@
         state.editorSavedAt = null;
       }
       function discardEditorDraft() {
-        if (!window.confirm("放弃此草稿？已发布的版本不会受到影响。")) return;
+        if (!window.confirm("删除当前草稿？未发布的修改无法恢复；已发布版本不受影响。")) return;
         clearEditorDraft();
         state.modal = null;
         state.step = 0;
@@ -7207,7 +7264,7 @@
         return onlinePeers().filter((peer) => peer.editingSetId === activeEditingSet() && peer.field?.recordId === recordId && (!field || peer.field.field === field)).map((peer) => {
           const user = access.users.find((entry) => entry.id === peer.userId);
           const name = user?.name || "其他成员";
-          const target = { question: "问题", prediction: "预测输出", metadata: "Metadata" }[peer.field.field] || "此记录";
+          const target = { question: "问题", prediction: "预测输出", metadata: "Metadata", metadataEntries: "Metadata" }[peer.field.field] || "此记录";
           return `<span class="member-avatar" style="${avatarStyle(user)}" title="${escape(name)}正在编辑${target}" role="img" aria-label="${escape(name)}正在编辑${target}">${escape(name.slice(0, 1).toUpperCase())}</span>`;
         }).join("");
       }
@@ -7249,7 +7306,62 @@
       function editorPageActions() {
         const iterating = state.modal === "iterate";
         const plan = iterating ? nextVersionPlan(selectedItem(), activeSet(selectedItem())) : null;
-        return `<button class="button ghost" onclick="app.discardEditorDraft()">放弃草稿</button><button class="button" onclick="app.closeModal()">保存并退出</button><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button>`;
+        return `<button class="button editor-remove" onclick="app.discardEditorDraft()">删除当前草稿</button><button class="button" onclick="app.closeModal()">保存并退出</button><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button>`;
+      }
+      function inlineMetadataProblem(record) {
+        const seen = new Set();
+        for (const entry of record.metadataEntries || []) {
+          const key = String(entry.key || "").trim();
+          const value = String(entry.value || "").trim();
+          if (!key && !value) continue;
+          if (!key || !value) return "Metadata 的字段名和值都需要填写。";
+          const normalized = key.toLocaleLowerCase("zh-CN");
+          if (seen.has(normalized)) return `Metadata 字段“${key}”重复，请保留一个。`;
+          seen.add(normalized);
+        }
+        return "";
+      }
+      function saveInlineMetadata(record) {
+        record.metadata = metadataText(record.metadataEntries);
+        const at = markRecordEdit(record, "metadata");
+        saveEditorDraft();
+        refreshDraftAttributionDom(record);
+        state.setError = "";
+        document.getElementById("editor-global-error")?.remove();
+        const error = document.getElementById("inline-metadata-error");
+        if (error) error.textContent = inlineMetadataProblem(record);
+        if (activeEditingSet()) {
+          access.revision += 1;
+          postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadataEntries", value: structuredClone(record.metadataEntries), at });
+        }
+      }
+      function updateInlineMetadata(recordIndex, entryIndex, field, value) {
+        const record = state.editRecords[recordIndex];
+        const entry = record?.metadataEntries?.[entryIndex];
+        if (!entry || !["key", "value"].includes(field)) return;
+        entry[field] = value;
+        saveInlineMetadata(record);
+      }
+      function addInlineMetadata(recordIndex) {
+        const record = state.editRecords[recordIndex];
+        if (!record) return;
+        record.metadataEntries ||= copyMetadataEntries(record);
+        record.metadataEntries.push({ key: "", value: "" });
+        saveEditorDraft();
+        render();
+        document.querySelector(".editor-inline-metadata .metadata-editor-row:last-of-type input")?.focus();
+      }
+      function removeInlineMetadata(recordIndex, entryIndex) {
+        const record = state.editRecords[recordIndex];
+        if (!record?.metadataEntries?.[entryIndex]) return;
+        record.metadataEntries.splice(entryIndex, 1);
+        saveInlineMetadata(record);
+        render();
+      }
+      function inlineMetadataMarkup(record, recordIndex) {
+        const entries = record.metadataEntries || copyMetadataEntries(record);
+        const rows = entries.map((entry, index) => `<div class="metadata-editor-row"><input aria-label="第 ${index + 1} 项 Metadata 字段名" value="${escape(entry.key)}" placeholder="例如：渠道" data-collab-id="${escape(record.id)}" data-collab-field="metadataEntries" data-collab-index="${index}" data-collab-part="key" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateInlineMetadata(${recordIndex}, ${index}, 'key', this.value)" /><input aria-label="第 ${index + 1} 项 Metadata 值" value="${escape(entry.value)}" placeholder="例如：帮助中心" data-collab-id="${escape(record.id)}" data-collab-field="metadataEntries" data-collab-index="${index}" data-collab-part="value" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateInlineMetadata(${recordIndex}, ${index}, 'value', this.value)" /><button type="button" class="metadata-editor-remove" aria-label="删除第 ${index + 1} 项 Metadata" title="删除字段" onclick="app.removeInlineMetadata(${recordIndex}, ${index})">×</button></div>`).join("");
+        return `<div class="editor-inline-metadata"><div class="metadata-editor-head"><span>字段名</span><span>值</span><span></span></div>${rows}<button type="button" class="button" onclick="app.addInlineMetadata(${recordIndex})">＋ 添加字段</button><p id="inline-metadata-error" class="simple-form-error" role="alert">${escape(inlineMetadataProblem(record))}</p><small class="editor-field-author" data-attribution-id="${escape(record.id)}" data-attribution-field="metadata">${fieldAuthorMarkup(record, "metadata")}</small></div>`;
       }
       function editorRecordsPanel() {
         const changes = editChangeSummary();
@@ -7261,7 +7373,7 @@
         const page = rows.slice(state.editorPage * 20, (state.editorPage + 1) * 20);
         const focusedIndex = state.editRecords.findIndex((record) => record.id === state.editorFocusId);
         const focused = state.editRecords[focusedIndex];
-        const detail = focused ? `<section class="editor-detail dataset-card" aria-label="记录编辑区"><div class="editor-card-head"><div><h2>编辑记录</h2><p>${recordSourceMarkup(focused)} · 第 ${focusedIndex + 1} 条</p></div><button class="button ghost" onclick="app.selectEditorRecord(null)">收起</button></div><div class="editor-detail-body"><div class="form-field"><label class="editor-field-label" for="editor-question">问题<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="question">${editingPresenceMarkup(focused.id, "question")}</span></label><textarea id="editor-question" data-collab-id="${escape(focused.id)}" data-collab-field="question" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'question', this.value)">${escape(focused.question)}</textarea><small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="question">${fieldAuthorMarkup(focused, "question")}</small></div><div class="form-field"><label class="editor-field-label" for="editor-prediction">预测输出<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="prediction">${editingPresenceMarkup(focused.id, "prediction")}</span></label><textarea id="editor-prediction" data-collab-id="${escape(focused.id)}" data-collab-field="prediction" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'prediction', this.value)">${escape(focused.prediction)}</textarea><small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="prediction">${fieldAuthorMarkup(focused, "prediction")}</small></div><div class="form-field"><label class="editor-field-label">Metadata<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="metadata">${editingPresenceMarkup(focused.id, "metadata")}</span></label>${metadataEditorButton(focused, focusedIndex)}<small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="metadata">${fieldAuthorMarkup(focused, "metadata")}</small></div><div class="editor-detail-foot"><span>字段修改会保存到当前草稿。</span><button class="button ghost editor-remove" onclick="app.removeEditRecord(${focusedIndex})">移除记录</button></div></div></section>` : `<section class="editor-detail dataset-card editor-detail-empty"><h2>选择一条记录</h2><p>在左侧表格选择记录后，可在这里编辑长文本和 Metadata。</p></section>`;
+        const detail = focused ? `<section class="editor-detail dataset-card" aria-label="记录编辑区"><div class="editor-card-head"><div><h2>编辑记录</h2><p>${recordSourceMarkup(focused)} · 第 ${focusedIndex + 1} 条</p></div><button class="button ghost" onclick="app.selectEditorRecord(null)">收起</button></div><div class="editor-detail-body"><div class="form-field"><label class="editor-field-label" for="editor-question">问题<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="question">${editingPresenceMarkup(focused.id, "question")}</span></label><textarea id="editor-question" data-collab-id="${escape(focused.id)}" data-collab-field="question" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'question', this.value)">${escape(focused.question)}</textarea><small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="question">${fieldAuthorMarkup(focused, "question")}</small></div><div class="form-field"><label class="editor-field-label" for="editor-prediction">预测输出<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="prediction">${editingPresenceMarkup(focused.id, "prediction")}</span></label><textarea id="editor-prediction" data-collab-id="${escape(focused.id)}" data-collab-field="prediction" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'prediction', this.value)">${escape(focused.prediction)}</textarea><small class="editor-field-author" data-attribution-id="${escape(focused.id)}" data-attribution-field="prediction">${fieldAuthorMarkup(focused, "prediction")}</small></div><div class="form-field"><label class="editor-field-label">Metadata<span class="editing-presence" data-record-id="${escape(focused.id)}" data-field="metadataEntries">${editingPresenceMarkup(focused.id, "metadataEntries")}</span></label>${inlineMetadataMarkup(focused, focusedIndex)}</div><div class="editor-detail-foot"><span>字段修改会保存到当前草稿。</span><button class="button ghost editor-remove" onclick="app.removeEditRecord(${focusedIndex})">移除记录</button></div></div></section>` : `<section class="editor-detail dataset-card editor-detail-empty"><h2>选择一条记录</h2><p>在左侧表格选择记录后，可在这里编辑长文本和 Metadata。</p></section>`;
         return `<div class="editor-card dataset-card"><div class="editor-card-head"><div><h2>草稿记录</h2><p>共 ${state.editRecords.length} 条 · 新增 ${changes.added} · 修改 ${changes.modified} · 移除 ${changes.removed}</p></div><button class="button" onclick="app.addEditRecord()">＋ 新增记录</button></div><div class="editor-toolbar"><input aria-label="搜索草稿记录" data-search-key="editor-records" value="${escape(state.editorQuery)}" placeholder="搜索问题、输出或来源" oninput="app.setEditorQuery(this.value)" /><span>每页 20 条</span></div><div class="editor-table-scroll"><table class="dataset-table editor-table"><thead><tr><th>序号</th><th>问题 / 最近修改</th><th>预测输出</th><th>来源</th></tr></thead><tbody>${page.length ? page.map(({ record, index }) => `<tr data-editor-record="${escape(record.id)}" tabindex="0" aria-selected="${record.id === state.editorFocusId}" class="${record.id === state.editorFocusId ? "editor-selected" : ""}" onclick="app.selectEditorRecord('${escape(record.id)}')" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();app.selectEditorRecord('${escape(record.id)}')}"><td>${index + 1}<span class="editing-presence" data-record-id="${escape(record.id)}">${editingPresenceMarkup(record.id)}</span></td><td class="editor-question-cell"><span data-editor-value="question" title="${escape(record.question)}">${escape(record.question || "未填写")}</span><small data-attribution-id="${escape(record.id)}">${editorAuthorMarkup(record.lastEditedBy, record.lastEditedAt)}</small></td><td><span data-editor-value="prediction" title="${escape(record.prediction)}">${escape(record.prediction || "未填写")}</span></td><td class="editor-source-cell">${recordSourceMarkup(record)}</td></tr>`).join("") : `<tr><td colspan="4" class="editor-empty">${state.editRecords.length ? "没有匹配的记录。" : "草稿还没有记录；可在“添加资料”中选择，或手动新增。"}</td></tr>`}</tbody></table></div>${editorPager(rows.length, state.editorPage, 20, "editorPage")}</div>${detail}`;
       }
       function editorSourcesPanel() {
@@ -7277,7 +7389,7 @@
         const iterating = state.modal === "iterate";
         const parent = iterating ? activeSet(selectedItem()) : null;
         const plan = iterating ? nextVersionPlan(selectedItem(), parent) : null;
-        return `<div class="editor-workspace"><div class="editor-intro dataset-card"><div><strong>${iterating ? `草稿基于 ${escape(state.editorParentVersion)} · 计划发布 ${escape(plan.version)}` : "测试集 v1 草稿"}</strong><p class="editor-draft-meta">${escape(draftSummary(readDraft(editorDraftKey())))}</p><p>${iterating ? `已继承父版本 ${parent.records} 条记录。编辑仅作用于草稿；发布后生成新版本。` : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}</p></div><span id="editor-save-status" role="status">${state.editorSavedAt ? "已保存草稿 · 同浏览器同步" : "尚未保存"}</span></div>${!iterating ? `<section class="editor-identity dataset-card"><div class="form-field"><label for="set-name">测试集名称</label><input id="set-name" value="${escape(state.setName)}" placeholder="例如：客服基础问答" oninput="app.setSetName(this.value)" /></div><div class="form-field"><label for="set-purpose">用途说明（可选）</label><textarea id="set-purpose" oninput="app.setSetPurpose(this.value)" placeholder="简述测试集用途">${escape(state.setPurpose)}</textarea></div></section>` : ""}<div class="editor-tabs" role="tablist" aria-label="测试集草稿工作区"><button role="tab" aria-selected="${state.editorTab === "records"}" class="${state.editorTab === "records" ? "active" : ""}" onclick="app.editorTab('records')">草稿记录 <span>${state.editRecords.length}</span></button><button role="tab" aria-selected="${state.editorTab === "sources"}" class="${state.editorTab === "sources" ? "active" : ""}" onclick="app.editorTab('sources')">添加资料 <span>${state.setSources.length}</span></button></div>${collabToolbar()}${state.setError ? `<p class="simple-form-error" role="alert">${escape(state.setError)}</p>` : ""}${state.editorTab === "records" ? `<div class="editor-record-layout">${editorRecordsPanel()}</div>` : editorSourcesPanel()}<div class="editor-bottom"><span>原型 Mock 草稿保存在当前浏览器；可用同源标签页体验协作。</span><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button></div></div>`;
+        return `<div class="editor-workspace"><div class="editor-intro dataset-card"><div><strong>${iterating ? `草稿基于 ${escape(state.editorParentVersion)} · 计划发布 ${escape(plan.version)}` : "测试集 v1 草稿"}</strong><p class="editor-draft-meta">${escape(draftSummary(readDraft(editorDraftKey())))}</p><p>${iterating ? `已继承父版本 ${parent.records} 条记录。编辑仅作用于草稿；发布后生成新版本。` : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}</p></div><span id="editor-save-status" role="status">${state.editorSavedAt ? "已保存草稿 · 同浏览器同步" : "尚未保存"}</span></div>${!iterating ? `<section class="editor-identity dataset-card"><div class="form-field"><label for="set-name">测试集名称</label><input id="set-name" value="${escape(state.setName)}" placeholder="例如：客服基础问答" oninput="app.setSetName(this.value)" /></div><div class="form-field"><label for="set-purpose">用途说明（可选）</label><textarea id="set-purpose" oninput="app.setSetPurpose(this.value)" placeholder="简述测试集用途">${escape(state.setPurpose)}</textarea></div></section>` : ""}<div class="editor-tabs" role="tablist" aria-label="测试集草稿工作区"><button role="tab" aria-selected="${state.editorTab === "records"}" class="${state.editorTab === "records" ? "active" : ""}" onclick="app.editorTab('records')">草稿记录 <span>${state.editRecords.length}</span></button><button role="tab" aria-selected="${state.editorTab === "sources"}" class="${state.editorTab === "sources" ? "active" : ""}" onclick="app.editorTab('sources')">添加资料 <span>${state.setSources.length}</span></button></div>${collabToolbar()}${state.setError ? `<p id="editor-global-error" class="simple-form-error" role="alert">${escape(state.setError)}</p>` : ""}${state.editorTab === "records" ? `<div class="editor-record-layout">${editorRecordsPanel()}</div>` : editorSourcesPanel()}<div class="editor-bottom"><span>原型 Mock 草稿保存在当前浏览器；可用同源标签页体验协作。</span><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button></div></div>`;
       }
       function testSetBody() {
         const iterating = state.modal === "iterate";
@@ -7459,7 +7571,7 @@
           const previousContent = record.before
             ? `<section><h3>${record.changeType === "deleted" ? "移除前内容" : "修改前内容"}</h3><dl><div><dt>问题</dt><dd>${escape(record.before.question || "未填写")}</dd></div><div><dt>预测输出</dt><dd>${escape(record.before.prediction || "未填写")}</dd></div></dl><h3>Metadata · ${previousMetadata.length} 项</h3>${previousMetadata.length ? metadataList(previousMetadata) : "<p>未填写</p>"}</section>`
             : "";
-          return `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="查看记录来源与修改"><section class="modal"><header class="modal-head"><div><h2>记录来源与修改</h2><p>${escape(item.name)} · ${escape(item.version)} · ${escape(lineageLabels[record.changeType] || "未记录")}</p></div><button class="close" aria-label="关闭" onclick="app.closeModal()">×</button></header><div class="modal-body"><div class="lineage-record-detail">${currentContent}${previousContent}<section><h3>来源与本次修改</h3><dl><div><dt>来源资料</dt><dd>${escape(origin.asset || "手工新增")}</dd></div><div><dt>来源记录</dt><dd>${escape(origin.record || "本次编辑")}</dd></div><div><dt>本次修改</dt><dd>${escape(changed || "无字段内容修改")}</dd></div></dl></section></div></div><footer class="modal-foot"><span>${origin.assetId ? `<button class="button" onclick="app.openLineageSource('${record.lineageFactId}')">查看原始资料</button>` : ""}</span><button class="button primary" onclick="app.closeModal()">返回来源与修改</button></footer></section></div>`;
+          return `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="查看记录来源与修改"><section class="modal"><header class="modal-head"><div><h2>记录来源与修改</h2><p>${escape(item.name)} · ${escape(item.version)} · ${escape(lineageLabels[record.changeType] || "未记录")}</p></div><button class="close" aria-label="关闭" onclick="app.closeModal()">×</button></header><div class="modal-body"><div class="lineage-record-detail">${currentContent}${previousContent}<section><h3>字段修改者</h3>${lineageFieldEditorsMarkup(record)}</section><section><h3>来源与本次修改</h3><dl><div><dt>来源资料</dt><dd>${escape(origin.asset || "手工新增")}</dd></div><div><dt>来源记录</dt><dd>${escape(origin.record || "本次编辑")}</dd></div><div><dt>本次修改</dt><dd>${escape(changed || "无字段内容修改")}</dd></div></dl></section></div></div><footer class="modal-foot"><span>${origin.assetId ? `<button class="button" onclick="app.openLineageSource('${record.lineageFactId}')">查看原始资料</button>` : ""}</span><button class="button primary" onclick="app.closeModal()">返回来源与修改</button></footer></section></div>`;
         }
         const upload = state.modal === "upload";
         const iterating = state.modal === "iterate";
@@ -7859,6 +7971,7 @@
         editorTab, setEditorQuery, setEditorSourceQuery, setEditorPickQuery,
         editorPage, editorSourcePage, editorPickPage, selectEditorRecord, openDraftFromVersion,
         toggleSourcesBulk, toggleRecordsBulk, discardEditorDraft,
+        updateInlineMetadata, addInlineMetadata, removeInlineMetadata,
         next,
         prev,
         createInitialOwner, openRegistration, registerUser, updatePasswordHints, fillLogin, signIn, signOut, backToLogin, openSettings, settingsTab, previewProfile, chooseProfileColor, saveProfile, toggleInvite, inviteMember, previewInvite, revokeInvite, expireInvite, acceptInvite, acceptPendingInvite, changeMemberRole, removeMember, resolveEditConflict, focusEdit, blurEdit,
