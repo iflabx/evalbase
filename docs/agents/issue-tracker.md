@@ -24,6 +24,7 @@ Read the referenced Markdown file in full. The user will normally provide its pa
 
 ## Workflow
 
+- For branch creation, integration and cleanup, follow [development workflow](development-workflow.md).
 - `/to-spec` writes `.scratch/<feature-slug>/spec.md`
 - `/to-tickets` writes one numbered file per approved tracer-bullet ticket
 - `/implement` reads the referenced spec or ticket, implements it, validates it, reviews it, and commits the implementation to the current branch

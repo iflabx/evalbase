@@ -15,6 +15,8 @@ Search existing issues first. For bugs, include:
 
 For a new feature or behavior change, open an issue for discussion before writing code. EvalBase follows its PRD, architecture documents, and frozen interaction contract; a pull request must not silently expand that scope.
 
+See the [development workflow](docs/agents/development-workflow.md) for branches, acceptance, integration, GitHub push, releases, and deployment handoff.
+
 ## Development setup
 
 ```bash

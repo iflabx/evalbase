@@ -15,6 +15,8 @@
 
 如果是新功能或行为调整，请先创建 Issue 讨论，再开始编写代码。EvalBase 以 PRD、架构文档和冻结交互合同为准，Pull Request 不得在未讨论的情况下扩大产品范围。
 
+分支创建、验收合并、推送、Release 和部署的项目流程见[开发流程](docs/agents/development-workflow.md)。
+
 ## 本地开发
 
 ```bash

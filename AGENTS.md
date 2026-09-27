@@ -10,6 +10,8 @@ Confirm the exact branch, `HEAD`, and [implementation progress](docs/agents/phas
 
 Run `npm run docs:check` when a Ticket changes documentation, lifecycle records, the progress ledger, or cross-document status. It is not required for a code-only Ticket that cannot affect those files.
 
+For branch creation, integration, GitHub push, Release and deployment handoff, follow [development workflow](docs/agents/development-workflow.md).
+
 ## Sources of truth
 
 - When changing product scope, behavior, formats, states, permissions, or acceptance criteria, read `docs/PRD-evalbase-v1.md` and `CONTEXT.md` first.
