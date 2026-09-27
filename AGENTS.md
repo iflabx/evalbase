@@ -68,7 +68,7 @@ Before editing implementation files, read in full:
 
 Follow any additional required-reading links in the Ticket. For Web work or reuse from `frontend-v1/`, also follow the frontend-reuse rule in **Sources of truth** above.
 
-The implementation boundary is the current Ticket's smallest accepted Phase 1A vertical slice. Use only approved non-production data classifications. Keep Production Gate work, Phase 1B capabilities, future-Ticket behavior, real sensitive data, and speculative abstractions outside the change.
+The implementation boundary is the current Ticket's smallest accepted Phase 1A vertical slice. Use only approved data classifications. Keep Phase 1B capabilities, future-Ticket behavior, real sensitive data, and speculative abstractions outside the change.
 
 ### 2. Establish the start state
 
@@ -93,7 +93,7 @@ The start state is complete only when the skill pair, branch, dependency/authori
 - Make each affected HTTP request, response and action no wider than the frozen prototype. Prefer narrowing an existing route; add a thin task route only when the existing deep module is reusable but its public contract cannot be narrowed in place. Remove the superseded route from public registration within the owning Ticket.
 - Run the narrow relevant test after each change. Add integration or static checks only when the current behavior crosses those seams.
 - Keep the diff within the current Ticket. Leave unrelated cleanup and refactoring untouched.
-- Preserve the confirmed product scope. Stop and request a decision before changing product behavior, domain meaning, ADRs, capacity, permissions, allowed data, or any Production Gate.
+- Preserve the confirmed product scope. Stop and request a decision before changing product behavior, domain meaning, ADRs, capacity, permissions, or allowed data.
 
 ### 4. Verify and review before commit
 
@@ -105,7 +105,7 @@ After the Ticket's final green behavior:
 4. Review the final diff for accidental Phase 1B behavior, future-Ticket implementation, unrelated refactoring, and changes outside the approved data/environment boundary.
 5. Create the local implementation commit only after the selected necessary checks pass. Do not push unless the Project Owner explicitly requests it.
 6. A separate Ticket Closure Review under [`docs/agents/ticket-review-protocol.md`](docs/agents/ticket-review-protocol.md) is required only for a high-risk Ticket, formal frontend/deployment cutover, release acceptance, or explicit Project Owner request. Otherwise the Standards/Spec review plus targeted P0/P1 recheck is the closure evidence.
-7. Update the Ticket's `Implementation:` line, `Comments`, and progress ledger when completion changes. Record the implementation SHA, `reused` / `narrowed` / `retired` route list, actual validation commands, review result, Gate status, next-Ticket dependency, omitted broad suites, and why the selected evidence is sufficient. Run `npm run docs:check` for those documentation changes; a separate progress-only commit is optional rather than mandatory.
+7. Update the Ticket's `Implementation:` line, `Comments`, and progress ledger when completion changes. Record the implementation SHA, `reused` / `narrowed` / `retired` route list, actual validation commands, review result, next-Ticket dependency, omitted broad suites, and why the selected evidence is sufficient. Run `npm run docs:check` for those documentation changes; a separate progress-only commit is optional rather than mandatory.
 
 ### 5. Report and stop
 
@@ -115,7 +115,6 @@ The final Ticket report must state:
 - Test and validation evidence, including exact commands, outcomes, why the selected set is sufficient, and which broader suites were not run.
 - Standards/Spec code-review results and any unresolved risks.
 - The fixed `HEAD`; if a Closure Review was triggered, include its conclusion, accepted P2 findings, and untested claims. For an intermediate Ticket in a combined batch, provide automated evidence and identify the later checkpoint batch.
-- The unchanged or updated Production Gate status, without implying production approval.
 - The local commit SHA.
 - Which next Ticket, if any, is now unblocked.
 

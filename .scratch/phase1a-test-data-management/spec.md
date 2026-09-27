@@ -2,7 +2,7 @@
 
 | Item                  | Decision                                                                  |
 | --------------------- | ------------------------------------------------------------------------- |
-| Status                | Ready for sequential non-production implementation                        |
+| Status                | Ready for sequential implementation                                       |
 | Product authority     | `docs/PRD-evalbase-v1.md` — EvalBase v1                                    |
 | Domain authority      | `CONTEXT.md`                                                              |
 | User-visible contract | `92cb8a5` / `prototype/solo-workflow-v5.3`                                |
@@ -16,7 +16,7 @@ The frozen prototype is exhaustive for user-visible functionality. Implementatio
 
 PostgreSQL/MinIO persistence, byte limits, hashes, project isolation, Origin/CSRF, idempotency, atomic publication, stable record identity, provenance facts, safe CSV, fail-closed deletion and audit remain internal implementation constraints. They do not authorize additional user steps.
 
-Phase 1A has one real Owner, no login, non-production use, allowed non-sensitive data only, and no Production Gate claim.
+Phase 1A has one real Owner, no login, and uses the data classifications allowed by the PRD.
 
 ## Solution
 
@@ -257,8 +257,8 @@ Each Ticket requires separate Owner authorization and stops after a local commit
 - Package/ZIP/CLI/validator/Delivery/Langfuse features.
 - Controlled-deletion governance UI.
 - Evaluation execution/results and all Phase 1B capabilities.
-- Production, public internet, sensitive data, backup and SLA.
+- Sensitive data, backup and SLA.
 
 ## Completion
 
-Phase 1A completes only when fixed-HEAD `frontend-v3` implements every frozen v5.3 path, exposes no additional Owner operation, passes the necessary affected tests, survives normal restart and receives explicit Owner browser acceptance. Production Gate remains Not Evaluated / Not Approved.
+Phase 1A completes only when fixed-HEAD `frontend-v3` implements every frozen v5.3 path, exposes no additional Owner operation, passes the necessary affected tests, survives normal restart and receives explicit Owner browser acceptance.

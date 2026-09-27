@@ -2,8 +2,8 @@
 
 | 项目        | 内容                                     |
 | ----------- | ---------------------------------------- |
-| 状态        | Approved for Non-production Development  |
-| 修订日期    | 2026-09-09                               |
+| 状态        | Approved                                |
+| 修订日期    | 2026-09-27                               |
 | 用户 oracle | `92cb8a5` / `prototype/solo-workflow-v5.3` |
 | 正式前端    | `frontend-v3/`                           |
 | 原则        | 只测试当前 Ticket 必须证明的行为         |
@@ -196,8 +196,6 @@ Owner 使用正常浏览器和当前预览地址完成 Ticket 中的一条 check
 - Web 只绑定批准地址；内部服务无宿主机端口；
 - 正常重启保留已确认文件和版本。
 
-不重新测试 Tailscale 连通性或公网不可达，不声称生产网络批准。
-
 ## G. 完成判定
 
 Ticket 完成需要：
@@ -210,7 +208,7 @@ Ticket 完成需要：
 - Owner checkpoint 如实记录；
 - 本地提交后停止。
 
-Phase 1A 完成还需要 Tickets 27、29、30、31、32 的固定 HEAD 主闭环和 Owner 明确验收。Production Gate 仍为 Not Evaluated / Not Approved。
+Phase 1A 完成还需要 Tickets 27、29、30、31、32 的固定 HEAD 主闭环和 Owner 明确验收。
 
 ## H. 增量版本存储 Tickets 33–38
 

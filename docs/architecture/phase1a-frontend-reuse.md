@@ -2,8 +2,8 @@
 
 | 项目             | 内容                                                       |
 | ---------------- | ---------------------------------------------------------- |
-| 状态             | Approved Implementation Guidance — Non-production Phase 1A |
-| 修订日期         | 2026-09-09                                                 |
+| 状态             | Approved Implementation Guidance                          |
+| 修订日期         | 2026-09-27                                                 |
 | 交互合同         | `92cb8a5` / `prototype/solo-workflow-v5.3`                 |
 | 视觉与组件 donor | `frontend-v1/`，永久只读                                   |
 | 废弃实验前端     | `frontend-v2/`，保留历史但不再开发、构建或部署             |

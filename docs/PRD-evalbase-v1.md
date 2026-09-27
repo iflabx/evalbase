@@ -3,12 +3,11 @@
 | 项目         | 内容                                     |
 | ------------ | ---------------------------------------- |
 | 文档版本     | EvalBase v1                              |
-| 日期         | 2026-09-09                               |
-| 状态         | Approved for Non-production Development  |
+| 日期         | 2026-09-27                               |
+| 状态         | Approved                               |
 | 决策角色     | Project Owner / Sole Developer           |
 | 用户可见基线 | `92cb8a5` / `prototype/solo-workflow-v5.3` |
 | 正式前端目标 | `frontend-v3/`                           |
-| 生产状态     | Not Evaluated / Not Approved             |
 
 ## 修订记录
 
@@ -18,6 +17,7 @@
 | v3.0      | 2026-09-03 | 以冻结原型 v5 为完整用户功能上限，加入项目工作区并移除原型外产品能力 |
 | v3.1      | 2026-09-08 | 以冻结原型 v5.2 固定结构化 Metadata、记录筛选、行高与安全原始内容预览 |
 | v3.2      | 2026-09-09 | 以冻结原型 v5.3 固定拖拽字段映射、测试集回收入口、分组回收站与精确输入删除确认 |
+| v3.3      | 2026-09-27 | 取消 Production Gate 及生产部署、公网访问的文档限制 |
 
 ## 1. 权威规则
 
@@ -53,12 +53,12 @@ EvalBase v1 让唯一 Owner 在浏览器中完成一个简单闭环：
 
 当前只允许：
 
-- VPN 内已批准的远程非生产服务器；
+- Project Owner 已批准的服务器与访问地址；
 - 合成数据；
 - 公开且许可清晰的数据；
 - 已确认完全去标识的非敏感数据。
 
-当前禁止生产部署、公网开放、真实敏感数据、客户数据、生产 Trace、秘密凭据、多人协作、外部共享、备份承诺、RPO、RTO 和 SLA。
+当前禁止真实敏感数据、客户数据、生产 Trace、秘密凭据、多人协作、外部共享、备份承诺、RPO、RTO 和 SLA。
 
 ## 4. 页面与导航
 
@@ -247,11 +247,10 @@ EvalBase v1 不提供 ZIP、Standard/Full Package、Offline Validator、Delivery
 
 ### 6.3 请求与安全边界
 
-- Web 只绑定 Owner 已批准的非生产地址和端口。
+- Web 只绑定 Owner 已批准的地址和端口。
 - PostgreSQL、MinIO 和 Worker 不发布宿主机入站端口。
 - 服务端非交互式绑定 Owner，校验 Origin/CSRF、项目范围、请求大小和下载范围。
 - 用户内容按不可信文本处理；日志、错误和指标不输出原始记录正文或秘密。
-- 这些边界不构成生产、安全、隐私、法律或合规批准。
 
 ### 6.4 后台编排
 
@@ -297,4 +296,3 @@ Owner 必须通过正式浏览器 UI 完成：
 - Tickets 20–32 按用户操作顺序完成，并逐张由 Owner 从浏览器检查。
 - 必要公共正常路径、一个关键边界和受影响静态检查通过。
 - 固定 HEAD 完成第 9 节主闭环并保存真实证据。
-- Non-production Server Development Gate 保持 Passed；Production Gate 保持 Not Evaluated / Not Approved。

@@ -2,8 +2,8 @@
 
 | 项目         | 内容                                       |
 | ------------ | ------------------------------------------ |
-| 状态         | Approved for Non-production Development    |
-| 修订日期     | 2026-09-09                                 |
+| 状态         | Approved                                   |
+| 修订日期     | 2026-09-27                                 |
 | 产品合同     | [EvalBase v1 PRD](../PRD-evalbase-v1.md)   |
 | 用户交互合同 | `92cb8a5` / `prototype/solo-workflow-v5.3` |
 | 正式前端     | `frontend-v3/`                             |
@@ -33,7 +33,7 @@ PostgreSQL                                                         Worker
 - Node.js 固定 major 24，包管理器为 npm。
 - 一个专用 Compose project 使用专用内部 network、PostgreSQL database、MinIO bucket 和 named volumes。
 - PostgreSQL、MinIO 和 Worker 不发布宿主机入站端口。
-- Web 只绑定 Owner 已批准的非生产地址；不扩大暴露面。
+- Web 只绑定 Owner 已批准的地址和端口。
 - 当前无备份、RPO、RTO、SLA 或灾难恢复承诺。
 
 ## 3. 前端基线
@@ -219,7 +219,7 @@ Phase 1A 不公开 ZIP、Standard/Full Package、Offline Validator、Delivery Re
 
 ## 9. 请求边界
 
-- Fastify 从受限非生产配置非交互式解析唯一 Owner。
+- Fastify 从部署配置非交互式解析唯一 Owner。
 - 所有查询/命令显式校验 `project_id + actor_id`。
 - 不透明 ID 查询后再次复检项目，跨项目统一返回不泄漏存在性的拒绝。
 - 写请求验证 Origin/CSRF 和请求大小。
@@ -238,11 +238,7 @@ Phase 1A 不公开 ZIP、Standard/Full Package、Offline Validator、Delivery Re
 
 每张 Ticket 默认不运行全部历史测试；按 [Test Plan](../test-plan-phase1a.md)选择必要集合。
 
-## 11. 非生产边界
-
-允许范围、容量和网络边界遵守 PRD。Non-production Server Development Gate 已 Passed。Production Gate 仍为 Not Evaluated / Not Approved。任何生产、公网、敏感数据、第二真实用户或备份承诺均需另行评审，且不得作为 Phase 1A 页面。
-
-## 12. ADR 状态
+## 11. ADR 状态
 
 | ADR       | 当前作用                                                    |
 | --------- | ----------------------------------------------------------- |
