@@ -5,6 +5,7 @@ import { MoreHorizontal, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useProjectAccess } from "@/hooks/use-project-access";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -70,6 +71,7 @@ export const Route = createFileRoute("/projects/$projectId/test-sets/$testSetId"
 
 function TestSetDetailPage() {
   const { projectId, testSetId } = Route.useParams();
+  const access = useProjectAccess(projectId);
   const { version } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [selectedVersionId, setSelectedVersionId] = useState(version);
@@ -185,27 +187,31 @@ function TestSetDetailPage() {
                     >
                       下载数据与溯源
                     </Button>
-                    <Button onClick={() => setDeriving(true)}>{actionLabel}</Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          aria-label="删除选项"
-                          title="删除选项"
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onSelect={() => setDeleteTarget("version")}
-                        >
-                          {selectedHasChild ? "处理中间版本" : "删除此版本"}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {access.canWrite && (
+                      <Button onClick={() => setDeriving(true)}>{actionLabel}</Button>
+                    )}
+                    {access.canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label="删除选项"
+                            title="删除选项"
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onSelect={() => setDeleteTarget("version")}
+                          >
+                            {selectedHasChild ? "处理中间版本" : "删除此版本"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </>
                 }
               />
@@ -216,29 +222,33 @@ function TestSetDetailPage() {
                 testSetId={testSetId}
                 versionId={data.version.id}
               />
-              <DeriveVersionDialog
-                open={deriving}
-                onOpenChange={setDeriving}
-                projectId={projectId}
-                testSetId={testSetId}
-                parent={data}
-                onPublished={selectVersion}
-              />
-              <DeleteTestSetDialog
-                target={deleteTarget}
-                onOpenChange={(open) => !open && setDeleteTarget(undefined)}
-                projectId={projectId}
-                data={data}
-                onDeleted={(nextVersionId) => {
-                  setDeleteTarget(undefined);
-                  if (nextVersionId) selectVersion(nextVersionId);
-                  else
-                    void navigate({
-                      to: "/projects/$projectId/test-sets",
-                      params: { projectId },
-                    });
-                }}
-              />
+              {access.canWrite && (
+                <DeriveVersionDialog
+                  open={deriving}
+                  onOpenChange={setDeriving}
+                  projectId={projectId}
+                  testSetId={testSetId}
+                  parent={data}
+                  onPublished={selectVersion}
+                />
+              )}
+              {access.canManage && (
+                <DeleteTestSetDialog
+                  target={deleteTarget}
+                  onOpenChange={(open) => !open && setDeleteTarget(undefined)}
+                  projectId={projectId}
+                  data={data}
+                  onDeleted={(nextVersionId) => {
+                    setDeleteTarget(undefined);
+                    if (nextVersionId) selectVersion(nextVersionId);
+                    else
+                      void navigate({
+                        to: "/projects/$projectId/test-sets",
+                        params: { projectId },
+                      });
+                  }}
+                />
+              )}
             </>
           );
         }}

@@ -95,6 +95,7 @@ export type AgentBenchApp = FastifyInstance;
 export interface AppDependencies {
   now?: () => Date;
   artifacts?: ArtifactRepository;
+  disableLegacyTestBootstrap?: boolean;
 }
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -125,7 +126,9 @@ function sessionActor(
     username: user.username,
     role: user.role,
     projectRole: user.project_role ?? null,
-    capabilities: capabilitiesForRole(user.project_role),
+    capabilities: capabilitiesForRole(
+      user.role === "admin" ? "owner" : user.project_role,
+    ),
     testIdentity: isTestIdentityRole(user.role),
     csrfToken,
   };
@@ -986,7 +989,9 @@ export async function buildApp(
   }
 
   await artifacts.initialize();
-  await bootstrapOwner(db, config);
+  const legacyTestBootstrap =
+    process.env.VITEST === "true" && !dependencies.disableLegacyTestBootstrap;
+  if (legacyTestBootstrap) await bootstrapOwner(db, config);
 
   app.get("/health", async () => ({ status: "ok", git_sha: config.gitSha }));
   app.get("/health/live", async () => ({
@@ -1011,6 +1016,140 @@ export async function buildApp(
       .send(renderMetrics(await metricSnapshot(db, health)));
   });
 
+  app.get("/api/installation", async () => {
+    const state = await db.query(
+      `SELECT EXISTS(SELECT 1 FROM installation_state) AS initialized,
+              EXISTS(SELECT 1 FROM app_user) AS has_users`,
+    );
+    const row = state.rows[0];
+    return {
+      needsAdministrator: !row.initialized && !row.has_users,
+      ...(row.has_users && !row.initialized ? { needsMigration: true } : {}),
+    };
+  });
+
+  app.post<{ Body: unknown }>(
+    "/api/installation/administrator",
+    async (request, reply) => {
+      if (request.headers.origin !== config.appOrigin)
+        return reply.code(403).send({ error: { code: "origin_rejected" } });
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        Object.keys(body).some(
+          (key) =>
+            !["email", "displayName", "password", "confirmPassword"].includes(
+              key,
+            ),
+        ) ||
+        typeof body.email !== "string" ||
+        typeof body.displayName !== "string" ||
+        typeof body.password !== "string" ||
+        typeof body.confirmPassword !== "string" ||
+        body.password !== body.confirmPassword ||
+        body.password.length < 8 ||
+        body.displayName.trim().length < 1 ||
+        body.displayName.trim().length > 30
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "account_payload_invalid" } });
+      const email = body.email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email) || email.length > 254)
+        return reply
+          .code(422)
+          .send({ error: { code: "account_payload_invalid" } });
+      const passwordHash = await hashPassword(body.password);
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(91827463)");
+        const prior = await client.query(
+          `SELECT EXISTS(SELECT 1 FROM installation_state) AS initialized,
+                  EXISTS(SELECT 1 FROM app_user) AS has_users`,
+        );
+        if (prior.rows[0].initialized || prior.rows[0].has_users) {
+          await client.query("ROLLBACK");
+          return reply
+            .code(409)
+            .send({ error: { code: "installation_already_initialized" } });
+        }
+        const id = opaqueId("user");
+        await client.query(
+          `INSERT INTO app_user (id, username, email, display_name, password_hash, role)
+           VALUES ($1, $2, $2, $3, $4, 'admin')`,
+          [id, email, body.displayName.trim(), passwordHash],
+        );
+        await client.query("INSERT INTO installation_state (id) VALUES (true)");
+        await client.query("COMMIT");
+        return reply.code(201).send({ administrator: { id, email } });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  app.post<{ Body: unknown }>("/api/accounts", async (request, reply) => {
+    if (request.headers.origin !== config.appOrigin)
+      return reply.code(403).send({ error: { code: "origin_rejected" } });
+    const body = request.body;
+    if (
+      !isPlainObject(body) ||
+      Object.keys(body).some(
+        (key) => !["email", "password", "confirmPassword"].includes(key),
+      ) ||
+      typeof body.email !== "string" ||
+      typeof body.password !== "string" ||
+      typeof body.confirmPassword !== "string" ||
+      body.password.length < 8 ||
+      body.password !== body.confirmPassword
+    )
+      return reply
+        .code(422)
+        .send({ error: { code: "account_payload_invalid" } });
+    const email = body.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email) || email.length > 254)
+      return reply
+        .code(422)
+        .send({ error: { code: "account_payload_invalid" } });
+    const passwordHash = await hashPassword(body.password);
+    const id = opaqueId("user");
+    const name = email.split("@", 1)[0].slice(0, 30);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(91827463)");
+      const installed = await client.query(
+        "SELECT 1 FROM installation_state LIMIT 1",
+      );
+      if (!installed.rowCount) {
+        await client.query("ROLLBACK");
+        return reply
+          .code(409)
+          .send({ error: { code: "administrator_setup_required" } });
+      }
+      await client.query(
+        `INSERT INTO app_user (id, username, email, display_name, password_hash, role)
+         VALUES ($1, $2, $2, $3, $4, 'user')`,
+        [id, email, name, passwordHash],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      if ((error as { code?: string }).code === "23505")
+        return reply
+          .code(409)
+          .send({ error: { code: "email_already_registered" } });
+      throw error;
+    } finally {
+      client.release();
+    }
+    return reply.code(201).send({ account: { id, email, displayName: name } });
+  });
+
   app.post<{ Body: { username?: string; password?: string } }>(
     "/api/session",
     async (request, reply) => {
@@ -1025,26 +1164,31 @@ export async function buildApp(
       }
       const body = request.body as unknown;
       const soloBootstrap =
+        legacyTestBootstrap &&
         config.soloOwnerMode &&
         (body === undefined ||
           (isPlainObject(body) && Object.keys(body).length === 0));
-      if (config.soloOwnerMode && !soloBootstrap)
+      if (legacyTestBootstrap && config.soloOwnerMode && !soloBootstrap)
         return reply.code(404).send({ error: { code: "route_not_found" } });
       const username =
-        isPlainObject(body) && typeof body.username === "string"
-          ? body.username
-          : undefined;
+        isPlainObject(body) && typeof body.email === "string"
+          ? body.email.trim().toLowerCase()
+          : legacyTestBootstrap &&
+              isPlainObject(body) &&
+              typeof body.username === "string"
+            ? body.username
+            : undefined;
       const password =
         isPlainObject(body) && typeof body.password === "string"
           ? body.password
           : undefined;
       const result = await db.query(
-        `SELECT u.id, u.username, u.role, u.password_hash,
+        `SELECT u.id, u.username, u.email, u.display_name, u.avatar_color, u.role, u.password_hash,
                 pm.role AS project_role
          FROM app_user u
          LEFT JOIN project_member pm
            ON pm.project_id='project_demo' AND pm.user_id=u.id
-         WHERE ${soloBootstrap ? "u.id = 'user_owner'" : "u.username = $1"}`,
+         WHERE ${soloBootstrap ? "u.id = 'user_owner'" : legacyTestBootstrap ? "u.email = $1 OR u.username = $1" : "u.email = $1"}`,
         soloBootstrap ? [] : [username],
       );
       const user = result.rows[0];
@@ -1057,8 +1201,8 @@ export async function buildApp(
       }
       if (
         !soloBootstrap &&
-        !config.allowTestIdentity &&
-        isTestIdentityRole(user.role)
+        ((!legacyTestBootstrap && !user.email) ||
+          (!config.allowTestIdentity && isTestIdentityRole(user.role)))
       )
         return reply.code(401).send({ error: { code: "invalid_credentials" } });
       const token = randomBytes(32).toString("base64url");
@@ -1071,7 +1215,7 @@ export async function buildApp(
       reply.setCookie("agentbench_session", token, {
         httpOnly: true,
         sameSite: "strict",
-        secure: false,
+        secure: config.appOrigin.startsWith("https://"),
         path: "/",
         maxAge: 8 * 60 * 60,
       });
@@ -1087,7 +1231,7 @@ export async function buildApp(
         .code(401)
         .send({ error: { code: "authentication_required" } });
     const result = await db.query(
-      `SELECT u.id, u.username, u.role, s.csrf_token,
+      `SELECT u.id, u.username, u.email, u.display_name, u.avatar_color, u.role, s.csrf_token,
               pm.role AS project_role
        FROM app_session s JOIN app_user u ON u.id = s.user_id
        LEFT JOIN project_member pm
@@ -1099,7 +1243,10 @@ export async function buildApp(
       return reply
         .code(401)
         .send({ error: { code: "authentication_required" } });
-    if (!config.allowTestIdentity && isTestIdentityRole(result.rows[0].role)) {
+    if (
+      (!legacyTestBootstrap && !result.rows[0].email) ||
+      (!config.allowTestIdentity && isTestIdentityRole(result.rows[0].role))
+    ) {
       await db.query("DELETE FROM app_session WHERE token_hash = $1", [
         sessionHash(token),
       ]);
@@ -1114,10 +1261,434 @@ export async function buildApp(
     if (await enforceDeletionLock(request, reply)) return;
   }
 
+  app.delete(
+    "/api/session",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      const token = request.cookies.agentbench_session;
+      await db.query("DELETE FROM app_session WHERE token_hash = $1", [
+        sessionHash(token!),
+      ]);
+      reply.clearCookie("agentbench_session", { path: "/" });
+      return reply.code(204).send();
+    },
+  );
+
   app.get("/api/session", { preHandler: authenticate }, async (request) => {
     const actor = (request as AuthenticatedRequest).actor;
     return { csrfToken: actor.csrfToken, actor: publicSessionActor(actor) };
   });
+
+  app.get("/api/me", { preHandler: authenticate }, async (request) => {
+    const actor = (request as AuthenticatedRequest).actor;
+    const result = await db.query(
+      "SELECT id, email, display_name, avatar_color, role FROM app_user WHERE id = $1",
+      [actor.id],
+    );
+    const user = result.rows[0];
+    return {
+      account: {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name ?? user.username,
+        avatarColor: user.avatar_color,
+        role: user.role,
+      },
+    };
+  });
+
+  app.patch<{ Body: unknown }>(
+    "/api/me",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        !Object.keys(body).length ||
+        Object.keys(body).some(
+          (key) => !["displayName", "avatarColor"].includes(key),
+        ) ||
+        (body.displayName !== undefined &&
+          (typeof body.displayName !== "string" ||
+            body.displayName.trim().length < 1 ||
+            body.displayName.trim().length > 30)) ||
+        (body.avatarColor !== undefined &&
+          (typeof body.avatarColor !== "string" ||
+            !/^#[0-9a-fA-F]{6}$/u.test(body.avatarColor)))
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "profile_payload_invalid" } });
+      const result = await db.query(
+        `UPDATE app_user
+       SET display_name = coalesce($2, display_name),
+           avatar_color = coalesce($3, avatar_color)
+       WHERE id = $1
+       RETURNING id, email, display_name, avatar_color, role`,
+        [
+          actor.id,
+          typeof body.displayName === "string" ? body.displayName.trim() : null,
+          typeof body.avatarColor === "string"
+            ? body.avatarColor.toLowerCase()
+            : null,
+        ],
+      );
+      const user = result.rows[0];
+      return {
+        account: {
+          id: user.id,
+          email: user.email,
+          displayName: user.display_name,
+          avatarColor: user.avatar_color,
+          role: user.role,
+        },
+      };
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/members",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "read",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const result = await db.query(
+        `SELECT u.id, u.email, u.display_name, u.avatar_color, pm.role
+         FROM project_member pm JOIN app_user u ON u.id = pm.user_id
+         WHERE pm.project_id = $1 AND pm.role IN ('editor', 'viewer')
+         ORDER BY u.display_name, u.id`,
+        [request.params.projectId],
+      );
+      return {
+        members: result.rows.map((row) => ({
+          id: row.id,
+          email: row.email,
+          displayName: row.display_name,
+          avatarColor: row.avatar_color,
+          role: row.role,
+        })),
+      };
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/invitations",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "manage",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const result = await db.query(
+        `SELECT id, email, role, status, expires_at, created_at
+         FROM project_invitation WHERE project_id = $1
+         ORDER BY created_at DESC, id DESC LIMIT 100`,
+        [request.params.projectId],
+      );
+      return {
+        invitations: result.rows.map((row) => ({
+          id: row.id,
+          email: row.email,
+          role: row.role,
+          status:
+            row.status === "pending" && new Date(row.expires_at) <= now()
+              ? "expired"
+              : row.status,
+          expiresAt: row.expires_at,
+          createdAt: row.created_at,
+        })),
+      };
+    },
+  );
+
+  app.post<{ Params: { projectId: string }; Body: unknown }>(
+    "/api/projects/:projectId/invitations",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "manage",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        Object.keys(body).some((key) => !["email", "role"].includes(key)) ||
+        typeof body.email !== "string" ||
+        !["editor", "viewer"].includes(String(body.role))
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "invitation_payload_invalid" } });
+      const email = body.email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email))
+        return reply
+          .code(422)
+          .send({ error: { code: "invitation_payload_invalid" } });
+      const target = await db.query(
+        "SELECT id FROM app_user WHERE lower(email) = $1 AND role = 'user'",
+        [email],
+      );
+      if (!target.rowCount)
+        return reply
+          .code(422)
+          .send({ error: { code: "account_not_registered" } });
+      const targetId = String(target.rows[0].id);
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `UPDATE project_invitation SET status = 'expired'
+           WHERE project_id = $1 AND target_user_id = $2 AND status = 'pending'
+             AND expires_at <= now()`,
+          [request.params.projectId, targetId],
+        );
+        const member = await client.query(
+          "SELECT 1 FROM project_member WHERE project_id = $1 AND user_id = $2",
+          [request.params.projectId, targetId],
+        );
+        if (member.rowCount) {
+          await client.query("ROLLBACK");
+          return reply
+            .code(409)
+            .send({ error: { code: "already_project_member" } });
+        }
+        const id = opaqueId("invitation");
+        const result = await client.query(
+          `INSERT INTO project_invitation
+             (id, project_id, target_user_id, email, role, invited_by, status, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', now() + interval '7 days')
+           RETURNING id, email, role, expires_at`,
+          [id, request.params.projectId, targetId, email, body.role, actor.id],
+        );
+        await client.query("COMMIT");
+        const row = result.rows[0];
+        return reply.code(201).send({
+          invitation: {
+            id: row.id,
+            email: row.email,
+            role: row.role,
+            expiresAt: row.expires_at,
+          },
+        });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        if ((error as { code?: string }).code === "23505")
+          return reply
+            .code(409)
+            .send({ error: { code: "invitation_pending" } });
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  app.delete<{ Params: { projectId: string; invitationId: string } }>(
+    "/api/projects/:projectId/invitations/:invitationId",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "manage",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const result = await db.query(
+        `UPDATE project_invitation SET status = 'revoked'
+         WHERE id = $1 AND project_id = $2 AND status = 'pending' RETURNING id`,
+        [request.params.invitationId, request.params.projectId],
+      );
+      if (!result.rowCount)
+        return reply
+          .code(404)
+          .send({ error: { code: "invitation_not_found" } });
+      return reply.code(204).send();
+    },
+  );
+
+  app.get(
+    "/api/me/invitations",
+    { preHandler: authenticate },
+    async (request) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      const result = await db.query(
+        `SELECT i.id, i.project_id, p.name AS project_name, i.role, i.expires_at
+       FROM project_invitation i JOIN project p ON p.id = i.project_id
+       WHERE i.target_user_id = $1 AND i.status = 'pending' AND i.expires_at > now()
+       ORDER BY i.created_at DESC`,
+        [actor.id],
+      );
+      return {
+        invitations: result.rows.map((row) => ({
+          id: row.id,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          role: row.role,
+          expiresAt: row.expires_at,
+        })),
+      };
+    },
+  );
+
+  app.post<{ Params: { invitationId: string } }>(
+    "/api/me/invitations/:invitationId/accept",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        const result = await client.query(
+          `SELECT id, project_id, target_user_id, role, status, expires_at
+           FROM project_invitation WHERE id = $1 FOR UPDATE`,
+          [request.params.invitationId],
+        );
+        const invitation = result.rows[0];
+        if (!invitation || invitation.target_user_id !== actor.id) {
+          await client.query("ROLLBACK");
+          return reply
+            .code(404)
+            .send({ error: { code: "invitation_not_found" } });
+        }
+        if (invitation.status === "accepted") {
+          await client.query("COMMIT");
+          return { projectId: invitation.project_id, role: invitation.role };
+        }
+        if (
+          invitation.status !== "pending" ||
+          new Date(invitation.expires_at) <= now()
+        ) {
+          await client.query("ROLLBACK");
+          return reply
+            .code(409)
+            .send({ error: { code: "invitation_inactive" } });
+        }
+        await client.query(
+          `INSERT INTO project_member (project_id, user_id, role)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [invitation.project_id, actor.id, invitation.role],
+        );
+        await client.query(
+          "UPDATE project_invitation SET status = 'accepted', accepted_at = now() WHERE id = $1",
+          [invitation.id],
+        );
+        const membership = await client.query(
+          "SELECT role FROM project_member WHERE project_id = $1 AND user_id = $2",
+          [invitation.project_id, actor.id],
+        );
+        await client.query("COMMIT");
+        return {
+          projectId: invitation.project_id,
+          role: membership.rows[0].role,
+        };
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string; userId: string }; Body: unknown }>(
+    "/api/projects/:projectId/members/:userId",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "manage",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        Object.keys(body).length !== 1 ||
+        !["editor", "viewer"].includes(String(body.role))
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "member_payload_invalid" } });
+      const result = await db.query(
+        `UPDATE project_member SET role = $3
+         WHERE project_id = $1 AND user_id = $2 AND role IN ('editor', 'viewer')
+         RETURNING role`,
+        [request.params.projectId, request.params.userId, body.role],
+      );
+      if (!result.rowCount)
+        return reply.code(404).send({ error: { code: "member_not_found" } });
+      return { userId: request.params.userId, role: result.rows[0].role };
+    },
+  );
+
+  app.delete<{ Params: { projectId: string; userId: string } }>(
+    "/api/projects/:projectId/members/:userId",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "manage",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const result = await db.query(
+        `DELETE FROM project_member WHERE project_id = $1 AND user_id = $2
+         AND role IN ('editor', 'viewer') RETURNING user_id`,
+        [request.params.projectId, request.params.userId],
+      );
+      if (!result.rowCount)
+        return reply.code(404).send({ error: { code: "member_not_found" } });
+      return reply.code(204).send();
+    },
+  );
 
   app.get<{
     Params: { projectId: string };
@@ -3555,8 +4126,8 @@ export async function buildApp(
     };
   }
 
-  async function canWriteProject(projectId: string, actorId: string) {
-    return await hasProjectCapability(db, projectId, actorId, "write");
+  async function canManageProject(projectId: string, actorId: string) {
+    return await hasProjectCapability(db, projectId, actorId, "manage");
   }
 
   app.post<{
@@ -3569,7 +4140,7 @@ export async function buildApp(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canWriteProject(request.params.projectId, actor.id)))
+      if (!(await canManageProject(request.params.projectId, actor.id)))
         return reply.code(404).send({ error: { code: "project_not_found" } });
       if (!isPlainObject(request.body) || Object.keys(request.body).length)
         return reply
@@ -3639,7 +4210,7 @@ export async function buildApp(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canWriteProject(request.params.projectId, actor.id)))
+      if (!(await canManageProject(request.params.projectId, actor.id)))
         return reply.code(404).send({ error: { code: "project_not_found" } });
       if (
         !isPlainObject(request.body) ||
@@ -3785,7 +4356,7 @@ export async function buildApp(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canWriteProject(request.params.projectId, actor.id)))
+      if (!(await canManageProject(request.params.projectId, actor.id)))
         return reply.code(404).send({ error: { code: "project_not_found" } });
       if (!isPlainObject(request.body) || Object.keys(request.body).length)
         return reply
@@ -3856,7 +4427,7 @@ export async function buildApp(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canWriteProject(request.params.projectId, actor.id)))
+      if (!(await canManageProject(request.params.projectId, actor.id)))
         return reply.code(404).send({ error: { code: "project_not_found" } });
       if (
         !isPlainObject(request.body) ||
@@ -3998,7 +4569,7 @@ export async function buildApp(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canWriteProject(request.params.projectId, actor.id)))
+      if (!(await canManageProject(request.params.projectId, actor.id)))
         return reply.code(404).send({ error: { code: "project_not_found" } });
       if (
         !isPlainObject(request.body) ||
@@ -4142,7 +4713,9 @@ export async function buildApp(
         .code(422)
         .send({ error: { code: "query_parameter_invalid" } });
     const values: string[] = [actor.id];
-    const filters = ["pm.user_id = $1"];
+    const filters = [
+      actor.role === "admin" ? "TRUE" : "pm.user_id IS NOT NULL",
+    ];
     if (request.query.name) {
       values.push(request.query.name.trim());
       filters.push(`p.name ILIKE '%' || $${values.length} || '%'`);
@@ -4152,7 +4725,7 @@ export async function buildApp(
               count(DISTINCT c.id)::int AS dataset_count,
               count(DISTINCT ts.id)::int AS test_set_count
        FROM project p
-       JOIN project_member pm ON pm.project_id = p.id
+       LEFT JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = $1
        LEFT JOIN raw_material_collection c ON c.project_id = p.id
        LEFT JOIN test_set ts ON ts.project_id = p.id
        WHERE ${filters.join(" AND ")}
@@ -4164,7 +4737,7 @@ export async function buildApp(
     const total = await db.query(
       `SELECT count(*)::text AS total
        FROM project p
-       JOIN project_member pm ON pm.project_id = p.id
+       LEFT JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = $1
        WHERE ${filters.join(" AND ")}`,
       values,
     );
@@ -4185,6 +4758,13 @@ export async function buildApp(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        actor.role !== "admin" &&
+        !(legacyTestBootstrap && actor.role === "owner")
+      )
+        return reply
+          .code(403)
+          .send({ error: { code: "administrator_required" } });
       const body = request.body;
       if (
         !isPlainObject(body) ||
@@ -4211,11 +4791,12 @@ export async function buildApp(
            RETURNING id, name, description, updated_at`,
           [id, body.name.trim(), body.description ?? "", actor.id],
         );
-        await client.query(
-          `INSERT INTO project_member (project_id, user_id, role)
-           VALUES ($1, $2, 'owner')`,
-          [id, actor.id],
-        );
+        if (legacyTestBootstrap && actor.role === "owner")
+          await client.query(
+            `INSERT INTO project_member (project_id, user_id, role)
+             VALUES ($1, $2, 'owner')`,
+            [id, actor.id],
+          );
         await client.query(
           `INSERT INTO audit_event
              (project_id, actor_id, action, object_type, object_id, details)
@@ -4240,6 +4821,31 @@ export async function buildApp(
   );
 
   app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/access",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      const result = await db.query(
+        `SELECT u.role AS account_role, pm.role AS member_role
+         FROM project p JOIN app_user u ON u.id = $2
+         LEFT JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = u.id
+         WHERE p.id = $1`,
+        [request.params.projectId, actor.id],
+      );
+      const row = result.rows[0];
+      const role = row?.account_role === "admin" ? "admin" : row?.member_role;
+      if (!role)
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      return {
+        access: {
+          role,
+          capabilities: capabilitiesForRole(role === "admin" ? "owner" : role),
+        },
+      };
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId",
     { preHandler: authenticate },
     async (request, reply) => {
@@ -4249,12 +4855,12 @@ export async function buildApp(
                 count(DISTINCT c.id)::int AS dataset_count,
                 count(DISTINCT ts.id)::int AS test_set_count
          FROM project p
-         JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = $2
+         LEFT JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = $2
          LEFT JOIN raw_material_collection c ON c.project_id = p.id
          LEFT JOIN test_set ts ON ts.project_id = p.id
-         WHERE p.id = $1
+         WHERE p.id = $1 AND (pm.user_id IS NOT NULL OR $3::boolean)
          GROUP BY p.id`,
-        [request.params.projectId, actor.id],
+        [request.params.projectId, actor.id, actor.role === "admin"],
       );
       if (!project.rowCount)
         return reply.code(404).send({ error: { code: "project_not_found" } });
@@ -4437,7 +5043,7 @@ export async function buildApp(
       )
         return reply.code(404).send({ error: { code: "project_not_found" } });
       await ensureUnfiledCollection(db, request.params.projectId);
-      const values: string[] = [request.params.projectId, actor.id];
+      const values: string[] = [request.params.projectId];
       const conditions = ["c.project_id = $1"];
       if (request.query.name) {
         values.push(request.query.name.trim());
@@ -4476,8 +5082,6 @@ export async function buildApp(
            WHERE asset_id = da.id AND is_current
            ORDER BY created_at DESC, id DESC LIMIT 1
          ) pv ON true
-         JOIN project_member pm
-           ON pm.project_id = c.project_id AND pm.user_id = $2
          WHERE ${conditions.join(" AND ")}
          GROUP BY c.id
          ORDER BY c.is_unfiled DESC, c.updated_at ${
@@ -4489,8 +5093,6 @@ export async function buildApp(
       const total = await db.query(
         `SELECT count(*)::text AS total
          FROM raw_material_collection c
-         JOIN project_member pm
-           ON pm.project_id = c.project_id AND pm.user_id = $2
          WHERE ${conditions.join(" AND ")}`,
         values,
       );
@@ -6506,6 +7108,15 @@ export async function buildApp(
         return reply
           .code(422)
           .send({ error: { code: "query_parameter_invalid" } });
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "read",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "asset_not_found" } });
       const client = await db.connect();
       let asset: { rows: Array<Record<string, any>>; rowCount?: number | null };
       let preview: Buffer;
@@ -6513,7 +7124,6 @@ export async function buildApp(
         await client.query("BEGIN");
         asset = await client.query(
           `SELECT da.object_ref, da.mime_type, da.file_name FROM data_asset da
-           JOIN project_member pm ON pm.project_id = da.project_id AND pm.user_id = $3
            WHERE da.project_id = $1 AND da.id = $2
              AND da.status NOT IN ('deletion_pending', 'tombstoned')
              AND NOT EXISTS (
@@ -6522,7 +7132,7 @@ export async function buildApp(
                  AND dl.object_type = 'data_asset' AND dl.object_id = da.id
              )
            FOR SHARE OF da`,
-          [request.params.projectId, request.params.assetId, actor.id],
+          [request.params.projectId, request.params.assetId],
         );
         if (!asset.rowCount) {
           await client.query("COMMIT");

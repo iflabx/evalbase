@@ -15,6 +15,18 @@ CREATE TABLE IF NOT EXISTS app_user (
   role text NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS display_name text;
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS avatar_color text NOT NULL DEFAULT '#6366f1';
+ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_role_check;
+ALTER TABLE app_user ADD CONSTRAINT app_user_role_check
+  CHECK (role IN ('admin', 'user', 'owner', 'editor', 'viewer'));
+CREATE UNIQUE INDEX IF NOT EXISTS app_user_email_unique
+  ON app_user (lower(email)) WHERE email IS NOT NULL;
+CREATE TABLE IF NOT EXISTS installation_state (
+  id boolean PRIMARY KEY DEFAULT true CHECK (id),
+  initialized_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS project (
   id text PRIMARY KEY,
   name text NOT NULL,
@@ -39,6 +51,22 @@ CREATE TABLE IF NOT EXISTS app_session (
   csrf_token text NOT NULL,
   expires_at timestamptz NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_invitation (
+  id text PRIMARY KEY,
+  project_id text NOT NULL REFERENCES project(id),
+  target_user_id text NOT NULL REFERENCES app_user(id),
+  email text NOT NULL,
+  role text NOT NULL CHECK (role IN ('editor', 'viewer')),
+  invited_by text NOT NULL REFERENCES app_user(id),
+  status text NOT NULL CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  accepted_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS project_invitation_one_pending
+  ON project_invitation (project_id, target_user_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS project_invitation_target_status
+  ON project_invitation (target_user_id, status, expires_at);
 CREATE TABLE IF NOT EXISTS upload_idempotency (
   project_id text NOT NULL REFERENCES project(id),
   actor_id text NOT NULL REFERENCES app_user(id),

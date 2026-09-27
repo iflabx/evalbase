@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
 import { ConfirmedUploadDialog } from "@/components/confirmed-upload-dialog";
+import { useProjectAccess } from "@/hooks/use-project-access";
 import { MaterialRecordTable } from "@/components/material-record-table";
 import { RecordDensityControl } from "@/components/record-density";
 import {
@@ -53,6 +54,7 @@ function CollectionRoute() {
 function CollectionBrowser() {
   const { projectId, collectionId } = Route.useParams();
   const queryClient = useQueryClient();
+  const access = useProjectAccess(projectId);
   const [tab, setTab] = useState<"files" | "records">("files");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -61,7 +63,7 @@ function CollectionBrowser() {
   const [uploading, setUploading] = useState(false);
   const collections = useQuery({
     queryKey: ["collections", projectId],
-    queryFn: () => listCollections(projectId, { limit: 200, offset: 0 }),
+    queryFn: () => listCollections(projectId, { limit: 100, offset: 0 }),
   });
   const collection = collections.data?.items.find((item) => item.id === collectionId);
   const moveTargets = (collections.data?.items ?? []).filter((item) => item.id !== collectionId);
@@ -97,7 +99,7 @@ function CollectionBrowser() {
                 返回数据集
               </Link>
             </Button>
-            <Button onClick={() => setUploading(true)}>上传文件</Button>
+            {access.canWrite && <Button onClick={() => setUploading(true)}>上传文件</Button>}
           </>
         }
       />
@@ -146,6 +148,7 @@ function CollectionBrowser() {
               onSelect={setSelectedAssetId}
               onMove={setMoving}
               canMove={moveTargets.length > 0}
+              canWrite={access.canWrite}
             />
           )}
         </StateView>
@@ -177,26 +180,30 @@ function CollectionBrowser() {
           unit={tab === "files" ? "个文件" : "条记录"}
         />
       )}
-      <MoveFileDialog
-        projectId={projectId}
-        file={moving}
-        targets={moveTargets.map(({ id, name }) => ({ id, name }))}
-        onOpenChange={(open) => {
-          if (!open) setMoving(undefined);
-        }}
-      />
-      <ConfirmedUploadDialog
-        open={uploading}
-        projectId={projectId}
-        collections={(collections.data?.items ?? []).map(({ id, name }) => ({ id, name }))}
-        defaultCollectionId={collectionId}
-        onOpenChange={setUploading}
-        onConfirmed={async () => {
-          await queryClient.invalidateQueries({ queryKey: ["material-files", projectId] });
-          await queryClient.invalidateQueries({ queryKey: ["collection-records", projectId] });
-          await queryClient.invalidateQueries({ queryKey: ["collections", projectId] });
-        }}
-      />
+      {access.canWrite && (
+        <MoveFileDialog
+          projectId={projectId}
+          file={moving}
+          targets={moveTargets.map(({ id, name }) => ({ id, name }))}
+          onOpenChange={(open) => {
+            if (!open) setMoving(undefined);
+          }}
+        />
+      )}
+      {access.canWrite && (
+        <ConfirmedUploadDialog
+          open={uploading}
+          projectId={projectId}
+          collections={(collections.data?.items ?? []).map(({ id, name }) => ({ id, name }))}
+          defaultCollectionId={collectionId}
+          onOpenChange={setUploading}
+          onConfirmed={async () => {
+            await queryClient.invalidateQueries({ queryKey: ["material-files", projectId] });
+            await queryClient.invalidateQueries({ queryKey: ["collection-records", projectId] });
+            await queryClient.invalidateQueries({ queryKey: ["collections", projectId] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -209,6 +216,7 @@ function FileTable({
   onSelect,
   onMove,
   canMove,
+  canWrite,
 }: {
   projectId: string;
   collectionId: string;
@@ -217,6 +225,7 @@ function FileTable({
   onSelect: (assetId: string) => void;
   onMove: (file: MaterialFile) => void;
   canMove: boolean;
+  canWrite: boolean;
 }) {
   return (
     <Card>
@@ -252,18 +261,20 @@ function FileTable({
                 <td className="px-4 py-3">{file.status}</td>
                 <td className="px-4 py-3 text-right">
                   <span className="inline-flex items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!canMove}
-                      title={canMove ? "移动到其他数据集" : "当前项目中没有其他数据集"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onMove(file);
-                      }}
-                    >
-                      移动
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!canMove}
+                        title={canMove ? "移动到其他数据集" : "当前项目中没有其他数据集"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onMove(file);
+                        }}
+                      >
+                        移动
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" asChild>
                       <Link
                         to="/projects/$projectId/datasets/$collectionId/files/$assetId"

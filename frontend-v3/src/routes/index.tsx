@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
 import { NameDialog } from "@/components/name-dialog";
 import { createProject, listProjects } from "@/services/workspace";
+import { currentSession } from "@/services/account";
 
 const PAGE_SIZE = 10;
 
@@ -20,6 +21,8 @@ function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const account = useQuery({ queryKey: ["session"], queryFn: currentSession });
+  const isAdmin = account.data?.actor.role === "admin";
   const projects = useQuery({
     queryKey: ["projects", { search, page }],
     queryFn: () => listProjects({ name: search, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
@@ -34,10 +37,12 @@ function ProjectsPage() {
       <PageHeader
         title="项目"
         actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            新建项目
-          </Button>
+          isAdmin ? (
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              新建项目
+            </Button>
+          ) : undefined
         }
       />
       <div className="mb-4 flex items-center gap-2">
@@ -61,7 +66,15 @@ function ProjectsPage() {
         data={rows}
         isEmpty={(items) => items.length === 0}
         onRetry={() => void projects.refetch()}
-        empty={<EmptyBlock title="没有符合条件的项目" />}
+        empty={
+          search ? (
+            <EmptyBlock title="没有符合条件的项目" />
+          ) : isAdmin ? (
+            <EmptyBlock title="暂无项目，可新建项目。" />
+          ) : (
+            <EmptyBlock title="尚未加入任何项目。请等待管理员邀请，并前往设置 → 信息接受邀请。" />
+          )
+        }
       >
         {(items) => (
           <Card>
@@ -130,26 +143,28 @@ function ProjectsPage() {
           unit="个项目"
         />
       )}
-      <NameDialog
-        open={creating}
-        onOpenChange={setCreating}
-        title="新建项目"
-        confirm="创建项目"
-        intro="用一个项目把相关的数据集和测试集放在同一个工作区。"
-        nameLabel="项目名称"
-        descriptionLabel="说明（可选）"
-        namePlaceholder="例如：客服体验评测"
-        descriptionPlaceholder="例如：客服帮助和预约场景"
-        note="创建后会自动包含一个“未整理”数据集。"
-        onSubmit={async (input) => {
-          const project = await createProject(input);
-          await queryClient.invalidateQueries({ queryKey: ["projects"] });
-          await navigate({
-            to: "/projects/$projectId/datasets",
-            params: { projectId: project.id },
-          });
-        }}
-      />
+      {isAdmin && (
+        <NameDialog
+          open={creating}
+          onOpenChange={setCreating}
+          title="新建项目"
+          confirm="创建项目"
+          intro="用一个项目把相关的数据集和测试集放在同一个工作区。"
+          nameLabel="项目名称"
+          descriptionLabel="说明（可选）"
+          namePlaceholder="例如：客服体验评测"
+          descriptionPlaceholder="例如：客服帮助和预约场景"
+          note="创建后会自动包含一个“未整理”数据集。"
+          onSubmit={async (input) => {
+            const project = await createProject(input);
+            await queryClient.invalidateQueries({ queryKey: ["projects"] });
+            await navigate({
+              to: "/projects/$projectId/datasets",
+              params: { projectId: project.id },
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

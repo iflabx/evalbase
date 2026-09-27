@@ -228,30 +228,25 @@ let session: Promise<string> | undefined;
 
 async function csrfToken(): Promise<string> {
   session ??= (async () => {
-    const current = await fetch("/api/session", { credentials: "same-origin" });
-    const response =
-      current.status === 401
-        ? await fetch("/api/session", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "content-type": "application/json" },
-            body: "{}",
-          })
-        : current;
-    if (!response.ok) throw new Error("无法连接到 EvalBase。");
+    const response = await fetch("/api/session", { credentials: "same-origin" });
+    if (!response.ok) throw new Error("请先登录 EvalBase。");
     return ((await response.json()) as { csrfToken: string }).csrfToken;
   })();
   return session;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export function resetWorkspaceSession() {
+  session = undefined;
+}
+
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
   const headers = new Headers(init?.headers);
-  const csrf = await csrfToken();
-  if (method !== "GET") headers.set("x-csrf-token", csrf);
+  if (method !== "GET") headers.set("x-csrf-token", await csrfToken());
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (response.status === 401) {
     session = undefined;
+    window.dispatchEvent(new Event("evalbase:session-expired"));
   }
   if (!response.ok) {
     const body = (await response.json().catch(() => undefined)) as

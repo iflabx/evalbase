@@ -37,8 +37,10 @@ export async function hasProjectCapability(
   capability: ProjectCapability,
 ): Promise<boolean> {
   const result = await db.query(
-    `SELECT 1 FROM project_member
-     WHERE project_id = $1 AND user_id = $2 AND role = ANY($3::text[])`,
+    `SELECT 1 FROM project p
+     JOIN app_user u ON u.id = $2
+     LEFT JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = u.id
+     WHERE p.id = $1 AND (u.role = 'admin' OR pm.role = ANY($3::text[]))`,
     [projectId, actorId, rolesByCapability[capability]],
   );
   return Boolean(result.rowCount);

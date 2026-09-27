@@ -18,6 +18,7 @@ import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
 import { NameDialog } from "@/components/name-dialog";
 import { ConfirmedUploadDialog } from "@/components/confirmed-upload-dialog";
 import { createCollection, listCollections } from "@/services/workspace";
+import { useProjectAccess } from "@/hooks/use-project-access";
 import { Pagination } from "@/routes/index";
 
 const PAGE_SIZE = 10;
@@ -32,6 +33,7 @@ function DatasetsRoute() {
 function DatasetsPage() {
   const { projectId } = Route.useParams();
   const queryClient = useQueryClient();
+  const access = useProjectAccess(projectId);
   const [search, setSearch] = useState("");
   const [type, setType] = useState<"all" | "dataset" | "system">("all");
   const [content, setContent] = useState<"all" | "populated" | "empty">("all");
@@ -53,7 +55,8 @@ function DatasetsPage() {
   });
   const uploadTargets = useQuery({
     queryKey: ["collection-upload-targets", projectId],
-    queryFn: () => listCollections(projectId, { limit: 200, offset: 0 }),
+    queryFn: () => listCollections(projectId, { limit: 100, offset: 0 }),
+    enabled: access.canWrite,
   });
   const rows = collections.data?.items ?? [];
   const total = collections.data?.total ?? 0;
@@ -65,16 +68,18 @@ function DatasetsPage() {
       <PageHeader
         title="数据集"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setUploading(true)}>
-              <FileUp className="size-4" />
-              上传文件
-            </Button>
-            <Button onClick={() => setCreating(true)}>
-              <Plus className="size-4" />
-              新建数据集
-            </Button>
-          </div>
+          access.canWrite ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setUploading(true)}>
+                <FileUp className="size-4" />
+                上传文件
+              </Button>
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="size-4" />
+                新建数据集
+              </Button>
+            </div>
+          ) : undefined
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -137,7 +142,11 @@ function DatasetsPage() {
         empty={
           <EmptyBlock
             title="没有符合条件的数据集"
-            action={<Button onClick={() => setCreating(true)}>新建数据集</Button>}
+            action={
+              access.canWrite ? (
+                <Button onClick={() => setCreating(true)}>新建数据集</Button>
+              ) : undefined
+            }
           />
         }
       >
@@ -219,34 +228,38 @@ function DatasetsPage() {
           unit="个数据集"
         />
       )}
-      <NameDialog
-        open={creating}
-        onOpenChange={setCreating}
-        title="新建数据集"
-        confirm="创建数据集"
-        intro="用一个简单名称把同一领域或方向的文件放在一起。"
-        nameLabel="数据集名称"
-        descriptionLabel="说明（可选）"
-        namePlaceholder="例如：客服公开资料"
-        descriptionPlaceholder="例如：帮助中心和常见问题"
-        note="用于归类当前项目中的原始文件。"
-        onSubmit={async (input) => {
-          await createCollection(projectId, input);
-          await queryClient.invalidateQueries({ queryKey: ["collections", projectId] });
-          await queryClient.invalidateQueries({ queryKey: ["projects"] });
-        }}
-      />
-      <ConfirmedUploadDialog
-        open={uploading}
-        projectId={projectId}
-        collections={(uploadTargets.data?.items ?? []).map(({ id, name }) => ({ id, name }))}
-        defaultCollectionId={uploadTargets.data?.items.find((item) => item.isUnfiled)?.id ?? ""}
-        onOpenChange={setUploading}
-        onConfirmed={async () => {
-          await queryClient.invalidateQueries({ queryKey: ["collections", projectId] });
-          await queryClient.invalidateQueries({ queryKey: ["projects"] });
-        }}
-      />
+      {access.canWrite && (
+        <NameDialog
+          open={creating}
+          onOpenChange={setCreating}
+          title="新建数据集"
+          confirm="创建数据集"
+          intro="用一个简单名称把同一领域或方向的文件放在一起。"
+          nameLabel="数据集名称"
+          descriptionLabel="说明（可选）"
+          namePlaceholder="例如：客服公开资料"
+          descriptionPlaceholder="例如：帮助中心和常见问题"
+          note="用于归类当前项目中的原始文件。"
+          onSubmit={async (input) => {
+            await createCollection(projectId, input);
+            await queryClient.invalidateQueries({ queryKey: ["collections", projectId] });
+            await queryClient.invalidateQueries({ queryKey: ["projects"] });
+          }}
+        />
+      )}
+      {access.canWrite && (
+        <ConfirmedUploadDialog
+          open={uploading}
+          projectId={projectId}
+          collections={(uploadTargets.data?.items ?? []).map(({ id, name }) => ({ id, name }))}
+          defaultCollectionId={uploadTargets.data?.items.find((item) => item.isUnfiled)?.id ?? ""}
+          onOpenChange={setUploading}
+          onConfirmed={async () => {
+            await queryClient.invalidateQueries({ queryKey: ["collections", projectId] });
+            await queryClient.invalidateQueries({ queryKey: ["projects"] });
+          }}
+        />
+      )}
     </div>
   );
 }

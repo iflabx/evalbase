@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, Database, FileText } from "lucide-react";
+import { ChevronDown, Database, FileText, Settings } from "lucide-react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -24,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { NameDialog } from "@/components/name-dialog";
 import { createProject, listProjects } from "@/services/workspace";
+import { currentSession } from "@/services/account";
 
 function projectIdAt(pathname: string) {
   return pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -38,13 +40,15 @@ export function AppSidebar() {
   const projectId = projectIdAt(pathname);
   const projects = useQuery({
     queryKey: ["projects", "switcher"],
-    queryFn: () => listProjects({ limit: 200, offset: 0 }),
+    queryFn: () => listProjects({ limit: 100, offset: 0 }),
   });
   const [creating, setCreating] = useState(false);
+  const account = useQuery({ queryKey: ["session"], queryFn: currentSession });
+  const isAdmin = account.data?.actor.role === "admin";
   const project = projects.data?.items.find((item) => item.id === projectId);
 
   function selectProject(value: string) {
-    if (value === "new") return setCreating(true);
+    if (value === "new" && isAdmin) return setCreating(true);
     void navigate({ to: "/projects/$projectId/datasets", params: { projectId: value } });
   }
 
@@ -59,7 +63,7 @@ export function AppSidebar() {
             {!collapsed && (
               <div className="leading-tight">
                 <div className="text-sm font-semibold">EvalBase</div>
-                <div className="text-xs text-muted-foreground">个人测试资料库</div>
+                <div className="text-xs text-muted-foreground">团队测试资料库</div>
               </div>
             )}
           </Link>
@@ -94,12 +98,14 @@ export function AppSidebar() {
                           {item.name}
                         </DropdownMenuItem>
                       ))}
-                      <DropdownMenuItem
-                        onSelect={() => selectProject("new")}
-                        className="text-primary"
-                      >
-                        + 新建项目
-                      </DropdownMenuItem>
+                      {isAdmin && (
+                        <DropdownMenuItem
+                          onSelect={() => selectProject("new")}
+                          className="text-primary"
+                        >
+                          + 新建项目
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </SidebarGroupContent>
@@ -146,27 +152,43 @@ export function AppSidebar() {
             </SidebarGroup>
           )}
         </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border p-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/settings"}>
+                <a
+                  href={`/settings${projectId ? `?project=${encodeURIComponent(projectId)}` : ""}`}
+                >
+                  <Settings className="size-4" />
+                  {!collapsed && <span>设置</span>}
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
       </Sidebar>
-      <NameDialog
-        open={creating}
-        onOpenChange={setCreating}
-        title="新建项目"
-        confirm="创建项目"
-        intro="用一个项目把相关的数据集和测试集放在同一个工作区。"
-        nameLabel="项目名称"
-        descriptionLabel="项目说明"
-        namePlaceholder="例如：客服体验评测"
-        descriptionPlaceholder="例如：客服帮助和预约场景"
-        note="创建后会自动包含一个“未整理”数据集。"
-        onSubmit={async (input) => {
-          const created = await createProject(input);
-          await queryClient.invalidateQueries({ queryKey: ["projects"] });
-          await navigate({
-            to: "/projects/$projectId/datasets",
-            params: { projectId: created.id },
-          });
-        }}
-      />
+      {isAdmin && (
+        <NameDialog
+          open={creating}
+          onOpenChange={setCreating}
+          title="新建项目"
+          confirm="创建项目"
+          intro="用一个项目把相关的数据集和测试集放在同一个工作区。"
+          nameLabel="项目名称"
+          descriptionLabel="项目说明"
+          namePlaceholder="例如：客服体验评测"
+          descriptionPlaceholder="例如：客服帮助和预约场景"
+          note="创建后会自动包含一个“未整理”数据集。"
+          onSubmit={async (input) => {
+            const created = await createProject(input);
+            await queryClient.invalidateQueries({ queryKey: ["projects"] });
+            await navigate({
+              to: "/projects/$projectId/datasets",
+              params: { projectId: created.id },
+            });
+          }}
+        />
+      )}
     </>
   );
 }

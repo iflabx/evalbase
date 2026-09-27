@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Plus, Search, Trash2 } from "lucide-react";
+import { useProjectAccess } from "@/hooks/use-project-access";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,7 @@ function TestSetsRoute() {
 
 function TestSetsPage() {
   const { projectId } = Route.useParams();
+  const access = useProjectAccess(projectId);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
@@ -139,14 +141,18 @@ function TestSetsPage() {
         title="测试集"
         actions={
           <>
-            <Button variant="outline" onClick={() => setTrashOpen(true)}>
-              <Trash2 className="size-4" />
-              回收站
-            </Button>
-            <Button onClick={() => setCreating(true)}>
-              <Plus className="size-4" />
-              新建测试集
-            </Button>
+            {access.canManage && (
+              <Button variant="outline" onClick={() => setTrashOpen(true)}>
+                <Trash2 className="size-4" />
+                回收站
+              </Button>
+            )}
+            {access.canWrite && (
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="size-4" />
+                新建测试集
+              </Button>
+            )}
           </>
         }
       />
@@ -172,7 +178,11 @@ function TestSetsPage() {
         empty={
           <EmptyBlock
             title="还没有测试集"
-            action={<Button onClick={() => setCreating(true)}>新建测试集</Button>}
+            action={
+              access.canWrite ? (
+                <Button onClick={() => setCreating(true)}>新建测试集</Button>
+              ) : undefined
+            }
           />
         }
       >
@@ -227,15 +237,17 @@ function TestSetsPage() {
                               查看
                             </Link>
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label={`移入回收站：${item.name}`}
-                            title="移入回收站"
-                            onClick={() => setTrashTarget(item)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
+                          {access.canManage && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label={`移入回收站：${item.name}`}
+                              title="移入回收站"
+                              onClick={() => setTrashTarget(item)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
                         </span>
                       </td>
                     </tr>
@@ -249,35 +261,41 @@ function TestSetsPage() {
       {total > 0 && (
         <Pagination total={total} current={page} pages={pages} onChange={setPage} unit="个测试集" />
       )}
-      <CreateTestSetDialog open={creating} onOpenChange={setCreating} projectId={projectId} />
-      <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} projectId={projectId} />
-      <AlertDialog
-        open={Boolean(trashTarget)}
-        onOpenChange={(open) => !open && setTrashTarget(undefined)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>移入回收站</AlertDialogTitle>
-            <AlertDialogDescription>{trashTarget?.name}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            测试集会从正常列表隐藏；其中的版本和数据溯源都会保留在回收站中。数据集中的原始文件不会被删除。
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={trashing}>取消</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={trashing}
-              onClick={(event) => {
-                event.preventDefault();
-                void moveToTrash();
-              }}
-            >
-              {trashing ? "正在移入…" : "移入回收站"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {access.canWrite && (
+        <CreateTestSetDialog open={creating} onOpenChange={setCreating} projectId={projectId} />
+      )}
+      {access.canManage && (
+        <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} projectId={projectId} />
+      )}
+      {access.canManage && (
+        <AlertDialog
+          open={Boolean(trashTarget)}
+          onOpenChange={(open) => !open && setTrashTarget(undefined)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>移入回收站</AlertDialogTitle>
+              <AlertDialogDescription>{trashTarget?.name}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              测试集会从正常列表隐藏；其中的版本和数据溯源都会保留在回收站中。数据集中的原始文件不会被删除。
+            </p>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={trashing}>取消</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={trashing}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void moveToTrash();
+                }}
+              >
+                {trashing ? "正在移入…" : "移入回收站"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

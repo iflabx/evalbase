@@ -22,7 +22,8 @@
     "persistence:verify": "node scripts/persistence-check.mjs verify",
     "spike:incremental": "tsx src/spikes/run-incremental-version-storage-spike.ts",
     "build": "npm --prefix frontend-v3 run build:formal && tsc -p tsconfig.server.json",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:bind-legacy-admin": "tsx src/security/bind-legacy-administrator.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",
