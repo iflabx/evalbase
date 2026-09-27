@@ -3310,6 +3310,55 @@
       .collab-note { display: grid; gap: 6px; margin-bottom: 14px; color: var(--muted-foreground); font-size: 12px; }
       #collab-warning:not(:empty) { color: var(--danger); font-weight: 600; }
       @media (max-width: 760px) { .member-layout { grid-template-columns: 1fr; } .account-tools { gap: 4px; } }
+      /* Full-page draft editor uses the frontend-v1 card, table, input and button tokens. */
+      .editor-workspace { display: grid; gap: 20px; padding-bottom: 40px; }
+      .editor-intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; }
+      .editor-intro strong { font-size: 14px; font-weight: 600; }
+      .editor-intro p, .editor-card-head p { margin: 5px 0 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+      .editor-intro > span { flex: none; color: var(--muted-foreground); font-size: 12px; }
+      .editor-identity { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.5fr); gap: 20px; padding: 20px; }
+      .editor-identity .form-field + .form-field { margin-top: 0; }
+      .editor-identity textarea { min-height: 36px; height: 36px; resize: vertical; }
+      .editor-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); }
+      .editor-tabs button { display: inline-flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; padding: 12px 2px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 14px; cursor: pointer; }
+      .editor-tabs button.active { border-bottom-color: var(--primary); color: var(--foreground); font-weight: 600; }
+      .editor-tabs span { border-radius: 999px; padding: 1px 6px; background: var(--muted); font-size: 11px; }
+      .editor-record-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: 18px; }
+      .editor-source-layout { display: grid; gap: 20px; }
+      .editor-card, .editor-detail { min-width: 0; }
+      .editor-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; }
+      .editor-card-head h2, .editor-detail-empty h2 { margin: 0; font-size: 15px; font-weight: 600; }
+      .editor-toolbar { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--border); padding: 12px 20px; }
+      .editor-toolbar input { width: min(100%, 360px); height: 36px; border: 1px solid var(--input); border-radius: 6px; padding: 6px 12px; background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px rgba(15, 23, 42, .08); font: inherit; font-size: 14px; }
+      .editor-toolbar span { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+      .editor-table-scroll { overflow-x: auto; }
+      .editor-table { min-width: 600px; }
+      .editor-table th:first-child, .editor-table td:first-child { width: 55px; }
+      .editor-table td { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .editor-table .button { height: 30px; padding: 0 8px; font-size: 12px; }
+      .editor-question-link { max-width: 100%; overflow: hidden; border: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+      .editor-question-link:hover, .editor-question-link:focus-visible { color: var(--primary); text-decoration: underline; }
+      .editor-selected { background: var(--accent); }
+      .editor-empty { text-align: center !important; color: var(--muted-foreground); padding: 28px !important; white-space: normal !important; }
+      .editor-pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 12px 16px; }
+      .editor-pager span { margin-right: auto; color: var(--muted-foreground); font-size: 12px; }
+      .editor-pager .button { height: 32px; padding: 0 10px; font-size: 12px; }
+      .editor-detail { position: sticky; top: 20px; }
+      .editor-detail-body { border-top: 1px solid var(--border); padding: 20px; }
+      .editor-detail-body textarea { min-height: 120px; resize: vertical; }
+      .editor-detail-body .form-field + .form-field { margin-top: 18px; }
+      .editor-detail-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
+      .editor-detail-foot span { color: var(--muted-foreground); font-size: 12px; }
+      .editor-remove { color: var(--destructive) !important; }
+      .editor-detail-empty { padding: 24px; }
+      .editor-detail-empty p { color: var(--muted-foreground); font-size: 14px; line-height: 1.5; }
+      .editor-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 8px 20px 12px; }
+      .editor-bulk span { margin-right: auto; color: var(--muted-foreground); font-size: 12px; }
+      .editor-bulk .button { height: 30px; padding: 0 10px; font-size: 12px; }
+      .editor-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .editor-bottom span { color: var(--muted-foreground); font-size: 12px; }
+      @media (max-width: 1080px) { .editor-record-layout { grid-template-columns: 1fr; } .editor-detail { position: static; } }
+      @media (max-width: 680px) { .editor-identity { grid-template-columns: 1fr; } .editor-intro, .editor-bottom { align-items: flex-start; flex-direction: column; } .editor-toolbar { flex-wrap: wrap; } }
     </style>
   </head>
   <body>
@@ -3925,6 +3974,16 @@
         setError: "",
         setName: "",
         setPurpose: "",
+        editorTab: "records",
+        editorQuery: "",
+        editorPage: 0,
+        editorSourceQuery: "",
+        editorSourcePage: 0,
+        editorPickQuery: "",
+        editorPickPage: 0,
+        editorFocusId: null,
+        editorParentVersion: null,
+        editorSavedAt: null,
         notice: "",
         trash: { sets: [], versionBranches: [] },
         purgeTarget: null,
@@ -4142,6 +4201,7 @@
       }
       function backToLogin() { access.inviteId = null; access.registerOpen = false; access.error = ""; render(); }
       function openSettings() {
+        if (activeEditingSet()) { saveEditorDraft(); state.modal = null; }
         if (!currentUser()) return;
         state.modal = null;
         state.screen = "settings";
@@ -4304,7 +4364,8 @@
         collabChannel?.postMessage({ type, tabId: access.tabId, userId: access.userId, projectId: state.activeProject, ...payload });
       }
       function activeEditingSet() {
-        return state.modal === "iterate" && state.step === 2 ? state.selected : null;
+        return (state.modal === "set" || state.modal === "iterate") && state.step === 2
+          ? (state.modal === "set" ? `new:${state.activeProject}` : state.selected) : null;
       }
       function sendPresence(leaving = false) {
         const user = currentUser();
@@ -4362,7 +4423,7 @@
         const index = state.editRecords.findIndex((record) => record.id === conflict.recordId);
         if (index >= 0) {
           if (choice === "remote") state.editRecords[index][conflict.field] = conflict.remoteValue;
-          else postCollab("edit", { setId: state.selected, recordId: conflict.recordId, field: conflict.field, value: state.editRecords[index][conflict.field] });
+          else postCollab("edit", { setId: activeEditingSet(), recordId: conflict.recordId, field: conflict.field, value: state.editRecords[index][conflict.field] });
         }
         access.editConflict = null;
         renderKeepingFocus();
@@ -4396,7 +4457,7 @@
         }
         if (data.projectId !== state.activeProject || !canRead(data.projectId)) return;
         if (data.type === "request-draft" && activeEditingSet() === data.setId) {
-          postCollab("draft-snapshot", { setId: data.setId, to: data.tabId, records: structuredClone(state.editRecords), revision: access.revision });
+          postCollab("draft-snapshot", { setId: data.setId, to: data.tabId, snapshot: structuredClone(editorDraftSnapshot()), revision: access.revision });
           return;
         }
         if (data.type === "published") {
@@ -4409,8 +4470,24 @@
           return;
         }
         if (data.setId !== activeEditingSet()) return;
-        if (data.type === "draft-snapshot" && data.to === access.tabId && data.revision >= access.revision) {
-          state.editRecords = data.records; access.revision = data.revision; renderKeepingFocus(); return;
+        if (data.type === "draft-snapshot" && data.to === access.tabId && data.revision >= access.revision && data.snapshot) {
+          state.setName = data.snapshot.setName || "";
+          state.setPurpose = data.snapshot.setPurpose || "";
+          state.setSources = data.snapshot.setSources || [];
+          state.setRecords = data.snapshot.setRecords || [];
+          state.editRecords = data.snapshot.editRecords || [];
+          state.removedRecords = data.snapshot.removedRecords || 0;
+          state.editorFocusId = state.editRecords[0]?.id || null;
+          access.revision = data.revision;
+          saveEditorDraft(); renderKeepingFocus(); return;
+        }
+        if (data.type === "draft-state" && data.snapshot) {
+          state.setName = data.snapshot.setName || "";
+          state.setPurpose = data.snapshot.setPurpose || "";
+          state.setSources = data.snapshot.setSources || [];
+          state.setRecords = data.snapshot.setRecords || [];
+          syncEditorSourceRecords();
+          saveEditorDraft(); renderKeepingFocus(); return;
         }
         if (data.type === "edit") {
           const record = state.editRecords.find((entry) => entry.id === data.recordId);
@@ -4422,18 +4499,18 @@
             if (warning) warning.textContent = `与 ${access.editConflict.name} 同时修改同一字段。你的输入暂时保留；离开输入框后选择采用哪一份。`;
             return;
           }
-          record[data.field] = data.value; access.revision += 1;
+          record[data.field] = data.value; access.revision += 1; saveEditorDraft();
           if (data.field === "metadata" || data.field === "metadataEntries") { renderKeepingFocus(); return; }
           const input = [...document.querySelectorAll("[data-collab-id]")].find((element) => element.dataset.collabId === data.recordId && element.dataset.collabField === data.field);
           if (input) input.value = data.value;
           return;
         }
         if (data.type === "add" && !state.editRecords.some((entry) => entry.id === data.record.id)) {
-          state.editRecords.push(data.record); access.revision += 1; renderKeepingFocus(); return;
+          state.editRecords.push(data.record); access.revision += 1; saveEditorDraft(); renderKeepingFocus(); return;
         }
         if (data.type === "remove") {
           const index = state.editRecords.findIndex((entry) => entry.id === data.recordId);
-          if (index >= 0) { state.editRecords.splice(index, 1); access.revision += 1; renderKeepingFocus(); }
+          if (index >= 0) { state.editRecords.splice(index, 1); access.revision += 1; saveEditorDraft(); renderKeepingFocus(); }
           return;
         }
       };
@@ -4624,7 +4701,8 @@
         if (!record) return closeMetadataEditor();
         record.metadataEntries = entries;
         record.metadata = metadataText(entries);
-        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: state.selected, recordId: record.id, field: "metadataEntries", value: structuredClone(entries) }); postCollab("edit", { setId: state.selected, recordId: record.id, field: "metadata", value: record.metadata }); }
+        saveEditorDraft();
+        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadataEntries", value: structuredClone(entries) }); postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field: "metadata", value: record.metadata }); }
         state.metadataEditorIndex = null;
         state.metadataEditorDraft = [];
         state.metadataEditorError = "";
@@ -5278,12 +5356,8 @@
         return { added, modified, removed: state.removedRecords };
       }
       function resetSetSelection() {
-        state.setSources = projectMaterials().slice(0, 2).map((item) => item.id);
-        state.setRecords = selectedMaterials().flatMap((item) =>
-          item.sampleRecords.map((record) =>
-            recordKey(item.id, record.sequence),
-          ),
-        );
+        state.setSources = [];
+        state.setRecords = [];
         state.editRecords = [];
         state.removedRecords = 0;
         state.setError = "";
@@ -5337,16 +5411,19 @@
         const record = state.editRecords[index];
         if (!record) return;
         record[field] = value;
-        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: state.selected, recordId: record.id, field, value }); }
+        saveEditorDraft();
+        if (activeEditingSet()) { access.revision += 1; postCollab("edit", { setId: activeEditingSet(), recordId: record.id, field, value }); }
       }
       function focusEdit(input) { access.editingField = { recordId: input.dataset.collabId, field: input.dataset.collabField }; sendPresence(); }
       function blurEdit() { access.editingField = null; sendPresence(); if (access.editConflict) render(); }
       function setSetPurpose(value) {
         state.setPurpose = value;
+        saveEditorDraft(true);
       }
       function setSetName(value) {
         state.setName = value;
         state.setError = "";
+        saveEditorDraft(true);
       }
       function addEditRecord() {
         state.editRecords.push({
@@ -5359,11 +5436,17 @@
           metadataEntries: [],
           original: null,
         });
+        saveEditorDraft();
+        state.editorFocusId = state.editRecords.at(-1).id;
         render();
       }
       function removeEditRecord(index) {
+        if (!state.editRecords[index]) return;
         if (state.editRecords[index].original) state.removedRecords += 1;
+        const id = state.editRecords[index].id;
         state.editRecords.splice(index, 1);
+        if (state.editorFocusId === id) state.editorFocusId = null;
+        saveEditorDraft();
         render();
       }
       function toggleSource(id, checked) {
@@ -5383,6 +5466,8 @@
             ]
           : state.setRecords.filter((key) => !key.startsWith(`${id}:`));
         state.setError = "";
+        syncEditorSourceRecords();
+        saveEditorDraft(true);
         render();
       }
       function toggleRecord(materialId, sequence, checked) {
@@ -5391,6 +5476,8 @@
           ? [...new Set([...state.setRecords, key])]
           : state.setRecords.filter((value) => value !== key);
         state.setError = "";
+        syncEditorSourceRecords();
+        saveEditorDraft(true);
         render();
       }
       function toggleAllRecords(materialId, checked) {
@@ -5405,6 +5492,8 @@
           ? [...new Set([...state.setRecords, ...keys])]
           : state.setRecords.filter((key) => !keys.includes(key));
         state.setError = "";
+        syncEditorSourceRecords();
+        saveEditorDraft(true);
         render();
       }
       async function pickFiles(files) {
@@ -5429,6 +5518,7 @@
         return pickFiles(file ? [file] : []);
       }
       function nav(screen) {
+        if (activeEditingSet()) { saveEditorDraft(); state.modal = null; }
         if (screen === "projects") {
           backToProjects();
           return;
@@ -5454,6 +5544,7 @@
         render();
       }
       function selectProject(id) {
+        if (activeEditingSet()) { saveEditorDraft(); state.modal = null; }
         if (!projectById(id)) return;
         const targetScreen = state.screen === "settings" ? "settings" : state.screen === "sets" ? "sets" : "materials";
         state.activeProject = id;
@@ -5624,8 +5715,22 @@
           state.uploadCollection =
             collectionId || state.collection || unfiledCollectionId();
         }
-        if (kind === "set") resetSetSelection();
-        if (kind === "iterate") resetIteration();
+        if (kind === "set" || kind === "iterate") {
+          if (kind === "set") resetSetSelection(); else resetIteration();
+          state.editorTab = "records";
+          state.editorQuery = "";
+          state.editorPage = 0;
+          state.editorSourceQuery = "";
+          state.editorSourcePage = 0;
+          state.editorPickQuery = "";
+          state.editorPickPage = 0;
+          state.editorFocusId = null;
+          state.editorParentVersion = kind === "iterate" ? activeSet(selectedItem()).version : null;
+          state.step = 2;
+          if (!restoreEditorDraft()) beginSetEditing();
+          saveEditorDraft();
+          if (kind === "iterate") postCollab("request-draft", { setId: activeEditingSet() });
+        }
         render();
       }
       function openSetTrash(id) {
@@ -5857,6 +5962,7 @@
         render();
       }
       function closeModal() {
+        if (activeEditingSet()) saveEditorDraft();
         state.modal = null;
         state.purgeTarget = null;
         state.purgeConfirmation = "";
@@ -5877,6 +5983,11 @@
         render();
       }
       async function next() {
+        if (state.modal === "set" && state.step === 2 && !state.setName.trim()) {
+          state.setError = "请填写测试集名称。";
+          render();
+          return;
+        }
         if (state.modal === "upload" && state.step === 0 && !state.upload) {
           state.uploadError = "请先选择一个可解析的文件。";
           render();
@@ -6058,6 +6169,7 @@
           state.screen = "sets";
           notify("已创建新的测试集版本。");
         }
+        if (state.modal === "set" || state.modal === "iterate") clearEditorDraft();
         state.modal = null;
         state.step = 0;
         state.upload = null;
@@ -6874,6 +6986,152 @@
         }
         return `<div class="parse-summary ${state.upload.issues.length ? "warning" : ""}">已映射 ${state.upload.sampleRecords.length} 条统一记录 / 共 ${state.upload.sourceRecords.length} 条原始记录${state.upload.issues.length ? ` · ${state.upload.issues.length} 条需要注意的信息` : " · 未发现可定位的解析问题"}</div>${uploadMappingWorkspace(state.upload)}${state.uploadError ? `<p class="simple-form-error">${escape(state.uploadError)}</p>` : ""}${parseIssuesMarkup(state.upload.issues)}<div class="mapping-note"><b>映射后的数据预览</b> · 当前显示前 ${Math.min(6, state.upload.sampleRecords.length)} 条，确认后将保存全部 ${state.upload.sampleRecords.length} 条统一记录。</div>${uploadRecordPreview(state.upload)}`;
       }
+      const editorDraftPrefix = "evalbase-editor-draft-v1";
+      function editorDraftKey() {
+        if (!activeEditingSet()) return null;
+        return `${editorDraftPrefix}:${state.activeProject}:${state.modal}:${state.modal === "set" ? "new" : state.selected}:${state.editorParentVersion || "v1"}`;
+      }
+      function editorDraftSnapshot() {
+        return {
+          setName: state.setName, setPurpose: state.setPurpose,
+          setSources: state.setSources, setRecords: state.setRecords,
+          editRecords: state.editRecords, removedRecords: state.removedRecords,
+          parentVersion: state.editorParentVersion, savedAt: Date.now(),
+        };
+      }
+      function saveEditorDraft(broadcast = false) {
+        const key = editorDraftKey();
+        if (!key) return;
+        const snapshot = editorDraftSnapshot();
+        try {
+          localStorage.setItem(key, JSON.stringify(snapshot));
+          state.editorSavedAt = snapshot.savedAt;
+          const label = document.getElementById("editor-save-status");
+          if (label) label.textContent = "已保存草稿 · 同浏览器同步";
+        } catch {
+          state.editorSavedAt = null;
+          const label = document.getElementById("editor-save-status");
+          if (label) label.textContent = "保存失败，请勿关闭页面";
+        }
+        if (broadcast) postCollab("draft-state", { setId: activeEditingSet(), snapshot: structuredClone(snapshot) });
+      }
+      function restoreEditorDraft() {
+        const key = editorDraftKey();
+        if (!key) return false;
+        try {
+          const draft = JSON.parse(localStorage.getItem(key) || "null");
+          if (!draft || draft.parentVersion !== state.editorParentVersion ||
+              !Array.isArray(draft.setSources) || !Array.isArray(draft.setRecords) ||
+              !Array.isArray(draft.editRecords)) return false;
+          state.setName = typeof draft.setName === "string" ? draft.setName : "";
+          state.setPurpose = typeof draft.setPurpose === "string" ? draft.setPurpose : "";
+          state.setSources = draft.setSources;
+          state.setRecords = draft.setRecords;
+          state.editRecords = draft.editRecords;
+          state.removedRecords = draft.removedRecords || 0;
+          state.editorSavedAt = draft.savedAt || null;
+          state.editorFocusId = draft.editRecords[0]?.id || null;
+          return true;
+        } catch { return false; }
+      }
+      function clearEditorDraft() {
+        const key = editorDraftKey();
+        if (key) localStorage.removeItem(key);
+        state.editorSavedAt = null;
+      }
+      function discardEditorDraft() {
+        if (!window.confirm("放弃此草稿？已发布的版本不会受到影响。")) return;
+        clearEditorDraft();
+        state.modal = null;
+        state.step = 0;
+        state.editorFocusId = null;
+        sendPresence();
+        render();
+      }
+      function syncEditorSourceRecords() {
+        const sourceIds = new Set(projectMaterials().flatMap((item) => item.sampleRecords.map((record) => recordKey(item.id, record.sequence))));
+        const existing = new Map(state.editRecords.map((record) => [record.id, record]));
+        const kept = state.editRecords.filter((record) => !sourceIds.has(record.id));
+        const additions = selectedRecordEntries().map(({ item, record }) => existing.get(recordKey(item.id, record.sequence)) || ({
+          id: recordKey(item.id, record.sequence), caseId: `source-${item.id}-${record.sequence}`,
+          source: item.name, question: record.question, prediction: record.prediction,
+          metadata: record.metadata, metadataEntries: copyMetadataEntries(record),
+          origin: sourceRef(item, record), original: state.modal === "iterate" ? null : { ...record },
+        }));
+        state.editRecords = [...kept, ...additions];
+        if (!state.editRecords.some((record) => record.id === state.editorFocusId)) state.editorFocusId = state.editRecords[0]?.id || null;
+      }
+      function editorTab(tab) { state.editorTab = tab; render(); }
+      function setEditorQuery(value) { state.editorQuery = value; state.editorPage = 0; render(); }
+      function setEditorSourceQuery(value) { state.editorSourceQuery = value; state.editorSourcePage = 0; render(); }
+      function setEditorPickQuery(value) { state.editorPickQuery = value; state.editorPickPage = 0; render(); }
+      function editorPage(value) { state.editorPage = Math.max(0, value); render(); }
+      function editorSourcePage(value) { state.editorSourcePage = Math.max(0, value); render(); }
+      function editorPickPage(value) { state.editorPickPage = Math.max(0, value); render(); }
+      function selectEditorRecord(id) { state.editorFocusId = id; render(); if (id) document.getElementById("editor-question")?.focus(); }
+      function editorFilesFiltered() {
+        const query = state.editorSourceQuery.trim().toLowerCase();
+        return projectMaterials().filter((item) => `${item.name} ${collectionById(item.collectionId)?.name || ""} ${item.type}`.toLowerCase().includes(query));
+      }
+      function editorRecordsFiltered() {
+        const query = state.editorPickQuery.trim().toLowerCase();
+        return selectedMaterials().flatMap((item) => item.sampleRecords.map((record) => ({ item, record })))
+          .filter(({ item, record }) => `${item.name} ${record.question} ${record.prediction}`.toLowerCase().includes(query));
+      }
+      function toggleSourcesBulk(scope, checked) {
+        const files = editorFilesFiltered();
+        const batch = scope === "page" ? files.slice(state.editorSourcePage * 10, (state.editorSourcePage + 1) * 10) : files;
+        const ids = new Set(batch.map((item) => item.id));
+        state.setSources = checked ? [...new Set([...state.setSources, ...ids])] : state.setSources.filter((id) => !ids.has(id));
+        const keys = batch.flatMap((item) => item.sampleRecords.map((record) => recordKey(item.id, record.sequence)));
+        state.setRecords = checked ? [...new Set([...state.setRecords, ...keys])] : state.setRecords.filter((key) => !keys.includes(key));
+        syncEditorSourceRecords(); saveEditorDraft(true); render();
+      }
+      function toggleRecordsBulk(scope, checked) {
+        const entries = editorRecordsFiltered();
+        const batch = scope === "page" ? entries.slice(state.editorPickPage * 20, (state.editorPickPage + 1) * 20) : entries;
+        const keys = new Set(batch.map(({ item, record }) => recordKey(item.id, record.sequence)));
+        state.setRecords = checked ? [...new Set([...state.setRecords, ...keys])] : state.setRecords.filter((key) => !keys.has(key));
+        syncEditorSourceRecords(); saveEditorDraft(true); render();
+      }
+      function editorPager(total, page, size, action) {
+        if (total <= size) return "";
+        const last = Math.max(0, Math.ceil(total / size) - 1);
+        return `<div class="editor-pager"><span>第 ${Math.min(page, last) + 1} / ${last + 1} 页 · 共 ${total} 条</span><button class="button" ${page <= 0 ? "disabled" : ""} onclick="app.${action}(${page - 1})">上一页</button><button class="button" ${page >= last ? "disabled" : ""} onclick="app.${action}(${page + 1})">下一页</button></div>`;
+      }
+      function editorPageActions() {
+        const iterating = state.modal === "iterate";
+        const plan = iterating ? nextVersionPlan(selectedItem(), activeSet(selectedItem())) : null;
+        return `<button class="button ghost" onclick="app.discardEditorDraft()">放弃草稿</button><button class="button" onclick="app.closeModal()">保存并退出</button><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button>`;
+      }
+      function editorRecordsPanel() {
+        const changes = editChangeSummary();
+        const query = state.editorQuery.trim().toLowerCase();
+        const rows = state.editRecords.map((record, index) => ({ record, index }))
+          .filter(({ record }) => `${record.source} ${record.question} ${record.prediction} ${record.metadata}`.toLowerCase().includes(query));
+        const last = Math.max(0, Math.ceil(rows.length / 20) - 1);
+        state.editorPage = Math.min(state.editorPage, last);
+        const page = rows.slice(state.editorPage * 20, (state.editorPage + 1) * 20);
+        const focusedIndex = state.editRecords.findIndex((record) => record.id === state.editorFocusId);
+        const focused = state.editRecords[focusedIndex];
+        const detail = focused ? `<section class="editor-detail dataset-card" aria-label="记录编辑区"><div class="editor-card-head"><div><h2>编辑记录</h2><p>${escape(focused.source)} · 第 ${focusedIndex + 1} 条</p></div><button class="button ghost" onclick="app.selectEditorRecord(null)">收起</button></div><div class="editor-detail-body"><div class="form-field"><label for="editor-question">问题</label><textarea id="editor-question" data-collab-id="${escape(focused.id)}" data-collab-field="question" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'question', this.value)">${escape(focused.question)}</textarea></div><div class="form-field"><label for="editor-prediction">预测输出</label><textarea id="editor-prediction" data-collab-id="${escape(focused.id)}" data-collab-field="prediction" onfocus="app.focusEdit(this)" onblur="app.blurEdit()" oninput="app.updateEdit(${focusedIndex}, 'prediction', this.value)">${escape(focused.prediction)}</textarea></div><div class="form-field"><label>Metadata</label>${metadataEditorButton(focused, focusedIndex)}</div><div class="editor-detail-foot"><span>字段修改会保存到当前草稿。</span><button class="button ghost editor-remove" onclick="app.removeEditRecord(${focusedIndex})">移除记录</button></div></div></section>` : `<section class="editor-detail dataset-card editor-detail-empty"><h2>选择一条记录</h2><p>在左侧表格选择记录后，可在这里编辑长文本和 Metadata。</p></section>`;
+        return `<div class="editor-card dataset-card"><div class="editor-card-head"><div><h2>草稿记录</h2><p>共 ${state.editRecords.length} 条 · 新增 ${changes.added} · 修改 ${changes.modified} · 移除 ${changes.removed}</p></div><button class="button" onclick="app.addEditRecord()">＋ 新增记录</button></div><div class="editor-toolbar"><input aria-label="搜索草稿记录" data-search-key="editor-records" value="${escape(state.editorQuery)}" placeholder="搜索问题、输出或来源" oninput="app.setEditorQuery(this.value)" /><span>每页 20 条</span></div><div class="editor-table-scroll"><table class="dataset-table editor-table"><thead><tr><th>序号</th><th>问题</th><th>预测输出</th><th>来源</th><th></th></tr></thead><tbody>${page.length ? page.map(({ record, index }) => `<tr class="${record.id === state.editorFocusId ? "editor-selected" : ""}"><td>${index + 1}</td><td title="${escape(record.question)}"><button class="editor-question-link" onclick="app.selectEditorRecord('${escape(record.id)}')">${escape(record.question || "未填写")}</button></td><td title="${escape(record.prediction)}">${escape(record.prediction || "未填写")}</td><td>${escape(record.source)}</td><td><button class="button ghost" onclick="app.selectEditorRecord('${escape(record.id)}')">编辑</button></td></tr>`).join("") : `<tr><td colspan="5" class="editor-empty">${state.editRecords.length ? "没有匹配的记录。" : "草稿还没有记录；可在“添加资料”中选择，或手动新增。"}</td></tr>`}</tbody></table></div>${editorPager(rows.length, state.editorPage, 20, "editorPage")}</div>${detail}`;
+      }
+      function editorSourcesPanel() {
+        const files = editorFilesFiltered();
+        state.editorSourcePage = Math.min(state.editorSourcePage, Math.max(0, Math.ceil(files.length / 10) - 1));
+        const filePage = files.slice(state.editorSourcePage * 10, (state.editorSourcePage + 1) * 10);
+        const entries = editorRecordsFiltered();
+        state.editorPickPage = Math.min(state.editorPickPage, Math.max(0, Math.ceil(entries.length / 20) - 1));
+        const recordPage = entries.slice(state.editorPickPage * 20, (state.editorPickPage + 1) * 20);
+        return `<div class="editor-source-layout"><section class="dataset-card editor-card"><div class="editor-card-head"><div><h2>1. 选择资料文件</h2><p>已选 ${state.setSources.length} 个文件。勾选文件时默认纳入其全部记录。</p></div></div><div class="editor-toolbar"><input aria-label="搜索资料文件" data-search-key="editor-files" value="${escape(state.editorSourceQuery)}" placeholder="搜索数据集或文件" oninput="app.setEditorSourceQuery(this.value)" /></div><div class="editor-bulk"><span>当前搜索结果 ${files.length} 个文件</span><button class="button" onclick="app.toggleSourcesBulk('page', true)">选择本页</button><button class="button" onclick="app.toggleSourcesBulk('all', true)">选择全部结果</button><button class="button ghost" onclick="app.toggleSourcesBulk('all', false)">取消全部结果</button></div><div class="editor-table-scroll"><table class="dataset-table editor-table"><thead><tr><th></th><th>文件</th><th>数据集</th><th>记录数</th></tr></thead><tbody>${filePage.length ? filePage.map((item) => `<tr><td><input type="checkbox" aria-label="选择 ${escape(item.name)}" ${state.setSources.includes(item.id) ? "checked" : ""} onchange="app.toggleSource('${item.id}', this.checked)" /></td><td>${escape(item.name)}</td><td>${escape(collectionById(item.collectionId)?.name || "未整理")}</td><td>${item.sampleRecords.length}</td></tr>`).join("") : `<tr><td colspan="4" class="editor-empty">没有匹配的文件。</td></tr>`}</tbody></table></div>${editorPager(files.length, state.editorSourcePage, 10, "editorSourcePage")}</section><section class="dataset-card editor-card"><div class="editor-card-head"><div><h2>2. 选择记录</h2><p>已选 ${selectedRecordEntries().length} 条资料记录；父版本记录会自动继承。</p></div></div><div class="editor-toolbar"><input aria-label="搜索资料记录" data-search-key="editor-source-records" value="${escape(state.editorPickQuery)}" placeholder="搜索问题、输出或文件" oninput="app.setEditorPickQuery(this.value)" /></div><div class="editor-bulk"><span>当前搜索结果 ${entries.length} 条</span><button class="button" onclick="app.toggleRecordsBulk('page', true)">选择本页</button><button class="button" onclick="app.toggleRecordsBulk('all', true)">选择全部结果</button><button class="button ghost" onclick="app.toggleRecordsBulk('all', false)">取消全部结果</button></div><div class="editor-table-scroll"><table class="dataset-table editor-table"><thead><tr><th></th><th>问题</th><th>文件</th><th>序号</th></tr></thead><tbody>${recordPage.length ? recordPage.map(({ item, record }) => `<tr><td><input type="checkbox" aria-label="选择 ${escape(item.name)} 第 ${record.sequence} 条" ${state.setRecords.includes(recordKey(item.id, record.sequence)) ? "checked" : ""} onchange="app.toggleRecord('${item.id}', ${record.sequence}, this.checked)" /></td><td title="${escape(record.question)}">${escape(record.question)}</td><td>${escape(item.name)}</td><td>${record.sequence}</td></tr>`).join("") : `<tr><td colspan="4" class="editor-empty">${state.setSources.length ? "没有匹配的记录。" : "先选择资料文件。"}</td></tr>`}</tbody></table></div>${editorPager(entries.length, state.editorPickPage, 20, "editorPickPage")}</section></div>`;
+      }
+      function editorWorkspace() {
+        const iterating = state.modal === "iterate";
+        const parent = iterating ? activeSet(selectedItem()) : null;
+        const plan = iterating ? nextVersionPlan(selectedItem(), parent) : null;
+        return `<div class="editor-workspace"><div class="editor-intro dataset-card"><div><strong>${iterating ? `草稿基于 ${escape(state.editorParentVersion)} · 计划发布 ${escape(plan.version)}` : "测试集 v1 草稿"}</strong><p>${iterating ? `已继承父版本 ${parent.records} 条记录。编辑仅作用于草稿；发布后生成新版本。` : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}</p></div><span id="editor-save-status" role="status">${state.editorSavedAt ? "已保存草稿 · 同浏览器同步" : "尚未保存"}</span></div>${!iterating ? `<section class="editor-identity dataset-card"><div class="form-field"><label for="set-name">测试集名称</label><input id="set-name" value="${escape(state.setName)}" placeholder="例如：客服基础问答" oninput="app.setSetName(this.value)" /></div><div class="form-field"><label for="set-purpose">用途说明（可选）</label><textarea id="set-purpose" oninput="app.setSetPurpose(this.value)" placeholder="简述测试集用途">${escape(state.setPurpose)}</textarea></div></section>` : ""}<div class="editor-tabs" role="tablist" aria-label="测试集草稿工作区"><button role="tab" aria-selected="${state.editorTab === "records"}" class="${state.editorTab === "records" ? "active" : ""}" onclick="app.editorTab('records')">草稿记录 <span>${state.editRecords.length}</span></button><button role="tab" aria-selected="${state.editorTab === "sources"}" class="${state.editorTab === "sources" ? "active" : ""}" onclick="app.editorTab('sources')">添加资料 <span>${state.setSources.length}</span></button></div>${collabToolbar()}${state.setError ? `<p class="simple-form-error" role="alert">${escape(state.setError)}</p>` : ""}${state.editorTab === "records" ? `<div class="editor-record-layout">${editorRecordsPanel()}</div>` : editorSourcesPanel()}<div class="editor-bottom"><span>原型 Mock 草稿保存在当前浏览器；可用同源标签页体验协作。</span><button class="button primary" onclick="app.next()">${iterating ? `创建 ${escape(plan.version)}` : "创建 v1"}</button></div></div>`;
+      }
       function testSetBody() {
         const iterating = state.modal === "iterate";
         const item = iterating ? selectedItem() : null;
@@ -7088,6 +7346,7 @@
         const isMaterial = state.screen === "materials";
         const isSet = state.screen === "sets";
         const isSettings = state.screen === "settings";
+        const inEditor = isSet && activeEditingSet();
         const browsing = !isProject && state.view === "browser";
         const lineage = isSet && state.view === "lineage";
         const inCollection = isMaterial && state.view === "collection";
@@ -7095,7 +7354,7 @@
         const testSetBrowserItem =
           (browsing || lineage) && isSet ? activeSet(selectedItem()) : null;
         if (isSettings && state.view === "members" && !canRead()) state.view = "info";
-        const pageTitle = isSettings ? ({ profile: "个人资料", info: "信息", members: "项目成员" }[state.view] || "个人资料") : isProject
+        const pageTitle = inEditor ? (state.modal === "set" ? "新建测试集" : `基于 ${escape(state.editorParentVersion)} 创建新版本`) : isSettings ? ({ profile: "个人资料", info: "信息", members: "项目成员" }[state.view] || "个人资料") : isProject
           ? title
           : lineage
             ? "来源与修改"
@@ -7106,7 +7365,7 @@
           : inCollection
             ? collectionById().name
             : title;
-        const pageDescription = isSettings ? (state.view === "profile" ? "管理你的显示名称与头像颜色。" : state.view === "info" ? "查看并接受发给你的项目邀请。" : `${escape(projectById()?.name || "当前项目")} · 管理项目成员和访问权限。`) : isProject && !visibleProjects().length ? "注册成功；到设置中的信息页接受项目邀请后即可进入项目。" : lineage
+        const pageDescription = inEditor ? "编辑共享草稿，确认后发布为不可变版本。" : isSettings ? (state.view === "profile" ? "管理你的显示名称与头像颜色。" : state.view === "info" ? "查看并接受发给你的项目邀请。" : `${escape(projectById()?.name || "当前项目")} · 管理项目成员和访问权限。`) : isProject && !visibleProjects().length ? "注册成功；到设置中的信息页接受项目邀请后即可进入项目。" : lineage
           ? `${escape(testSetBrowserItem.name)} · ${escape(testSetBrowserItem.version)} · 查看本版本的数据来源和改动。`
           : browsing
           ? materialBrowserItem
@@ -7117,7 +7376,7 @@
           : inCollection
             ? ""
             : description;
-        const pageAction = isSettings ? (state.view === "members" && canManage() ? `<button class="button primary" onclick="app.toggleInvite()">${state.inviteOpen ? "取消邀请" : "邀请成员"}</button>` : "") : isProject
+        const pageAction = inEditor ? editorPageActions() : isSettings ? (state.view === "members" && canManage() ? `<button class="button primary" onclick="app.toggleInvite()">${state.inviteOpen ? "取消邀请" : "邀请成员"}</button>` : "") : isProject
           ? (visibleProjects().length ? '<button class="button primary" onclick="app.openModal(\'project\')">＋ 新建项目</button>' : "")
           : materialBrowserItem
           ? `<button class="button" onclick="app.backToList()">返回数据集</button><button class="button" onclick="app.openRaw()">查看原始内容</button>`
@@ -7130,7 +7389,7 @@
           : isMaterial
             ? `<button class="button" onclick="app.openModal('upload', '${inCollection ? state.collection : unfiledCollectionId()}')">上传文件</button><button class="button primary" onclick="app.openModal('collection')">＋ 新建数据集</button>`
             : `<button class="button" onclick="app.openModal('trash')">回收站${trashCount() ? ` ${trashCount()}` : ""}</button><button class="button primary" onclick="app.openModal('set')">＋ 新建测试集</button>`;
-        const content = isSettings ? settingsWorkspace() : lineage
+        const content = inEditor ? editorWorkspace() : isSettings ? settingsWorkspace() : lineage
           ? lineageBrowser(selectedItem())
           : browsing
           ? isMaterial
@@ -7139,7 +7398,7 @@
           : workspace();
         const activeProject = projectById();
         document.getElementById("app").innerHTML =
-          `<div class="shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}"><aside class="rail"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg></div><div><strong>EvalBase</strong><span>团队测试资料库</span></div></div><div><p class="nav-label">资料库</p><nav class="nav" aria-label="主导航"><button class="${isMaterial ? "active" : ""}" onclick="app.nav('materials')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></svg></span>数据集</button><button class="${!isMaterial ? "active" : ""}" onclick="app.nav('sets')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg></span>测试集</button></nav></div><div class="rail-bottom"><nav class="nav" aria-label="设置导航"><button class="${isSettings ? "active" : ""}" title="设置" onclick="app.openSettings()"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"/><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/></svg></span>设置</button></nav><div class="rail-foot">本地演示 Mock</div></div></aside><main class="main"><header class="app-header"><span class="app-header-start"><button class="sidebar-toggle" aria-label="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" title="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" onclick="app.toggleSidebar()">☰</button><span>团队测试资料库 · 登录与多人原型</span></span><span class="account-tools"><span class="online-users" aria-label="在线成员">${onlineUsersMarkup()}</span><button onclick="app.signOut()">登出</button></span></header><div class="page-wrap"><header class="page-head"><div><h1>${pageTitle}</h1>${pageDescription ? `<p class="subhead">${pageDescription}</p>` : ""}</div><div class="page-actions">${pageAction}</div></header>${content}</div></main></div>${modal()}${metadataEditorModal()}${state.notice ? `<div class="toast">${state.notice}</div>` : ""}`;
+          `<div class="shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}"><aside class="rail"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg></div><div><strong>EvalBase</strong><span>团队测试资料库</span></div></div><div><p class="nav-label">资料库</p><nav class="nav" aria-label="主导航"><button class="${isMaterial ? "active" : ""}" onclick="app.nav('materials')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></svg></span>数据集</button><button class="${!isMaterial ? "active" : ""}" onclick="app.nav('sets')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg></span>测试集</button></nav></div><div class="rail-bottom"><nav class="nav" aria-label="设置导航"><button class="${isSettings ? "active" : ""}" title="设置" onclick="app.openSettings()"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"/><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/></svg></span>设置</button></nav><div class="rail-foot">本地演示 Mock</div></div></aside><main class="main"><header class="app-header"><span class="app-header-start"><button class="sidebar-toggle" aria-label="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" title="${state.sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" onclick="app.toggleSidebar()">☰</button><span>团队测试资料库 · 登录与多人原型</span></span><span class="account-tools"><span class="online-users" aria-label="在线成员">${onlineUsersMarkup()}</span><button onclick="app.signOut()">登出</button></span></header><div class="page-wrap"><header class="page-head"><div><h1>${pageTitle}</h1>${pageDescription ? `<p class="subhead">${pageDescription}</p>` : ""}</div><div class="page-actions">${pageAction}</div></header>${content}</div></main></div>${inEditor ? "" : modal()}${metadataEditorModal()}${state.notice ? `<div class="toast">${state.notice}</div>` : ""}`;
         const projectIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" /></svg>`;
         const testSetIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /><line x1="8" x2="10" y1="9" y2="9" /></svg>`;
         const navigation = document.querySelector(".nav");
@@ -7450,6 +7709,9 @@
         setSetPurpose,
         addEditRecord,
         removeEditRecord,
+        editorTab, setEditorQuery, setEditorSourceQuery, setEditorPickQuery,
+        editorPage, editorSourcePage, editorPickPage, selectEditorRecord,
+        toggleSourcesBulk, toggleRecordsBulk, discardEditorDraft,
         next,
         prev,
         createInitialOwner, openRegistration, registerUser, updatePasswordHints, fillLogin, signIn, signOut, backToLogin, openSettings, settingsTab, previewProfile, chooseProfileColor, saveProfile, toggleInvite, inviteMember, previewInvite, revokeInvite, expireInvite, acceptInvite, acceptPendingInvite, changeMemberRole, removeMember, resolveEditConflict, focusEdit, blurEdit,
@@ -7487,7 +7749,7 @@
           if (name === "closeModal" && access.pendingPublishedSet) { const set = mock.sets.find((entry) => entry.id === access.publishConflict?.setId); if (set) Object.assign(set, access.pendingPublishedSet); access.pendingPublishedSet = null; access.publishConflict = null; render(); }
           if (name === "addEditRecord" && editSetId) { access.revision += 1; postCollab("add", { setId: editSetId, record: structuredClone(state.editRecords.at(-1)) }); }
           if (name === "removeEditRecord" && editSetId && editRecord) { access.revision += 1; postCollab("remove", { setId: editSetId, recordId: editRecord.id }); }
-          if (name === "next" && !editSetId && activeEditingSet()) postCollab("request-draft", { setId: state.selected });
+          if (name === "openModal" && activeEditingSet()) postCollab("request-draft", { setId: activeEditingSet() });
           if (publishing) Promise.resolve(result).then(() => { const set = mock.sets.find((entry) => entry.id === editSetId); if (set && set.version !== beforeVersion) postCollab("published", { setId: editSetId, set: structuredClone(set) }); sendPresence(); });
           if (["openModal", "closeModal", "next", "prev", "nav", "selectProject"].includes(name)) sendPresence();
           if (name === "createProject" && mock.projects.length > before) { access.members.push({ projectId: mock.projects[0].id, userId: access.userId, role: "owner" }); render(); }
