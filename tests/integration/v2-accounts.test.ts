@@ -592,6 +592,41 @@ describe("v2 account bootstrap", () => {
           "INSERT INTO project_member(project_id,user_id,role) VALUES('legacy_project','user_owner','owner')",
         );
         await db.query(
+          "INSERT INTO test_set (id,project_id,name,purpose,owner_id) VALUES ('legacy_set','legacy_project','Legacy set','upgrade fixture','user_owner')",
+        );
+        await db.query(
+          "INSERT INTO formal_schema_revision (id,test_set_id,mode,input_schema,expected_output_schema) VALUES ('legacy_schema','legacy_set','gold_required','{}'::jsonb,'{}'::jsonb)",
+        );
+        await db.query(
+          "INSERT INTO working_draft (id,test_set_id,status,updated_by) VALUES ('legacy_draft','legacy_set','editing','user_owner')",
+        );
+        await db.query(
+          "INSERT INTO candidate_snapshot (id,draft_id,status) VALUES ('legacy_candidate','legacy_draft','published_as_version')",
+        );
+        const contentHash = "a".repeat(64);
+        await db.query(
+          `INSERT INTO test_set_version
+             (id,test_set_id,sequence,candidate_id,schema_revision_id,
+              payload_hash,evidence_hash,manifest_hash,manifest_object_ref,
+              item_count,published_by,published_at,publication_order,generation,version_label)
+           VALUES ('legacy_version','legacy_set',1,'legacy_candidate','legacy_schema',
+                   $1,$1,$1,'synthetic/legacy',1,'user_owner',now(),1,1,'v1')`,
+          [contentHash],
+        );
+        await db.query(
+          "INSERT INTO test_case (id,test_set_id) VALUES ('legacy_case','legacy_set')",
+        );
+        await db.query(
+          `INSERT INTO case_revision
+             (id,case_id,input,expected_output,metadata,source_record_ordinal,content_hash,lineage_fingerprint,origin_kind)
+           VALUES ('legacy_revision','legacy_case','{"question":"preserved after upgrade"}'::jsonb,
+                   '{"text":"answer"}'::jsonb,'{}'::jsonb,1,$1,$1,'manual')`,
+          [contentHash],
+        );
+        await db.query(
+          "INSERT INTO version_member (version_id,case_revision_id,ordinal) VALUES ('legacy_version','legacy_revision',1)",
+        );
+        await db.query(
           "INSERT INTO app_user(id, username, password_hash, role) VALUES('unreviewed','unknown',$1,'viewer')",
           [hash],
         );
@@ -649,6 +684,17 @@ describe("v2 account bootstrap", () => {
           })
         ).statusCode,
       ).toBe(200);
+      const legacyRecords = await legacyApp.inject({
+        method: "GET",
+        url: "/api/projects/legacy_project/solo-test-sets/legacy_set/versions/legacy_version/records?limit=10&offset=0",
+        headers: { cookie },
+      });
+      expect(legacyRecords.statusCode, legacyRecords.body).toBe(200);
+      expect(
+        legacyRecords
+          .json()
+          .records.map((row: { question: string }) => row.question),
+      ).toEqual(["preserved after upgrade"]);
     } finally {
       await legacyApp?.close();
       const admin = createPool(baseUrl);
