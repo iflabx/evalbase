@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-09-18T06:33:42.348Z",
+  "gitSha": "3f1c725",
+  "recordCount": 10000,
+  "scenarios": {
+    "legacyOneUpdate": {
+      "elapsedMs": 221.92723899999987,
+      "walBytes": 2118152,
+      "payloadBytes": 1286779,
+      "markerBytes": 271,
+      "totalBytes": 1287050,
+      "memberRows": 10000
+    },
+    "legacyHundredUpdates": {
+      "elapsedMs": 237.41245800000002,
+      "walBytes": 2122952,
+      "payloadBytes": 1290259,
+      "markerBytes": 271,
+      "totalBytes": 1290530,
+      "memberRows": 10000
+    },
+    "deltaOneUpdate": {
+      "elapsedMs": 43.07968599999981,
+      "walBytes": 624,
+      "payloadBytes": 192,
+      "markerBytes": 267,
+      "totalBytes": 459,
+      "changeRows": 1
+    },
+    "deltaHundredUpdates": {
+      "elapsedMs": 86.09137499999997,
+      "walBytes": 22752,
+      "payloadBytes": 6807,
+      "markerBytes": 268,
+      "totalBytes": 7075,
+      "changeRows": 100
+    }
+  },
+  "storage": {
+    "legacyMemberRows": 30000,
+    "deltaChangeRows": 122,
+    "deltaCheckpointMemberRows": 20000,
+    "relationBytes": {
+      "spike_version_change": 65536,
+      "spike_legacy_member": 2572288,
+      "spike_checkpoint_member": 1728512
+    }
+  },
+  "correctness": {
+    "legacyAndDeltaV2Equal": true,
+    "legacyAndDeltaV100Equal": true,
+    "checkpointPreservesV20": true,
+    "checkpointReplaysV21": true,
+    "branchIsIndependent": true,
+    "addDeletePreservesOrder": true
+  }
+}

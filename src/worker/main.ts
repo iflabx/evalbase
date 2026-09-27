@@ -43,6 +43,7 @@ import {
 import { metricSnapshot, renderMetrics } from "../observability/metrics.js";
 import { scanConsistency } from "../observability/consistency.js";
 import { validatePackageBytes } from "../validator/validate.js";
+import { materializePeriodicCheckpoint } from "../version/checkpoint.js";
 import {
   ControlledDeletionError,
   executeControlledDeletion,
@@ -984,7 +985,7 @@ async function materializeCandidate(
       `SELECT cr.id AS revision_id, cr.case_id, cr.input, cr.expected_output,
               cr.metadata, cr.content_hash, cr.lineage_fingerprint,
               cr.lineage_level, cr.origin_ref, cr.transformation_run_id
-       FROM version_member vm JOIN case_revision cr ON cr.id = vm.case_revision_id
+       FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id = vm.case_revision_id
        WHERE vm.version_id = $1 ORDER BY vm.ordinal`,
       [row.base_version_id],
     );
@@ -3794,6 +3795,14 @@ while (!stopping) {
       result = await materializeCandidate(db, artifacts, job);
     else if (job.kind === "publish_version")
       result = await publishVersion(db, artifacts, job);
+    else if (job.kind === "materialize_version_checkpoint")
+      result = {
+        outcome: await materializePeriodicCheckpoint(
+          db,
+          String(job.payload.versionId),
+          job.project_id,
+        ),
+      };
     else if (job.kind === "generate_package")
       result = await generatePackage(db, artifacts, job);
     else if (job.kind === "generate_langfuse_csv")

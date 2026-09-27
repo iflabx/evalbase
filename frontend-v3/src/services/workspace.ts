@@ -105,12 +105,24 @@ export type VersionRecord = {
 
 export type EditableVersionRecord = TestSetRecord & {
   ordinal: number;
+  caseId: string;
+  revisionId: string;
   source: {
     assetId: string;
     ordinal: number;
   } | null;
   parentOrdinal: number;
 };
+
+export type VersionEditOperation =
+  | { operation: "add"; after: TestSetRecord }
+  | {
+      operation: "update";
+      caseId: string;
+      beforeRevisionId: string;
+      after: TestSetRecord;
+    }
+  | { operation: "delete"; caseId: string; beforeRevisionId: string };
 
 export type VersionRecordPage = Page<VersionRecord> & {
   filterOptions: {
@@ -493,7 +505,7 @@ export async function createSoloTestSet(
       name: input.name,
       purpose: input.purpose,
       selections: input.selections,
-      records: input.records,
+      operations: input.records.map((record) => ({ operation: "add", after: record })),
     }),
   });
 }
@@ -543,22 +555,36 @@ export async function listSoloVersionRecords(
   };
 }
 
-export async function listAllSoloVersionRecords(
+export async function listSoloVersionEditingPage(
   projectId: string,
   testSetId: string,
   versionId: string,
-): Promise<EditableVersionRecord[]> {
-  const records: EditableVersionRecord[] = [];
-  for (let offset = 0; ; offset += 100) {
-    const response = await request<{
-      records: EditableVersionRecord[];
-      pagination: { total: number };
-    }>(
-      `/api/projects/${encodeURIComponent(projectId)}/solo-test-sets/${encodeURIComponent(testSetId)}/versions/${encodeURIComponent(versionId)}/editing-records?limit=100&offset=${offset}`,
-    );
-    records.push(...response.records);
-    if (records.length >= response.pagination.total) return records;
-  }
+  offset: number,
+): Promise<{
+  records: EditableVersionRecord[];
+  pagination: { total: number; limit: number; offset: number };
+}> {
+  return request<{
+    records: EditableVersionRecord[];
+    pagination: { total: number; limit: number; offset: number };
+  }>(
+    `/api/projects/${encodeURIComponent(projectId)}/solo-test-sets/${encodeURIComponent(testSetId)}/versions/${encodeURIComponent(versionId)}/editing-records?limit=10&offset=${offset}`,
+  );
+}
+
+export async function findSoloVersionEditingSource(
+  projectId: string,
+  testSetId: string,
+  versionId: string,
+  assetId: string,
+  ordinal: number,
+): Promise<EditableVersionRecord | undefined> {
+  const page = await request<{
+    records: EditableVersionRecord[];
+  }>(
+    `/api/projects/${encodeURIComponent(projectId)}/solo-test-sets/${encodeURIComponent(testSetId)}/versions/${encodeURIComponent(versionId)}/editing-records?limit=1&offset=0&sourceAssetId=${encodeURIComponent(assetId)}&sourceOrdinal=${ordinal}`,
+  );
+  return page.records[0];
 }
 
 export async function getSoloVersionRecord(
@@ -577,8 +603,7 @@ export async function deriveSoloTestSetVersion(
   testSetId: string,
   parentVersionId: string,
   input: {
-    selections: Array<{ assetId: string; ordinal: number }>;
-    records: TestSetRecord[];
+    operations: VersionEditOperation[];
     idempotencyKey: string;
   },
 ) {
@@ -590,7 +615,7 @@ export async function deriveSoloTestSetVersion(
     {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
-      body: JSON.stringify({ selections: input.selections, records: input.records }),
+      body: JSON.stringify({ operations: input.operations }),
     },
   );
 }

@@ -1,16 +1,7 @@
 {
   "name": "evalbase",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@github.com/iflabx/evalbase.git"
-  },
-  "bugs": {
-    "url": "https://github.com/iflabx/evalbase/issues"
-  },
-  "homepage": "https://github.com/iflabx/evalbase#readme",
   "type": "module",
   "engines": {
     "node": ">=24 <25"
@@ -24,13 +15,12 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write src tests scripts README.md README.zh-CN.md docs *.ts *.json *.yaml",
-    "format:check": "prettier --check src tests scripts README.md README.zh-CN.md docs *.ts *.json *.yaml",
+    "format": "prettier --write src tests scripts AGENTS.md README.md docs/agents/phase1a-progress.md *.ts *.json *.yaml",
+    "format:check": "prettier --check src tests scripts AGENTS.md README.md docs/agents/phase1a-progress.md *.ts *.json *.yaml",
     "docs:check": "node scripts/check-docs.mjs",
-    "licenses:generate": "node scripts/generate-third-party-notices.mjs",
-    "licenses:check": "node scripts/generate-third-party-notices.mjs --check",
     "persistence:create": "node scripts/persistence-check.mjs create",
     "persistence:verify": "node scripts/persistence-check.mjs verify",
+    "spike:incremental": "tsx src/spikes/run-incremental-version-storage-spike.ts",
     "build": "npm --prefix frontend-v3 run build:formal && tsc -p tsconfig.server.json",
     "db:migrate": "tsx src/db/migrate.ts"
   },

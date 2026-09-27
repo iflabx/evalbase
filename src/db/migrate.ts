@@ -652,6 +652,279 @@ CREATE TABLE IF NOT EXISTS version_member (
   ordinal integer NOT NULL,
   PRIMARY KEY (version_id, ordinal)
 );
+ALTER TABLE test_set_version
+  ADD COLUMN IF NOT EXISTS storage_format text NOT NULL DEFAULT 'legacy_full_v1';
+ALTER TABLE test_set_version
+  DROP CONSTRAINT IF EXISTS test_set_version_storage_format_check;
+ALTER TABLE test_set_version
+  ADD CONSTRAINT test_set_version_storage_format_check
+  CHECK (storage_format IN ('legacy_full_v1', 'delta_v1'));
+CREATE TABLE IF NOT EXISTS version_change (
+  version_id text NOT NULL REFERENCES test_set_version(id) ON DELETE CASCADE,
+  case_id text NOT NULL REFERENCES test_case(id) ON DELETE RESTRICT,
+  operation text NOT NULL CHECK (operation IN ('add', 'update', 'delete')),
+  position bigint NOT NULL CHECK (position > 0),
+  before_revision_id text REFERENCES case_revision(id) ON DELETE SET NULL,
+  before_content_hash text,
+  after_revision_id text REFERENCES case_revision(id) ON DELETE RESTRICT,
+  after_content_hash text,
+  PRIMARY KEY (version_id, case_id),
+  UNIQUE (version_id, position),
+  CHECK (
+    (operation = 'add'
+      AND before_revision_id IS NULL AND before_content_hash IS NULL
+      AND after_revision_id IS NOT NULL AND after_content_hash IS NOT NULL
+      AND after_content_hash ~ '^[0-9a-f]{64}$')
+    OR
+    (operation = 'update'
+      AND before_content_hash IS NOT NULL
+      AND before_content_hash ~ '^[0-9a-f]{64}$'
+      AND after_revision_id IS NOT NULL AND after_content_hash IS NOT NULL
+      AND after_content_hash ~ '^[0-9a-f]{64}$')
+    OR
+    (operation = 'delete'
+      AND before_content_hash IS NOT NULL
+      AND before_content_hash ~ '^[0-9a-f]{64}$'
+      AND after_revision_id IS NULL AND after_content_hash IS NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS version_change_case_id_idx
+  ON version_change (case_id);
+CREATE INDEX IF NOT EXISTS version_change_before_revision_id_idx
+  ON version_change (before_revision_id);
+CREATE INDEX IF NOT EXISTS version_change_after_revision_id_idx
+  ON version_change (after_revision_id);
+CREATE TABLE IF NOT EXISTS version_checkpoint (
+  version_id text PRIMARY KEY REFERENCES test_set_version(id) ON DELETE CASCADE,
+  format_version smallint NOT NULL DEFAULT 1 CHECK (format_version = 1),
+  reason text NOT NULL
+    CHECK (reason IN ('initial', 'periodic', 'hard_limit', 'deletion_cut')),
+  retention_class text NOT NULL
+    CHECK (retention_class IN ('rebuildable', 'required_dependency')),
+  item_count integer NOT NULL CHECK (item_count >= 0),
+  members_hash text NOT NULL CHECK (members_hash ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (reason <> 'deletion_cut' OR retention_class = 'required_dependency')
+);
+CREATE TABLE IF NOT EXISTS version_checkpoint_member (
+  version_id text NOT NULL REFERENCES version_checkpoint(version_id) ON DELETE CASCADE,
+  position bigint NOT NULL CHECK (position > 0),
+  case_id text NOT NULL REFERENCES test_case(id) ON DELETE RESTRICT,
+  case_revision_id text NOT NULL REFERENCES case_revision(id) ON DELETE RESTRICT,
+  PRIMARY KEY (version_id, position),
+  UNIQUE (version_id, case_id)
+);
+CREATE INDEX IF NOT EXISTS version_checkpoint_member_case_id_idx
+  ON version_checkpoint_member (case_id);
+CREATE INDEX IF NOT EXISTS version_checkpoint_member_case_revision_id_idx
+  ON version_checkpoint_member (case_revision_id);
+CREATE TABLE IF NOT EXISTS version_export_cache (
+  version_id text NOT NULL REFERENCES test_set_version(id) ON DELETE CASCADE,
+  export_type text NOT NULL CHECK (export_type IN ('data.csv', 'provenance.csv')),
+  serializer_version integer NOT NULL,
+  evidence_fingerprint text NOT NULL CHECK (evidence_fingerprint ~ '^[0-9a-f]{64}$'),
+  document text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (version_id, export_type, serializer_version, evidence_fingerprint)
+);
+CREATE TABLE IF NOT EXISTS version_provenance_cut_fact (
+  version_id text NOT NULL REFERENCES test_set_version(id) ON DELETE CASCADE,
+  case_id text NOT NULL REFERENCES test_case(id) ON DELETE RESTRICT,
+  change_type text NOT NULL CHECK (change_type IN ('added', 'removed', 'modified', 'unchanged')),
+  changed_fields jsonb NOT NULL DEFAULT '[]'::jsonb,
+  PRIMARY KEY (version_id, case_id)
+);
+CREATE TABLE IF NOT EXISTS version_provenance_cut_state (
+  version_id text PRIMARY KEY REFERENCES test_set_version(id) ON DELETE CASCADE,
+  parent_version_id text NOT NULL REFERENCES test_set_version(id),
+  completed_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE FUNCTION checkpoint_members_hash(checkpoint_version_id text)
+RETURNS text LANGUAGE sql STABLE AS $checkpoint_hash$
+  SELECT encode(sha256(convert_to(
+    '[' || COALESCE(string_agg(
+      '[' || m.position::text || ',' || to_json(m.case_id)::text || ',' ||
+      to_json(m.case_revision_id)::text || ']', ',' ORDER BY m.position
+    ), '') || ']', 'UTF8')), 'hex')
+  FROM version_checkpoint_member m
+  WHERE m.version_id = checkpoint_version_id;
+$checkpoint_hash$;
+CREATE OR REPLACE FUNCTION resolve_version_members_internal(
+  requested_version_id text,
+  allow_unavailable boolean,
+  check_count boolean
+)
+RETURNS TABLE (
+  version_id text,
+  case_revision_id text,
+  ordinal integer,
+  case_id text,
+  "position" bigint
+)
+LANGUAGE plpgsql STABLE AS $resolver$
+DECLARE
+  target_status text;
+  target_test_set_id text;
+  expected_count integer;
+  anchor_id text;
+  anchor_depth integer;
+  anchor_format text;
+  anchor_is_checkpoint boolean;
+  actual_count integer;
+BEGIN
+  SELECT v.status, v.test_set_id, v.item_count
+    INTO target_status, target_test_set_id, expected_count
+    FROM test_set_version v WHERE v.id = requested_version_id;
+  IF NOT FOUND OR
+     (NOT allow_unavailable AND target_status IN
+       ('tombstoned', 'permanently_deleted', 'degraded_by_deletion')) THEN
+    RETURN;
+  END IF;
+
+  WITH RECURSIVE ancestors AS (
+    SELECT v.id, v.parent_version_id, v.storage_format, v.status, 0 AS depth,
+           EXISTS (
+             SELECT 1 FROM version_checkpoint cp
+              WHERE cp.version_id = v.id
+                AND cp.item_count = (
+                  SELECT count(*) FROM version_checkpoint_member m
+                   WHERE m.version_id = cp.version_id
+                )
+                AND cp.members_hash = checkpoint_members_hash(cp.version_id)
+           ) AS has_checkpoint
+      FROM test_set_version v WHERE v.id = requested_version_id
+    UNION ALL
+    SELECT v.id, v.parent_version_id, v.storage_format, v.status, a.depth + 1,
+           EXISTS (
+             SELECT 1 FROM version_checkpoint cp
+              WHERE cp.version_id = v.id
+                AND cp.item_count = (
+                  SELECT count(*) FROM version_checkpoint_member m
+                   WHERE m.version_id = cp.version_id
+                )
+                AND cp.members_hash = checkpoint_members_hash(cp.version_id)
+           )
+      FROM ancestors a JOIN test_set_version v ON v.id = a.parent_version_id
+     WHERE a.storage_format = 'delta_v1' AND NOT a.has_checkpoint
+       AND a.depth < 10000
+  )
+  SELECT a.id, a.depth, a.storage_format, a.has_checkpoint
+    INTO anchor_id, anchor_depth, anchor_format, anchor_is_checkpoint
+    FROM ancestors a
+   WHERE a.storage_format = 'legacy_full_v1' OR a.has_checkpoint
+   ORDER BY a.depth LIMIT 1;
+  IF anchor_id IS NULL THEN
+    RAISE EXCEPTION 'version_resolution_base_missing: %', requested_version_id;
+  END IF;
+  IF NOT allow_unavailable AND EXISTS (
+    WITH RECURSIVE path AS (
+      SELECT v.id, v.parent_version_id, v.status, v.cleanup_pending, 0 AS depth
+        FROM test_set_version v WHERE v.id = requested_version_id
+      UNION ALL
+      SELECT v.id, v.parent_version_id, v.status, v.cleanup_pending, p.depth + 1
+        FROM path p JOIN test_set_version v ON v.id = p.parent_version_id
+       WHERE p.depth < anchor_depth
+    )
+    SELECT 1 FROM path
+     WHERE status IN ('permanently_deleted', 'degraded_by_deletion')
+        OR (status = 'tombstoned' AND NOT cleanup_pending)
+  ) THEN
+    RAISE EXCEPTION 'version_resolution_dependency_unavailable: %',
+      requested_version_id;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM version_member vm
+    JOIN case_revision cr ON cr.id = vm.case_revision_id
+    JOIN test_case tc ON tc.id = cr.case_id
+    WHERE vm.version_id = anchor_id AND anchor_format = 'legacy_full_v1'
+      AND NOT anchor_is_checkpoint AND tc.test_set_id <> target_test_set_id
+  ) OR EXISTS (
+    SELECT 1 FROM version_checkpoint_member cm
+    JOIN test_case tc ON tc.id = cm.case_id
+    JOIN case_revision cr ON cr.id = cm.case_revision_id
+    WHERE cm.version_id = anchor_id AND anchor_is_checkpoint
+      AND (tc.test_set_id <> target_test_set_id OR cr.case_id <> cm.case_id)
+  ) OR EXISTS (
+    WITH RECURSIVE path AS (
+      SELECT v.id, v.parent_version_id, 0 AS depth
+        FROM test_set_version v WHERE v.id = requested_version_id
+      UNION ALL
+      SELECT v.id, v.parent_version_id, p.depth + 1
+        FROM path p JOIN test_set_version v ON v.id = p.parent_version_id
+       WHERE p.depth < anchor_depth
+    )
+    SELECT 1 FROM path p
+    JOIN version_change ch ON ch.version_id = p.id
+    JOIN test_case tc ON tc.id = ch.case_id
+    LEFT JOIN case_revision cr ON cr.id = ch.after_revision_id
+    WHERE p.depth < anchor_depth
+      AND (tc.test_set_id <> target_test_set_id
+        OR (ch.after_revision_id IS NOT NULL AND cr.case_id <> ch.case_id))
+  ) THEN
+    RAISE EXCEPTION 'version_resolution_cross_test_set_reference: %',
+      requested_version_id;
+  END IF;
+
+  RETURN QUERY
+  WITH RECURSIVE ancestors AS (
+    SELECT v.id, v.parent_version_id, 0 AS depth
+      FROM test_set_version v WHERE v.id = requested_version_id
+    UNION ALL
+    SELECT v.id, v.parent_version_id, a.depth + 1
+      FROM ancestors a JOIN test_set_version v ON v.id = a.parent_version_id
+     WHERE a.depth < anchor_depth
+  ),
+  candidates AS (
+    SELECT cr.case_id, vm.case_revision_id, vm.ordinal::bigint AS position,
+           anchor_depth AS layer
+      FROM version_member vm
+      JOIN case_revision cr ON cr.id = vm.case_revision_id
+     WHERE vm.version_id = anchor_id AND anchor_format = 'legacy_full_v1'
+       AND NOT anchor_is_checkpoint
+    UNION ALL
+    SELECT cm.case_id, cm.case_revision_id, cm.position, anchor_depth
+      FROM version_checkpoint_member cm
+     WHERE cm.version_id = anchor_id AND anchor_is_checkpoint
+    UNION ALL
+    SELECT ch.case_id, ch.after_revision_id, ch.position, a.depth
+      FROM ancestors a JOIN version_change ch ON ch.version_id = a.id
+     WHERE a.depth < anchor_depth
+  ),
+  latest AS (
+    SELECT DISTINCT ON (c.case_id) c.case_id, c.case_revision_id, c.position
+      FROM candidates c ORDER BY c.case_id, c.layer
+  )
+  SELECT requested_version_id, live.case_revision_id,
+         row_number() OVER (ORDER BY live.position, live.case_id)::integer,
+         live.case_id, live.position
+    FROM latest live
+   WHERE live.case_revision_id IS NOT NULL
+   ORDER BY live.position, live.case_id;
+  GET DIAGNOSTICS actual_count = ROW_COUNT;
+  IF check_count AND actual_count <> expected_count THEN
+    RAISE EXCEPTION 'version_resolution_count_mismatch: %', requested_version_id;
+  END IF;
+END;
+$resolver$;
+CREATE OR REPLACE FUNCTION resolve_version_members(
+  requested_version_id text,
+  allow_unavailable boolean DEFAULT false
+)
+RETURNS TABLE (
+  version_id text,
+  case_revision_id text,
+  ordinal integer,
+  case_id text,
+  "position" bigint
+)
+LANGUAGE sql STABLE AS $resolver$
+  SELECT * FROM resolve_version_members_internal(requested_version_id, allow_unavailable, true);
+$resolver$;
+CREATE OR REPLACE VIEW resolved_version_member AS
+  SELECT member.version_id, member.case_revision_id, member.ordinal,
+         member.case_id, member.position
+    FROM test_set_version v
+    CROSS JOIN LATERAL resolve_version_members(v.id) member;
 CREATE TABLE IF NOT EXISTS delivery_record (
   id text PRIMARY KEY,
   version_id text UNIQUE NOT NULL REFERENCES test_set_version(id),

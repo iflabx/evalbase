@@ -48,6 +48,7 @@ Run focused integration or browser tests when a change affects an HTTP route, pe
 - Add or update tests for changed observable behavior.
 - Update documentation when behavior, setup, or user-visible text changes.
 - Do not commit secrets, real datasets, database volumes, generated build output, or browser reports.
+- Do not modify `frontend-v1/`; it is an immutable visual/component donor.
 - Use `frontend-v3/` for formal frontend changes.
 - Explain the user-visible effect and validation evidence in the pull request description.
 

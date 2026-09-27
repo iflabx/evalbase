@@ -1,0 +1,53 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: agentbench_v2_ticket30_owner
+      POSTGRES_USER: agentbench_ticket30_owner
+      POSTGRES_PASSWORD: synthetic-nonproduction-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentbench_ticket30_owner -d agentbench_v2_ticket30_owner"]
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: agentbench-ticket30-owner
+      MINIO_ROOT_PASSWORD: synthetic-nonproduction-only
+
+  web:
+    environment: &owner-environment
+      DATABASE_URL: postgresql://agentbench_ticket30_owner:synthetic-nonproduction-only@postgres:5432/agentbench_v2_ticket30_owner
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: agentbench-ticket30-owner
+      MINIO_SECRET_KEY: synthetic-nonproduction-only
+      MINIO_BUCKET: agentbench-v2-ticket30-owner
+      APP_ORIGIN: http://127.0.0.1:4210
+      GIT_SHA: ${GIT_SHA:-unknown}
+      SOLO_OWNER_MODE: "true"
+      OWNER_PASSWORD: owner-test-password
+      ALLOW_TEST_IDENTITY: "false"
+    ports: !override
+      - "127.0.0.1:4210:3000"
+
+  worker:
+    environment:
+      <<: *owner-environment
+      WORKER_HEALTH_PORT: "3001"
+
+networks:
+  edge:
+    name: agentbench-ticket30-owner-checkpoint-edge
+    ipam:
+      config:
+        - subnet: 10.254.58.0/24
+  internal:
+    name: agentbench-ticket30-owner-checkpoint-internal
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.59.0/24
+
+volumes:
+  postgres-data:
+    name: agentbench-ticket30-owner-checkpoint-postgres-data
+  minio-data:
+    name: agentbench-ticket30-owner-checkpoint-minio-data

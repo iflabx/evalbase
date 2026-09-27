@@ -1,0 +1,41 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: agentbench_v2_ticket25_test
+      POSTGRES_USER: agentbench_ticket25_test
+      POSTGRES_PASSWORD: synthetic-nonproduction-only
+  minio:
+    environment:
+      MINIO_ROOT_USER: agentbench-ticket25-test
+      MINIO_ROOT_PASSWORD: synthetic-nonproduction-only
+  test:
+    environment:
+      DATABASE_URL: postgresql://agentbench_ticket25_test:synthetic-nonproduction-only@postgres:5432/agentbench_v2_ticket25_test
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: agentbench-ticket25-test
+      MINIO_SECRET_KEY: synthetic-nonproduction-only
+      MINIO_BUCKET: agentbench-v2-ticket25-test
+      APP_ORIGIN: http://127.0.0.1:3000
+      SOLO_OWNER_MODE: "true"
+      OWNER_PASSWORD: owner-test-password
+      ALLOW_TEST_IDENTITY: "true"
+
+networks:
+  edge:
+    name: agentbench-ticket25-test-edge
+    ipam:
+      config:
+        - subnet: 10.254.42.0/24
+  internal:
+    name: agentbench-ticket25-test-internal
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.43.0/24
+
+volumes:
+  postgres-data:
+    name: agentbench-ticket25-test-postgres-data
+  minio-data:
+    name: agentbench-ticket25-test-minio-data

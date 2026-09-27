@@ -3,11 +3,11 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "frontend-v3/**", "node_modules/**", "test-results/**"] },
+  { ignores: ["dist/**", "frontend-v1/**", "node_modules/**", "test-results/**"] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["tests/e2e/**/*.ts"],
+    files: ["src/web/**/*.{ts,tsx}", "tests/e2e/**/*.ts"],
     languageOptions: { globals: globals.browser },
   },
   {

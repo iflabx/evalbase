@@ -60,6 +60,16 @@ import {
   validateFormalItems,
 } from "../schema/formal.js";
 import { ArtifactRepository } from "../storage/artifacts.js";
+import { createCheckpoint } from "../version/checkpoint.js";
+import {
+  encodeDeltaManifest,
+  publishSparseVersion,
+  type SparseOperation,
+} from "../version/publish-sparse.js";
+import {
+  snapshotPayloadHash,
+  storedRecord,
+} from "../version/snapshot-record.js";
 import {
   registerRun,
   trace as traceLineageGraph,
@@ -1209,7 +1219,8 @@ export async function buildApp(
       if (
         !isPlainObject(request.body) ||
         Object.keys(request.body).some(
-          (key) => !["name", "purpose", "selections", "records"].includes(key),
+          (key) =>
+            !["name", "purpose", "selections", "operations"].includes(key),
         ) ||
         typeof request.body.name !== "string" ||
         request.body.name.trim().length < 1 ||
@@ -1218,13 +1229,26 @@ export async function buildApp(
           (typeof request.body.purpose !== "string" ||
             request.body.purpose.length > 2_000)) ||
         !Array.isArray(request.body.selections) ||
-        !Array.isArray(request.body.records)
+        !Array.isArray(request.body.operations)
       )
         return reply
           .code(422)
           .send({ error: { code: "test_set_payload_invalid" } });
       const selections = request.body.selections;
-      const records = request.body.records;
+      const operations = request.body.operations;
+      if (
+        operations.some(
+          (operation) =>
+            !isPlainObject(operation) ||
+            Object.keys(operation).length !== 2 ||
+            operation.operation !== "add" ||
+            !Object.keys(operation).includes("after"),
+        )
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "test_set_payload_invalid" } });
+      const records = operations.map((operation) => operation.after);
       if (!records.length)
         return reply
           .code(422)
@@ -1445,18 +1469,86 @@ export async function buildApp(
         const payload = Buffer.from(
           `${testRecords.map((record) => canonicalJson(record)).join("\n")}\n`,
         );
-        storedManifest = await artifacts.storeImmutable(
-          Buffer.from(
-            canonicalJson({ versionId, records: testRecords }) + "\n",
-          ),
-          `solo-test-set-${testSetId}`,
-        );
         const payloadHash = sha256(payload);
         const evidenceHash = sha256(
           canonicalJson({ sources: selectedSources, payloadHash }),
         );
-        const manifestHash = sha256(
-          canonicalJson({ versionId, payloadHash, evidenceHash }),
+        const planned = testRecords.map((record, index) => {
+          const source = record.source
+            ? sourceByKey.get(
+                `${record.source.assetId}:${record.source.ordinal}`,
+              )
+            : undefined;
+          const contentHash = sha256(canonicalJson(record));
+          return {
+            record,
+            position: String(index + 1),
+            caseId: opaqueId("case"),
+            revisionId: opaqueId("revision"),
+            contentHash,
+            source,
+            originRef: source
+              ? {
+                  assetId: record.source!.assetId,
+                  parsedViewId: source.parsed_view_id,
+                  ordinal: record.source!.ordinal,
+                  locator: source.locator,
+                  recordHash: source.record_hash,
+                }
+              : { kind: "manual" },
+            lineageFingerprint: sha256(
+              canonicalJson({
+                source: record.source ?? { kind: "manual" },
+                contentHash,
+              }),
+            ),
+          };
+        });
+        const publishedAt = new Date().toISOString();
+        const { bytes: manifest, manifestHash } = encodeDeltaManifest({
+          format: "evalbase.test-set-delta-manifest",
+          format_version: 1,
+          version_id: versionId,
+          test_set_id: testSetId,
+          parent_version_id: null,
+          publication_order: 1,
+          generation: 1,
+          branch_number: null,
+          version_label: "v1",
+          published_at: publishedAt,
+          schema_revision_id: schemaId,
+          item_count: testRecords.length,
+          payload_hash: payloadHash,
+          evidence_hash: evidenceHash,
+          changes: planned.map((item) => ({
+            case_id: item.caseId,
+            operation: "add",
+            position: item.position,
+            before_revision_id: null,
+            before_content_hash: null,
+            after_revision_id: item.revisionId,
+            after_content_hash: item.contentHash,
+          })),
+          new_revisions: [...planned]
+            .sort((a, b) => a.revisionId.localeCompare(b.revisionId))
+            .map((item) => ({
+              revision_id: item.revisionId,
+              case_id: item.caseId,
+              parent_revision_id: null,
+              input: { question: item.record.question },
+              expected_output: { text: item.record.expectedOutput },
+              metadata: item.record.metadata,
+              source_record_ordinal: item.record.source?.ordinal ?? 0,
+              content_hash: item.contentHash,
+              origin_kind: item.record.source ? "source_record" : "manual",
+              origin_ref: item.originRef,
+              lineage_fingerprint: item.lineageFingerprint,
+              lineage_level: "record_level",
+            })),
+        });
+        storedManifest = await artifacts.storeImmutable(
+          manifest,
+          `solo-test-set-${testSetId}`,
         );
         await client.query(
           `INSERT INTO test_set (id, project_id, name, purpose, owner_id)
@@ -1502,8 +1594,10 @@ export async function buildApp(
           `INSERT INTO test_set_version
              (id, test_set_id, sequence, candidate_id, schema_revision_id, payload_hash,
               evidence_hash, manifest_hash, manifest_object_ref, item_count, published_by,
-              published_at, publication_order, generation, branch_number, version_label)
-           VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, now(), 1, 1, NULL, 'v1')`,
+              published_at, publication_order, generation, branch_number, version_label,
+              storage_format)
+           VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, 1, NULL, 'v1',
+                   'delta_v1')`,
           [
             versionId,
             testSetId,
@@ -1515,24 +1609,20 @@ export async function buildApp(
             storedManifest.objectRef,
             testRecords.length,
             actor.id,
+            publishedAt,
           ],
         );
-        for (const [index, record] of testRecords.entries()) {
-          const ordinal = index + 1;
-          const caseId = opaqueId("case");
-          const revisionId = opaqueId("revision");
-          const source = record.source
-            ? sourceByKey.get(
-                `${record.source.assetId}:${record.source.ordinal}`,
-              )
-            : undefined;
-          const contentHash = sha256(canonicalJson(record));
-          const lineageFingerprint = sha256(
-            canonicalJson({
-              source: record.source ?? { kind: "manual" },
-              contentHash,
-            }),
-          );
+        for (const item of planned) {
+          const {
+            record,
+            caseId,
+            revisionId,
+            source,
+            contentHash,
+            lineageFingerprint,
+            originRef,
+            position,
+          } = item;
           await client.query(
             `INSERT INTO test_case (id, test_set_id) VALUES ($1, $2)`,
             [caseId, testSetId],
@@ -1540,8 +1630,8 @@ export async function buildApp(
           await client.query(
             `INSERT INTO case_revision
                (id, case_id, input, expected_output, metadata, source_record_ordinal,
-                content_hash, origin_kind, origin_ref, lineage_fingerprint)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                 content_hash, origin_kind, origin_ref, lineage_fingerprint)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
               revisionId,
               caseId,
@@ -1551,15 +1641,7 @@ export async function buildApp(
               record.source?.ordinal ?? 0,
               contentHash,
               record.source ? "source_record" : "manual",
-              source
-                ? {
-                    assetId: record.source?.assetId,
-                    parsedViewId: source.parsed_view_id,
-                    ordinal: record.source?.ordinal,
-                    locator: source.locator,
-                    recordHash: source.record_hash,
-                  }
-                : { kind: "manual" },
+              originRef,
               lineageFingerprint,
             ],
           );
@@ -1570,7 +1652,7 @@ export async function buildApp(
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
               candidateId,
-              ordinal,
+              Number(position),
               caseId,
               record.source?.ordinal ?? 0,
               contentHash,
@@ -1585,11 +1667,69 @@ export async function buildApp(
             ],
           );
           await client.query(
-            `INSERT INTO version_member (version_id, case_revision_id, ordinal)
-             VALUES ($1, $2, $3)`,
-            [versionId, revisionId, ordinal],
+            `INSERT INTO version_change
+               (version_id,case_id,operation,position,before_revision_id,before_content_hash,
+                after_revision_id,after_content_hash)
+             VALUES ($1,$2,'add',$3,NULL,NULL,$4,$5)`,
+            [versionId, caseId, position, revisionId, contentHash],
           );
         }
+        const membersHash = sha256(
+          canonicalJson(
+            planned.map(({ position, caseId, revisionId }) => [
+              Number(position),
+              caseId,
+              revisionId,
+            ]),
+          ),
+        );
+        await client.query(
+          `INSERT INTO version_checkpoint
+             (version_id,reason,retention_class,item_count,members_hash)
+           VALUES ($1,'initial','rebuildable',$2,$3)`,
+          [versionId, planned.length, membersHash],
+        );
+        if (planned.length)
+          await client.query(
+            `INSERT INTO version_checkpoint_member
+               (version_id,position,case_id,case_revision_id)
+             SELECT $1,x.position::bigint,x.case_id,x.case_revision_id
+               FROM jsonb_to_recordset($2::jsonb)
+                 AS x(position text,case_id text,case_revision_id text)`,
+            [
+              versionId,
+              JSON.stringify(
+                planned.map(({ position, caseId, revisionId }) => ({
+                  position,
+                  case_id: caseId,
+                  case_revision_id: revisionId,
+                })),
+              ),
+            ],
+          );
+        const verified = await client.query(
+          `SELECT checkpoint_members_hash($1) AS hash,
+                  (SELECT count(*)::int FROM version_checkpoint_member
+                    WHERE version_id=$1) AS count`,
+          [versionId],
+        );
+        if (
+          verified.rows[0].hash !== membersHash ||
+          verified.rows[0].count !== planned.length
+        )
+          throw new Error("initial_checkpoint_failed");
+        const resolved = await client.query(
+          `SELECT cr.input,cr.expected_output,cr.metadata,cr.origin_kind,cr.origin_ref
+             FROM resolve_version_members($1) vm
+             JOIN case_revision cr ON cr.id=vm.case_revision_id
+            ORDER BY vm.ordinal`,
+          [versionId],
+        );
+        if (
+          resolved.rowCount !== planned.length ||
+          snapshotPayloadHash(resolved.rows.map(storedRecord)) !== payloadHash
+        )
+          throw new Error("initial_checkpoint_failed");
         await client.query(
           "UPDATE test_set SET default_version_id = $2 WHERE id = $1",
           [testSetId, versionId],
@@ -1718,10 +1858,11 @@ export async function buildApp(
     projectId: string,
     testSetId: string,
     versionId: string,
+    queryClient: Pick<PoolClient, "query"> = db,
   ) {
-    const version = await db.query(
+    const version = await queryClient.query(
       `SELECT ts.id AS test_set_id, ts.name, v.id, v.version_label, v.item_count,
-              v.parent_version_id, v.published_at
+              v.parent_version_id, v.published_at, v.evidence_hash
          FROM test_set ts
          JOIN test_set_version v ON v.test_set_id = ts.id
         WHERE ts.project_id = $1 AND ts.id = $2 AND v.id = $3
@@ -1730,11 +1871,11 @@ export async function buildApp(
     );
     if (!version.rowCount) return undefined;
 
-    const members = async (id: string) => {
-      const result = await db.query(
+    const members = async (id: string, pending = false) => {
+      const result = await queryClient.query(
         `SELECT vm.ordinal, cr.case_id, cr.input, cr.expected_output, cr.metadata,
                 cr.origin_kind, cr.origin_ref
-           FROM version_member vm
+           FROM ${pending ? "resolve_version_members_internal($1,true,true)" : "resolve_version_members($1)"} vm
            JOIN case_revision cr ON cr.id = vm.case_revision_id
           WHERE vm.version_id = $1
           ORDER BY vm.ordinal`,
@@ -1744,13 +1885,56 @@ export async function buildApp(
     };
     const current = await members(versionId);
     const parentVersionId = version.rows[0].parent_version_id as string | null;
-    const previous = parentVersionId ? await members(parentVersionId) : [];
+    const parentState = parentVersionId
+      ? await queryClient.query(
+          "SELECT status,cleanup_pending,manifest_object_ref FROM test_set_version WHERE id = $1",
+          [parentVersionId],
+        )
+      : { rows: [] as Array<{ status: string }> };
+    const parentUnavailable =
+      parentState.rows[0] &&
+      ["tombstoned", "permanently_deleted", "degraded_by_deletion"].includes(
+        parentState.rows[0].status,
+      );
+    const cutState = parentUnavailable
+      ? await queryClient.query(
+          "SELECT 1 FROM version_provenance_cut_state WHERE version_id=$1 AND parent_version_id=$2",
+          [versionId, parentVersionId],
+        )
+      : { rowCount: 0 };
+    const parentPendingContent =
+      parentUnavailable &&
+      !cutState.rowCount &&
+      parentState.rows[0].cleanup_pending &&
+      !String(parentState.rows[0].manifest_object_ref).startsWith(
+        "tombstone:",
+      ) &&
+      !String(parentState.rows[0].manifest_object_ref).startsWith("deleted:");
+    const previous =
+      parentVersionId && (!parentUnavailable || parentPendingContent)
+        ? await members(parentVersionId, Boolean(parentPendingContent))
+        : [];
+    const cutFacts = parentUnavailable
+      ? await queryClient.query(
+          `SELECT case_id, change_type, changed_fields
+             FROM version_provenance_cut_fact WHERE version_id = $1`,
+          [versionId],
+        )
+      : { rows: [] as Array<Record<string, unknown>> };
+    const factById = new Map(
+      cutFacts.rows.map((row) => [String(row.case_id), row]),
+    );
     const currentById = new Map(current.map((record) => [record.id, record]));
     const previousById = new Map(previous.map((record) => [record.id, record]));
     const changes: SoloVersionChange[] = [];
-    for (const id of new Set([...previousById.keys(), ...currentById.keys()])) {
+    for (const id of new Set([
+      ...previousById.keys(),
+      ...currentById.keys(),
+      ...factById.keys(),
+    ])) {
       const currentRecord = currentById.get(id);
       const previousRecord = previousById.get(id);
+      const cutFact = factById.get(id);
       const currentValue = currentRecord
         ? (({
             id: _id,
@@ -1759,14 +1943,15 @@ export async function buildApp(
             ...value
           }) => value)(currentRecord)
         : null;
-      const previousValue = previousRecord
-        ? (({
-            id: _id,
-            ordinal: _ordinal,
-            parentRevisionId: _parentRevisionId,
-            ...value
-          }) => value)(previousRecord)
-        : null;
+      const previousValue =
+        previousRecord && !parentUnavailable
+          ? (({
+              id: _id,
+              ordinal: _ordinal,
+              parentRevisionId: _parentRevisionId,
+              ...value
+            }) => value)(previousRecord)
+          : null;
       const changedFields: string[] =
         currentRecord && previousRecord
           ? (["question", "expectedOutput", "metadata"] as const).filter(
@@ -1786,20 +1971,29 @@ export async function buildApp(
         changedFields.push("source");
       changes.push({
         id,
-        changeType: !previousRecord
-          ? "added"
-          : !currentRecord
-            ? "removed"
-            : changedFields.length ||
-                currentRecord.source?.assetId !==
-                  previousRecord.source?.assetId ||
-                currentRecord.source?.ordinal !== previousRecord.source?.ordinal
-              ? "modified"
-              : "unchanged",
+        changeType: cutFact
+          ? (String(cutFact.change_type) as SoloVersionChange["changeType"])
+          : !previousRecord
+            ? "added"
+            : !currentRecord
+              ? "removed"
+              : changedFields.length ||
+                  currentRecord.source?.assetId !==
+                    previousRecord.source?.assetId ||
+                  currentRecord.source?.ordinal !==
+                    previousRecord.source?.ordinal
+                ? "modified"
+                : "unchanged",
         current: currentValue,
         previous: previousValue,
-        source: currentRecord?.source ?? previousRecord?.source ?? null,
-        changedFields,
+        source:
+          currentRecord?.source ??
+          (!parentUnavailable ? previousRecord?.source : null) ??
+          null,
+        changedFields:
+          cutFact && Array.isArray(cutFact.changed_fields)
+            ? (cutFact.changed_fields as string[])
+            : changedFields,
       });
     }
 
@@ -1815,11 +2009,12 @@ export async function buildApp(
       ),
     ];
     const assets = sourceAssetIds.length
-      ? await db.query(
-          `SELECT da.id, da.file_name, da.collection_id, pv.display_mapping
+      ? await queryClient.query(
+          `SELECT da.id, da.file_name, da.collection_id, da.status, pv.display_mapping
              FROM data_asset da
              LEFT JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current
-            WHERE da.project_id = $1 AND da.id = ANY($2::text[])`,
+            WHERE da.project_id = $1 AND da.id = ANY($2::text[])
+            ORDER BY da.id`,
           [projectId, sourceAssetIds],
         )
       : { rows: [] as Array<Record<string, unknown>> };
@@ -1841,7 +2036,12 @@ export async function buildApp(
     const addedFileCounts = new Map<string, number>();
     for (const change of changes) {
       const assetId = change.current?.source?.assetId;
-      if (assetId && assetId !== change.previous?.source?.assetId)
+      if (
+        assetId &&
+        (change.changeType === "added" ||
+          (change.changeType === "modified" &&
+            change.changedFields.includes("source")))
+      )
         addedFileCounts.set(assetId, (addedFileCounts.get(assetId) ?? 0) + 1);
     }
     const addedFiles = [...addedFileCounts].map(([assetId, recordCount]) => {
@@ -1861,7 +2061,7 @@ export async function buildApp(
       };
     });
     const parent = parentVersionId
-      ? await db.query(
+      ? await queryClient.query(
           `SELECT version_label FROM test_set_version WHERE id = $1`,
           [parentVersionId],
         )
@@ -1875,6 +2075,8 @@ export async function buildApp(
       manualAddedCount: changes.filter(
         (change) => change.changeType === "added" && !change.source,
       ).length,
+      sourceFingerprint: sha256(canonicalJson(assets.rows)),
+      parentStatus: parentState.rows[0]?.status ?? null,
     };
   }
 
@@ -1908,532 +2110,98 @@ export async function buildApp(
         ))
       )
         return reply.code(404).send({ error: { code: "project_not_found" } });
+      const body = request.body;
       if (
-        !isPlainObject(request.body) ||
-        Object.keys(request.body).some(
-          (key) => !["selections", "records"].includes(key),
-        ) ||
-        !Array.isArray(request.body.selections) ||
-        !Array.isArray(request.body.records) ||
-        !request.body.records.length ||
-        request.body.selections.length > 10_000 ||
-        request.body.records.length > 10_000
+        !isPlainObject(body) ||
+        Object.keys(body).some((key) => key !== "operations") ||
+        !Array.isArray(body.operations) ||
+        body.operations.length > 10_000
       )
         return reply
           .code(422)
           .send({ error: { code: "test_set_payload_invalid" } });
-      const selections = request.body.selections.map((selection) => {
-        if (!isPlainObject(selection)) return undefined;
-        return Object.keys(selection).every((key) =>
-          ["assetId", "ordinal"].includes(key),
-        ) &&
-          typeof selection.assetId === "string" &&
-          typeof selection.ordinal === "number" &&
-          Number.isInteger(selection.ordinal) &&
-          selection.ordinal >= 0
-          ? { assetId: selection.assetId, ordinal: selection.ordinal }
-          : undefined;
-      });
-      if (selections.some((selection) => !selection))
-        return reply
-          .code(422)
-          .send({ error: { code: "source_selection_invalid" } });
-      const records = request.body.records.map((record) => {
-        const metadata = isPlainObject(record)
-          ? normalizeMetadataEntries(record.metadata)
-          : undefined;
+      const operations = body.operations;
+      for (const operation of operations) {
+        if (!isPlainObject(operation))
+          return reply
+            .code(422)
+            .send({ error: { code: "test_record_invalid" } });
+        const fields =
+          operation.operation === "add"
+            ? ["operation", "after"]
+            : operation.operation === "update"
+              ? ["operation", "caseId", "beforeRevisionId", "after"]
+              : operation.operation === "delete"
+                ? ["operation", "caseId", "beforeRevisionId"]
+                : [];
         if (
-          !isPlainObject(record) ||
-          Object.keys(record).some(
-            (key) =>
-              ![
-                "question",
-                "expectedOutput",
-                "metadata",
-                "source",
-                "parentOrdinal",
-              ].includes(key),
-          ) ||
-          typeof record.question !== "string" ||
-          typeof record.expectedOutput !== "string" ||
-          !metadata ||
-          (record.parentOrdinal !== undefined &&
-            (typeof record.parentOrdinal !== "number" ||
-              !Number.isInteger(record.parentOrdinal) ||
-              record.parentOrdinal < 1)) ||
-          record.question.length > 100_000 ||
-          record.expectedOutput.length > 100_000 ||
-          Buffer.byteLength(canonicalJson(metadata)) > 100_000
+          !fields.length ||
+          Object.keys(operation).length !== fields.length ||
+          Object.keys(operation).some((field) => !fields.includes(field)) ||
+          (operation.operation !== "delete" &&
+            !isPlainObject(operation.after)) ||
+          (operation.operation !== "add" &&
+            (typeof operation.caseId !== "string" ||
+              !operation.caseId ||
+              typeof operation.beforeRevisionId !== "string" ||
+              !operation.beforeRevisionId))
         )
-          return undefined;
-        if (record.source === undefined)
-          return {
-            question: record.question,
-            expectedOutput: record.expectedOutput,
-            metadata,
-            ...(record.parentOrdinal === undefined
-              ? {}
-              : { parentOrdinal: record.parentOrdinal }),
-          };
-        if (
-          !isPlainObject(record.source) ||
-          Object.keys(record.source).some(
-            (key) => !["assetId", "ordinal"].includes(key),
-          ) ||
-          typeof record.source.assetId !== "string" ||
-          typeof record.source.ordinal !== "number" ||
-          !Number.isInteger(record.source.ordinal) ||
-          record.source.ordinal < 0
-        )
-          return undefined;
-        return {
-          question: record.question,
-          expectedOutput: record.expectedOutput,
-          metadata,
-          source: {
-            assetId: record.source.assetId,
-            ordinal: record.source.ordinal,
-          },
-          ...(record.parentOrdinal === undefined
-            ? {}
-            : { parentOrdinal: record.parentOrdinal }),
-        };
-      });
-      if (records.some((record) => !record))
-        return reply.code(422).send({ error: { code: "test_record_invalid" } });
-      const submittedRecords = records as Array<{
-        question: string;
-        expectedOutput: string;
-        metadata: MetadataEntry[];
-        source?: { assetId: string; ordinal: number };
-        parentOrdinal?: number;
-      }>;
-      const testRecords = submittedRecords.map(
-        ({ parentOrdinal: _, ...record }) => record,
-      );
-      if (Buffer.byteLength(canonicalJson(testRecords)) > 100_000_000)
-        return reply
-          .code(422)
-          .send({ error: { code: "test_set_capacity_exceeded" } });
+          return reply
+            .code(422)
+            .send({ error: { code: "test_record_invalid" } });
+      }
       const key = request.headers["idempotency-key"];
       if (typeof key !== "string" || key.length < 1 || key.length > 200)
         return reply
           .code(422)
           .send({ error: { code: "idempotency_key_required" } });
-      const requestFingerprint = sha256(
-        canonicalJson({
-          parentVersionId: request.params.versionId,
-          selections,
-          records: submittedRecords,
-        }),
-      );
-      const client = await db.connect();
-      let storedManifest: { objectRef: string } | undefined;
-      let committed = false;
       try {
-        await client.query("BEGIN");
-        const testSet = await client.query(
-          `SELECT id, purpose FROM test_set
-           WHERE id = $1 AND project_id = $2 AND status = 'available' FOR UPDATE`,
-          [request.params.testSetId, request.params.projectId],
-        );
-        if (!testSet.rowCount) {
-          await client.query("COMMIT");
-          return reply
-            .code(404)
-            .send({ error: { code: "test_set_not_found" } });
-        }
-        const replay = await client.query(
-          `SELECT asset_id, request_fingerprint FROM upload_idempotency
-           WHERE project_id = $1 AND actor_id = $2
-             AND operation = 'solo_test_set_derive' AND idempotency_key = $3
-             AND status = 'committed'`,
-          [request.params.projectId, actor.id, key],
-        );
-        if (replay.rowCount) {
-          if (replay.rows[0].request_fingerprint !== requestFingerprint) {
-            await client.query("COMMIT");
-            return reply
-              .code(409)
-              .send({ error: { code: "idempotency_conflict" } });
-          }
-          const version = await client.query(
-            `SELECT id, version_label, item_count, parent_version_id
-             FROM test_set_version
-             WHERE id = $1 AND test_set_id = $2`,
-            [replay.rows[0].asset_id, request.params.testSetId],
-          );
-          await client.query("COMMIT");
-          if (!version.rowCount)
-            return reply
-              .code(409)
-              .send({ error: { code: "idempotency_result_missing" } });
-          return {
-            version: {
-              id: version.rows[0].id,
-              label: version.rows[0].version_label,
-              recordCount: Number(version.rows[0].item_count),
-              parentVersionId: version.rows[0].parent_version_id,
-            },
-            dataCheck: dataCheck(testRecords),
-            replayed: true,
-          };
-        }
-        const parent = await client.query(
-          `SELECT id, schema_revision_id, generation, branch_number
-             FROM test_set_version
-             WHERE id = $1 AND test_set_id = $2 AND status = 'published'`,
-          [request.params.versionId, request.params.testSetId],
-        );
-        if (!parent.rowCount) {
-          await client.query("COMMIT");
-          return reply.code(404).send({ error: { code: "version_not_found" } });
-        }
-        const sourceKeys = new Map<
-          string,
-          { assetId: string; ordinal: number }
-        >();
-        for (const record of testRecords) {
-          if (record.source)
-            sourceKeys.set(
-              `${record.source.assetId}:${record.source.ordinal}`,
-              record.source,
-            );
-        }
-        const selectionKeys = new Set(
-          (selections as Array<{ assetId: string; ordinal: number }>).map(
-            ({ assetId, ordinal }) => `${assetId}:${ordinal}`,
-          ),
-        );
-        if (
-          selectionKeys.size !== selections.length ||
-          [...selectionKeys].some((selection) => !sourceKeys.has(selection))
-        ) {
-          await client.query("COMMIT");
-          return reply
-            .code(422)
-            .send({ error: { code: "source_selection_invalid" } });
-        }
-        const sourceRows = sourceKeys.size
-          ? await client.query(
-              `WITH selected(asset_id, ordinal) AS (
-                 SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(asset_id text, ordinal integer)
-               )
-               SELECT selected.asset_id, selected.ordinal, da.size_bytes, pv.id AS parsed_view_id,
-                      sr.locator, sr.record_hash
-                 FROM selected
-                 JOIN data_asset da ON da.id = selected.asset_id AND da.project_id = $1
-                 JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready'
-                 JOIN source_record sr ON sr.parsed_view_id = pv.id AND sr.ordinal = selected.ordinal
-                WHERE da.status NOT IN ('deletion_pending', 'tombstoned')
-                  AND sr.parse_status = 'valid'`,
-              [
-                request.params.projectId,
-                JSON.stringify(
-                  [...sourceKeys.values()].map(({ assetId, ordinal }) => ({
-                    asset_id: assetId,
-                    ordinal,
-                  })),
-                ),
-              ],
-            )
-          : { rows: [] as Array<Record<string, unknown>> };
-        if (sourceRows.rows.length !== sourceKeys.size) {
-          await client.query("COMMIT");
-          return reply
-            .code(422)
-            .send({ error: { code: "source_selection_invalid" } });
-        }
-        const sourceAssetBytes = new Map<string, number>();
-        for (const row of sourceRows.rows)
-          sourceAssetBytes.set(String(row.asset_id), Number(row.size_bytes));
-        if (
-          sourceAssetBytes.size > 5 ||
-          [...sourceAssetBytes.values()].reduce(
-            (sum, value) => sum + value,
-            0,
-          ) > 100_000_000
-        ) {
-          await client.query("COMMIT");
-          return reply
-            .code(422)
-            .send({ error: { code: "test_set_capacity_exceeded" } });
-        }
-        const parentMembers = await client.query(
-          `SELECT vm.ordinal, vm.case_revision_id, cr.case_id, cr.input, cr.expected_output,
-                  cr.metadata, cr.origin_kind, cr.origin_ref
-             FROM version_member vm
-             JOIN case_revision cr ON cr.id = vm.case_revision_id
-            WHERE vm.version_id = $1 ORDER BY vm.ordinal`,
-          [request.params.versionId],
-        );
-        const toRecord = (row: Record<string, unknown>) => {
-          const source =
-            row.origin_kind === "source_record" && isPlainObject(row.origin_ref)
-              ? {
-                  assetId: String(row.origin_ref.assetId),
-                  ordinal: Number(row.origin_ref.ordinal),
-                }
-              : undefined;
-          return {
-            question:
-              isPlainObject(row.input) && typeof row.input.question === "string"
-                ? row.input.question
-                : displayText(row.input),
-            expectedOutput:
-              isPlainObject(row.expected_output) &&
-              typeof row.expected_output.text === "string"
-                ? row.expected_output.text
-                : displayText(row.expected_output),
-            metadata: readMetadataEntries(row.metadata),
-            ...(source ? { source } : {}),
-          };
-        };
-        const parentRecords = parentMembers.rows.map(toRecord);
-        const parentByOrdinal = new Map(
-          parentMembers.rows.map((member, index) => [
-            Number(member.ordinal),
-            { member, record: parentRecords[index] },
-          ]),
-        );
-        const matchedParentOrdinals = new Set<number>();
-        const requestedParentOrdinals = submittedRecords
-          .map((record) => record.parentOrdinal)
-          .filter((ordinal): ordinal is number => ordinal !== undefined);
-        if (
-          requestedParentOrdinals.length !==
-            new Set(requestedParentOrdinals).size ||
-          requestedParentOrdinals.some(
-            (ordinal) => !parentByOrdinal.has(ordinal),
-          )
-        ) {
-          await client.query("COMMIT");
-          return reply
-            .code(422)
-            .send({ error: { code: "parent_record_invalid" } });
-        }
-        const payload = Buffer.from(
-          `${testRecords.map((record) => canonicalJson(record)).join("\n")}\n`,
-        );
-        const versionId = opaqueId("version");
-        storedManifest = await artifacts.storeImmutable(
-          Buffer.from(
-            canonicalJson({ versionId, records: testRecords }) + "\n",
-          ),
-          `solo-derived-version-${request.params.testSetId}`,
-        );
-        const payloadHash = sha256(payload);
-        const evidenceHash = sha256(
-          canonicalJson({
-            parentVersionId: request.params.versionId,
-            sources: [...sourceKeys.values()],
-            payloadHash,
-          }),
-        );
-        const manifestHash = sha256(
-          canonicalJson({ versionId, payloadHash, evidenceHash }),
-        );
-        const allocation = await client.query(
-          `SELECT COALESCE(MAX(v.sequence), 0) + 1 AS sequence,
-                  COALESCE(MAX(v.publication_order), 0) + 1 AS publication_order,
-                  COALESCE(MAX(v.branch_number), 0) + 1 AS next_branch,
-                  EXISTS (
-                    SELECT 1 FROM test_set_version child
-                    WHERE child.test_set_id = $1 AND child.parent_version_id = $2
-                  ) AS parent_has_child
+        const published = await publishSparseVersion(db, artifacts, {
+          projectId: request.params.projectId,
+          testSetId: request.params.testSetId,
+          parentVersionId: request.params.versionId,
+          actorId: actor.id,
+          idempotencyKey: key,
+          operations: operations as SparseOperation[],
+        });
+        const result = await db.query(
+          `SELECT v.item_count, cr.input, cr.expected_output, cr.metadata,
+                  cr.origin_kind, cr.origin_ref
              FROM test_set_version v
-            WHERE v.test_set_id = $1`,
-          [request.params.testSetId, request.params.versionId],
+             JOIN LATERAL resolve_version_members(v.id) vm ON true
+             JOIN case_revision cr ON cr.id=vm.case_revision_id
+            WHERE v.id=$1 ORDER BY vm.ordinal`,
+          [published.id],
         );
-        const generation = Number(parent.rows[0].generation) + 1;
-        const parentHasChild = allocation.rows[0].parent_has_child === true;
-        const branchNumber = parentHasChild
-          ? Number(allocation.rows[0].next_branch)
-          : parent.rows[0].branch_number === null
-            ? null
-            : Number(parent.rows[0].branch_number);
-        const label = `v${generation}${branchNumber === null ? "" : `-b${branchNumber}`}`;
-        const draftId = opaqueId("draft");
-        const candidateId = opaqueId("candidate");
-        await client.query(
-          `INSERT INTO working_draft
-             (id, test_set_id, status, updated_by, revision, version_description, base_version_id)
-           VALUES ($1, $2, 'published', $3, 1, '', $4)`,
-          [
-            draftId,
-            request.params.testSetId,
-            actor.id,
-            request.params.versionId,
-          ],
-        );
-        await client.query(
-          `INSERT INTO candidate_snapshot
-             (id, draft_id, status, schema_revision_id, base_version_id, item_count,
-              payload_hash, evidence_hash, object_ref)
-           VALUES ($1, $2, 'published_as_version', $3, $4, $5, $6, $7, $8)`,
-          [
-            candidateId,
-            draftId,
-            parent.rows[0].schema_revision_id,
-            request.params.versionId,
-            testRecords.length,
-            payloadHash,
-            evidenceHash,
-            storedManifest.objectRef,
-          ],
-        );
-        await client.query(
-          `INSERT INTO test_set_version
-             (id, test_set_id, sequence, candidate_id, schema_revision_id, payload_hash,
-              evidence_hash, manifest_hash, manifest_object_ref, item_count, published_by,
-              published_at, parent_version_id, publication_order, generation, branch_number,
-              version_label)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), $12, $13, $14, $15, $16)`,
-          [
-            versionId,
-            request.params.testSetId,
-            Number(allocation.rows[0].sequence),
-            candidateId,
-            parent.rows[0].schema_revision_id,
-            payloadHash,
-            evidenceHash,
-            manifestHash,
-            storedManifest.objectRef,
-            testRecords.length,
-            actor.id,
-            request.params.versionId,
-            Number(allocation.rows[0].publication_order),
-            generation,
-            branchNumber,
-            label,
-          ],
-        );
-        const sourceByKey = new Map(
-          sourceRows.rows.map((row) => [`${row.asset_id}:${row.ordinal}`, row]),
-        );
-        for (const [index, submitted] of submittedRecords.entries()) {
-          const { parentOrdinal, ...record } = submitted;
-          const requestedParent = parentOrdinal
-            ? parentByOrdinal.get(parentOrdinal)
-            : undefined;
-          const fallbackParent = parentMembers.rows.find(
-            (member, parentIndex) =>
-              !matchedParentOrdinals.has(Number(member.ordinal)) &&
-              canonicalJson(parentRecords[parentIndex]) ===
-                canonicalJson(record),
-          );
-          const prior = requestedParent?.member ?? fallbackParent;
-          if (prior) matchedParentOrdinals.add(Number(prior.ordinal));
-          const unchanged =
-            prior &&
-            canonicalJson(
-              parentByOrdinal.get(Number(prior.ordinal))?.record,
-            ) === canonicalJson(record);
-          if (unchanged) {
-            await client.query(
-              `INSERT INTO version_member (version_id, case_revision_id, ordinal)
-               VALUES ($1, $2, $3)`,
-              [versionId, prior.case_revision_id, index + 1],
-            );
-            continue;
-          }
-          const caseId = prior?.case_id ?? opaqueId("case");
-          if (!prior)
-            await client.query(
-              `INSERT INTO test_case (id, test_set_id) VALUES ($1, $2)`,
-              [caseId, request.params.testSetId],
-            );
-          const source = record.source
-            ? sourceByKey.get(
-                `${record.source.assetId}:${record.source.ordinal}`,
-              )
-            : undefined;
-          const originRef = source
-            ? {
-                assetId: record.source?.assetId,
-                parsedViewId: source.parsed_view_id,
-                ordinal: record.source?.ordinal,
-                locator: source.locator,
-                recordHash: source.record_hash,
-              }
-            : { kind: "manual" };
-          const contentHash = sha256(canonicalJson(record));
-          const revisionId = opaqueId("revision");
-          await client.query(
-            `INSERT INTO case_revision
-               (id, case_id, input, expected_output, metadata, source_record_ordinal,
-                content_hash, parent_revision_id, origin_kind, origin_ref, lineage_fingerprint)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-            [
-              revisionId,
-              caseId,
-              { question: record.question },
-              { text: record.expectedOutput },
-              { entries: record.metadata },
-              record.source?.ordinal ?? 0,
-              contentHash,
-              prior?.case_revision_id ?? null,
-              record.source ? "source_record" : "manual",
-              originRef,
-              sha256(
-                canonicalJson({
-                  source: record.source ?? { kind: "manual" },
-                  contentHash,
-                }),
-              ),
-            ],
-          );
-          await client.query(
-            `INSERT INTO version_member (version_id, case_revision_id, ordinal)
-             VALUES ($1, $2, $3)`,
-            [versionId, revisionId, index + 1],
-          );
-        }
-        await client.query(
-          `INSERT INTO upload_idempotency
-             (project_id, actor_id, operation, idempotency_key, status,
-              request_fingerprint, asset_id, operation_id)
-           VALUES ($1, $2, 'solo_test_set_derive', $3, 'committed', $4, $5, $6)`,
-          [
-            request.params.projectId,
-            actor.id,
-            key,
-            requestFingerprint,
-            versionId,
-            `solo-derived-version-${versionId}`,
-          ],
-        );
-        await client.query(
-          `INSERT INTO audit_event
-             (project_id, actor_id, action, object_type, object_id, details)
-           VALUES ($1, $2, 'solo_test_set_version_published', 'test_set_version', $3, $4)`,
-          [
-            request.params.projectId,
-            actor.id,
-            versionId,
-            { parentVersionId: request.params.versionId, label },
-          ],
-        );
-        committed = true;
-        await client.query("COMMIT");
-        return reply.code(201).send({
-          version: {
-            id: versionId,
-            label,
-            recordCount: testRecords.length,
-            parentVersionId: request.params.versionId,
-          },
-          dataCheck: dataCheck(testRecords),
+        const version = {
+          id: published.id,
+          label: published.label,
+          recordCount: Number(result.rows[0]?.item_count ?? 0),
+          parentVersionId: request.params.versionId,
+        };
+        return reply.code(published.replayed ? 200 : 201).send({
+          version,
+          dataCheck: dataCheck(result.rows.map(storedRecord)),
+          ...(published.replayed ? { replayed: true } : {}),
         });
       } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        if (storedManifest && !committed)
-          await artifacts
-            .remove(storedManifest.objectRef)
-            .catch(() => undefined);
+        const code = (error as { code?: string }).code;
+        if (code === "test_set_not_found" || code === "version_not_found")
+          return reply.code(404).send({ error: { code } });
+        if (code === "idempotency_conflict")
+          return reply.code(409).send({ error: { code } });
+        if (
+          code === "sparse_publication_request_invalid" ||
+          code === "parent_record_invalid" ||
+          code === "test_record_invalid" ||
+          code === "source_selection_invalid" ||
+          code === "test_set_capacity_exceeded" ||
+          code === "version_position_exhausted"
+        )
+          return reply.code(422).send({ error: { code } });
+        if (code === "checkpoint_hard_limit_failed")
+          return reply.code(503).send({ error: { code } });
         throw error;
-      } finally {
-        client.release();
       }
     },
   );
@@ -2575,12 +2343,13 @@ export async function buildApp(
         )`);
       }
       const where = conditions.join(" AND ");
+      const countValues = [...values];
       const result = await db.query(
         `SELECT vm.ordinal, cr.input, cr.expected_output, cr.metadata, cr.origin_kind,
                 cr.origin_ref, da.file_name, COUNT(*) OVER () AS total
            FROM test_set ts
            JOIN test_set_version v ON v.test_set_id = ts.id
-           JOIN version_member vm ON vm.version_id = v.id
+           JOIN LATERAL resolve_version_members(v.id) vm ON true
            JOIN case_revision cr ON cr.id = vm.case_revision_id
            LEFT JOIN data_asset da
              ON da.id = cr.origin_ref ->> 'assetId' AND da.project_id = ts.project_id
@@ -2589,6 +2358,21 @@ export async function buildApp(
           LIMIT ${add(limit)} OFFSET ${add(offset)}`,
         values,
       );
+      const total =
+        result.rows[0]?.total ??
+        (
+          await db.query(
+            `SELECT count(*)::integer AS total
+             FROM test_set ts
+             JOIN test_set_version v ON v.test_set_id = ts.id
+             JOIN LATERAL resolve_version_members(v.id) vm ON true
+             JOIN case_revision cr ON cr.id = vm.case_revision_id
+             LEFT JOIN data_asset da
+               ON da.id = cr.origin_ref ->> 'assetId' AND da.project_id = ts.project_id
+            WHERE ${where}`,
+            countValues,
+          )
+        ).rows[0].total;
       const records = result.rows.map((row) => {
         const record = soloVersionRecord(row);
         return {
@@ -2609,7 +2393,7 @@ export async function buildApp(
           `SELECT DISTINCT cr.origin_ref ->> 'assetId' AS id, da.file_name AS name
              FROM test_set ts
              JOIN test_set_version v ON v.test_set_id = ts.id
-             JOIN version_member vm ON vm.version_id = v.id
+             JOIN LATERAL resolve_version_members(v.id) vm ON true
              JOIN case_revision cr ON cr.id = vm.case_revision_id
              JOIN data_asset da ON da.id = cr.origin_ref ->> 'assetId' AND da.project_id = ts.project_id
             WHERE ts.project_id = $1 AND ts.id = $2 AND v.id = $3
@@ -2626,7 +2410,7 @@ export async function buildApp(
              SELECT entry ->> 'key' AS field
                FROM test_set ts
                JOIN test_set_version v ON v.test_set_id = ts.id
-               JOIN version_member vm ON vm.version_id = v.id
+               JOIN LATERAL resolve_version_members(v.id) vm ON true
                JOIN case_revision cr ON cr.id = vm.case_revision_id
                CROSS JOIN LATERAL jsonb_array_elements(
                  CASE WHEN jsonb_typeof(cr.metadata -> 'entries') = 'array'
@@ -2637,7 +2421,7 @@ export async function buildApp(
              SELECT 'Metadata'
                FROM test_set ts
                JOIN test_set_version v ON v.test_set_id = ts.id
-               JOIN version_member vm ON vm.version_id = v.id
+               JOIN LATERAL resolve_version_members(v.id) vm ON true
                JOIN case_revision cr ON cr.id = vm.case_revision_id
               WHERE ts.project_id = $1 AND ts.id = $2 AND v.id = $3
                 AND jsonb_typeof(cr.metadata -> 'entries') IS DISTINCT FROM 'array'
@@ -2652,7 +2436,7 @@ export async function buildApp(
       return {
         records,
         pagination: {
-          total: Number(result.rows[0]?.total ?? 0),
+          total: Number(total),
           limit,
           offset,
         },
@@ -2669,7 +2453,12 @@ export async function buildApp(
 
   app.get<{
     Params: { projectId: string; testSetId: string; versionId: string };
-    Querystring: { limit?: string; offset?: string };
+    Querystring: {
+      limit?: string;
+      offset?: string;
+      sourceAssetId?: string;
+      sourceOrdinal?: string;
+    };
   }>(
     "/api/projects/:projectId/solo-test-sets/:testSetId/versions/:versionId/editing-records",
     { preHandler: authenticate },
@@ -2686,15 +2475,34 @@ export async function buildApp(
         return reply.code(404).send({ error: { code: "test_set_not_found" } });
       const limit = Number(request.query.limit ?? 100);
       const offset = Number(request.query.offset ?? 0);
+      const sourceAssetId = request.query.sourceAssetId;
+      const sourceOrdinal =
+        request.query.sourceOrdinal === undefined
+          ? undefined
+          : Number(request.query.sourceOrdinal);
       if (
         Object.keys(request.query).some(
-          (key) => !["limit", "offset"].includes(key),
+          (key) =>
+            !["limit", "offset", "sourceAssetId", "sourceOrdinal"].includes(
+              key,
+            ),
         ) ||
         !Number.isInteger(limit) ||
         limit < 1 ||
         limit > 100 ||
         !Number.isInteger(offset) ||
-        offset < 0
+        offset < 0 ||
+        (sourceAssetId === undefined) !== (sourceOrdinal === undefined) ||
+        (sourceAssetId !== undefined &&
+          (typeof sourceAssetId !== "string" ||
+            !sourceAssetId ||
+            sourceAssetId.length > 200)) ||
+        (request.query.sourceOrdinal !== undefined &&
+          (typeof request.query.sourceOrdinal !== "string" ||
+            !/^(0|[1-9]\d*)$/.test(request.query.sourceOrdinal) ||
+            sourceOrdinal === undefined ||
+            !Number.isSafeInteger(sourceOrdinal) ||
+            sourceOrdinal > 2_147_483_647))
       )
         return reply
           .code(422)
@@ -2704,10 +2512,13 @@ export async function buildApp(
                 cr.metadata, cr.origin_kind, cr.origin_ref, COUNT(*) OVER () AS total
            FROM test_set ts
            JOIN test_set_version v ON v.test_set_id = ts.id
-           JOIN version_member vm ON vm.version_id = v.id
+           JOIN LATERAL resolve_version_members(v.id) vm ON true
            JOIN case_revision cr ON cr.id = vm.case_revision_id
           WHERE ts.project_id = $1 AND ts.id = $2 AND v.id = $3
             AND ts.status = 'available' AND v.status = 'published'
+            AND ($6::text IS NULL OR (cr.origin_kind = 'source_record'
+              AND cr.origin_ref ->> 'assetId' = $6
+              AND cr.source_record_ordinal = $7))
           ORDER BY vm.ordinal LIMIT $4 OFFSET $5`,
         [
           request.params.projectId,
@@ -2715,6 +2526,8 @@ export async function buildApp(
           request.params.versionId,
           limit,
           offset,
+          sourceAssetId ?? null,
+          sourceOrdinal ?? null,
         ],
       );
       if (!result.rowCount && offset === 0) {
@@ -2737,6 +2550,8 @@ export async function buildApp(
           return {
             ordinal: record.ordinal,
             parentOrdinal: record.ordinal,
+            caseId: String(row.case_id),
+            revisionId: String(row.case_revision_id),
             question: record.question,
             expectedOutput: record.expectedOutput,
             metadata: record.metadata,
@@ -2788,7 +2603,7 @@ export async function buildApp(
                 cr.origin_ref, da.file_name
            FROM test_set ts
            JOIN test_set_version v ON v.test_set_id = ts.id
-           JOIN version_member vm ON vm.version_id = v.id
+           JOIN LATERAL resolve_version_members(v.id) vm ON true
            JOIN case_revision cr ON cr.id = vm.case_revision_id
            LEFT JOIN data_asset da
              ON da.id = cr.origin_ref ->> 'assetId' AND da.project_id = ts.project_id
@@ -2877,8 +2692,8 @@ export async function buildApp(
               ORDER BY publication_order DESC, id DESC
               LIMIT 1
            ) v ON true
-           JOIN version_member vm ON vm.version_id = v.id
-           JOIN case_revision cr ON cr.id = vm.case_revision_id
+           LEFT JOIN LATERAL resolve_version_members(v.id) vm ON true
+           LEFT JOIN case_revision cr ON cr.id = vm.case_revision_id
            LEFT JOIN data_asset da
              ON da.id = cr.origin_ref ->> 'assetId' AND da.project_id = ts.project_id
           WHERE ts.project_id = $1
@@ -3222,20 +3037,86 @@ export async function buildApp(
           return reply
             .code(404)
             .send({ error: { code: "test_set_not_found" } });
-        const result = await soloVersionChanges(
-          request.params.projectId,
-          request.params.testSetId,
-          request.params.versionId,
-        );
-        if (!result)
-          return reply.code(404).send({ error: { code: "version_not_found" } });
-        return reply
-          .type("text/csv; charset=utf-8")
-          .header(
-            "content-disposition",
-            `attachment; filename="agentbench-${result.version.version_label}-${name}"`,
-          )
-          .send(csvDocument(rows(result)));
+        const lock = await db.connect();
+        try {
+          await lock.query("BEGIN");
+          await lock.query(
+            "SELECT pg_advisory_xact_lock_shared(hashtext($1))",
+            [
+              `agentbench:controlled-deletion-project:${request.params.projectId}`,
+            ],
+          );
+          await lock.query(
+            `SELECT id FROM test_set WHERE id=$1 AND project_id=$2 FOR SHARE`,
+            [request.params.testSetId, request.params.projectId],
+          );
+          const result = await soloVersionChanges(
+            request.params.projectId,
+            request.params.testSetId,
+            request.params.versionId,
+            lock,
+          );
+          if (!result) {
+            await lock.query("COMMIT");
+            return reply
+              .code(404)
+              .send({ error: { code: "version_not_found" } });
+          }
+          const evidenceFingerprint = sha256(
+            canonicalJson({
+              evidenceHash: result.version.evidence_hash,
+              parentStatus: result.parentStatus,
+              sourceFingerprint: result.sourceFingerprint,
+              current: result.current,
+              changes: result.changes,
+              addedFiles: result.addedFiles,
+            }),
+          );
+          await lock.query(
+            `DELETE FROM version_export_cache
+            WHERE version_id=$1 AND export_type=$2
+              AND (serializer_version<>1 OR evidence_fingerprint<>$3)`,
+            [request.params.versionId, name, evidenceFingerprint],
+          );
+          const cached = await lock.query(
+            `SELECT document FROM version_export_cache
+            WHERE version_id=$1 AND export_type=$2
+              AND serializer_version=1 AND evidence_fingerprint=$3`,
+            [request.params.versionId, name, evidenceFingerprint],
+          );
+          const document =
+            cached.rows[0]?.document ?? csvDocument(rows(result));
+          if (!cached.rowCount)
+            await lock.query(
+              `INSERT INTO version_export_cache
+             (version_id,export_type,serializer_version,evidence_fingerprint,document)
+             SELECT v.id,$2,1,$3,$4 FROM test_set_version v
+              JOIN test_set ts ON ts.id=v.test_set_id
+              WHERE v.id=$1 AND v.status='published'
+                AND ts.status='available' AND ts.project_id=$5
+             ON CONFLICT DO NOTHING`,
+              [
+                request.params.versionId,
+                name,
+                evidenceFingerprint,
+                document,
+                request.params.projectId,
+              ],
+            );
+          await lock.query("COMMIT");
+          return reply
+            .type("text/csv; charset=utf-8")
+            .header(
+              "content-disposition",
+              `attachment; filename="agentbench-${result.version.version_label}-${name}"`,
+            )
+            .send(document);
+        } catch (error) {
+          await lock.query("ROLLBACK").catch(() => undefined);
+          throw error;
+        } finally {
+          lock.release();
+        }
       },
     );
   }
@@ -3267,6 +3148,133 @@ export async function buildApp(
     return result.rows;
   }
 
+  async function protectDeletionBoundaries(
+    client: PoolClient,
+    testSetId: string,
+    deletedIds: string[],
+    projectId: string,
+  ) {
+    const boundaries = await client.query(
+      `WITH RECURSIVE path AS (
+         SELECT id,parent_version_id,status FROM test_set_version
+          WHERE test_set_id=$1 AND parent_version_id=ANY($2::text[])
+            AND id<>ALL($2::text[])
+         UNION ALL
+         SELECT child.id,child.parent_version_id,child.status
+           FROM test_set_version child JOIN path parent
+             ON child.parent_version_id=parent.id
+          WHERE child.test_set_id=$1
+            AND parent.status IN ('tombstoned','permanently_deleted','degraded_by_deletion')
+       )
+       SELECT path.id,path.parent_version_id
+         FROM path
+        WHERE path.status IN ('published','trashed','archived') ORDER BY path.id`,
+      [testSetId, deletedIds],
+    );
+    for (const row of boundaries.rows) {
+      const versionId = String(row.id);
+      const parentId = String(row.parent_version_id);
+      const checkpoint = await createCheckpoint(
+        client,
+        versionId,
+        "deletion_cut",
+        projectId,
+      );
+      if (checkpoint === "skipped")
+        throw new Error("deletion_cut_checkpoint_skipped");
+      const recordedCut = await client.query(
+        "SELECT 1 FROM version_provenance_cut_state WHERE version_id=$1 AND parent_version_id=$2",
+        [versionId, parentId],
+      );
+      if (!recordedCut.rowCount) {
+        const before = await client.query(
+          `SELECT vm.case_id,cr.input,cr.expected_output,cr.metadata,cr.origin_ref
+           FROM resolve_version_members_internal($1,true,true) vm
+           JOIN case_revision cr ON cr.id=vm.case_revision_id`,
+          [parentId],
+        );
+        const after = await client.query(
+          `SELECT vm.case_id,cr.input,cr.expected_output,cr.metadata,cr.origin_ref
+           FROM resolve_version_members_internal($1,true,true) vm
+           JOIN case_revision cr ON cr.id=vm.case_revision_id`,
+          [versionId],
+        );
+        const beforeById = new Map(
+          before.rows.map((member) => [String(member.case_id), member]),
+        );
+        const afterById = new Map(
+          after.rows.map((member) => [String(member.case_id), member]),
+        );
+        const facts = [
+          ...new Set([...beforeById.keys(), ...afterById.keys()]),
+        ].map((caseId) => {
+          const previous = beforeById.get(caseId);
+          const current = afterById.get(caseId);
+          const changedFields =
+            previous && current
+              ? (
+                  [
+                    ["question", previous.input, current.input],
+                    [
+                      "expectedOutput",
+                      previous.expected_output,
+                      current.expected_output,
+                    ],
+                    ["metadata", previous.metadata, current.metadata],
+                    ["source", previous.origin_ref, current.origin_ref],
+                  ] as const
+                )
+                  .filter(
+                    ([, oldValue, newValue]) =>
+                      canonicalJson(oldValue) !== canonicalJson(newValue),
+                  )
+                  .map(([field]) => field)
+              : [];
+          return {
+            caseId,
+            changeType: !previous
+              ? "added"
+              : !current
+                ? "removed"
+                : changedFields.length
+                  ? "modified"
+                  : "unchanged",
+            changedFields,
+          };
+        });
+        await client.query(
+          "DELETE FROM version_provenance_cut_fact WHERE version_id=$1",
+          [versionId],
+        );
+        if (facts.length)
+          await client.query(
+            `INSERT INTO version_provenance_cut_fact
+           (version_id,case_id,change_type,changed_fields)
+           SELECT $1,x.case_id,x.change_type,x.changed_fields
+             FROM jsonb_to_recordset($2::jsonb)
+               AS x(case_id text,change_type text,changed_fields jsonb)`,
+            [
+              versionId,
+              JSON.stringify(
+                facts.map((fact) => ({
+                  case_id: fact.caseId,
+                  change_type: fact.changeType,
+                  changed_fields: fact.changedFields,
+                })),
+              ),
+            ],
+          );
+        await client.query(
+          `INSERT INTO version_provenance_cut_state(version_id,parent_version_id)
+           VALUES ($1,$2) ON CONFLICT (version_id) DO UPDATE
+             SET parent_version_id=EXCLUDED.parent_version_id,completed_at=now()`,
+          [versionId, parentId],
+        );
+      }
+    }
+    return boundaries.rows.map((row) => String(row.id));
+  }
+
   async function clearVersionContent(
     client: PoolClient,
     versionIds: string[],
@@ -3274,7 +3282,9 @@ export async function buildApp(
     marker: string,
   ) {
     const objects = await client.query(
-      `SELECT v.manifest_object_ref, cs.object_ref
+      `SELECT v.manifest_object_ref, v.cleanup_object_refs,
+              cs.object_ref, cs.evidence_object_ref,
+              cs.id AS candidate_id, cs.draft_revision_id, cs.draft_id
          FROM test_set_version v
          LEFT JOIN candidate_snapshot cs ON cs.id = v.candidate_id
         WHERE v.id = ANY($1::text[])`,
@@ -3283,24 +3293,202 @@ export async function buildApp(
     const objectRefs: string[] = [
       ...new Set(
         objects.rows.flatMap((row) =>
-          [row.manifest_object_ref, row.object_ref].filter(
+          [
+            row.manifest_object_ref,
+            row.object_ref,
+            row.evidence_object_ref,
+            ...storedStringArray(row.cleanup_object_refs),
+          ].filter(
             (value): value is string =>
               typeof value === "string" && value.startsWith("blobs/"),
           ),
         ),
       ),
     ];
+    const revisionRows = await client.query(
+      `SELECT DISTINCT revision_id FROM (
+         SELECT vm.case_revision_id AS revision_id FROM version_member vm
+          WHERE vm.version_id = ANY($1::text[])
+         UNION ALL
+         SELECT ch.after_revision_id FROM version_change ch
+          WHERE ch.version_id = ANY($1::text[]) AND ch.after_revision_id IS NOT NULL
+         UNION ALL
+         SELECT cm.case_revision_id FROM version_checkpoint_member cm
+          WHERE cm.version_id = ANY($1::text[])
+       ) refs`,
+      [versionIds],
+    );
+    const revisionIds = revisionRows.rows.map((row) => String(row.revision_id));
+    const candidateIds = objects.rows.map((row) => String(row.candidate_id));
+    await client.query(
+      "DELETE FROM version_export_cache WHERE version_id = ANY($1::text[])",
+      [versionIds],
+    );
+    await client.query(
+      "DELETE FROM version_provenance_cut_fact WHERE version_id = ANY($1::text[])",
+      [versionIds],
+    );
+    await client.query(
+      "DELETE FROM version_provenance_cut_state WHERE version_id = ANY($1::text[])",
+      [versionIds],
+    );
+    await client.query(
+      "DELETE FROM candidate_item WHERE candidate_id = ANY($1::text[])",
+      [candidateIds],
+    );
+    await client.query(
+      "DELETE FROM candidate_transformation_run WHERE candidate_id = ANY($1::text[])",
+      [candidateIds],
+    );
+    await client.query(
+      "DELETE FROM version_checkpoint WHERE version_id = ANY($1::text[])",
+      [versionIds],
+    );
+    await client.query(
+      "DELETE FROM version_change WHERE version_id = ANY($1::text[])",
+      [versionIds],
+    );
     await client.query(
       "DELETE FROM version_member WHERE version_id = ANY($1::text[])",
       [versionIds],
     );
     await client.query(
       `UPDATE candidate_snapshot cs
-          SET status = 'tombstoned', object_ref = $2
+          SET status = 'tombstoned', object_ref = NULL,
+              evidence_object_ref = NULL, item_count = 0,
+              payload_hash = NULL, evidence_hash = NULL,
+              recipe = NULL, sources = NULL, validation_report = NULL,
+              attribution_revision_id = NULL, asset_id = NULL,
+              parsed_view_id = NULL, schema_revision_id = NULL,
+              draft_revision_id = NULL, base_version_id = NULL
          FROM test_set_version v
         WHERE v.id = ANY($1::text[]) AND cs.id = v.candidate_id`,
-      [versionIds, marker],
+      [versionIds],
     );
+    const draftRevisionIds = objects.rows
+      .map((row) => row.draft_revision_id)
+      .filter((id): id is string => typeof id === "string");
+    if (draftRevisionIds.length)
+      await client.query(
+        `UPDATE draft_revision dr
+            SET recipe = NULL, sources = NULL, operations = '[]'::jsonb,
+                version_description = ''
+          WHERE dr.id = ANY($1::text[])
+            AND NOT EXISTS (
+              SELECT 1 FROM candidate_snapshot cs
+               WHERE cs.draft_revision_id = dr.id AND cs.status <> 'tombstoned'
+            )`,
+        [draftRevisionIds],
+      );
+    const draftIds = objects.rows.map((row) => String(row.draft_id));
+    if (draftIds.length) {
+      await client.query(
+        `UPDATE draft_case_operation
+            SET previous_content=NULL,diff=NULL
+          WHERE draft_id=ANY($1::text[])`,
+        [draftIds],
+      );
+      await client.query(
+        `UPDATE draft_revision dr SET operations=COALESCE(
+           (SELECT jsonb_agg(op.value - 'previous_content' - 'diff'
+                             ORDER BY op.ordinality)
+              FROM jsonb_array_elements(dr.operations)
+                   WITH ORDINALITY AS op(value,ordinality)),
+           '[]'::jsonb)
+          WHERE draft_id=ANY($1::text[])`,
+        [draftIds],
+      );
+    }
+    const exclusiveDrafts = await client.query(
+      `SELECT wd.id FROM working_draft wd
+        WHERE wd.id=ANY($1::text[])
+          AND NOT EXISTS (
+            SELECT 1 FROM candidate_snapshot cs
+             WHERE cs.draft_id=wd.id AND cs.status<>'tombstoned'
+          )`,
+      [draftIds],
+    );
+    const exclusiveDraftIds = exclusiveDrafts.rows.map((row) => String(row.id));
+    if (exclusiveDraftIds.length) {
+      await client.query(
+        `UPDATE working_draft
+            SET status='abandoned',recipe=NULL,base_version_id=NULL,version_description=''
+          WHERE id=ANY($1::text[])`,
+        [exclusiveDraftIds],
+      );
+      await client.query(
+        `UPDATE draft_case_operation
+            SET input=NULL,expected_output=NULL,metadata=NULL,reason=NULL,
+                previous_content=NULL,diff=NULL
+          WHERE draft_id=ANY($1::text[])`,
+        [exclusiveDraftIds],
+      );
+      await client.query(
+        `UPDATE draft_revision
+            SET recipe=NULL,sources=NULL,operations='[]'::jsonb,
+                base_version_id=NULL,version_description=''
+          WHERE draft_id=ANY($1::text[])`,
+        [exclusiveDraftIds],
+      );
+    }
+    if (draftIds.length) {
+      const redacted = await client.query(
+        `SELECT id,revision,recipe,sources,operations,schema_revision_id,
+                base_version_id,version_description
+           FROM draft_revision WHERE draft_id=ANY($1::text[])`,
+        [draftIds],
+      );
+      for (const row of redacted.rows) {
+        const revisionHash = sha256(
+          canonicalJson({
+            revision: Number(row.revision),
+            recipe: row.recipe,
+            versionDescription: row.version_description,
+            baseVersionId: row.base_version_id ?? null,
+            schemaRevisionId: row.schema_revision_id ?? null,
+            sources: row.sources,
+            operations: row.operations,
+          }),
+        );
+        await client.query(
+          "UPDATE draft_revision SET revision_hash=$2 WHERE id=$1",
+          [row.id, revisionHash],
+        );
+      }
+    }
+    if (revisionIds.length) {
+      const protectedRows = await client.query(
+        `SELECT DISTINCT revision_id FROM (
+           SELECT vm.case_revision_id AS revision_id FROM version_member vm
+           UNION ALL SELECT cm.case_revision_id FROM version_checkpoint_member cm
+           UNION ALL SELECT ch.after_revision_id FROM version_change ch
+             WHERE ch.after_revision_id IS NOT NULL
+         ) refs WHERE revision_id = ANY($1::text[])`,
+        [revisionIds],
+      );
+      const protectedIds = new Set(
+        protectedRows.rows.map((row) => String(row.revision_id)),
+      );
+      const exclusiveIds = revisionIds.filter((id) => !protectedIds.has(id));
+      if (exclusiveIds.length) {
+        await client.query(
+          "UPDATE version_change SET before_revision_id = NULL WHERE before_revision_id = ANY($1::text[])",
+          [exclusiveIds],
+        );
+        await client.query(
+          "UPDATE candidate_item SET parent_case_revision_id = NULL WHERE parent_case_revision_id = ANY($1::text[])",
+          [exclusiveIds],
+        );
+        await client.query(
+          "UPDATE case_revision SET parent_revision_id = NULL WHERE parent_revision_id = ANY($1::text[])",
+          [exclusiveIds],
+        );
+        await client.query(
+          "DELETE FROM case_revision WHERE id = ANY($1::text[])",
+          [exclusiveIds],
+        );
+      }
+    }
     await client.query(
       `UPDATE test_set_version
           SET status = $2,
@@ -3327,6 +3515,9 @@ export async function buildApp(
            UNION ALL
            SELECT object_ref FROM candidate_snapshot
             WHERE object_ref = $1 AND status <> 'tombstoned'
+           UNION ALL
+           SELECT evidence_object_ref FROM candidate_snapshot
+            WHERE evidence_object_ref = $1 AND status <> 'tombstoned'
            UNION ALL
            SELECT manifest_object_ref FROM test_set_version
             WHERE manifest_object_ref = $1 AND status IN ('published', 'trashed')
@@ -3603,6 +3794,20 @@ export async function buildApp(
       const client = await db.connect();
       try {
         await client.query("BEGIN");
+        const entryIdentity = await client.query(
+          `SELECT test_set_id FROM test_set_trash_entry
+            WHERE id=$1 AND project_id=$2 AND status='trashed'`,
+          [request.params.entryId, request.params.projectId],
+        );
+        if (!entryIdentity.rowCount) {
+          await client.query("COMMIT");
+          return reply
+            .code(404)
+            .send({ error: { code: "trash_entry_not_found" } });
+        }
+        await client.query("SELECT id FROM test_set WHERE id=$1 FOR UPDATE", [
+          entryIdentity.rows[0].test_set_id,
+        ]);
         const entry = await client.query(
           `SELECT * FROM test_set_trash_entry
             WHERE id = $1 AND project_id = $2 AND status = 'trashed' FOR UPDATE`,
@@ -3665,17 +3870,18 @@ export async function buildApp(
       let objectRefs: string[] = [];
       try {
         await client.query("BEGIN");
-        const version = await client.query(
-          `SELECT v.id, v.status, v.version_label, v.cleanup_object_refs FROM test_set_version v
-           JOIN test_set ts ON ts.id = v.test_set_id
-          WHERE ts.project_id = $1 AND ts.id = $2 AND v.id = $3
-            AND ts.status = 'available' AND v.status IN ('published', 'tombstoned') FOR UPDATE`,
-          [
-            request.params.projectId,
-            request.params.testSetId,
-            request.params.versionId,
-          ],
+        const testSet = await client.query(
+          `SELECT id FROM test_set WHERE id=$1 AND project_id=$2 AND status='available' FOR UPDATE`,
+          [request.params.testSetId, request.params.projectId],
         );
+        const version = testSet.rowCount
+          ? await client.query(
+              `SELECT id,status,version_label,cleanup_object_refs,manifest_object_ref
+             FROM test_set_version
+            WHERE test_set_id=$1 AND id=$2 AND status IN ('published','tombstoned') FOR UPDATE`,
+              [request.params.testSetId, request.params.versionId],
+            )
+          : { rows: [] as Array<Record<string, unknown>>, rowCount: 0 };
         if (
           !version.rowCount ||
           request.body.confirmation !== String(version.rows[0].version_label)
@@ -3689,7 +3895,7 @@ export async function buildApp(
           ? await client.query(
               `SELECT 1 FROM test_set_version
                 WHERE test_set_id = $1 AND parent_version_id = $2
-                  AND status IN ('published', 'tombstoned') LIMIT 1`,
+                  AND status IN ('published', 'tombstoned', 'trashed') LIMIT 1`,
               [request.params.testSetId, request.params.versionId],
             )
           : { rowCount: 0 };
@@ -3700,19 +3906,28 @@ export async function buildApp(
             .send({ error: { code: "middle_version_required" } });
         }
         if (version.rows[0].status === "published") {
-          objectRefs = await clearVersionContent(
-            client,
+          await client.query(
+            `UPDATE test_set_version
+                SET status='tombstoned',tombstoned_at=now(),cleanup_pending=true
+              WHERE id=$1`,
             [request.params.versionId],
-            "tombstoned",
-            `tombstone:${request.params.versionId}`,
+          );
+          await client.query(
+            `DELETE FROM version_export_cache WHERE version_id IN (
+               WITH RECURSIVE affected AS (
+                 SELECT id FROM test_set_version WHERE id=$1
+                 UNION ALL
+                 SELECT child.id FROM test_set_version child
+                   JOIN affected parent ON child.parent_version_id=parent.id
+               ) SELECT id FROM affected
+             )`,
+            [request.params.versionId],
           );
           await client.query(
             `INSERT INTO audit_event (project_id, actor_id, action, object_type, object_id, details)
              VALUES ($1, $2, 'solo_test_set_version_tombstoned', 'test_set_version', $3, '{}')`,
             [request.params.projectId, actor.id, request.params.versionId],
           );
-        } else {
-          objectRefs = storedStringArray(version.rows[0].cleanup_object_refs);
         }
         await client.query("COMMIT");
       } catch (error) {
@@ -3720,6 +3935,47 @@ export async function buildApp(
         throw error;
       } finally {
         client.release();
+      }
+      const cleanupClient = await db.connect();
+      try {
+        await cleanupClient.query("BEGIN");
+        await cleanupClient.query(
+          "SELECT id FROM test_set WHERE id=$1 FOR UPDATE",
+          [request.params.testSetId],
+        );
+        const target = await cleanupClient.query(
+          `SELECT manifest_object_ref,cleanup_object_refs
+             FROM test_set_version WHERE id=$1 AND status='tombstoned' FOR UPDATE`,
+          [request.params.versionId],
+        );
+        if (!target.rowCount) throw new Error("tombstone_target_missing");
+        if (
+          target.rows[0].manifest_object_ref !==
+          `tombstone:${request.params.versionId}`
+        ) {
+          await protectDeletionBoundaries(
+            cleanupClient,
+            request.params.testSetId,
+            [request.params.versionId],
+            request.params.projectId,
+          );
+          objectRefs = await clearVersionContent(
+            cleanupClient,
+            [request.params.versionId],
+            "tombstoned",
+            `tombstone:${request.params.versionId}`,
+          );
+        } else {
+          objectRefs = storedStringArray(target.rows[0].cleanup_object_refs);
+        }
+        await cleanupClient.query("COMMIT");
+      } catch {
+        await cleanupClient.query("ROLLBACK").catch(() => undefined);
+        return reply
+          .code(503)
+          .send({ error: { code: "tombstone_cleanup_pending" } });
+      } finally {
+        cleanupClient.release();
       }
       try {
         await finishTombstoneCleanup(request.params.versionId, objectRefs);
@@ -3756,6 +4012,20 @@ export async function buildApp(
       let objectRefs: string[] = [];
       try {
         await client.query("BEGIN");
+        const entryIdentity = await client.query(
+          `SELECT test_set_id FROM test_set_trash_entry
+            WHERE id=$1 AND project_id=$2 AND status IN ('trashed','purging')`,
+          [request.params.entryId, request.params.projectId],
+        );
+        if (!entryIdentity.rowCount) {
+          await client.query("COMMIT");
+          return reply
+            .code(404)
+            .send({ error: { code: "trash_entry_not_found" } });
+        }
+        await client.query("SELECT id FROM test_set WHERE id=$1 FOR UPDATE", [
+          entryIdentity.rows[0].test_set_id,
+        ]);
         const entry = await client.query(
           `SELECT * FROM test_set_trash_entry
             WHERE id = $1 AND project_id = $2 AND status IN ('trashed', 'purging') FOR UPDATE`,
@@ -4081,7 +4351,7 @@ export async function buildApp(
       const countValues = [...values];
       const cases = await db.query(
         `SELECT vm.ordinal, cr.id AS revision_id, cr.case_id, cr.metadata
-         FROM version_member vm
+         FROM resolve_version_members($1) vm
          JOIN case_revision cr ON cr.id = vm.case_revision_id
          WHERE vm.version_id = $1${
            conditions.length ? ` AND ${conditions.join(" AND ")}` : ""
@@ -4092,7 +4362,7 @@ export async function buildApp(
       );
       const total = await db.query(
         `SELECT count(*)::text AS total
-         FROM version_member vm
+         FROM resolve_version_members($1) vm
          JOIN case_revision cr ON cr.id = vm.case_revision_id
          WHERE vm.version_id = $1${
            conditions.length ? ` AND ${conditions.join(" AND ")}` : ""
@@ -4549,19 +4819,39 @@ export async function buildApp(
         return reply
           .code(404)
           .send({ error: { code: "asset_or_collection_not_found" } });
-      const moved = await db.query(
-        `UPDATE data_asset da SET collection_id = $3
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+          `agentbench:controlled-deletion-project:${request.params.projectId}`,
+        ]);
+        const moved = await client.query(
+          `UPDATE data_asset da SET collection_id = $3
          WHERE da.id = $2 AND da.project_id = $1
            AND da.status NOT IN ('deletion_pending', 'tombstoned')
            AND EXISTS (SELECT 1 FROM raw_material_collection c WHERE c.id = $3 AND c.project_id = $1)
          RETURNING da.id`,
-        [request.params.projectId, request.params.assetId, collectionId],
-      );
-      if (!moved.rowCount)
-        return reply
-          .code(404)
-          .send({ error: { code: "asset_or_collection_not_found" } });
-      return reply.code(204).send();
+          [request.params.projectId, request.params.assetId, collectionId],
+        );
+        if (!moved.rowCount) {
+          await client.query("ROLLBACK");
+          return reply
+            .code(404)
+            .send({ error: { code: "asset_or_collection_not_found" } });
+        }
+        await client.query(
+          `DELETE FROM version_export_cache c USING test_set_version v,test_set ts
+            WHERE c.version_id=v.id AND v.test_set_id=ts.id AND ts.project_id=$1`,
+          [request.params.projectId],
+        );
+        await client.query("COMMIT");
+        return reply.code(204).send();
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
   );
 
@@ -7787,7 +8077,7 @@ export async function buildApp(
          FROM test_set_version v
          JOIN test_set ts ON ts.id = v.test_set_id
          JOIN project_member pm ON pm.project_id = ts.project_id AND pm.user_id = $4
-         JOIN version_member vm ON vm.version_id = v.id
+         JOIN LATERAL resolve_version_members(v.id) vm ON true
          JOIN case_revision cr ON cr.id = vm.case_revision_id
          JOIN candidate_snapshot cs ON cs.id = v.candidate_id
          LEFT JOIN candidate_item ci
@@ -9435,7 +9725,7 @@ export async function buildApp(
           ? undefined
           : await client.query(
               `SELECT cr.input, cr.expected_output, cr.metadata
-               FROM version_member vm JOIN case_revision cr ON cr.id = vm.case_revision_id
+               FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id = vm.case_revision_id
                WHERE vm.version_id = $1 AND cr.case_id = $2`,
               [current.base_version_id, request.params.caseId],
             );
@@ -9659,7 +9949,7 @@ export async function buildApp(
         const base = existing.rowCount
           ? undefined
           : await client.query(
-              `SELECT 1 FROM version_member vm JOIN case_revision cr ON cr.id = vm.case_revision_id
+              `SELECT 1 FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id = vm.case_revision_id
                WHERE vm.version_id = $1 AND cr.case_id = $2`,
               [current.base_version_id, request.params.caseId],
             );
@@ -11696,7 +11986,7 @@ export async function buildApp(
           `SELECT DISTINCT sr.parsed_view_id, sr.ordinal, sr.locator, sr.record_hash,
                   da.id AS asset_id
            FROM test_set_version v
-           JOIN version_member vm ON vm.version_id = v.id
+           JOIN LATERAL resolve_version_members(v.id) vm ON true
            JOIN case_revision cr ON cr.id = vm.case_revision_id
            JOIN candidate_item ci
              ON ci.candidate_id = v.candidate_id AND ci.ordinal = vm.ordinal
@@ -11846,7 +12136,7 @@ export async function buildApp(
         const members = await db.query(
           `SELECT cr.*, ci.ordinal
            FROM test_set_version v
-           JOIN version_member vm ON vm.version_id = v.id
+           JOIN LATERAL resolve_version_members(v.id) vm ON true
            JOIN case_revision cr ON cr.id = vm.case_revision_id
            JOIN candidate_item ci
              ON ci.candidate_id = v.candidate_id AND ci.ordinal = vm.ordinal
@@ -12247,7 +12537,7 @@ export async function buildApp(
                  JOIN test_set ts ON ts.id = tc.test_set_id
                  WHERE ts.project_id = $1 AND cr.id = $2
                    AND EXISTS (
-                     SELECT 1 FROM version_member vm
+                     SELECT 1 FROM resolved_version_member vm
                      JOIN test_set_version v ON v.id = vm.version_id
                      WHERE vm.case_revision_id = cr.id
                        AND v.id = ANY($3::text[])
@@ -12290,7 +12580,7 @@ export async function buildApp(
            SELECT tro.asset_id, source.value ->> 'assetId'
            FROM transformation_run_output tro
            JOIN transformation_record_edge edge ON edge.run_id = tro.run_id
-           JOIN version_member vm ON vm.case_revision_id = edge.input_ref ->> 'id'
+           JOIN resolved_version_member vm ON vm.case_revision_id = edge.input_ref ->> 'id'
            JOIN test_set_version v ON v.id = vm.version_id
            JOIN candidate_snapshot cs ON cs.id = v.candidate_id
            CROSS JOIN LATERAL jsonb_array_elements(cs.sources) source(value)
@@ -12346,7 +12636,7 @@ export async function buildApp(
             } else if (reference.objectType === "case_revision") {
               const revisionAssets = await client.query(
                 `SELECT source.value ->> 'assetId' AS asset_id
-                 FROM version_member vm
+                 FROM resolved_version_member vm
                  JOIN test_set_version v ON v.id = vm.version_id
                  JOIN candidate_snapshot cs ON cs.id = v.candidate_id
                  CROSS JOIN LATERAL jsonb_array_elements(cs.sources) source(value)
@@ -12887,7 +13177,7 @@ export async function buildApp(
                 cr.case_id, cr.source_record_ordinal, sr.locator, sr.record_hash
          FROM test_set_version v JOIN test_set ts ON ts.id = v.test_set_id
          JOIN project_member pm ON pm.project_id = ts.project_id AND pm.user_id = $4
-         JOIN version_member vm ON vm.version_id = v.id
+         JOIN LATERAL resolve_version_members(v.id) vm ON true
          JOIN case_revision cr ON cr.id = vm.case_revision_id
          JOIN candidate_snapshot cs ON cs.id = v.candidate_id
          LEFT JOIN candidate_item ci ON ci.candidate_id = cs.id AND ci.ordinal = vm.ordinal
@@ -12934,7 +13224,7 @@ export async function buildApp(
                   WHERE COALESCE(ci.lineage_level, 'record_level') = 'record_level'
                 )::text AS record_level,
                 count(*) FILTER (WHERE ci.lineage_level = 'asset_level')::text AS asset_level
-         FROM version_member vm
+         FROM resolve_version_members($1) vm
          LEFT JOIN candidate_item ci
            ON ci.candidate_id = (SELECT candidate_id FROM test_set_version WHERE id = $1)
           AND ci.ordinal = vm.ordinal
@@ -13513,7 +13803,7 @@ export async function buildApp(
       const members = await db.query(
         `SELECT vm.version_id, cr.id AS revision_id, cr.case_id,
                 cr.input, cr.expected_output, cr.metadata, cr.reason
-         FROM version_member vm
+         FROM resolved_version_member vm
          JOIN case_revision cr ON cr.id = vm.case_revision_id
          WHERE vm.version_id IN ($1, $2)
          ORDER BY vm.ordinal`,
@@ -15015,6 +15305,12 @@ export async function buildApp(
           `UPDATE data_asset SET status = 'deletion_pending'
            WHERE project_id = $1 AND id = ANY($2::text[])`,
           [request.params.projectId, assetIds],
+        );
+      if (assetIds.length)
+        await client.query(
+          `DELETE FROM version_export_cache c USING test_set_version v,test_set ts
+            WHERE c.version_id=v.id AND v.test_set_id=ts.id AND ts.project_id=$1`,
+          [request.params.projectId],
         );
       if (viewIds.length)
         await client.query(

@@ -1,12 +1,18 @@
+name: evalbase-phase1a
+
 services:
   postgres:
     image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-evalbase}
-      POSTGRES_USER: ${POSTGRES_USER:-evalbase}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: evalbase_phase1a
+      POSTGRES_USER: evalbase_phase1a
+      POSTGRES_PASSWORD: synthetic-nonproduction-only
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evalbase} -d ${POSTGRES_DB:-evalbase}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U evalbase_phase1a -d evalbase_phase1a",
+        ]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -18,8 +24,8 @@ services:
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ["server", "/data"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-evalbase}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      MINIO_ROOT_USER: evalbase-phase1a
+      MINIO_ROOT_PASSWORD: synthetic-nonproduction-only
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 2s
@@ -33,19 +39,19 @@ services:
     build: .
     command: ["sh", "-c", "npm run db:migrate && npm run start:web"]
     environment: &app-environment
-      DATABASE_URL: postgresql://${POSTGRES_USER:-evalbase}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-evalbase}
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_phase1a
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-evalbase}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
-      MINIO_BUCKET: ${MINIO_BUCKET:-evalbase}
+      MINIO_ACCESS_KEY: evalbase-phase1a
+      MINIO_SECRET_KEY: synthetic-nonproduction-only
+      MINIO_BUCKET: evalbase-phase1a
       APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
       GIT_SHA: ${GIT_SHA:-unknown}
       NODE_ENV: development
       SOLO_OWNER_MODE: "true"
-      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
+      OWNER_PASSWORD: owner-test-password
       JOB_CLAIM_DELAY_MS: ${JOB_CLAIM_DELAY_MS:-250}
-      ALLOW_TEST_IDENTITY: "false"
+      ALLOW_TEST_IDENTITY: "true"
       HOST: 0.0.0.0
       PORT: "3000"
     depends_on:
@@ -93,11 +99,7 @@ services:
   test:
     build: .
     command: ["npm", "run", "test:integration"]
-    environment:
-      <<: *app-environment
-      ALLOW_TEST_IDENTITY: "true"
-      EDITOR_PASSWORD: test-only-editor-password
-      VIEWER_PASSWORD: test-only-viewer-password
+    environment: *app-environment
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,9 +125,13 @@ services:
 
 networks:
   edge:
+    name: evalbase-phase1a-edge
   internal:
+    name: evalbase-phase1a-internal
     internal: true
 
 volumes:
   postgres-data:
+    name: evalbase-phase1a-postgres-data
   minio-data:
+    name: evalbase-phase1a-minio-data

@@ -6,5 +6,6 @@
     "rootDir": ".",
     "isolatedModules": false
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/web"]
 }

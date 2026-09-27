@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
 
+import { CAPACITY_LIMITS } from "../capacity.js";
 import type { Database } from "../db/pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -27,6 +28,7 @@ interface Reference {
   expectedHash: string;
   semanticHash?: string;
   itemCount?: number;
+  storageFormat?: string;
 }
 
 async function hashObject(
@@ -116,15 +118,19 @@ async function references(
       SELECT da.id AS object_id, da.project_id, da.object_ref,
              da.blob_sha256 AS expected_hash, 'data_asset' AS object_type,
              NULL::text AS semantic_hash, NULL::integer AS item_count,
-             da.uploaded_at AS scanned_at
+             da.uploaded_at AS scanned_at, NULL::text AS storage_format
       FROM data_asset da
       WHERE da.object_ref IS NOT NULL
         AND da.status NOT IN ('deletion_pending', 'tombstoned')
       UNION ALL
-      SELECT cs.id, ts.project_id, cs.object_ref, cs.payload_hash,
+      SELECT cs.id, ts.project_id, cs.object_ref,
+             CASE WHEN v.storage_format = 'delta_v1'
+               THEN regexp_replace(v.manifest_object_ref, '^.*/', '')
+               ELSE cs.payload_hash END AS expected_hash,
              'candidate_snapshot', NULL::text AS semantic_hash, NULL::integer AS item_count,
-             cs.created_at
+             cs.created_at, v.storage_format
       FROM candidate_snapshot cs
+      LEFT JOIN test_set_version v ON v.candidate_id = cs.id
       JOIN working_draft wd ON wd.id = cs.draft_id
       JOIN test_set ts ON ts.id = wd.test_set_id
       WHERE cs.object_ref IS NOT NULL
@@ -133,7 +139,7 @@ async function references(
       SELECT cs.id, ts.project_id, cs.evidence_object_ref,
              NULL::text AS expected_hash, 'candidate_evidence',
              cs.evidence_hash AS semantic_hash, NULL::integer AS item_count,
-             cs.created_at
+             cs.created_at, NULL::text AS storage_format
       FROM candidate_snapshot cs
       JOIN working_draft wd ON wd.id = cs.draft_id
       JOIN test_set ts ON ts.id = wd.test_set_id
@@ -142,14 +148,15 @@ async function references(
       UNION ALL
       SELECT v.id, ts.project_id, v.manifest_object_ref,
              NULL::text AS expected_hash, 'test_set_version',
-             v.manifest_hash AS semantic_hash, v.item_count, v.published_at
+             v.manifest_hash AS semantic_hash, v.item_count, v.published_at,
+             v.storage_format
       FROM test_set_version v
       JOIN test_set ts ON ts.id = v.test_set_id
       WHERE v.status <> 'degraded_by_deletion'
       UNION ALL
       SELECT dr.id, ts.project_id, dr.object_ref, dr.delivery_hash,
              'delivery_record', NULL::text AS semantic_hash, NULL::integer AS item_count,
-             dr.created_at
+             dr.created_at, NULL::text AS storage_format
       FROM delivery_record dr
       JOIN test_set_version v ON v.id = dr.version_id
       JOIN test_set ts ON ts.id = v.test_set_id
@@ -179,6 +186,8 @@ async function references(
         row.item_count === null || row.item_count === undefined
           ? undefined
           : Number(row.item_count),
+      storageFormat:
+        row.storage_format == null ? undefined : String(row.storage_format),
     };
   });
 }
@@ -191,7 +200,12 @@ async function inspectReference(
     const structured =
       reference.objectType === "test_set_version" ||
       reference.objectType === "candidate_evidence"
-        ? await artifacts.readBytes(reference.objectRef, 1_000_000)
+        ? await artifacts.readBytes(
+            reference.objectRef,
+            reference.objectType === "test_set_version"
+              ? CAPACITY_LIMITS.itemsBytes + 20_000_000
+              : 1_000_000,
+          )
         : undefined;
     const actual = structured
       ? {
@@ -287,11 +301,26 @@ async function inspectReference(
       const manifest = JSON.parse(structured.toString("utf8")) as {
         counts?: { items?: number };
         version?: { version_manifest_hash?: string };
+        format?: string;
+        format_version?: number;
+        item_count?: number;
+        manifest_hash?: string;
       };
-      if (Number(manifest.counts?.items) !== reference.itemCount)
-        return "manifest_count_mismatch";
-      if (manifest.version?.version_manifest_hash !== reference.semanticHash)
-        return "manifest_hash_mismatch";
+      if (reference.storageFormat === "delta_v1") {
+        if (manifest.item_count !== reference.itemCount)
+          return "manifest_count_mismatch";
+        if (
+          manifest.format !== "evalbase.test-set-delta-manifest" ||
+          manifest.format_version !== 1 ||
+          manifest.manifest_hash !== reference.semanticHash
+        )
+          return "manifest_hash_mismatch";
+      } else {
+        if (Number(manifest.counts?.items) !== reference.itemCount)
+          return "manifest_count_mismatch";
+        if (manifest.version?.version_manifest_hash !== reference.semanticHash)
+          return "manifest_hash_mismatch";
+      }
     }
     return undefined;
   } catch (error) {
@@ -368,7 +397,7 @@ export async function scanConsistency(
                 count(vm.case_revision_id)::int AS actual_count
          FROM test_set_version v
          JOIN test_set ts ON ts.id = v.test_set_id
-         LEFT JOIN version_member vm ON vm.version_id = v.id
+         LEFT JOIN LATERAL resolve_version_members_internal(v.id, true, false) vm ON true
          WHERE v.status <> 'degraded_by_deletion'
            AND v.id = ANY($1::text[])
          GROUP BY v.id, ts.project_id, v.item_count`
@@ -376,7 +405,7 @@ export async function scanConsistency(
                 count(vm.case_revision_id)::int AS actual_count
          FROM test_set_version v
          JOIN test_set ts ON ts.id = v.test_set_id
-         LEFT JOIN version_member vm ON vm.version_id = v.id
+         LEFT JOIN LATERAL resolve_version_members_internal(v.id, true, false) vm ON true
          WHERE v.status <> 'degraded_by_deletion'
          GROUP BY v.id, ts.project_id, v.item_count
          ORDER BY v.published_at DESC

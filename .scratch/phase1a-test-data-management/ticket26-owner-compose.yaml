@@ -1,0 +1,83 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: agentbench_v2_ticket26_owner
+      POSTGRES_USER: agentbench_ticket26_owner
+      POSTGRES_PASSWORD: synthetic-nonproduction-only
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: agentbench-ticket26-owner
+      MINIO_ROOT_PASSWORD: synthetic-nonproduction-only
+
+  web:
+    environment: &owner-environment
+      DATABASE_URL: postgresql://agentbench_ticket26_owner:synthetic-nonproduction-only@postgres:5432/agentbench_v2_ticket26_owner
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: agentbench-ticket26-owner
+      MINIO_SECRET_KEY: synthetic-nonproduction-only
+      MINIO_BUCKET: agentbench-v2-ticket26-owner
+      APP_ORIGIN: http://127.0.0.1:4196
+      GIT_SHA: ${GIT_SHA:-unknown}
+      SOLO_OWNER_MODE: "true"
+      OWNER_PASSWORD: owner-test-password
+      ALLOW_TEST_IDENTITY: "true"
+    ports: !override
+      - "127.0.0.1:4206:3000"
+
+  worker:
+    environment:
+      <<: *owner-environment
+      WORKER_HEALTH_PORT: "3001"
+
+  frontend:
+    image: public.ecr.aws/docker/library/node@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff
+    working_dir: /app
+    command:
+      [
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5173",
+        "--strictPort",
+      ]
+    environment:
+      VITE_API_PROXY_TARGET: http://web:3000
+    volumes:
+      - ./frontend-v3:/app:ro
+      - frontend-cache:/app/node_modules/.vite
+      - frontend-config-cache:/app/node_modules/.vite-temp
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [edge, internal]
+    ports:
+      - "127.0.0.1:4196:5173"
+
+networks:
+  edge:
+    name: agentbench-ticket26-owner-checkpoint-edge
+    ipam:
+      config:
+        - subnet: 10.254.46.0/24
+  internal:
+    name: agentbench-ticket26-owner-checkpoint-internal
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.47.0/24
+
+volumes:
+  postgres-data:
+    name: agentbench-ticket26-owner-checkpoint-postgres-data
+  minio-data:
+    name: agentbench-ticket26-owner-checkpoint-minio-data
+  frontend-cache:
+    name: agentbench-ticket26-owner-checkpoint-frontend-cache
+  frontend-config-cache:
+    name: agentbench-ticket26-owner-checkpoint-frontend-config-cache

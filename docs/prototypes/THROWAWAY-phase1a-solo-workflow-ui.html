@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>THROWAWAY · EvalBase 单人工作流原型</title>
     <style>
-      /* Visual baseline used by the formal EvalBase frontend. */
+      /* Visual baseline adapted from frontend-v1/src/styles.css. */
       :root {
         --bg: oklch(0.976 0.004 250);
         --surface: oklch(1 0 0);
@@ -973,8 +973,8 @@
         }
       }
       /*
-       * Static equivalents of the formal frontend's Sidebar, Button, Card,
-       * Input, Badge, Table, Dialog, and PageHeader.
+       * Static equivalents of frontend-v1/src/styles.css and the donor's
+       * Sidebar, Button, Card, Input, Badge, Table, Dialog, and PageHeader.
        * This file deliberately keeps its browser-memory prototype script.
        */
       :root {
@@ -1988,7 +1988,7 @@
         background: var(--accent);
         color: var(--accent-foreground);
       }
-      /* Compact create forms follow the formal Dialog, Input, and Button geometry. */
+      /* Compact create forms follow frontend-v1's Dialog, Input, and Button geometry. */
       .simple-modal {
         position: relative;
         width: min(512px, 100%);
@@ -2590,7 +2590,7 @@
         }
       }
 
-      /* Dataset index: the formal list-page geometry, with only the
+      /* Dataset index: the frontend-v1 list-page geometry, with only the
        * two actions and fields meaningful to this solo prototype. */
       .prototype-note { display: none; }
       .shell { min-height: 100vh; }

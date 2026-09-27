@@ -2,72 +2,102 @@
 
 [中文文档](README.zh-CN.md)
 
-EvalBase is a single-owner application for organizing source data, creating immutable Test Set versions, recording record-level provenance, and exporting CSV files.
+EvalBase is a single-owner test-data management application. It helps one maintainer organize source files, map and inspect records, create immutable Test Set versions, track provenance, export CSV files, and safely recover or permanently delete Test Sets and versions.
 
-## Features
+Phase 1A is complete. The user-visible interaction contract is the frozen [solo-workflow prototype](docs/prototypes/THROWAWAY-phase1a-solo-workflow-ui.html); the formal implementation is in `frontend-v3/`.
 
-- Project-scoped Datasets and Test Sets.
-- Confirmed CSV, JSON, and JSONL uploads with drag field mapping.
-- Normalized record browsing, bounded raw-file previews, search, pagination, and row-density controls.
-- Immutable linear or branched Test Set versions with source and change facts.
-- CSV and provenance CSV downloads, Trash restore, and typed permanent deletion.
+## What it does
+
+- Create project workspaces with project-scoped Datasets and Test Sets.
+- Upload CSV, JSON, and JSONL files through a two-step confirmation flow.
+- Drag-map source fields to Question, Expected Output, and multiple Metadata fields.
+- Browse normalized records, inspect a bounded raw-content preview, move files between Datasets, and use search, pagination, and row-height controls.
+- Create `v1`, derive linear or branched immutable Test Set versions, and inspect record-level source and change facts.
+- Download a version as data CSV or data CSV plus provenance CSV.
+- Restore Test Sets and version branches from Trash; permanently delete only after entering the exact Test Set name or version label.
 
 ## Architecture
 
-Docker Compose runs a Fastify Web/API service, a background Worker, PostgreSQL, and MinIO. PostgreSQL and MinIO use an internal Docker network and do not publish host ports. The formal React frontend is in `frontend-v3/`.
+Docker Compose runs four services:
 
-## Quick start
+| Service    | Responsibility                                                      |
+| ---------- | ------------------------------------------------------------------- |
+| Web        | Fastify API and the built `frontend-v3` application                 |
+| Worker     | Background processing and cleanup work                              |
+| PostgreSQL | Projects, Datasets, Test Sets, versions, provenance, and state      |
+| MinIO      | Original files, staged bytes, normalized artifacts, and CSV exports |
 
-Requirements: Docker Engine with Docker Compose v2. The first run also needs network access to pull the pinned images.
+PostgreSQL and MinIO stay on an internal Docker network and do not publish host ports. Only Web is published.
+
+## Quick start with Docker Compose
+
+### Prerequisites
+
+- Docker Engine with Docker Compose v2
+- Network access to pull the pinned container images on the first run
+- At least a few GB of free disk space for images and local PostgreSQL/MinIO volumes
+
+Clone the repository and start the application:
 
 ```bash
-git clone git@github.com:iflabx/evalbase.git EvalBase
+git clone <your-repository-url> EvalBase
 cd EvalBase
-cp .env.example .env
+
+GIT_SHA=$(git rev-parse --short HEAD) \
+WEB_BIND_ADDRESS=127.0.0.1 \
+WEB_PORT=3000 \
+APP_ORIGIN=http://127.0.0.1:3000 \
+docker compose up -d --build
 ```
 
-Set `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `OWNER_PASSWORD` in `.env` to separate URL-safe random values. For example, run `openssl rand -hex 32` once for each value.
+Open <http://127.0.0.1:3000>. The application has no login page because Phase 1A supports one non-interactive Owner only.
+
+Verify the running revision and dependencies:
 
 ```bash
-GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build
+curl http://127.0.0.1:3000/health
 curl http://127.0.0.1:3000/health/ready
 ```
 
-Open <http://127.0.0.1:3000>. EvalBase uses a single-owner, no-login workflow. The default Web bind is loopback; change `WEB_BIND_ADDRESS`, `WEB_PORT`, and `APP_ORIGIN` together only when your access path requires it.
-
-Stop the stack while preserving data:
+`git_sha` should match the checked-out commit. To stop containers while preserving local application data:
 
 ```bash
 docker compose down
 ```
 
-Remove all local PostgreSQL and MinIO data:
+To remove the Compose volumes as well, including all local PostgreSQL and MinIO data:
 
 ```bash
 docker compose down -v
 ```
 
-## Development and checks
+The checked-in credentials are synthetic development defaults. Replace them before deployment.
+
+## Local development and checks
 
 Node.js 24 and npm are required for local development.
 
 ```bash
 npm ci
-npm --prefix frontend-v3 ci
+npm run dev
+
 npm test
+npm run test:integration
 npm run typecheck
 npm run lint
 npm run docs:check
 npm run build
 ```
 
-Run integration tests through the isolated Compose profile after preparing `.env`:
+Run browser tests in the repository's containerized environment when needed:
 
 ```bash
-docker compose --profile test run --rm test
+docker compose --profile e2e run --rm e2e
 ```
 
-## Data boundaries
+The full command list and the risk-based validation rule are documented in [AGENTS.md](AGENTS.md).
+
+## Data and capacity boundaries
 
 - One source file: up to 50,000,000 bytes and 10,000 source records.
 - One edit: up to 5 files, 100,000,000 total source bytes, and 10,000 source records.
@@ -75,15 +105,33 @@ docker compose --profile test run --rm test
 
 These are Phase 1A limits, not capacity guarantees.
 
-## Documentation
+## Repository layout
 
-- [Product requirements](docs/PRD-evalbase-v1.md)
-- [Domain vocabulary](CONTEXT.md)
-- [Architecture](docs/architecture/phase1a-architecture.md)
-- [System flow](docs/system-flow-v2.md)
-- [Frozen interaction prototype](docs/prototypes/THROWAWAY-phase1a-solo-workflow-ui.html)
-- [Testing guide](docs/test-plan-phase1a.md)
+| Path                                     | Purpose                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `frontend-v3/`                           | Formal React frontend                                               |
+| `src/`                                   | Fastify server, domain modules, database, storage, and worker       |
+| `tests/`                                 | Unit and integration tests                                          |
+| `docs/`                                  | PRD, architecture, ADRs, prototype records, research, and test plan |
+| `.scratch/phase1a-test-data-management/` | Local implementation Spec, Tickets, and execution evidence          |
+| `frontend-v1/`                           | Immutable visual/component donor; not a runtime frontend            |
 
-## Contributing, security, and licenses
+`frontend-v2/` and `src/web/` are historical source only and do not participate in the formal build or Compose runtime.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This project is licensed under [Apache-2.0](LICENSE).
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines. A [Chinese version](CONTRIBUTING.zh-CN.md) is also available.
+
+## Community and security
+
+Report security concerns privately as described in [SECURITY.md](SECURITY.md). Community participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Project status
+
+The Phase 1A v5.3 implementation sequence and final Owner end-to-end acceptance are complete. See the [progress ledger](docs/agents/phase1a-progress.md) for implementation evidence and the [PRD](docs/PRD-evalbase-v1.md) for the authoritative scope.
+
+## Before publishing a fork
+
+Review tracked files and remove any private server addresses, credentials, cookies, internal paths, logs, or data that should not be public. Do not publish `.env` files, database/MinIO volumes, `node_modules/`, generated `dist/`, browser reports, or real datasets. Review `.scratch/` before publishing because it preserves the project's development history and may contain environment-specific evidence.
+
+This project is licensed under [Apache-2.0](LICENSE).

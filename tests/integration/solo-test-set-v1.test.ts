@@ -124,6 +124,7 @@ describe("Ticket 23 solo test set v1", () => {
       await db.query("DELETE FROM audit_event WHERE project_id = $1", [
         projectId,
       ]);
+      await db.query("DELETE FROM job WHERE project_id = $1", [projectId]);
       await db.query("DELETE FROM project_member WHERE project_id = $1", [
         projectId,
       ]);
@@ -220,7 +221,11 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets`,
       headers: { ...mutationHeaders(), "idempotency-key": key },
-      payload,
+      payload: {
+        ...payload,
+        records: undefined,
+        operations: addOperations(payload.records),
+      },
     });
 
     expect(response.statusCode, response.body).toBe(201);
@@ -246,7 +251,11 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets`,
       headers: { ...mutationHeaders(), "idempotency-key": key },
-      payload,
+      payload: {
+        ...payload,
+        records: undefined,
+        operations: addOperations(payload.records),
+      },
     });
     expect(replay.statusCode, replay.body).toBe(200);
     expect(replay.json()).toEqual({ ...created, replayed: true });
@@ -303,7 +312,7 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${created.version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
-      payload: { selections: [], records: payload.records },
+      payload: { operations: [] },
     });
     expect(linear.statusCode, linear.body).toBe(201);
     expect(linear.json().version).toMatchObject({
@@ -315,7 +324,7 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${created.version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
-      payload: { selections: [], records: payload.records },
+      payload: { operations: [] },
     });
     expect(branch.statusCode, branch.body).toBe(201);
     expect(branch.json().version).toMatchObject({
@@ -379,8 +388,11 @@ describe("Ticket 23 solo test set v1", () => {
       url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${branch.json().version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
       payload: {
-        selections: [],
-        records: [branchRecords[0], branchRecords[0]],
+        operations: [branchRecords[0], branchRecords[0]].map((record) => ({
+          operation: "delete",
+          caseId: record.caseId,
+          beforeRevisionId: record.revisionId,
+        })),
       },
     });
     expect(duplicateParent.statusCode, duplicateParent.body).toBe(422);
@@ -393,8 +405,13 @@ describe("Ticket 23 solo test set v1", () => {
       url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${branch.json().version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
       payload: {
-        selections: [],
-        records: branchRecords.slice(1),
+        operations: [
+          {
+            operation: "delete",
+            caseId: branchRecords[0].caseId,
+            beforeRevisionId: branchRecords[0].revisionId,
+          },
+        ],
       },
     });
     expect(branchContinuation.statusCode, branchContinuation.body).toBe(201);
@@ -419,7 +436,7 @@ describe("Ticket 23 solo test set v1", () => {
           method: "POST",
           url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${created.version.id}/derived-versions`,
           headers: { ...mutationHeaders(), "idempotency-key": idempotencyKey },
-          payload: { selections: [], records: payload.records },
+          payload: { operations: [] },
         }),
       ),
     );
@@ -433,14 +450,14 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${created.version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
-      payload: { selections: [], records: [] },
+      payload: { operations: [{ operation: "unknown" }] },
     });
     expect(failed.statusCode).toBe(422);
     const afterFailure = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets/${created.testSet.id}/versions/${created.version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
-      payload: { selections: [], records: payload.records },
+      payload: { operations: [] },
     });
     expect(afterFailure.statusCode, afterFailure.body).toBe(201);
     expect(afterFailure.json().version.label).toBe("v2-b4");
@@ -463,7 +480,12 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
-      payload: { name: "空测试集", purpose: "", selections: [], records: [] },
+      payload: {
+        name: "空测试集",
+        purpose: "",
+        selections: [],
+        operations: [],
+      },
     });
     expect(empty.statusCode, empty.body).toBe(422);
     expect(empty.json()).toEqual({
@@ -477,11 +499,13 @@ describe("Ticket 23 solo test set v1", () => {
         name: "过大测试集",
         purpose: "",
         selections: [],
-        records: Array.from({ length: 10_001 }, () => ({
-          question: "synthetic",
-          expectedOutput: "synthetic",
-          metadata: [],
-        })),
+        operations: addOperations(
+          Array.from({ length: 10_001 }, () => ({
+            question: "synthetic",
+            expectedOutput: "synthetic",
+            metadata: [],
+          })),
+        ),
       },
     });
     expect(result.statusCode, result.body).toBe(422);
@@ -568,7 +592,7 @@ describe("Ticket 23 solo test set v1", () => {
           { assetId: initialAsset, ordinal: initialOrdinal },
           { assetId: initialAsset, ordinal: initialSecondOrdinal },
         ],
-        records: [
+        operations: addOperations([
           {
             question: "=SUM(1,1)",
             expectedOutput: "before",
@@ -586,7 +610,7 @@ describe("Ticket 23 solo test set v1", () => {
             metadata: [{ key: "Metadata", value: "alpha" }],
             source: { assetId: initialAsset, ordinal: initialSecondOrdinal },
           },
-        ],
+        ]),
       },
     });
     expect(created.statusCode, created.body).toBe(201);
@@ -628,28 +652,50 @@ describe("Ticket 23 solo test set v1", () => {
       url: `/api/projects/${projectId}/solo-test-sets/${created.json().testSet.id}/versions/${created.json().version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
       payload: {
-        selections: [{ assetId: addedAsset, ordinal: addedOrdinal }],
-        records: [
-          { question: "manual added", expectedOutput: "", metadata: [] },
+        operations: [
           {
-            question: "=SUM(1,1)",
-            expectedOutput: 'changed\nwith "quotes"',
-            metadata: [{ key: "Metadata", value: "中文,更新" }],
-            source: { assetId: initialAsset, ordinal: initialOrdinal },
-            parentOrdinal: v1Records[0].parentOrdinal,
+            operation: "update",
+            caseId: v1Records[0].caseId,
+            beforeRevisionId: v1Records[0].revisionId,
+            after: {
+              question: "=SUM(1,1)",
+              expectedOutput: 'changed\nwith "quotes"',
+              metadata: [{ key: "Metadata", value: "中文,更新" }],
+              source: { assetId: initialAsset, ordinal: initialOrdinal },
+            },
           },
           {
-            question: "second",
-            expectedOutput: "+formula",
-            metadata: [{ key: "Metadata", value: "beta" }],
-            source: { assetId: addedAsset, ordinal: addedOrdinal },
+            operation: "delete",
+            caseId: v1Records[1].caseId,
+            beforeRevisionId: v1Records[1].revisionId,
           },
           {
-            question: "same",
-            expectedOutput: "before",
-            metadata: [{ key: "Metadata", value: "alpha" }],
-            source: { assetId: movedAsset, ordinal: movedOrdinal },
-            parentOrdinal: v1Records[2].parentOrdinal,
+            operation: "update",
+            caseId: v1Records[2].caseId,
+            beforeRevisionId: v1Records[2].revisionId,
+            after: {
+              question: "same",
+              expectedOutput: "before",
+              metadata: [{ key: "Metadata", value: "alpha" }],
+              source: { assetId: movedAsset, ordinal: movedOrdinal },
+            },
+          },
+          {
+            operation: "add",
+            after: {
+              question: "manual added",
+              expectedOutput: "",
+              metadata: [],
+            },
+          },
+          {
+            operation: "add",
+            after: {
+              question: "second",
+              expectedOutput: "+formula",
+              metadata: [{ key: "Metadata", value: "beta" }],
+              source: { assetId: addedAsset, ordinal: addedOrdinal },
+            },
           },
         ],
       },
@@ -667,8 +713,8 @@ describe("Ticket 23 solo test set v1", () => {
       versionSummary: {
         sourceFiles: [
           "provenance-initial.csv",
-          "provenance-added.csv",
           "provenance-moved.csv",
+          "provenance-added.csv",
         ],
         manualRecordCount: 1,
         changes: { modified: 2, added: 2, removed: 1 },
@@ -792,7 +838,7 @@ describe("Ticket 23 solo test set v1", () => {
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets/${created.json().testSet.id}/versions/${created.json().version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
-      payload: { selections: [], records: v1Records },
+      payload: { operations: [] },
     });
     expect(branch.statusCode, branch.body).toBe(201);
     expect(branch.json().version.label).toBe("v2-b1");
@@ -892,7 +938,7 @@ describe("Ticket 23 solo test set v1", () => {
           { assetId: sourceA, ordinal: ordinalA },
           { assetId: sourceB, ordinal: ordinalB },
         ],
-        records: [
+        operations: addOperations([
           {
             question: "",
             expectedOutput: "answer A",
@@ -916,7 +962,7 @@ describe("Ticket 23 solo test set v1", () => {
             expectedOutput: "",
             metadata: [{ key: "来源", value: "手工" }],
           },
-        ],
+        ]),
       },
     });
     expect(created.statusCode, created.body).toBe(201);
@@ -999,8 +1045,7 @@ describe("Ticket 23 solo test set v1", () => {
       url: `/api/projects/${projectId}/solo-test-sets/${testSet.id}/versions/${version.id}/derived-versions`,
       headers: { ...mutationHeaders(), "idempotency-key": randomUUID() },
       payload: {
-        selections: [],
-        records: [
+        operations: addOperations([
           {
             question: "duplicate metadata key",
             expectedOutput: "",
@@ -1009,7 +1054,7 @@ describe("Ticket 23 solo test set v1", () => {
               { key: "channel", value: "重复" },
             ],
           },
-        ],
+        ]),
       },
     });
     expect(duplicateMetadata.statusCode, duplicateMetadata.body).toBe(422);
@@ -1023,7 +1068,9 @@ describe("Ticket 23 solo test set v1", () => {
       payload: {
         name: "旧文本不得新写入",
         selections: [],
-        records: [{ question: "", expectedOutput: "", metadata: "legacy" }],
+        operations: addOperations([
+          { question: "", expectedOutput: "", metadata: "legacy" },
+        ]),
       },
     });
     expect(legacyMetadata.statusCode, legacyMetadata.body).toBe(422);
@@ -1078,5 +1125,9 @@ describe("Ticket 23 solo test set v1", () => {
       "x-csrf-token": csrf,
       "content-type": "application/json",
     };
+  }
+
+  function addOperations(records: unknown[]) {
+    return records.map((after) => ({ operation: "add", after }));
   }
 });

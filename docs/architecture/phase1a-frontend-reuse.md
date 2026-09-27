@@ -1,7 +1,107 @@
-# Frontend Architecture
+# Phase 1A 正式前端复制与改造说明
 
-`frontend-v3/` is the only formal web frontend. It uses React, Vite, TanStack Router, and the repository's shared UI primitives; its built assets are served by the root Fastify application.
+| 项目             | 内容                                                       |
+| ---------------- | ---------------------------------------------------------- |
+| 状态             | Approved Implementation Guidance — Non-production Phase 1A |
+| 修订日期         | 2026-09-09                                                 |
+| 交互合同         | `92cb8a5` / `prototype/solo-workflow-v5.3`                 |
+| 视觉与组件 donor | `frontend-v1/`，永久只读                                   |
+| 废弃实验前端     | `frontend-v2/`，保留历史但不再开发、构建或部署             |
+| 新正式前端目录   | `frontend-v3/`                                             |
 
-The [frozen interaction prototype](../prototypes/THROWAWAY-phase1a-solo-workflow-ui.html) defines visible pages, controls, and workflow order. The implementation must preserve those user-facing boundaries while using the existing HTTP API and domain modules.
+## 1. 权威关系
 
-Frontend changes should keep normal, empty, error, pagination, dialog, and destructive-action states consistent with the prototype. No alternative frontend runtime or second deployment unit is supported.
+- 冻结原型定义全部用户可见页面、操作、字段、顺序和状态。原型有的正式产品必须有；原型没有的不得加入 UI、CLI 或其他 Owner 可操作入口。
+- [PRD](../PRD-evalbase-v1.md)和根目录 [CONTEXT.md](../../CONTEXT.md)分别定义产品行为与领域词汇。
+- [Phase 1A 架构](./phase1a-architecture.md)和相关 ADR 只定义支撑这些行为的内部机制，不能扩大原型。
+- `frontend-v1/` 只定义字体、视觉、布局和通用组件，不定义当前业务。
+
+## 2. 目录合同
+
+```text
+frontend-v1/       # 永久只读 donor
+frontend-v2/       # 已废弃的旧实验前端，仅保留历史
+frontend-v3/       # Ticket 20 从 frontend-v1 完整复制
+src/web/           # 更早的旧 Web；正式切换后退出运行路径
+docs/prototypes/   # 冻结交互合同，不进入运行时
+```
+
+Ticket 20 必须：
+
+1. 在固定 HEAD 确认 `frontend-v1/` 无改动。
+2. 完整复制 `frontend-v1/` 到新的 `frontend-v3/`。
+3. 保留 donor 的依赖锁、字体、样式令牌、应用外壳和需要的通用组件。
+4. 只在 `frontend-v3/` 删除 donor 旧业务并连接 EvalBase API。
+5. 不从 `frontend-v2/` 复制页面、状态或业务代码；可只读核实现有 API 调用方式。
+
+`frontend-v2/` 的历史提交和文件不删除，但它不再接受产品修复，不得成为预览、正式构建或回滚目标。
+
+## 3. 页面合同
+
+首屏是项目列表，不是登录页或数据集页。
+
+| 页面                                                             | 用户行为                                                  |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| `/projects`                                                      | 搜索、分页、新建和打开项目                                |
+| `/projects/:projectId/datasets`                                  | 数据集搜索、类型/内容筛选、更新时间排序、分页、新建和上传 |
+| `/projects/:projectId/datasets/:datasetId`                       | 文件/全部记录切换、文件名搜索、移动文件、以“查看”进入；记录详情与行高 |
+| `/projects/:projectId/datasets/:datasetId/files/:assetId`        | 搜索并分页浏览统一记录、记录详情、行高和页内原始内容预览  |
+| `/projects/:projectId/test-sets`                                 | 搜索、分页、新建测试集和打开回收站                        |
+| `/projects/:projectId/test-sets/:testSetId/versions/:versionId?` | 指定版本摘要、可筛选记录、版本图、来源、下载、派生和删除入口 |
+
+进入项目后，侧栏显示当前项目名称，“数据集”和“测试集”是它的子项；项目切换器允许切换或新建项目。不存在项目设置、项目重命名、项目删除、成员或角色入口。
+
+数据集首页没有右侧信息面板，也没有重命名和删除。数据集内文件页同样没有右侧信息面板：单击行只产生选中样式，点击“查看”才进入记录页。
+
+## 4. 关键流程
+
+- 上传：选择文件和目标数据集 → 逐文件拖拽字段映射与真实预览 → 确认保存。带样例值的源字段卡拖至问题、期望输出或 Metadata 目标，已分配卡在源侧显示透明勾选、在目标侧显示可移除 chip；一个字段只保留一个映射。连续选择追加到同一队列；同项目精确字节重复文件跳过，详见[上传 v5.1 补充](../prototypes/phase1a-solo-workflow-v5.1-upload-amendment.md)。只支持冻结原型中的 CSV、JSON、JSONL 自动解析，不增加高级 parser 配置工作台。
+- 记录浏览：数据集全部记录、单文件记录和测试集版本记录均可选择紧凑、适中或展开行高；Metadata 显示前两项“字段：值”及原处展开项，点序号查看完整记录。
+- 新建测试集：填写名称和可选用途 → 按数据集/文件/记录选择 → 在问题、期望输出、Metadata 三列表格增删改；Metadata 通过字段和值编辑，重复字段名不可保存 → 创建 `v1`。
+- 新版本：从当前选中版本继承全部记录，可选择额外资料，也可直接编辑；创建后旧版本保持不变。
+- 版本记录：搜索、分页，并按来源文件、问题是否填写、记录来源和 Metadata 字段值筛选；条件以 AND 合并，筛选标签可单项移除或清除全部，不保存筛选。
+- 来源：查看父版本、本次新加入资料、增改删计数、状态筛选和逐条详情。
+- 下载：下载当前版本数据 CSV；“下载数据与溯源”产生当前版本的数据 CSV 和 provenance CSV 两个文件。
+- 删除：测试集列表“查看”右侧的垃圾桶图标将整套测试集移入回收站；版本详情只删除版本。回收站分为测试集和版本/版本分支两组；整套测试集恢复时吸收并恢复此前单独回收的版本分支。永久删除测试集需输入完整名称，永久删除版本/分支或中间版本墓碑需输入版本号；中间版本可删除内容并保留墓碑关系，或连同全部后代进入回收站。
+
+## 5. 允许的内部机制
+
+`frontend-v3/` 只调用与冻结原型恰好一致的任务型 HTTP 接口。请求只发送当前操作需要的字段，响应只包含当前页面需要的数据；不得调用宽接口后仅在客户端隐藏多余字段或动作。旧前端不是保留宽接口的理由，相关 Ticket 应按 [Architecture §5.0](./phase1a-architecture.md#50-公共-api-适配规则)原位收紧或退出旧公共路由。
+
+PostgreSQL/MinIO 持久化、Owner 请求绑定、项目隔离、Origin/CSRF、流式容量限制、幂等、原子发布、稳定身份、来源事实、安全 CSV、删除闭包和审计均由服务端处理，不成为页面、表单或导航。
+
+Working Draft、Lease、Formal Schema、Candidate、Job、Delivery Record、Package、Offline Validator、Langfuse、Controlled Deletion 和角色管理均不得出现在正式前端。
+
+## 6. 实施顺序
+
+1. Ticket 20：从 donor 创建 `frontend-v3/`，完成项目工作区与数据集首页。
+2. Tickets 21–26：按冻结原型顺序连接上传、资料浏览、测试集创建、版本、来源/下载和回收/删除。
+3. Ticket 27：把构建和部署切换到 `frontend-v3/`，让 `frontend-v2/` 与 `src/web/` 退出运行路径。
+4. Ticket 29：补齐结构化 Metadata、原始记录详情、行高和受限原始内容预览。
+5. Ticket 30：补齐测试集编辑和版本记录的结构化 Metadata、分页详情与固定筛选。
+6. Ticket 31：将上传字段映射改为 v5.3 拖拽工作区，复用现有上传/预览/确认接口。
+7. Ticket 32：对齐 v5.3 的测试集回收入口、分组回收站、精确输入确认与整套测试集恢复语义。
+
+每张 Ticket 完成后停止，由 Owner 从预览地址手动检查，不自动开始下一张。
+
+## 7. 必要验证
+
+- 每张 Ticket 只验证当前公共正常路径、一个关键边界以及受影响的 typecheck、lint/build 和文档检查。
+- 代表页面人工核对 donor 字体、色彩、密度和冻结原型交互，不做无关全站像素测试。
+- 每轮证明 `frontend-v1/` 无 diff；正式切换时证明唯一部署来源为 `frontend-v3/`。
+- 上传内容按不可信文本渲染；窄视口、键盘焦点和错误恢复只覆盖当前 Ticket 涉及的页面。
+
+## 7.1 冻结原型一致性门槛
+
+每张修改 `frontend-v3/` 的 Ticket 都先在 Ticket 中列出当前页面的原型对照：可见字段、控件顺序、文案、启用状态、空/错状态和明确不做项。实现必须直接复用 donor 的字体、token、图标、布局和适用组件，而不是以通用组件重新解释冻结页面。
+
+donor 的装饰性过渡和动画可以保留，前提是它们不创造操作、页面、状态或流程，并尊重 `prefers-reduced-motion`。后续 Ticket 的原型路径不得通过假路由、占位页、隐藏的宽 API 或推测性控件提前暴露；如当前导航必须展示尚未实现的项目，应在当前 Ticket 中明确标记为不可操作的临时状态。
+
+每张 Web Ticket 的必要证据包含一条当前路径的浏览器语义检查（环境可用时）和 Owner 对冻结原型的当前 Ticket checkpoint；不维护全站像素截图基线。
+
+## 8. 明确不做
+
+- 不修改 `frontend-v1/`，不继续开发 `frontend-v2/`。
+- 不把冻结 HTML 的内存 Mock、浏览器 parser 或示例数据带入正式产品。
+- 不加入冻结原型没有的登录、治理字段、高级解析器、Schema、抽样、归档、默认版本切换、Package、CLI、Langfuse、作业或审计页面。
+- 不长期维护多个可部署前端。

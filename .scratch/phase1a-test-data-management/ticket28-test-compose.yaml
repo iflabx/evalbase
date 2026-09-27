@@ -1,0 +1,45 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: agentbench_v2_ticket28_test
+      POSTGRES_USER: agentbench_ticket28_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentbench_ticket28_test -d agentbench_v2_ticket28_test"]
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: agentbench-ticket28-test
+
+  test:
+    environment:
+      DATABASE_URL: postgresql://agentbench_ticket28_test:synthetic-nonproduction-only@postgres:5432/agentbench_v2_ticket28_test
+      MINIO_ACCESS_KEY: agentbench-ticket28-test
+      MINIO_BUCKET: agentbench-v2-ticket28-test
+
+  web:
+    environment: &ticket28_environment
+      DATABASE_URL: postgresql://agentbench_ticket28_test:synthetic-nonproduction-only@postgres:5432/agentbench_v2_ticket28_test
+      MINIO_ACCESS_KEY: agentbench-ticket28-test
+      MINIO_BUCKET: agentbench-v2-ticket28-test
+      APP_ORIGIN: http://127.0.0.1:4208
+
+  worker:
+    environment: *ticket28_environment
+
+networks:
+  edge:
+    name: agentbench-ticket28-test-edge
+    ipam:
+      config:
+        - subnet: 10.254.51.0/24
+  internal:
+    name: agentbench-ticket28-test-internal
+    ipam:
+      config:
+        - subnet: 10.254.50.0/24
+
+volumes:
+  postgres-data:
+    name: agentbench-ticket28-test-postgres-data
+  minio-data:
+    name: agentbench-ticket28-test-minio-data

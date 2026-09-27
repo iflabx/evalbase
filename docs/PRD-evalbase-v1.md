@@ -236,6 +236,7 @@ EvalBase v1 不提供 ZIP、Standard/Full Package、Offline Validator、Delivery
 - 对象先 staging 后提交；数据库只引用已提交对象。
 - 正常进程/容器重启和重新部署后数据必须保留。
 - 本地持久化不是备份。
+- 测试集版本始终表现为完整不可变快照；底层允许采用记录级增量与周期检查点，减少少量修改时的重复传输和存储，但不得改变记录内容、顺序、来源与修改事实、分支关系、下载结果、回收与永久删除语义，也不得增加用户操作步骤。
 
 ### 6.2 容量
 
@@ -292,8 +293,8 @@ Owner 必须通过正式浏览器 UI 完成：
 ## 10. Definition of Done
 
 - 正式文档、Spec、Test Plan 和 Tickets 与冻结原型 v5.3 无用户行为差异。
-- 正式 Web 实现只位于 `frontend-v3/`。
+- `frontend-v1/` 无改动；正式实现只位于 `frontend-v3/`。
 - Tickets 20–32 按用户操作顺序完成，并逐张由 Owner 从浏览器检查。
 - 必要公共正常路径、一个关键边界和受影响静态检查通过。
 - 固定 HEAD 完成第 9 节主闭环并保存真实证据。
-- 部署前应按实际环境评审网络、备份、访问控制和数据处理要求。
+- Non-production Server Development Gate 保持 Passed；Production Gate 保持 Not Evaluated / Not Approved。

@@ -1,34 +1,244 @@
-# Testing Guide
+# EvalBase Phase 1A 必要测试计划
 
-## Local checks
+| 项目        | 内容                                     |
+| ----------- | ---------------------------------------- |
+| 状态        | Approved for Non-production Development  |
+| 修订日期    | 2026-09-09                               |
+| 用户 oracle | `92cb8a5` / `prototype/solo-workflow-v5.3` |
+| 正式前端    | `frontend-v3/`                           |
+| 原则        | 只测试当前 Ticket 必须证明的行为         |
 
-```bash
-npm test
-npm run typecheck
-npm run lint
-npm run docs:check
-npm run licenses:check
-npm run build
-```
+## 0. 文档职责与边界
 
-## Integration checks
+本计划证明正式产品与冻结原型一致，并验证支撑它的必要数据安全和一致性。它不把原型没有的功能重新引入测试范围。
 
-Copy `.env.example` to `.env` and set the required random values. Then run:
+测试数据只能是小型合成、许可清晰公开或确认完全去标识的非敏感数据。大容量边界由确定性生成器产生，不提交大文件。
 
-```bash
-docker compose --profile test run --rm test
-```
+## A. 测试策略
 
-The normal Compose stack keeps test identities disabled. The isolated test profile enables them only for test coverage.
+### A.0 Ticket 必要测试规则
 
-## Browser smoke test
+每张 Ticket 默认只运行：
 
-After `docker compose up -d --build`, verify:
+1. 当前 Ticket 直接影响的一个公共正常路径；
+2. 一个适用的关键失败或边界路径；
+3. 受影响文件对应的 typecheck、lint/build、格式或文档检查。
 
-1. `GET /health/ready` returns success.
-2. The initial page opens without a login screen.
-3. A project and Dataset can be created.
-4. A CSV, JSON, or JSONL file can be mapped, previewed, and confirmed.
-5. A Test Set version can be created, browsed, downloaded, moved to Trash, and restored.
+涉及公共 HTTP 合同时，正常路径同时断言请求/响应只含本 Ticket 合同字段；边界路径验证一个已移除的原型外字段或动作不再可用。无需为未受影响的历史路由扩大测试。
 
-Use only synthetic, public, or confirmed de-identified data in development and test environments.
+只有以下改动才扩大测试：
+
+- 数据库迁移、事务或持久化；
+- 共享请求/项目隔离；
+- 版本标签并发分配；
+- 共享 parser 或 CSV 合同；
+- 永久删除和共享引用；
+- 正式前端部署切换；
+- Owner 明确要求。
+
+不得默认重跑全仓单元、集成、E2E、性能和安全套件。未运行的套件如实记录，不写成通过。
+
+### A.1 测试层次
+
+| 层次             | 用途                                              |
+| ---------------- | ------------------------------------------------- |
+| 单元             | 纯版本标签、CSV、分页和变更计算                   |
+| HTTP             | 精确请求/响应、项目范围、状态变化、幂等和下载绑定 |
+| PostgreSQL/MinIO | 事务、迁移、持久化、共享引用和删除                |
+| 浏览器           | 当前 Ticket 对应的冻结原型路径                    |
+| 部署             | 唯一前端来源、监听、健康 SHA 和重启               |
+
+测试公共结果，不断言私有表、MinIO key、helper 调用顺序或组件内部结构。
+
+## B. 公共 seam
+
+| Seam             | 观察                                           |
+| ---------------- | ---------------------------------------------- |
+| Project          | 项目列表、创建、打开、切换和隔离               |
+| Dataset          | 列表控件、创建、固定“未整理”和文件归属         |
+| Upload           | 两步映射预览、批次确认、取消/失败不可见        |
+| Material browser | 文件/全部记录、Move、View、原始内容            |
+| Test Set editor  | 来源选择、三列编辑、提示性数据核对、`v1`       |
+| Version          | 任一父版本派生、标签、图和历史不覆盖           |
+| Provenance       | 父版本、新资料、四类变化、前值和来源           |
+| CSV              | 当前 version ID、两份独立 CSV、安全单元格      |
+| Trash/Delete     | 回收、恢复、整支范围、永久删除和墓碑           |
+| Deployment       | `frontend-v3` 唯一 build/runtime 和 Owner 闭环 |
+
+## C. Fixture
+
+### C.1 项目和数据集
+
+- 两个项目具有同名数据集和测试集；
+- 新项目自动“未整理”；
+- 普通空数据集和有文件数据集；
+- 足够条目验证 10 条分页、搜索、类型/内容筛选和排序；
+- 跨项目不透明 ID。
+
+### C.2 上传和浏览
+
+- 小型 UTF-8 CSV、JSON 顶层数组和 JSONL；
+- 每种文件含问题、期望输出候选字段及至少三个名称不同的 Metadata 候选字段；
+- 一个可定位坏记录；
+- 一个不支持格式；
+- 精确 50,000,000-byte 和 50,000,001-byte 生成器；
+- 多文件批次中一个成功、一个失败；
+- 同项目跨数据集的相同字节文件、同批次不同文件名的相同字节文件，以及另一项目中的相同字节文件；
+- 移动前后相同 asset ID、hash、mapping 和 locator。
+- 一个超过精确 1,000,000 bytes 的 UTF-8 原始文件，验证页内预览只显示开头有效文本和截断提示；不把完整文件加载到浏览器。
+
+高级编码、delimiter/header、JSON path 或排除规则不属于浏览器 Fixture；自动 parser 的既有低层兼容测试可保留，但不形成产品 UI。
+
+### C.3 测试集和版本
+
+- 从两个文件选取部分真实记录；
+- 一条问题为空、一条完全重复、一条手工新增；
+- 一次新增、修改和移除；
+- 线性 `v1 → v2 → v3`；
+- 从历史版本派生 `vN-bK`；
+- 两个并发派生；
+- 精确 10,000/100,000,000 边界及超限一个单位。
+- 一个旧单文本 Metadata 记录，以及一条含至少三个 Metadata 项的记录；
+- 两个来源文件、问题已填写/未填写、原始资料/手工新增的版本记录，用于固定筛选的 AND 语义。
+
+提示性数据核对不得作为失败 Fixture。容量、跨项目、版本冲突和不可用父版本可以阻断。
+
+### C.4 来源和 CSV
+
+- 未改变、已修改、新增和已移除各一条；
+- 修改/移除保留前值；
+- 来源文件和原始记录位置；
+- 手工新增无伪造文件来源；
+- 逗号、引号、换行、Unicode 和公式前缀；
+- 两个历史版本具有不同内容，防止误下 latest。
+
+### C.5 回收与删除
+
+- 整个测试集；
+- 叶子版本；
+- 有两个后代的中间版本；
+- 完整后续分支；
+- 中间版本墓碑且后代保留父边；
+- 回收站永久删除；
+- 已单独回收叶子或版本分支后，再回收并恢复整个测试集；
+- 测试集名称与根版本号，用于精确输入的永久删除或墓碑确认；
+- 两个对象共享底层 blob；
+- 删除过程中的可重试故障。
+
+## D. Ticket 必要矩阵
+
+| Ticket | 正常路径                      | 关键边界                         | 静态检查                                 |
+| ------ | ----------------------------- | -------------------------------- | ---------------------------------------- |
+| 20     | 新建/切换项目并浏览数据集首页 | 跨项目 ID 不泄漏；“未整理”唯一   | `frontend-v3` typecheck/lint/build、docs |
+| 21     | 多文件两步映射预览并确认      | 取消或超限不产生可见资产         | 受影响 parser/API/frontend               |
+| 22     | 文件/全部记录浏览并移动       | 移动保持身份和 locator           | 受影响 query/frontend                    |
+| 23     | 选择真实记录并创建 `v1`       | 容量失败保留编辑且不发版本       | editor/publication/frontend              |
+| 24     | 线性版本后从历史版本派生      | 并发标签唯一、失败无号洞         | allocator/frontend                       |
+| 25     | 查看变化并下载两份 CSV        | version ID 绑定和公式前缀        | provenance/CSV/frontend                  |
+| 26     | 回收恢复、永久删除和墓碑      | 中间节点范围、共享引用和故障重试 | deletion/frontend                        |
+| 27     | 固定 HEAD Owner 主闭环        | 一个关键恢复路径和重启持久化     | build/listening/health/docs              |
+| 28     | 连续选择追加并跳过重复文件    | 跨项目允许、确认重检无半成品     | upload API/frontend/docs                 |
+| 29     | 多 Metadata 字段上传后浏览记录 | 旧单文本无损读取或原始预览截断   | mapping/record API/frontend/docs         |
+| 30     | 创建或派生后筛选版本记录       | 重复 Metadata 键或 AND 不匹配    | version API/editor/frontend/docs         |
+| 31     | 拖拽字段映射、预览并确认上传   | 一个字段不能同时保留多个映射     | upload API/frontend/docs                 |
+| 32     | 列表回收、分组恢复和精确删除   | 分支先回收后整套回收/恢复；错误确认被拒绝 | deletion transaction/frontend/docs |
+
+每张 Ticket 完成后由 Owner 从预览地址人工检查当前新增行为，不要求等待 Ticket 27 才第一次看到前端。
+
+## E. 浏览器 oracle
+
+浏览器断言只覆盖冻结原型：
+
+1. 无登录，首屏为项目列表。
+2. 进入项目后侧栏显示项目名，数据集和测试集为子项。
+3. 数据集首页控件、列、分页和创建弹窗一致。
+4. 数据集/文件页没有右侧信息面板；文件行“查看”才进入。
+5. 上传只有选择文件、拖拽字段映射与预览两步；带样例的字段卡、映射 chip 和多个 Metadata 字段保持可辨认。
+6. 数据集记录可按序号打开详情、选择会话行高，并在单文件页查看受限原始内容预览。
+7. 测试集只输入名称和可选用途；Metadata 以字段和值编辑，数据核对只提示。
+8. 版本记录可搜索、分页、按固定条件筛选并查看详情；版本图、来源筛选和记录详情绑定当前版本。
+9. 下载形式为数据 CSV，以及数据 CSV + provenance CSV 两个文件。
+10. 测试集列表垃圾桶只回收整套测试集；回收站按测试集和版本分组，可恢复和通过精确输入永久删除；中间版本可整支回收或保留墓碑。
+
+原型没有的控件即失败，包括登录、项目/数据集重命名、右侧面板、高级 parser、版本说明、Schema、默认切换、归档、Package、CLI、Langfuse、Job、Audit 和独立 Controlled Deletion 页面。
+
+每张 Web Ticket 还须对其当前页面记录一份简短原型对照：字段、控件顺序、动作标签、启用状态、分页、弹窗和空/错状态。donor 的纯装饰性动画不视为原型外功能，只要不增加操作、状态或流程并尊重 reduced-motion。尚属后续 Ticket 的路径不得伪装为可操作入口。
+
+## F. 人工验收
+
+### F.1 Owner checkpoint
+
+Owner 使用正常浏览器和当前预览地址完成 Ticket 中的一条 checkpoint；Tickets 34–38 按 [§H.3](#h3-切换与验收规则) 合批。Agent 记录固定 HEAD、地址、操作结果和未验证项，不代替 Owner 声称通过。
+
+当前 Ticket 或验收批次的 checkpoint 未如实记录前，不把依赖其 Owner 验收的下一张 Web Ticket 视为已解除阻塞。
+
+### F.2 最终主闭环
+
+完成 Ticket 32 后的固定 HEAD：
+
+1. 新建/选择项目；
+2. 新建数据集；
+3. 上传并确认 CSV/JSON/JSONL；
+4. 浏览文件/全部记录、打开记录详情、切换行高、移动文件和查看原始内容预览；
+5. 选择记录，编辑字段和值 Metadata，并创建 `v1`；
+6. 创建线性版本和历史分支；
+7. 搜索、分页并筛选版本记录，查看摘要、数据核对、来源与修改；
+8. 下载数据 CSV 和数据+provenance 两份 CSV；
+9. 回收并恢复；
+10. 验证墓碑、分组回收站、整套测试集恢复与精确输入永久删除。
+
+### F.3 部署
+
+- `frontend-v1/` 无 diff；
+- `frontend-v2/` 不参与 build/runtime；
+- 正式静态内容来自 `frontend-v3/`；
+- `/health.git_sha` 等于固定 HEAD；
+- Web 只绑定批准地址；内部服务无宿主机端口；
+- 正常重启保留已确认文件和版本。
+
+不重新测试 Tailscale 连通性或公网不可达，不声称生产网络批准。
+
+## G. 完成判定
+
+Ticket 完成需要：
+
+- AC 对应公共正常路径通过；
+- 一个适用关键边界通过；
+- 受影响静态检查通过；
+- Standards/Spec 审查没有未解决 P0/P1；
+- Ticket Comments 与进度表记录 commit、命令、结果和未运行套件；
+- Owner checkpoint 如实记录；
+- 本地提交后停止。
+
+Phase 1A 完成还需要 Tickets 27、29、30、31、32 的固定 HEAD 主闭环和 Owner 明确验收。Production Gate 仍为 Not Evaluated / Not Approved。
+
+## H. 增量版本存储 Tickets 33–38
+
+本节验证 [ADR-0011](./adr/0011-incremental-test-set-version-storage.md) 与 [Spec](../.scratch/phase1a-test-data-management/spec.md#incremental-version-storage-implementation-contract) 的内部优化。Tickets 20–32 的已验收状态保持；33–38 的实施与分批验收结果见 [进度记录](./agents/phase1a-progress.md)。用户界面 oracle 仍为冻结 v5.3。
+
+### H.1 分工与必要证据
+
+| Ticket | 正常证据 | 必须覆盖的风险边界 | 人工验收重点 |
+| --- | --- | --- | --- |
+| 33 | 合成旧库升级后旧版可读、派生、下载 | 重复迁移、CHECK 的 NULL 行为、非法/重复引用 | 已有界面与旧版本不变 |
+| 34 | legacy/delta/checkpoint 有序内容、筛选分页、来源与 CSV 等价 | 前页删除不引起漏行；跨项目和墓碑拒绝；所有读取调用方纳入 | 版本切换、搜索、Metadata、来源、下载 |
+| 35 | 10,000 条只改 1/100 条的正式稀疏发布 | 同 key 重试、真实并发分支；对象成功/事务失败、提交后断连；最终容量 | 日常 legacy 流程正常，内部发布证据由 Agent 提供 |
+| 36 | 周期 Checkpoint 前后及后续派生等价 | Worker 停止、深度/变化量阈值相等和超出、物化失败、空版与净零深度 | 长链与图/内容不变，无新增设置 |
+| 37 | 分叉中间节点切断依赖后各后代可读 | 部分物化失败不清理、重试、共享正文、缓存/删除竞态、必要基线不回收 | 合成数据回收恢复、墓碑、精确输入删除 |
+| 38 | 净操作协议→派生/分支→来源/CSV→回收删除完整链路 | 跨页修改不丢失、失败重试、旧 Metadata、重启持久化；请求不含整版数组 | UI 零变化，逐项保持原型，既有闭环全通 |
+
+### H.2 Fixture 与测量边界
+
+正确性默认使用小 fixture：两项目、两来源、有序 Metadata 与旧文本、空版、同 case 多次修改、删除最高位置后新增、净零修改、两条同父分支，以及 published/trashed/tombstoned 状态。10,000 条使用确定性小型合成数据；最大 bytes 边界复用现有生成器，不提交大文件或触碰真实数据。
+
+正式存储优化允许在专用集成测试中观察新增关系行、WAL 和对象字节，以证明无 O(N) 成员/正文重复写入；这些是本次明确的存储验收指标，不替代公共行为断言。不断言随机 ID、内部 helper 调用顺序或偶然的耗时。
+
+Ticket 35 记录正式 manifest 含新正文/来源后的请求字节、修订/Delta/成员增量及 MinIO 字节；不能复用 Spike 的只含指针数字作为最终收益。Ticket 38 在固定 HEAD 对同一数据做 legacy/新格式对照，记录环境、数据大小、重复次数、冷/热状态、发布/分页/筛选/CSV 延迟和峰值内存，并确认仅请求协议变化、页面 UI 与人工流程无变化。至少三次同条件运行，保留每次结果，不承诺预设速度倍数；不能构造冷缓存时明确标注未测。检查普通小改写入随 D 增长，同时如实记录完整 hash 的 O(N) 成本与 Checkpoint 的全量指针成本。
+
+### H.3 切换与验收规则
+
+33–37 的公共写入保持 legacy，新格式由隔离内部 fixture 验证。38 只有在双格式读取、发布、Checkpoint、删除、缓存与校验路径均通过后才能同时切换前后端；不允许先启用写入再补删除。旧二进制回滚未验证时不得声明支持直接降级。
+
+每张只运行对应矩阵、受影响静态检查与必要集成；38 集中运行受影响持久化/版本生命周期回归和一条浏览器串联，不重跑无关全仓安全、上传和历史套件。Tickets 34–38 改为四批 Owner checkpoint：34 单独验收统一读取；35 完成实现、自动化验证及报告后，Owner 单独授权 36，35 不建立独立人工 checkpoint；35+36 在 36 固定 HEAD 一起验收 Delta 发布→触发 Checkpoint→继续读取/派生；37 单独验收删除；38 单独验收正式写入切换。34、35+36、37 的 Owner 接受分别解除 35、37、38 的依赖，不自动授权下一张 Ticket。38 的结论只在自身验收后记录。
+
+建立每批 checkpoint 时，在专用 PostgreSQL/MinIO 中预置少量合成测试内容，并通过前端同源 API 确认页面可读；报告访问方式、可直接打开的测试集/版本、简短操作与预期、自动化专属断言。35+36 的内部 Delta/Checkpoint fixture 只用既有浏览路径展示预置版本，后继派生由内部自动化验证，不新增公共写入或设置入口。Owner 的实际结果单独记录；通过后先保存证据，再仅回收该批隔离 Compose 容器、网络、卷、测试内容和端口，核对回收结果。最后一次验收基于固定 HEAD，未执行的项目不得标成通过，不自动部署或推送。

@@ -1,6 +1,6 @@
 # EvalBase 系统流程图
 
-本图以冻结原型为用户交互合同。正式产品只实现图中的可见动作；内部机制不得增加页面或步骤。
+本图以 `92cb8a5` / `prototype/solo-workflow-v5.3` 为完整用户交互合同。正式产品只实现图中的可见动作；内部机制不得增加页面或步骤。
 
 静态图：[PNG](./system-flow-v2.png)；Mermaid 源文件：[MMD](./system-flow-v2.mmd)。
 
@@ -76,13 +76,16 @@ flowchart LR
 ```mermaid
 flowchart LR
     Prototype["冻结原型 v5.3<br/>完整交互合同"] --> V3["frontend-v3<br/>新正式 React 前端"]
+    Donor["frontend-v1<br/>只读视觉与组件 donor"] -->|"Ticket 20 完整复制"| V3
+    Deprecated["frontend-v2<br/>废弃实验前端"] -. "不复制、不构建、不部署" .-> V3
     V3 --> API["单人工作流 HTTP 接口"]
     API --> Core["内部领域能力<br/>解析 · 版本 · 来源 · CSV · 删除"]
     Core --> PG[(PostgreSQL)]
     Core --> MinIO[(MinIO)]
+    Old["src/web<br/>旧 Web"] -. "Ticket 27 退出运行路径" .-> V3
 ```
 
-`frontend-v3/` 是唯一正式前端，并按冻结原型连接 HTTP API。
+`frontend-v1/` 永久保持不变。`frontend-v3/` 直接继承 donor 的字体、布局、样式和组件，再按冻结原型连接真实 API。`frontend-v2/` 保留 Git 历史但不再作为开发、预览、构建、部署或回滚目标。
 
 ## 3. 版本与来源
 

@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>THROWAWAY · EvalBase Phase 1A 逻辑状态原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --card: #fff;
+      --text: #1d2635;
+      --muted: #667085;
+      --line: #dde2ea;
+      --primary: #315fd5;
+      --primary-soft: #eef3ff;
+      --good: #13795b;
+      --good-soft: #e9f8f2;
+      --warn: #9a6700;
+      --warn-soft: #fff7df;
+      --bad: #b42318;
+      --bad-soft: #fff0ee;
+      --radius: 10px;
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    button { font: inherit; }
+    .shell { max-width: 1500px; margin: 0 auto; padding: 24px; }
+    .throwaway {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 12px 16px; border: 2px solid #f04438; background: #fff1f0; border-radius: var(--radius);
+    }
+    .throwaway strong { color: #b42318; letter-spacing: .04em; }
+    h1 { margin: 20px 0 6px; font-size: 28px; }
+    h2 { margin: 0 0 14px; font-size: 18px; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    p { line-height: 1.6; }
+    .lead { margin: 0 0 18px; color: var(--muted); max-width: 1100px; }
+    .question { border-left: 4px solid var(--primary); padding: 10px 14px; background: var(--primary-soft); margin: 16px 0; }
+    .question strong { display: block; margin-bottom: 4px; }
+    .warning { padding: 12px 14px; border: 1px solid #f1cd75; background: var(--warn-soft); border-radius: var(--radius); color: #694b00; }
+    .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.03); }
+    .card.full { grid-column: 1 / -1; }
+    .sticky { position: sticky; top: 12px; }
+    .section { margin-top: 18px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #f9fafb; padding: 3px 8px; border-radius: 999px; font-size: 12px; }
+    .chip.good { color: var(--good); background: var(--good-soft); border-color: #a6dfcc; }
+    .chip.bad { color: var(--bad); background: var(--bad-soft); border-color: #f3b9b4; }
+    .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: #ecd08d; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    dl { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(0, 1.4fr); gap: 7px 12px; margin: 0; }
+    dt { color: var(--muted); font-size: 13px; }
+    dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 8px 7px; }
+    th { color: var(--muted); font-weight: 600; }
+    tr:last-child td { border-bottom: 0; }
+    .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+    .event { border-left: 5px solid var(--line); }
+    .event.success { border-left-color: var(--good); background: var(--good-soft); }
+    .event.blocked, .event.failed { border-left-color: var(--bad); background: var(--bad-soft); }
+    .event.warning { border-left-color: var(--warn); background: var(--warn-soft); }
+    .event p { margin: 7px 0 0; font-size: 13px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+    .button { border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); padding: 8px 11px; cursor: pointer; }
+    .button:hover { border-color: #9fb3e9; background: var(--primary-soft); }
+    .button.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+    .button.danger { color: var(--bad); border-color: #edaaa5; background: #fff8f7; }
+    .button.prohibited { color: var(--bad); border-color: #efc3bf; background: #fff8f7; }
+    .action-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .action { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; }
+    .action + .action { margin-top: 8px; }
+    .action .button { width: 100%; text-align: left; }
+    .reason { margin-top: 6px; color: var(--bad); font-size: 12px; line-height: 1.45; }
+    .allowed-note { margin-top: 6px; color: var(--good); font-size: 12px; }
+    .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; }
+    .tab { min-width: 44px; border: 1px solid var(--line); background: #fff; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+    .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .walkthrough-head { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+    .walkthrough-head p { margin: 4px 0; }
+    .decision { color: var(--primary); font-size: 13px; }
+    .steps { display: grid; gap: 8px; margin-top: 14px; }
+    .step { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 9px; }
+    .step.current { border-color: var(--primary); background: var(--primary-soft); }
+    .step.done { background: var(--good-soft); border-color: #b9dfd2; }
+    .step-index { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #edf0f5; font-size: 12px; }
+    .step.done .step-index { background: var(--good); color: #fff; }
+    .step small { display: block; color: var(--muted); margin-top: 3px; }
+    .step button:disabled { opacity: .45; cursor: not-allowed; }
+    details { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+    summary { cursor: pointer; font-weight: 600; }
+    .model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    .model-grid ul { margin: 6px 0 0; padding-left: 20px; line-height: 1.7; font-size: 13px; }
+    .audit { max-height: 170px; overflow: auto; font-size: 12px; }
+    .audit div { padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .audit div:last-child { border: 0; }
+    .footer { color: var(--muted); font-size: 12px; margin: 22px 0 8px; }
+    @media (max-width: 1000px) {
+      .grid, .cards, .action-groups, .model-grid { grid-template-columns: 1fr; }
+      .card.full { grid-column: auto; }
+      .sticky { position: static; }
+    }
+    @media (max-width: 640px) {
+      .shell { padding: 14px; }
+      .throwaway, .walkthrough-head { display: block; }
+      dl { grid-template-columns: 1fr; gap: 2px; }
+      dd { margin-bottom: 7px; }
+      .step { grid-template-columns: 30px minmax(0, 1fr); }
+      .step button { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="throwaway">
+      <div><strong>THROWAWAY · 逻辑状态原型</strong><br><span>不是生产代码，不连接数据库、对象存储或 Langfuse。</span></div>
+      <span class="chip bad">刷新页面即丢失全部内存状态</span>
+    </div>
+
+    <h1>EvalBase Phase 1A 状态模型</h1>
+    <p class="lead">用真实领域名称驱动一个纯内存状态机，观察单活跃工作草稿、多数据资产追加、正式 Schema 确认、候选快照与原子发布如何响应成功、阻断、失败、接管和受控删除。</p>
+    <div class="question"><strong>本 Prototype 只回答一个问题</strong>用户能否在单活跃草稿、多资产追加、正式 Schema 确认和原子发布的状态模型中完成 v1/v2，并从所有阻断、失败和删除降级状态恢复？</div>
+    <div class="warning"><strong>运行边界：</strong>仅代表 VPN 内远程非生产、唯一真实 Project Owner / Sole Developer、允许分类的非敏感数据。Editor / Viewer 均为开发测试身份。原型不批准生产、真实多人、敏感数据、公网开放或 Langfuse API；这些均触发 Production Gates。Phase 1A 正式实现预期用服务器本地持久化承受正常重启/重新部署，但没有备份、RPO、RTO、SLA 或灾难恢复；本原型本身只保存在浏览器内存。</div>
+
+    <details class="section" open>
+      <summary>原型说明：状态对象、可执行事件与判断口径</summary>
+      <div class="model-grid">
+        <div>
+          <h3>状态对象</h3>
+          <ul>
+            <li>运行边界、当前身份与编辑租约</li>
+            <li>数据资产、解析视图与显式排除</li>
+            <li>测试集、工作草稿与分资产映射</li>
+            <li>正式 Schema、候选快照与测试集版本</li>
+            <li>受控删除、最小墓碑、最近事件与审计</li>
+          </ul>
+        </div>
+        <div>
+          <h3>可执行事件</h3>
+          <ul>
+            <li>上传、解析、排除、追加、映射、Schema 确认</li>
+            <li>候选物化、发布、失败、同候选重试</li>
+            <li>测试身份切换、确认接管编辑租约</li>
+            <li>破坏性变化转新测试集、显式默认版本</li>
+            <li>受控删除影响预览、二次确认和容量复检</li>
+          </ul>
+        </div>
+      </div>
+      <p class="empty">每个事件先经过权限、租约、状态、Schema、数据分类和容量门禁。禁止事件可点击验证原因，但不会改变领域对象；页面始终重绘完整当前状态。</p>
+    </details>
+
+    <section class="section">
+      <div class="grid">
+        <div>
+          <h2>完整当前状态</h2>
+          <div id="state" class="cards"></div>
+        </div>
+        <aside class="sticky">
+          <h2>最近一次事件</h2>
+          <div id="last-event" class="card event"></div>
+          <div class="card section">
+            <h3>当前动作摘要</h3>
+            <div id="action-summary" class="chips"></div>
+          </div>
+          <div class="card section">
+            <h3>最近审计（最多 10 条）</h3>
+            <div id="audit" class="audit"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>自由试验：当前允许与禁止的动作</h2>
+      <p class="lead">禁止动作保留为可点击按钮，用于验证阻断事件与原因；它不会越过门禁。</p>
+      <div id="actions" class="action-groups"></div>
+    </section>
+
+    <section class="section">
+      <h2>Guided Walkthroughs</h2>
+      <div id="scenario-tabs" class="tabs" role="tablist" aria-label="Guided Walkthroughs"></div>
+      <div id="scenario" class="card"></div>
+    </section>
+
+    <p class="footer">Primary sources: PRD v2.4、CONTEXT.md、system-flow-v2、Phase 1A 单人项目负责人决策记录。此文件只用于验证状态逻辑，完成判断后应丢弃页面外壳。</p>
+  </div>
+
+  <script>
+  const EvalBaseLogic = (() => {
+    "use strict";
+
+    const LIMITS = Object.freeze({ assetMB: 50, assetRecords: 10000, draftAssets: 5, draftMB: 100, draftRecords: 10000, candidateRecords: 10000, itemsMB: 100 });
+    const ALLOWED_CLASSIFICATIONS = Object.freeze(["synthetic", "public_licensed", "fully_deidentified_non_sensitive"]);
+    const ACTORS = Object.freeze({
+      owner: { id: "owner_sole", label: "Project Owner / Sole Developer", role: "Owner", identity: "唯一真实用户" },
+      editor: { id: "editor_test", label: "Editor 开发测试身份", role: "Editor", identity: "非真实用户" },
+      viewer: { id: "viewer_test", label: "Viewer 开发测试身份", role: "Viewer", identity: "非真实用户" }
+    });
+
+    function initialState() {
+      return {
+        prototype: { kind: "THROWAWAY logic prototype", persistence: "browser_memory_only", externalConnections: "none" },
+        scope: {
+          deployment: "VPN 内远程非生产服务器（产品契约；本文件本地打开）",
+          publicPort3000: false,
+          realUserCount: 1,
+          allowedClassifications: [...ALLOWED_CLASSIFICATIONS],
+          forbidden: "真实个人信息、客户/生产数据与 Trace、秘密凭据、商业机密、受限或许可不明数据",
+          phase1aDurability: "正常应用/容器重启与重新部署后本地持久化；无系统备份",
+          guarantees: "无 RPO / RTO / SLA / 灾难恢复",
+          productionGates: "生产、公网、第二名真实用户、敏感数据、外部共享、提高容量、Langfuse API 或企业级承诺均须重新评审"
+        },
+        session: { actor: { ...ACTORS.owner } },
+        counters: { asset: 0, testSet: 0, draft: 0, candidate: 0, version: 0, deletion: 0, tick: 0 },
+        assets: [],
+        otherTestSets: [],
+        testSet: null,
+        candidateSnapshot: null,
+        deletion: { stage: "none", targetVersionId: null, impactPreview: [], tombstones: [] },
+        publishCapacityObservation: null,
+        lastEvent: { type: "PROTOTYPE_OPENED", outcome: "success", message: "已建立空的内存状态。请选择 Guided Walkthrough 或自由试验动作。", at: "T+000" },
+        audit: []
+      };
+    }
+
+    function activeDraft(state) {
+      return state.testSet?.workingDraft?.status === "editing" ? state.testSet.workingDraft : null;
+    }
+    function latestAsset(state) { return state.assets.at(-1) ?? null; }
+    function canEditRole(state) { return state.session.actor.role === "Owner" || state.session.actor.role === "Editor"; }
+    function ownsLease(state) { const d = activeDraft(state); return !!d && d.editLease.holderId === state.session.actor.id; }
+    function draftTotals(state) {
+      const ids = new Set(state.testSet?.workingDraft?.sources.map(s => s.assetId) ?? []);
+      const attached = state.assets.filter(a => ids.has(a.id));
+      return { assets: attached.length, rawMB: attached.reduce((n,a) => n + a.rawMB, 0), sourceRecords: attached.reduce((n,a) => n + a.sourceRecords, 0) };
+    }
+    function completeVersions(state) { return state.testSet?.versions.filter(v => v.integrityStatus === "complete") ?? []; }
+    function mappedAll(state) { const d = activeDraft(state); return !!d && d.sources.length > 0 && d.sources.every(s => s.mappingStatus === "mapped"); }
+    function selectedParseErrors(state) {
+      const d = state.testSet?.workingDraft; if (!d) return 0;
+      return d.sources.reduce((sum, src) => {
+        const a = state.assets.find(x => x.id === src.assetId);
+        return sum + Math.max(0, (a?.badRecords ?? 0) - (src.explicitlyExcludedBadRecords ?? 0));
+      }, 0);
+    }
+    function explicitlyExcludedRecords(state) {
+      return state.testSet?.workingDraft?.sources.reduce((sum, src) => sum + (src.explicitlyExcludedBadRecords ?? 0), 0) ?? 0;
+    }
+    function candidateEstimate(state) {
+      const d = state.testSet?.workingDraft;
+      const totals = draftTotals(state);
+      const base = state.testSet?.versions.find(v => v.id === d?.baseVersionId);
+      const calculatedRecords = (base?.itemCount ?? 0) + totals.sourceRecords - explicitlyExcludedRecords(state);
+      const calculatedItemsMB = (base?.itemsMB ?? 0) + totals.rawMB * .6;
+      return {
+        records: d?.candidateEstimate.records ?? Math.max(1, calculatedRecords),
+        itemsMB: d?.candidateEstimate.itemsMB ?? Math.min(100, Math.max(0.01, Math.round(calculatedItemsMB * 100) / 100))
+      };
+    }
+    function nextId(state, kind) {
+      state.counters[kind] += 1;
+      const prefix = { asset: "asset", testSet: "ts", draft: "draft", candidate: "candidate", version: "tsv", deletion: "del" }[kind];
+      return `${prefix}_${String(state.counters[kind]).padStart(2,"0")}`;
+    }
+    function record(state, type, outcome, message) {
+      state.counters.tick += 1;
+      const event = { type, outcome, message, actor: state.session.actor.id, at: `T+${String(state.counters.tick).padStart(3,"0")}` };
+      state.lastEvent = event;
+      state.audit.unshift(event);
+      state.audit = state.audit.slice(0, 50);
+      return state;
+    }
+    function blocked(state, event, reason) {
+      const next = structuredClone(state);
+      return record(next, event.type, "blocked", reason);
+    }
+
+    function decision(state, event) {
+      const d = activeDraft(state);
+      const asset = latestAsset(state);
+      const editReason = !canEditRole(state) ? "Viewer 只能查看；草稿写入需要 Owner 或 Editor。" : !d ? "当前没有处于 editing 的工作草稿。" : !ownsLease(state) ? `编辑租约由 ${d.editLease.holderId} 持有；必须先明确确认接管。` : null;
+      switch (event.type) {
+        case "RESET": return null;
+        case "UPLOAD_ASSET":
+          if (!canEditRole(state)) return "Viewer 不能上传数据资产。";
+          if (!ALLOWED_CLASSIFICATIONS.includes(event.asset.classification)) return "数据分类不在 Phase 1A 允许范围内；须完成 Production Gate 后才能处理。";
+          if (event.asset.licenseStatus === "unknown") return "许可状态 unknown：禁止导入后加入工作草稿。";
+          if (event.asset.rawMB > LIMITS.assetMB) return `单个数据资产 ${event.asset.rawMB} MB 超过 ${LIMITS.assetMB} MB；上传被拒绝且不产生数据资产。`;
+          return null;
+        case "PARSE_LATEST":
+          if (!asset) return "尚无数据资产。";
+          if (asset.parsedView) return "最新数据资产已经有解析视图。";
+          return null;
+        case "CREATE_TEST_SET_DRAFT":
+          if (!canEditRole(state)) return "Viewer 不能创建工作草稿。";
+          if (state.testSet?.status === "unavailable_by_deletion") return "删除不可用测试集不能创建工作草稿。";
+          if (activeDraft(state)) return "同一测试集只允许一个活跃工作草稿。";
+          if (state.testSet) return "测试集已经存在；请从完整测试集版本派生工作草稿。";
+          return null;
+        case "ATTACH_LATEST": {
+          if (editReason) return editReason;
+          if (!asset) return "尚无可追加的数据资产。";
+          if (!asset.parsedView) return "数据资产尚无解析视图。";
+          if (asset.parsedView.status === "capacity_blocked") return `单个解析视图 ${asset.sourceRecords} 条源记录超过 ${LIMITS.assetRecords} 条。`;
+          if (!asset.boundaryReliable) return "记录边界不可信，整个解析视图不可加入工作草稿。";
+          if (d.sources.some(s => s.assetId === asset.id)) return "最新数据资产已经追加到工作草稿。";
+          const t = draftTotals(state), reasons = [];
+          if (t.assets + 1 > LIMITS.draftAssets) reasons.push(`数据资产数 ${t.assets + 1} > ${LIMITS.draftAssets}`);
+          if (t.rawMB + asset.rawMB > LIMITS.draftMB) reasons.push(`原始字节合计 ${t.rawMB + asset.rawMB} MB > ${LIMITS.draftMB} MB`);
+          if (t.sourceRecords + asset.sourceRecords > LIMITS.draftRecords) reasons.push(`源记录合计 ${t.sourceRecords + asset.sourceRecords} > ${LIMITS.draftRecords}`);
+          return reasons.length ? `拒绝本次追加：${reasons.join("；")}。数据资产独立保留，原附件集合不变。` : null;
+        }
+        case "EXCLUDE_BAD_RECORDS":
+          if (editReason) return editReason;
+          if (!asset || !d.sources.some(s => s.assetId === asset.id)) return "最新数据资产尚未追加到工作草稿。";
+          if (!asset.badRecords) return "最新数据资产没有可定位坏记录。";
+          if (!asset.boundaryReliable) return "记录边界不可信，不能用逐条排除绕过整视图阻断。";
+          return null;
+        case "MAP_NEXT":
+          if (editReason) return editReason;
+          if (!d.sources.some(s => s.mappingStatus !== "mapped")) return "所有追加数据资产都已独立映射。";
+          return null;
+        case "CONFIRM_SCHEMA":
+          if (editReason) return editReason;
+          if (!mappedAll(state)) return "必须先完成每个追加数据资产到同一正式结构的独立映射。";
+          return null;
+        case "SET_MISSING_EXPECTED": case "FIX_EXPECTED_OUTPUT": case "PROPOSE_DESTRUCTIVE_SCHEMA":
+          if (editReason) return editReason;
+          if (!mappedAll(state)) return "必须先完成字段映射。";
+          if (event.type === "FIX_EXPECTED_OUTPUT" && d.missingExpectedOutput === 0) return "当前没有缺失的期望输出。";
+          if (event.type === "PROPOSE_DESTRUCTIVE_SCHEMA" && !d.baseVersionId) return "首版没有既有正式 Schema 可供兼容性比较。";
+          return null;
+        case "MATERIALIZE_CANDIDATE": {
+          if (editReason) return editReason;
+          if (!mappedAll(state)) return "仍有数据资产未映射。";
+          if (d.formalSchema.status !== "confirmed") return "正式 Schema 尚未由用户确认。";
+          if (d.formalSchema.compatibility === "destructive") return "正式 Schema 是破坏性变化，不能在原测试集物化可发布候选；请携带草稿创建新测试集。";
+          if (selectedParseErrors(state) > 0) return `仍有 ${selectedParseErrors(state)} 条被选中的解析失败记录；必须显式排除。`;
+          if (d.formalSchema.mode === "gold_required" && d.missingExpectedOutput > 0) return `gold_required 下有 ${d.missingExpectedOutput} 条期望输出缺失。`;
+          const e = candidateEstimate(state), reasons = [];
+          if (e.records <= 0) reasons.push("正式记录数为 0");
+          if (e.records > LIMITS.candidateRecords) reasons.push(`正式记录数 ${e.records} > ${LIMITS.candidateRecords}`);
+          if (e.itemsMB > LIMITS.itemsMB) reasons.push(`items.jsonl ${e.itemsMB} MB > ${LIMITS.itemsMB} MB`);
+          return reasons.length ? `候选物化阻断：${reasons.join("；")}。工作草稿配置保留，未创建候选快照。` : null;
+        }
+        case "PUBLISH":
+          if (!canEditRole(state)) return "Viewer 不能发布。";
+          if (!state.candidateSnapshot) return "没有候选快照。";
+          if (state.candidateSnapshot.status !== "ready_to_publish") return "候选快照不是 ready_to_publish；publish_failed 应使用同候选重试。";
+          return null;
+        case "PUBLISH_STORAGE_FAILURE":
+          if (!canEditRole(state)) return "Viewer 不能发布。";
+          if (state.candidateSnapshot?.status !== "ready_to_publish") return "需要 ready_to_publish 的候选快照。";
+          return null;
+        case "RETRY_PUBLISH":
+          if (!canEditRole(state)) return "Viewer 不能发布。";
+          if (state.candidateSnapshot?.status !== "publish_failed") return "只有 publish_failed 的同一候选快照可以重试。";
+          return null;
+        case "CREATE_DRAFT_FROM_DEFAULT":
+          if (!canEditRole(state)) return "Viewer 不能创建工作草稿。";
+          if (!state.testSet) return "尚无测试集。";
+          if (state.testSet.status === "unavailable_by_deletion") return "删除不可用测试集不能创建工作草稿。";
+          if (activeDraft(state)) return "已有一个活跃工作草稿。";
+          if (!state.testSet.defaultVersionId) return "没有默认完整测试集版本可作为父版本。";
+          return null;
+        case "CONFIRM_LEASE_TAKEOVER":
+          if (!canEditRole(state)) return "Viewer 不能接管编辑租约。";
+          if (!d) return "当前没有活跃工作草稿。";
+          if (ownsLease(state)) return "当前身份已经持有编辑租约。";
+          return null;
+        case "DETACH_FIRST_SOURCE":
+          if (editReason) return editReason;
+          if (!d.sources.length) return "工作草稿没有可移除的数据资产附件。";
+          return null;
+        case "CREATE_NEW_TEST_SET":
+          if (editReason) return editReason;
+          if (d.formalSchema.compatibility !== "destructive") return "当前没有需要转移的破坏性正式 Schema 变化。";
+          return null;
+        case "SET_CANDIDATE_ESTIMATE":
+          if (editReason) return editReason;
+          return null;
+        case "INJECT_PUBLISH_CAPACITY_OVER":
+          if (!state.candidateSnapshot) return "需要候选快照后才能演示发布事务复检。";
+          return null;
+        case "CLEAR_PUBLISH_CAPACITY_INJECTION":
+          if (!state.publishCapacityObservation) return "当前没有容量复检注入。";
+          return null;
+        case "INITIATE_DELETE_DEFAULT":
+          if (state.session.actor.role !== "Owner") return "只有 Owner 可以发起受控删除。";
+          if (!state.testSet?.defaultVersionId) return "没有默认完整测试集版本可作为删除目标。";
+          if (state.deletion.stage !== "none" && state.deletion.stage !== "completed") return "已有受控删除流程等待处理。";
+          return null;
+        case "CONFIRM_CONTROLLED_DELETION":
+          if (state.session.actor.role !== "Owner") return "只有同一 Project Owner / Sole Developer 可以执行二次确认。";
+          if (state.deletion.stage !== "impact_preview_ready") return "必须先生成并查看影响预览。";
+          return null;
+        case "SET_DEFAULT_FIRST_COMPLETE":
+          if (state.session.actor.role !== "Owner") return "只有 Owner 可以设置默认版本。";
+          if (!completeVersions(state).length) return "没有完整测试集版本可以设为默认。";
+          return null;
+        case "SWITCH_ACTOR": return null;
+        case "ATTEMPT_PRODUCTION": return "Production Gate：当前未批准生产部署。";
+        case "ATTEMPT_PUBLIC_PORT": return "Production Gate：实际配置的 Web 端口（默认 3000）不得公网可达，断开 VPN 后必须不可访问。";
+        case "ATTEMPT_REAL_SECOND_USER": return "Production Gate：第二名真实用户、真实多人协作或外部共享前必须重新评审权限与风险。";
+        case "ATTEMPT_LANGFUSE_API": return "Production Gate / Phase 1B：Phase 1A 不连接 Langfuse SDK/API。";
+        default: return `未知事件 ${event.type}`;
+      }
+    }
+
+    function publishSuccess(state, type) {
+      const c = state.candidateSnapshot;
+      const observed = state.publishCapacityObservation ?? { draft: draftTotals(state), candidate: { records: c.formalRecords, itemsMB: c.itemsMB } };
+      const reasons = [];
+      if (observed.draft.assets > LIMITS.draftAssets) reasons.push(`草稿数据资产数 ${observed.draft.assets} > ${LIMITS.draftAssets}`);
+      if (observed.draft.rawMB > LIMITS.draftMB) reasons.push(`草稿原始字节 ${observed.draft.rawMB} MB > ${LIMITS.draftMB} MB`);
+      if (observed.draft.sourceRecords > LIMITS.draftRecords) reasons.push(`草稿源记录 ${observed.draft.sourceRecords} > ${LIMITS.draftRecords}`);
+      if (observed.candidate.records > LIMITS.candidateRecords) reasons.push(`候选正式记录 ${observed.candidate.records} > ${LIMITS.candidateRecords}`);
+      if (observed.candidate.itemsMB > LIMITS.itemsMB) reasons.push(`items.jsonl ${observed.candidate.itemsMB} MB > ${LIMITS.itemsMB} MB`);
+      if (reasons.length) {
+        c.status = "publish_failed";
+        c.publishAttempts += 1;
+        return record(state, type, "failed", `发布事务容量复检失败：${reasons.join("；")}。没有产生或消耗版本号，同一候选快照保留。`);
+      }
+      c.publishAttempts += 1;
+      const number = state.testSet.versions.length + 1;
+      const id = nextId(state, "version");
+      const version = {
+        id, number: `v${number}`, parentVersionId: state.testSet.workingDraft.baseVersionId,
+        candidateSnapshotId: c.id, formalSchema: structuredClone(state.testSet.workingDraft.formalSchema),
+        integrityStatus: "complete", itemCount: c.formalRecords, itemsMB: c.itemsMB,
+        payloadHash: c.payloadHash, evidenceHash: c.evidenceHash
+      };
+      state.testSet.versions.push(version);
+      if (number === 1) state.testSet.defaultVersionId = id;
+      state.testSet.workingDraft.status = "published";
+      state.testSet.workingDraft.editLease = null;
+      c.status = "published_as_version";
+      c.publishedVersionId = id;
+      state.publishCapacityObservation = null;
+      return record(state, type, "success", `${version.number} 原子发布成功；${number === 1 ? "首版自动成为默认版本" : `默认版本仍为 ${state.testSet.defaultVersionId}，未自动切换`}。`);
+    }
+
+    function transition(state, event) {
+      const reason = decision(state, event);
+      if (reason) return blocked(state, event, reason);
+      if (event.type === "RESET") return initialState();
+      const next = structuredClone(state);
+      const d = () => activeDraft(next);
+      switch (event.type) {
+        case "UPLOAD_ASSET": {
+          const a = event.asset;
+          const asset = {
+            id: nextId(next, "asset"), kind: a.kind ?? "原始资产", format: a.format, rawMB: a.rawMB, sourceRecords: a.sourceRecords,
+            classification: a.classification, licenseStatus: a.licenseStatus, sourceAttribution: a.sourceAttribution ?? "已确认",
+            status: "stored", contentHash: `sha256:${next.counters.asset.toString().padStart(4,"0")}-immutable`, parsedView: null,
+            badRecords: a.badRecords ?? 0, boundaryReliable: a.boundaryReliable !== false
+          };
+          next.assets.push(asset);
+          return record(next, event.type, "success", `${asset.kind} ${asset.id} 已按不可变原始字节登记（${asset.format}，${asset.rawMB} MB）；尚未创建解析视图。`);
+        }
+        case "PARSE_LATEST": {
+          const a = latestAsset(next);
+          a.parsedView = { id: `pv_${a.id}`, status: a.sourceRecords > LIMITS.assetRecords ? "capacity_blocked" : "ready", total: a.sourceRecords, valid: a.sourceRecords - a.badRecords, failed: a.badRecords, boundaryReliable: a.boundaryReliable };
+          const outcome = a.sourceRecords > LIMITS.assetRecords ? "warning" : "success";
+          return record(next, event.type, outcome, a.badRecords ? `解析视图已生成：总计 ${a.sourceRecords} = 成功 ${a.sourceRecords-a.badRecords} + 失败 ${a.badRecords}；坏记录有稳定位置，尚未排除。` : `解析视图已生成：${a.sourceRecords} 条源记录，记录边界可信。`);
+        }
+        case "CREATE_TEST_SET_DRAFT": {
+          const tsId = nextId(next, "testSet"), draftId = nextId(next, "draft");
+          next.testSet = { id: tsId, name: `退款回归 ${tsId}`, status: "available", defaultVersionId: null, versions: [], workingDraft: {
+            id: draftId, status: "editing", baseVersionId: null, sources: [], editLease: { holderId: next.session.actor.id, acquiredAt: next.lastEvent.at },
+            formalSchema: { status: "unconfirmed", mode: null, revisionId: null, compatibility: "new" }, missingExpectedOutput: 0,
+            candidateEstimate: { records: null, itemsMB: null }, schemaProposal: "none"
+          }};
+          return record(next, event.type, "success", `已创建测试集 ${tsId} 及其唯一活跃工作草稿 ${draftId}；编辑租约授予 ${next.session.actor.id}。`);
+        }
+        case "ATTACH_LATEST": {
+          const a = latestAsset(next);
+          d().sources.push({ assetId: a.id, parsedViewId: a.parsedView.id, mappingStatus: "unmapped", target: null, explicitlyExcludedBadRecords: 0 });
+          d().candidateEstimate = { records: null, itemsMB: null };
+          const t = draftTotals(next);
+          return record(next, event.type, "success", `已追加 ${a.id}；工作草稿附件现为 ${t.assets} 个、${t.rawMB} MB、${t.sourceRecords} 条源记录。`);
+        }
+        case "DETACH_FIRST_SOURCE": {
+          const removed = d().sources.shift();
+          d().candidateEstimate = { records: null, itemsMB: null };
+          return record(next, event.type, "success", `已从工作草稿移除附件 ${removed.assetId}；数据资产本身仍独立保留。`);
+        }
+        case "EXCLUDE_BAD_RECORDS": {
+          const a = latestAsset(next), src = d().sources.find(s => s.assetId === a.id);
+          src.explicitlyExcludedBadRecords = a.badRecords;
+          return record(next, event.type, "success", `已显式排除 ${a.badRecords} 条坏记录；物理位置与原因进入候选报告。`);
+        }
+        case "MAP_NEXT": {
+          const src = d().sources.find(s => s.mappingStatus !== "mapped");
+          src.mappingStatus = "mapped";
+          src.target = { input: true, expected_output: true, metadata: true, formalStructure: "case_id / input / expected_output / metadata" };
+          return record(next, event.type, "success", `${src.assetId} 已独立映射到共同正式结构；其他数据资产映射不受覆盖。`);
+        }
+        case "CONFIRM_SCHEMA": {
+          const base = next.testSet.versions.find(v => v.id === d().baseVersionId);
+          const destructive = d().schemaProposal === "destructive" || (!!base && base.formalSchema.mode !== event.mode);
+          d().formalSchema = { status: "confirmed", mode: event.mode, revisionId: `schema_${next.testSet.id}_${next.counters.tick+1}`, compatibility: destructive ? "destructive" : (base ? "compatible" : "new") };
+          return record(next, event.type, destructive ? "warning" : "success", destructive ? `正式 Schema 已确认，但相对父版本属于破坏性变化，不能发布到原测试集。` : `正式 Schema 已确认为 ${event.mode}；将随候选快照和测试集版本冻结。`);
+        }
+        case "SET_MISSING_EXPECTED":
+          d().missingExpectedOutput = event.count ?? 1;
+          return record(next, event.type, "warning", `映射结果现有 ${d().missingExpectedOutput} 条期望输出为空。`);
+        case "FIX_EXPECTED_OUTPUT":
+          d().missingExpectedOutput = 0;
+          return record(next, event.type, "success", "已修复全部缺失的期望输出；工作草稿内容发生变化，需重新物化候选快照。");
+        case "PROPOSE_DESTRUCTIVE_SCHEMA":
+          d().schemaProposal = "destructive";
+          d().formalSchema.status = "unconfirmed";
+          d().formalSchema.compatibility = "destructive";
+          next.candidateSnapshot = null;
+          return record(next, event.type, "warning", "已把 input 字段类型从对象改为数组：固定规则判定为破坏性变化，不能人工覆盖。" );
+        case "CREATE_NEW_TEST_SET": {
+          next.otherTestSets.push({ id: next.testSet.id, name: next.testSet.name, status: next.testSet.status, versions: next.testSet.versions.map(v => ({ id:v.id, number:v.number, integrityStatus:v.integrityStatus })) });
+          const oldDraft = d(), tsId = nextId(next,"testSet"), draftId = nextId(next,"draft");
+          next.testSet = { id: tsId, name: `新契约测试集 ${tsId}`, status: "available", defaultVersionId: null, versions: [], workingDraft: {
+            ...oldDraft, id: draftId, baseVersionId: null, status: "editing", editLease: { holderId: next.session.actor.id, acquiredAt: next.lastEvent.at },
+            formalSchema: { status: "unconfirmed", mode: null, revisionId: null, compatibility: "new" }, schemaProposal: "none"
+          }};
+          next.candidateSnapshot = null;
+          return record(next, event.type, "success", `已携带当前工作草稿创建新测试集 ${tsId}；原测试集及其版本保持不变。`);
+        }
+        case "SET_CANDIDATE_ESTIMATE":
+          d().candidateEstimate = { records: event.records, itemsMB: event.itemsMB };
+          next.candidateSnapshot = null;
+          return record(next, event.type, "success", `已保存工作草稿配置：预计候选 ${event.records} 条、items.jsonl ${event.itemsMB} MB。超限配置允许保存，但不能产生可发布候选。`);
+        case "MATERIALIZE_CANDIDATE": {
+          const e = candidateEstimate(next), id = nextId(next, "candidate");
+          next.candidateSnapshot = { id, status: "ready_to_publish", draftId: d().id, formalSchemaRevisionId: d().formalSchema.revisionId, formalRecords: e.records, itemsMB: e.itemsMB,
+            payloadHash:`sha256:payload-${id}`, evidenceHash:`sha256:evidence-${id}`, immutable: true, publishAttempts: 0, publishedVersionId: null };
+          return record(next, event.type, "success", `不可变候选快照 ${id} 已物化：${e.records} 条正式记录，items.jsonl ${e.itemsMB} MB。`);
+        }
+        case "PUBLISH_STORAGE_FAILURE":
+          next.candidateSnapshot.status = "publish_failed";
+          next.candidateSnapshot.publishAttempts += 1;
+          return record(next, event.type, "failed", `模拟后台存储失败：候选快照 ${next.candidateSnapshot.id} 保留为 publish_failed；没有产生或消耗版本号。`);
+        case "PUBLISH": return publishSuccess(next, event.type);
+        case "RETRY_PUBLISH": return publishSuccess(next, event.type);
+        case "CREATE_DRAFT_FROM_DEFAULT": {
+          const draftId = nextId(next,"draft");
+          next.testSet.workingDraft = { id: draftId, status:"editing", baseVersionId: next.testSet.defaultVersionId, sources: [], editLease:{holderId:next.session.actor.id,acquiredAt:next.lastEvent.at}, formalSchema:{status:"unconfirmed",mode:null,revisionId:null,compatibility:"compatible"}, missingExpectedOutput:0, candidateEstimate:{records:null,itemsMB:null}, schemaProposal:"none" };
+          next.candidateSnapshot = null;
+          return record(next, event.type, "success", `已从默认测试集版本 ${next.testSet.defaultVersionId} 创建唯一活跃工作草稿 ${draftId}；父版本保持不可变。`);
+        }
+        case "SWITCH_ACTOR":
+          next.session.actor = { ...ACTORS[event.actor] };
+          return record(next, event.type, "success", `当前身份切换为 ${next.session.actor.label}（${next.session.actor.identity}）。`);
+        case "CONFIRM_LEASE_TAKEOVER": {
+          const prior = d().editLease.holderId;
+          d().editLease = { holderId: next.session.actor.id, acquiredAt: next.lastEvent.at, takenOverFrom: prior, explicitlyConfirmed: true };
+          return record(next, event.type, "success", `${next.session.actor.id} 已明确确认从 ${prior} 接管编辑租约；已保存内容不变，事件已审计。`);
+        }
+        case "INJECT_PUBLISH_CAPACITY_OVER":
+          next.publishCapacityObservation = { draft: { assets: 5, rawMB: 101, sourceRecords: 10000 }, candidate: { records: next.candidateSnapshot.formalRecords, itemsMB: next.candidateSnapshot.itemsMB } };
+          return record(next, event.type, "warning", "原型已注入：发布事务复检观察到草稿原始字节 101 MB（模拟陈旧/并发结果），下一次发布必须整体失败。" );
+        case "CLEAR_PUBLISH_CAPACITY_INJECTION":
+          next.publishCapacityObservation = null;
+          return record(next, event.type, "success", "已清除发布事务容量复检注入；可重试同一候选快照。" );
+        case "INITIATE_DELETE_DEFAULT": {
+          const id = nextId(next,"deletion"), target = next.testSet.defaultVersionId;
+          next.deletion = { stage:"impact_preview_ready", deletionEventId:id, targetVersionId:target, initiatedBy:next.session.actor.id, confirmedBy:null, reasonCode:null, reasonNote:null,
+            impactPreview:["目标数据资产字节与解析视图","依赖候选载荷与用例修订载荷","在线标准版本包 / 完整溯源包 / Langfuse CSV",`测试集版本 ${target} 将进入 degraded_by_deletion`,"若为默认版本则原子清空 default_version_id","已下载外部副本只能列入处置清单，不能由 EvalBase 撤回"], tombstones:next.deletion.tombstones ?? [] };
+          return record(next, event.type, "warning", `受控删除 ${id} 已发起并生成影响预览；尚未删除任何内容，等待同一 Owner 独立二次确认。`);
+        }
+        case "CONFIRM_CONTROLLED_DELETION": {
+          const target = next.testSet.versions.find(v => v.id === next.deletion.targetVersionId);
+          const wasDefault = next.testSet.defaultVersionId === target.id;
+          const priorHash = target.payloadHash;
+          target.integrityStatus = "degraded_by_deletion";
+          target.parentVersionId = null;
+          target.candidateSnapshotId = null;
+          target.formalSchema = null;
+          target.itemCount = null;
+          target.itemsMB = null;
+          target.payloadHash = null;
+          target.evidenceHash = null;
+          if (wasDefault) next.testSet.defaultVersionId = null;
+          const tombstone = { deletionEventId:next.deletion.deletionEventId, objectType:"test_set_version", opaqueObjectId:target.id, priorHash, affectedVersionIds:[target.id], actorId:next.session.actor.id, reasonCode:"nonproduction_test", reasonNote:"验证删除降级状态", initiatedAt:"recorded", confirmedAt:"recorded", completedAt:"recorded", resultStatus:"completed" };
+          next.deletion.tombstones.push(tombstone);
+          next.deletion.stage = "completed";
+          next.deletion.confirmedBy = next.session.actor.id;
+          next.deletion.reasonCode = tombstone.reasonCode;
+          next.deletion.reasonNote = tombstone.reasonNote;
+          if (completeVersions(next).length === 0) {
+            next.testSet.status = "unavailable_by_deletion";
+            next.testSet.defaultVersionId = null;
+            next.testSet.workingDraft = null;
+            next.candidateSnapshot = null;
+          }
+          return record(next, event.type, "success", completeVersions(next).length === 0 ? `${target.number} 已删除降级；全部版本均已降级，测试集进入 unavailable_by_deletion，只允许查看墓碑和审计。` : `${target.number} 已删除降级；${wasDefault ? "default_version_id 已原子清空且未自动回退。" : "默认指针未受影响。"}`);
+        }
+        case "SET_DEFAULT_FIRST_COMPLETE": {
+          const v = completeVersions(next)[0];
+          next.testSet.defaultVersionId = v.id;
+          return record(next, event.type, "success", `${v.number} 已由 Owner 显式设为默认版本。`);
+        }
+        default: return blocked(next, event, `未实现事件 ${event.type}`);
+      }
+    }
+
+    const presets = {
+      csv: { format:"CSV", rawMB:12, sourceRecords:120, classification:"synthetic", licenseStatus:"confirmed", sourceAttribution:"合成数据 / 测试目的" },
+      jsonlBad: { format:"JSONL", rawMB:8, sourceRecords:10000, badRecords:3, classification:"public_licensed", licenseStatus:"confirmed", sourceAttribution:"公开且许可清晰" },
+      second: { format:"JSON", rawMB:18, sourceRecords:80, classification:"fully_deidentified_non_sensitive", licenseStatus:"confirmed", sourceAttribution:"已确认完全去标识" },
+      forbidden: { format:"JSONL", rawMB:2, sourceRecords:10, classification:"production_trace", licenseStatus:"unknown" },
+      oversize: { format:"CSV", rawMB:51, sourceRecords:10, classification:"synthetic", licenseStatus:"confirmed" }
+    };
+
+    const ACTIONS = [
+      { group:"数据资产与工作草稿", label:"上传合成 CSV 数据资产", event:{type:"UPLOAD_ASSET",asset:presets.csv} },
+      { group:"数据资产与工作草稿", label:"上传含 3 条坏行的 JSONL 数据资产", event:{type:"UPLOAD_ASSET",asset:presets.jsonlBad} },
+      { group:"数据资产与工作草稿", label:"上传第二个 JSON 数据资产", event:{type:"UPLOAD_ASSET",asset:presets.second} },
+      { group:"数据资产与工作草稿", label:"解析最新数据资产", event:{type:"PARSE_LATEST"} },
+      { group:"数据资产与工作草稿", label:"创建测试集与唯一活跃工作草稿", event:{type:"CREATE_TEST_SET_DRAFT"} },
+      { group:"数据资产与工作草稿", label:"把最新数据资产追加到工作草稿", event:{type:"ATTACH_LATEST"} },
+      { group:"数据资产与工作草稿", label:"显式排除最新数据资产的坏记录", event:{type:"EXCLUDE_BAD_RECORDS"} },
+      { group:"数据资产与工作草稿", label:"移除首个工作草稿附件（数据资产保留）", event:{type:"DETACH_FIRST_SOURCE"} },
+      { group:"映射、Schema 与候选", label:"映射下一个数据资产到共同正式结构", event:{type:"MAP_NEXT"} },
+      { group:"映射、Schema 与候选", label:"确认 gold_required 正式 Schema", event:{type:"CONFIRM_SCHEMA",mode:"gold_required"} },
+      { group:"映射、Schema 与候选", label:"确认 input_only 正式 Schema", event:{type:"CONFIRM_SCHEMA",mode:"input_only"} },
+      { group:"映射、Schema 与候选", label:"制造 1 条期望输出缺失", event:{type:"SET_MISSING_EXPECTED",count:1} },
+      { group:"映射、Schema 与候选", label:"修复缺失的期望输出", event:{type:"FIX_EXPECTED_OUTPUT"} },
+      { group:"映射、Schema 与候选", label:"提出破坏性正式 Schema 变化", event:{type:"PROPOSE_DESTRUCTIVE_SCHEMA"} },
+      { group:"映射、Schema 与候选", label:"携工作草稿创建新测试集", event:{type:"CREATE_NEW_TEST_SET"} },
+      { group:"映射、Schema 与候选", label:"物化不可变候选快照", event:{type:"MATERIALIZE_CANDIDATE"} },
+      { group:"发布、租约与删除", label:"原子发布候选快照", event:{type:"PUBLISH"} },
+      { group:"发布、租约与删除", label:"模拟发布存储失败", event:{type:"PUBLISH_STORAGE_FAILURE"} },
+      { group:"发布、租约与删除", label:"重试同一候选快照", event:{type:"RETRY_PUBLISH"} },
+      { group:"发布、租约与删除", label:"从默认测试集版本派生工作草稿", event:{type:"CREATE_DRAFT_FROM_DEFAULT"} },
+      { group:"发布、租约与删除", label:"切换到唯一真实 Owner", event:{type:"SWITCH_ACTOR",actor:"owner"} },
+      { group:"发布、租约与删除", label:"切换到 Editor 开发测试身份", event:{type:"SWITCH_ACTOR",actor:"editor"} },
+      { group:"发布、租约与删除", label:"切换到 Viewer 开发测试身份", event:{type:"SWITCH_ACTOR",actor:"viewer"} },
+      { group:"发布、租约与删除", label:"明确确认接管编辑租约", event:{type:"CONFIRM_LEASE_TAKEOVER"} },
+      { group:"发布、租约与删除", label:"发起默认版本受控删除并预览影响", event:{type:"INITIATE_DELETE_DEFAULT"} },
+      { group:"发布、租约与删除", label:"填写理由并二次确认受控删除", event:{type:"CONFIRM_CONTROLLED_DELETION"} },
+      { group:"发布、租约与删除", label:"显式设置首个完整版本为默认", event:{type:"SET_DEFAULT_FIRST_COMPLETE"} },
+      { group:"容量与 Production Gates", label:"预计候选设为 10,001 条", event:{type:"SET_CANDIDATE_ESTIMATE",records:10001,itemsMB:30} },
+      { group:"容量与 Production Gates", label:"预计 items.jsonl 设为 101 MB", event:{type:"SET_CANDIDATE_ESTIMATE",records:9000,itemsMB:101} },
+      { group:"容量与 Production Gates", label:"预计候选设为边界值 10,000 条 / 100 MB", event:{type:"SET_CANDIDATE_ESTIMATE",records:10000,itemsMB:100} },
+      { group:"容量与 Production Gates", label:"注入发布事务复检 101 MB", event:{type:"INJECT_PUBLISH_CAPACITY_OVER"} },
+      { group:"容量与 Production Gates", label:"清除发布事务容量注入", event:{type:"CLEAR_PUBLISH_CAPACITY_INJECTION"} },
+      { group:"容量与 Production Gates", label:"尝试上传 51 MB 数据资产", event:{type:"UPLOAD_ASSET",asset:presets.oversize} },
+      { group:"容量与 Production Gates", label:"尝试导入生产 Trace / 许可不明数据", event:{type:"UPLOAD_ASSET",asset:presets.forbidden} },
+      { group:"容量与 Production Gates", label:"尝试批准生产部署", event:{type:"ATTEMPT_PRODUCTION"} },
+      { group:"容量与 Production Gates", label:"尝试公网开放实际 Web 端口", event:{type:"ATTEMPT_PUBLIC_PORT"} },
+      { group:"容量与 Production Gates", label:"尝试增加第二名真实用户", event:{type:"ATTEMPT_REAL_SECOND_USER"} },
+      { group:"容量与 Production Gates", label:"尝试连接 Langfuse SDK/API", event:{type:"ATTEMPT_LANGFUSE_API"} }
+    ];
+
+    function replay(events) { return events.reduce((s,e) => transition(s,e), initialState()); }
+    const E = {
+      upload: asset => ({type:"UPLOAD_ASSET",asset}), parse:{type:"PARSE_LATEST"}, create:{type:"CREATE_TEST_SET_DRAFT"}, attach:{type:"ATTACH_LATEST"}, map:{type:"MAP_NEXT"},
+      gold:{type:"CONFIRM_SCHEMA",mode:"gold_required"}, inputOnly:{type:"CONFIRM_SCHEMA",mode:"input_only"}, materialize:{type:"MATERIALIZE_CANDIDATE"}, publish:{type:"PUBLISH"},
+      fromDefault:{type:"CREATE_DRAFT_FROM_DEFAULT"}
+    };
+    function fixtureDraft(asset=presets.csv) { return replay([E.upload(asset),E.parse,E.create,E.attach]); }
+    function fixtureMapped(asset=presets.csv) { return replay([E.upload(asset),E.parse,E.create,E.attach,E.map]); }
+    function fixtureReadyCandidate() { return replay([E.upload(presets.csv),E.parse,E.create,E.attach,E.map,E.gold,E.materialize]); }
+    function fixtureV1() { return replay([E.upload(presets.csv),E.parse,E.create,E.attach,E.map,E.gold,E.materialize,E.publish]); }
+    function fixtureV2Ready() { return replay([E.upload(presets.csv),E.parse,E.create,E.attach,E.map,E.gold,E.materialize,E.publish,E.fromDefault,E.upload(presets.second),E.parse,E.attach,E.map,E.gold,E.materialize]); }
+    function fixtureV2Published() { return transition(fixtureV2Ready(),E.publish); }
+    function fixtureCapacity() {
+      const asset = i => ({format:i%2?"CSV":"JSONL",rawMB:20,sourceRecords:2000,classification:"synthetic",licenseStatus:"confirmed",sourceAttribution:"容量边界合成数据"});
+      let s = initialState();
+      for (let i=1;i<=5;i++) {
+        s = transition(s,E.upload(asset(i))); s = transition(s,E.parse);
+        if (i===1) s = transition(s,E.create);
+        s = transition(s,E.attach);
+      }
+      for (let i=0;i<5;i++) s = transition(s,E.map);
+      s = transition(s,E.gold);
+      s = transition(s,E.upload({format:"CSV",rawMB:1,sourceRecords:1,classification:"synthetic",licenseStatus:"confirmed",sourceAttribution:"容量探针"}));
+      return transition(s,E.parse);
+    }
+    function fixtureDestructive() {
+      let s = fixtureV1();
+      s = transition(s,E.fromDefault); s = transition(s,E.upload(presets.second)); s = transition(s,E.parse); s = transition(s,E.attach); s = transition(s,E.map);
+      return s;
+    }
+    function fixtureAllButLastDegraded() {
+      let s = fixtureV2Published();
+      s = transition(s,{type:"INITIATE_DELETE_DEFAULT"}); s = transition(s,{type:"CONFIRM_CONTROLLED_DELETION"}); s = transition(s,{type:"SET_DEFAULT_FIRST_COMPLETE"});
+      return s;
+    }
+
+    const SCENARIOS = [
+      { title:"CSV → v1", description:"从空状态完成 CSV 上传、解析、映射和首版发布。", decision:"raw-first；gold_required；发布成功才分配 v1；首版自动默认。", fixture:initialState, steps:[
+        ["上传 CSV 数据资产",E.upload(presets.csv),"原始字节先登记"],["生成解析视图",E.parse,"不改写原件"],["创建测试集与唯一活跃工作草稿",E.create,"取得编辑租约"],["追加数据资产",E.attach,"检查草稿总容量"],["映射到正式结构",E.map,"input / expected_output / metadata"],["确认 gold_required 正式 Schema",E.gold,"用户显式确认"],["物化候选快照",E.materialize,"候选不可变"],["原子发布",E.publish,"成功后产生 v1 并自动默认"]
+      ]},
+      { title:"JSONL 坏行", description:"边界可信的 JSONL 含 3 条坏行；先观察阻断，再显式排除并继续。", decision:"坏记录不静默跳过；可定位错误只有显式排除后才不阻断。", fixture:initialState, steps:[
+        ["上传含 3 条坏行的 JSONL",E.upload(presets.jsonlBad),"保留完整原件"],["解析并定位坏行",E.parse,"总计 = 成功 + 失败"],["创建工作草稿",E.create,"单活跃草稿"],["追加数据资产",E.attach,"边界可信所以可追加"],["完成字段映射",E.map,"坏行仍被选中"],["确认 gold_required 正式 Schema",E.gold,"Schema 本身合法"],["尝试物化候选",E.materialize,"应因 3 条坏行阻断"],["显式排除 3 条坏行",{type:"EXCLUDE_BAD_RECORDS"},"记录位置和原因进入报告"],["再次物化候选",E.materialize,"继续得到 9,997 条候选"]
+      ]},
+      { title:"第二资产", description:"先有 45 MB / 6,000 条，再追加 50 MB / 4,000 条；第三资产触发总容量阻断。", decision:"多资产只追加；每次追加原子检查资产数、100 MB 与 10,000 条，拒绝时原集合不变。", fixture:()=>replay([E.upload({...presets.csv,rawMB:45,sourceRecords:6000}),E.parse,E.create,E.attach]), steps:[
+        ["上传第二个 50 MB / 4,000 条数据资产",E.upload({...presets.second,rawMB:50,sourceRecords:4000}),"单资产仍在上限内"],["解析第二个数据资产",E.parse,"形成独立解析视图"],["追加第二个数据资产",E.attach,"合计 95 MB / 10,000 条，通过"],["上传第三个 10 MB / 1 条数据资产",E.upload({...presets.csv,rawMB:10,sourceRecords:1}),"数据资产独立保留"],["解析第三个数据资产",E.parse,"解析成功"],["尝试追加第三个数据资产",E.attach,"应因 105 MB / 10,001 条阻断且原附件不变"]
+      ]},
+      { title:"共同 Schema", description:"两个来源结构不同的数据资产各自映射，但目标结构和正式 Schema 只有一套。", decision:"分资产映射；共同对齐同一正式 Schema；不做 Join、自动去重或身份合并。", fixture:()=>replay([E.upload(presets.csv),E.parse,E.create,E.attach,E.upload(presets.second),E.parse,E.attach]), steps:[
+        ["映射第一个数据资产",E.map,"独立映射"],["映射第二个数据资产",E.map,"目标仍是同一正式结构"],["确认共同 gold_required 正式 Schema",E.gold,"两个映射共同受同一契约校验"]
+      ]},
+      { title:"租约接管", description:"Owner 持有编辑租约；第二个 Editor 开发测试身份先只读，明确确认后接管。", decision:"Phase 1A 只有唯一真实 Owner；Editor 是开发测试身份；不得最后写入静默覆盖。", fixture:fixtureDraft, steps:[
+        ["切换到 Editor 开发测试身份",{type:"SWITCH_ACTOR",actor:"editor"},"不是第二名真实用户批准"],["尝试映射",E.map,"应因租约由 Owner 持有而阻断"],["明确确认接管编辑租约",{type:"CONFIRM_LEASE_TAKEOVER"},"保留内容并记录审计"],["再次映射",E.map,"接管后允许写入"]
+      ]},
+      { title:"gold_required", description:"映射结果缺少 1 条期望输出；先阻断，再修复并恢复。", decision:"gold_required 下 expected_output 必填；修复内容后生成候选。", fixture:()=>transition(fixtureMapped(),{type:"SET_MISSING_EXPECTED",count:1}), steps:[
+        ["确认 gold_required 正式 Schema",E.gold,"期望输出为必填"],["尝试物化候选",E.materialize,"应准确指出 1 条缺失"],["修复期望输出",{type:"FIX_EXPECTED_OUTPUT"},"草稿内容变化"],["再次物化候选",E.materialize,"阻断解除"]
+      ]},
+      { title:"input_only", description:"同样存在空期望输出，但正式 Schema 模式为 input_only。", decision:"input_only 允许 expected_output 为空且不产生警告；非空值仍须符合 Schema。", fixture:()=>transition(fixtureMapped(),{type:"SET_MISSING_EXPECTED",count:3}), steps:[
+        ["确认 input_only 正式 Schema",E.inputOnly,"只放宽缺失要求"],["物化候选",E.materialize,"空 expected_output 合法且无警告"]
+      ]},
+      { title:"破坏性 Schema", description:"从 v1 派生工作草稿，把 input 类型从对象改为数组。", decision:"破坏性变化不能在原测试集强制覆盖；携带草稿创建新测试集继续。", fixture:fixtureDestructive, steps:[
+        ["提出破坏性正式 Schema 变化",{type:"PROPOSE_DESTRUCTIVE_SCHEMA"},"类型变化由固定规则判定"],["确认变化后的 gold_required 正式 Schema",E.gold,"显示 destructive"],["尝试在原测试集物化候选",E.materialize,"应引导创建新测试集"],["携工作草稿创建新测试集",{type:"CREATE_NEW_TEST_SET"},"不丢弃编辑结果"],["为新测试集确认正式 Schema",E.gold,"新测试集没有兼容性冲突"],["物化新测试集候选",E.materialize,"恢复可发布状态"]
+      ]},
+      { title:"发布失败重试", description:"后台存储暂时失败；观察同一候选 ID、尝试次数和版本号。", decision:"发布失败保留同一 Candidate Snapshot；成功前不产生或消耗版本号。", fixture:fixtureReadyCandidate, steps:[
+        ["模拟发布存储失败",{type:"PUBLISH_STORAGE_FAILURE"},"候选进入 publish_failed"],["重试同一候选快照",{type:"RETRY_PUBLISH"},"候选 ID 不变，成功后才产生 v1"]
+      ]},
+      { title:"v2 默认不切换", description:"已存在默认 v1，候选快照来自 v1 的新工作草稿。", decision:"后续版本发布默认不切换 default_version_id；只能由 Owner 显式改变。", fixture:fixtureV2Ready, steps:[
+        ["原子发布 v2",E.publish,"v2 成功，但默认版本仍为 v1"]
+      ]},
+      { title:"默认版本降级", description:"已有 v1、v2，默认仍为 v1；对默认版本执行非生产受控删除模拟。", decision:"先影响预览，再由同一 Owner 二次确认；默认版本降级时原子清空，不自动回退。", fixture:fixtureV2Published, steps:[
+        ["发起受控删除并生成影响预览",{type:"INITIATE_DELETE_DEFAULT"},"尚未删除内容"],["填写结构化理由并二次确认",{type:"CONFIRM_CONTROLLED_DELETION"},"v1 降级；default_version_id = null；v2 不自动接管"]
+      ]},
+      { title:"全部版本降级", description:"v1 已降级，Owner 已显式把完整 v2 设为默认；现在降级最后一个完整版本。", decision:"全部版本降级后测试集进入 unavailable_by_deletion；禁止草稿、导出和评测。", fixture:fixtureAllButLastDegraded, steps:[
+        ["发起 v2 受控删除并查看影响",{type:"INITIATE_DELETE_DEFAULT"},"最后一个完整版本"],["二次确认受控删除",{type:"CONFIRM_CONTROLLED_DELETION"},"测试集进入删除不可用状态"],["尝试创建工作草稿",E.fromDefault,"应因 unavailable_by_deletion 被阻断"]
+      ]},
+      { title:"容量三阶段", description:"先在草稿追加、再在候选物化、最后在发布事务复检中越界，并逐步恢复。", decision:"5 个 / 100 MB / 10,000 条在追加时；10,000 条 / 100 MB 在候选时；发布事务再次检查且失败不占版本号。", fixture:fixtureCapacity, steps:[
+        ["尝试追加第 6 个容量探针资产",E.attach,"应同时报告 6 个、101 MB、10,001 条并保留原附件"],["移除首个工作草稿附件",{type:"DETACH_FIRST_SOURCE"},"为恢复释放容量，数据资产仍保留"],["再次追加容量探针资产",E.attach,"附件回到 5 个且总量通过"],["映射新追加的数据资产",E.map,"恢复完整映射"],["保存预计 10,001 条候选配置",{type:"SET_CANDIDATE_ESTIMATE",records:10001,itemsMB:30},"超限配置允许保存"],["尝试物化候选",E.materialize,"应阻断且不创建候选快照"],["保存预计 101 MB items.jsonl",{type:"SET_CANDIDATE_ESTIMATE",records:9000,itemsMB:101},"切换另一种候选超限"],["再次尝试物化候选",E.materialize,"应按 items.jsonl 阻断"],["调整为边界值 10,000 条 / 100 MB",{type:"SET_CANDIDATE_ESTIMATE",records:10000,itemsMB:100},"边界值允许"],["物化边界候选",E.materialize,"候选创建成功"],["注入发布事务观察到 101 MB",{type:"INJECT_PUBLISH_CAPACITY_OVER"},"模拟陈旧/并发结果"],["尝试原子发布",E.publish,"发布复检失败；无版本号，同候选保留"],["清除容量注入",{type:"CLEAR_PUBLISH_CAPACITY_INJECTION"},"恢复真实边界状态"],["重试同一候选快照",{type:"RETRY_PUBLISH"},"成功后才产生 v1"]
+      ]}
+    ];
+
+    return { LIMITS, ACTIONS, SCENARIOS, initialState, transition, decision, draftTotals, candidateEstimate, selectedParseErrors, completeVersions };
+  })();
+
+  (() => {
+    "use strict";
+    const Logic = EvalBaseLogic;
+    let state = Logic.initialState();
+    let scenarioIndex = 0;
+    let stepIndex = 0;
+
+    const $ = id => document.getElementById(id);
+    const esc = value => String(value ?? "—").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+    const value = v => typeof v === "boolean" ? (v ? "是" : "否") : (v === null || v === undefined ? "—" : esc(v));
+    const chip = (text, kind="") => `<span class="chip ${kind}">${esc(text)}</span>`;
+    const rows = pairs => `<dl>${pairs.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${value(v)}</dd>`).join("")}</dl>`;
+
+    function dispatch(event, advance=false) {
+      state = Logic.transition(state, event);
+      if (advance) stepIndex += 1;
+      render();
+    }
+    function startScenario(index=scenarioIndex) {
+      scenarioIndex = index;
+      stepIndex = 0;
+      state = Logic.SCENARIOS[index].fixture();
+      render();
+    }
+
+    function renderState() {
+      const t = Logic.draftTotals(state), d = state.testSet?.workingDraft, c = state.candidateSnapshot;
+      const scope = `<div class="card full"><h3>运行边界</h3>${rows([
+        ["原型",state.prototype.kind],["原型持久性",state.prototype.persistence],["外部连接",state.prototype.externalConnections],
+        ["部署范围",state.scope.deployment],["实际 Web 端口公网可达",state.scope.publicPort3000],["真实用户数",state.scope.realUserCount],
+        ["允许数据分类",state.scope.allowedClassifications.join(" / ")],["禁止数据",state.scope.forbidden],["Phase 1A 数据耐久性",state.scope.phase1aDurability],
+        ["可靠性承诺",state.scope.guarantees],["Production Gates",state.scope.productionGates]
+      ])}</div>`;
+      const identity = `<div class="card"><h3>当前身份与编辑租约</h3>${rows([
+        ["当前身份",state.session.actor.label],["角色",state.session.actor.role],["身份性质",state.session.actor.identity],
+        ["租约持有人",d?.editLease?.holderId],["明确接管",d?.editLease?.explicitlyConfirmed ?? false],["工作草稿可写",!!d && d.editLease?.holderId===state.session.actor.id]
+      ])}</div>`;
+      const testSet = `<div class="card"><h3>测试集</h3>${state.testSet ? rows([
+        ["测试集 ID",state.testSet.id],["名称",state.testSet.name],["可用状态",state.testSet.status],["默认测试集版本 ID",state.testSet.defaultVersionId],
+        ["测试集版本数",state.testSet.versions.length],["其他保留测试集数",state.otherTestSets.length]
+      ]) : '<div class="empty">尚无测试集。</div>'}${state.otherTestSets.length ? `<table><thead><tr><th>保留测试集</th><th>名称</th><th>状态</th><th>保留版本</th></tr></thead><tbody>${state.otherTestSets.map(ts=>`<tr><td class="mono">${esc(ts.id)}</td><td>${esc(ts.name)}</td><td>${esc(ts.status)}</td><td>${ts.versions.map(v=>`${esc(v.number)} / ${esc(v.integrityStatus)}`).join("；") || "—"}</td></tr>`).join("")}</tbody></table>`:""}</div>`;
+      const assets = `<div class="card full"><h3>数据资产与解析视图（${state.assets.length}）</h3>${state.assets.length ? `<table><thead><tr><th>数据资产</th><th>类型 / 格式</th><th>不可变内容</th><th>来源与分类</th><th>解析视图</th></tr></thead><tbody>${state.assets.map(a=>`<tr><td class="mono">${esc(a.id)}<br>${esc(a.status)}</td><td>${esc(a.kind)} / ${esc(a.format)}</td><td>${a.rawMB} MB / ${a.sourceRecords} 条<br><span class="mono">${esc(a.contentHash)}</span></td><td>${esc(a.sourceAttribution)}<br>${esc(a.classification)} / 许可 ${esc(a.licenseStatus)}</td><td>${a.parsedView ? `<span class="mono">${esc(a.parsedView.id)}</span><br>${esc(a.parsedView.status)}<br>成功 ${a.parsedView.valid} / 失败 ${a.parsedView.failed}<br>边界可信 ${a.boundaryReliable?'是':'否'}` : '尚未解析'}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">尚无数据资产。</div>'}</div>`;
+      const draft = `<div class="card full"><h3>工作草稿与分资产映射</h3>${d ? `${rows([
+        ["工作草稿 ID",d.id],["内容状态",d.status],["父测试集版本 ID",d.baseVersionId],["附件总量",`${t.assets} / ${Logic.LIMITS.draftAssets} 个 · ${t.rawMB} / ${Logic.LIMITS.draftMB} MB · ${t.sourceRecords} / ${Logic.LIMITS.draftRecords} 条`],
+        ["正式 Schema",`${d.formalSchema.status} · ${d.formalSchema.mode ?? '未选择'} · ${d.formalSchema.compatibility}`],["Schema revision",d.formalSchema.revisionId],
+        ["缺失期望输出",d.missingExpectedOutput],["预计候选",`${Logic.candidateEstimate(state).records} 条 / ${Logic.candidateEstimate(state).itemsMB} MB`],["仍被选中的解析失败",Logic.selectedParseErrors(state)]
+      ])}<table><thead><tr><th>数据资产</th><th>解析视图</th><th>映射</th><th>共同目标</th><th>显式排除坏记录</th></tr></thead><tbody>${d.sources.map(s=>`<tr><td class="mono">${esc(s.assetId)}</td><td class="mono">${esc(s.parsedViewId)}</td><td>${esc(s.mappingStatus)}</td><td>${s.target ? esc(s.target.formalStructure) : '—'}</td><td>${s.explicitlyExcludedBadRecords}</td></tr>`).join("") || '<tr><td colspan="5">尚无附件</td></tr>'}</tbody></table>` : '<div class="empty">当前没有工作草稿。</div>'}</div>`;
+      const candidate = `<div class="card"><h3>候选快照</h3>${c ? rows([
+        ["候选快照 ID",c.id],["状态",c.status],["不可变",c.immutable],["正式记录",c.formalRecords],["items.jsonl",`${c.itemsMB} MB`],["正式 Schema revision",c.formalSchemaRevisionId],
+        ["payload_hash",c.payloadHash],["evidence_hash",c.evidenceHash],["发布尝试",c.publishAttempts],["已发布为",c.publishedVersionId]
+      ]) : '<div class="empty">尚无候选快照。</div>'}</div>`;
+      const observation = `<div class="card"><h3>发布事务复检观察</h3>${state.publishCapacityObservation ? rows([
+        ["数据资产数",state.publishCapacityObservation.draft.assets],["原始字节",`${state.publishCapacityObservation.draft.rawMB} MB`],["源记录",state.publishCapacityObservation.draft.sourceRecords],["正式记录",state.publishCapacityObservation.candidate.records],["items.jsonl",`${state.publishCapacityObservation.candidate.itemsMB} MB`]
+      ]) : '<div class="empty">无测试注入；发布将按当前冻结输入重新检查全部容量。</div>'}</div>`;
+      const versions = `<div class="card full"><h3>测试集版本</h3>${state.testSet?.versions.length ? `<table><thead><tr><th>版本</th><th>ID</th><th>父版本</th><th>候选快照</th><th>容量</th><th>完整性</th><th>默认</th><th>分层哈希</th></tr></thead><tbody>${state.testSet.versions.map(v=>`<tr><td>${esc(v.number)}</td><td class="mono">${esc(v.id)}</td><td class="mono">${value(v.parentVersionId)}</td><td class="mono">${value(v.candidateSnapshotId)}</td><td>${value(v.itemCount)} 条<br>${value(v.itemsMB)} MB</td><td>${esc(v.integrityStatus)}</td><td>${state.testSet.defaultVersionId===v.id?'是':'否'}</td><td class="mono">${value(v.payloadHash)}<br>${value(v.evidenceHash)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">尚无测试集版本；版本号只在发布成功时产生。</div>'}</div>`;
+      const deletion = `<div class="card full"><h3>受控删除（非生产治理流程模拟）</h3>${rows([
+        ["阶段",state.deletion.stage],["删除事件 ID",state.deletion.deletionEventId],["目标测试集版本 ID",state.deletion.targetVersionId],["发起人",state.deletion.initiatedBy],["二次确认人",state.deletion.confirmedBy],["结构化理由码",state.deletion.reasonCode],["简短说明",state.deletion.reasonNote],["最小墓碑数",state.deletion.tombstones.length]
+      ])}${state.deletion.impactPreview?.length ? `<p class="empty">影响预览：${state.deletion.impactPreview.map(esc).join("；")}</p>`:""}${state.deletion.tombstones.length ? `<table><thead><tr><th>删除事件</th><th>对象</th><th>删除前哈希</th><th>结果</th></tr></thead><tbody>${state.deletion.tombstones.map(x=>`<tr><td class="mono">${esc(x.deletionEventId)}</td><td>${esc(x.objectType)} / ${esc(x.opaqueObjectId)}</td><td class="mono">${esc(x.priorHash)}</td><td>${esc(x.resultStatus)}</td></tr>`).join("")}</tbody></table>`:""}<p class="empty">墓碑不保留原始文件名、来源 URL、Prompt 正文、记录值或业务元数据；外部副本不能由 EvalBase 撤回或验证删除。</p></div>`;
+      $("state").innerHTML = scope + identity + testSet + assets + draft + candidate + observation + versions + deletion;
+    }
+
+    function renderEvent() {
+      const e = state.lastEvent;
+      $("last-event").className = `card event ${e.outcome}`;
+      $("last-event").innerHTML = `<div class="chips">${chip(e.outcome,e.outcome==="success"?"good":e.outcome==="warning"?"warn":"bad")}${chip(e.at)}${chip(e.actor ?? "system")}</div><p class="mono">${esc(e.type)}</p><p>${esc(e.message)}</p>`;
+      const evaluated = Logic.ACTIONS.map(a=>({a,reason:Logic.decision(state,a.event)}));
+      const allowed = evaluated.filter(x=>!x.reason).length;
+      $("action-summary").innerHTML = chip(`允许 ${allowed}`,"good") + chip(`禁止 ${evaluated.length-allowed}`,"bad") + chip(`合计 ${evaluated.length}`);
+      $("audit").innerHTML = state.audit.length ? state.audit.slice(0,10).map(a=>`<div><span class="mono">${esc(a.at)} ${esc(a.type)}</span><br>${esc(a.outcome)} · ${esc(a.message)}</div>`).join("") : '<div class="empty">尚无审计事件。</div>';
+    }
+
+    function renderActions() {
+      const groups = [...new Set(Logic.ACTIONS.map(a=>a.group))];
+      $("actions").innerHTML = groups.map(group=>`<div class="card"><h3>${esc(group)}</h3>${Logic.ACTIONS.filter(a=>a.group===group).map((a,i)=>{
+        const reason = Logic.decision(state,a.event), key = `${groups.indexOf(group)}-${i}`;
+        return `<div class="action"><button class="button ${reason?'prohibited':''}" data-action="${key}">${esc(a.label)}</button>${reason?`<div class="reason">禁止：${esc(reason)}</div>`:'<div class="allowed-note">当前允许</div>'}</div>`;
+      }).join("")}</div>`).join("");
+      $("actions").querySelectorAll("button[data-action]").forEach(btn=>btn.addEventListener("click",()=>{
+        const [g,i] = btn.dataset.action.split("-").map(Number);
+        const action = Logic.ACTIONS.filter(a=>a.group===groups[g])[i];
+        dispatch(action.event);
+      }));
+    }
+
+    function renderScenario() {
+      $("scenario-tabs").innerHTML = Logic.SCENARIOS.map((s,i)=>`<button class="tab ${i===scenarioIndex?'active':''}" role="tab" aria-selected="${i===scenarioIndex}" data-scenario="${i}" title="${esc(s.title)}">${i+1}</button>`).join("");
+      $("scenario-tabs").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>startScenario(Number(b.dataset.scenario))));
+      const s = Logic.SCENARIOS[scenarioIndex];
+      $("scenario").innerHTML = `<div class="walkthrough-head"><div><h3>${scenarioIndex+1}. ${esc(s.title)}</h3><p>${esc(s.description)}</p><p class="decision"><strong>验证的产品决定：</strong>${esc(s.decision)}</p></div><button class="button primary" id="restart-scenario">重新开始此 Walkthrough</button></div><div class="steps">${s.steps.map((step,i)=>`<div class="step ${i<stepIndex?'done':i===stepIndex?'current':''}"><span class="step-index">${i<stepIndex?'✓':i+1}</span><div><strong>${esc(step[0])}</strong><small>${esc(step[2])}</small></div><button class="button" data-step="${i}" ${i!==stepIndex?'disabled':''}>执行事件</button></div>`).join("")}</div>${stepIndex>=s.steps.length?'<div class="warning" style="margin-top:12px"><strong>Walkthrough 完成。</strong>请检查完整当前状态、最近事件与动作门禁是否符合决定。</div>':''}`;
+      $("restart-scenario").addEventListener("click",()=>startScenario());
+      $("scenario").querySelectorAll("button[data-step]").forEach(b=>b.addEventListener("click",()=>dispatch(s.steps[Number(b.dataset.step)][1],true)));
+    }
+
+    function render() { renderState(); renderEvent(); renderActions(); renderScenario(); }
+    startScenario(0);
+  })();
+  </script>
+</body>
+</html>

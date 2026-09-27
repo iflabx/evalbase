@@ -341,10 +341,10 @@ export async function collectDeletionClosure(
     for (const row of await rowsFor(
       queryable,
       `SELECT DISTINCT vm.case_revision_id
-       FROM version_member vm
-       JOIN test_set_version v ON v.id = vm.version_id
+       FROM test_set_version v
        JOIN test_set ts ON ts.id = v.test_set_id
-       WHERE ts.project_id = $2 AND vm.version_id = ANY($1::text[])`,
+       JOIN LATERAL resolve_version_members(v.id, true) vm ON true
+       WHERE ts.project_id = $2 AND v.id = ANY($1::text[])`,
       versions,
       projectId,
     ))
@@ -357,9 +357,9 @@ export async function collectDeletionClosure(
     for (const row of await rowsFor(
       queryable,
       `SELECT DISTINCT vm.version_id AS id
-       FROM version_member vm
-       JOIN test_set_version v ON v.id = vm.version_id
+       FROM test_set_version v
        JOIN test_set ts ON ts.id = v.test_set_id
+       JOIN LATERAL resolve_version_members(v.id, true) vm ON true
        WHERE ts.project_id = $2 AND vm.case_revision_id = ANY($1::text[])`,
       revisions,
       projectId,

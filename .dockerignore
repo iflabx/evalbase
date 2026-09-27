@@ -1,5 +1,8 @@
 .git
 node_modules
 dist
+frontend-v1
+frontend-v2
+src/web
 playwright-report
 test-results
