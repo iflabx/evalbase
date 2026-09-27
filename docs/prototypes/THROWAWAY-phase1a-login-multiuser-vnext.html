@@ -3217,6 +3217,9 @@
       .auth-form input, .member-form input, .member-form select, .member-row select { width: 100%; min-height: 38px; padding: 8px 11px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); box-shadow: 0 1px 2px rgba(15, 23, 42, .07); }
       .auth-form .button.primary { width: 100%; min-height: 38px; margin-top: 4px; justify-content: center; }
       .auth-error { margin: 12px 0 0; color: var(--destructive); font-size: 13px; }
+      .password-hint { color: var(--muted-foreground); font-size: 12px; font-weight: 400; line-height: 1.4; }
+      .password-hint.is-valid { color: #15803d; }
+      .password-hint.is-invalid { color: var(--destructive); }
       .demo-panel { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
       .demo-panel b { display: block; font-size: 13px; font-weight: 600; }
       .demo-panel p { margin: 4px 0 12px; color: var(--muted-foreground); font-size: 12px; }
@@ -4004,17 +4007,49 @@
         const invite = access.invites.find((entry) => entry.id === access.inviteId);
         const brand = `<header class="auth-top"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg></div><div><strong>EvalBase</strong><span>团队测试资料库</span></div></div></header>`;
         if (!access.setupCompleted) {
-          return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>管理员注册</h1><p class="auth-intro">首次访问时创建管理员账号。完成后即可管理项目与邀请成员。</p><form class="auth-form" onsubmit="app.createInitialOwner(event)"><label>显示名称<input id="setup-name" required maxlength="30" autocomplete="name" /></label><label>邮箱<input id="setup-email" type="email" required autocomplete="email" /></label><label>密码<input id="setup-password" type="password" required minlength="8" autocomplete="new-password" /></label><label>确认密码<input id="setup-confirm" type="password" required minlength="8" autocomplete="new-password" /></label><button class="button primary" type="submit">创建管理员账号</button></form>${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<p class="auth-note">这是原型的首次设置。请使用测试密码，账号信息保存在此浏览器中。</p></section></div></main>`;
+          return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>管理员注册</h1><p class="auth-intro">首次访问时创建管理员账号。完成后即可管理项目与邀请成员。</p><form class="auth-form" onsubmit="app.createInitialOwner(event)"><label>显示名称<input id="setup-name" required maxlength="30" autocomplete="name" /></label><label>邮箱<input id="setup-email" type="email" required autocomplete="email" /></label><label>密码<input id="setup-password" type="password" required minlength="8" autocomplete="new-password" aria-describedby="setup-password-hint" oninput="app.updatePasswordHints('setup')" /><small class="password-hint" id="setup-password-hint" aria-live="polite">至少 8 个字符；字母、数字和符号均可。</small></label><label>确认密码<input id="setup-confirm" type="password" required autocomplete="new-password" aria-describedby="setup-confirm-hint" oninput="app.updatePasswordHints('setup')" /><small class="password-hint" id="setup-confirm-hint" aria-live="polite">请再次输入相同密码。</small></label><button class="button primary" type="submit">创建管理员账号</button></form>${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<p class="auth-note">这是原型的首次设置。请使用测试密码，账号信息保存在此浏览器中。</p></section></div></main>`;
         }
         if (access.registerOpen) {
-          return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>账号注册</h1><p class="auth-intro">只需邮箱和密码。注册后可以登录，接受项目负责人发给该邮箱的邀请后才能进入项目。</p><form class="auth-form" onsubmit="app.registerUser(event)"><label>邮箱<input id="register-email" type="email" required autocomplete="email" value="${escape(access.registerEmail)}" /></label><label>密码<input id="register-password" type="password" required minlength="8" autocomplete="new-password" /></label><button class="button primary" type="submit">注册账号</button></form>${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<button class="button auth-back" onclick="app.backToLogin()">返回登录</button><p class="auth-note">请使用测试密码。原型账号保存在此浏览器中。</p></section></div></main>`;
+          return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>账号注册</h1><p class="auth-intro">填写邮箱并设置密码。注册后可以登录，接受项目负责人发给该邮箱的邀请后才能进入项目。</p><form class="auth-form" onsubmit="app.registerUser(event)"><label>邮箱<input id="register-email" type="email" required autocomplete="email" value="${escape(access.registerEmail)}" /></label><label>密码<input id="register-password" type="password" required minlength="8" autocomplete="new-password" aria-describedby="register-password-hint" oninput="app.updatePasswordHints('register')" /><small class="password-hint" id="register-password-hint" aria-live="polite">至少 8 个字符；字母、数字和符号均可。</small></label><label>确认密码<input id="register-confirm" type="password" required autocomplete="new-password" aria-describedby="register-confirm-hint" oninput="app.updatePasswordHints('register')" /><small class="password-hint" id="register-confirm-hint" aria-live="polite">请再次输入相同密码。</small></label><button class="button primary" type="submit">注册账号</button></form>${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<button class="button auth-back" onclick="app.backToLogin()">返回登录</button><p class="auth-note">请使用测试密码。原型账号保存在此浏览器中。</p></section></div></main>`;
         }
         if (invite) {
           const usable = invite.status === "pending" && invite.expires > Date.now();
           const existing = access.users.some((user) => user.email === invite.email);
-          return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>${existing ? "登录并加入项目" : "接受邀请并注册"}</h1><p class="auth-intro">${escape(mock.projects.find((project) => project.id === invite.projectId)?.name || "项目")} 邀请你以${roleNames[invite.role]}身份加入。邀请邮箱：${escape(invite.email)}。</p>${usable ? `<form class="auth-form" onsubmit="app.acceptInvite(event)"><label>${existing ? "已有账号密码" : "设置密码"}<input id="invite-password" type="password" required ${existing ? 'autocomplete="current-password"' : 'minlength="8" autocomplete="new-password"'} /></label><button class="button primary" type="submit">${existing ? "登录并加入项目" : "创建账号并加入项目"}</button></form>` : `<p class="auth-error">邀请已过期或撤销，请项目负责人重新邀请。</p>`}${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<button class="button auth-back" onclick="app.backToLogin()">返回登录</button><p class="auth-note">这是浏览器本地 Mock：邀请不会发送邮件，请使用测试密码。</p></section></div></main>`;
+          const inviteFields = existing
+            ? '<label>已有账号密码<input id="invite-password" type="password" required autocomplete="current-password" /></label>'
+            : '<label>设置密码<input id="invite-password" type="password" required minlength="8" autocomplete="new-password" aria-describedby="invite-password-hint" oninput="app.updatePasswordHints(\'invite\')" /><small class="password-hint" id="invite-password-hint" aria-live="polite">至少 8 个字符；字母、数字和符号均可。</small></label><label>确认密码<input id="invite-confirm" type="password" required autocomplete="new-password" aria-describedby="invite-confirm-hint" oninput="app.updatePasswordHints(\'invite\')" /><small class="password-hint" id="invite-confirm-hint" aria-live="polite">请再次输入相同密码。</small></label>';
+          return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>${existing ? "登录并加入项目" : "接受邀请并注册"}</h1><p class="auth-intro">${escape(mock.projects.find((project) => project.id === invite.projectId)?.name || "项目")} 邀请你以${roleNames[invite.role]}身份加入。邀请邮箱：${escape(invite.email)}。</p>${usable ? `<form class="auth-form" onsubmit="app.acceptInvite(event)">${inviteFields}<button class="button primary" type="submit">${existing ? "登录并加入项目" : "创建账号并加入项目"}</button></form>` : `<p class="auth-error">邀请已过期或撤销，请项目负责人重新邀请。</p>`}${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<button class="button auth-back" onclick="app.backToLogin()">返回登录</button><p class="auth-note">这是浏览器本地 Mock：邀请不会发送邮件，请使用测试密码。</p></section></div></main>`;
         }
         return `<main class="auth-screen">${brand}<div class="auth-main"><section class="auth-card"><h1>登录 EvalBase</h1><p class="auth-intro">进入你有权访问的项目，管理数据集与测试集。</p><form class="auth-form" onsubmit="app.signIn(event)"><label>邮箱<input id="login-email" type="email" required autocomplete="username" /></label><label>密码<input id="login-password" type="password" required autocomplete="current-password" /></label><button class="button primary" type="submit">登录</button></form>${access.error ? `<p class="auth-error" role="alert">${escape(access.error)}</p>` : ""}<div class="auth-entry-guide"><b>还没有账号？</b><p>可自行注册账号；加入项目仍需负责人邀请注册时使用的邮箱。</p><div class="auth-entry-actions"><button type="button" onclick="app.openRegistration()">账号注册 →</button></div></div><div class="demo-panel"><b>体验成员角色</b><p>演示密码为 demo123。</p><div class="demo-accounts"><button type="button" onclick="app.fillLogin('editor')">编辑者</button><button type="button" onclick="app.fillLogin('viewer')">查看者</button></div></div><p class="auth-note">原型账号与邀请保存在此浏览器中；请使用测试密码。</p></section></div></main>`;
+      }
+      function reportAuthError(form, message) {
+        access.error = message;
+        let error = form.nextElementSibling;
+        if (!error?.classList.contains("auth-error")) {
+          error = document.createElement("p");
+          error.className = "auth-error";
+          error.setAttribute("role", "alert");
+          form.after(error);
+        }
+        error.textContent = message;
+      }
+      function updatePasswordHints(prefix) {
+        const password = document.getElementById(`${prefix}-password`);
+        const confirm = document.getElementById(`${prefix}-confirm`);
+        const lengthHint = document.getElementById(`${prefix}-password-hint`);
+        const matchHint = document.getElementById(`${prefix}-confirm-hint`);
+        if (!password || !confirm || !lengthHint || !matchHint) return;
+        const length = password.value.length;
+        lengthHint.textContent = !length ? "至少 8 个字符；字母、数字和符号均可。" : length >= 8 ? "密码长度符合要求。" : `还需 ${8 - length} 个字符（至少 8 个字符）。`;
+        lengthHint.className = `password-hint${length ? length >= 8 ? " is-valid" : " is-invalid" : ""}`;
+        const matches = Boolean(confirm.value) && confirm.value === password.value;
+        matchHint.textContent = !confirm.value ? "请再次输入相同密码。" : matches ? "两次密码一致。" : "两次密码不一致。";
+        matchHint.className = `password-hint${confirm.value ? matches ? " is-valid" : " is-invalid" : ""}`;
+        if (matches && access.error === "两次输入的密码不一致。") {
+          access.error = "";
+          const error = password.closest("form").nextElementSibling;
+          if (error?.classList.contains("auth-error")) error.remove();
+        }
       }
       function openRegistration() {
         if (!access.setupCompleted || access.userId) return;
@@ -4028,8 +4063,10 @@
         if (!access.setupCompleted || !access.registerOpen || access.userId) return;
         const email = document.getElementById("register-email").value.trim().toLowerCase();
         const password = document.getElementById("register-password").value;
+        const confirm = document.getElementById("register-confirm").value;
         if (password.length < 8) return;
-        if (access.users.some((user) => user.email === email)) { access.registerEmail = email; access.error = "该邮箱已注册，请返回登录。"; render(); return; }
+        if (password !== confirm) { reportAuthError(event.currentTarget, "两次输入的密码不一致。"); document.getElementById("register-confirm").focus(); return; }
+        if (access.users.some((user) => user.email === email)) { reportAuthError(event.currentTarget, "该邮箱已注册，请返回登录。"); return; }
         const name = email.split("@")[0].slice(0, 30) || "新用户";
         const user = { id: `user-${crypto.randomUUID()}`, name, email };
         await setMockPassword(user, password);
@@ -4054,8 +4091,8 @@
         const password = document.getElementById("setup-password").value;
         const confirm = document.getElementById("setup-confirm").value;
         if (!name || name.length > 30 || password.length < 8) return;
-        if (password !== confirm) { access.error = "两次输入的密码不一致。"; render(); return; }
-        if (access.users.some((user) => user.id !== "owner" && user.email === email)) { access.error = "该邮箱已用于演示成员。"; render(); return; }
+        if (password !== confirm) { reportAuthError(event.currentTarget, "两次输入的密码不一致。"); document.getElementById("setup-confirm").focus(); return; }
+        if (access.users.some((user) => user.id !== "owner" && user.email === email)) { reportAuthError(event.currentTarget, "该邮箱已用于演示成员。"); return; }
         const owner = access.users.find((user) => user.id === "owner");
         Object.assign(owner, { name, email });
         await setMockPassword(owner, password);
@@ -4191,9 +4228,10 @@
         const password = document.getElementById("invite-password").value;
         let user = access.users.find((entry) => entry.email === invite.email);
         if (user) {
-          if (!await matchesPassword(user, password)) { access.error = "密码不正确。"; render(); return; }
+          if (!await matchesPassword(user, password)) { reportAuthError(event.currentTarget, "密码不正确。"); return; }
         } else {
           if (password.length < 8) return;
+          if (password !== document.getElementById("invite-confirm").value) { reportAuthError(event.currentTarget, "两次输入的密码不一致。"); document.getElementById("invite-confirm").focus(); return; }
           const name = invite.email.split("@")[0].slice(0, 30) || "新用户";
           user = { id: `user-${crypto.randomUUID()}`, name, email: invite.email };
           await setMockPassword(user, password);
@@ -7417,11 +7455,11 @@
         removeEditRecord,
         next,
         prev,
-        createInitialOwner, openRegistration, registerUser, fillLogin, signIn, signOut, backToLogin, openSettings, settingsTab, previewProfile, chooseProfileColor, saveProfile, toggleInvite, inviteMember, previewInvite, revokeInvite, expireInvite, acceptInvite, acceptPendingInvite, changeMemberRole, removeMember, resolveEditConflict, focusEdit, blurEdit,
+        createInitialOwner, openRegistration, registerUser, updatePasswordHints, fillLogin, signIn, signOut, backToLogin, openSettings, settingsTab, previewProfile, chooseProfileColor, saveProfile, toggleInvite, inviteMember, previewInvite, revokeInvite, expireInvite, acceptInvite, acceptPendingInvite, changeMemberRole, removeMember, resolveEditConflict, focusEdit, blurEdit,
       };
       const baseActions = window.app;
       const readActions = new Set(["nav", "selectProject", "backToProjects", "select", "preview", "selectCollection", "backToCollections", "setCollectionTab", "openCollectionRecord", "backToList", "setPage", "toggleSidebar", "setDatasetQuery", "setDatasetTypeFilter", "setDatasetContentFilter", "toggleDatasetSort", "setDatasetPage", "togglePrototypeSelect", "choosePrototypeSelect", "toggleRecordRowDensity", "setRecordRowDensity", "toggleMetadataDetails", "setSetListPage", "setProjectPage", "searchInput", "openRecordFilters", "cancelRecordFilters", "toggleRecordFilterSource", "setRecordFilterDraft", "applyRecordFilters", "clearRecordFilters", "removeRecordFilter", "setVersion", "fitVersionGraph", "openRecord", "openRaw", "openProvenance", "backToSetBrowser", "setLineageFilter", "openLineageRecord", "openLineageSource", "download", "downloadWithProvenance", "closeModal", "openSettings", "settingsTab", "acceptPendingInvite", "previewProfile", "chooseProfileColor", "saveProfile", "runDeletionCheck", "runVersionGraphCheck", "runLineageCheck", "runRecordCountCheck"]);
-      const identityActions = new Set(["createInitialOwner", "openRegistration", "registerUser", "fillLogin", "signIn", "signOut", "backToLogin", "acceptInvite", "resolveEditConflict", "focusEdit", "blurEdit"]);
+      const identityActions = new Set(["createInitialOwner", "openRegistration", "registerUser", "updatePasswordHints", "fillLogin", "signIn", "signOut", "backToLogin", "acceptInvite", "resolveEditConflict", "focusEdit", "blurEdit"]);
       const ownerActions = new Set(["createProject", "openSetTrash", "trashSet", "restoreSet", "trashVersionBranch", "restoreVersionBranch", "openPurgeSet", "openPurgeVersionBranch", "openTombstoneConfirmation", "setPurgeConfirmation", "confirmPurge", "inviteMember", "toggleInvite", "previewInvite", "revokeInvite", "expireInvite", "changeMemberRole", "removeMember"]);
       function actionAllowed(name, args) {
         if (identityActions.has(name)) return true;
