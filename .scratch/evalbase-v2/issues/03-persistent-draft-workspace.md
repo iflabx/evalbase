@@ -1,7 +1,7 @@
 # V2-03：完整草稿工作区与可靠发布
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 
 Blocked by: 批次 A 经 Owner 验收通过；获得本 Ticket/批次 B 执行授权。
 Checkpoint: B（本 Ticket 完成后一次人工验收）
@@ -84,3 +84,9 @@ DRAFT-01–04、EDIT-01–05、PUB-01–06、DELETE-01–03、COLLAB-01–04 的
 ## Comments
 
 - 2026-09-28：仅创建实施 Ticket，尚未执行测试或开发。完成后在此记录实现 SHA、验证、复审和批次验收证据，并同步 Spec 进度表。
+
+- 2026-09-28：实现于 `6810790`，P1 修复于 `3d0d3bb`；本 Ticket 的固定代码 SHA 为 `3d0d3bbd0aa1f8f6a6ffe01ae258cfa728c6ab0`。采用 ADR 0013 的同父共享草稿与唯一发布、ADR 0003/0004 的原子分配与任务协调、ADR 0007/0008/0010/0011 的修订、删除、Metadata、增量版本边界；未扩张 PRD。
+- Ticket Closure Review（固定代码 SHA）：**P0/P1 已清零**。身份/隔离：同父共享、异父隔离、多个新建草稿、查看者拒绝；来源：55 条文件跨 3 页、跨页排除与去重；保存：空 Metadata、字段与删行 409、保留本地输入、退出与恢复；发布：双账号不同请求键只生成同一版本，注入失败后重启不留半成品且不占失败标签；生命周期：回收暂停正文、恢复继续、永久删除终止编辑且保留已发布后代；兼容：legacy/Delta/Checkpoint 与 CSV 受影响回归。以上均由目标 HTTP 集成测试覆盖，前端保存、退出、整行编辑、来源分页和排除另经隔离浏览器核对。
+- 自动化：`npm run typecheck`、`npm --prefix frontend-v3 run typecheck`、受影响 `eslint`、`npm --prefix frontend-v3 run build:formal`、`npm run docs:check`、`git diff --check` 均通过。B 隔离 Compose 中，`vitest run tests/integration/v2-collaborative-draft.test.ts tests/integration/v2-accounts.test.ts tests/integration/ticket38-cutover.test.ts` 为 **17/17**；最后的回收触发器修复后再跑 V2-03 文件为 **8/8**。此前单元测试为 **134/134**。完整旧集成测试因旧 Owner 夹具与 A 后权限规则冲突产生 403，未把它计为通过；未跑全量性能/安全与双浏览器实时 UI（实时展示属于 V2-04）。
+- Standards/Spec 两轴复审确认修复了所有 P1。保留 P2：旧 `/api/projects/:projectId/drafts` 路由仍注册，当前 frontend-v3 已无调用；清理不阻断 B，后续可在不改变产品行为时移除。
+- 批次 B 的 `evalbase-v2-b-owner-checkpoint` 隔离环境位于 `127.0.0.1:4217`，包含两个独立新建草稿、两个不同父版本的派生草稿、两份各 55 条来源文件；浏览器已核对 55→54 条跨页排除、保存与继续。**等待 Owner 验收**；验收前保留容器、网络、持久卷、合成数据和 4217 隧道。V2-04 须在 B 通过且另获开发授权后启动；本次没有合并 main、推送 GitHub 或正式部署。
