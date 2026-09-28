@@ -122,7 +122,11 @@ export function AppSidebar() {
               )}
               <SidebarGroupContent
                 data-testid="project-nav-children"
-                className={collapsed ? undefined : "mt-1 ml-4 border-l border-sidebar-border pl-2"}
+                className={
+                  collapsed
+                    ? undefined
+                    : "mt-1 ml-4 w-[calc(100%-1rem)] border-l border-sidebar-border pl-2"
+                }
               >
                 <SidebarMenu>
                   <SidebarMenuItem>

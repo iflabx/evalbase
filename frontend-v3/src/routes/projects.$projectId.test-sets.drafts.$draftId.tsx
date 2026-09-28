@@ -1106,9 +1106,11 @@ function DraftWorkspace() {
                                     (source) => source.assetId === file.id,
                                   )}
                                   disabled={!canEdit || busy}
-                                  onCheckedChange={(checked) =>
-                                    void chooseSources([file.id], checked ? "add" : "remove")
-                                  }
+                                  onCheckedChange={(checked) => {
+                                    setFileId(file.id);
+                                    setSourcePage(0);
+                                    void chooseSources([file.id], checked ? "add" : "remove");
+                                  }}
                                 />
                               </td>
                               <td className="px-4 py-3">

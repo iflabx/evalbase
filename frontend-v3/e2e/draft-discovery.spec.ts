@@ -158,22 +158,34 @@ async function mockWorkspace(page: Page, role: "admin" | "editor" | "viewer" = "
   });
 }
 
-test("new drafts stay above the list and derived drafts stay with their test set", async ({
+test("new drafts share the list without a separate card or derived-draft subline", async ({
   page,
 }) => {
   await mockWorkspace(page);
   await page.goto(`/projects/${projectId}/test-sets`);
-  const newDrafts = page.getByRole("region", { name: "未发布的测试集草稿" });
-  await expect(newDrafts).toContainText("首份草稿");
-  await expect(newDrafts).toContainText("未命名草稿");
-  await expect(newDrafts).toContainText("创建者 管理员");
-  await expect(newDrafts).toContainText("创建者 未记录");
-  await expect(newDrafts).not.toContainText("基于 v1");
-  const row = page.getByRole("row", { name: /客服问答/ });
-  await expect(row).toContainText("草稿中 2");
-  await expect(row).toContainText("基于 v1");
-  await expect(row).toContainText("基于 v2");
-  await expect(row.locator("td").last().getByRole("link", { name: "继续编辑草稿" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "未发布的测试集草稿" })).toHaveCount(0);
+  const first = page.getByRole("row", { name: /首份草稿/ });
+  await expect(first.getByRole("link", { name: "继续编辑草稿" })).toHaveAttribute(
+    "href",
+    `/projects/${projectId}/test-sets/drafts/draft_new_a`,
+  );
+  await expect(page.getByRole("row", { name: /未命名草稿/ })).toBeVisible();
+  const published = page.getByRole("row", { name: /客服问答/ });
+  await expect(published).not.toContainText("草稿中");
+  await expect(published).not.toContainText("基于 v1");
+  await expect(published).not.toContainText("继续编辑草稿");
+});
+
+test("new drafts remain reachable without a published test set", async ({ page }) => {
+  await mockWorkspace(page);
+  await page.route(`**/api/projects/${projectId}/solo-test-sets?*`, (route) =>
+    route.fulfill({ json: { testSets: [], pagination: { total: 0 } } }),
+  );
+  await page.goto(`/projects/${projectId}/test-sets`);
+  await expect(page.getByRole("row", { name: /首份草稿/ })).toBeVisible();
+  await page.getByRole("textbox", { name: "搜索测试集" }).fill("首份");
+  await expect(page.getByRole("row", { name: /首份草稿/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /未命名草稿/ })).toHaveCount(0);
 });
 
 test("version detail places its draft card before the graph and shows draft graph nodes", async ({
@@ -218,13 +230,13 @@ test("version detail places its draft card before the graph and shows draft grap
 test("editor finds drafts while viewer sees only published versions", async ({ page }) => {
   await mockWorkspace(page, "editor");
   await page.goto(`/projects/${projectId}/test-sets`);
-  await expect(page.getByRole("region", { name: "未发布的测试集草稿" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /首份草稿/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "回收站" })).toHaveCount(0);
   await page.unrouteAll();
 
   await mockWorkspace(page, "viewer");
   await page.goto(`/projects/${projectId}/test-sets`);
-  await expect(page.getByRole("region", { name: "未发布的测试集草稿" })).toHaveCount(0);
+  await expect(page.getByRole("row", { name: /首份草稿/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "新建测试集" })).toHaveCount(0);
   await page.goto(`/projects/${projectId}/test-sets/${testSetId}?version=version_v1`);
   await expect(page.getByRole("region", { name: "此版本有未发布草稿" })).toHaveCount(0);

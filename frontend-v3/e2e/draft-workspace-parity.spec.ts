@@ -89,6 +89,32 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
           total: 1,
         },
       });
+    if (path.endsWith("/collaborative-draft-source-files"))
+      return route.fulfill({
+        json: {
+          files: [
+            { id: "file_2", fileName: "资料A.json", collectionName: "资料库", recordCount: 1 },
+          ],
+          total: 1,
+        },
+      });
+    if (path.endsWith("/collaborative-draft-source-records"))
+      return route.fulfill({
+        json: {
+          records: [
+            {
+              assetId: "file_2",
+              ordinal: 0,
+              question: "源记录X",
+              expectedOutput: "答案",
+              metadata: [],
+            },
+          ],
+          total: 1,
+        },
+      });
+    if (path.endsWith("/source-selection"))
+      return route.fulfill({ json: { matched: 1, changed: 1 } });
     if (path.endsWith("/selected-sources"))
       return route.fulfill({ json: { sources: [{ assetId: "file_1", ordinal: 0 }] } });
     if (path === `/api/projects/${projectId}/solo-test-sets/set_1/versions/version_v2`)
@@ -117,6 +143,14 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   await page.getByRole("button", { name: "移除记录" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("此行尚未保存的输入也会丢失");
   await page.getByRole("button", { name: "取消" }).click();
+  const sidebarOverflow = await page
+    .locator('[data-sidebar="content"]')
+    .evaluate((node) => node.scrollWidth - node.clientWidth);
+  expect(sidebarOverflow).toBeLessThanOrEqual(0);
+  await page.getByRole("tab", { name: /添加资料/ }).click();
+  await page.getByRole("checkbox", { name: "选择 资料A.json" }).click();
+  await expect(page.getByText("源记录X")).toBeVisible();
+  await page.getByRole("tab", { name: /草稿记录/ }).click();
   const geometry = await page.evaluate(() => ({
     width: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,

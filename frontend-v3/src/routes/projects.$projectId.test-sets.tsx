@@ -39,7 +39,7 @@ import {
   type TestSetTrashEntry,
 } from "@/services/workspace";
 import { Pagination } from "@/routes/index";
-import { createSharedDraft, listSharedDrafts, type SharedDraft } from "@/services/drafts";
+import { createSharedDraft, listSharedDrafts } from "@/services/drafts";
 
 const PAGE_SIZE = 10;
 
@@ -58,46 +58,6 @@ function formatUpdatedAt(value: string) {
   if (daysAgo === 0) return `今天 ${time}`;
   if (daysAgo === 1) return `昨天 ${time}`;
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function formatDraftAt(value: string | null) {
-  if (!value) return "未记录";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "未记录";
-  return date.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function DerivedDraftNote({ drafts, projectId }: { drafts: SharedDraft[]; projectId: string }) {
-  if (!drafts.length) return null;
-  return (
-    <div className="mt-2 flex items-start gap-2 pl-6 text-xs leading-5 text-muted-foreground">
-      <Badge variant="outline" className="shrink-0 border-primary/30 bg-primary/5 text-primary">
-        草稿中 {drafts.length}
-      </Badge>
-      <div className="min-w-0 space-y-1">
-        {drafts.map((draft) => (
-          <p key={draft.id}>
-            {draft.suspended ? "已暂停 · " : ""}基于 {draft.parentVersionLabel ?? "未知版本"} ·
-            最近由 {draft.updatedByName || "未记录"} 于 {formatDraftAt(draft.updatedAt)} 编辑 ·{" "}
-            <Link
-              className="text-primary hover:underline"
-              to="/projects/$projectId/test-sets/drafts/$draftId"
-              params={{ projectId, draftId: draft.id }}
-            >
-              继续编辑草稿
-            </Link>
-          </p>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export const Route = createFileRoute("/projects/$projectId/test-sets")({
@@ -153,7 +113,12 @@ function TestSetsPage() {
       }),
   });
   const rows = testSets.data?.items ?? [];
-  const newDrafts = drafts.data?.filter((draft) => !draft.testSetId) ?? [];
+  const newDrafts =
+    page === 1 && access.canWrite
+      ? (drafts.data?.filter(
+          (draft) => !draft.testSetId && (draft.name || "未命名草稿").includes(search.trim()),
+        ) ?? [])
+      : [];
   const total = testSets.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -201,41 +166,6 @@ function TestSetsPage() {
           <ErrorBlock message="无法读取草稿，请重试。" onRetry={() => void drafts.refetch()} />
         </div>
       )}
-      {access.canWrite && newDrafts.length > 0 && (
-        <section aria-label="未发布的测试集草稿" className="mb-4">
-          <Card className="min-w-0 rounded-md">
-            <CardContent className="pt-5">
-              <h2 className="mb-3 text-base font-semibold">未发布的测试集草稿</h2>
-              <div className="divide-y rounded-md border">
-                {newDrafts.map((draft) => (
-                  <div
-                    key={draft.id}
-                    className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium">{draft.name || "未命名草稿"}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        创建者 {draft.createdByName || "未记录"} · 创建于{" "}
-                        {formatDraftAt(draft.createdAt)} · 最近由 {draft.updatedByName || "未记录"}{" "}
-                        于 {formatDraftAt(draft.updatedAt)} 编辑
-                        {draft.suspended ? " · 已暂停" : ""}
-                      </p>
-                    </div>
-                    <Button size="sm" asChild>
-                      <Link
-                        to="/projects/$projectId/test-sets/drafts/$draftId"
-                        params={{ projectId, draftId: draft.id }}
-                      >
-                        继续编辑草稿
-                      </Link>
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      )}
       <div className="relative mb-4 w-full max-w-64">
         <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
         <Input
@@ -253,7 +183,7 @@ function TestSetsPage() {
         isLoading={testSets.isLoading}
         error={testSets.error}
         data={rows}
-        isEmpty={(items) => items.length === 0}
+        isEmpty={(items) => items.length === 0 && newDrafts.length === 0}
         onRetry={() => void testSets.refetch()}
         empty={
           <EmptyBlock
@@ -284,6 +214,35 @@ function TestSetsPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {newDrafts.map((draft) => (
+                    <tr key={draft.id} className="border-t border-border hover:bg-accent/40">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <FileText className="size-4 text-primary" />
+                          <span className="font-medium">{draft.name || "未命名草稿"}</span>
+                        </div>
+                      </td>
+                      <td className="mono px-4 py-3">—</td>
+                      <td className="mono px-4 py-3">—</td>
+                      <td className="px-4 py-3">—</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline">草稿</Badge>
+                      </td>
+                      <td className="mono px-4 py-3 text-muted-foreground">
+                        {formatUpdatedAt(draft.updatedAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link
+                            to="/projects/$projectId/test-sets/drafts/$draftId"
+                            params={{ projectId, draftId: draft.id }}
+                          >
+                            继续编辑草稿
+                          </Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
                   {items.map((item) => (
                     <tr key={item.id} className="border-t border-border hover:bg-accent/40">
                       <td className="px-4 py-3">
@@ -291,14 +250,6 @@ function TestSetsPage() {
                           <FileText className="size-4 text-primary" />
                           <span className="font-medium">{item.name}</span>
                         </div>
-                        {access.canWrite && (
-                          <DerivedDraftNote
-                            drafts={
-                              drafts.data?.filter((draft) => draft.testSetId === item.id) ?? []
-                            }
-                            projectId={projectId}
-                          />
-                        )}
                       </td>
                       <td className="mono px-4 py-3">{item.currentVersion}</td>
                       <td className="mono px-4 py-3">{item.recordCount}</td>
@@ -349,7 +300,13 @@ function TestSetsPage() {
         )}
       </StateView>
       {total > 0 && (
-        <Pagination total={total} current={page} pages={pages} onChange={setPage} unit="个测试集" />
+        <Pagination
+          total={total}
+          current={page}
+          pages={pages}
+          onChange={setPage}
+          unit="个正式测试集"
+        />
       )}
       {access.canManage && (
         <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} projectId={projectId} />
