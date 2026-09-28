@@ -417,8 +417,8 @@ function SettingsPage() {
                   )}
                   <section className="member-card">
                     <div className="member-card-head">
-                      <h2>待处理邀请</h2>
-                      <p>接受邀请后，成员会出现在上方列表中。</p>
+                      <h2>邀请记录</h2>
+                      <p>历史邀请保留状态；当前成员以上方列表为准。</p>
                     </div>
                     {invitations.data?.length ? (
                       invitations.data.map((invite) => (
@@ -442,7 +442,11 @@ function SettingsPage() {
                                 ? "已过期"
                                 : invite.status === "revoked"
                                   ? "已撤销"
-                                  : "已接受"}
+                                  : invite.status === "accepted" &&
+                                      members.isSuccess &&
+                                      !members.data?.some((member) => member.email === invite.email)
+                                    ? "已接受 · 成员已移除"
+                                    : "已接受"}
                           </span>
                           <div className="member-actions">
                             {invite.status === "pending" && (

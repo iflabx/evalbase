@@ -280,7 +280,7 @@ describe("v2 account bootstrap", () => {
     expect(editorAccess.statusCode).toBe(200);
     expect(editorAccess.json().access).toMatchObject({ role: "editor", capabilities: { write: true, manage: false } });
   });
-  it("enforces invitation ownership, revocation, expiry and immediate role changes", async () => {
+  it("enforces invitation lifecycle, re-invitation, and immediate role changes", async () => {
     const origin = "http://127.0.0.1:4215";
     const auth = async (email: string, password: string) => {
       const response = await app.inject({
@@ -485,6 +485,50 @@ describe("v2 account bootstrap", () => {
           })
         ).statusCode,
       ).toBe(200);
+      const outsiderId = (
+        await db.query(
+          "SELECT id FROM app_user WHERE email = 'outsider@example.test'",
+        )
+      ).rows[0].id;
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url: `/api/projects/${projectId}/members/${outsiderId}`,
+            headers: headers(admin),
+          })
+        ).statusCode,
+      ).toBe(204);
+      const renewed = await create();
+      expect(renewed.statusCode).toBe(201);
+      const renewedId = renewed.json().invitation.id;
+      expect(renewedId).not.toBe(thirdId);
+      const inbox = await app.inject({
+        method: "GET",
+        url: "/api/me/invitations",
+        headers: { cookie: outsider.cookie },
+      });
+      expect(inbox.statusCode).toBe(200);
+      expect(
+        inbox.json().invitations.map((invite: { id: string }) => invite.id),
+      ).toContain(renewedId);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/me/invitations/${renewedId}/accept`,
+            headers: headers(outsider),
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await db.query(
+            "SELECT 1 FROM project_member WHERE project_id = $1 AND user_id = $2",
+            [projectId, outsiderId],
+          )
+        ).rowCount,
+      ).toBe(1);
       const memberId = (
         await db.query(
           "SELECT id FROM app_user WHERE email = 'invitee@example.test'",
