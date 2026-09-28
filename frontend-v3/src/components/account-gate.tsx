@@ -5,6 +5,7 @@ import { createAdministrator, login, registerAccount } from "@/services/account"
 import { resetWorkspaceSession } from "@/services/workspace";
 
 type Mode = "login" | "register" | "setup";
+const loginEmailKey = "evalbase:login-email";
 const errors: Record<string, string> = {
   invalid_credentials: "邮箱或密码不正确。",
   email_already_registered: "该邮箱已注册，请返回登录。",
@@ -18,7 +19,7 @@ export function AccountGate({ setup }: { setup: boolean }) {
   const [mode, setMode] = useState<Mode>(setup ? "setup" : "login");
   const activeMode = setup ? "setup" : mode;
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => sessionStorage.getItem(loginEmailKey) ?? "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -69,6 +70,7 @@ export function AccountGate({ setup }: { setup: boolean }) {
         setConfirm("");
       } else {
         await login(email.trim(), password);
+        sessionStorage.removeItem(loginEmailKey);
         resetWorkspaceSession();
         await queryClient.invalidateQueries({ queryKey: ["session"] });
       }
@@ -129,7 +131,10 @@ export function AccountGate({ setup }: { setup: boolean }) {
                 autoComplete="email"
                 required
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  sessionStorage.setItem(loginEmailKey, event.target.value);
+                }}
               />
             </label>
             <label>
