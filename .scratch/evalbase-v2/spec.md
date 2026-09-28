@@ -1,10 +1,10 @@
 # EvalBase v2 实施规格与进度
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 
 日期：2026-09-28。范围基线：文档提交 52413dc，应用 main 70c2272f43927d7bb4e1ac632091a39d7b2cd955。
-本次 Owner 授权创建 Ticket，未授权开始实现、合并、推送或部署。
+创建本清单时仅授权 Ticket 文档；批次 A 后续已单独授权并完成验收。批次 B/C 的开发、合并、推送和正式部署仍须分别取得授权。
 
 ## 1. 合同与必读材料
 
@@ -74,8 +74,8 @@ Owner 说“开发批次 A”或“开发账号与成员功能”时，授权连
 
 | Ticket | Implementation | 实现 SHA | checkpoint |
 | --- | --- | --- | --- |
-| V2-01 | in-progress | 1726f85 | A，待 Owner 验收 |
-| V2-02 | in-progress | 1726f85 | A，待 Owner 验收 |
+| V2-01 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
+| V2-02 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-03 | not-started | - | B，待开发 |
 | V2-04 | not-started | - | C，待开发 |
 
@@ -84,3 +84,5 @@ Status 是 triage 标签，Implementation 才是实现生命周期。每次完�
 ## Comments
 
 - 2026-09-28：按 Owner 要求创建少量功能 Ticket；同一功能多 Ticket 共用 checkpoint。当前所有实现均未开始。
+
+- 2026-09-28：Owner 在本会话确认批次 A（V2-01/V2-02）验收通过，接受固定 HEAD `1c53638394e19a5b269ce6af450de115f9d01d21`；隔离验收环境和本机 4215 隧道已释放，日志与校验表保存在 `/home/bistu/.local/share/evalbase-checkpoints/A-1c53638`。V2-03 仍为 `not-started`，批次 A 验收不自动授权开发、合并、推送或正式部署。

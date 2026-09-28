@@ -1,7 +1,7 @@
 # V2-01：账号、初始化与项目权限基础
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 
 Blocked by: 无实现依赖；执行需 Owner 授权本 Ticket 或批次 A。
 Checkpoint: A（中间 Ticket，不单独创建人工 checkpoint）
@@ -67,3 +67,5 @@ AUTH-01–05、ACL-01–03、UPGRADE-01–02；受共享授权影响的现有上
 - 2026-09-28：批次 A 代码固定于 `f129936`，服务端新账号集成测试 5/5、单元测试 134/134；typecheck、定向 lint、前端构建及文档检查通过。Standards/Spec 与高风险闭环结论见[批次 A 复审](../../../docs/reviews/evalbase-v2-batch-a-closure.md)。Owner checkpoint 尚未验收，故 Implementation 保持 `in-progress`。
 
 - 2026-09-28：补充 `1726f85` 合成旧版本记录读取回归，批次 A 测试 5/5 通过；应用代码仍固定于 `f129936`，Docker 构建修正为 `1aec12c`。当前等待 A 的 Owner 浏览器验收。
+
+- 2026-09-28：Owner 在本会话明确确认批次 A 验收通过，接受固定 HEAD `1c53638394e19a5b269ce6af450de115f9d01d21`（包含登录输入保留、邀请展示和设置项目上下文修复）。验收环境 `/health/ready` 返回 `ok` 且 `git_sha=1c53638`；设置项目上下文浏览器回归 2/2 通过。已释放批次 A 的 Web/Worker/PostgreSQL/MinIO 容器、专用网络与数据卷、4215 端口及本机 SSH 隧道；验收日志、镜像 ID 和 SHA256 校验表保存在 `/home/bistu/.local/share/evalbase-checkpoints/A-1c53638`。V2-03 尚未启动，需另行授权。
