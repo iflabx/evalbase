@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, UserRound, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,12 @@ import {
 } from "@/services/account";
 import { listProjects } from "@/services/workspace";
 
-export const Route = createFileRoute("/settings")({ component: SettingsPage });
+export const Route = createFileRoute("/settings")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    project: typeof search["project"] === "string" ? search["project"] : "",
+  }),
+  component: SettingsPage,
+});
 type Section = "profile" | "info" | "members";
 const palette = ["#2563eb", "#9333ea", "#0f766e", "#b45309", "#be123c", "#0369a1", "#4d7c0f"];
 const roleName = (role: string) =>
@@ -38,10 +43,9 @@ function errorText(cause: unknown) {
 
 function SettingsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [section, setSection] = useState<Section>("profile");
-  const [projectId, setProjectId] = useState(
-    () => new URLSearchParams(window.location.search).get("project") ?? "",
-  );
+  const { project: projectId } = Route.useSearch();
   const projects = useQuery({
     queryKey: ["projects", "settings"],
     queryFn: () => listProjects({ limit: 100, offset: 0 }),
@@ -109,8 +113,7 @@ function SettingsPage() {
     if (sent) setEmail("");
   }
   function setActiveProject(id: string) {
-    setProjectId(id);
-    window.history.replaceState(null, "", `/settings?project=${encodeURIComponent(id)}`);
+    void navigate({ to: "/settings", search: { project: id }, replace: true });
   }
   const initial = (name.trim().charAt(0) || "用").toUpperCase();
 

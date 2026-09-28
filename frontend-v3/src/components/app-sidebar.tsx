@@ -36,12 +36,22 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const pathname = useRouterState({ select: (router) => router.location.pathname });
-  const projectId = projectIdAt(pathname);
+  const location = useRouterState({ select: (router) => router.location });
+  const pathname = location.pathname;
+  const requestedProjectId =
+    projectIdAt(pathname) ??
+    (pathname === "/settings" && typeof location.search.project === "string"
+      ? location.search.project
+      : undefined);
   const projects = useQuery({
     queryKey: ["projects", "switcher"],
     queryFn: () => listProjects({ limit: 100, offset: 0 }),
   });
+  const projectId =
+    pathname === "/settings"
+      ? (projects.data?.items.find((item) => item.id === requestedProjectId)?.id ??
+        projects.data?.items[0]?.id)
+      : requestedProjectId;
   const [creating, setCreating] = useState(false);
   const account = useQuery({ queryKey: ["session"], queryFn: currentSession });
   const isAdmin = account.data?.actor.role === "admin";
