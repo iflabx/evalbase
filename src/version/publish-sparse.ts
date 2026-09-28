@@ -39,6 +39,8 @@ type PublishRequest = {
   actorId: string;
   idempotencyKey: string;
   operations: SparseOperation[];
+  draftId?: string;
+  draftRevision?: number;
 };
 
 type Member = {
@@ -233,22 +235,71 @@ export async function publishSparseVersion(
   )
     invalid("sparse_publication_request_invalid");
   const fingerprint = sha256(
-    canonicalJson({
-      parentVersionId: request.parentVersionId,
-      operations: request.operations,
-    }),
+    canonicalJson(
+      request.draftId
+        ? {
+            draftId: request.draftId,
+            draftRevision: request.draftRevision,
+          }
+        : {
+            parentVersionId: request.parentVersionId,
+            operations: request.operations,
+          },
+    ),
   );
   const client = await db.connect();
+  let storedObjectRef: string | undefined;
+  let commitAttempted = false;
   try {
     await client.query("BEGIN");
     const scope = await client.query(
       `SELECT ts.id FROM test_set ts
-       JOIN project_member pm ON pm.project_id=ts.project_id AND pm.user_id=$3
+       JOIN app_user u ON u.id=$3
+       LEFT JOIN project_member pm ON pm.project_id=ts.project_id AND pm.user_id=u.id
       WHERE ts.id=$1 AND ts.project_id=$2 AND ts.status='available'
-        AND pm.role IN ('owner','editor') FOR UPDATE OF ts`,
+        AND (u.role='admin' OR pm.role IN ('owner','editor')) FOR UPDATE OF ts`,
       [request.testSetId, request.projectId, request.actorId],
     );
     if (!scope.rowCount) invalid("test_set_not_found");
+    let collaborativeDraft: Record<string, unknown> | undefined;
+    if (request.draftId) {
+      const draft = await client.query(
+        `SELECT * FROM collaborative_draft
+        WHERE id=$1 AND project_id=$2 AND test_set_id=$3 AND parent_version_id=$4
+        FOR UPDATE`,
+        [
+          request.draftId,
+          request.projectId,
+          request.testSetId,
+          request.parentVersionId,
+        ],
+      );
+      if (!draft.rowCount) invalid("draft_not_found");
+      const lockedDraft = draft.rows[0] as Record<string, unknown>;
+      collaborativeDraft = lockedDraft;
+      if (
+        lockedDraft.status === "published" &&
+        lockedDraft.published_version_id
+      ) {
+        const existing = await client.query(
+          `SELECT id,version_label FROM test_set_version
+          WHERE id=$1`,
+          [lockedDraft.published_version_id],
+        );
+        if (!existing.rowCount) invalid("idempotency_result_missing");
+        await client.query("COMMIT");
+        return {
+          id: String(existing.rows[0].id),
+          label: String(existing.rows[0].version_label),
+          replayed: true,
+        };
+      }
+      if (
+        lockedDraft.status !== "editing" ||
+        Number(lockedDraft.revision) !== request.draftRevision
+      )
+        invalid("draft_revision_conflict");
+    }
     const replay = await client.query(
       `SELECT request_fingerprint, asset_id FROM upload_idempotency
         WHERE project_id=$1 AND actor_id=$2 AND operation='sparse_version_publish'
@@ -300,6 +351,68 @@ export async function publishSparseVersion(
         },
       ]),
     );
+    let effectiveOperations = request.operations;
+    if (collaborativeDraft) {
+      const rows = await client.query(
+        `SELECT * FROM collaborative_draft_record
+        WHERE draft_id=$1 ORDER BY position`,
+        [request.draftId],
+      );
+      effectiveOperations = [];
+      const parentByCase = new Map(
+        parents.rows.map((row) => [String(row.case_id), row]),
+      );
+      for (const row of rows.rows) {
+        const caseId = row.case_id ? String(row.case_id) : null;
+        if (caseId) {
+          const original = parentByCase.get(caseId);
+          if (
+            !original ||
+            String(original.case_revision_id) !== String(row.before_revision_id)
+          )
+            invalid("parent_record_invalid");
+          if (row.deleted) {
+            effectiveOperations.push({
+              operation: "delete",
+              caseId,
+              beforeRevisionId: String(row.before_revision_id),
+            });
+          } else {
+            const after = {
+              question: String(row.question),
+              expectedOutput: String(row.expected_output),
+              metadata: row.metadata as SparseRecord["metadata"],
+              ...(row.source
+                ? { source: row.source as SparseRecord["source"] }
+                : {}),
+            };
+            if (canonicalJson(after) !== canonicalJson(storedRecord(original)))
+              effectiveOperations.push({
+                operation: "update",
+                caseId,
+                beforeRevisionId: String(row.before_revision_id),
+                after,
+              });
+          }
+          parentByCase.delete(caseId);
+        } else if (!row.deleted) {
+          effectiveOperations.push({
+            operation: "add",
+            after: {
+              question: String(row.question),
+              expectedOutput: String(row.expected_output),
+              metadata: row.metadata as SparseRecord["metadata"],
+              ...(row.source
+                ? { source: row.source as SparseRecord["source"] }
+                : {}),
+            },
+          });
+        }
+      }
+      if (parentByCase.size) invalid("draft_parent_incomplete");
+      if (!rows.rows.some((row) => !row.deleted))
+        invalid("test_set_records_required");
+    }
     let highWater = await pathHighWater(
       client,
       request.parentVersionId,
@@ -307,7 +420,7 @@ export async function publishSparseVersion(
     );
     const touched = new Set<string>();
     const changes: PlannedChange[] = [];
-    for (const operation of request.operations) {
+    for (const operation of effectiveOperations) {
       if (operation.operation === "add") {
         const after = normalizeRecord(operation.after);
         if (highWater === 9_223_372_036_854_775_807n)
@@ -516,6 +629,7 @@ export async function publishSparseVersion(
       manifestBytes,
       `sparse-version-${versionId}`,
     );
+    storedObjectRef = stored.objectRef;
     const draftId = id("draft");
     const candidateId = id("candidate");
     await client.query(
@@ -672,10 +786,47 @@ export async function publishSparseVersion(
         },
       ],
     );
+    if (collaborativeDraft) {
+      const savedRows = await client.query(
+        `SELECT id,case_id,field_attribution,updated_by,updated_at
+        FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false ORDER BY position`,
+        [request.draftId],
+      );
+      const added = changes.filter((change) => change.operation === "add");
+      let nextAdded = 0;
+      for (const row of savedRows.rows) {
+        const caseId = row.case_id
+          ? String(row.case_id)
+          : added[nextAdded++]?.caseId;
+        if (!caseId) invalid("draft_revision_conflict");
+        await client.query(
+          `INSERT INTO collaborative_draft_attribution
+          (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)
+          VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            versionId,
+            row.id,
+            caseId,
+            row.field_attribution,
+            row.updated_by,
+            row.updated_at,
+          ],
+        );
+      }
+      await client.query(
+        `UPDATE collaborative_draft SET status='published',
+        published_version_id=$2,updated_by=$3,updated_at=now()
+        WHERE id=$1 AND status='editing'`,
+        [request.draftId, versionId, request.actorId],
+      );
+    }
+    commitAttempted = true;
     await client.query("COMMIT");
     return { id: versionId, label, replayed: false };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
+    if (storedObjectRef && !commitAttempted)
+      await artifacts.remove(storedObjectRef).catch(() => undefined);
     throw error;
   } finally {
     client.release();

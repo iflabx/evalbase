@@ -1,7 +1,7 @@
 # V2-03：完整草稿工作区与可靠发布
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 
 Blocked by: 批次 A 经 Owner 验收通过；获得本 Ticket/批次 B 执行授权。
 Checkpoint: B（本 Ticket 完成后一次人工验收）
@@ -46,6 +46,19 @@ DRAFT-01–04、EDIT-01–05、PUB-01–06、DELETE-01–03、COLLAB-01–04 的
 新建/继续草稿入口、草稿记录/添加资料、行点击右侧编辑、Metadata 行内编辑、保存状态、删除确认、发布失败恢复。B 尚无自动实时推送/在线头像，明确标注阶段范围，不显示假头像；V2-04 补齐即时更新及字段作者完整展示。
 
 实施前在本节补充 Ticket-local 对照表，逐项记录字段、顺序、标签、启用条件、空/错态和排除项；正式前端仅 frontend-v3，frontend-v1 只读。
+
+### Ticket-local UI parity and public routes
+
+| 位置 | 原型字段与顺序 | 状态及 B 期实现 |
+| --- | --- | --- |
+| 测试集列表/版本 | 新建测试集、继续编辑草稿、最近修改者/时间 | 查看者不可见；同父一个活动草稿；新建草稿可多个 |
+| 草稿页头 | 返回、名称、用途、父版本、保存状态、保存并退出、删除当前草稿、创建版本 | 未保存和失败时留在本页，发布需名称及至少一条记录 |
+| 草稿记录 | 草稿记录/添加资料；计数、新增记录、搜索；序号、问题/最近修改、预测输出、来源；20 条分页 | 整行打开右侧；空记录和无搜索结果分别提示 |
+| 编辑记录 | 来源/序号、问题、预测输出、Metadata 键值行、添加字段、移除记录 | 空值合法；空键/重复键提示并保留输入；同字段冲突保留输入 |
+| 添加资料 | 1.选择资料文件，2.选择记录；搜索、本页/全部结果/取消；文件 10 条/页，记录 20 条/页 | 固定搜索结果范围后批选，可跨页排除；服务端分页；来源去重 |
+| 删除和发布 | 删除确认、发布结果/失败恢复 | 删除草稿不可恢复；固定已保存 revision，服务端唯一发布 |
+
+前端严格取 `docs/prototypes/THROWAWAY-phase1a-login-multiuser-vnext.html` 的布局和 `frontend-v1` 的样式；B 不显示模拟在线头像、实时焦点或完整字段作者 UI（V2-04）。复用 `solo-test-sets` 的正式版本列表、详情、读取、CSV 和 Sparse 发布器；新增 `collaborative-drafts` 草稿接口；旧租约 `test-sets/drafts` 不再作为 V2 入口。首个 red：同父并发创建只返回一个草稿，异父保存互不覆盖。验证边界：HTTP 集成、受影响 typecheck/lint/build、完整测试、docs:check。
 
 ## Owner checkpoint
 

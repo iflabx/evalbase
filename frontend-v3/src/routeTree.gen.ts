@@ -16,6 +16,7 @@ import { Route as ProjectsProjectIdDatasetsRouteImport } from './routes/projects
 import { Route as ProjectsProjectIdTestSetsRouteImport } from './routes/projects.$projectId.test-sets'
 import { Route as ProjectsProjectIdDatasetsCollectionIdRouteImport } from './routes/projects.$projectId.datasets.$collectionId'
 import { Route as ProjectsProjectIdTestSetsTestSetIdRouteImport } from './routes/projects.$projectId.test-sets.$testSetId'
+import { Route as ProjectsProjectIdTestSetsDraftsDraftIdRouteImport } from './routes/projects.$projectId.test-sets.drafts.$draftId'
 import { Route as ProjectsProjectIdDatasetsCollectionIdFilesAssetIdRouteImport } from './routes/projects.$projectId.datasets.$collectionId.files.$assetId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -57,6 +58,12 @@ const ProjectsProjectIdTestSetsTestSetIdRoute =
     path: '/$testSetId',
     getParentRoute: () => ProjectsProjectIdTestSetsRoute,
   } as any)
+const ProjectsProjectIdTestSetsDraftsDraftIdRoute =
+  ProjectsProjectIdTestSetsDraftsDraftIdRouteImport.update({
+    id: '/drafts/$draftId',
+    path: '/drafts/$draftId',
+    getParentRoute: () => ProjectsProjectIdTestSetsRoute,
+  } as any)
 const ProjectsProjectIdDatasetsCollectionIdFilesAssetIdRoute =
   ProjectsProjectIdDatasetsCollectionIdFilesAssetIdRouteImport.update({
     id: '/files/$assetId',
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
   '/projects/$projectId/datasets/$collectionId': typeof ProjectsProjectIdDatasetsCollectionIdRouteWithChildren
   '/projects/$projectId/test-sets/$testSetId': typeof ProjectsProjectIdTestSetsTestSetIdRoute
+  '/projects/$projectId/test-sets/drafts/$draftId': typeof ProjectsProjectIdTestSetsDraftsDraftIdRoute
   '/projects/$projectId/datasets/$collectionId/files/$assetId': typeof ProjectsProjectIdDatasetsCollectionIdFilesAssetIdRoute
 }
 export interface FileRoutesByTo {
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
   '/projects/$projectId/datasets/$collectionId': typeof ProjectsProjectIdDatasetsCollectionIdRouteWithChildren
   '/projects/$projectId/test-sets/$testSetId': typeof ProjectsProjectIdTestSetsTestSetIdRoute
+  '/projects/$projectId/test-sets/drafts/$draftId': typeof ProjectsProjectIdTestSetsDraftsDraftIdRoute
   '/projects/$projectId/datasets/$collectionId/files/$assetId': typeof ProjectsProjectIdDatasetsCollectionIdFilesAssetIdRoute
 }
 export interface FileRoutesById {
@@ -93,6 +102,7 @@ export interface FileRoutesById {
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
   '/projects/$projectId/datasets/$collectionId': typeof ProjectsProjectIdDatasetsCollectionIdRouteWithChildren
   '/projects/$projectId/test-sets/$testSetId': typeof ProjectsProjectIdTestSetsTestSetIdRoute
+  '/projects/$projectId/test-sets/drafts/$draftId': typeof ProjectsProjectIdTestSetsDraftsDraftIdRoute
   '/projects/$projectId/datasets/$collectionId/files/$assetId': typeof ProjectsProjectIdDatasetsCollectionIdFilesAssetIdRoute
 }
 export interface FileRouteTypes {
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/test-sets'
     | '/projects/$projectId/datasets/$collectionId'
     | '/projects/$projectId/test-sets/$testSetId'
+    | '/projects/$projectId/test-sets/drafts/$draftId'
     | '/projects/$projectId/datasets/$collectionId/files/$assetId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/test-sets'
     | '/projects/$projectId/datasets/$collectionId'
     | '/projects/$projectId/test-sets/$testSetId'
+    | '/projects/$projectId/test-sets/drafts/$draftId'
     | '/projects/$projectId/datasets/$collectionId/files/$assetId'
   id:
     | '__root__'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/test-sets'
     | '/projects/$projectId/datasets/$collectionId'
     | '/projects/$projectId/test-sets/$testSetId'
+    | '/projects/$projectId/test-sets/drafts/$draftId'
     | '/projects/$projectId/datasets/$collectionId/files/$assetId'
   fileRoutesById: FileRoutesById
 }
@@ -187,6 +200,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdTestSetsTestSetIdRouteImport
       parentRoute: typeof ProjectsProjectIdTestSetsRoute
     }
+    '/projects/$projectId/test-sets/drafts/$draftId': {
+      id: '/projects/$projectId/test-sets/drafts/$draftId'
+      path: '/drafts/$draftId'
+      fullPath: '/projects/$projectId/test-sets/drafts/$draftId'
+      preLoaderRoute: typeof ProjectsProjectIdTestSetsDraftsDraftIdRouteImport
+      parentRoute: typeof ProjectsProjectIdTestSetsRoute
+    }
     '/projects/$projectId/datasets/$collectionId/files/$assetId': {
       id: '/projects/$projectId/datasets/$collectionId/files/$assetId'
       path: '/files/$assetId'
@@ -229,12 +249,15 @@ const ProjectsProjectIdDatasetsRouteWithChildren =
 
 interface ProjectsProjectIdTestSetsRouteChildren {
   ProjectsProjectIdTestSetsTestSetIdRoute: typeof ProjectsProjectIdTestSetsTestSetIdRoute
+  ProjectsProjectIdTestSetsDraftsDraftIdRoute: typeof ProjectsProjectIdTestSetsDraftsDraftIdRoute
 }
 
 const ProjectsProjectIdTestSetsRouteChildren: ProjectsProjectIdTestSetsRouteChildren =
   {
     ProjectsProjectIdTestSetsTestSetIdRoute:
       ProjectsProjectIdTestSetsTestSetIdRoute,
+    ProjectsProjectIdTestSetsDraftsDraftIdRoute:
+      ProjectsProjectIdTestSetsDraftsDraftIdRoute,
   }
 
 const ProjectsProjectIdTestSetsRouteWithChildren =

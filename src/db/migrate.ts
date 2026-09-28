@@ -1240,6 +1240,97 @@ CREATE TABLE IF NOT EXISTS deletion_tombstone (
 );
 CREATE INDEX IF NOT EXISTS deletion_tombstone_project_idx
   ON deletion_tombstone (actor_id, completed_at DESC, event_id);
+
+-- V2 shared draft workspace. An active parent has one stable draft identity.
+CREATE TABLE IF NOT EXISTS collaborative_draft (
+  id text PRIMARY KEY,
+  project_id text NOT NULL REFERENCES project(id),
+  test_set_id text REFERENCES test_set(id),
+  parent_version_id text REFERENCES test_set_version(id),
+  name text NOT NULL DEFAULT '',
+  purpose text NOT NULL DEFAULT '',
+  name_revision bigint NOT NULL DEFAULT 0,
+  purpose_revision bigint NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'editing'
+    CHECK (status IN ('editing','published','discarded','terminated')),
+  revision bigint NOT NULL DEFAULT 0,
+  updated_by text NOT NULL REFERENCES app_user(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  published_version_id text REFERENCES test_set_version(id),
+  CHECK (test_set_id IS NOT NULL OR parent_version_id IS NULL),
+  CHECK (status <> 'published' OR published_version_id IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS collaborative_draft_active_parent
+  ON collaborative_draft (project_id,test_set_id,parent_version_id)
+  WHERE status = 'editing' AND parent_version_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS collaborative_draft_published_version
+  ON collaborative_draft (published_version_id)
+  WHERE published_version_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS collaborative_draft_project_recent
+  ON collaborative_draft (project_id,updated_at DESC,id DESC);
+CREATE TABLE IF NOT EXISTS collaborative_draft_record (
+  draft_id text NOT NULL REFERENCES collaborative_draft(id) ON DELETE CASCADE,
+  id text NOT NULL,
+  position bigint NOT NULL CHECK (position > 0),
+  case_id text,
+  before_revision_id text,
+  question text NOT NULL DEFAULT '',
+  expected_output text NOT NULL DEFAULT '',
+  metadata jsonb NOT NULL DEFAULT '[]'::jsonb,
+  source jsonb,
+  deleted boolean NOT NULL DEFAULT false,
+  row_revision bigint NOT NULL DEFAULT 0,
+  question_revision bigint NOT NULL DEFAULT 0,
+  expected_output_revision bigint NOT NULL DEFAULT 0,
+  metadata_revision bigint NOT NULL DEFAULT 0,
+  source_revision bigint NOT NULL DEFAULT 0,
+  field_attribution jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_by text NOT NULL REFERENCES app_user(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (draft_id,id),
+  UNIQUE (draft_id,position)
+);
+CREATE TABLE IF NOT EXISTS collaborative_draft_attribution (
+  version_id text NOT NULL REFERENCES test_set_version(id) ON DELETE CASCADE,
+  draft_row_id text NOT NULL,
+  case_id text NOT NULL REFERENCES test_case(id),
+  field_attribution jsonb NOT NULL,
+  saved_by text NOT NULL REFERENCES app_user(id),
+  saved_at timestamptz NOT NULL,
+  PRIMARY KEY (version_id,draft_row_id)
+);
+DROP INDEX IF EXISTS collaborative_draft_source_once;
+CREATE UNIQUE INDEX IF NOT EXISTS collaborative_draft_source_active_unique
+  ON collaborative_draft_record
+  (draft_id,(source->>'assetId'),((source->>'ordinal')::integer))
+  WHERE source IS NOT NULL AND deleted = false;
+CREATE INDEX IF NOT EXISTS collaborative_draft_record_page
+  ON collaborative_draft_record (draft_id,position) WHERE deleted = false;
+CREATE OR REPLACE FUNCTION terminate_collaborative_drafts() RETURNS trigger AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'test_set' AND NEW.status = 'permanently_deleted' THEN
+    UPDATE collaborative_draft SET status='terminated', name='', purpose='',
+      updated_at=now() WHERE test_set_id=NEW.id AND status IN ('editing','published');
+  ELSIF TG_TABLE_NAME = 'test_set_version'
+    AND NEW.status IN ('permanently_deleted','tombstoned') THEN
+    UPDATE collaborative_draft SET status='terminated', name='', purpose='',
+      updated_at=now() WHERE parent_version_id=NEW.id AND status IN ('editing','published');
+  END IF;
+  DELETE FROM collaborative_draft_record WHERE draft_id IN
+    (SELECT id FROM collaborative_draft WHERE status='terminated'
+       AND (test_set_id=NEW.id OR parent_version_id=NEW.id));
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS collaborative_draft_test_set_termination ON test_set;
+CREATE TRIGGER collaborative_draft_test_set_termination
+  AFTER UPDATE OF status ON test_set FOR EACH ROW
+  EXECUTE FUNCTION terminate_collaborative_drafts();
+DROP TRIGGER IF EXISTS collaborative_draft_version_termination ON test_set_version;
+CREATE TRIGGER collaborative_draft_version_termination
+  AFTER UPDATE OF status ON test_set_version FOR EACH ROW
+  EXECUTE FUNCTION terminate_collaborative_drafts();
+
 `;
 
 export const DRAFT_REVISION_OPERATIONS_MIGRATION =

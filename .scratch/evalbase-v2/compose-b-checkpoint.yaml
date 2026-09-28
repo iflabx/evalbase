@@ -1,0 +1,12 @@
+# Batch B owner checkpoint. Use with: docker compose -p evalbase-v2-b -f compose.yaml -f .scratch/evalbase-v2/compose-b-checkpoint.yaml
+networks:
+  edge:
+    name: evalbase-v2-b-owner-checkpoint-edge
+  internal:
+    name: evalbase-v2-b-owner-checkpoint-internal
+    internal: true
+volumes:
+  postgres-data:
+    name: evalbase-v2-b-owner-checkpoint-postgres-data
+  minio-data:
+    name: evalbase-v2-b-owner-checkpoint-minio-data

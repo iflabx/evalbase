@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { MetadataEditor } from "@/components/metadata-editor";
 import { MetadataSummary } from "@/components/material-record-table";
 import { RecordDensityControl, useRecordDensity } from "@/components/record-density";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -35,32 +34,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageHeader, StateView } from "@/components/state-view";
-import { createRequestId } from "@/lib/request-id";
+import { createSharedDraft, listSharedDrafts } from "@/services/drafts";
 import {
-  deriveSoloTestSetVersion,
-  findSoloVersionEditingSource,
   getSoloVersionRecord,
   getSoloVersionChange,
   getSoloVersionProvenance,
   getSoloTestSetVersion,
   listTestSets,
-  listSoloVersionEditingPage,
   listSoloVersionRecords,
-  listTestSetSources,
   soloVersionDownloadUrl,
   tombstoneSoloTestSetVersion,
   trashSoloVersionBranch,
-  type EditableVersionRecord,
   type ProvenanceChange,
   type SoloTestSetVersionDetail,
   type TestSetRecord,
-  type TestSetSource,
-  type VersionEditOperation,
   type VersionRecord,
 } from "@/services/workspace";
 import { Pagination } from "@/routes/index";
-
-const DERIVE_STEPS = ["添加资料（可选）", "选择新增记录（可选）", "编辑并创建新版本"];
 
 export const Route = createFileRoute("/projects/$projectId/test-sets/$testSetId")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -75,7 +65,29 @@ function TestSetDetailPage() {
   const { version } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [selectedVersionId, setSelectedVersionId] = useState(version);
-  const [deriving, setDeriving] = useState(false);
+  const [startingDraft, setStartingDraft] = useState(false);
+  const drafts = useQuery({
+    queryKey: ["shared-drafts", projectId, testSetId],
+    queryFn: () => listSharedDrafts(projectId, testSetId),
+    enabled: access.canWrite,
+    refetchOnMount: "always",
+  });
+  async function startDraft(parentVersionId: string) {
+    setStartingDraft(true);
+    try {
+      const result = await createSharedDraft(projectId, { testSetId, parentVersionId });
+      await navigate({
+        to: "/projects/$projectId/test-sets/drafts/$draftId",
+        params: { projectId, draftId: result.draft.id },
+      });
+    } catch (error) {
+      toast.error("打开草稿失败", {
+        description: error instanceof Error ? error.message : "请重试",
+      });
+    } finally {
+      setStartingDraft(false);
+    }
+  }
   const [view, setView] = useState<"records" | "provenance">("records");
   const [deleteTarget, setDeleteTarget] = useState<"version">();
   const fallback = useQuery({
@@ -121,7 +133,16 @@ function TestSetDetailPage() {
           const selectedHasChild = data.graph.nodes.some(
             (node) => node.parentVersionId === data.version.id,
           );
-          const actionLabel = selectedHasChild ? "基于此版本创建分支" : "继续创建新版本";
+          const currentDraft = drafts.data?.find(
+            (draft) => draft.parentVersionId === data.version.id,
+          );
+          const actionLabel = drafts.isFetching
+            ? "正在检查草稿…"
+            : currentDraft
+              ? "继续编辑草稿"
+              : selectedHasChild
+                ? "基于此版本创建分支"
+                : "继续创建新版本";
           return view === "provenance" ? (
             <>
               <PageHeader
@@ -188,7 +209,12 @@ function TestSetDetailPage() {
                       下载数据与溯源
                     </Button>
                     {access.canWrite && (
-                      <Button onClick={() => setDeriving(true)}>{actionLabel}</Button>
+                      <Button
+                        disabled={startingDraft || drafts.isFetching}
+                        onClick={() => void startDraft(data.version.id)}
+                      >
+                        {actionLabel}
+                      </Button>
                     )}
                     {access.canManage && (
                       <DropdownMenu>
@@ -222,16 +248,6 @@ function TestSetDetailPage() {
                 testSetId={testSetId}
                 versionId={data.version.id}
               />
-              {access.canWrite && (
-                <DeriveVersionDialog
-                  open={deriving}
-                  onOpenChange={setDeriving}
-                  projectId={projectId}
-                  testSetId={testSetId}
-                  parent={data}
-                  onPublished={selectVersion}
-                />
-              )}
               {access.canManage && (
                 <DeleteTestSetDialog
                   target={deleteTarget}
@@ -1481,598 +1497,5 @@ function MetadataEntries({ entries }: { entries: TestSetRecord["metadata"] }) {
     </dl>
   ) : (
     <p className="mt-1 text-muted-foreground">未填写</p>
-  );
-}
-
-type EditedVersionRecord = TestSetRecord & {
-  caseId?: string;
-  revisionId?: string;
-};
-
-function DeriveVersionDialog({
-  open,
-  onOpenChange,
-  projectId,
-  testSetId,
-  parent,
-  onPublished,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  projectId: string;
-  testSetId: string;
-  parent: SoloTestSetVersionDetail;
-  onPublished: (id: string) => void;
-}) {
-  const queryClient = useQueryClient();
-  const [step, setStep] = useState(0);
-  const [fileIds, setFileIds] = useState<string[]>([]);
-  const [selections, setSelections] = useState<Array<{ assetId: string; ordinal: number }>>([]);
-  const [records, setRecords] = useState<EditedVersionRecord[]>([]);
-  const [metadataEditingIndex, setMetadataEditingIndex] = useState<number>();
-  const [publishing, setPublishing] = useState(false);
-  const [checkingSourceCount, setCheckingSourceCount] = useState(0);
-  const retry = useRef<{ fingerprint: string; key: string } | undefined>(undefined);
-  const deletedParentCases = useRef(new Set<string>());
-  const inheritedSourceRecords = useRef(new Map<string, EditableVersionRecord>());
-  const checkingSources = useRef(new Set<string>());
-  const selectedFileIds = useRef(new Set<string>());
-  const fileSelectionEpoch = useRef(new Map<string, number>());
-  const sourceCheckQueue = useRef<Promise<void>>(Promise.resolve());
-  const sourceCheckGeneration = useRef(0);
-  const sources = useQuery({
-    queryKey: ["solo-test-set-sources", projectId],
-    queryFn: () => listTestSetSources(projectId),
-    enabled: open,
-  });
-  const parentRecords = useInfiniteQuery({
-    queryKey: ["solo-version-records-for-edit", projectId, testSetId, parent.version.id],
-    queryFn: ({ pageParam }) =>
-      listSoloVersionEditingPage(projectId, testSetId, parent.version.id, pageParam),
-    initialPageParam: 0,
-    getNextPageParam: (last) =>
-      last.pagination.offset + last.records.length < last.pagination.total
-        ? last.pagination.offset + last.records.length
-        : undefined,
-    enabled: open,
-  });
-  const loadedParentRecords = useMemo(
-    () => parentRecords.data?.pages.flatMap((page) => page.records) ?? [],
-    [parentRecords.data],
-  );
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    sourceCheckGeneration.current += 1;
-    if (!open) return;
-    setStep(0);
-    setFileIds([]);
-    setSelections([]);
-    setMetadataEditingIndex(undefined);
-    retry.current = undefined;
-    deletedParentCases.current.clear();
-    inheritedSourceRecords.current.clear();
-    checkingSources.current.clear();
-    selectedFileIds.current.clear();
-    fileSelectionEpoch.current.clear();
-    setCheckingSourceCount(0);
-    setRecords([]);
-  }, [open, parent.version.id]);
-  useEffect(() => {
-    if (open && loadedParentRecords.length) {
-      setRecords((current) => {
-        const known = new Set(current.flatMap((record) => (record.caseId ? [record.caseId] : [])));
-        const addedBySource = new Map(
-          current
-            .filter((record) => !record.caseId && record.source)
-            .map((record) => [`${record.source!.assetId}:${record.source!.ordinal}`, record]),
-        );
-        const mergedSources = new Set<string>();
-        const incoming = loadedParentRecords
-          .filter(
-            (record) => !known.has(record.caseId) && !deletedParentCases.current.has(record.caseId),
-          )
-          .map((record) => {
-            const sourceKey = record.source && `${record.source.assetId}:${record.source.ordinal}`;
-            const edited = sourceKey ? addedBySource.get(sourceKey) : undefined;
-            if (edited && sourceKey) mergedSources.add(sourceKey);
-            return {
-              question: edited?.question ?? record.question,
-              expectedOutput: edited?.expectedOutput ?? record.expectedOutput,
-              metadata: (edited?.metadata ?? record.metadata).map((entry) => ({ ...entry })),
-              ...(record.source
-                ? { source: { assetId: record.source.assetId, ordinal: record.source.ordinal } }
-                : {}),
-              parentOrdinal: record.parentOrdinal,
-              caseId: record.caseId,
-              revisionId: record.revisionId,
-            };
-          });
-        const inherited = current.filter((record) => record.caseId);
-        const added = current.filter(
-          (record) =>
-            !record.caseId &&
-            (!record.source ||
-              !mergedSources.has(`${record.source.assetId}:${record.source.ordinal}`)),
-        );
-        return incoming.length ? [...inherited, ...incoming, ...added] : current;
-      });
-    }
-  }, [open, loadedParentRecords]);
-  useEffect(() => {
-    if (
-      !open ||
-      step !== 2 ||
-      metadataEditingIndex !== undefined ||
-      !parentRecords.hasNextPage ||
-      !loadMoreRef.current
-    )
-      return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting && !parentRecords.isFetchingNextPage)
-        void parentRecords.fetchNextPage();
-    });
-    observer.observe(loadMoreRef.current);
-    return () => observer.disconnect();
-  }, [
-    open,
-    step,
-    metadataEditingIndex,
-    parentRecords.hasNextPage,
-    parentRecords.isFetchingNextPage,
-    parentRecords.fetchNextPage,
-  ]);
-  function sourceFile(file: TestSetSource["files"][number]) {
-    const selected = fileIds.includes(file.id);
-    fileSelectionEpoch.current.set(file.id, (fileSelectionEpoch.current.get(file.id) ?? 0) + 1);
-    const nextFileIds = selected ? fileIds.filter((id) => id !== file.id) : [...fileIds, file.id];
-    selectedFileIds.current = new Set(nextFileIds);
-    setFileIds(nextFileIds);
-    if (selected) {
-      const removing = new Set(
-        selections.filter((item) => item.assetId === file.id).map((item) => item.ordinal),
-      );
-      setSelections((items) => items.filter((item) => item.assetId !== file.id));
-      for (const item of selections.filter((item) => item.assetId === file.id))
-        inheritedSourceRecords.current.delete(`${item.assetId}:${item.ordinal}`);
-      setRecords((items) =>
-        items.filter(
-          (item) =>
-            item.caseId || item.source?.assetId !== file.id || !removing.has(item.source.ordinal),
-        ),
-      );
-    }
-  }
-  function toggleRecord(record: TestSetSource["files"][number]["records"][number]) {
-    const sourceKey = `${record.assetId}:${record.ordinal}`;
-    if (checkingSources.current.has(sourceKey)) return;
-    const selected = selections.some(
-      (item) => item.assetId === record.assetId && item.ordinal === record.ordinal,
-    );
-    if (selected) {
-      const inherited = loadedParentRecords.some(
-        (item) => item.source?.assetId === record.assetId && item.source.ordinal === record.ordinal,
-      );
-      inheritedSourceRecords.current.delete(sourceKey);
-      setSelections((items) =>
-        items.filter((item) => item.assetId !== record.assetId || item.ordinal !== record.ordinal),
-      );
-      if (!inherited)
-        setRecords((items) =>
-          items.filter(
-            (item) =>
-              item.caseId ||
-              item.source?.assetId !== record.assetId ||
-              item.source.ordinal !== record.ordinal,
-          ),
-        );
-      return;
-    }
-    checkingSources.current.add(sourceKey);
-    setCheckingSourceCount((count) => count + 1);
-    const generation = sourceCheckGeneration.current;
-    const fileEpoch = fileSelectionEpoch.current.get(record.assetId);
-    sourceCheckQueue.current = sourceCheckQueue.current.then(async () => {
-      try {
-        const inherited =
-          loadedParentRecords.find(
-            (item) =>
-              item.source?.assetId === record.assetId && item.source.ordinal === record.ordinal,
-          ) ??
-          (await findSoloVersionEditingSource(
-            projectId,
-            testSetId,
-            parent.version.id,
-            record.assetId,
-            record.ordinal,
-          ));
-        if (
-          generation !== sourceCheckGeneration.current ||
-          fileEpoch !== fileSelectionEpoch.current.get(record.assetId) ||
-          !selectedFileIds.current.has(record.assetId)
-        )
-          return;
-        if (inherited) inheritedSourceRecords.current.set(sourceKey, inherited);
-        setSelections((items) => [...items, { assetId: record.assetId, ordinal: record.ordinal }]);
-        if (!inherited)
-          setRecords((items) => [
-            ...items,
-            {
-              question: record.question,
-              expectedOutput: record.expectedOutput,
-              metadata: record.metadata,
-              source: { assetId: record.assetId, ordinal: record.ordinal },
-            },
-          ]);
-      } catch (error) {
-        if (generation === sourceCheckGeneration.current)
-          toast.error("读取继承来源失败", {
-            description: error instanceof Error ? error.message : "请重试",
-          });
-      } finally {
-        checkingSources.current.delete(sourceKey);
-        if (generation === sourceCheckGeneration.current)
-          setCheckingSourceCount((count) => count - 1);
-      }
-    });
-  }
-  async function publish() {
-    if (publishing || checkingSources.current.size) return;
-    setPublishing(true);
-    try {
-      const inheritedSources = new Map(inheritedSourceRecords.current);
-      for (const record of loadedParentRecords) {
-        if (record.source)
-          inheritedSources.set(`${record.source.assetId}:${record.source.ordinal}`, record);
-      }
-      const currentByCase = new Map(
-        records.filter((record) => record.caseId).map((record) => [record.caseId!, record]),
-      );
-      const selectedInheritedByCase = new Map(
-        records
-          .filter((record) => !record.caseId && record.source)
-          .flatMap((record) => {
-            const original = inheritedSources.get(
-              `${record.source!.assetId}:${record.source!.ordinal}`,
-            );
-            return original ? [[original.caseId, record] as const] : [];
-          }),
-      );
-      const loadedParentCases = new Set(loadedParentRecords.map((record) => record.caseId));
-      const content = ({
-        question,
-        expectedOutput,
-        metadata,
-        source,
-      }: Omit<TestSetRecord, "source"> & { source?: TestSetRecord["source"] | null }) =>
-        JSON.stringify({ question, expectedOutput, metadata, source: source ?? null });
-      const operations: VersionEditOperation[] = [];
-      for (const original of loadedParentRecords) {
-        const current =
-          selectedInheritedByCase.get(original.caseId) ?? currentByCase.get(original.caseId);
-        if (!current) {
-          operations.push({
-            operation: "delete",
-            caseId: original.caseId,
-            beforeRevisionId: original.revisionId,
-          });
-        } else if (content(current) !== content(original)) {
-          operations.push({
-            operation: "update",
-            caseId: original.caseId,
-            beforeRevisionId: original.revisionId,
-            after: {
-              question: current.question,
-              expectedOutput: current.expectedOutput,
-              metadata: current.metadata,
-              ...(current.source ? { source: current.source } : {}),
-            },
-          });
-        }
-      }
-      for (const record of records) {
-        if (record.caseId) continue;
-        const original =
-          record.source &&
-          inheritedSources.get(`${record.source.assetId}:${record.source.ordinal}`);
-        if (original) {
-          if (!loadedParentCases.has(original.caseId) && content(record) !== content(original))
-            operations.push({
-              operation: "update",
-              caseId: original.caseId,
-              beforeRevisionId: original.revisionId,
-              after: {
-                question: record.question,
-                expectedOutput: record.expectedOutput,
-                metadata: record.metadata,
-                source: record.source!,
-              },
-            });
-          continue;
-        }
-        operations.push({
-          operation: "add",
-          after: {
-            question: record.question,
-            expectedOutput: record.expectedOutput,
-            metadata: record.metadata,
-            ...(record.source ? { source: record.source } : {}),
-          },
-        });
-      }
-      const fingerprint = JSON.stringify(operations);
-      if (retry.current?.fingerprint !== fingerprint)
-        retry.current = { fingerprint, key: createRequestId() };
-      const result = await deriveSoloTestSetVersion(projectId, testSetId, parent.version.id, {
-        operations,
-        idempotencyKey: retry.current.key,
-      });
-      await queryClient.invalidateQueries({ queryKey: ["solo-test-sets", projectId] });
-      await queryClient.invalidateQueries({
-        queryKey: ["solo-test-set-version", projectId, testSetId],
-      });
-      toast.success(`已创建 ${result.version.label}`);
-      onOpenChange(false);
-      onPublished(result.version.id);
-    } catch (error) {
-      toast.error("创建失败", { description: error instanceof Error ? error.message : "请重试" });
-    } finally {
-      setPublishing(false);
-    }
-  }
-  const selectedFiles =
-    sources.data?.flatMap((dataset) =>
-      dataset.files.filter((file) => fileIds.includes(file.id)).map((file) => ({ dataset, file })),
-    ) ?? [];
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl gap-0 overflow-hidden p-0">
-        <DialogHeader className="px-6 pb-4 pt-6">
-          <DialogTitle>基于 {parent.version.label} 创建版本</DialogTitle>
-          <DialogDescription>从所选版本的完整记录开始，可选添加资料后编辑发布。</DialogDescription>
-        </DialogHeader>
-        <ol className="flex gap-3 border-b px-6 pb-4 text-xs" aria-label="创建版本步骤">
-          {DERIVE_STEPS.map((label, index) => (
-            <li
-              key={label}
-              className={index === step ? "font-medium text-primary" : "text-muted-foreground"}
-            >
-              {index + 1}. {label}
-            </li>
-          ))}
-        </ol>
-        <div className="max-h-[calc(100vh-18rem)] overflow-y-auto px-6 py-5">
-          {parentRecords.isLoading ? (
-            <p className="text-sm text-muted-foreground">正在读取继承记录…</p>
-          ) : null}
-          {step === 0 ? (
-            <SourceStep sources={sources.data ?? []} selected={fileIds} onToggle={sourceFile} />
-          ) : null}
-          {step === 1 ? (
-            <RecordSelectionStep
-              files={selectedFiles}
-              selections={selections}
-              onToggle={toggleRecord}
-            />
-          ) : null}
-          {step === 2 ? (
-            <EditStep
-              records={records}
-              inheritedCount={
-                parent.version.recordCount -
-                deletedParentCases.current.size +
-                records.filter((record) => !record.caseId).length
-              }
-              loadMoreRef={loadMoreRef}
-              onChange={(index, field, value) =>
-                setRecords((items) =>
-                  items.map((item, current) =>
-                    current === index ? { ...item, [field]: value } : item,
-                  ),
-                )
-              }
-              onEditMetadata={setMetadataEditingIndex}
-              onRemove={(index) => {
-                const caseId = records[index]?.caseId;
-                if (caseId) deletedParentCases.current.add(caseId);
-                setRecords((items) => items.filter((_, current) => current !== index));
-              }}
-              onAdd={() =>
-                setRecords((items) => [
-                  ...items,
-                  { question: "", expectedOutput: "", metadata: [] },
-                ])
-              }
-            />
-          ) : null}
-        </div>
-        <DialogFooter className="flex-row justify-between px-6 pb-6 pt-4 sm:space-x-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              disabled={step === 0}
-              onClick={() => setStep((current) => current - 1)}
-            >
-              上一步
-            </Button>
-            <Button
-              disabled={
-                parentRecords.isLoading ||
-                publishing ||
-                checkingSourceCount > 0 ||
-                (step === 2 && !records.length)
-              }
-              onClick={() => {
-                if (checkingSources.current.size) return;
-                if (step === 2) void publish();
-                else setStep((current) => current + 1);
-              }}
-            >
-              {step === 2 && publishing ? "正在创建…" : step === 2 ? "创建新版本" : "下一步"}
-            </Button>
-          </div>
-        </DialogFooter>
-        <MetadataEditor
-          open={metadataEditingIndex !== undefined}
-          entries={
-            metadataEditingIndex === undefined
-              ? []
-              : (records[metadataEditingIndex]?.metadata ?? [])
-          }
-          onOpenChange={(value) => !value && setMetadataEditingIndex(undefined)}
-          onSave={(metadata) => {
-            if (metadataEditingIndex !== undefined)
-              setRecords((items) =>
-                items.map((item, index) =>
-                  index === metadataEditingIndex ? { ...item, metadata } : item,
-                ),
-              );
-          }}
-        />
-      </DialogContent>
-    </Dialog>
-  );
-}
-function SourceStep({
-  sources,
-  selected,
-  onToggle,
-}: {
-  sources: TestSetSource[];
-  selected: string[];
-  onToggle: (file: TestSetSource["files"][number]) => void;
-}) {
-  return (
-    <div className="grid gap-4">
-      <p className="text-sm text-muted-foreground">可跳过此步，直接编辑继承的记录。</p>
-      {sources.map((dataset) => (
-        <section key={dataset.id} className="overflow-hidden rounded-md border">
-          <h3 className="border-b bg-muted/50 px-3 py-2 text-xs font-medium">{dataset.name}</h3>
-          {dataset.files.map((file) => (
-            <label
-              key={file.id}
-              className="flex cursor-pointer items-center gap-3 border-t px-3 py-3 text-sm first:border-t-0"
-            >
-              <Checkbox
-                checked={selected.includes(file.id)}
-                onCheckedChange={() => onToggle(file)}
-              />
-              {file.fileName}
-              <span className="ml-auto text-xs text-muted-foreground">
-                {file.records.length} 条记录
-              </span>
-            </label>
-          ))}
-        </section>
-      ))}
-    </div>
-  );
-}
-function RecordSelectionStep({
-  files,
-  selections,
-  onToggle,
-}: {
-  files: Array<{ dataset: TestSetSource; file: TestSetSource["files"][number] }>;
-  selections: Array<{ assetId: string; ordinal: number }>;
-  onToggle: (record: TestSetSource["files"][number]["records"][number]) => void;
-}) {
-  return (
-    <div className="grid gap-4">
-      {files.length ? (
-        files.map(({ dataset, file }) => (
-          <section key={file.id} className="overflow-hidden rounded-md border">
-            <h3 className="border-b bg-muted/50 px-3 py-2 text-xs font-medium">
-              {dataset.name} › {file.fileName}
-            </h3>
-            {file.records.map((record) => (
-              <label
-                key={`${record.assetId}-${record.ordinal}`}
-                className="grid cursor-pointer grid-cols-[auto_1fr] gap-3 border-t px-3 py-2 text-sm"
-              >
-                <Checkbox
-                  checked={selections.some(
-                    (item) => item.assetId === record.assetId && item.ordinal === record.ordinal,
-                  )}
-                  onCheckedChange={() => onToggle(record)}
-                />
-                <span>
-                  {record.ordinal + 1}. {record.question || "（未填写问题）"}
-                </span>
-              </label>
-            ))}
-          </section>
-        ))
-      ) : (
-        <p className="text-sm text-muted-foreground">未添加资料。下一步可直接编辑继承的记录。</p>
-      )}
-    </div>
-  );
-}
-function EditStep({
-  records,
-  inheritedCount,
-  loadMoreRef,
-  onChange,
-  onEditMetadata,
-  onRemove,
-  onAdd,
-}: {
-  records: TestSetRecord[];
-  inheritedCount: number;
-  loadMoreRef: RefObject<HTMLDivElement | null>;
-  onChange: (index: number, field: "question" | "expectedOutput", value: string) => void;
-  onEditMetadata: (index: number) => void;
-  onRemove: (index: number) => void;
-  onAdd: () => void;
-}) {
-  return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          已从父版本完整继承 {inheritedCount} 条记录。
-        </p>
-        <Button variant="outline" size="sm" onClick={onAdd}>
-          <Plus className="size-4" />
-          新增记录
-        </Button>
-      </div>
-      <div className="overflow-x-auto rounded-md border">
-        <div className="min-w-3xl">
-          {records.map((record, index) => (
-            <div
-              key={`${record.source?.assetId ?? "manual"}-${record.source?.ordinal ?? index}-${index}`}
-              className="grid grid-cols-[32px_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)_auto] gap-2 border-b p-2 last:border-b-0"
-            >
-              <span className="pt-2 text-sm text-muted-foreground">{index + 1}</span>
-              <Input
-                aria-label={`第 ${index + 1} 行问题`}
-                value={record.question}
-                onChange={(event) => onChange(index, "question", event.target.value)}
-              />
-              <Input
-                aria-label={`第 ${index + 1} 行预测输出`}
-                value={record.expectedOutput}
-                onChange={(event) => onChange(index, "expectedOutput", event.target.value)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onEditMetadata(index)}
-              >
-                {record.metadata.length ? `${record.metadata.length} 项 Metadata` : "添加 Metadata"}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onRemove(index)}>
-                删除
-              </Button>
-            </div>
-          ))}
-          <div ref={loadMoreRef} aria-hidden="true" />
-        </div>
-      </div>
-    </div>
   );
 }
