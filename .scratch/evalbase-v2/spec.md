@@ -4,7 +4,7 @@ Status: ready-for-agent
 Implementation: in-progress
 
 日期：2026-09-28。范围基线：文档提交 52413dc，应用 main 70c2272f43927d7bb4e1ac632091a39d7b2cd955。
-创建本清单时仅授权 Ticket 文档；批次 A 已单独授权并完成验收，V2-03 已单独授权开发。批次 B 的 Owner 验收、批次 C 的开发，以及合并、推送和正式部署仍须分别取得授权。
+创建本清单时仅授权 Ticket 文档；批次 A 已单独授权并完成验收，V2-03 已单独授权开发。批次 B 已由 Owner 验收通过并释放资源；批次 C 的开发，以及合并、推送和正式部署仍须分别取得授权。
 
 ## 1. 合同与必读材料
 
@@ -78,7 +78,7 @@ Owner 浏览器验收库每批只保留一个易读名称的合成项目、两�
 | --- | --- | --- | --- |
 | V2-01 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-02 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
-| V2-03 | completed | 3d0d3bb | B，待 Owner 验收 |
+| V2-03 | completed | 0df0228 | B，Owner 已验收；资源已释放 |
 | V2-04 | not-started | - | C，待开发 |
 
 Status 是 triage 标签，Implementation 才是实现生命周期。每次完成更新本表和对应 Ticket Comments，引用真实实现 SHA、验证命令、复审与批次结果。v1 的 progress 台账保留已交付历史，不写入 v2 假完成记录。
@@ -90,3 +90,5 @@ Status 是 triage 标签，Implementation 才是实现生命周期。每次完�
 - 2026-09-28：Owner 在本会话确认批次 A（V2-01/V2-02）验收通过，接受固定 HEAD `1c53638394e19a5b269ce6af450de115f9d01d21`；隔离验收环境和本机 4215 隧道已释放，日志与校验表保存在 `/home/bistu/.local/share/evalbase-checkpoints/A-1c53638`。V2-03 仍为 `not-started`，批次 A 验收不自动授权开发、合并、推送或正式部署。
 
 - 2026-09-28：Owner 授权开发 V2-03；代码实现 `6810790`、复审修复 `3d0d3bbd0aa1f8f6a6ffe01ae258cfa728c6ab0`。Ticket Closure Review 的 P0/P1 已清零，测试矩阵、已知 P2 和 B 隔离环境证据见 [V2-03 Comments](issues/03-persistent-draft-workspace.md#comments)。B 仍待 Owner 人工验收；未授权继续 V2-04、合并、推送或正式部署。
+
+- 2026-09-28：Owner 确认批次 B checkpoint 验收通过，接受固定应用 HEAD `0df0228b2d487158d9321e6e5b6838bf0da8a72b`。V2-03 最终前端修复、5/5 浏览器回归及真实资料 55 条读取证据见 [Ticket Comments](issues/03-persistent-draft-workspace.md#comments)。验收日志、健康响应、资源清单与清理核查保存在 `/home/bistu/.local/share/evalbase-checkpoints/B-0df0228`。B 专属 4 个容器、2 个网络、2 个数据卷、4 个镜像和本机 4217 隧道已释放，残留为零；合并、推送、正式部署和 V2-04 开发尚未授权。

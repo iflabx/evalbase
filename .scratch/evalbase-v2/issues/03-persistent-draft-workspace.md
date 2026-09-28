@@ -4,7 +4,7 @@ Status: ready-for-agent
 Implementation: completed
 
 Blocked by: 批次 A 经 Owner 验收通过；获得本 Ticket/批次 B 执行授权。
-Checkpoint: B（本 Ticket 完成后一次人工验收）
+Checkpoint: B（Owner 已验收；资源已释放）
 
 ## Outcome
 
@@ -106,3 +106,8 @@ DRAFT-01–04、EDIT-01–05、PUB-01–06、DELETE-01–03、COLLAB-01–04 的
 本次只按 Owner 明确要求覆盖上述原型呈现；查看者仍看不到草稿，资料/记录失败态与权限规则不变。
 
 - 本轮验证：`npm --prefix frontend-v3 run typecheck` 通过；受影响文件 `eslint` 为 0 error、1 条既有 hooks 依赖 warning；Vite 输出到独立临时目录构建通过；Playwright 5/5（含新建草稿列表/空态、版本详情、查看者权限、勾选资料后显示记录和侧栏无横向溢出）；`npm run docs:check` 与 `git diff --check` 通过。原有 `frontend-v3/dist` 属于容器用户，本轮构建使用临时输出目录。批次 B 仍待 Owner 验收。
+
+### 批次 B 验收结论
+
+- 2026-09-28：Owner 明确通过本 checkpoint，接受固定应用 HEAD `0df0228b2d487158d9321e6e5b6838bf0da8a72b`。修复后浏览器回归 5/5；真实验收项目中勾选 `B-checkpoint-A.csv` 后读取 55 条来源记录，且侧栏横向溢出为 0。验收证据保存在 `/home/bistu/.local/share/evalbase-checkpoints/B-0df0228`。
+- 仅回收 `evalbase-v2-b-owner-checkpoint`：4 个容器、2 个网络、2 个数据卷、4 个专属镜像、本机 4217 隧道及临时合成凭据；服务器同名前缀资源和 4217 监听核对为零。其余项目和正式环境未动。V2-04 须另获开发授权。
