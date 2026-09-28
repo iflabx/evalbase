@@ -80,12 +80,33 @@ test("shows the frozen provenance controls and record detail for the selected ve
 }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/installation") {
+      await route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
+      return;
+    }
     if (url.pathname === "/api/session") {
-      await route.fulfill({ json: { csrfToken: "csrf" } });
+      await route.fulfill({ json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } } });
       return;
     }
     if (url.pathname === "/api/projects") {
-      await route.fulfill({ json: { projects: [], pagination: { total: 0 } } });
+      await route.fulfill({
+        json: { projects: [{ id: "project_browser", name: "演示项目" }], pagination: { total: 1 } },
+      });
+      return;
+    }
+    if (url.pathname === "/api/projects/project_browser/access") {
+      await route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/projects/project_browser/collaborative-drafts") {
+      await route.fulfill({ json: { drafts: [] } });
       return;
     }
     if (
