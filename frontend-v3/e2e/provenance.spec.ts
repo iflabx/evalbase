@@ -201,15 +201,24 @@ test("shows the frozen provenance controls and record detail for the selected ve
   await expect(page.getByText("当前版本摘要", { exact: true })).toHaveCount(0);
   await expect(page.getByText("版本关系", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "下载 CSV" })).toHaveCount(0);
-  await expect(page.getByText("本版本如何形成", { exact: true })).toBeVisible();
+  const summary = page.locator(".version-summary-card").filter({ hasText: "本版本如何形成" });
+  await expect(summary.locator("dt")).toHaveText([
+    "基于版本",
+    "当前版本",
+    "本次结果",
+    "本次新加入的资料",
+  ]);
+  await expect(summary.locator("dd").first()).toContainText("在 v1 的基础上编辑。");
+  await expect(summary.locator(".lineage-result-counts")).toContainText("已修改 1");
   await expect(page.getByText("逐条查看变化", { exact: true })).toBeVisible();
-  const addedFile = page.locator("details").filter({ hasText: "新增资料.csv" });
-  await expect(addedFile).toBeVisible();
-  await expect(page.getByText("问题：/question · 期望输出：/answer · Metadata：/tag")).toBeHidden();
+  const addedFile = summary.locator(".lineage-source-row").filter({ hasText: "新增资料.csv" });
+  await expect(addedFile.getByText("新增 1 条")).toBeVisible();
+  await expect(addedFile.getByText("question → 问题")).toBeHidden();
   await addedFile.locator("summary").click();
-  await expect(
-    page.getByText("问题：/question · 期望输出：/answer · Metadata：/tag"),
-  ).toBeVisible();
+  await expect(addedFile.getByText("question → 问题")).toBeVisible();
+  await expect(addedFile.getByText("answer → 期望输出")).toBeVisible();
+  await expect(addedFile.getByText("tag → Metadata")).toBeVisible();
+  await expect(summary.getByText("手工新增")).toBeVisible();
   await expect(page.getByRole("button", { name: "本次有变化" })).toBeVisible();
   await expect(page.getByRole("button", { name: "全部" })).toBeVisible();
   await expect(page.getByRole("button", { name: "未改变" })).toBeVisible();

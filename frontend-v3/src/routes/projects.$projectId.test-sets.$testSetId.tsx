@@ -536,6 +536,10 @@ function DeleteTestSetDialog({
   );
 }
 
+function sourceMappingLabel(source: string) {
+  return source.startsWith("/") ? source.slice(1) : source;
+}
+
 const CHANGE_FILTERS = [
   ["changed", "本次有变化"],
   ["all", "全部"],
@@ -589,78 +593,105 @@ function ProvenanceView({
       >
         {(data) => (
           <>
-            <Card className="mb-4 overflow-hidden rounded-md">
-              <div className="flex flex-wrap items-baseline justify-between gap-2 border-b bg-muted/50 px-4 py-3">
+            <Card className="version-summary-card mb-4 rounded-md">
+              <header className="version-summary-head">
                 <strong>本版本如何形成</strong>
-                <span className="text-xs text-muted-foreground">
-                  只说明这一版从哪里来、改了什么。
-                </span>
-              </div>
-              <CardContent className="grid gap-0 p-0 text-sm sm:grid-cols-3">
-                <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
-                  <p className="text-xs text-muted-foreground">基于版本</p>
-                  {data.summary.parentVersion ? (
-                    <Button
-                      className="mt-1 h-auto px-0"
-                      variant="link"
-                      onClick={() => onSelectParent(data.summary.parentVersion!.id)}
-                    >
-                      {data.summary.parentVersion.label}
-                    </Button>
-                  ) : (
-                    <p className="mt-1">这是首个版本</p>
-                  )}
+                <span>只说明这一版从哪里来、改了什么。</span>
+              </header>
+              <dl className="version-summary-grid">
+                <div>
+                  <dt>基于版本</dt>
+                  <dd>
+                    {data.summary.parentVersion ? (
+                      <>
+                        在{" "}
+                        <Button
+                          variant="outline"
+                          onClick={() => onSelectParent(data.summary.parentVersion!.id)}
+                        >
+                          {data.summary.parentVersion.label}
+                        </Button>{" "}
+                        的基础上编辑。
+                      </>
+                    ) : (
+                      "这是首个版本。"
+                    )}
+                  </dd>
                 </div>
-                <SummaryCell
-                  label="当前版本"
-                  value={
-                    data.summary.currentVersion.label +
-                    " · " +
-                    data.summary.currentVersion.recordCount +
-                    " 条记录"
-                  }
-                />
-                <SummaryCell
-                  label="本次结果"
-                  value={
-                    "未改变 " +
-                    data.summary.counts.unchanged +
-                    " · 已修改 " +
-                    data.summary.counts.modified +
-                    " · 新增 " +
-                    data.summary.counts.added +
-                    " · 已移除 " +
-                    data.summary.counts.removed
-                  }
-                />
-                <div className="border-b px-4 py-3 sm:col-span-3 sm:border-b-0">
-                  <p className="text-xs text-muted-foreground">本次新加入的资料</p>
-                  {data.summary.addedFiles.length ? (
-                    <div className="mt-1 grid gap-2">
-                      {data.summary.addedFiles.map((file) => (
-                        <details key={file.assetId} className="rounded border px-3 py-2">
-                          <summary className="cursor-pointer font-medium">
-                            {file.fileName}
-                            {file.recordCount !== undefined ? ` · ${file.recordCount} 条记录` : ""}
-                          </summary>
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            问题：{file.mapping.question ?? "不导入"} · 期望输出：
-                            {file.mapping.expectedOutput ?? "不导入"} · Metadata：
-                            {file.mapping.metadata.join("、") || "不导入"}
-                          </p>
-                        </details>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1">本次没有新加入资料。</p>
-                  )}
-                  {data.summary.manualAddedCount ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      另有 {data.summary.manualAddedCount} 条手工新增记录。
-                    </p>
-                  ) : null}
+                <div>
+                  <dt>当前版本</dt>
+                  <dd>
+                    {data.summary.currentVersion.label} · {data.summary.currentVersion.recordCount}{" "}
+                    条记录
+                  </dd>
                 </div>
-              </CardContent>
+                <div>
+                  <dt>本次结果</dt>
+                  <dd>
+                    <span className="lineage-result-counts">
+                      <span>
+                        未改变 <b>{data.summary.counts.unchanged}</b>
+                      </span>
+                      <span>
+                        已修改 <b>{data.summary.counts.modified}</b>
+                      </span>
+                      <span>
+                        新增 <b>{data.summary.counts.added}</b>
+                      </span>
+                      <span>
+                        已移除 <b>{data.summary.counts.removed}</b>
+                      </span>
+                    </span>
+                  </dd>
+                </div>
+                <div className="wide">
+                  <dt>本次新加入的资料</dt>
+                  <dd>
+                    {data.summary.addedFiles.length || data.summary.manualAddedCount ? (
+                      <div className="lineage-source-list">
+                        {data.summary.addedFiles.map((file) => (
+                          <div key={file.assetId} className="lineage-source-row">
+                            <b>{file.fileName}</b>
+                            <span>新增 {file.recordCount} 条</span>
+                            {file.mapping.question ||
+                            file.mapping.expectedOutput ||
+                            file.mapping.metadata.length ? (
+                              <details className="lineage-source-mapping">
+                                <summary>查看字段映射</summary>
+                                <div>
+                                  {file.mapping.question ? (
+                                    <span className="block">
+                                      {sourceMappingLabel(file.mapping.question)} → 问题
+                                    </span>
+                                  ) : null}
+                                  {file.mapping.expectedOutput ? (
+                                    <span className="block">
+                                      {sourceMappingLabel(file.mapping.expectedOutput)} → 期望输出
+                                    </span>
+                                  ) : null}
+                                  {file.mapping.metadata.map((field, index) => (
+                                    <span className="block" key={`${field}-${index}`}>
+                                      {sourceMappingLabel(field)} → Metadata
+                                    </span>
+                                  ))}
+                                </div>
+                              </details>
+                            ) : null}
+                          </div>
+                        ))}
+                        {data.summary.manualAddedCount ? (
+                          <div className="lineage-source-row">
+                            <b>手工新增</b>
+                            <span>新增 {data.summary.manualAddedCount} 条</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      "本次未加入新的原始资料。"
+                    )}
+                  </dd>
+                </div>
+              </dl>
             </Card>
             <section className="mb-3">
               <h2 className="text-base font-semibold">逐条查看变化</h2>

@@ -333,6 +333,10 @@
 .version-summary-head strong {
   font-size: 14px;
 }
+.version-summary-head span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
 .version-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -361,6 +365,44 @@
   overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.5;
+}
+.lineage-source-list {
+  display: grid;
+  gap: 8px;
+}
+.lineage-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.lineage-source-row > span {
+  color: var(--muted-foreground);
+}
+.lineage-source-mapping {
+  width: 100%;
+  margin: 2px 0 0;
+}
+.lineage-source-mapping summary {
+  width: max-content;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+.lineage-source-mapping div {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.lineage-result-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--muted-foreground);
+}
+.lineage-result-counts b {
+  color: var(--foreground);
 }
 .version-checks {
   display: flex;
