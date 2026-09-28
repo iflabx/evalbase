@@ -83,16 +83,17 @@ function DerivedDraftNote({ drafts, projectId }: { drafts: SharedDraft[]; projec
       </Badge>
       <div className="min-w-0 space-y-1">
         {drafts.map((draft) => (
-          <Link
-            key={draft.id}
-            className="block text-primary hover:underline"
-            to="/projects/$projectId/test-sets/drafts/$draftId"
-            params={{ projectId, draftId: draft.id }}
-          >
+          <p key={draft.id}>
             {draft.suspended ? "已暂停 · " : ""}基于 {draft.parentVersionLabel ?? "未知版本"} ·
-            最近由 {draft.updatedByName || "未记录"} 于 {formatDraftAt(draft.updatedAt)} 编辑 ·
-            继续编辑草稿
-          </Link>
+            最近由 {draft.updatedByName || "未记录"} 于 {formatDraftAt(draft.updatedAt)} 编辑 ·{" "}
+            <Link
+              className="text-primary hover:underline"
+              to="/projects/$projectId/test-sets/drafts/$draftId"
+              params={{ projectId, draftId: draft.id }}
+            >
+              继续编辑草稿
+            </Link>
+          </p>
         ))}
       </div>
     </div>
@@ -177,6 +178,7 @@ function TestSetsPage() {
     <div className="mx-auto max-w-7xl">
       <PageHeader
         title="测试集"
+        description="从数据集选择记录，编辑后创建或迭代测试集版本。"
         actions={
           <>
             {access.canManage && (

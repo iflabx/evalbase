@@ -77,13 +77,13 @@ const graph = [
   },
 ];
 
-async function mockWorkspace(page: Page) {
+async function mockWorkspace(page: Page, role: "admin" | "editor" | "viewer" = "admin") {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation")
       return route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
     if (url.pathname === "/api/session")
-      return route.fulfill({ json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } } });
+      return route.fulfill({ json: { csrfToken: "csrf", actor: { id: role, role } } });
     if (url.pathname === "/api/projects")
       return route.fulfill({
         json: { projects: [{ id: projectId, name: "演示项目" }], pagination: { total: 1 } },
@@ -92,8 +92,13 @@ async function mockWorkspace(page: Page) {
       return route.fulfill({
         json: {
           access: {
-            role: "admin",
-            capabilities: { read: true, write: true, export: true, manage: true },
+            role,
+            capabilities: {
+              read: true,
+              write: role !== "viewer",
+              export: true,
+              manage: role === "admin",
+            },
           },
         },
       });
@@ -208,4 +213,20 @@ test("version detail places its draft card before the graph and shows draft grap
   await expect(
     page.locator(".version-graph-card").getByRole("link", { name: /草稿.*基于 v2/ }),
   ).toHaveAttribute("href", `/projects/${projectId}/test-sets/drafts/draft_v2`);
+});
+
+test("editor finds drafts while viewer sees only published versions", async ({ page }) => {
+  await mockWorkspace(page, "editor");
+  await page.goto(`/projects/${projectId}/test-sets`);
+  await expect(page.getByRole("region", { name: "未发布的测试集草稿" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "回收站" })).toHaveCount(0);
+  await page.unrouteAll();
+
+  await mockWorkspace(page, "viewer");
+  await page.goto(`/projects/${projectId}/test-sets`);
+  await expect(page.getByRole("region", { name: "未发布的测试集草稿" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "新建测试集" })).toHaveCount(0);
+  await page.goto(`/projects/${projectId}/test-sets/${testSetId}?version=version_v1`);
+  await expect(page.getByRole("region", { name: "此版本有未发布草稿" })).toHaveCount(0);
+  await expect(page.locator(".version-graph-card .draft-node")).toHaveCount(0);
 });

@@ -139,6 +139,7 @@ describe("V2-03 shared draft and publication", () => {
     expect(fresh[0].json().draft).toMatchObject({
       createdByName: "管理员",
       parentVersionLabel: null,
+      parentRecordCount: null,
     });
     expect(fresh[0].json().draft.createdAt).toBeTruthy();
     await db.query(
@@ -230,6 +231,7 @@ describe("V2-03 shared draft and publication", () => {
     expect(shared[0].json().draft.id).toBe(shared[1].json().draft.id);
     expect(shared[0].json().draft).toMatchObject({
       parentVersionLabel: "v1",
+      parentRecordCount: 1,
       createdByName: "editor",
     });
     const sharedId: string = shared[0].json().draft.id;

@@ -6,6 +6,7 @@ export type SharedDraft = {
   testSetId: string | null;
   parentVersionId: string | null;
   parentVersionLabel: string | null;
+  parentRecordCount: number | null;
   createdBy: string | null;
   createdByName: string | null;
   createdAt: string | null;

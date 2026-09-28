@@ -36,7 +36,7 @@ import {
   selectDraftSources,
   type SharedDraftRecord,
 } from "@/services/drafts";
-import { getSoloTestSetVersion, type MetadataEntry } from "@/services/workspace";
+import type { MetadataEntry } from "@/services/workspace";
 import "@/draft-workspace.css";
 
 export const Route = createFileRoute("/projects/$projectId/test-sets/drafts/$draftId")({
@@ -104,19 +104,6 @@ function DraftWorkspace() {
       }),
   });
   const data = draftQuery.data;
-  const parentVersion = useQuery({
-    queryKey: [
-      "draft-parent-version",
-      projectId,
-      data?.draft.testSetId,
-      data?.draft.parentVersionId,
-    ],
-    queryFn: () =>
-      getSoloTestSetVersion(projectId, data!.draft.testSetId!, data!.draft.parentVersionId!),
-    enabled: Boolean(
-      data?.draft.testSetId && data?.draft.parentVersionId && !data?.draft.suspended,
-    ),
-  });
   const unsavedRecordInput = Boolean(
     selectedSnapshot &&
     edit &&
@@ -647,7 +634,7 @@ function DraftWorkspace() {
                     {draft.suspended
                       ? "父版本或测试集已回收；恢复父对象后可继续编辑。"
                       : draft.parentVersionId
-                        ? `已继承父版本${parentVersion.data ? ` ${parentVersion.data.version.recordCount} 条` : ""}记录。编辑仅作用于草稿；发布后生成新版本。`
+                        ? `已继承父版本${draft.parentRecordCount == null ? "" : ` ${draft.parentRecordCount} 条`}记录。编辑仅作用于草稿；发布后生成新版本。`
                         : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}
                   </p>
                 </div>

@@ -83,6 +83,7 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
             testSetId: "set_1",
             parentVersionId: "version_v2",
             parentVersionLabel: "v2",
+            parentRecordCount: 12,
           },
           records: [record],
           total: 1,

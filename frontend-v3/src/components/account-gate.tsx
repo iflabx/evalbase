@@ -116,7 +116,7 @@ export function AccountGate({ setup }: { setup: boolean }) {
             {activeMode === "setup"
               ? "首次访问时创建管理员账号。完成后即可管理项目与邀请成员。"
               : activeMode === "register"
-                ? "填写邮箱并设置密码。注册后可以登录，接受管理员发给该邮箱的邀请后才能进入项目。"
+                ? "填写邮箱并设置密码。注册后进入项目列表；接受管理员发给该邮箱的邀请后即可访问项目。"
                 : "进入你有权访问的项目，管理数据集与测试集。"}
           </p>
           <form className="auth-form" onSubmit={submit}>

@@ -1781,6 +1781,8 @@ export async function buildApp(
     parentVersionLabel: row.parent_version_label
       ? String(row.parent_version_label)
       : null,
+    parentRecordCount:
+      row.parent_record_count == null ? null : Number(row.parent_record_count),
     createdBy: row.created_by ? String(row.created_by) : null,
     createdByName: row.created_by
       ? String(row.created_by_name ?? row.created_by_username ?? row.created_by)
@@ -1807,6 +1809,7 @@ export async function buildApp(
   });
   const draftSelect = `SELECT d.*, ts.status AS test_set_status,
     v.status AS parent_status, v.version_label AS parent_version_label,
+    v.item_count AS parent_record_count,
     u.display_name AS updated_by_name, u.username AS updated_by_username,
     creator.display_name AS created_by_name,
     creator.username AS created_by_username FROM collaborative_draft d
