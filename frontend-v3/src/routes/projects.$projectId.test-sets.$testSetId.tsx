@@ -33,8 +33,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PageHeader, StateView } from "@/components/state-view";
-import { createSharedDraft, listSharedDrafts } from "@/services/drafts";
+import { ErrorBlock, PageHeader, StateView } from "@/components/state-view";
+import { createSharedDraft, listSharedDrafts, type SharedDraft } from "@/services/drafts";
 import {
   getSoloVersionRecord,
   getSoloVersionChange,
@@ -210,7 +210,7 @@ function TestSetDetailPage() {
                     </Button>
                     {access.canWrite && (
                       <Button
-                        disabled={startingDraft || drafts.isFetching}
+                        disabled={startingDraft || drafts.isFetching || drafts.isError}
                         onClick={() => void startDraft(data.version.id)}
                       >
                         {actionLabel}
@@ -242,7 +242,49 @@ function TestSetDetailPage() {
                 }
               />
               <VersionSummary data={data} />
-              <VersionGraph data={data} onSelect={selectVersion} />
+              {access.canWrite && drafts.isError && (
+                <div className="mb-4">
+                  <ErrorBlock
+                    message="无法读取此版本的草稿状态，请重试。"
+                    onRetry={() => void drafts.refetch()}
+                  />
+                </div>
+              )}
+              {currentDraft && (
+                <section aria-label="此版本有未发布草稿" className="mb-4">
+                  <Card className="rounded-md">
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                      <div className="min-w-0">
+                        <strong className="text-sm">此版本有未发布草稿</strong>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          基于 {currentDraft.parentVersionLabel ?? data.version.label} · 最近由{" "}
+                          {currentDraft.updatedByName || "未记录"} 于{" "}
+                          {new Date(currentDraft.updatedAt).toLocaleString("zh-CN", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}{" "}
+                          编辑
+                          {currentDraft.suspended ? " · 已暂停" : ""}
+                        </p>
+                      </div>
+                      <Button size="sm" asChild>
+                        <Link
+                          to="/projects/$projectId/test-sets/drafts/$draftId"
+                          params={{ projectId, draftId: currentDraft.id }}
+                        >
+                          继续编辑草稿
+                        </Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </section>
+              )}
+              <VersionGraph
+                data={data}
+                onSelect={selectVersion}
+                drafts={drafts.data ?? []}
+                projectId={projectId}
+              />
               <VersionRecordBrowser
                 projectId={projectId}
                 testSetId={testSetId}
@@ -919,9 +961,13 @@ function ChangeContent({ title, record }: { title: string; record: ProvenanceCha
 function VersionGraph({
   data,
   onSelect,
+  drafts,
+  projectId,
 }: {
   data: SoloTestSetVersionDetail;
   onSelect: (id: string) => void;
+  drafts: SharedDraft[];
+  projectId: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -959,8 +1005,9 @@ function VersionGraph({
     measure();
     const observer = new ResizeObserver(measure);
     if (scrollRef.current) observer.observe(scrollRef.current);
+    if (treeRef.current) observer.observe(treeRef.current);
     return () => observer.disconnect();
-  }, [data.graph.nodes]);
+  }, [data.graph.nodes, drafts.length]);
   const byParent = new Map<string | null, typeof data.graph.nodes>();
   for (const node of data.graph.nodes) {
     const children = byParent.get(node.parentVersionId) ?? [];
@@ -1025,6 +1072,8 @@ function VersionGraph({
               active={data.version.id}
               parents={parents}
               onSelect={onSelect}
+              drafts={drafts}
+              projectId={projectId}
             />
           ))}
         </div>
@@ -1038,14 +1087,19 @@ function VersionBranch({
   active,
   parents,
   onSelect,
+  drafts,
+  projectId,
 }: {
   node: SoloTestSetVersionDetail["graph"]["nodes"][number];
   byParent: Map<string | null, SoloTestSetVersionDetail["graph"]["nodes"]>;
   active: string;
   parents: Set<string>;
   onSelect: (id: string) => void;
+  drafts: SharedDraft[];
+  projectId: string;
 }) {
   const children = byParent.get(node.id) ?? [];
+  const draft = drafts.find((item) => item.parentVersionId === node.id);
   const onPath = node.id === active || parents.has(node.id);
   return (
     <div className="version-branch">
@@ -1062,7 +1116,7 @@ function VersionBranch({
             : `${node.recordCount} 条记录`}
         </span>
       </button>
-      {children.length ? (
+      {children.length || draft ? (
         <div className="version-children">
           {children.map((child) => {
             const childOnPath = child.id === active || parents.has(child.id);
@@ -1077,10 +1131,37 @@ function VersionBranch({
                   active={active}
                   parents={parents}
                   onSelect={onSelect}
+                  drafts={drafts}
+                  projectId={projectId}
                 />
               </div>
             );
           })}
+          {draft && (
+            <div className={`version-child ${onPath ? "on-path" : "dimmed"}`}>
+              <Link
+                className="version-node draft-node block"
+                style={{ borderStyle: "dashed", borderColor: "var(--primary)" }}
+                aria-label={`继续编辑草稿，基于 ${node.label}，最近由 ${draft.updatedByName || "未记录"} 编辑`}
+                to="/projects/$projectId/test-sets/drafts/$draftId"
+                params={{ projectId, draftId: draft.id }}
+              >
+                <strong className="block text-xs">草稿 · 基于 {node.label}</strong>
+                <small className="mt-1 block text-muted-foreground">
+                  最近由 {draft.updatedByName || "未记录"} 编辑
+                </small>
+                <small className="block text-muted-foreground">
+                  {new Date(draft.updatedAt).toLocaleString("zh-CN", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                </small>
+                <span className="mt-2 inline-block rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                  未发布
+                </span>
+              </Link>
+            </div>
+          )}
         </div>
       ) : null}
     </div>

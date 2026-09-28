@@ -10,6 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PageHeader, StateView } from "@/components/state-view";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import {
@@ -26,7 +36,8 @@ import {
   selectDraftSources,
   type SharedDraftRecord,
 } from "@/services/drafts";
-import type { MetadataEntry } from "@/services/workspace";
+import { getSoloTestSetVersion, type MetadataEntry } from "@/services/workspace";
+import "@/draft-workspace.css";
 
 export const Route = createFileRoute("/projects/$projectId/test-sets/drafts/$draftId")({
   component: DraftWorkspaceRoute,
@@ -71,6 +82,9 @@ function DraftWorkspace() {
     metadata: MetadataEntry[];
   }>();
   const [busy, setBusy] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<"draft" | "record" | null>(null);
+  const editorPanelRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "dirty" | "saving" | "failed">("saved");
@@ -90,6 +104,19 @@ function DraftWorkspace() {
       }),
   });
   const data = draftQuery.data;
+  const parentVersion = useQuery({
+    queryKey: [
+      "draft-parent-version",
+      projectId,
+      data?.draft.testSetId,
+      data?.draft.parentVersionId,
+    ],
+    queryFn: () =>
+      getSoloTestSetVersion(projectId, data!.draft.testSetId!, data!.draft.parentVersionId!),
+    enabled: Boolean(
+      data?.draft.testSetId && data?.draft.parentVersionId && !data?.draft.suspended,
+    ),
+  });
   const unsavedRecordInput = Boolean(
     selectedSnapshot &&
     edit &&
@@ -122,7 +149,7 @@ function DraftWorkspace() {
   const selectedSources = useQuery({
     queryKey: ["draft-selected-sources", projectId, draftId],
     queryFn: () => listSelectedDraftSources(projectId, draftId),
-    enabled: tab === "sources",
+    enabled: Boolean(data),
   });
   const sourceSet = useMemo(
     () =>
@@ -310,6 +337,7 @@ function DraftWorkspace() {
     setError("");
     try {
       const latest = await getSharedDraft(projectId, draftId, { limit: 1 });
+      setPublishing(true);
       const result = await publishSharedDraft(projectId, draftId, latest.draft.revision);
       await queryClient.invalidateQueries({ queryKey: ["solo-test-sets", projectId] });
       allowNavigation.current = true;
@@ -321,19 +349,21 @@ function DraftWorkspace() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "发布失败，请重试。");
     } finally {
+      setPublishing(false);
       setBusy(false);
     }
   }
   async function discard() {
-    if (!window.confirm("删除当前草稿？未发布的修改无法恢复；已发布版本不受影响。")) return;
     setBusy(true);
     try {
       await discardSharedDraft(projectId, draftId);
       await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
+      setConfirmTarget(null);
       toast.success("草稿已删除。");
       allowNavigation.current = true;
       await navigate({ to: "/projects/$projectId/test-sets", params: { projectId } });
     } catch (cause) {
+      setConfirmTarget(null);
       setError(cause instanceof Error ? cause.message : "删除失败，请重试。");
     } finally {
       setBusy(false);
@@ -351,6 +381,16 @@ function DraftWorkspace() {
         ? record.metadata.map((entry) => ({ ...entry }))
         : [{ key: "", value: "" }],
     });
+    if (window.innerWidth <= 1080)
+      window.requestAnimationFrame(() =>
+        editorPanelRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+      );
+  }
+  async function collapseRecord() {
+    if (dirty && !(await save())) return;
+    setSelectedId(undefined);
+    setSelectedSnapshot(undefined);
+    setEdit(undefined);
   }
   async function addRecord() {
     if (dirty && !(await save())) return;
@@ -412,16 +452,18 @@ function DraftWorkspace() {
     }
   }
   async function removeRecord() {
-    if (!selected || !window.confirm("从当前草稿移除这条记录？")) return;
+    if (!selected) return;
     setBusy(true);
     try {
       await removeSharedDraftRecord(projectId, draftId, selected.id, selected.rowRevision);
+      setConfirmTarget(null);
       setSelectedId(undefined);
       setSelectedSnapshot(undefined);
       setRemovedRecord(false);
       setEdit(undefined);
       await refresh();
     } catch (cause) {
+      setConfirmTarget(null);
       setError(cause instanceof Error ? cause.message : "移除失败，请刷新后重试。");
     } finally {
       setBusy(false);
@@ -530,7 +572,7 @@ function DraftWorkspace() {
   }
   const canEdit = access.canWrite && data?.draft.status === "editing" && !data.draft.suspended;
   const pager = (total: number, page: number, setPage: (value: number) => void, size: number) => (
-    <div className="flex items-center justify-end gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
       <span>
         第 {page + 1} / {Math.max(1, Math.ceil(total / size))} 页 · 共 {total} 条
       </span>
@@ -548,7 +590,7 @@ function DraftWorkspace() {
     </div>
   );
   return (
-    <main className="mx-auto max-w-7xl pb-12">
+    <main className="draft-workspace mx-auto w-full max-w-7xl pb-12">
       <StateView
         isLoading={draftQuery.isLoading}
         error={draftQuery.error}
@@ -565,137 +607,188 @@ function DraftWorkspace() {
               }
               description={
                 draft.parentVersionId
-                  ? `基于父版本创建 · 最近由 ${draft.updatedByName} 于 ${new Date(draft.updatedAt).toLocaleString("zh-CN")} 保存`
-                  : `最近由 ${draft.updatedByName} 于 ${new Date(draft.updatedAt).toLocaleString("zh-CN")} 保存`
+                  ? `基于 ${draft.parentVersionLabel ?? "父版本"} 创建草稿`
+                  : "从资料中选择记录，也可以手动新增。"
               }
               actions={
-                <>
-                  <Button variant="outline" disabled={busy} onClick={() => void exit()}>
-                    保存并退出
-                  </Button>
-                  <Button variant="outline" disabled={busy || !canEdit} onClick={() => void save()}>
-                    保存草稿
-                  </Button>
+                <div className="draft-page-actions">
                   <Button
                     variant="outline"
                     className="text-destructive"
                     disabled={busy || !canEdit}
-                    onClick={() => void discard()}
+                    onClick={() => setConfirmTarget("draft")}
                   >
                     <Trash2 className="size-4" />
                     删除当前草稿
                   </Button>
-                  <Button disabled={busy || !canEdit} onClick={() => void publish()}>
+                  <Button variant="outline" disabled={busy || conflict} onClick={() => void exit()}>
+                    保存并退出
+                  </Button>
+                  <Button disabled={busy || !canEdit || conflict} onClick={() => void publish()}>
                     {draft.parentVersionId ? "创建新版本" : "创建 v1"}
                   </Button>
-                </>
+                </div>
               }
             />
-            <div className="mb-4 flex items-center gap-2 text-sm">
-              <Badge variant="outline">
-                {draft.suspended
-                  ? "已暂停"
-                  : saveState === "saving"
-                    ? "保存中"
-                    : saveState === "failed"
-                      ? "保存失败"
-                      : dirty
-                        ? "未保存修改"
-                        : "已保存"}
-              </Badge>
-              {draft.suspended && (
-                <span className="text-muted-foreground">恢复父对象后可继续编辑。</span>
-              )}
-            </div>
-            {error && (
-              <div
-                role="alert"
-                className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-              >
-                <p>{error} 输入内容仍保留在页面上。</p>
-                {conflict && removedRecord && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => void recoverRemovedAsNew()}
-                    >
-                      作为新记录保留输入
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedId(undefined);
-                        setSelectedSnapshot(undefined);
-                        setEdit(undefined);
-                        setRemovedRecord(false);
-                        setConflict(false);
-                        setError("");
-                        setSaveState("saved");
-                      }}
-                    >
-                      放弃本地输入
-                    </Button>
-                  </div>
-                )}
-                {conflict && !removedRecord && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={keepLocalConflict}>
-                      保留本地输入
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={loadServerConflict}>
-                      加载服务器内容
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-            <Card className="mb-4">
-              <CardContent className="grid gap-4 pt-5 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label htmlFor="draft-name">测试集名称</Label>
-                  <Input
-                    id="draft-name"
-                    value={name ?? draft.name}
-                    disabled={!canEdit || busy}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="填写测试集名称"
-                  />
+            <Card className="mb-5 min-w-0">
+              <CardContent className="flex flex-wrap items-center justify-between gap-4 px-5 py-[18px]">
+                <div className="min-w-0">
+                  <strong className="text-sm font-semibold">
+                    {draft.parentVersionId
+                      ? `草稿基于 ${draft.parentVersionLabel ?? "父版本"} · 计划发布新版本`
+                      : "测试集 v1 草稿"}
+                  </strong>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {draft.testSetId ? "" : `创建者 ${draft.createdByName ?? "未记录"} · `}
+                    最近由 {draft.updatedByName} 于{" "}
+                    {new Date(draft.updatedAt).toLocaleString("zh-CN")} 保存
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {draft.suspended
+                      ? "父版本或测试集已回收；恢复父对象后可继续编辑。"
+                      : draft.parentVersionId
+                        ? `已继承父版本${parentVersion.data ? ` ${parentVersion.data.version.recordCount} 条` : ""}记录。编辑仅作用于草稿；发布后生成新版本。`
+                        : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}
+                  </p>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="draft-purpose">用途</Label>
-                  <Input
-                    id="draft-purpose"
-                    value={purpose ?? draft.purpose}
-                    disabled={!canEdit || busy}
-                    onChange={(event) => setPurpose(event.target.value)}
-                    placeholder="选填"
-                  />
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Badge variant="outline" role="status">
+                    {publishing
+                      ? "发布中"
+                      : draft.suspended
+                        ? "已暂停"
+                        : saveState === "saving"
+                          ? "保存中"
+                          : saveState === "failed"
+                            ? "保存失败"
+                            : dirty
+                              ? "未保存修改"
+                              : "已保存草稿"}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || !canEdit || conflict}
+                    onClick={() => void save()}
+                  >
+                    {saveState === "failed" && !conflict ? "重试保存" : "保存草稿"}
+                  </Button>
                 </div>
               </CardContent>
+              {error && (
+                <div
+                  role="alert"
+                  className="border-t border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+                >
+                  <p>{error} 输入内容仍保留在页面上。</p>
+                  {conflict && removedRecord && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void recoverRemovedAsNew()}
+                      >
+                        作为新记录保留输入
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedId(undefined);
+                          setSelectedSnapshot(undefined);
+                          setEdit(undefined);
+                          setRemovedRecord(false);
+                          setConflict(false);
+                          setError("");
+                          setSaveState("saved");
+                        }}
+                      >
+                        放弃本地输入
+                      </Button>
+                    </div>
+                  )}
+                  {conflict && !removedRecord && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={keepLocalConflict}>
+                        保留本地输入
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={loadServerConflict}>
+                        加载服务器内容
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </Card>
-            <div className="mb-4 flex gap-2">
-              <Button
-                variant={tab === "records" ? "default" : "outline"}
+            {!draft.testSetId && (
+              <Card className="mb-5 min-w-0">
+                <CardContent className="draft-identity grid gap-5 p-5">
+                  <div className="grid min-w-0 gap-2">
+                    <Label htmlFor="draft-name">测试集名称</Label>
+                    <Input
+                      id="draft-name"
+                      value={name ?? draft.name}
+                      disabled={!canEdit || busy}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="例如：客服基础问答"
+                    />
+                  </div>
+                  <div className="grid min-w-0 gap-2">
+                    <Label htmlFor="draft-purpose">用途说明（可选）</Label>
+                    <Textarea
+                      id="draft-purpose"
+                      rows={2}
+                      className="min-h-10"
+                      value={purpose ?? draft.purpose}
+                      disabled={!canEdit || busy}
+                      onChange={(event) => setPurpose(event.target.value)}
+                      placeholder="简述测试集用途"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            <div role="tablist" aria-label="测试集草稿工作区" className="draft-tabs mb-5">
+              <button
+                id="draft-records-tab"
+                type="button"
+                role="tab"
+                aria-controls="draft-workspace-panel"
+                aria-selected={tab === "records"}
+                className={tab === "records" ? "active" : ""}
                 onClick={() => void changeTab("records")}
               >
-                草稿记录
-              </Button>
-              <Button
-                variant={tab === "sources" ? "default" : "outline"}
+                草稿记录 <span>{total}</span>
+              </button>
+              <button
+                id="draft-sources-tab"
+                type="button"
+                role="tab"
+                aria-controls="draft-workspace-panel"
+                aria-selected={tab === "sources"}
+                className={tab === "sources" ? "active" : ""}
                 onClick={() => void changeTab("sources")}
               >
-                添加资料
-              </Button>
+                添加资料{" "}
+                <span>
+                  {selectedSources.data
+                    ? new Set(selectedSources.data.map((source) => source.assetId)).size
+                    : "…"}
+                </span>
+              </button>
             </div>
             {tab === "records" ? (
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,1fr)]">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
+              <div
+                id="draft-workspace-panel"
+                role="tabpanel"
+                aria-labelledby="draft-records-tab"
+                className="draft-record-layout"
+              >
+                <Card className="min-w-0">
+                  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 px-5 py-[18px]">
                     <div>
-                      <CardTitle>草稿记录</CardTitle>
+                      <CardTitle className="text-[15px]">草稿记录</CardTitle>
                       <p className="mt-1 text-sm text-muted-foreground">
                         共 {total} 条 · 点击整行在右侧编辑
                       </p>
@@ -710,7 +803,7 @@ function DraftWorkspace() {
                     </Button>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <div className="flex items-center gap-2 border-t px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
                       <Search className="size-4 text-muted-foreground" />
                       <Input
                         aria-label="搜索草稿记录"
@@ -720,13 +813,13 @@ function DraftWorkspace() {
                       />
                       <span className="shrink-0 text-xs text-muted-foreground">每页 20 条</span>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[650px] text-sm">
+                    <div className="max-w-full overflow-x-auto">
+                      <table className="w-full min-w-[660px] table-fixed text-sm">
                         <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                           <tr>
                             <th className="px-4 py-2">序号</th>
                             <th className="px-4 py-2">问题 / 最近修改</th>
-                            <th className="px-4 py-2">预测输出</th>
+                            <th className="px-4 py-2">期望输出</th>
                             <th className="px-4 py-2">来源</th>
                           </tr>
                         </thead>
@@ -740,7 +833,10 @@ function DraftWorkspace() {
                                 className={`cursor-pointer border-t hover:bg-accent/40 ${selectedId === record.id ? "bg-accent/50" : ""}`}
                                 onClick={() => void selectRecord(record)}
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter") void selectRecord(record);
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    void selectRecord(record);
+                                  }
                                 }}
                               >
                                 <td className="px-4 py-3">{record.position}</td>
@@ -776,17 +872,35 @@ function DraftWorkspace() {
                     {pager(total, recordPage, (page) => void changeRecordPage(page), 20)}
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>编辑记录</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {selected
-                        ? `${sourceLabel(selected)} · 第 ${selected.position} 条`
-                        : "在左侧表格选择记录后，可在这里编辑长文本和 Metadata。"}
-                    </p>
+                <Card
+                  ref={editorPanelRef}
+                  className="draft-editor-panel min-w-0"
+                  aria-label="记录编辑区"
+                >
+                  <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 px-5 py-[18px]">
+                    <div className="min-w-0">
+                      <CardTitle className="text-[15px]">
+                        {selected ? "编辑记录" : "选择一条记录"}
+                      </CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {selected
+                          ? `${sourceLabel(selected)} · 第 ${selected.position} 条`
+                          : "在左侧表格选择记录后，可在这里编辑长文本和 Metadata。"}
+                      </p>
+                    </div>
+                    {selected && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy || conflict}
+                        onClick={() => void collapseRecord()}
+                      >
+                        收起
+                      </Button>
+                    )}
                   </CardHeader>
                   {selected && edit && (
-                    <CardContent className="grid gap-5">
+                    <CardContent className="grid gap-5 border-t p-5">
                       <div className="grid gap-2">
                         <Label htmlFor="draft-question">问题</Label>
                         <Textarea
@@ -798,7 +912,7 @@ function DraftWorkspace() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="draft-answer">预测输出</Label>
+                        <Label htmlFor="draft-answer">期望输出</Label>
                         <Textarea
                           id="draft-answer"
                           rows={5}
@@ -811,13 +925,13 @@ function DraftWorkspace() {
                       </div>
                       <div className="grid gap-2">
                         <Label>Metadata</Label>
-                        <div className="grid grid-cols-[1fr_1fr_2rem] gap-2 text-xs text-muted-foreground">
+                        <div className="draft-metadata-row gap-2 text-xs text-muted-foreground">
                           <span>字段名</span>
                           <span>值</span>
                           <span />
                         </div>
                         {edit.metadata.map((entry, index) => (
-                          <div key={index} className="grid grid-cols-[1fr_1fr_2rem] gap-2">
+                          <div key={index} className="draft-metadata-row gap-2">
                             <Input
                               aria-label={`第 ${index + 1} 项 Metadata 字段名`}
                               placeholder="例如：渠道"
@@ -888,7 +1002,7 @@ function DraftWorkspace() {
                           variant="ghost"
                           className="text-destructive"
                           disabled={!canEdit || busy || removedRecord}
-                          onClick={() => void removeRecord()}
+                          onClick={() => setConfirmTarget("record")}
                         >
                           移除记录
                         </Button>
@@ -898,8 +1012,13 @@ function DraftWorkspace() {
                 </Card>
               </div>
             ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
+              <div
+                id="draft-workspace-panel"
+                role="tabpanel"
+                aria-labelledby="draft-sources-tab"
+                className="draft-sources-layout"
+              >
+                <Card className="min-w-0">
                   <CardHeader>
                     <CardTitle>1. 选择资料文件</CardTitle>
                     <p className="text-sm text-muted-foreground">
@@ -1037,7 +1156,7 @@ function DraftWorkspace() {
                     {pager(files.data?.total ?? 0, filePage, setFilePage, 10)}
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="min-w-0">
                   <CardHeader>
                     <CardTitle>2. 选择记录</CardTitle>
                     <p className="text-sm text-muted-foreground">
@@ -1153,6 +1272,37 @@ function DraftWorkspace() {
           </>
         )}
       </StateView>
+      <AlertDialog
+        open={confirmTarget !== null}
+        onOpenChange={(open) => !open && !busy && setConfirmTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmTarget === "draft" ? "删除当前草稿" : "移除记录"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmTarget === "draft"
+                ? "未发布的共享修改无法恢复；已发布版本不受影响。"
+                : `从当前草稿移除第 ${selected?.position ?? "?"} 条记录。此行尚未保存的输入也会丢失。`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={busy || (confirmTarget === "record" && !selected)}
+              onClick={(event) => {
+                event.preventDefault();
+                if (confirmTarget === "draft") void discard();
+                if (confirmTarget === "record") void removeRecord();
+              }}
+            >
+              {busy ? "正在处理…" : confirmTarget === "draft" ? "删除草稿" : "移除记录"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

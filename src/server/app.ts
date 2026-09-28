@@ -1778,6 +1778,14 @@ export async function buildApp(
     parentVersionId: row.parent_version_id
       ? String(row.parent_version_id)
       : null,
+    parentVersionLabel: row.parent_version_label
+      ? String(row.parent_version_label)
+      : null,
+    createdBy: row.created_by ? String(row.created_by) : null,
+    createdByName: row.created_by
+      ? String(row.created_by_name ?? row.created_by_username ?? row.created_by)
+      : null,
+    createdAt: row.created_at ?? null,
     name: String(row.name),
     purpose: String(row.purpose),
     status: String(row.status),
@@ -1798,11 +1806,14 @@ export async function buildApp(
       : null,
   });
   const draftSelect = `SELECT d.*, ts.status AS test_set_status,
-    v.status AS parent_status, u.display_name AS updated_by_name,
-    u.username AS updated_by_username FROM collaborative_draft d
+    v.status AS parent_status, v.version_label AS parent_version_label,
+    u.display_name AS updated_by_name, u.username AS updated_by_username,
+    creator.display_name AS created_by_name,
+    creator.username AS created_by_username FROM collaborative_draft d
     LEFT JOIN test_set ts ON ts.id=d.test_set_id
     LEFT JOIN test_set_version v ON v.id=d.parent_version_id
-    LEFT JOIN app_user u ON u.id=d.updated_by`;
+    LEFT JOIN app_user u ON u.id=d.updated_by
+    LEFT JOIN app_user creator ON creator.id=d.created_by`;
   const draftWrite = async (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -1940,8 +1951,8 @@ export async function buildApp(
         const draftId = opaqueId("collabdraft");
         const inserted = await client.query(
           `INSERT INTO collaborative_draft
-          (id,project_id,test_set_id,parent_version_id,name,purpose,updated_by)
-          VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id`,
+          (id,project_id,test_set_id,parent_version_id,name,purpose,updated_by,created_by,created_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$7,now()) ON CONFLICT DO NOTHING RETURNING id`,
           [
             draftId,
             request.params.projectId,

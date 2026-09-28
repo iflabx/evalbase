@@ -1256,10 +1256,14 @@ CREATE TABLE IF NOT EXISTS collaborative_draft (
   revision bigint NOT NULL DEFAULT 0,
   updated_by text NOT NULL REFERENCES app_user(id),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES app_user(id),
+  created_at timestamptz,
   published_version_id text REFERENCES test_set_version(id),
   CHECK (test_set_id IS NOT NULL OR parent_version_id IS NULL),
   CHECK (status <> 'published' OR published_version_id IS NOT NULL)
 );
+ALTER TABLE collaborative_draft ADD COLUMN IF NOT EXISTS created_by text REFERENCES app_user(id);
+ALTER TABLE collaborative_draft ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE UNIQUE INDEX IF NOT EXISTS collaborative_draft_active_parent
   ON collaborative_draft (project_id,test_set_id,parent_version_id)
   WHERE status = 'editing' AND parent_version_id IS NOT NULL;

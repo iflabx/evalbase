@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Database, FileText, Settings } from "lucide-react";
+import { Activity, ChevronDown, Database, FileText, Settings } from "lucide-react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -68,7 +68,7 @@ export function AppSidebar() {
         <SidebarHeader className="px-3 py-4">
           <Link to="/" className="flex items-center gap-2">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Database className="size-4" />
+              <Activity className="size-4" />
             </div>
             {!collapsed && (
               <div className="leading-tight">
@@ -166,12 +166,24 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === "/settings"}>
-                <a
-                  href={`/settings${projectId ? `?project=${encodeURIComponent(projectId)}` : ""}`}
+                <Link
+                  to="/settings"
+                  search={{
+                    project: projectId ?? "",
+                    section:
+                      pathname === "/settings" &&
+                      (location.search.section === "profile" ||
+                        location.search.section === "info" ||
+                        location.search.section === "members")
+                        ? location.search.section
+                        : projects.isSuccess && !projectId
+                          ? "info"
+                          : undefined,
+                  }}
                 >
                   <Settings className="size-4" />
                   {!collapsed && <span>设置</span>}
-                </a>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

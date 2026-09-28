@@ -72,7 +72,19 @@ function ProjectsPage() {
           ) : isAdmin ? (
             <EmptyBlock title="暂无项目，可新建项目。" />
           ) : (
-            <EmptyBlock title="尚未加入任何项目。请等待管理员邀请，并前往设置 → 信息接受邀请。" />
+            <div className="project-invite-stack">
+              <section className="member-card project-empty-card">
+                <div className="member-card-head">
+                  <h2>尚未加入任何项目</h2>
+                  <p>请让管理员邀请注册时使用的邮箱，然后在「设置 → 信息」接受邀请。</p>
+                  <Button asChild className="mt-4">
+                    <Link to="/settings" search={{ project: "", section: "info" }}>
+                      查看项目邀请
+                    </Link>
+                  </Button>
+                </div>
+              </section>
+            </div>
           )
         }
       >

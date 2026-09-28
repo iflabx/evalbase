@@ -1,0 +1,84 @@
+/* Frozen draft workspace proportions, using the frontend-v1 color tokens. */
+.draft-workspace {
+  min-width: 0;
+  container-type: inline-size;
+}
+.draft-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.draft-identity {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+}
+.draft-tabs {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.draft-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 12px 2px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.draft-tabs button.active {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+  font-weight: 600;
+}
+.draft-tabs button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.draft-tabs span {
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: var(--muted);
+  font-size: 11px;
+}
+.draft-record-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+.draft-record-layout > *,
+.draft-sources-layout > * {
+  min-width: 0;
+}
+.draft-editor-panel {
+  position: sticky;
+  top: 20px;
+}
+.draft-sources-layout {
+  display: grid;
+  gap: 20px;
+}
+.draft-metadata-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 2rem;
+}
+@container (max-width: 1080px) {
+  .draft-record-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .draft-editor-panel {
+    position: static;
+  }
+}
+@container (max-width: 680px) {
+  .draft-identity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .draft-tabs {
+    gap: 14px;
+  }
+}

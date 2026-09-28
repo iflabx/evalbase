@@ -65,9 +65,17 @@ export function AccountGate({ setup }: { setup: boolean }) {
         setConfirm("");
       } else if (activeMode === "register") {
         await registerAccount({ email: email.trim(), password, confirmPassword: confirm });
-        setMode("login");
-        setPassword("");
-        setConfirm("");
+        try {
+          await login(email.trim(), password);
+          sessionStorage.removeItem(loginEmailKey);
+          resetWorkspaceSession();
+          await queryClient.invalidateQueries({ queryKey: ["session"] });
+        } catch {
+          setMode("login");
+          setPassword("");
+          setConfirm("");
+          setError("账号已注册，请登录。");
+        }
       } else {
         await login(email.trim(), password);
         sessionStorage.removeItem(loginEmailKey);

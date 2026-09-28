@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
+import { EmptyBlock, ErrorBlock, PageHeader, StateView } from "@/components/state-view";
 import {
   listTestSets,
   listSoloTestSetTrash,
@@ -39,7 +39,7 @@ import {
   type TestSetTrashEntry,
 } from "@/services/workspace";
 import { Pagination } from "@/routes/index";
-import { createSharedDraft, listSharedDrafts } from "@/services/drafts";
+import { createSharedDraft, listSharedDrafts, type SharedDraft } from "@/services/drafts";
 
 const PAGE_SIZE = 10;
 
@@ -58,6 +58,45 @@ function formatUpdatedAt(value: string) {
   if (daysAgo === 0) return `今天 ${time}`;
   if (daysAgo === 1) return `昨天 ${time}`;
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDraftAt(value: string | null) {
+  if (!value) return "未记录";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未记录";
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function DerivedDraftNote({ drafts, projectId }: { drafts: SharedDraft[]; projectId: string }) {
+  if (!drafts.length) return null;
+  return (
+    <div className="mt-2 flex items-start gap-2 pl-6 text-xs leading-5 text-muted-foreground">
+      <Badge variant="outline" className="shrink-0 border-primary/30 bg-primary/5 text-primary">
+        草稿中 {drafts.length}
+      </Badge>
+      <div className="min-w-0 space-y-1">
+        {drafts.map((draft) => (
+          <Link
+            key={draft.id}
+            className="block text-primary hover:underline"
+            to="/projects/$projectId/test-sets/drafts/$draftId"
+            params={{ projectId, draftId: draft.id }}
+          >
+            {draft.suspended ? "已暂停 · " : ""}基于 {draft.parentVersionLabel ?? "未知版本"} ·
+            最近由 {draft.updatedByName || "未记录"} 于 {formatDraftAt(draft.updatedAt)} 编辑 ·
+            继续编辑草稿
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export const Route = createFileRoute("/projects/$projectId/test-sets")({
@@ -113,6 +152,7 @@ function TestSetsPage() {
       }),
   });
   const rows = testSets.data?.items ?? [];
+  const newDrafts = drafts.data?.filter((draft) => !draft.testSetId) ?? [];
   const total = testSets.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -154,7 +194,47 @@ function TestSetsPage() {
           </>
         }
       />
-      <div className="relative mb-4 w-64">
+      {access.canWrite && drafts.isError && (
+        <div className="mb-4">
+          <ErrorBlock message="无法读取草稿，请重试。" onRetry={() => void drafts.refetch()} />
+        </div>
+      )}
+      {access.canWrite && newDrafts.length > 0 && (
+        <section aria-label="未发布的测试集草稿" className="mb-4">
+          <Card className="min-w-0 rounded-md">
+            <CardContent className="pt-5">
+              <h2 className="mb-3 text-base font-semibold">未发布的测试集草稿</h2>
+              <div className="divide-y rounded-md border">
+                {newDrafts.map((draft) => (
+                  <div
+                    key={draft.id}
+                    className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">{draft.name || "未命名草稿"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        创建者 {draft.createdByName || "未记录"} · 创建于{" "}
+                        {formatDraftAt(draft.createdAt)} · 最近由 {draft.updatedByName || "未记录"}{" "}
+                        于 {formatDraftAt(draft.updatedAt)} 编辑
+                        {draft.suspended ? " · 已暂停" : ""}
+                      </p>
+                    </div>
+                    <Button size="sm" asChild>
+                      <Link
+                        to="/projects/$projectId/test-sets/drafts/$draftId"
+                        params={{ projectId, draftId: draft.id }}
+                      >
+                        继续编辑草稿
+                      </Link>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+      <div className="relative mb-4 w-full max-w-64">
         <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
         <Input
           aria-label="搜索测试集"
@@ -167,41 +247,6 @@ function TestSetsPage() {
           }}
         />
       </div>
-      {access.canWrite && Boolean(drafts.data?.length) && (
-        <Card className="mb-4">
-          <CardContent className="pt-5">
-            <h2 className="mb-3 text-base font-semibold">未完成草稿</h2>
-            <div className="divide-y rounded-md border">
-              {drafts.data?.map((draft) => (
-                <div
-                  key={draft.id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {draft.testSetId
-                        ? `${draft.name} · 基于父版本的草稿`
-                        : draft.name || "新建测试集草稿"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {draft.suspended ? "已暂停 · " : ""}最近由 {draft.updatedByName} 于{" "}
-                      {formatUpdatedAt(draft.updatedAt)} 保存
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link
-                      to="/projects/$projectId/test-sets/drafts/$draftId"
-                      params={{ projectId, draftId: draft.id }}
-                    >
-                      继续编辑草稿
-                    </Link>
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
       <StateView
         isLoading={testSets.isLoading}
         error={testSets.error}
@@ -222,8 +267,8 @@ function TestSetsPage() {
         }
       >
         {(items) => (
-          <Card>
-            <CardContent className="overflow-x-auto p-0">
+          <Card className="min-w-0">
+            <CardContent className="max-w-full overflow-x-auto p-0">
               <table className="w-full min-w-[980px] text-sm">
                 <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                   <tr>
@@ -244,6 +289,14 @@ function TestSetsPage() {
                           <FileText className="size-4 text-primary" />
                           <span className="font-medium">{item.name}</span>
                         </div>
+                        {access.canWrite && (
+                          <DerivedDraftNote
+                            drafts={
+                              drafts.data?.filter((draft) => draft.testSetId === item.id) ?? []
+                            }
+                            projectId={projectId}
+                          />
+                        )}
                       </td>
                       <td className="mono px-4 py-3">{item.currentVersion}</td>
                       <td className="mono px-4 py-3">{item.recordCount}</td>
@@ -272,19 +325,6 @@ function TestSetsPage() {
                               查看
                             </Link>
                           </Button>
-                          {access.canWrite &&
-                            drafts.data
-                              ?.filter((draft) => draft.testSetId === item.id)
-                              .map((draft) => (
-                                <Button key={draft.id} variant="outline" size="sm" asChild>
-                                  <Link
-                                    to="/projects/$projectId/test-sets/drafts/$draftId"
-                                    params={{ projectId, draftId: draft.id }}
-                                  >
-                                    继续编辑草稿
-                                  </Link>
-                                </Button>
-                              ))}
                           {access.canManage && (
                             <Button
                               variant="outline"

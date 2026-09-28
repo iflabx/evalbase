@@ -136,11 +136,36 @@ describe("V2-03 shared draft and publication", () => {
     );
     expect(fresh.map((r) => r.statusCode)).toEqual([201, 201]);
     expect(fresh[0].json().draft.id).not.toBe(fresh[1].json().draft.id);
+    expect(fresh[0].json().draft).toMatchObject({
+      createdByName: "管理员",
+      parentVersionLabel: null,
+    });
+    expect(fresh[0].json().draft.createdAt).toBeTruthy();
+    await db.query(
+      "UPDATE collaborative_draft SET created_by=NULL,created_at=NULL WHERE id=$1",
+      [fresh[1].json().draft.id],
+    );
+    const newDrafts = await app.inject({
+      method: "GET",
+      url: base(),
+      headers: { cookie: admin.cookie },
+    });
+    expect(newDrafts.statusCode).toBe(200);
+    expect(
+      newDrafts
+        .json()
+        .drafts.find(
+          (draft: { id: string }) => draft.id === fresh[1].json().draft.id,
+        ),
+    ).toMatchObject({
+      createdByName: null,
+      createdAt: null,
+    });
     const draftId: string = fresh[0].json().draft.id;
     const name = await app.inject({
       method: "PATCH",
       url: `${base()}/${draftId}`,
-      headers: headers(),
+      headers: headers(editor),
       payload: {
         field: "name",
         value: " 合成测试集 ",
@@ -148,6 +173,10 @@ describe("V2-03 shared draft and publication", () => {
       },
     });
     expect(name.statusCode, name.body).toBe(200);
+    expect(name.json().draft).toMatchObject({
+      createdByName: "管理员",
+      updatedByName: "editor",
+    });
     const added = await app.inject({
       method: "POST",
       url: `${base()}/${draftId}/records`,
@@ -199,6 +228,10 @@ describe("V2-03 shared draft and publication", () => {
     );
     expect(shared.map((r) => r.statusCode).sort()).toEqual([200, 201]);
     expect(shared[0].json().draft.id).toBe(shared[1].json().draft.id);
+    expect(shared[0].json().draft).toMatchObject({
+      parentVersionLabel: "v1",
+      createdByName: "editor",
+    });
     const sharedId: string = shared[0].json().draft.id;
     const loaded = await app.inject({
       method: "GET",
@@ -634,7 +667,11 @@ describe("V2-03 shared draft and publication", () => {
     });
     expect(loaded.statusCode, loaded.body).toBe(200);
     expect(loaded.json().draft.name).toBe("重启后继续");
-    expect(loaded.json().draft.updatedByName).toBeTruthy();
+    expect(loaded.json().draft).toMatchObject({
+      createdByName: "管理员",
+      updatedByName: "editor",
+      createdAt: created.json().draft.createdAt,
+    });
   });
 
   it("retries a failed publication after restart without a partial version or lost label", async () => {

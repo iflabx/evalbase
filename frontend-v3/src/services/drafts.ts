@@ -5,6 +5,10 @@ export type SharedDraft = {
   projectId: string;
   testSetId: string | null;
   parentVersionId: string | null;
+  parentVersionLabel: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string | null;
   name: string;
   purpose: string;
   status: "editing" | "published";

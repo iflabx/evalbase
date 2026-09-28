@@ -57,12 +57,21 @@ for (const role of ["user", "admin"] as const) {
     );
     await page.getByRole("button", { name: "项目成员" }).click();
     await expect(page.getByText("成员与权限")).toBeVisible();
+    await expect(page).toHaveURL(/section=members/);
+    await page.reload();
+    await expect(page.getByText("成员与权限")).toBeVisible();
     if (role === "admin") {
       await page.getByLabel("当前项目").selectOption("p1");
-      await expect(page).toHaveURL(/\/settings\?project=p1/);
+      await expect(page).toHaveURL(/\/settings\?project=p1&section=members/);
       await expect(
         page.getByRole("button", { name: "切换项目" }),
       ).toContainText("项目甲");
     }
+    await page.getByRole("button", { name: "信息" }).click();
+    await expect(page).toHaveURL(/section=info/);
+    await page.goBack();
+    await expect(page.getByText("成员与权限")).toBeVisible();
+    await page.goForward();
+    await expect(page.getByRole("heading", { name: "项目邀请" })).toBeVisible();
   });
 }

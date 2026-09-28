@@ -16,16 +16,23 @@ import {
   revokeInvitation,
   changeMemberRole,
   removeMember,
+  type Invitation,
 } from "@/services/account";
 import { listProjects } from "@/services/workspace";
 
+type Section = "profile" | "info" | "members";
 export const Route = createFileRoute("/settings")({
   validateSearch: (search: Record<string, unknown>) => ({
     project: typeof search["project"] === "string" ? search["project"] : "",
+    section:
+      search["section"] === "profile" ||
+      search["section"] === "info" ||
+      search["section"] === "members"
+        ? (search["section"] as Section)
+        : undefined,
   }),
   component: SettingsPage,
 });
-type Section = "profile" | "info" | "members";
 const palette = ["#2563eb", "#9333ea", "#0f766e", "#b45309", "#be123c", "#0369a1", "#4d7c0f"];
 const roleName = (role: string) =>
   role === "editor" ? "编辑者" : role === "viewer" ? "查看者" : "管理员";
@@ -44,8 +51,7 @@ function errorText(cause: unknown) {
 function SettingsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [section, setSection] = useState<Section>("profile");
-  const { project: projectId } = Route.useSearch();
+  const { project: projectId, section: requestedSection } = Route.useSearch();
   const projects = useQuery({
     queryKey: ["projects", "settings"],
     queryFn: () => listProjects({ limit: 100, offset: 0 }),
@@ -53,6 +59,15 @@ function SettingsPage() {
   const available = projects.data?.items ?? [];
   const activeId = available.some((p) => p.id === projectId) ? projectId : (available[0]?.id ?? "");
   const project = available.find((p) => p.id === activeId);
+  const section: Section =
+    requestedSection === "members" && projects.isSuccess && !activeId
+      ? "info"
+      : (requestedSection ?? (projects.isSuccess && !activeId ? "info" : "profile"));
+  useEffect(() => {
+    if (projects.isSuccess && !activeId && requestedSection === "members") {
+      void navigate({ to: "/settings", search: { project: "", section: "info" }, replace: true });
+    }
+  }, [projects.isSuccess, activeId, requestedSection, navigate]);
   const session = useQuery({ queryKey: ["session"], queryFn: currentSession });
   const isAdmin = session.data?.actor.role === "admin";
   const me = useQuery({ queryKey: ["me"], queryFn: myAccount });
@@ -112,14 +127,95 @@ function SettingsPage() {
     );
     if (sent) setEmail("");
   }
-  function setActiveProject(id: string) {
-    void navigate({ to: "/settings", search: { project: id }, replace: true });
+  function openSection(next: Section) {
+    setNotice("");
+    void navigate({ to: "/settings", search: { project: activeId, section: next } });
   }
+  function setActiveProject(id: string) {
+    setNotice("");
+    void navigate({ to: "/settings", search: { project: id, section } });
+  }
+  const pendingInvites = invitations.data?.filter((invite) => invite.status === "pending") ?? [];
+  const pastInvites = invitations.data?.filter((invite) => invite.status !== "pending") ?? [];
   const initial = (name.trim().charAt(0) || "用").toUpperCase();
+
+  function invitationRow(invite: Invitation) {
+    const removed =
+      invite.status === "accepted" &&
+      members.isSuccess &&
+      !members.data?.some((member) => member.email === invite.email);
+    const status =
+      invite.status === "pending"
+        ? "待接受"
+        : invite.status === "expired"
+          ? "已过期"
+          : invite.status === "revoked"
+            ? "已撤销"
+            : removed
+              ? "已接受 · 成员已移除"
+              : "已接受";
+    return (
+      <div className="member-row" key={invite.id}>
+        <div className="member-person">
+          <span className="member-avatar" aria-hidden="true">
+            ✉
+          </span>
+          <div>
+            <b>{invite.email}</b>
+            <small>邀请有效期至 {new Date(invite.expiresAt).toLocaleDateString()}</small>
+          </div>
+        </div>
+        <span className="role-chip">
+          {roleName(invite.role)} · {status}
+        </span>
+        <div className="member-actions">
+          {invite.status === "pending" && (
+            <Button
+              className="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  () => revokeInvitation(activeId, invite.id),
+                  [["invitations", activeId]],
+                  "邀请已撤销。",
+                )
+              }
+            >
+              撤销
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl">
-      <PageHeader title="设置" />
+      <PageHeader
+        title="设置"
+        description={
+          section === "profile"
+            ? "管理你的显示名称与头像颜色。"
+            : section === "info"
+              ? "查看并接受发给你的项目邀请。"
+              : `${project?.name ?? "当前项目"} · 管理项目成员和访问权限。`
+        }
+        actions={
+          section === "members" && isAdmin && available.length > 1 ? (
+            <label className="settings-project-selector">
+              当前项目
+              <select value={activeId} onChange={(event) => setActiveProject(event.target.value)}>
+                {available.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : undefined
+        }
+      />
       <div className="settings-layout">
         <aside className="settings-nav" aria-label="设置分类">
           <div className="settings-nav-group">
@@ -127,8 +223,7 @@ function SettingsPage() {
             <button
               aria-current={section === "profile" ? "page" : undefined}
               onClick={() => {
-                setSection("profile");
-                setNotice("");
+                openSection("profile");
               }}
             >
               <UserRound />
@@ -137,8 +232,7 @@ function SettingsPage() {
             <button
               aria-current={section === "info" ? "page" : undefined}
               onClick={() => {
-                setSection("info");
-                setNotice("");
+                openSection("info");
               }}
             >
               <Info />
@@ -156,8 +250,7 @@ function SettingsPage() {
               <button
                 aria-current={section === "members" ? "page" : undefined}
                 onClick={() => {
-                  setSection("members");
-                  setNotice("");
+                  openSection("members");
                 }}
               >
                 <UsersRound />
@@ -243,6 +336,18 @@ function SettingsPage() {
               </div>
               {inbox.isLoading ? (
                 <p className="member-empty">正在加载邀请…</p>
+              ) : inbox.isError ? (
+                <p className="member-empty" role="alert">
+                  邀请加载失败。{" "}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-2"
+                    onClick={() => void inbox.refetch()}
+                  >
+                    重试
+                  </Button>
+                </p>
               ) : inbox.data?.length ? (
                 inbox.data.map((invite) => (
                   <div className="member-row" key={invite.id}>
@@ -260,13 +365,14 @@ function SettingsPage() {
                       <Button
                         className="button primary"
                         disabled={busy}
-                        onClick={() =>
-                          void act(
+                        onClick={async () => {
+                          const accepted = await act(
                             () => acceptInvitation(invite.id),
                             [["invitations", "me"], ["projects"]],
                             "已加入项目。",
-                          )
-                        }
+                          );
+                          if (accepted) await navigate({ to: "/" });
+                        }}
                       >
                         接受邀请
                       </Button>
@@ -280,39 +386,45 @@ function SettingsPage() {
           )}
           {section === "members" && activeId && (
             <>
-              {isAdmin && available.length > 1 && (
-                <div className="member-guide">
-                  <label>
-                    当前项目
-                    <select
-                      value={activeId}
-                      onChange={(event) => setActiveProject(event.target.value)}
-                    >
-                      {available.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
               {isAdmin && (
                 <div className="member-guide">
                   <b>如何邀请新成员</b>
                   <p>
-                    点击「邀请成员」，填写已注册账号的邮箱并选择角色。对方登录后可在「设置 →
-                    信息」接受邀请。
+                    点击下方成员卡片右上角「邀请成员」，填写已注册账号的邮箱并选择角色。对方登录后可在「设置
+                    → 信息」接受邀请。
                   </p>
                 </div>
               )}
               <section className="member-card">
-                <div className="member-card-head">
-                  <h2>成员与权限</h2>
-                  <p>查看成员并管理其在当前项目的角色。</p>
+                <div className="member-card-head member-card-head-actions">
+                  <div>
+                    <h2>成员与权限</h2>
+                    <p>查看成员并管理其在当前项目的角色。</p>
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      className="button"
+                      variant="outline"
+                      onClick={() => setInviteOpen((value) => !value)}
+                    >
+                      {inviteOpen ? "取消邀请" : "邀请成员"}
+                    </Button>
+                  )}
                 </div>
                 {members.isLoading ? (
                   <p className="member-empty">正在加载成员…</p>
+                ) : members.isError ? (
+                  <p className="member-empty" role="alert">
+                    成员加载失败。{" "}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-2"
+                      onClick={() => void members.refetch()}
+                    >
+                      重试
+                    </Button>
+                  </p>
                 ) : members.data?.length ? (
                   members.data.map((member) => (
                     <div className="member-row" key={member.id}>
@@ -382,9 +494,6 @@ function SettingsPage() {
               </section>
               {isAdmin && (
                 <>
-                  <Button className="button" onClick={() => setInviteOpen((value) => !value)}>
-                    {inviteOpen ? "收起邀请" : "邀请成员"}
-                  </Button>
                   {inviteOpen && (
                     <section className="member-card">
                       <div className="member-card-head">
@@ -420,59 +529,52 @@ function SettingsPage() {
                   )}
                   <section className="member-card">
                     <div className="member-card-head">
-                      <h2>邀请记录</h2>
-                      <p>历史邀请保留状态；当前成员以上方列表为准。</p>
+                      <h2>待处理邀请</h2>
+                      <p>对方接受后会出现在上方成员列表中。</p>
                     </div>
-                    {invitations.data?.length ? (
-                      invitations.data.map((invite) => (
-                        <div className="member-row" key={invite.id}>
-                          <div className="member-person">
-                            <span className="member-avatar" aria-hidden="true">
-                              ✉
-                            </span>
-                            <div>
-                              <b>{invite.email}</b>
-                              <small>
-                                邀请有效期至 {new Date(invite.expiresAt).toLocaleDateString()}
-                              </small>
-                            </div>
-                          </div>
-                          <span className="role-chip">
-                            {roleName(invite.role)} ·{" "}
-                            {invite.status === "pending"
-                              ? "待接受"
-                              : invite.status === "expired"
-                                ? "已过期"
-                                : invite.status === "revoked"
-                                  ? "已撤销"
-                                  : invite.status === "accepted" &&
-                                      members.isSuccess &&
-                                      !members.data?.some((member) => member.email === invite.email)
-                                    ? "已接受 · 成员已移除"
-                                    : "已接受"}
-                          </span>
-                          <div className="member-actions">
-                            {invite.status === "pending" && (
-                              <Button
-                                className="button"
-                                variant="outline"
-                                disabled={busy}
-                                onClick={() =>
-                                  void act(
-                                    () => revokeInvitation(activeId, invite.id),
-                                    [["invitations", activeId]],
-                                    "邀请已撤销。",
-                                  )
-                                }
-                              >
-                                撤销
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      ))
+                    {invitations.isLoading ? (
+                      <p className="member-empty">正在加载邀请…</p>
+                    ) : invitations.isError ? (
+                      <p className="member-empty" role="alert">
+                        邀请加载失败。{" "}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="ml-2"
+                          onClick={() => void invitations.refetch()}
+                        >
+                          重试
+                        </Button>
+                      </p>
+                    ) : pendingInvites.length ? (
+                      pendingInvites.map(invitationRow)
                     ) : (
-                      <p className="member-empty">目前没有邀请。</p>
+                      <p className="member-empty">暂无待处理邀请。</p>
+                    )}
+                  </section>
+                  <section className="member-card">
+                    <div className="member-card-head">
+                      <h2>邀请记录</h2>
+                      <p>已接受、撤销和过期的邀请；当前成员以上方列表为准。</p>
+                    </div>
+                    {invitations.isLoading ? (
+                      <p className="member-empty">正在加载记录…</p>
+                    ) : invitations.isError ? (
+                      <p className="member-empty" role="alert">
+                        邀请记录加载失败。{" "}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="ml-2"
+                          onClick={() => void invitations.refetch()}
+                        >
+                          重试
+                        </Button>
+                      </p>
+                    ) : pastInvites.length ? (
+                      pastInvites.map(invitationRow)
+                    ) : (
+                      <p className="member-empty">暂无历史邀请。</p>
                     )}
                   </section>
                 </>
