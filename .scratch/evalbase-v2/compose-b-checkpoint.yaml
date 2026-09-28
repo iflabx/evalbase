@@ -15,9 +15,10 @@ services:
       DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_b_owner_checkpoint
       MINIO_BUCKET: evalbase-v2-b-owner-checkpoint
   test:
+    # Automated runs must not seed the Owner's browser checkpoint.
     environment:
-      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_b_owner_checkpoint
-      MINIO_BUCKET: evalbase-v2-b-owner-checkpoint
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_b_automation
+      MINIO_BUCKET: evalbase-v2-b-automation
 networks:
   edge:
     name: evalbase-v2-b-owner-checkpoint-edge

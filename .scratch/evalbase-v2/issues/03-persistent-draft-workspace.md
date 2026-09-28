@@ -91,3 +91,5 @@ DRAFT-01–04、EDIT-01–05、PUB-01–06、DELETE-01–03、COLLAB-01–04 的
 - 自动化：`npm run typecheck`、`npm --prefix frontend-v3 run typecheck`、受影响 `eslint`、`npm --prefix frontend-v3 run build:formal`、`npm run docs:check`、`git diff --check` 均通过。B 隔离 Compose 中，`vitest run tests/integration/v2-collaborative-draft.test.ts tests/integration/v2-accounts.test.ts tests/integration/ticket38-cutover.test.ts` 为 **17/17**；最后的回收触发器修复后再跑 V2-03 文件为 **8/8**。此前单元测试为 **134/134**。完整旧集成测试因旧 Owner 夹具与 A 后权限规则冲突产生 403，未把它计为通过；未跑全量性能/安全与双浏览器实时 UI（实时展示属于 V2-04）。
 - Standards/Spec 两轴复审确认修复了所有 P1。保留 P2：旧 `/api/projects/:projectId/drafts` 路由仍注册，当前 frontend-v3 已无调用；清理不阻断 B，后续可在不改变产品行为时移除。
 - 批次 B 的 `evalbase-v2-b-owner-checkpoint` 隔离环境位于 `127.0.0.1:4217`，包含两个独立新建草稿、两个不同父版本的派生草稿、两份各 55 条来源文件；浏览器已核对 55→54 条跨页排除、保存与继续。**等待 Owner 验收**；验收前保留容器、网络、持久卷、合成数据和 4217 隧道。V2-04 须在 B 通过且另获开发授权后启动；本次没有合并 main、推送 GitHub 或正式部署。
+
+- 2026-09-28：按 Owner 反馈整理批次 B 隔离验收夹具：项目由 7 个收敛为 1 个易读名称的合成项目，账号由 7 个收敛为管理员和编辑者各 1 个；保留该项目的 2 个测试集、草稿和 2 份资料。两种身份均已通过同源登录、项目列表和权限 API 核对。自动化 `test` 服务改用独立数据库与对象桶，避免再次污染 Owner 浏览器验收库；批次 B 仍待 Owner 验收。
