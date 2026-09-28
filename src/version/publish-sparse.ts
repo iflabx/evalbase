@@ -788,9 +788,23 @@ export async function publishSparseVersion(
     );
     if (collaborativeDraft) {
       const savedRows = await client.query(
-        `SELECT id,case_id,field_attribution,updated_by,updated_at
+        `SELECT id,case_id,question,expected_output,metadata,field_attribution,updated_by,updated_at
         FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false ORDER BY position`,
         [request.draftId],
+      );
+      const parentAttributions = await client.query(
+        `SELECT case_id,field_attribution
+        FROM collaborative_draft_attribution WHERE version_id=$1`,
+        [request.parentVersionId],
+      );
+      const attributionByCase = new Map(
+        parentAttributions.rows.map((row) => [
+          String(row.case_id),
+          isObject(row.field_attribution) ? row.field_attribution : {},
+        ]),
+      );
+      const originalByCase = new Map(
+        parents.rows.map((row) => [String(row.case_id), storedRecord(row)]),
       );
       const added = changes.filter((change) => change.operation === "add");
       let nextAdded = 0;
@@ -799,6 +813,31 @@ export async function publishSparseVersion(
           ? String(row.case_id)
           : added[nextAdded++]?.caseId;
         if (!caseId) invalid("draft_revision_conflict");
+        const attribution: Record<string, unknown> = isObject(
+          row.field_attribution,
+        )
+          ? { ...row.field_attribution }
+          : {};
+        const original = originalByCase.get(caseId);
+        if (original) {
+          const inherited = attributionByCase.get(caseId) ?? {};
+          for (const field of [
+            "question",
+            "expectedOutput",
+            "metadata",
+          ] as const) {
+            const current =
+              field === "question"
+                ? String(row.question)
+                : field === "expectedOutput"
+                  ? String(row.expected_output)
+                  : row.metadata;
+            if (canonicalJson(current) === canonicalJson(original[field])) {
+              if (inherited[field] === undefined) delete attribution[field];
+              else attribution[field] = inherited[field];
+            }
+          }
+        }
         await client.query(
           `INSERT INTO collaborative_draft_attribution
           (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)
@@ -807,7 +846,7 @@ export async function publishSparseVersion(
             versionId,
             row.id,
             caseId,
-            row.field_attribution,
+            attribution,
             row.updated_by,
             row.updated_at,
           ],

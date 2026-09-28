@@ -19,6 +19,7 @@ describe("V2-03 shared draft and publication", () => {
   let viewer: Session;
   let publishedRoot: { testSetId: string; versionId: string };
   let publishedLeafVersionId: string;
+  let publishedLeafDraftId: string;
   let publishedThirdVersionId: string;
   const db = createPool(testUrl);
   const headers = (session: Session = admin) => ({
@@ -206,6 +207,12 @@ describe("V2-03 shared draft and publication", () => {
     });
     expect(loaded.json().records).toHaveLength(1);
     const inheritedId: string = loaded.json().records[0].id;
+    const adminId = (
+      await db.query("SELECT id FROM app_user WHERE email='admin@example.test'")
+    ).rows[0].id;
+    expect(loaded.json().records[0].fieldAttribution.metadata.userId).toBe(
+      adminId,
+    );
     const different = await Promise.all([
       app.inject({
         method: "PATCH",
@@ -225,6 +232,28 @@ describe("V2-03 shared draft and publication", () => {
       }),
     ]);
     expect(different.map((r) => r.statusCode)).toEqual([200, 200]);
+    const metadataEdited = await app.inject({
+      method: "PATCH",
+      url: `${base()}/${sharedId}/records/${inheritedId}`,
+      headers: headers(editor),
+      payload: {
+        field: "metadata",
+        value: [{ key: "临时", value: "修改" }],
+        expectedFieldRevision: 0,
+      },
+    });
+    expect(metadataEdited.statusCode, metadataEdited.body).toBe(200);
+    const metadataReverted = await app.inject({
+      method: "PATCH",
+      url: `${base()}/${sharedId}/records/${inheritedId}`,
+      headers: headers(editor),
+      payload: {
+        field: "metadata",
+        value: [{ key: "可空", value: "" }],
+        expectedFieldRevision: 1,
+      },
+    });
+    expect(metadataReverted.statusCode, metadataReverted.body).toBe(200);
     const same = await app.inject({
       method: "PATCH",
       url: `${base()}/${sharedId}/records/${inheritedId}`,
@@ -239,11 +268,11 @@ describe("V2-03 shared draft and publication", () => {
     });
     const revision: number = ready.json().draft.revision;
     const both = await Promise.all(
-      [0, 1].map(() =>
+      [admin, editor].map((session) =>
         app.inject({
           method: "POST",
           url: `${base()}/${sharedId}/publish`,
-          headers: headers(editor),
+          headers: headers(session),
           payload: { revision },
         }),
       ),
@@ -251,6 +280,7 @@ describe("V2-03 shared draft and publication", () => {
     expect(both.map((r) => r.statusCode).sort()).toEqual([200, 201]);
     expect(both[0].json().version.id).toBe(both[1].json().version.id);
     publishedLeafVersionId = both[0].json().version.id;
+    publishedLeafDraftId = sharedId;
     const persisted = await db.query(
       `SELECT count(*)::integer AS count FROM test_set_version WHERE parent_version_id=$1`,
       [versionId],
@@ -271,6 +301,9 @@ describe("V2-03 shared draft and publication", () => {
     );
     expect(attribution.rows[0].field_attribution.expectedOutput.userId).toBe(
       byEmail.get("editor@example.test"),
+    );
+    expect(attribution.rows[0].field_attribution.metadata.userId).toBe(
+      byEmail.get("admin@example.test"),
     );
   });
   it("hides draft bodies from viewers and preserves published blank metadata", async () => {
@@ -348,6 +381,34 @@ describe("V2-03 shared draft and publication", () => {
       payload: { expectedRowRevision: current.json().records[0].rowRevision },
     });
     expect(removed.statusCode).toBe(204);
+    const removedSave = await app.inject({
+      method: "PATCH",
+      url: `${base()}/${draftId}/records/${rowId}`,
+      headers: headers(editor),
+      payload: {
+        field: "expectedOutput",
+        value: "本地输入",
+        expectedFieldRevision: 0,
+      },
+    });
+    expect(removedSave.statusCode).toBe(409);
+    expect(removedSave.json().error.code).toBe("draft_record_removed");
+    const recovered = await app.inject({
+      method: "POST",
+      url: `${base()}/${draftId}/records`,
+      headers: headers(editor),
+      payload: {
+        question: "另一位编辑者已保存",
+        expectedOutput: "本地输入",
+        metadata: [{ key: "保留", value: "" }],
+      },
+    });
+    expect(recovered.statusCode, recovered.body).toBe(201);
+    expect(recovered.json().record).toMatchObject({
+      question: "另一位编辑者已保存",
+      expectedOutput: "本地输入",
+      metadata: [{ key: "保留", value: "" }],
+    });
   });
 
   it("selects paged source records once and preserves exclusions", async () => {
@@ -751,6 +812,14 @@ describe("V2-03 shared draft and publication", () => {
     });
     expect(paused.statusCode, paused.body).toBe(200);
     expect(paused.json().draft.suspended).toBe(true);
+    expect(paused.json().records).toEqual([]);
+    expect(paused.json().total).toBe(0);
+    const blockedSources = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}/selected-sources`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(blockedSources.statusCode).toBe(409);
     const blocked = await app.inject({
       method: "PATCH",
       url: `${base()}/${draftId}`,
@@ -772,6 +841,29 @@ describe("V2-03 shared draft and publication", () => {
       payload: { field: "purpose", value: "resumed", expectedFieldRevision: 0 },
     });
     expect(resumed.statusCode, resumed.body).toBe(200);
+    const recoveredBody = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(recoveredBody.json().records.length).toBeGreaterThan(0);
+    await db.query(
+      "UPDATE test_set_version SET status='tombstoned' WHERE id=$1",
+      [publishedRoot.versionId],
+    );
+    const replayAfterParentDelete = await app.inject({
+      method: "POST",
+      url: `${base()}/${publishedLeafDraftId}/publish`,
+      headers: headers(editor),
+      payload: { revision: 0 },
+    });
+    expect(
+      replayAfterParentDelete.statusCode,
+      replayAfterParentDelete.body,
+    ).toBe(200);
+    expect(replayAfterParentDelete.json().version.id).toBe(
+      publishedLeafVersionId,
+    );
     const secondTrash = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/solo-test-sets/${publishedRoot.testSetId}/trash`,
@@ -786,6 +878,11 @@ describe("V2-03 shared draft and publication", () => {
       payload: { confirmation: "合成测试集" },
     });
     expect(deleted.statusCode, deleted.body).toBe(200);
+    const publishedState = await db.query(
+      "SELECT status FROM collaborative_draft WHERE id=$1",
+      [publishedLeafDraftId],
+    );
+    expect(publishedState.rows[0].status).toBe("published");
     const terminated = await app.inject({
       method: "GET",
       url: `${base()}/${draftId}`,

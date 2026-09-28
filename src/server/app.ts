@@ -1971,8 +1971,11 @@ export async function buildApp(
         if (inserted.rowCount && body.parentVersionId) {
           const records = await client.query(
             `SELECT vm.position,vm.case_id,vm.case_revision_id,
-            cr.input,cr.expected_output,cr.metadata,cr.origin_kind,cr.origin_ref
+            cr.input,cr.expected_output,cr.metadata,cr.origin_kind,cr.origin_ref,
+            coalesce(attr.field_attribution,'{}'::jsonb) AS inherited_attribution
             FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id=vm.case_revision_id
+            LEFT JOIN collaborative_draft_attribution attr
+              ON attr.version_id=$1 AND attr.case_id=vm.case_id
             ORDER BY vm.ordinal`,
             [body.parentVersionId],
           );
@@ -1988,8 +1991,8 @@ export async function buildApp(
                 : null;
             await client.query(
               `INSERT INTO collaborative_draft_record
-              (draft_id,id,position,case_id,before_revision_id,question,expected_output,metadata,source,updated_by)
-              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+              (draft_id,id,position,case_id,before_revision_id,question,expected_output,metadata,source,updated_by,field_attribution)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
               [
                 draftId,
                 opaqueId("draftrow"),
@@ -2005,6 +2008,7 @@ export async function buildApp(
                 JSON.stringify(readMetadataEntries(row.metadata)),
                 source ? JSON.stringify(source) : null,
                 actor.id,
+                JSON.stringify(row.inherited_attribution),
               ],
             );
           }
@@ -2041,6 +2045,8 @@ export async function buildApp(
       draft.rows[0].status === "terminated"
     )
       return reply.code(404).send({ error: { code: "draft_not_found" } });
+    const summary = draftSummary(draft.rows[0]);
+    if (summary.suspended) return { draft: summary, records: [], total: 0 };
     const limit = Math.min(100, Math.max(1, Number(request.query.limit) || 20));
     const offset = Math.max(0, Number(request.query.offset) || 0);
     const search = String(request.query.search ?? "").slice(0, 200);
@@ -2054,7 +2060,7 @@ export async function buildApp(
       [request.params.draftId, search, limit, offset],
     );
     return {
-      draft: draftSummary(draft.rows[0]),
+      draft: summary,
       records: rows.rows.map(draftRow),
       total: Number(rows.rows[0]?.total ?? 0),
     };
@@ -2128,9 +2134,22 @@ export async function buildApp(
       const body = request.body;
       if (
         !isPlainObject(body) ||
-        Object.keys(body).some((k) => k !== "source") ||
+        Object.keys(body).some(
+          (k) =>
+            !["source", "question", "expectedOutput", "metadata"].includes(k),
+        ) ||
         (body.source !== undefined &&
-          draftFieldValue("source", body.source) === undefined)
+          (body.question !== undefined ||
+            body.expectedOutput !== undefined ||
+            body.metadata !== undefined ||
+            draftFieldValue("source", body.source) === undefined)) ||
+        (body.question !== undefined &&
+          draftFieldValue("question", body.question) === undefined) ||
+        (body.expectedOutput !== undefined &&
+          draftFieldValue("expectedOutput", body.expectedOutput) ===
+            undefined) ||
+        (body.metadata !== undefined &&
+          draftFieldValue("metadata", body.metadata) === undefined)
       )
         return reply
           .code(422)
@@ -2210,9 +2229,10 @@ export async function buildApp(
               .send({ error: { code: "test_set_capacity_exceeded" } });
           }
         }
-        let question = "",
-          expectedOutput = "",
-          metadata: MetadataEntry[] = [];
+        let question = String(body.question ?? ""),
+          expectedOutput = String(body.expectedOutput ?? ""),
+          metadata: MetadataEntry[] =
+            (body.metadata as MetadataEntry[] | undefined) ?? [];
         if (source) {
           const material = await client.query(
             `SELECT sr.value,pv.display_mapping FROM data_asset da
@@ -2240,8 +2260,13 @@ export async function buildApp(
         const rowId = opaqueId("draftrow");
         await client.query(
           `INSERT INTO collaborative_draft_record
-          (draft_id,id,position,question,expected_output,metadata,source,updated_by)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          (draft_id,id,position,question,expected_output,metadata,source,updated_by,field_attribution)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
+            jsonb_build_object(
+              'question',jsonb_build_object('userId',$8::text,'at',now()),
+              'expectedOutput',jsonb_build_object('userId',$8::text,'at',now()),
+              'metadata',jsonb_build_object('userId',$8::text,'at',now())
+            ))`,
           [
             request.params.draftId,
             rowId,
@@ -2744,12 +2769,14 @@ export async function buildApp(
     async (request, reply) => {
       if (!(await draftRead(request, reply, request.params.projectId))) return;
       const draft = await db.query(
-        `SELECT 1 FROM collaborative_draft WHERE id=$1 AND project_id=$2
-        AND status IN ('editing','published')`,
+        `${draftSelect} WHERE d.id=$1 AND d.project_id=$2
+        AND d.status IN ('editing','published')`,
         [request.params.draftId, request.params.projectId],
       );
       if (!draft.rowCount)
         return reply.code(404).send({ error: { code: "draft_not_found" } });
+      if (draftSummary(draft.rows[0]).suspended)
+        return reply.code(409).send({ error: { code: "draft_not_editable" } });
       const rows = await db.query(
         `SELECT source->>'assetId' AS asset_id,
         (source->>'ordinal')::integer AS ordinal FROM collaborative_draft_record
@@ -2925,8 +2952,13 @@ export async function buildApp(
             );
             const inserted = await client.query(
               `INSERT INTO collaborative_draft_record
-              (draft_id,id,position,question,expected_output,metadata,source,updated_by)
-              VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING id`,
+              (draft_id,id,position,question,expected_output,metadata,source,updated_by,field_attribution)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
+                jsonb_build_object(
+                  'question',jsonb_build_object('userId',$8::text,'at',now()),
+                  'expectedOutput',jsonb_build_object('userId',$8::text,'at',now()),
+                  'metadata',jsonb_build_object('userId',$8::text,'at',now())
+                )) ON CONFLICT DO NOTHING RETURNING id`,
               [
                 request.params.draftId,
                 opaqueId("draftrow"),

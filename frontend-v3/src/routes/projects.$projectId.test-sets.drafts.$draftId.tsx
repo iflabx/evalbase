@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -59,8 +59,12 @@ function DraftWorkspace() {
   const [recordFilterInput, setRecordFilterInput] = useState("");
   const [recordPage, setRecordPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string>();
+  const [selectedSnapshot, setSelectedSnapshot] = useState<SharedDraftRecord>();
+  const [removedRecord, setRemovedRecord] = useState(false);
   const [name, setName] = useState<string>();
   const [purpose, setPurpose] = useState<string>();
+  const [nameBaseline, setNameBaseline] = useState<{ value: string; revision: number }>();
+  const [purposeBaseline, setPurposeBaseline] = useState<{ value: string; revision: number }>();
   const [edit, setEdit] = useState<{
     question: string;
     expectedOutput: string;
@@ -75,6 +79,7 @@ function DraftWorkspace() {
   const [fileId, setFileId] = useState<string>();
   const [sourceSearch, setSourceSearch] = useState("");
   const [sourcePage, setSourcePage] = useState(0);
+  const allowNavigation = useRef(false);
   const draftQuery = useQuery({
     queryKey: ["shared-draft", projectId, draftId, recordSearch, recordPage],
     queryFn: () =>
@@ -85,7 +90,19 @@ function DraftWorkspace() {
       }),
   });
   const data = draftQuery.data;
-  const selected = data?.records.find((record) => record.id === selectedId);
+  const unsavedRecordInput = Boolean(
+    selectedSnapshot &&
+    edit &&
+    (edit.question !== selectedSnapshot.question ||
+      edit.expectedOutput !== selectedSnapshot.expectedOutput ||
+      JSON.stringify(edit.metadata.filter((entry) => entry.key.trim() || entry.value)) !==
+        JSON.stringify(selectedSnapshot.metadata)),
+  );
+  const selected =
+    data?.records.find((record) => record.id === selectedId) ??
+    ((removedRecord || unsavedRecordInput) && selectedSnapshot?.id === selectedId
+      ? selectedSnapshot
+      : undefined);
   const files = useQuery({
     queryKey: ["draft-files", projectId, fileSearch, filePage],
     queryFn: () =>
@@ -116,15 +133,19 @@ function DraftWorkspace() {
     if (data && name === undefined) {
       setName(data.draft.name);
       setPurpose(data.draft.purpose);
+      setNameBaseline({ value: data.draft.name, revision: data.draft.nameRevision });
+      setPurposeBaseline({ value: data.draft.purpose, revision: data.draft.purposeRevision });
     }
   }, [data, name]);
   const lastSelectedId = useRef<string | undefined>(undefined);
   useEffect(() => {
+    if (removedRecord) return;
     if (!selected) {
       lastSelectedId.current = undefined;
       return;
     }
     if (selected.id !== lastSelectedId.current) {
+      setSelectedSnapshot(selected);
       lastSelectedId.current = selected.id;
       setEdit({
         question: selected.question,
@@ -134,33 +155,30 @@ function DraftWorkspace() {
           : [{ key: "", value: "" }],
       });
     }
-  }, [selected]);
+  }, [selected, removedRecord]);
   const dirty = Boolean(
     data &&
-    ((name ?? data.draft.name) !== data.draft.name ||
-      (purpose ?? data.draft.purpose) !== data.draft.purpose ||
-      (selected &&
-        edit &&
-        (edit.question !== selected.question ||
-          edit.expectedOutput !== selected.expectedOutput ||
-          JSON.stringify(edit.metadata.filter((entry) => entry.key.trim() || entry.value)) !==
-            JSON.stringify(selected.metadata)))),
+    (removedRecord ||
+      (nameBaseline && name !== undefined && name !== nameBaseline.value) ||
+      (purposeBaseline && purpose !== undefined && purpose !== purposeBaseline.value) ||
+      unsavedRecordInput),
   );
   useEffect(() => {
     if (dirty) setSaveState("dirty");
   }, [dirty]);
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => {
-      if (dirty) event.preventDefault();
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useBlocker({
+    shouldBlockFn: () =>
+      dirty &&
+      !allowNavigation.current &&
+      !window.confirm("草稿有未保存的修改。离开页面会丢失这些输入，确定离开吗？"),
+    enableBeforeUnload: () => dirty && !allowNavigation.current,
+    disabled: !dirty,
+  });
   useEffect(() => {
     if (recordFilterInput === recordSearch) return;
     const timer = window.setTimeout(() => {
       void (async () => {
-        if (dirty && !(await save())) return;
+        if (dirty && !conflict && !(await save())) return;
         setRecordSearch(recordFilterInput);
         setRecordPage(0);
       })();
@@ -169,9 +187,19 @@ function DraftWorkspace() {
   }, [recordFilterInput, recordSearch, dirty]);
   async function refresh() {
     const result = await draftQuery.refetch();
+    if (result.data) {
+      setName(result.data.draft.name);
+      setPurpose(result.data.draft.purpose);
+      setNameBaseline({ value: result.data.draft.name, revision: result.data.draft.nameRevision });
+      setPurposeBaseline({
+        value: result.data.draft.purpose,
+        revision: result.data.draft.purposeRevision,
+      });
+    }
     if (selectedId) {
       const fresh = result.data?.records.find((record) => record.id === selectedId);
-      if (fresh)
+      if (fresh) {
+        setSelectedSnapshot(fresh);
         setEdit({
           question: fresh.question,
           expectedOutput: fresh.expectedOutput,
@@ -179,12 +207,13 @@ function DraftWorkspace() {
             ? fresh.metadata.map((entry) => ({ ...entry }))
             : [{ key: "", value: "" }],
         });
+      }
     }
     await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
     return result.data;
   }
   async function save(): Promise<boolean> {
-    if (!data || busy || conflict) return false;
+    if (!data || busy || conflict || removedRecord) return false;
     const metadata = edit?.metadata.filter((entry) => entry.key.trim() || entry.value) ?? [];
     const problem = metadataProblem(metadata);
     if (problem) {
@@ -196,43 +225,43 @@ function DraftWorkspace() {
     setSaveState("saving");
     setError("");
     try {
-      if ((name ?? data.draft.name) !== data.draft.name)
-        await saveSharedDraftField(projectId, draftId, "name", name ?? "", data.draft.nameRevision);
-      if ((purpose ?? data.draft.purpose) !== data.draft.purpose)
+      if (nameBaseline && name !== undefined && name !== nameBaseline.value)
+        await saveSharedDraftField(projectId, draftId, "name", name, nameBaseline.revision);
+      if (purposeBaseline && purpose !== undefined && purpose !== purposeBaseline.value)
         await saveSharedDraftField(
           projectId,
           draftId,
           "purpose",
-          purpose ?? "",
-          data.draft.purposeRevision,
+          purpose,
+          purposeBaseline.revision,
         );
-      if (selected && edit) {
-        if (edit.question !== selected.question)
+      if (selected && edit && selectedSnapshot?.id === selected.id) {
+        if (edit.question !== selectedSnapshot.question)
           await saveSharedDraftRecordField(
             projectId,
             draftId,
             selected.id,
             "question",
             edit.question,
-            selected.questionRevision,
+            selectedSnapshot.questionRevision,
           );
-        if (edit.expectedOutput !== selected.expectedOutput)
+        if (edit.expectedOutput !== selectedSnapshot.expectedOutput)
           await saveSharedDraftRecordField(
             projectId,
             draftId,
             selected.id,
             "expectedOutput",
             edit.expectedOutput,
-            selected.expectedOutputRevision,
+            selectedSnapshot.expectedOutputRevision,
           );
-        if (JSON.stringify(metadata) !== JSON.stringify(selected.metadata))
+        if (JSON.stringify(metadata) !== JSON.stringify(selectedSnapshot.metadata))
           await saveSharedDraftRecordField(
             projectId,
             draftId,
             selected.id,
             "metadata",
             metadata,
-            selected.metadataRevision,
+            selectedSnapshot.metadataRevision,
           );
       }
       await refresh();
@@ -241,14 +270,22 @@ function DraftWorkspace() {
     } catch (cause) {
       await draftQuery.refetch().catch(() => undefined);
       const code = cause instanceof Error ? cause.message : "";
-      const collided = code === "draft_field_conflict" || code === "draft_row_conflict";
+      const rowRemoved = code === "draft_record_removed";
+      const collided =
+        rowRemoved || code === "draft_field_conflict" || code === "draft_row_conflict";
+      if (rowRemoved) {
+        setSelectedSnapshot(selected);
+        setRemovedRecord(true);
+      }
       setConflict(collided);
       setError(
-        collided
-          ? "同一字段已被其他成员修改。请选择如何处理冲突。"
-          : cause instanceof Error
-            ? cause.message
-            : "保存失败，请重试。",
+        rowRemoved
+          ? "这条记录已被其他成员移除。可将当前输入保存为新记录，或放弃本地输入。"
+          : collided
+            ? "同一字段已被其他成员修改。请选择如何处理冲突。"
+            : cause instanceof Error
+              ? cause.message
+              : "保存失败，请重试。",
       );
       setSaveState("failed");
       return false;
@@ -258,6 +295,7 @@ function DraftWorkspace() {
   }
   async function exit() {
     if (!(await save())) return;
+    allowNavigation.current = true;
     if (data?.draft.testSetId)
       await navigate({
         to: "/projects/$projectId/test-sets/$testSetId",
@@ -274,6 +312,7 @@ function DraftWorkspace() {
       const latest = await getSharedDraft(projectId, draftId, { limit: 1 });
       const result = await publishSharedDraft(projectId, draftId, latest.draft.revision);
       await queryClient.invalidateQueries({ queryKey: ["solo-test-sets", projectId] });
+      allowNavigation.current = true;
       await navigate({
         to: "/projects/$projectId/test-sets/$testSetId",
         params: { projectId, testSetId: result.testSet.id },
@@ -292,6 +331,7 @@ function DraftWorkspace() {
       await discardSharedDraft(projectId, draftId);
       await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
       toast.success("草稿已删除。");
+      allowNavigation.current = true;
       await navigate({ to: "/projects/$projectId/test-sets", params: { projectId } });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "删除失败，请重试。");
@@ -302,6 +342,8 @@ function DraftWorkspace() {
   async function selectRecord(record: SharedDraftRecord) {
     if (dirty && !(await save())) return;
     setSelectedId(record.id);
+    setSelectedSnapshot(record);
+    setRemovedRecord(false);
     setEdit({
       question: record.question,
       expectedOutput: record.expectedOutput,
@@ -315,14 +357,56 @@ function DraftWorkspace() {
     setBusy(true);
     try {
       const created = await addSharedDraftRecord(projectId, draftId);
+      const unfiltered = await getSharedDraft(projectId, draftId, { limit: 1 });
       setRecordFilterInput("");
       setRecordSearch("");
-      setRecordPage(Math.floor((data?.total ?? 0) / 20));
+      setRecordPage(Math.floor((unfiltered.total - 1) / 20));
       await queryClient.invalidateQueries({ queryKey: ["shared-draft", projectId, draftId] });
       setSelectedId(created.record.id);
+      setSelectedSnapshot(created.record);
+      setRemovedRecord(false);
       setEdit({ question: "", expectedOutput: "", metadata: [{ key: "", value: "" }] });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "新增记录失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function recoverRemovedAsNew() {
+    if (!edit || busy) return;
+    const metadata = edit.metadata.filter((entry) => entry.key.trim() || entry.value);
+    const problem = metadataProblem(metadata);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await addSharedDraftRecord(projectId, draftId, {
+        question: edit.question,
+        expectedOutput: edit.expectedOutput,
+        metadata,
+      });
+      const unfiltered = await getSharedDraft(projectId, draftId, { limit: 1 });
+      setRecordFilterInput("");
+      setRecordSearch("");
+      setRecordPage(Math.floor((unfiltered.total - 1) / 20));
+      await queryClient.invalidateQueries({ queryKey: ["shared-draft", projectId, draftId] });
+      setSelectedId(created.record.id);
+      setSelectedSnapshot(created.record);
+      setEdit({
+        question: created.record.question,
+        expectedOutput: created.record.expectedOutput,
+        metadata: created.record.metadata.length
+          ? created.record.metadata.map((entry) => ({ ...entry }))
+          : [{ key: "", value: "" }],
+      });
+      setRemovedRecord(false);
+      setConflict(false);
+      setError("");
+      setSaveState("saved");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "恢复输入失败，请重试。");
     } finally {
       setBusy(false);
     }
@@ -333,6 +417,8 @@ function DraftWorkspace() {
     try {
       await removeSharedDraftRecord(projectId, draftId, selected.id, selected.rowRevision);
       setSelectedId(undefined);
+      setSelectedSnapshot(undefined);
+      setRemovedRecord(false);
       setEdit(undefined);
       await refresh();
     } catch (cause) {
@@ -366,12 +452,81 @@ function DraftWorkspace() {
     }
   }
   async function changeRecordPage(page: number) {
-    if (dirty && !(await save())) return;
+    if (dirty && !conflict && !(await save())) return;
     setRecordPage(page);
   }
   async function changeTab(next: "records" | "sources") {
     if (dirty && !(await save())) return;
     setTab(next);
+  }
+  function keepLocalConflict() {
+    if (!data) return;
+    const latestRecord = data.records.find((record) => record.id === selectedId);
+    if (unsavedRecordInput && !latestRecord) {
+      setError("记录已不在当前搜索结果。请保留本页输入并联系管理员，或清除筛选后重新选择。");
+      return;
+    }
+    setName((current) => (current === nameBaseline?.value ? data.draft.name : current));
+    setPurpose((current) => (current === purposeBaseline?.value ? data.draft.purpose : current));
+    setNameBaseline({ value: data.draft.name, revision: data.draft.nameRevision });
+    setPurposeBaseline({
+      value: data.draft.purpose,
+      revision: data.draft.purposeRevision,
+    });
+    if (latestRecord && selectedSnapshot?.id === latestRecord.id) {
+      setEdit((current) => {
+        if (!current) return current;
+        const oldMetadata = JSON.stringify(
+          current.metadata.filter((entry) => entry.key.trim() || entry.value),
+        );
+        return {
+          question:
+            current.question === selectedSnapshot.question
+              ? latestRecord.question
+              : current.question,
+          expectedOutput:
+            current.expectedOutput === selectedSnapshot.expectedOutput
+              ? latestRecord.expectedOutput
+              : current.expectedOutput,
+          metadata:
+            oldMetadata === JSON.stringify(selectedSnapshot.metadata)
+              ? latestRecord.metadata.length
+                ? latestRecord.metadata.map((entry) => ({ ...entry }))
+                : [{ key: "", value: "" }]
+              : current.metadata,
+        };
+      });
+      setSelectedSnapshot(latestRecord);
+    }
+    setConflict(false);
+    setError("已保留本地修改，请再次点击“保存草稿”提交。");
+  }
+  function loadServerConflict() {
+    if (!data) return;
+    setName(data.draft.name);
+    setPurpose(data.draft.purpose);
+    setNameBaseline({ value: data.draft.name, revision: data.draft.nameRevision });
+    setPurposeBaseline({
+      value: data.draft.purpose,
+      revision: data.draft.purposeRevision,
+    });
+    const latestRecord = data.records.find((record) => record.id === selectedId);
+    setSelectedId(latestRecord?.id);
+    setSelectedSnapshot(latestRecord);
+    setEdit(
+      latestRecord
+        ? {
+            question: latestRecord.question,
+            expectedOutput: latestRecord.expectedOutput,
+            metadata: latestRecord.metadata.length
+              ? latestRecord.metadata.map((entry) => ({ ...entry }))
+              : [{ key: "", value: "" }],
+          }
+        : undefined,
+    );
+    setConflict(false);
+    setError("");
+    setSaveState("saved");
   }
   const canEdit = access.canWrite && data?.draft.status === "editing" && !data.draft.suspended;
   const pager = (total: number, page: number, setPage: (value: number) => void, size: number) => (
@@ -458,37 +613,39 @@ function DraftWorkspace() {
                 className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <p>{error} 输入内容仍保留在页面上。</p>
-                {conflict && (
+                {conflict && removedRecord && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setConflict(false);
-                        setError("已选择保留本地输入。请点击“保存草稿”再次提交。");
-                      }}
+                      disabled={busy}
+                      onClick={() => void recoverRemovedAsNew()}
                     >
-                      保留本地输入
+                      作为新记录保留输入
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setName(draft.name);
-                        setPurpose(draft.purpose);
-                        if (selected)
-                          setEdit({
-                            question: selected.question,
-                            expectedOutput: selected.expectedOutput,
-                            metadata: selected.metadata.length
-                              ? selected.metadata.map((entry) => ({ ...entry }))
-                              : [{ key: "", value: "" }],
-                          });
+                        setSelectedId(undefined);
+                        setSelectedSnapshot(undefined);
+                        setEdit(undefined);
+                        setRemovedRecord(false);
                         setConflict(false);
                         setError("");
                         setSaveState("saved");
                       }}
                     >
+                      放弃本地输入
+                    </Button>
+                  </div>
+                )}
+                {conflict && !removedRecord && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={keepLocalConflict}>
+                      保留本地输入
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={loadServerConflict}>
                       加载服务器内容
                     </Button>
                   </div>
@@ -502,7 +659,7 @@ function DraftWorkspace() {
                   <Input
                     id="draft-name"
                     value={name ?? draft.name}
-                    disabled={!canEdit}
+                    disabled={!canEdit || busy}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="填写测试集名称"
                   />
@@ -512,7 +669,7 @@ function DraftWorkspace() {
                   <Input
                     id="draft-purpose"
                     value={purpose ?? draft.purpose}
-                    disabled={!canEdit}
+                    disabled={!canEdit || busy}
                     onChange={(event) => setPurpose(event.target.value)}
                     placeholder="选填"
                   />
@@ -635,7 +792,7 @@ function DraftWorkspace() {
                         <Textarea
                           id="draft-question"
                           rows={5}
-                          disabled={!canEdit}
+                          disabled={!canEdit || busy}
                           value={edit.question}
                           onChange={(event) => setEdit({ ...edit, question: event.target.value })}
                         />
@@ -645,7 +802,7 @@ function DraftWorkspace() {
                         <Textarea
                           id="draft-answer"
                           rows={5}
-                          disabled={!canEdit}
+                          disabled={!canEdit || busy}
                           value={edit.expectedOutput}
                           onChange={(event) =>
                             setEdit({ ...edit, expectedOutput: event.target.value })
@@ -664,7 +821,7 @@ function DraftWorkspace() {
                             <Input
                               aria-label={`第 ${index + 1} 项 Metadata 字段名`}
                               placeholder="例如：渠道"
-                              disabled={!canEdit}
+                              disabled={!canEdit || busy}
                               value={entry.key}
                               onChange={(event) =>
                                 setEdit({
@@ -678,7 +835,7 @@ function DraftWorkspace() {
                             <Input
                               aria-label={`第 ${index + 1} 项 Metadata 值`}
                               placeholder="例如：帮助中心"
-                              disabled={!canEdit}
+                              disabled={!canEdit || busy}
                               value={entry.value}
                               onChange={(event) =>
                                 setEdit({
@@ -693,7 +850,7 @@ function DraftWorkspace() {
                               variant="ghost"
                               size="icon"
                               aria-label={`删除第 ${index + 1} 项 Metadata`}
-                              disabled={!canEdit}
+                              disabled={!canEdit || busy}
                               onClick={() =>
                                 setEdit({
                                   ...edit,
@@ -713,7 +870,7 @@ function DraftWorkspace() {
                         <Button
                           variant="outline"
                           className="w-fit"
-                          disabled={!canEdit}
+                          disabled={!canEdit || busy}
                           onClick={() =>
                             setEdit({
                               ...edit,
@@ -730,7 +887,7 @@ function DraftWorkspace() {
                         <Button
                           variant="ghost"
                           className="text-destructive"
-                          disabled={!canEdit || busy}
+                          disabled={!canEdit || busy || removedRecord}
                           onClick={() => void removeRecord()}
                         >
                           移除记录
@@ -770,7 +927,7 @@ function DraftWorkspace() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!canEdit}
+                        disabled={!canEdit || busy}
                         onClick={() =>
                           void chooseSources(
                             (files.data?.files ?? []).map((file) => file.id),
@@ -783,7 +940,7 @@ function DraftWorkspace() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!canEdit}
+                        disabled={!canEdit || busy}
                         onClick={async () => {
                           const all = await listDraftSourceFiles(projectId, {
                             search: fileSearch,
@@ -804,7 +961,7 @@ function DraftWorkspace() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={!canEdit}
+                        disabled={!canEdit || busy}
                         onClick={() =>
                           void chooseSources(
                             (files.data?.files ?? []).map((file) => file.id),
@@ -838,16 +995,28 @@ function DraftWorkspace() {
                               <td className="px-4 py-3">
                                 <Checkbox
                                   aria-label={`选择 ${file.fileName}`}
+                                  onClick={(event) => event.stopPropagation()}
                                   checked={(selectedSources.data ?? []).some(
                                     (source) => source.assetId === file.id,
                                   )}
-                                  disabled={!canEdit}
+                                  disabled={!canEdit || busy}
                                   onCheckedChange={(checked) =>
                                     void chooseSources([file.id], checked ? "add" : "remove")
                                   }
                                 />
                               </td>
-                              <td className="px-4 py-3">{file.fileName}</td>
+                              <td className="px-4 py-3">
+                                <button
+                                  type="button"
+                                  className="text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                                  onClick={() => {
+                                    setFileId(file.id);
+                                    setSourcePage(0);
+                                  }}
+                                >
+                                  {file.fileName}
+                                </button>
+                              </td>
                               <td className="px-4 py-3">{file.collectionName}</td>
                               <td className="px-4 py-3">{file.recordCount}</td>
                             </tr>
@@ -943,7 +1112,7 @@ function DraftWorkspace() {
                                 <Checkbox
                                   aria-label={`选择第 ${record.ordinal + 1} 条`}
                                   checked={sourceSet.has(keyOf(record.assetId, record.ordinal))}
-                                  disabled={!canEdit}
+                                  disabled={!canEdit || busy}
                                   onCheckedChange={(checked) =>
                                     void chooseSources(
                                       [record.assetId],

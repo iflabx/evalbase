@@ -1310,11 +1310,11 @@ CREATE OR REPLACE FUNCTION terminate_collaborative_drafts() RETURNS trigger AS $
 BEGIN
   IF TG_TABLE_NAME = 'test_set' AND NEW.status = 'permanently_deleted' THEN
     UPDATE collaborative_draft SET status='terminated', name='', purpose='',
-      updated_at=now() WHERE test_set_id=NEW.id AND status IN ('editing','published');
+      updated_at=now() WHERE test_set_id=NEW.id AND status='editing';
   ELSIF TG_TABLE_NAME = 'test_set_version'
     AND NEW.status IN ('permanently_deleted','tombstoned') THEN
     UPDATE collaborative_draft SET status='terminated', name='', purpose='',
-      updated_at=now() WHERE parent_version_id=NEW.id AND status IN ('editing','published');
+      updated_at=now() WHERE parent_version_id=NEW.id AND status='editing';
   END IF;
   DELETE FROM collaborative_draft_record WHERE draft_id IN
     (SELECT id FROM collaborative_draft WHERE status='terminated'

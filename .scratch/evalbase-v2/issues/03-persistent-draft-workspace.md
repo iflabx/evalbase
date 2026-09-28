@@ -58,6 +58,19 @@ DRAFT-01–04、EDIT-01–05、PUB-01–06、DELETE-01–03、COLLAB-01–04 的
 | 添加资料 | 1.选择资料文件，2.选择记录；搜索、本页/全部结果/取消；文件 10 条/页，记录 20 条/页 | 固定搜索结果范围后批选，可跨页排除；服务端分页；来源去重 |
 | 删除和发布 | 删除确认、发布结果/失败恢复 | 删除草稿不可恢复；固定已保存 revision，服务端唯一发布 |
 
+### 公共路由清单
+
+| 分类 | 路由 | 本 Ticket 用途 |
+| --- | --- | --- |
+| 新增 | `GET/POST /api/projects/:projectId/collaborative-drafts`；`GET/PATCH/DELETE /api/projects/:projectId/collaborative-drafts/:draftId` | 草稿列表、创建、分页正文、字段保存与删除 |
+| 新增 | `POST /api/projects/:projectId/collaborative-drafts/:draftId/records`；`PATCH/DELETE /api/projects/:projectId/collaborative-drafts/:draftId/records/:recordId` | 记录增加、字段修订与移除 |
+| 新增 | `POST /api/projects/:projectId/collaborative-drafts/:draftId/publish` | 固定修订发布及同草稿成功重放 |
+| 新增 | `GET /api/projects/:projectId/collaborative-draft-source-files`；`GET /api/projects/:projectId/collaborative-draft-source-records`；`GET /api/projects/:projectId/collaborative-drafts/:draftId/selected-sources`；`POST /api/projects/:projectId/collaborative-drafts/:draftId/source-selection` | 资料搜索、分页、查看已选及批量增减 |
+| 新增 | `/projects/$projectId/test-sets/drafts/$draftId` | 全页草稿工作区 |
+| narrowed | `/projects/$projectId/test-sets`；`/projects/$projectId/test-sets/$testSetId` | 保留正式列表/版本详情，增加可继续草稿的入口 |
+| reused | `GET /api/projects/:projectId/solo-test-sets` 及现有版本详情、读取、CSV；Sparse 发布器、Delta/Checkpoint；回收与恢复 API | 读取正式版本、可靠发布与依赖联动，未改正式版本公开格式 |
+| narrowed（UI） | 测试集列表中旧新建弹窗入口 | 已改为全页草稿；旧 `/api/projects/:projectId/drafts` 暂仍注册但无当前 frontend-v3 调用方，列为 Closure Review 的 P2 清理项 |
+
 前端严格取 `docs/prototypes/THROWAWAY-phase1a-login-multiuser-vnext.html` 的布局和 `frontend-v1` 的样式；B 不显示模拟在线头像、实时焦点或完整字段作者 UI（V2-04）。复用 `solo-test-sets` 的正式版本列表、详情、读取、CSV 和 Sparse 发布器；新增 `collaborative-drafts` 草稿接口；旧租约 `test-sets/drafts` 不再作为 V2 入口。首个 red：同父并发创建只返回一个草稿，异父保存互不覆盖。验证边界：HTTP 集成、受影响 typecheck/lint/build、完整测试、docs:check。
 
 ## Owner checkpoint

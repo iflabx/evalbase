@@ -101,11 +101,16 @@ export async function saveSharedDraftField(
 export async function addSharedDraftRecord(
   projectId: string,
   draftId: string,
-  source?: { assetId: string; ordinal: number },
+  input: {
+    source?: { assetId: string; ordinal: number };
+    question?: string;
+    expectedOutput?: string;
+    metadata?: MetadataEntry[];
+  } = {},
 ) {
   return request<{ record: SharedDraftRecord; replayed?: boolean }>(
     `${item(projectId, draftId)}/records`,
-    json("POST", source ? { source } : {}),
+    json("POST", input),
   );
 }
 export async function saveSharedDraftRecordField(

@@ -1,4 +1,23 @@
-# Batch B owner checkpoint. Use with: docker compose -p evalbase-v2-b -f compose.yaml -f .scratch/evalbase-v2/compose-b-checkpoint.yaml
+# Batch B owner checkpoint. Use with:
+# docker compose -p evalbase-v2-b-owner-checkpoint -f compose.yaml -f .scratch/evalbase-v2/compose-b-checkpoint.yaml
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: evalbase_v2_b_owner_checkpoint
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evalbase_phase1a -d evalbase_v2_b_owner_checkpoint"]
+  web:
+    environment:
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_b_owner_checkpoint
+      MINIO_BUCKET: evalbase-v2-b-owner-checkpoint
+  worker:
+    environment:
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_b_owner_checkpoint
+      MINIO_BUCKET: evalbase-v2-b-owner-checkpoint
+  test:
+    environment:
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_b_owner_checkpoint
+      MINIO_BUCKET: evalbase-v2-b-owner-checkpoint
 networks:
   edge:
     name: evalbase-v2-b-owner-checkpoint-edge
