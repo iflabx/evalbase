@@ -76,7 +76,7 @@ function DatasetsPage() {
               </Button>
               <Button onClick={() => setCreating(true)}>
                 <Plus className="size-4" />
-                新建原始数据
+                原始数据集合
               </Button>
             </div>
           ) : undefined

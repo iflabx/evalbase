@@ -156,7 +156,7 @@ test("creates and opens a project from the project list", async ({ page }) => {
     /lucide-file-text/,
   );
 
-  await page.getByRole("button", { name: "新建原始数据" }).click();
+  await page.getByRole("button", { name: "原始数据集合" }).click();
   await expect(
     page.getByText("用一个简单名称把同一领域或方向的文件放在一起。", { exact: true }),
   ).toBeVisible();
