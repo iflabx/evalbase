@@ -64,10 +64,13 @@ function SettingsPage() {
       ? "info"
       : (requestedSection ?? (projects.isSuccess && !activeId ? "info" : "profile"));
   useEffect(() => {
-    if (projects.isSuccess && !activeId && requestedSection === "members") {
+    if (!projects.isSuccess) return;
+    if (activeId && projectId !== activeId) {
+      void navigate({ to: "/settings", search: { project: activeId, section }, replace: true });
+    } else if (!activeId && requestedSection === "members") {
       void navigate({ to: "/settings", search: { project: "", section: "info" }, replace: true });
     }
-  }, [projects.isSuccess, activeId, requestedSection, navigate]);
+  }, [projects.isSuccess, activeId, projectId, requestedSection, section, navigate]);
   const session = useQuery({ queryKey: ["session"], queryFn: currentSession });
   const isAdmin = session.data?.actor.role === "admin";
   const me = useQuery({ queryKey: ["me"], queryFn: myAccount });
@@ -193,7 +196,7 @@ function SettingsPage() {
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader
-        title="设置"
+        title={section === "profile" ? "个人资料" : section === "info" ? "信息" : "项目成员"}
         description={
           section === "profile"
             ? "管理你的显示名称与头像颜色。"
@@ -202,17 +205,27 @@ function SettingsPage() {
               : `${project?.name ?? "当前项目"} · 管理项目成员和访问权限。`
         }
         actions={
-          section === "members" && isAdmin && available.length > 1 ? (
-            <label className="settings-project-selector">
-              当前项目
-              <select value={activeId} onChange={(event) => setActiveProject(event.target.value)}>
-                {available.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          section === "members" && isAdmin ? (
+            <>
+              {available.length > 1 && (
+                <label className="settings-project-selector">
+                  当前项目
+                  <select
+                    value={activeId}
+                    onChange={(event) => setActiveProject(event.target.value)}
+                  >
+                    {available.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <Button className="button primary" onClick={() => setInviteOpen((value) => !value)}>
+                {inviteOpen ? "取消邀请" : "邀请成员"}
+              </Button>
+            </>
           ) : undefined
         }
       />
@@ -390,26 +403,15 @@ function SettingsPage() {
                 <div className="member-guide">
                   <b>如何邀请新成员</b>
                   <p>
-                    点击下方成员卡片右上角「邀请成员」，填写已注册账号的邮箱并选择角色。对方登录后可在「设置
+                    点击页面右上角「邀请成员」，填写已注册账号的邮箱并选择角色。对方登录后可在「设置
                     → 信息」接受邀请。
                   </p>
                 </div>
               )}
               <section className="member-card">
-                <div className="member-card-head member-card-head-actions">
-                  <div>
-                    <h2>成员与权限</h2>
-                    <p>查看成员并管理其在当前项目的角色。</p>
-                  </div>
-                  {isAdmin && (
-                    <Button
-                      className="button"
-                      variant="outline"
-                      onClick={() => setInviteOpen((value) => !value)}
-                    >
-                      {inviteOpen ? "取消邀请" : "邀请成员"}
-                    </Button>
-                  )}
+                <div className="member-card-head">
+                  <h2>成员与权限</h2>
+                  <p>查看成员并管理其在当前项目的角色。</p>
                 </div>
                 {members.isLoading ? (
                   <p className="member-empty">正在加载成员…</p>
@@ -444,7 +446,7 @@ function SettingsPage() {
                           <small>{member.email}</small>
                         </div>
                       </div>
-                      {isAdmin ? (
+                      {isAdmin && member.role !== "admin" ? (
                         <select
                           aria-label={`${member.displayName}的角色`}
                           value={member.role}
@@ -469,7 +471,7 @@ function SettingsPage() {
                         <span className="role-chip">{roleName(member.role)}</span>
                       )}
                       <div className="member-actions">
-                        {isAdmin && (
+                        {isAdmin && member.role !== "admin" && (
                           <Button
                             className="button"
                             variant="outline"

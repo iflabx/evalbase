@@ -8,7 +8,7 @@ export type Account = {
   avatarColor: string;
   role: string;
 };
-export type Member = Account & { role: "editor" | "viewer" };
+export type Member = Account & { role: "admin" | "editor" | "viewer" };
 export type Invitation = {
   id: string;
   projectId: string;

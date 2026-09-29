@@ -1367,10 +1367,12 @@ export async function buildApp(
       )
         return reply.code(404).send({ error: { code: "project_not_found" } });
       const result = await db.query(
-        `SELECT u.id, u.email, u.display_name, u.avatar_color, pm.role
-         FROM project_member pm JOIN app_user u ON u.id = pm.user_id
-         WHERE pm.project_id = $1 AND pm.role IN ('editor', 'viewer')
-         ORDER BY u.display_name, u.id`,
+        `SELECT u.id, u.email, u.display_name, u.avatar_color,
+                CASE WHEN u.role = 'admin' THEN 'admin' ELSE pm.role END AS role
+         FROM app_user u
+         LEFT JOIN project_member pm ON pm.user_id = u.id AND pm.project_id = $1
+         WHERE u.role = 'admin' OR pm.role IN ('editor', 'viewer')
+         ORDER BY CASE WHEN u.role = 'admin' THEN 0 ELSE 1 END, u.display_name, u.id`,
         [request.params.projectId],
       );
       return {

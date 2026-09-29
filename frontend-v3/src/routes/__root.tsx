@@ -46,8 +46,12 @@ function RootComponent() {
 }
 
 function AuthenticatedApp() {
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const projectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? "";
+  const location = useRouterState({ select: (state) => state.location });
+  const projectId =
+    location.pathname.match(/^\/projects\/([^/]+)/)?.[1] ??
+    (location.pathname === "/settings" && typeof location.search.project === "string"
+      ? location.search.project
+      : "");
   useEffect(() => {
     const expired = () => window.location.replace("/");
     window.addEventListener("evalbase:session-expired", expired);
