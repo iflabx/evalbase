@@ -79,7 +79,7 @@ Owner 浏览器验收库每批只保留一个易读名称的合成项目、两�
 | V2-01 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-02 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-03 | completed | 0df0228 | B，Owner 已验收；资源已释放 |
-| V2-04 | completed | 14c62bf | C，待 Owner 验收 |
+| V2-04 | in-progress | 83a6c99 | C，设置在线状态与完整成员列表已修复，待 Owner 复验 |
 
 Status 是 triage 标签，Implementation 才是实现生命周期。每次完成更新本表和对应 Ticket Comments，引用真实实现 SHA、验证命令、复审与批次结果。v1 的 progress 台账保留已交付历史，不写入 v2 假完成记录。
 
@@ -94,3 +94,7 @@ Status 是 triage 标签，Implementation 才是实现生命周期。每次完�
 - 2026-09-28：Owner 确认批次 B checkpoint 验收通过，接受固定应用 HEAD `0df0228b2d487158d9321e6e5b6838bf0da8a72b`。V2-03 最终前端修复、5/5 浏览器回归及真实资料 55 条读取证据见 [Ticket Comments](issues/03-persistent-draft-workspace.md#comments)。验收日志、健康响应、资源清单与清理核查保存在 `/home/bistu/.local/share/evalbase-checkpoints/B-0df0228`。B 专属 4 个容器、2 个网络、2 个数据卷、4 个镜像和本机 4217 隧道已释放，残留为零；合并、推送、正式部署和 V2-04 开发尚未授权。
 
 - 2026-09-29：Owner 授权 V2-04；实现与复审提交 `fa72bd4`、`4c71f53`，真实双账号发布浏览器用例提交 `14c62bf`。功能与原型逐屏对照、测试结果和全量旧集成测试的已知边界见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。C 隔离环境待固定最终 HEAD 并交由 Owner 验收，验收前保留；尚未授权合并、推送或正式部署。
+
+- 2026-09-29：Owner 在批次 C 复验中指出进入设置后在线头像消失、项目成员列表未显示管理员。V2-04 按退回 checkpoint 规则暂记 `in-progress`；修复固定 HEAD 仍待 Owner 接受。
+
+- 2026-09-29：C 的设置页在线头像和完整成员列表反馈由 `83a6c99` 修复；真实双账号与直接打开设置的浏览器回归 3/3。对应证据见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。最终固定 HEAD 与健康状态以本次文档提交后的验收环境记录为准；Owner 尚未重新验收，C 资源保留。
