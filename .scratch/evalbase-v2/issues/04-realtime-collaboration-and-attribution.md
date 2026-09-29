@@ -115,3 +115,5 @@ COLLAB-01–08、TRACE-01–02；双浏览器 PUB-01/02/04、ACL-04、DELETE-02 
 
 - 2026-09-29：Owner 确认后续交互覆盖冻结原型：测试集列表同表筛选与统一 10 行分页、搜索空态、资料选择范围与 5 文件剩余额度、版本页下载菜单、草稿字段离焦自动保存及移除常驻状态卡。实现提交 `ff4265e`，仅更新正式 frontend-v3 与相应 v2 文档、测试；未改冻结原型或 frontend-v1。
 - 复审：Standards 指出的查看权限账号重试时误发草稿请求、Standards/Spec 共同指出的并发保存一败一成会掩盖失败及重试入口，均在 `ff4265e` 提交前修复并补浏览器回归。前端 typecheck、受影响 lint（0 error，2 条既有 Hook 警告）、`docs:check`、`git diff --check` 通过；受影响浏览器测试本地构建 9/9、部署后固定 Web 9/9 通过。C Web 健康 `git_sha=ff4265e5f54cac3b945df303bc68b81c8ac7bce5`，PostgreSQL/MinIO ready，前端与同源安装状态接口均返回 200。部署后浏览器测试使用 Mock API；此次未重跑真实双账号后端用例，Computer Use 浏览器连接失败。C 仍待 Owner 验收，保持隔离环境，不合并、推送或正式部署。
+
+- 2026-09-29：Owner 要求将测试集列表的「全部／草稿／已发布」筛选移至搜索框右侧。`00bd36c` 仅调整该工具行布局，窄窗自动换行；筛选语义与权限不变。受影响文件格式、lint、typecheck、`git diff --check` 通过。C 继续待 Owner 验收。
