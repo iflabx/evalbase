@@ -1,10 +1,10 @@
 # EvalBase v2 实施规格与进度
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 
 日期：2026-09-28。范围基线：文档提交 52413dc，应用 main 70c2272f43927d7bb4e1ac632091a39d7b2cd955。
-创建本清单时仅授权 Ticket 文档；批次 A 已单独授权并完成验收，V2-03 已单独授权开发。批次 B 已由 Owner 验收通过并释放资源；批次 C 已获 Owner 授权开发并完成实现，待 Owner 验收。合并、推送和正式部署仍须分别取得授权。
+创建本清单时仅授权 Ticket 文档；批次 A 已单独授权并完成验收，V2-03 已单独授权开发。批次 B、C 均已由 Owner 验收通过并释放专属资源。合并、推送和正式部署仍须分别取得授权。
 
 ## 1. 合同与必读材料
 
@@ -79,7 +79,7 @@ Owner 浏览器验收库每批只保留一个易读名称的合成项目、两�
 | V2-01 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-02 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-03 | completed | 0df0228 | B，Owner 已验收；资源已释放 |
-| V2-04 | in-progress | 00bd36c | C，列表筛选移至搜索右侧，待 Owner 复验 |
+| V2-04 | completed | 0ff3dab | C，Owner 已验收；资源已释放 |
 
 Status 是 triage 标签，Implementation 才是实现生命周期。每次完成更新本表和对应 Ticket Comments，引用真实实现 SHA、验证命令、复审与批次结果。v1 的 progress 台账保留已交付历史，不写入 v2 假完成记录。
 
@@ -116,3 +116,7 @@ Status 是 triage 标签，Implementation 才是实现生命周期。每次完�
 - 2026-09-29：Owner 批准批次 C 后续列表、资料、版本页与离焦自动保存调整；实现 `ff4265e`，复审缺口与受影响浏览器 9/9 验证见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。C 仍待 Owner 验收，未合并 main、推送或正式部署。
 
 - 2026-09-29：Owner 追加测试集列表工具行布局调整，`00bd36c` 将状态筛选移至搜索右侧，验证见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)；C 仍待验收。
+
+- 2026-09-29：Owner 明确通过批次 C，接受固定应用 HEAD `0ff3dab268c3d5087183250562a73a921cb761e3`，实现与验收证据见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。按资源回收规则释放 C 专属环境；验收不授权合并、推送或正式部署。
+
+- 2026-09-29：C 专属 4 个容器、2 个网络、2 个数据卷、3 个镜像、服务器及本机 4217 监听已释放，残留核查均为 0。验收与清理证据在 `/home/bistu/.local/share/evalbase-checkpoints/C-0ff3dab`；其余项目资源保留。
