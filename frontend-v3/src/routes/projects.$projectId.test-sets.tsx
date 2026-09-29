@@ -75,6 +75,7 @@ function TestSetsPage() {
   const access = useProjectAccess(projectId);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState<"all" | "draft" | "published">("all");
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const drafts = useQuery({
@@ -103,23 +104,39 @@ function TestSetsPage() {
   const [trashTarget, setTrashTarget] = useState<TestSet>();
   const [trashing, setTrashing] = useState(false);
   const queryClient = useQueryClient();
+  const effectiveFilter = access.canWrite ? filter : "published";
+  const matchingDrafts =
+    access.canWrite && effectiveFilter !== "published"
+      ? (drafts.data ?? []).filter(
+          (draft) => !draft.testSetId && (draft.name || "未命名草稿").includes(search.trim()),
+        )
+      : [];
+  const draftOffset = (page - 1) * PAGE_SIZE;
+  const newDrafts = matchingDrafts.slice(draftOffset, draftOffset + PAGE_SIZE);
+  const publishedSlots = effectiveFilter === "draft" ? 0 : PAGE_SIZE - newDrafts.length;
+  const publishedOffset =
+    effectiveFilter === "all" ? Math.max(0, draftOffset - matchingDrafts.length) : draftOffset;
   const testSets = useQuery({
-    queryKey: ["solo-test-sets", projectId, search, page],
+    queryKey: [
+      "solo-test-sets",
+      projectId,
+      search,
+      effectiveFilter,
+      page,
+      publishedOffset,
+      publishedSlots,
+    ],
     queryFn: () =>
       listTestSets(projectId, {
         name: search,
-        limit: PAGE_SIZE,
-        offset: (page - 1) * PAGE_SIZE,
+        limit: publishedSlots || 1,
+        offset: publishedSlots ? publishedOffset : 0,
       }),
+    enabled: effectiveFilter !== "draft" && (effectiveFilter === "published" || drafts.isSuccess),
   });
-  const rows = testSets.data?.items ?? [];
-  const newDrafts =
-    page === 1 && access.canWrite
-      ? (drafts.data?.filter(
-          (draft) => !draft.testSetId && (draft.name || "未命名草稿").includes(search.trim()),
-        ) ?? [])
-      : [];
-  const total = testSets.data?.total ?? 0;
+  const rows = publishedSlots ? (testSets.data?.items ?? []) : [];
+  const total =
+    matchingDrafts.length + (effectiveFilter === "draft" ? 0 : (testSets.data?.total ?? 0));
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   async function moveToTrash() {
@@ -161,11 +178,6 @@ function TestSetsPage() {
           </>
         }
       />
-      {access.canWrite && drafts.isError && (
-        <div className="mb-4">
-          <ErrorBlock message="无法读取草稿，请重试。" onRetry={() => void drafts.refetch()} />
-        </div>
-      )}
       <div className="relative mb-4 w-full max-w-64">
         <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
         <Input
@@ -179,17 +191,56 @@ function TestSetsPage() {
           }}
         />
       </div>
+      {access.canWrite && (
+        <div role="group" aria-label="按状态筛选测试集" className="mb-4 flex flex-wrap gap-2">
+          {(["all", "draft", "published"] as const).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={filter === value ? "default" : "outline"}
+              aria-pressed={filter === value}
+              onClick={() => {
+                setFilter(value);
+                setPage(1);
+              }}
+            >
+              {{ all: "全部", draft: "草稿", published: "已发布" }[value]}
+            </Button>
+          ))}
+        </div>
+      )}
       <StateView
-        isLoading={testSets.isLoading}
-        error={testSets.error}
+        isLoading={
+          (access.canWrite && effectiveFilter !== "published" && drafts.isLoading) ||
+          (effectiveFilter !== "draft" && testSets.isLoading)
+        }
+        error={
+          (access.canWrite && effectiveFilter !== "published" ? drafts.error : null) ??
+          (effectiveFilter !== "draft" ? testSets.error : null)
+        }
         data={rows}
         isEmpty={(items) => items.length === 0 && newDrafts.length === 0}
-        onRetry={() => void testSets.refetch()}
+        onRetry={() => {
+          if (access.canWrite && effectiveFilter !== "published") void drafts.refetch();
+          if (effectiveFilter !== "draft") void testSets.refetch();
+        }}
         empty={
           <EmptyBlock
-            title="还没有测试集"
+            title={
+              search.trim() ? "没有匹配结果" : filter === "draft" ? "还没有草稿" : "还没有测试集"
+            }
             action={
-              access.canWrite ? (
+              search.trim() ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch("");
+                    setPage(1);
+                  }}
+                >
+                  清除搜索
+                </Button>
+              ) : access.canWrite ? (
                 <Button disabled={creating} onClick={() => void startCreate()}>
                   新建测试集
                 </Button>
@@ -306,7 +357,13 @@ function TestSetsPage() {
           current={page}
           pages={pages}
           onChange={setPage}
-          unit="个正式测试集"
+          unit={
+            filter === "draft"
+              ? "个草稿"
+              : filter === "published" || !access.canWrite
+                ? "个正式测试集"
+                : "项测试集与草稿"
+          }
         />
       )}
       {access.canManage && (

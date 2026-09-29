@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +102,11 @@ function DraftWorkspace() {
   const [accessLost, setAccessLost] = useState(false);
   const cursorRef = useRef<number | undefined>(undefined);
   const [saveState, setSaveState] = useState<"saved" | "dirty" | "saving" | "failed">("saved");
+  const [savingFields, setSavingFields] = useState<Set<RecordField | "name" | "purpose">>(
+    new Set(),
+  );
+  const savingPromises = useRef(new Map<RecordField | "name" | "purpose", Promise<boolean>>());
+  const failedSaves = useRef(new Set<RecordField | "name" | "purpose">());
   const [fileSearch, setFileSearch] = useState("");
   const [filePage, setFilePage] = useState(0);
   const [fileId, setFileId] = useState<string>();
@@ -298,6 +302,13 @@ function DraftWorkspace() {
     queryFn: () => listSelectedDraftSources(projectId, draftId),
     enabled: Boolean(data),
   });
+  const selectedFileIds = new Set((selectedSources.data ?? []).map((source) => source.assetId));
+  const remainingFiles = Math.max(0, 5 - selectedFileIds.size);
+  const filePageIds = (files.data?.files ?? []).map((file) => file.id);
+  const canAddFiles = (ids: string[]) => new Set([...selectedFileIds, ...ids]).size <= 5;
+  const pageFilesFit = canAddFiles(filePageIds);
+  const allFilesFit = (files.data?.total ?? 0) <= 5 && pageFilesFit;
+  const currentSourceFits = !fileId || selectedFileIds.has(fileId) || remainingFiles > 0;
   const sourceSet = useMemo(
     () =>
       new Set((selectedSources.data ?? []).map((source) => keyOf(source.assetId, source.ordinal))),
@@ -431,83 +442,209 @@ function DraftWorkspace() {
     await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
     return result.data;
   }
+  function saveField(field: RecordField | "name" | "purpose"): Promise<boolean> {
+    const pending = savingPromises.current.get(field);
+    if (pending) return pending;
+    const task = (async () => {
+      if (
+        !data ||
+        conflict ||
+        removedRecord ||
+        accessLost ||
+        syncIssue ||
+        !access.canWrite ||
+        data.draft.suspended
+      )
+        return false;
+      const isDraftField = field === "name" || field === "purpose";
+      const baseline =
+        field === "name" ? nameBaseline : field === "purpose" ? purposeBaseline : selectedSnapshot;
+      const value =
+        field === "name"
+          ? name
+          : field === "purpose"
+            ? purpose
+            : field === "metadata"
+              ? edit?.metadata.filter((entry) => entry.key.trim() || entry.value)
+              : edit?.[field];
+      if (!baseline || value === undefined) return false;
+      if (field === "metadata") {
+        const problem = metadataProblem(value as MetadataEntry[]);
+        if (problem) {
+          failedSaves.current.add(field);
+          setError(problem);
+          setSaveState("failed");
+          return false;
+        }
+      }
+      const oldValue = isDraftField
+        ? (baseline as { value: string }).value
+        : field === "metadata"
+          ? (baseline as SharedDraftRecord).metadata
+          : (baseline as SharedDraftRecord)[field];
+      if (JSON.stringify(value) === JSON.stringify(oldValue)) return true;
+      if (!failedSaves.current.size) {
+        setSaveState("saving");
+        setError("");
+      }
+      try {
+        if (isDraftField) {
+          const result = await saveSharedDraftField(
+            projectId,
+            draftId,
+            field,
+            value as string,
+            (baseline as { revision: number }).revision,
+          );
+          const nextBaseline = {
+            value: value as string,
+            revision: field === "name" ? result.draft.nameRevision : result.draft.purposeRevision,
+          };
+          if (field === "name") setNameBaseline(nextBaseline);
+          else setPurposeBaseline(nextBaseline);
+          queryClient.setQueriesData<Awaited<ReturnType<typeof getSharedDraft>>>(
+            { queryKey: ["shared-draft", projectId, draftId] },
+            (old) =>
+              old
+                ? {
+                    ...old,
+                    draft: {
+                      ...old.draft,
+                      [field]: value,
+                      [field === "name" ? "nameRevision" : "purposeRevision"]:
+                        nextBaseline.revision,
+                      revision: Math.max(old.draft.revision, result.draft.revision),
+                      updatedAt: result.draft.updatedAt,
+                      updatedBy: result.draft.updatedBy,
+                      updatedByName: result.draft.updatedByName,
+                    },
+                  }
+                : old,
+          );
+        } else {
+          const record = baseline as SharedDraftRecord;
+          const result = await saveSharedDraftRecordField(
+            projectId,
+            draftId,
+            record.id,
+            field,
+            value as string | MetadataEntry[],
+            record[`${field}Revision`],
+          );
+          const mergeSaved = (current: SharedDraftRecord) => {
+            const changed =
+              field === "metadata"
+                ? {
+                    metadata: result.record.metadata,
+                    metadataRevision: result.record.metadataRevision,
+                  }
+                : field === "question"
+                  ? {
+                      question: result.record.question,
+                      questionRevision: result.record.questionRevision,
+                    }
+                  : {
+                      expectedOutput: result.record.expectedOutput,
+                      expectedOutputRevision: result.record.expectedOutputRevision,
+                    };
+            return {
+              ...current,
+              ...changed,
+              fieldAttribution: result.record.fieldAttribution[field]
+                ? { ...current.fieldAttribution, [field]: result.record.fieldAttribution[field] }
+                : current.fieldAttribution,
+              rowRevision: Math.max(current.rowRevision, result.record.rowRevision),
+              ...(result.record.rowRevision >= current.rowRevision
+                ? {
+                    updatedBy: result.record.updatedBy,
+                    updatedAt: result.record.updatedAt,
+                  }
+                : {}),
+            };
+          };
+          setSelectedSnapshot((current) =>
+            current?.id === record.id ? mergeSaved(current) : current,
+          );
+          queryClient.setQueriesData<Awaited<ReturnType<typeof getSharedDraft>>>(
+            { queryKey: ["shared-draft", projectId, draftId] },
+            (old) =>
+              old
+                ? {
+                    ...old,
+                    records: old.records.map((item) =>
+                      item.id === record.id ? mergeSaved(item) : item,
+                    ),
+                  }
+                : old,
+          );
+        }
+        await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
+        failedSaves.current.delete(field);
+        if (failedSaves.current.size) setSaveState("failed");
+        else {
+          setError("");
+          setSaveState("saved");
+        }
+        return true;
+      } catch (cause) {
+        await draftQuery.refetch().catch(() => undefined);
+        const code = cause instanceof Error ? cause.message : "";
+        const rowRemoved = code === "draft_record_removed";
+        const collided =
+          rowRemoved || code === "draft_field_conflict" || code === "draft_row_conflict";
+        if (rowRemoved) {
+          setSelectedSnapshot(selected);
+          setRemovedRecord(true);
+        }
+        failedSaves.current.add(field);
+        setConflict(collided);
+        setError(
+          rowRemoved
+            ? "这条记录已被其他成员移除。可将当前输入保存为新记录，或放弃本地输入。"
+            : collided
+              ? "同一字段已被其他成员修改。请选择如何处理冲突。"
+              : cause instanceof Error
+                ? cause.message
+                : "保存失败，请重试。",
+        );
+        setSaveState("failed");
+        return false;
+      }
+    })();
+    savingPromises.current.set(field, task);
+    setSavingFields((current) => new Set(current).add(field));
+    void task.finally(() => {
+      savingPromises.current.delete(field);
+      setSavingFields((current) => {
+        const next = new Set(current);
+        next.delete(field);
+        return next;
+      });
+    });
+    return task;
+  }
   async function save(): Promise<boolean> {
     if (!data || busy || conflict || removedRecord || accessLost || syncIssue) return false;
-    const metadata = edit?.metadata.filter((entry) => entry.key.trim() || entry.value) ?? [];
-    const problem = metadataProblem(metadata);
-    if (problem) {
-      setError(problem);
-      setSaveState("failed");
-      return false;
-    }
     setBusy(true);
-    setSaveState("saving");
-    setError("");
     try {
+      const pending: Promise<boolean>[] = [...savingPromises.current.values()];
       if (nameBaseline && name !== undefined && name !== nameBaseline.value)
-        await saveSharedDraftField(projectId, draftId, "name", name, nameBaseline.revision);
+        pending.push(saveField("name"));
       if (purposeBaseline && purpose !== undefined && purpose !== purposeBaseline.value)
-        await saveSharedDraftField(
-          projectId,
-          draftId,
-          "purpose",
-          purpose,
-          purposeBaseline.revision,
-        );
-      if (selected && edit && selectedSnapshot?.id === selected.id) {
-        if (edit.question !== selectedSnapshot.question)
-          await saveSharedDraftRecordField(
-            projectId,
-            draftId,
-            selected.id,
-            "question",
-            edit.question,
-            selectedSnapshot.questionRevision,
-          );
+        pending.push(saveField("purpose"));
+      if (selectedSnapshot && edit) {
+        if (edit.question !== selectedSnapshot.question) pending.push(saveField("question"));
         if (edit.expectedOutput !== selectedSnapshot.expectedOutput)
-          await saveSharedDraftRecordField(
-            projectId,
-            draftId,
-            selected.id,
-            "expectedOutput",
-            edit.expectedOutput,
-            selectedSnapshot.expectedOutputRevision,
-          );
-        if (JSON.stringify(metadata) !== JSON.stringify(selectedSnapshot.metadata))
-          await saveSharedDraftRecordField(
-            projectId,
-            draftId,
-            selected.id,
-            "metadata",
-            metadata,
-            selectedSnapshot.metadataRevision,
-          );
+          pending.push(saveField("expectedOutput"));
+        if (
+          JSON.stringify(edit.metadata.filter((entry) => entry.key.trim() || entry.value)) !==
+          JSON.stringify(selectedSnapshot.metadata)
+        )
+          pending.push(saveField("metadata"));
       }
-      await refresh();
-      setSaveState("saved");
+      if (!(await Promise.all(pending)).every(Boolean)) return false;
+      await draftQuery.refetch();
       return true;
-    } catch (cause) {
-      await draftQuery.refetch().catch(() => undefined);
-      const code = cause instanceof Error ? cause.message : "";
-      const rowRemoved = code === "draft_record_removed";
-      const collided =
-        rowRemoved || code === "draft_field_conflict" || code === "draft_row_conflict";
-      if (rowRemoved) {
-        setSelectedSnapshot(selected);
-        setRemovedRecord(true);
-      }
-      setConflict(collided);
-      setError(
-        rowRemoved
-          ? "这条记录已被其他成员移除。可将当前输入保存为新记录，或放弃本地输入。"
-          : collided
-            ? "同一字段已被其他成员修改。请选择如何处理冲突。"
-            : cause instanceof Error
-              ? cause.message
-              : "保存失败，请重试。",
-      );
-      setSaveState("failed");
-      return false;
     } finally {
       setBusy(false);
     }
@@ -634,6 +771,7 @@ function DraftWorkspace() {
           : [{ key: "", value: "" }],
       });
       setRemovedRecord(false);
+      failedSaves.current.clear();
       setConflict(false);
       setError("");
       setSaveState("saved");
@@ -668,6 +806,10 @@ function DraftWorkspace() {
     search?: string,
   ) {
     if (!assetIds.length) return;
+    if (mode === "add" && !canAddFiles(assetIds)) {
+      setError(`一个草稿最多选择 5 个资料文件，目前还可选 ${remainingFiles} 个。`);
+      return;
+    }
     if (dirty && !(await save())) return;
     setBusy(true);
     setError("");
@@ -700,6 +842,7 @@ function DraftWorkspace() {
     const item = fieldConflicts[field];
     if (!item) return;
     if (choice === "remote") {
+      failedSaves.current.delete(field);
       if (field === "name") setName(String(item.remote));
       else if (field === "purpose") setPurpose(String(item.remote));
       else if (field === "metadata")
@@ -718,11 +861,9 @@ function DraftWorkspace() {
     setFieldConflicts(remaining);
     if (!Object.keys(remaining).length) {
       setConflict(false);
-      setError(
-        choice === "local"
-          ? "已保留本地输入；再次保存会基于对方最新版本提交。"
-          : "已采用对方输入。请核对后保存。",
-      );
+      if (choice === "local") setSaveState("failed");
+      setError(choice === "local" ? "已保留本地输入；离开字段可自动保存，也可点击重试保存。" : "");
+      if (choice === "remote" && !failedSaves.current.size) setSaveState("saved");
     }
   }
   function keepLocalConflict() {
@@ -765,7 +906,8 @@ function DraftWorkspace() {
       setSelectedSnapshot(latestRecord);
     }
     setConflict(false);
-    setError("已保留本地修改，请再次点击“保存草稿”提交。");
+    setError("已保留本地修改，请离开字段自动保存，或点击重试保存。");
+    setSaveState("failed");
   }
   function loadServerConflict() {
     if (!data) return;
@@ -790,6 +932,7 @@ function DraftWorkspace() {
           }
         : undefined,
     );
+    failedSaves.current.clear();
     setConflict(false);
     setError("");
     setSaveState("saved");
@@ -894,14 +1037,14 @@ function DraftWorkspace() {
                   <Button
                     variant="outline"
                     className="text-destructive"
-                    disabled={busy || !canEdit}
+                    disabled={busy || savingFields.size > 0 || !canEdit}
                     onClick={() => setConfirmTarget("draft")}
                   >
                     <Trash2 className="size-4" />
                     删除当前草稿
                   </Button>
                   <Button variant="outline" disabled={busy || conflict} onClick={() => void exit()}>
-                    保存并退出
+                    退出草稿
                   </Button>
                   <Button disabled={busy || !canEdit || conflict} onClick={() => void publish()}>
                     {draft.parentVersionId ? "创建新版本" : "创建 v1"}
@@ -909,163 +1052,153 @@ function DraftWorkspace() {
                 </div>
               }
             />
-            <Card className="mb-5 min-w-0">
-              <CardContent className="flex flex-wrap items-center justify-between gap-4 px-5 py-[18px]">
-                <div className="min-w-0">
-                  <strong className="text-sm font-semibold">
-                    {draft.parentVersionId
-                      ? `草稿基于 ${draft.parentVersionLabel ?? "父版本"} · 计划发布新版本`
-                      : "测试集 v1 草稿"}
-                  </strong>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {draft.testSetId ? "" : `创建者 ${draft.createdByName ?? "未记录"} · `}
-                    最近由 {draft.updatedByName} 于{" "}
-                    {new Date(draft.updatedAt).toLocaleString("zh-CN")} 保存
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {draft.suspended
-                      ? "父版本或测试集已回收；恢复父对象后可继续编辑。"
-                      : draft.parentVersionId
-                        ? `已继承父版本${draft.parentRecordCount == null ? "" : ` ${draft.parentRecordCount} 条`}记录。编辑仅作用于草稿；发布后生成新版本。`
-                        : "从资料中选择记录，也可以手动新增。发布后生成第一个版本。"}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Badge variant="outline" role="status">
-                    {publishing
-                      ? "发布中"
-                      : draft.suspended
-                        ? "已暂停"
-                        : saveState === "saving"
-                          ? "保存中"
-                          : saveState === "failed"
-                            ? "保存失败"
-                            : dirty
-                              ? "未保存修改"
-                              : "已保存草稿"}
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy || !canEdit || conflict}
-                    onClick={() => void save()}
-                  >
-                    {saveState === "failed" && !conflict ? "重试保存" : "保存草稿"}
-                  </Button>
-                </div>
-              </CardContent>
-              {syncIssue && (
-                <p role="status" className="border-t px-5 py-3 text-sm text-amber-700">
-                  {syncIssue}
-                </p>
-              )}
-              {error && (
-                <div
-                  role="alert"
-                  className="border-t border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive"
-                >
-                  <p>{error} 输入内容仍保留在页面上。</p>
-                  {Object.entries(fieldConflicts).map(
-                    ([field, item]) =>
-                      item && (
-                        <div
-                          key={field}
-                          className="mt-3 rounded-md border border-destructive/20 bg-card p-3 text-foreground"
-                        >
-                          <strong className="text-sm">
-                            {
-                              {
-                                name: "测试集名称",
-                                purpose: "用途说明",
-                                question: "问题",
-                                expectedOutput: "期望输出",
-                                metadata: "Metadata",
-                              }[field as RecordField | "name" | "purpose"]
-                            }
-                            冲突
-                          </strong>
-                          <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                            对方当前输入（{data?.authors?.[item.authorId ?? ""]?.name ?? "其他成员"}
-                            ）：
-                            {typeof item.remote === "string"
-                              ? item.remote
-                              : JSON.stringify(item.remote)}
-                          </p>
-                          <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-                            我的未保存输入：
-                            {typeof item.local === "string"
-                              ? item.local
-                              : JSON.stringify(item.local)}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                resolveFieldConflict(
-                                  field as RecordField | "name" | "purpose",
-                                  "remote",
-                                )
-                              }
+            <p role="status" className="-mt-4 mb-5 text-xs text-muted-foreground">
+              {publishing
+                ? "发布中"
+                : draft.suspended
+                  ? "已暂停"
+                  : saveState === "failed"
+                    ? "保存失败"
+                    : savingFields.size
+                      ? "保存中"
+                      : dirty
+                        ? "未保存"
+                        : "已保存"}
+            </p>
+            {(syncIssue || error || draft.suspended) && (
+              <Card className="mb-5 min-w-0">
+                <CardContent className="p-0">
+                  {draft.suspended && (
+                    <p role="status" className="px-5 py-3 text-sm text-amber-700">
+                      父版本或测试集已回收；恢复父对象后可继续编辑。
+                    </p>
+                  )}
+                  {syncIssue && (
+                    <p role="status" className="border-t px-5 py-3 text-sm text-amber-700">
+                      {syncIssue}
+                    </p>
+                  )}
+                  {error && (
+                    <div
+                      role="alert"
+                      className="border-t border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+                    >
+                      <p>{error} 输入内容仍保留在页面上。</p>
+                      {Object.entries(fieldConflicts).map(
+                        ([field, item]) =>
+                          item && (
+                            <div
+                              key={field}
+                              className="mt-3 rounded-md border border-destructive/20 bg-card p-3 text-foreground"
                             >
-                              采用对方输入
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                resolveFieldConflict(
-                                  field as RecordField | "name" | "purpose",
-                                  "local",
-                                )
-                              }
-                            >
-                              保留我的输入
-                            </Button>
-                          </div>
+                              <strong className="text-sm">
+                                {
+                                  {
+                                    name: "测试集名称",
+                                    purpose: "用途说明",
+                                    question: "问题",
+                                    expectedOutput: "期望输出",
+                                    metadata: "Metadata",
+                                  }[field as RecordField | "name" | "purpose"]
+                                }
+                                冲突
+                              </strong>
+                              <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                                对方当前输入（
+                                {data?.authors?.[item.authorId ?? ""]?.name ?? "其他成员"}
+                                ）：
+                                {typeof item.remote === "string"
+                                  ? item.remote
+                                  : JSON.stringify(item.remote)}
+                              </p>
+                              <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                                我的未保存输入：
+                                {typeof item.local === "string"
+                                  ? item.local
+                                  : JSON.stringify(item.local)}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    resolveFieldConflict(
+                                      field as RecordField | "name" | "purpose",
+                                      "remote",
+                                    )
+                                  }
+                                >
+                                  采用对方输入
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    resolveFieldConflict(
+                                      field as RecordField | "name" | "purpose",
+                                      "local",
+                                    )
+                                  }
+                                >
+                                  保留我的输入
+                                </Button>
+                              </div>
+                            </div>
+                          ),
+                      )}
+                      {conflict && removedRecord && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void recoverRemovedAsNew()}
+                          >
+                            作为新记录保留输入
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedId(undefined);
+                              setSelectedSnapshot(undefined);
+                              setEdit(undefined);
+                              setRemovedRecord(false);
+                              setConflict(false);
+                              setError("");
+                              setSaveState("saved");
+                            }}
+                          >
+                            放弃本地输入
+                          </Button>
                         </div>
-                      ),
-                  )}
-                  {conflict && removedRecord && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void recoverRemovedAsNew()}
-                      >
-                        作为新记录保留输入
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedId(undefined);
-                          setSelectedSnapshot(undefined);
-                          setEdit(undefined);
-                          setRemovedRecord(false);
-                          setConflict(false);
-                          setError("");
-                          setSaveState("saved");
-                        }}
-                      >
-                        放弃本地输入
-                      </Button>
+                      )}
+                      {!conflict && saveState === "failed" && canEdit && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          disabled={busy}
+                          onClick={() => void save()}
+                        >
+                          重试保存
+                        </Button>
+                      )}
+                      {conflict && !removedRecord && !Object.keys(fieldConflicts).length && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={keepLocalConflict}>
+                            保留本地输入
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={loadServerConflict}>
+                            加载服务器内容
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {conflict && !removedRecord && !Object.keys(fieldConflicts).length && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={keepLocalConflict}>
-                        保留本地输入
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={loadServerConflict}>
-                        加载服务器内容
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
+                </CardContent>
+              </Card>
+            )}
             {!draft.testSetId && (
               <Card className="mb-5 min-w-0">
                 <CardContent className="draft-identity grid gap-5 p-5">
@@ -1074,12 +1207,15 @@ function DraftWorkspace() {
                     <Input
                       id="draft-name"
                       value={name ?? draft.name}
-                      disabled={!canEdit || busy}
+                      disabled={!canEdit || busy || savingFields.has("name")}
                       onChange={(event) => setName(event.target.value)}
                       placeholder="例如：客服基础问答"
                       data-presence-field="name"
                       onFocus={() => focusField(undefined, "name")}
-                      onBlur={clearFocus}
+                      onBlur={() => {
+                        clearFocus();
+                        void saveField("name");
+                      }}
                     />
                   </div>
                   <div className="grid min-w-0 gap-2">
@@ -1089,12 +1225,15 @@ function DraftWorkspace() {
                       rows={2}
                       className="min-h-10"
                       value={purpose ?? draft.purpose}
-                      disabled={!canEdit || busy}
+                      disabled={!canEdit || busy || savingFields.has("purpose")}
                       onChange={(event) => setPurpose(event.target.value)}
                       placeholder="简述测试集用途"
                       data-presence-field="purpose"
                       onFocus={() => focusField(undefined, "purpose")}
-                      onBlur={clearFocus}
+                      onBlur={() => {
+                        clearFocus();
+                        void saveField("purpose");
+                      }}
                     />
                   </div>
                 </CardContent>
@@ -1279,12 +1418,15 @@ function DraftWorkspace() {
                         <Textarea
                           id="draft-question"
                           rows={5}
-                          disabled={!canEdit || busy}
+                          disabled={!canEdit || busy || savingFields.has("question")}
                           value={edit.question}
                           data-presence-field="question"
                           data-presence-record-id={selected.id}
                           onFocus={() => focusField(selected.id, "question")}
-                          onBlur={clearFocus}
+                          onBlur={() => {
+                            clearFocus();
+                            void saveField("question");
+                          }}
                           onChange={(event) => setEdit({ ...edit, question: event.target.value })}
                         />
                         {fieldAuthor(selected, "question")}
@@ -1301,19 +1443,33 @@ function DraftWorkspace() {
                         <Textarea
                           id="draft-answer"
                           rows={5}
-                          disabled={!canEdit || busy}
+                          disabled={!canEdit || busy || savingFields.has("expectedOutput")}
                           value={edit.expectedOutput}
                           data-presence-field="expectedOutput"
                           data-presence-record-id={selected.id}
                           onFocus={() => focusField(selected.id, "expectedOutput")}
-                          onBlur={clearFocus}
+                          onBlur={() => {
+                            clearFocus();
+                            void saveField("expectedOutput");
+                          }}
                           onChange={(event) =>
                             setEdit({ ...edit, expectedOutput: event.target.value })
                           }
                         />
                         {fieldAuthor(selected, "expectedOutput")}
                       </div>
-                      <div className="grid gap-2">
+                      <div
+                        className="grid gap-2"
+                        onBlurCapture={(event) => {
+                          if (!(
+                            event.relatedTarget instanceof Node &&
+                            event.currentTarget.contains(event.relatedTarget)
+                          )) {
+                            clearFocus();
+                            void saveField("metadata");
+                          }
+                        }}
+                      >
                         <div className="flex items-center gap-1">
                           <Label>Metadata</Label>
                           <OnlineAvatars
@@ -1332,12 +1488,11 @@ function DraftWorkspace() {
                             <Input
                               aria-label={`第 ${index + 1} 项 Metadata 字段名`}
                               placeholder="例如：渠道"
-                              disabled={!canEdit || busy}
+                              disabled={!canEdit || busy || savingFields.has("metadata")}
                               value={entry.key}
                               data-presence-field="metadata"
                               data-presence-record-id={selected.id}
                               onFocus={() => focusField(selected.id, "metadata")}
-                              onBlur={clearFocus}
                               onChange={(event) =>
                                 setEdit({
                                   ...edit,
@@ -1350,12 +1505,11 @@ function DraftWorkspace() {
                             <Input
                               aria-label={`第 ${index + 1} 项 Metadata 值`}
                               placeholder="例如：帮助中心"
-                              disabled={!canEdit || busy}
+                              disabled={!canEdit || busy || savingFields.has("metadata")}
                               value={entry.value}
                               data-presence-field="metadata"
                               data-presence-record-id={selected.id}
                               onFocus={() => focusField(selected.id, "metadata")}
-                              onBlur={clearFocus}
                               onChange={(event) =>
                                 setEdit({
                                   ...edit,
@@ -1369,7 +1523,7 @@ function DraftWorkspace() {
                               variant="ghost"
                               size="icon"
                               aria-label={`删除第 ${index + 1} 项 Metadata`}
-                              disabled={!canEdit || busy}
+                              disabled={!canEdit || busy || savingFields.has("metadata")}
                               onClick={() =>
                                 setEdit({
                                   ...edit,
@@ -1390,7 +1544,7 @@ function DraftWorkspace() {
                         <Button
                           variant="outline"
                           className="w-fit"
-                          disabled={!canEdit || busy}
+                          disabled={!canEdit || busy || savingFields.has("metadata")}
                           onClick={() =>
                             setEdit({
                               ...edit,
@@ -1403,7 +1557,7 @@ function DraftWorkspace() {
                         </Button>
                       </div>
                       <div className="flex justify-between border-t pt-4 text-xs text-muted-foreground">
-                        <span>字段修改会保存到当前草稿。</span>
+                        <span>离开字段后自动保存到当前草稿。</span>
                         <Button
                           variant="ghost"
                           className="text-destructive"
@@ -1428,9 +1582,8 @@ function DraftWorkspace() {
                   <CardHeader>
                     <CardTitle>1. 选择资料文件</CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      已选{" "}
-                      {new Set((selectedSources.data ?? []).map((source) => source.assetId)).size}{" "}
-                      个文件。勾选文件时默认纳入其全部记录。
+                      已选 {selectedFileIds.size} / 5 个文件，还可选 {remainingFiles}{" "}
+                      个。勾选文件时默认纳入其全部记录。
                     </p>
                   </CardHeader>
                   <CardContent className="p-0">
@@ -1452,36 +1605,27 @@ function DraftWorkspace() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!canEdit || busy}
-                        onClick={() =>
-                          void chooseSources(
-                            (files.data?.files ?? []).map((file) => file.id),
-                            "add",
-                          )
-                        }
+                        disabled={!canEdit || busy || selectedSources.isLoading || !pageFilesFit}
+                        onClick={() => void chooseSources(filePageIds, "add")}
                       >
-                        选择本页
+                        选择本页文件
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!canEdit || busy}
+                        disabled={!canEdit || busy || selectedSources.isLoading || !allFilesFit}
                         onClick={async () => {
                           const all = await listDraftSourceFiles(projectId, {
                             search: fileSearch,
-                            limit: 100,
+                            limit: 5,
                           });
-                          if (all.total > 5) {
-                            setError("一个草稿最多选择 5 个资料文件，请缩小搜索范围。");
-                            return;
-                          }
                           await chooseSources(
                             all.files.map((file) => file.id),
                             "add",
                           );
                         }}
                       >
-                        选择全部结果
+                        选择搜索结果中的全部文件
                       </Button>
                       <Button
                         variant="ghost"
@@ -1494,8 +1638,14 @@ function DraftWorkspace() {
                           )
                         }
                       >
-                        取消本页
+                        取消本页文件
                       </Button>
+                      {!pageFilesFit || !allFilesFit ? (
+                        <span className="w-full text-amber-700" role="status">
+                          当前选择超出剩余名额；还可选 {remainingFiles}{" "}
+                          个文件，请缩小范围或先取消已选文件。
+                        </span>
+                      ) : null}
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[420px] text-sm">
@@ -1524,7 +1674,12 @@ function DraftWorkspace() {
                                   checked={(selectedSources.data ?? []).some(
                                     (source) => source.assetId === file.id,
                                   )}
-                                  disabled={!canEdit || busy}
+                                  disabled={
+                                    !canEdit ||
+                                    busy ||
+                                    selectedSources.isLoading ||
+                                    (!selectedFileIds.has(file.id) && remainingFiles === 0)
+                                  }
                                   onCheckedChange={(checked) => {
                                     setFileId(file.id);
                                     setSourcePage(0);
@@ -1590,7 +1745,7 @@ function DraftWorkspace() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!canEdit || !fileId}
+                        disabled={!canEdit || !fileId || !currentSourceFits}
                         onClick={() =>
                           void chooseSources(
                             [fileId!],
@@ -1599,17 +1754,17 @@ function DraftWorkspace() {
                           )
                         }
                       >
-                        选择本页
+                        选择本页记录
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!canEdit || !fileId}
+                        disabled={!canEdit || !fileId || !currentSourceFits}
                         onClick={() =>
                           void chooseSources([fileId!], "add", undefined, sourceSearch)
                         }
                       >
-                        选择全部结果
+                        选择搜索结果中的全部记录
                       </Button>
                       <Button
                         variant="ghost"
@@ -1619,8 +1774,13 @@ function DraftWorkspace() {
                           void chooseSources([fileId!], "remove", undefined, sourceSearch)
                         }
                       >
-                        取消全部结果
+                        取消搜索结果中的全部记录
                       </Button>
+                      {!currentSourceFits && (
+                        <span role="status" className="w-full text-amber-700">
+                          已达到 5 个文件上限，请先取消一个已选文件。
+                        </span>
+                      )}
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[420px] text-sm">
@@ -1639,7 +1799,12 @@ function DraftWorkspace() {
                                 <Checkbox
                                   aria-label={`选择第 ${record.ordinal + 1} 条`}
                                   checked={sourceSet.has(keyOf(record.assetId, record.ordinal))}
-                                  disabled={!canEdit || busy}
+                                  disabled={
+                                    !canEdit ||
+                                    busy ||
+                                    (!sourceSet.has(keyOf(record.assetId, record.ordinal)) &&
+                                      !currentSourceFits)
+                                  }
                                   onCheckedChange={(checked) =>
                                     void chooseSources(
                                       [record.assetId],

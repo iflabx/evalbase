@@ -242,3 +242,52 @@ test("editor finds drafts while viewer sees only published versions", async ({ p
   await expect(page.getByRole("region", { name: "此版本有未发布草稿" })).toHaveCount(0);
   await expect(page.locator(".version-graph-card .draft-node")).toHaveCount(0);
 });
+
+test("drafts and published test sets share ten-row filtering and pagination", async ({ page }) => {
+  await mockWorkspace(page);
+  const manyDrafts = Array.from({ length: 12 }, (_, index) => ({
+    ...drafts[0],
+    id: `draft_extra_${index}`,
+    name: `待发布 ${String(index + 1).padStart(2, "0")}`,
+  }));
+  await page.route(`**/api/projects/${projectId}/collaborative-drafts?*`, (route) =>
+    route.fulfill({ json: { drafts: manyDrafts } }),
+  );
+  await page.route(`**/api/projects/${projectId}/solo-test-sets?*`, (route) => {
+    const url = new URL(route.request().url());
+    const all = ["正式甲", "正式乙"].map((name, index) => ({
+      id: `published_${index}`,
+      name,
+      currentVersionId: "version_v1",
+      currentVersion: "v1",
+      recordCount: 1,
+      source: "帮助中心.csv",
+      status: "已发布",
+      updatedAt: "2026-09-21T08:30:00.000Z",
+    }));
+    const matching = all.filter((item) => item.name.includes(url.searchParams.get("name") ?? ""));
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    const limit = Number(url.searchParams.get("limit") ?? 10);
+    return route.fulfill({
+      json: {
+        testSets: matching.slice(offset, offset + limit),
+        pagination: { total: matching.length },
+      },
+    });
+  });
+  await page.goto(`/projects/${projectId}/test-sets`);
+  await expect(
+    page.getByRole("row").filter({ has: page.getByRole("link", { name: "继续编辑草稿" }) }),
+  ).toHaveCount(10);
+  await expect(page.getByText(/第 1\/2 页/)).toBeVisible();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page.getByRole("row", { name: /正式甲/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /正式乙/ })).toBeVisible();
+  await page.getByRole("button", { name: "已发布", exact: true }).click();
+  await expect(page.getByRole("row", { name: /待发布 01/ })).toHaveCount(0);
+  await expect(page.getByRole("row", { name: /正式甲/ })).toBeVisible();
+  await page.getByRole("textbox", { name: "搜索测试集" }).fill("无匹配名称");
+  await expect(page.getByText("没有匹配结果")).toBeVisible();
+  await page.getByRole("button", { name: "清除搜索" }).click();
+  await expect(page.getByRole("row", { name: /正式甲/ })).toBeVisible();
+});

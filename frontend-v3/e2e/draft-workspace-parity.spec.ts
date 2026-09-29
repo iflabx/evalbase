@@ -68,6 +68,8 @@ const editedInheritedRecord = {
 
 test("draft page keeps prototype hierarchy, confirmation, and narrow layout", async ({ page }) => {
   let derivedEdited = false;
+  let selectedFileCount = 1;
+  let includeSixthFile = false;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -136,8 +138,11 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
         json: {
           files: [
             { id: "file_2", fileName: "资料A.json", collectionName: "资料库", recordCount: 1 },
+            ...(includeSixthFile
+              ? [{ id: "file_6", fileName: "资料F.json", collectionName: "资料库", recordCount: 1 }]
+              : []),
           ],
-          total: 1,
+          total: includeSixthFile ? 6 : 1,
         },
       });
     if (path.endsWith("/collaborative-draft-source-records"))
@@ -158,7 +163,14 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
     if (path.endsWith("/source-selection"))
       return route.fulfill({ json: { matched: 1, changed: 1 } });
     if (path.endsWith("/selected-sources"))
-      return route.fulfill({ json: { sources: [{ assetId: "file_1", ordinal: 0 }] } });
+      return route.fulfill({
+        json: {
+          sources: Array.from({ length: selectedFileCount }, (_, index) => ({
+            assetId: `file_${index + 1}`,
+            ordinal: 0,
+          })),
+        },
+      });
     if (path === `/api/projects/${projectId}/solo-test-sets/set_1/versions/version_v2`)
       return route.fulfill({
         json: { version: { id: "version_v2", label: "v2", recordCount: 12 } },
@@ -168,14 +180,15 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
 
   await page.setViewportSize({ width: 800, height: 900 });
   await page.goto(`/projects/${projectId}/test-sets/drafts/draft_new`);
-  await expect(page.getByText("测试集 v1 草稿", { exact: true })).toBeVisible();
+  await expect(page.getByText("测试集 v1 草稿", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("已保存", { exact: true })).toBeVisible();
   await expect(page.getByLabel("测试集名称")).toBeVisible();
   await expect(page.getByLabel("用途说明（可选）")).toBeVisible();
   await expect(page.getByRole("tab", { name: /草稿记录/ })).toContainText("2");
   await expect(page.getByRole("tab", { name: /添加资料/ })).toContainText("1");
   await expect(page.locator(".draft-page-actions button")).toHaveText([
     "删除当前草稿",
-    "保存并退出",
+    "退出草稿",
     "创建 v1",
   ]);
   await expect(page.getByRole("columnheader", { name: "期望输出" })).toBeVisible();
@@ -211,6 +224,10 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
     .evaluate((node) => node.scrollWidth - node.clientWidth);
   expect(sidebarOverflow).toBeLessThanOrEqual(0);
   await page.getByRole("tab", { name: /添加资料/ }).click();
+  await expect(page.getByText(/已选 1 \/ 5 个文件，还可选 4 个/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择本页文件" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择搜索结果中的全部文件" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择本页记录" })).toBeVisible();
   await page.getByRole("checkbox", { name: "选择 资料A.json" }).click();
   await expect(page.getByText("源记录X")).toBeVisible();
   await page.getByRole("tab", { name: /草稿记录/ }).click();
@@ -224,8 +241,8 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   expect(editor!.y).toBeGreaterThan(table!.y);
 
   await page.goto(`/projects/${projectId}/test-sets/drafts/draft_derived`);
-  await expect(page.getByText("草稿基于 v2 · 计划发布新版本")).toBeVisible();
-  await expect(page.getByText(/已继承父版本 12 条记录/)).toBeVisible();
+  await expect(page.getByText("基于 v2 创建草稿")).toBeVisible();
+  await expect(page.getByText("草稿基于 v2 · 计划发布新版本")).toHaveCount(0);
   await expect(page.getByLabel("测试集名称")).toHaveCount(0);
   const inheritedRow = page.getByRole("row", { name: /如何重置密码/ });
   await expect(inheritedRow.locator("td").nth(1).locator("small")).toHaveCount(0);
@@ -238,4 +255,12 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   await editedRow.click();
   await expect(page.getByLabel("记录编辑区")).toContainText("协作编辑");
   await expect(page.getByLabel("记录编辑区").getByText(/最近修改：/)).toHaveCount(1);
+  selectedFileCount = 5;
+  includeSixthFile = true;
+  await page.goto(`/projects/${projectId}/test-sets/drafts/draft_new`);
+  await page.getByRole("tab", { name: /添加资料/ }).click();
+  await expect(page.getByText(/已选 5 \/ 5 个文件，还可选 0 个/)).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "选择 资料F.json" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "选择搜索结果中的全部文件" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "选择 资料A.json" })).toBeEnabled();
 });

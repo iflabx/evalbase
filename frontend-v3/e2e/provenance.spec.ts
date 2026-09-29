@@ -214,8 +214,11 @@ test("shows the frozen provenance controls and record detail for the selected ve
   ).toBeVisible();
   await expect(page.getByText("当前版本摘要", { exact: true })).toHaveText("当前版本摘要");
   await expect(page.getByRole("button", { name: "查看来源与修改" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "下载 CSV" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "下载数据与溯源" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回测试集" })).toBeVisible();
+  await page.getByRole("button", { name: "下载", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "下载 CSV" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "下载数据与溯源" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: /创建新版本|创建分支/ })).toBeVisible();
   await page.getByRole("button", { name: "查看来源与修改" }).click();
   await expect(page.getByRole("heading", { name: "来源与修改" })).toBeVisible();

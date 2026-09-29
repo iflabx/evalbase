@@ -3,11 +3,27 @@ import { expect, test } from "@playwright/test";
 test("renders the frozen test-set list information beside its view action", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
-    const method = route.request().method();
+    if (url.pathname === "/api/installation") {
+      await route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
+      return;
+    }
     if (url.pathname === "/api/session") {
-      await route.fulfill(
-        method === "POST" ? { json: { csrfToken: "csrf" } } : { status: 401, body: "" },
-      );
+      await route.fulfill({ json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } } });
+      return;
+    }
+    if (url.pathname === "/api/projects/project_browser/access") {
+      await route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/projects/project_browser/collaborative-drafts") {
+      await route.fulfill({ json: { drafts: [] } });
       return;
     }
     if (url.pathname === "/api/projects") {
@@ -44,7 +60,9 @@ test("renders the frozen test-set list information beside its view action", asyn
   await expect(
     page.getByText("客服常见问题_2026-08.csv、产品帮助中心.json", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("已发布", { exact: true })).toHaveClass(/text-chart-2/);
+  await expect(page.getByRole("table").getByText("已发布", { exact: true })).toHaveClass(
+    /text-chart-2/,
+  );
   await expect(page.getByText("08-24", { exact: true })).toBeVisible();
   const view = page.getByRole("link", { name: "查看" });
   await expect(view).toHaveAttribute(

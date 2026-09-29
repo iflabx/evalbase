@@ -182,32 +182,41 @@ function TestSetDetailPage() {
                 {...(data.testSet.purpose ? { description: data.testSet.purpose } : {})}
                 actions={
                   <>
-                    <Button variant="outline" asChild>
-                      <Link to="/projects/$projectId/test-sets" params={{ projectId }}>
-                        返回测试集
-                      </Link>
-                    </Button>
+                    <Link
+                      className="inline-flex h-9 items-center px-2 text-sm text-muted-foreground hover:text-foreground hover:underline"
+                      to="/projects/$projectId/test-sets"
+                      params={{ projectId }}
+                    >
+                      返回测试集
+                    </Link>
                     <Button variant="outline" onClick={() => setView("provenance")}>
                       查看来源与修改
                     </Button>
-                    <a
-                      className="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
-                      href={soloVersionDownloadUrl(
-                        projectId,
-                        testSetId,
-                        data.version.id,
-                        "data.csv",
-                      )}
-                      download
-                    >
-                      下载 CSV
-                    </a>
-                    <Button
-                      variant="outline"
-                      onClick={() => downloadBoth(projectId, testSetId, data.version.id)}
-                    >
-                      下载数据与溯源
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline">下载</Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={soloVersionDownloadUrl(
+                              projectId,
+                              testSetId,
+                              data.version.id,
+                              "data.csv",
+                            )}
+                            download
+                          >
+                            下载 CSV
+                          </a>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => downloadBoth(projectId, testSetId, data.version.id)}
+                        >
+                          下载数据与溯源
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     {access.canWrite && (
                       <Button
                         disabled={startingDraft || drafts.isFetching || drafts.isError}

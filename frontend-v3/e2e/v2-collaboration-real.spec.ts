@@ -48,7 +48,8 @@ test("two accounts see field focus, live saves and a resolvable same-field confl
     });
     const update = `协作同步问题 ${Date.now()}`;
     await adminQuestion.fill(update);
-    await admin.getByRole("button", { name: "保存草稿", exact: true }).click();
+    await adminQuestion.blur();
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
     const savedAt = Date.now();
     await expect(editorQuestion).toHaveValue(update, { timeout: 2500 });
     console.log(`COLLAB-07 confirmed-save-to-peer-ms=${Date.now() - savedAt}`);
@@ -56,13 +57,14 @@ test("two accounts see field focus, live saves and a resolvable same-field confl
     await editorQuestion.fill(`编辑者本地值 ${Date.now()}`);
     const local = await editorQuestion.inputValue();
     await adminQuestion.fill(`管理员冲突值 ${Date.now()}`);
-    await admin.getByRole("button", { name: "保存草稿", exact: true }).click();
+    await adminQuestion.blur();
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
     await editorContext.setOffline(false);
     await expect(editor.getByText("问题冲突")).toBeVisible({ timeout: 5000 });
     await expect(editorQuestion).toHaveValue(local);
     await expect(editor.getByText("我的未保存输入：", { exact: false })).toContainText(local);
     await editor.getByRole("button", { name: "保留我的输入" }).click();
-    await editor.getByRole("button", { name: "保存草稿", exact: true }).click();
+    await editor.getByRole("button", { name: "重试保存", exact: true }).click();
     await expect(adminQuestion).toHaveValue(local, { timeout: 2500 });
     await admin.screenshot({ path: "/evidence/v2c-admin-draft.png", fullPage: true });
     await editor.screenshot({ path: "/evidence/v2c-editor-draft.png", fullPage: true });
