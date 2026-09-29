@@ -45,8 +45,29 @@ const secondRecord = {
   activeOrdinal: 2,
   question: "第二条唯一问题",
 };
+const inheritedRecord = {
+  ...record,
+  caseId: "case_1",
+  beforeRevisionId: "revision_1",
+  rowRevision: 0,
+  updatedBy: "admin",
+  fieldAttribution: {
+    metadata: { userId: "admin", at: "2026-09-27T08:30:00.000Z" },
+  },
+};
+const editedInheritedRecord = {
+  ...inheritedRecord,
+  rowRevision: 1,
+  questionRevision: 1,
+  updatedBy: "editor",
+  fieldAttribution: {
+    ...inheritedRecord.fieldAttribution,
+    question: { userId: "editor", at: "2026-09-29T08:30:00.000Z" },
+  },
+};
 
 test("draft page keeps prototype hierarchy, confirmation, and narrow layout", async ({ page }) => {
+  let derivedEdited = false;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -93,7 +114,11 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
             parentVersionLabel: "v2",
             parentRecordCount: 12,
           },
-          records: [record],
+          records: [derivedEdited ? editedInheritedRecord : inheritedRecord],
+          authors: {
+            admin: { name: "管理员", avatarColor: "#6366f1" },
+            editor: { name: "协作编辑", avatarColor: "#0ea5e9" },
+          },
           total: 1,
         },
       });
@@ -198,4 +223,15 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   await expect(page.getByText("草稿基于 v2 · 计划发布新版本")).toBeVisible();
   await expect(page.getByText(/已继承父版本 12 条记录/)).toBeVisible();
   await expect(page.getByLabel("测试集名称")).toHaveCount(0);
+  const inheritedRow = page.getByRole("row", { name: /如何重置密码/ });
+  await expect(inheritedRow).toContainText("本草稿尚未修改");
+  await inheritedRow.click();
+  await expect(page.getByLabel("记录编辑区").getByText("最近修改：本草稿尚未修改")).toHaveCount(3);
+  derivedEdited = true;
+  await page.reload();
+  const editedRow = page.getByRole("row", { name: /如何重置密码/ });
+  await expect(editedRow).toContainText("协作编辑");
+  await editedRow.click();
+  await expect(page.getByLabel("记录编辑区")).toContainText("协作编辑");
+  await expect(page.getByLabel("记录编辑区").getByText("最近修改：本草稿尚未修改")).toHaveCount(2);
 });

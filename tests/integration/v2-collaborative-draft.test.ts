@@ -365,6 +365,13 @@ describe("V2-03 shared draft and publication", () => {
       headers: { cookie: admin.cookie },
     });
     expect(loaded.json().records).toHaveLength(1);
+    expect(loaded.json().records[0]).toMatchObject({
+      caseId: expect.any(String),
+      rowRevision: 0,
+      questionRevision: 0,
+      expectedOutputRevision: 0,
+      metadataRevision: 0,
+    });
     const inheritedId: string = loaded.json().records[0].id;
     const adminId = (
       await db.query("SELECT id FROM app_user WHERE email='admin@example.test'")

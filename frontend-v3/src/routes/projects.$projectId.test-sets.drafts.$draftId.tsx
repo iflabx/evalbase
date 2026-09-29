@@ -263,6 +263,12 @@ function DraftWorkspace() {
     );
   };
   const fieldAuthor = (record: SharedDraftRecord, field: RecordField) => {
+    const revision = {
+      question: record.questionRevision,
+      expectedOutput: record.expectedOutputRevision,
+      metadata: record.metadataRevision,
+    }[field];
+    if (record.caseId && revision === 0) return <span>本草稿尚未修改</span>;
     const fact = record.fieldAttribution?.[field];
     return fact?.userId ? (
       authorMarkup(fact.userId, fact.at, "修改者未记录")
@@ -1196,11 +1202,13 @@ function DraftWorkspace() {
                                 <td className="max-w-[260px] px-4 py-3">
                                   <p className="truncate">{record.question || "未填写"}</p>
                                   <small className="text-muted-foreground">
-                                    {authorMarkup(
-                                      record.updatedBy,
-                                      record.updatedAt,
-                                      "修改者未记录",
-                                    )}
+                                    {record.caseId && record.rowRevision === 0
+                                      ? "本草稿尚未修改"
+                                      : authorMarkup(
+                                          record.updatedBy,
+                                          record.updatedAt,
+                                          "修改者未记录",
+                                        )}
                                   </small>
                                 </td>
                                 <td className="max-w-[220px] truncate px-4 py-3">
