@@ -242,6 +242,10 @@ function DraftWorkspace() {
     ((removedRecord || unsavedRecordInput) && selectedSnapshot?.id === selectedId
       ? selectedSnapshot
       : undefined);
+  const selectedIndex = data?.records.findIndex((record) => record.id === selectedId) ?? -1;
+  const selectedNumber =
+    selected?.activeOrdinal ??
+    (selectedIndex < 0 ? undefined : recordPage * 20 + selectedIndex + 1);
   const authorMarkup = (userId: string | null, at: string, unknown: string) => {
     const person = userId ? data?.authors?.[userId] : undefined;
     if (!person) return <span>{unknown}</span>;
@@ -1165,7 +1169,7 @@ function DraftWorkspace() {
                         </thead>
                         <tbody>
                           {records.length ? (
-                            records.map((record) => (
+                            records.map((record, index) => (
                               <tr
                                 key={record.id}
                                 tabIndex={0}
@@ -1181,7 +1185,7 @@ function DraftWorkspace() {
                               >
                                 <td className="px-4 py-3">
                                   <span className="inline-flex items-center gap-1">
-                                    {record.position}
+                                    {record.activeOrdinal ?? recordPage * 20 + index + 1}
                                     <OnlineAvatars
                                       users={editingUsers(record.id)}
                                       small
@@ -1237,7 +1241,7 @@ function DraftWorkspace() {
                       </CardTitle>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {selected
-                          ? `${sourceLabel(selected)} · 第 ${selected.position} 条`
+                          ? `${sourceLabel(selected)}${selectedNumber ? ` · 第 ${selectedNumber} 条` : ""}`
                           : "在左侧表格选择记录后，可在这里编辑长文本和 Metadata。"}
                       </p>
                     </div>
@@ -1685,7 +1689,7 @@ function DraftWorkspace() {
             <AlertDialogDescription>
               {confirmTarget === "draft"
                 ? "未发布的共享修改无法恢复；已发布版本不受影响。"
-                : `从当前草稿移除第 ${selected?.position ?? "?"} 条记录。此行尚未保存的输入也会丢失。`}
+                : `从当前草稿移除${selectedNumber ? `第 ${selectedNumber} 条` : "所选"}记录。此行尚未保存的输入也会丢失。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

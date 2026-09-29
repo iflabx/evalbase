@@ -2030,6 +2030,7 @@ export async function buildApp(
   const draftRow = (row: Record<string, unknown>) => ({
     id: String(row.id),
     position: Number(row.position),
+    activeOrdinal: row.active_ordinal ? Number(row.active_ordinal) : undefined,
     caseId: row.case_id ? String(row.case_id) : null,
     beforeRevisionId: row.before_revision_id
       ? String(row.before_revision_id)
@@ -2250,11 +2251,14 @@ export async function buildApp(
       `SELECT dr.*, da.file_name AS source_file_name,
         coalesce(author.display_name,author.username) AS updated_by_name,
         count(*) OVER() AS total
-        FROM collaborative_draft_record dr
+        FROM (
+          SELECT *, row_number() OVER (ORDER BY position) AS active_ordinal
+          FROM collaborative_draft_record
+          WHERE draft_id=$1 AND deleted=false
+        ) dr
         LEFT JOIN app_user author ON author.id=dr.updated_by
         LEFT JOIN data_asset da ON da.id=dr.source->>'assetId'
-        WHERE dr.draft_id=$1 AND dr.deleted=false AND
-          ($2='' OR question ILIKE '%'||$2||'%' OR expected_output ILIKE '%'||$2||'%')
+        WHERE ($2='' OR question ILIKE '%'||$2||'%' OR expected_output ILIKE '%'||$2||'%')
         ORDER BY position LIMIT $3 OFFSET $4`,
       [request.params.draftId, search, limit, offset],
     );

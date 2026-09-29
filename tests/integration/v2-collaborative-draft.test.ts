@@ -723,6 +723,14 @@ describe("V2-03 shared draft and publication", () => {
     expect(page.statusCode, page.body).toBe(200);
     expect(page.json().total).toBe(50);
     expect(page.json().records).toHaveLength(20);
+    expect(page.json().records[0].activeOrdinal).toBe(21);
+    const searched = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}?search=Q0`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(searched.statusCode, searched.body).toBe(200);
+    expect(searched.json().records[0].activeOrdinal).toBe(2);
     const named = await app.inject({
       method: "PATCH",
       url: `${base()}/${draftId}`,

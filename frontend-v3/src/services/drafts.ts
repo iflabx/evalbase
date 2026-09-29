@@ -27,6 +27,7 @@ export type SharedDraft = {
 export type SharedDraftRecord = {
   id: string;
   position: number;
+  activeOrdinal?: number;
   caseId: string | null;
   beforeRevisionId: string | null;
   question: string;

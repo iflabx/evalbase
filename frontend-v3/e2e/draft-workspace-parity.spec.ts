@@ -20,7 +20,8 @@ const draftBase = {
 };
 const record = {
   id: "row_1",
-  position: 1,
+  position: 101,
+  activeOrdinal: 1,
   caseId: null,
   beforeRevisionId: null,
   question: "如何重置密码？",
@@ -36,6 +37,13 @@ const record = {
   fieldAttribution: {},
   updatedBy: "editor",
   updatedAt: "2026-09-28T08:30:00.000Z",
+};
+const secondRecord = {
+  ...record,
+  id: "row_2",
+  position: 102,
+  activeOrdinal: 2,
+  question: "第二条唯一问题",
 };
 
 test("draft page keeps prototype hierarchy, confirmation, and narrow layout", async ({ page }) => {
@@ -69,8 +77,8 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
             parentVersionId: null,
             parentVersionLabel: null,
           },
-          records: [record],
-          total: 1,
+          records: url.searchParams.get("search") ? [secondRecord] : [record, secondRecord],
+          total: url.searchParams.get("search") ? 1 : 2,
         },
       });
     if (path === `/api/projects/${projectId}/collaborative-drafts/draft_derived`)
@@ -138,7 +146,7 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   await expect(page.getByText("测试集 v1 草稿", { exact: true })).toBeVisible();
   await expect(page.getByLabel("测试集名称")).toBeVisible();
   await expect(page.getByLabel("用途说明（可选）")).toBeVisible();
-  await expect(page.getByRole("tab", { name: /草稿记录/ })).toContainText("1");
+  await expect(page.getByRole("tab", { name: /草稿记录/ })).toContainText("2");
   await expect(page.getByRole("tab", { name: /添加资料/ })).toContainText("1");
   await expect(page.locator(".draft-page-actions button")).toHaveText([
     "删除当前草稿",
@@ -146,12 +154,29 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
     "创建 v1",
   ]);
   await expect(page.getByRole("columnheader", { name: "期望输出" })).toBeVisible();
+  await expect(
+    page
+      .getByRole("row", { name: /如何重置密码/ })
+      .locator("td")
+      .first(),
+  ).toHaveText("1");
   await page.getByRole("row", { name: /如何重置密码/ }).click();
   await expect(page.getByLabel("记录编辑区")).toContainText("编辑记录");
+  await expect(page.getByLabel("记录编辑区")).toContainText("第 1 条");
   await expect(page.getByLabel("第 1 项 Metadata 值")).toHaveValue("");
   await page.getByRole("button", { name: "移除记录" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("此行尚未保存的输入也会丢失");
+  await expect(page.getByRole("alertdialog")).toContainText("第 1 条记录");
   await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("textbox", { name: "搜索草稿记录" }).fill("第二条唯一问题");
+  await expect(page.getByRole("row", { name: /如何重置密码/ })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("row", { name: /第二条唯一问题/ })
+      .locator("td")
+      .first(),
+  ).toHaveText("2");
+  await page.getByRole("textbox", { name: "搜索草稿记录" }).fill("");
   const sidebarOverflow = await page
     .locator('[data-sidebar="content"]')
     .evaluate((node) => node.scrollWidth - node.clientWidth);
