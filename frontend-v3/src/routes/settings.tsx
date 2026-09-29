@@ -35,7 +35,7 @@ export const Route = createFileRoute("/settings")({
 });
 const palette = ["#2563eb", "#9333ea", "#0f766e", "#b45309", "#be123c", "#0369a1", "#4d7c0f"];
 const roleName = (role: string) =>
-  role === "editor" ? "编辑者" : role === "viewer" ? "查看者" : "管理员";
+  role === "editor" ? "编辑" : role === "viewer" ? "查看" : "管理员";
 const message: Record<string, string> = {
   account_not_registered: "此邮箱尚未注册，请让对方先注册账号。",
   invitation_pending: "此账号已有待处理邀请。",
@@ -455,8 +455,8 @@ function SettingsPage() {
                             )
                           }
                         >
-                          <option value="editor">编辑者</option>
-                          <option value="viewer">查看者</option>
+                          <option value="editor">编辑</option>
+                          <option value="viewer">查看</option>
                         </select>
                       ) : (
                         <span className="role-chip">{roleName(member.role)}</span>
@@ -510,8 +510,8 @@ function SettingsPage() {
                             value={role}
                             onChange={(event) => setRole(event.target.value as "editor" | "viewer")}
                           >
-                            <option value="editor">编辑者</option>
-                            <option value="viewer">查看者</option>
+                            <option value="editor">编辑</option>
+                            <option value="viewer">查看</option>
                           </select>
                         </label>
                         <Button className="button primary" type="submit" disabled={busy}>
@@ -573,7 +573,7 @@ function SettingsPage() {
                 </>
               )}
               <p className="settings-help">
-                管理员可邀请和管理成员；编辑者可修改项目内容；查看者只能浏览与下载。
+                管理员可邀请和管理成员；编辑权限可修改项目内容；查看权限可浏览与下载。
               </p>
             </>
           )}

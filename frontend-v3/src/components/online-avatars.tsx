@@ -1,6 +1,6 @@
 import type { OnlineUser } from "@/services/collaboration";
 
-const roleName = { admin: "管理员", editor: "编辑者", viewer: "查看者" };
+const roleName = { admin: "管理员", editor: "编辑", viewer: "查看" };
 export function OnlineAvatars({
   users,
   selfId,
