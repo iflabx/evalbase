@@ -1,0 +1,42 @@
+# Batch C owner checkpoint: isolated storage, one project and two registered accounts.
+# WEB_PORT=4217 GIT_SHA=<fixed SHA> docker compose -p evalbase-v2-c-owner-checkpoint \
+#   -f compose.yaml -f .scratch/evalbase-v2/compose-c-checkpoint.yaml up -d --build
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: evalbase_v2_c_owner_checkpoint
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U evalbase_phase1a -d evalbase_v2_c_owner_checkpoint",
+        ]
+  web:
+    environment:
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_c_owner_checkpoint
+      MINIO_BUCKET: evalbase-v2-c-owner-checkpoint
+      APP_ORIGIN: http://127.0.0.1:4217
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+  worker:
+    environment:
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_c_owner_checkpoint
+      MINIO_BUCKET: evalbase-v2-c-owner-checkpoint
+      APP_ORIGIN: http://127.0.0.1:4217
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+  test:
+    environment:
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_v2_c_automation
+      MINIO_BUCKET: evalbase-v2-c-automation
+networks:
+  edge:
+    name: evalbase-v2-c-owner-checkpoint-edge
+  internal:
+    name: evalbase-v2-c-owner-checkpoint-internal
+    internal: true
+volumes:
+  postgres-data:
+    name: evalbase-v2-c-owner-checkpoint-postgres-data
+  minio-data:
+    name: evalbase-v2-c-owner-checkpoint-minio-data

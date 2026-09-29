@@ -734,7 +734,7 @@ function ProvenanceView({
                       <th className="px-4 py-2 font-medium">记录</th>
                       <th className="px-4 py-2 font-medium">状态</th>
                       <th className="px-4 py-2 font-medium">来源</th>
-                      <th className="px-4 py-2 font-medium">变更字段</th>
+                      <th className="px-4 py-2 font-medium">变更字段 / 修改者</th>
                       <th className="px-4 py-2 font-medium">操作</th>
                     </tr>
                   </thead>
@@ -763,9 +763,7 @@ function ProvenanceView({
                             )}
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">
-                            {change.changedFields.length
-                              ? change.changedFields.map(changeFieldLabel).join("、")
-                              : "-"}
+                            <ChangeEditors change={change} />
                           </td>
                           <td className="px-4 py-3">
                             <Button
@@ -852,6 +850,48 @@ function ChangeBadge({ changeType }: { changeType: ProvenanceChange["changeType"
   );
 }
 
+function ChangeEditors({ change }: { change: ProvenanceChange }) {
+  const fields = change.changedFields.length ? change.changedFields : [];
+  if (!fields.length && change.changeType === "unchanged") return <span>未改变</span>;
+  if (!fields.length) {
+    const fact = change.recordEditor;
+    return (
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span>{change.changeType === "removed" ? "移除" : "新增"}</span>
+        {fact ? <AuthorFact fact={fact} /> : <span>操作人未记录</span>}
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-1">
+      {fields.map((field) => {
+        const fact =
+          change.fieldEditors?.[field] ?? (field === "source" ? change.recordEditor : null);
+        return (
+          <div key={field} className="flex flex-wrap items-center gap-1 text-xs">
+            <strong className="font-medium">{changeFieldLabel(field)}</strong>
+            {fact ? <AuthorFact fact={fact} /> : <span>修改者未记录</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function AuthorFact({ fact }: { fact: { name: string; avatarColor: string; at: string } }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-muted-foreground">
+      <span
+        aria-hidden="true"
+        className="inline-grid size-[22px] place-items-center rounded-full text-[10px] font-semibold text-white"
+        style={{ backgroundColor: fact.avatarColor }}
+      >
+        {Array.from(fact.name.trim())[0]?.toLocaleUpperCase() ?? "?"}
+      </span>
+      {fact.name} · {new Date(fact.at).toLocaleString("zh-CN")}
+    </span>
+  );
+}
+
 function ChangeDetailDialog({
   projectId,
   testSetName,
@@ -891,6 +931,12 @@ function ChangeDetailDialog({
                 record={change.previous}
               />
             ) : null}
+            <div>
+              <p className="text-xs text-muted-foreground">字段修改者</p>
+              <div className="mt-1 rounded border p-3">
+                <ChangeEditors change={change} />
+              </div>
+            </div>
             <div>
               <p className="text-xs text-muted-foreground">来源与本次修改</p>
               <dl className="mt-1 grid gap-1 rounded border p-3">

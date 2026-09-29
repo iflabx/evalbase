@@ -21,6 +21,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PageHeader, StateView } from "@/components/state-view";
+import { OnlineAvatars } from "@/components/online-avatars";
+import {
+  draftEvents,
+  heartbeat,
+  projectPresence,
+  setPresenceFocus,
+  type OnlineUser,
+} from "@/services/collaboration";
+import { mergeRecordSnapshot, type FieldConflict, type RecordField } from "@/services/merge-draft";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import {
   addSharedDraftRecord,
@@ -87,6 +96,12 @@ function DraftWorkspace() {
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
+  const [fieldConflicts, setFieldConflicts] = useState<
+    Partial<Record<RecordField | "name" | "purpose", FieldConflict>>
+  >({});
+  const [syncIssue, setSyncIssue] = useState("");
+  const [accessLost, setAccessLost] = useState(false);
+  const cursorRef = useRef<number | undefined>(undefined);
   const [saveState, setSaveState] = useState<"saved" | "dirty" | "saving" | "failed">("saved");
   const [fileSearch, setFileSearch] = useState("");
   const [filePage, setFilePage] = useState(0);
@@ -104,6 +119,86 @@ function DraftWorkspace() {
       }),
   });
   const data = draftQuery.data;
+  const draftPresence = useQuery({
+    queryKey: ["draft-presence", projectId, draftId],
+    queryFn: () => projectPresence(projectId, draftId),
+    enabled: data?.draft.status === "editing" && !accessLost,
+    refetchInterval: 2000,
+    retry: false,
+  });
+  const editingUsers = (recordId: string, field?: string): OnlineUser[] =>
+    (draftPresence.data ?? []).filter(
+      (user) => user.focus?.recordId === recordId && (!field || user.focus.field === field),
+    );
+  const focusField = (
+    recordId: string | undefined,
+    field: "question" | "expectedOutput" | "metadata" | "name" | "purpose",
+  ) => {
+    setPresenceFocus({ draftId, ...(recordId ? { recordId } : {}), field });
+    void heartbeat(projectId).catch(() => undefined);
+  };
+  const clearFocus = () => {
+    setPresenceFocus({ draftId });
+    void heartbeat(projectId).catch(() => undefined);
+  };
+  useEffect(() => {
+    if (!data?.draft.id) return;
+    if (cursorRef.current === undefined) cursorRef.current = data.draft.revision;
+    setPresenceFocus({ draftId });
+    void heartbeat(projectId).catch(() => undefined);
+    let closed = false;
+    let running = false;
+    const poll = async () => {
+      if (closed || running || accessLost) return;
+      if (!navigator.onLine) {
+        setSyncIssue("连接已中断，输入暂存在当前页面。");
+        return;
+      }
+      running = true;
+      try {
+        const response = await draftEvents(projectId, draftId, cursorRef.current ?? 0);
+        if (closed) return;
+        if (response.status !== "editing") {
+          setConflict(true);
+          setError(
+            response.status === "published"
+              ? "草稿已由其他成员发布。当前输入未提交，请从正式版本重新开始。"
+              : "草稿已结束，当前输入未提交。",
+          );
+          setAccessLost(true);
+          return;
+        }
+        if (response.events.length || response.needsSnapshot) {
+          await draftQuery.refetch();
+          await queryClient.invalidateQueries({
+            queryKey: ["draft-selected-sources", projectId, draftId],
+          });
+        }
+        cursorRef.current = response.cursor;
+        setSyncIssue("");
+      } catch (cause) {
+        if (closed) return;
+        if (
+          cause instanceof Error &&
+          (cause.message === "project_not_found" || cause.message === "draft_not_found")
+        ) {
+          setAccessLost(true);
+          setError("项目权限或草稿状态已变更，无法继续编辑。当前输入仍保留在页面上。");
+        } else setSyncIssue("实时同步中断，正在重连；输入暂存在当前页面。");
+      } finally {
+        running = false;
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 1000);
+    window.addEventListener("online", poll);
+    return () => {
+      closed = true;
+      window.clearInterval(timer);
+      window.removeEventListener("online", poll);
+      setPresenceFocus({});
+      void heartbeat(projectId).catch(() => undefined);
+    };
+  }, [projectId, draftId, data?.draft.id, recordSearch, recordPage, accessLost]);
   const unsavedRecordInput = Boolean(
     selectedSnapshot &&
     edit &&
@@ -117,6 +212,30 @@ function DraftWorkspace() {
     ((removedRecord || unsavedRecordInput) && selectedSnapshot?.id === selectedId
       ? selectedSnapshot
       : undefined);
+  const authorMarkup = (userId: string | null, at: string, unknown: string) => {
+    const person = userId ? data?.authors?.[userId] : undefined;
+    if (!person) return <span>{unknown}</span>;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span
+          aria-hidden="true"
+          className="inline-grid size-[22px] place-items-center rounded-full text-[10px] font-semibold text-white"
+          style={{ backgroundColor: person.avatarColor }}
+        >
+          {Array.from(person.name.trim())[0]?.toLocaleUpperCase() ?? "?"}
+        </span>
+        {person.name} · {new Date(at).toLocaleString("zh-CN")}
+      </span>
+    );
+  };
+  const fieldAuthor = (record: SharedDraftRecord, field: RecordField) => {
+    const fact = record.fieldAttribution?.[field];
+    return fact?.userId ? (
+      authorMarkup(fact.userId, fact.at, "修改者未记录")
+    ) : (
+      <span>修改者未记录</span>
+    );
+  };
   const files = useQuery({
     queryKey: ["draft-files", projectId, fileSearch, filePage],
     queryFn: () =>
@@ -170,6 +289,51 @@ function DraftWorkspace() {
       });
     }
   }, [selected, removedRecord]);
+  useEffect(() => {
+    if (!data) return;
+    const nextConflicts: Partial<Record<RecordField | "name" | "purpose", FieldConflict>> = {};
+    if (nameBaseline && name !== undefined && data.draft.nameRevision > nameBaseline.revision) {
+      if (name === nameBaseline.value || name === data.draft.name) setName(data.draft.name);
+      else
+        nextConflicts.name = {
+          local: name,
+          remote: data.draft.name,
+          authorId: data.draft.updatedBy,
+          at: data.draft.updatedAt,
+        };
+      setNameBaseline({ value: data.draft.name, revision: data.draft.nameRevision });
+    }
+    if (
+      purposeBaseline &&
+      purpose !== undefined &&
+      data.draft.purposeRevision > purposeBaseline.revision
+    ) {
+      if (purpose === purposeBaseline.value || purpose === data.draft.purpose)
+        setPurpose(data.draft.purpose);
+      else
+        nextConflicts.purpose = {
+          local: purpose,
+          remote: data.draft.purpose,
+          authorId: data.draft.updatedBy,
+          at: data.draft.updatedAt,
+        };
+      setPurposeBaseline({ value: data.draft.purpose, revision: data.draft.purposeRevision });
+    }
+    if (selectedSnapshot && edit) {
+      const fresh = data.records.find((record) => record.id === selectedSnapshot.id);
+      if (fresh && fresh.rowRevision > selectedSnapshot.rowRevision) {
+        const merged = mergeRecordSnapshot(selectedSnapshot, edit, fresh);
+        setSelectedSnapshot(fresh);
+        setEdit(merged.edit);
+        Object.assign(nextConflicts, merged.conflicts);
+      }
+    }
+    if (Object.keys(nextConflicts).length) {
+      setFieldConflicts((current) => ({ ...current, ...nextConflicts }));
+      setConflict(true);
+      setError("其他成员同时修改了相同字段。请逐项选择，当前输入已保留。");
+    }
+  }, [data, edit, name, nameBaseline, purpose, purposeBaseline, selectedSnapshot]);
   const dirty = Boolean(
     data &&
     (removedRecord ||
@@ -227,7 +391,7 @@ function DraftWorkspace() {
     return result.data;
   }
   async function save(): Promise<boolean> {
-    if (!data || busy || conflict || removedRecord) return false;
+    if (!data || busy || conflict || removedRecord || accessLost || syncIssue) return false;
     const metadata = edit?.metadata.filter((entry) => entry.key.trim() || entry.value) ?? [];
     const problem = metadataProblem(metadata);
     if (problem) {
@@ -488,6 +652,38 @@ function DraftWorkspace() {
     if (dirty && !(await save())) return;
     setTab(next);
   }
+  function resolveFieldConflict(
+    field: RecordField | "name" | "purpose",
+    choice: "remote" | "local",
+  ) {
+    const item = fieldConflicts[field];
+    if (!item) return;
+    if (choice === "remote") {
+      if (field === "name") setName(String(item.remote));
+      else if (field === "purpose") setPurpose(String(item.remote));
+      else if (field === "metadata")
+        setEdit((current) =>
+          current
+            ? {
+                ...current,
+                metadata: (item.remote as MetadataEntry[]).map((entry) => ({ ...entry })),
+              }
+            : current,
+        );
+      else setEdit((current) => (current ? { ...current, [field]: String(item.remote) } : current));
+    }
+    const remaining = { ...fieldConflicts };
+    delete remaining[field];
+    setFieldConflicts(remaining);
+    if (!Object.keys(remaining).length) {
+      setConflict(false);
+      setError(
+        choice === "local"
+          ? "已保留本地输入；再次保存会基于对方最新版本提交。"
+          : "已采用对方输入。请核对后保存。",
+      );
+    }
+  }
   function keepLocalConflict() {
     if (!data) return;
     const latestRecord = data.records.find((record) => record.id === selectedId);
@@ -557,7 +753,8 @@ function DraftWorkspace() {
     setError("");
     setSaveState("saved");
   }
-  const canEdit = access.canWrite && data?.draft.status === "editing" && !data.draft.suspended;
+  const canEdit =
+    access.canWrite && !accessLost && data?.draft.status === "editing" && !data.draft.suspended;
   const pager = (total: number, page: number, setPage: (value: number) => void, size: number) => (
     <div className="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
       <span>
@@ -662,12 +859,78 @@ function DraftWorkspace() {
                   </Button>
                 </div>
               </CardContent>
+              {syncIssue && (
+                <p role="status" className="border-t px-5 py-3 text-sm text-amber-700">
+                  {syncIssue}
+                </p>
+              )}
               {error && (
                 <div
                   role="alert"
                   className="border-t border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive"
                 >
                   <p>{error} 输入内容仍保留在页面上。</p>
+                  {Object.entries(fieldConflicts).map(
+                    ([field, item]) =>
+                      item && (
+                        <div
+                          key={field}
+                          className="mt-3 rounded-md border border-destructive/20 bg-card p-3 text-foreground"
+                        >
+                          <strong className="text-sm">
+                            {
+                              {
+                                name: "测试集名称",
+                                purpose: "用途说明",
+                                question: "问题",
+                                expectedOutput: "期望输出",
+                                metadata: "Metadata",
+                              }[field as RecordField | "name" | "purpose"]
+                            }
+                            冲突
+                          </strong>
+                          <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                            对方当前输入（{data?.authors?.[item.authorId ?? ""]?.name ?? "其他成员"}
+                            ）：
+                            {typeof item.remote === "string"
+                              ? item.remote
+                              : JSON.stringify(item.remote)}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                            我的未保存输入：
+                            {typeof item.local === "string"
+                              ? item.local
+                              : JSON.stringify(item.local)}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                resolveFieldConflict(
+                                  field as RecordField | "name" | "purpose",
+                                  "remote",
+                                )
+                              }
+                            >
+                              采用对方输入
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                resolveFieldConflict(
+                                  field as RecordField | "name" | "purpose",
+                                  "local",
+                                )
+                              }
+                            >
+                              保留我的输入
+                            </Button>
+                          </div>
+                        </div>
+                      ),
+                  )}
                   {conflict && removedRecord && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
@@ -695,7 +958,7 @@ function DraftWorkspace() {
                       </Button>
                     </div>
                   )}
-                  {conflict && !removedRecord && (
+                  {conflict && !removedRecord && !Object.keys(fieldConflicts).length && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" onClick={keepLocalConflict}>
                         保留本地输入
@@ -719,6 +982,8 @@ function DraftWorkspace() {
                       disabled={!canEdit || busy}
                       onChange={(event) => setName(event.target.value)}
                       placeholder="例如：客服基础问答"
+                      onFocus={() => focusField(undefined, "name")}
+                      onBlur={clearFocus}
                     />
                   </div>
                   <div className="grid min-w-0 gap-2">
@@ -731,6 +996,8 @@ function DraftWorkspace() {
                       disabled={!canEdit || busy}
                       onChange={(event) => setPurpose(event.target.value)}
                       placeholder="简述测试集用途"
+                      onFocus={() => focusField(undefined, "purpose")}
+                      onBlur={clearFocus}
                     />
                   </div>
                 </CardContent>
@@ -828,9 +1095,20 @@ function DraftWorkspace() {
                               >
                                 <td className="px-4 py-3">{record.position}</td>
                                 <td className="max-w-[260px] px-4 py-3">
-                                  <p className="truncate">{record.question || "未填写"}</p>
+                                  <p className="inline-flex max-w-full items-center gap-1">
+                                    <span className="truncate">{record.question || "未填写"}</span>
+                                    <OnlineAvatars
+                                      users={editingUsers(record.id)}
+                                      small
+                                      editingField="此记录"
+                                    />
+                                  </p>
                                   <small className="text-muted-foreground">
-                                    {new Date(record.updatedAt).toLocaleString("zh-CN")}
+                                    {authorMarkup(
+                                      record.updatedBy,
+                                      record.updatedAt,
+                                      "修改者未记录",
+                                    )}
                                   </small>
                                 </td>
                                 <td className="max-w-[220px] truncate px-4 py-3">
@@ -889,29 +1167,60 @@ function DraftWorkspace() {
                   {selected && edit && (
                     <CardContent className="grid gap-5 border-t p-5">
                       <div className="grid gap-2">
-                        <Label htmlFor="draft-question">问题</Label>
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="draft-question">问题</Label>
+                          <OnlineAvatars
+                            users={editingUsers(selected.id, "question")}
+                            small
+                            editingField="问题"
+                          />
+                        </div>
                         <Textarea
                           id="draft-question"
                           rows={5}
                           disabled={!canEdit || busy}
                           value={edit.question}
+                          onFocus={() => focusField(selected.id, "question")}
+                          onBlur={clearFocus}
                           onChange={(event) => setEdit({ ...edit, question: event.target.value })}
                         />
+                        <small className="text-xs text-muted-foreground">
+                          最近修改：{fieldAuthor(selected, "question")}
+                        </small>
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="draft-answer">期望输出</Label>
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="draft-answer">期望输出</Label>
+                          <OnlineAvatars
+                            users={editingUsers(selected.id, "expectedOutput")}
+                            small
+                            editingField="期望输出"
+                          />
+                        </div>
                         <Textarea
                           id="draft-answer"
                           rows={5}
                           disabled={!canEdit || busy}
                           value={edit.expectedOutput}
+                          onFocus={() => focusField(selected.id, "expectedOutput")}
+                          onBlur={clearFocus}
                           onChange={(event) =>
                             setEdit({ ...edit, expectedOutput: event.target.value })
                           }
                         />
+                        <small className="text-xs text-muted-foreground">
+                          最近修改：{fieldAuthor(selected, "expectedOutput")}
+                        </small>
                       </div>
                       <div className="grid gap-2">
-                        <Label>Metadata</Label>
+                        <div className="flex items-center gap-1">
+                          <Label>Metadata</Label>
+                          <OnlineAvatars
+                            users={editingUsers(selected.id, "metadata")}
+                            small
+                            editingField="Metadata"
+                          />
+                        </div>
                         <div className="draft-metadata-row gap-2 text-xs text-muted-foreground">
                           <span>字段名</span>
                           <span>值</span>
@@ -924,6 +1233,8 @@ function DraftWorkspace() {
                               placeholder="例如：渠道"
                               disabled={!canEdit || busy}
                               value={entry.key}
+                              onFocus={() => focusField(selected.id, "metadata")}
+                              onBlur={clearFocus}
                               onChange={(event) =>
                                 setEdit({
                                   ...edit,
@@ -938,6 +1249,8 @@ function DraftWorkspace() {
                               placeholder="例如：帮助中心"
                               disabled={!canEdit || busy}
                               value={entry.value}
+                              onFocus={() => focusField(selected.id, "metadata")}
+                              onBlur={clearFocus}
                               onChange={(event) =>
                                 setEdit({
                                   ...edit,
@@ -963,6 +1276,9 @@ function DraftWorkspace() {
                             </Button>
                           </div>
                         ))}
+                        <small className="text-xs text-muted-foreground">
+                          最近修改：{fieldAuthor(selected, "metadata")}
+                        </small>
                         {metadataProblem(edit.metadata) && (
                           <p role="alert" className="text-sm text-destructive">
                             {metadataProblem(edit.metadata)}

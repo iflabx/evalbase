@@ -199,6 +199,8 @@ export type ProvenanceChange = {
   previous: ProvenanceRecord | null;
   source: ProvenanceRecord["source"];
   changedFields: string[];
+  fieldEditors?: Record<string, { userId: string; name: string; avatarColor: string; at: string }>;
+  recordEditor?: { userId: string; name: string; avatarColor: string; at: string } | null;
 };
 
 export type ProvenancePage = {

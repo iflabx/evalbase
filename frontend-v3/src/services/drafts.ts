@@ -39,6 +39,7 @@ export type SharedDraftRecord = {
   sourceRevision: number;
   fieldAttribution: Record<string, { userId: string; at: string }>;
   updatedBy: string;
+  updatedByName?: string;
   updatedAt: string;
 };
 export type DraftSourceFile = {
@@ -87,9 +88,12 @@ export async function getSharedDraft(
     offset: String(input.offset ?? 0),
   });
   if (input.search) query.set("search", input.search);
-  return request<{ draft: SharedDraft; records: SharedDraftRecord[]; total: number }>(
-    `${item(projectId, draftId)}?${query}`,
-  );
+  return request<{
+    draft: SharedDraft;
+    records: SharedDraftRecord[];
+    authors: Record<string, { name: string; avatarColor: string }>;
+    total: number;
+  }>(`${item(projectId, draftId)}?${query}`);
 }
 export async function saveSharedDraftField(
   projectId: string,

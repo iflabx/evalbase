@@ -1768,6 +1768,181 @@ export async function buildApp(
     },
   );
 
+  type PresenceEntry = {
+    projectId: string;
+    userId: string;
+    clientId: string;
+    seenAt: number;
+    draftId: string | null;
+    recordId: string | null;
+    field: string | null;
+  };
+  const presence = new Map<string, PresenceEntry>();
+  const expirePresence = () => {
+    const cutoff = now().getTime() - 15_000;
+    for (const [key, entry] of presence)
+      if (entry.seenAt <= cutoff) presence.delete(key);
+  };
+  const presencePath = "/api/projects/:projectId/presence";
+  app.post<{ Params: { projectId: string }; Body: unknown }>(
+    presencePath,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "read",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        typeof body.clientId !== "string" ||
+        !/^[a-zA-Z0-9-]{1,100}$/.test(body.clientId) ||
+        (body.draftId !== undefined &&
+          body.draftId !== null &&
+          typeof body.draftId !== "string") ||
+        (body.recordId !== undefined &&
+          body.recordId !== null &&
+          typeof body.recordId !== "string") ||
+        (body.field !== undefined &&
+          body.field !== null &&
+          ![
+            "question",
+            "expectedOutput",
+            "metadata",
+            "name",
+            "purpose",
+          ].includes(String(body.field))) ||
+        (body.recordId && !body.draftId) ||
+        (body.field && !body.draftId)
+      )
+        return reply.code(422).send({ error: { code: "presence_invalid" } });
+      const draftId = body.draftId ? String(body.draftId) : null;
+      if (draftId) {
+        if (
+          !(await hasProjectCapability(
+            db,
+            request.params.projectId,
+            actor.id,
+            "write",
+          ))
+        )
+          return reply.code(404).send({ error: { code: "project_not_found" } });
+        const draft = await db.query(
+          `SELECT d.id FROM collaborative_draft d LEFT JOIN test_set ts ON ts.id=d.test_set_id
+           LEFT JOIN test_set_version v ON v.id=d.parent_version_id
+           WHERE d.id=$1 AND d.project_id=$2 AND d.status='editing'
+             AND (ts.status IS NULL OR ts.status='available')
+             AND (v.status IS NULL OR v.status='published')`,
+          [draftId, request.params.projectId],
+        );
+        if (!draft.rowCount)
+          return reply.code(404).send({ error: { code: "draft_not_found" } });
+      }
+      expirePresence();
+      const clientId = String(body.clientId);
+      presence.set(`${actor.id}:${clientId}`, {
+        projectId: request.params.projectId,
+        userId: actor.id,
+        clientId,
+        seenAt: now().getTime(),
+        draftId,
+        recordId: body.recordId ? String(body.recordId) : null,
+        field: body.field ? String(body.field) : null,
+      });
+      return reply.code(204).send();
+    },
+  );
+  app.delete<{ Params: { projectId: string; clientId: string } }>(
+    `${presencePath}/:clientId`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      const key = `${actor.id}:${request.params.clientId}`;
+      if (presence.get(key)?.projectId === request.params.projectId)
+        presence.delete(key);
+      return reply.code(204).send();
+    },
+  );
+  app.get<{ Params: { projectId: string }; Querystring: { draftId?: string } }>(
+    presencePath,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "read",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      const draftId = request.query.draftId;
+      if (
+        draftId &&
+        !(await hasProjectCapability(
+          db,
+          request.params.projectId,
+          actor.id,
+          "write",
+        ))
+      )
+        return reply.code(404).send({ error: { code: "project_not_found" } });
+      expirePresence();
+      const entries = [...presence.values()].filter(
+        (entry) => entry.projectId === request.params.projectId,
+      );
+      const ids = [...new Set(entries.map((entry) => entry.userId))];
+      if (!ids.length) return { users: [] };
+      const people = await db.query(
+        `SELECT u.id,coalesce(u.display_name,u.username) AS name,u.avatar_color,
+                u.role AS account_role,pm.role AS project_role
+         FROM app_user u LEFT JOIN project_member pm ON pm.user_id=u.id AND pm.project_id=$1
+         WHERE u.id=ANY($2::text[]) AND (u.role='admin' OR pm.role IN ('owner','editor','viewer'))`,
+        [request.params.projectId, ids],
+      );
+      const users = people.rows.map((person) => {
+        const active = entries.filter((entry) => entry.userId === person.id);
+        const role =
+          person.account_role === "admin"
+            ? "admin"
+            : String(person.project_role);
+        const focused =
+          draftId && role !== "viewer"
+            ? active
+                .filter((entry) => entry.draftId === draftId && entry.field)
+                .sort((a, b) => b.seenAt - a.seenAt)[0]
+            : undefined;
+        return {
+          id: String(person.id),
+          name: String(person.name),
+          avatarColor: String(person.avatar_color),
+          role,
+          ...(focused
+            ? {
+                focus: {
+                  draftId,
+                  recordId: focused.recordId,
+                  field: focused.field,
+                },
+              }
+            : {}),
+        };
+      });
+      return { users };
+    },
+  );
+
   // V2 shared draft identities are separate from legacy lease-based working_draft.
   const draftPath = "/api/projects/:projectId/collaborative-drafts";
   const draftByIdPath = `${draftPath}/:draftId`;
@@ -1865,6 +2040,7 @@ export async function buildApp(
     sourceRevision: Number(row.source_revision),
     fieldAttribution: row.field_attribution,
     updatedBy: String(row.updated_by),
+    updatedByName: String(row.updated_by_name ?? row.updated_by),
     updatedAt: row.updated_at,
   });
   const draftLive = (row: Record<string, unknown>) =>
@@ -2065,20 +2241,94 @@ export async function buildApp(
     const offset = Math.max(0, Number(request.query.offset) || 0);
     const search = String(request.query.search ?? "").slice(0, 200);
     const rows = await db.query(
-      `SELECT dr.*, da.file_name AS source_file_name, count(*) OVER() AS total
+      `SELECT dr.*, da.file_name AS source_file_name,
+        coalesce(author.display_name,author.username) AS updated_by_name,
+        count(*) OVER() AS total
         FROM collaborative_draft_record dr
+        LEFT JOIN app_user author ON author.id=dr.updated_by
         LEFT JOIN data_asset da ON da.id=dr.source->>'assetId'
         WHERE dr.draft_id=$1 AND dr.deleted=false AND
           ($2='' OR question ILIKE '%'||$2||'%' OR expected_output ILIKE '%'||$2||'%')
         ORDER BY position LIMIT $3 OFFSET $4`,
       [request.params.draftId, search, limit, offset],
     );
+    const authorIds = [
+      ...new Set(
+        rows.rows.flatMap((row) => [
+          String(row.updated_by),
+          ...Object.values(
+            isPlainObject(row.field_attribution) ? row.field_attribution : {},
+          ).flatMap((fact) =>
+            isPlainObject(fact) && typeof fact.userId === "string"
+              ? [fact.userId]
+              : [],
+          ),
+        ]),
+      ),
+    ];
+    const people = authorIds.length
+      ? await db.query(
+          `SELECT id,coalesce(display_name,username) AS name,avatar_color FROM app_user WHERE id=ANY($1::text[])`,
+          [authorIds],
+        )
+      : { rows: [] as Array<Record<string, unknown>> };
+    const authors = Object.fromEntries(
+      people.rows.map((person) => [
+        String(person.id),
+        { name: String(person.name), avatarColor: String(person.avatar_color) },
+      ]),
+    );
     return {
       draft: summary,
       records: rows.rows.map(draftRow),
+      authors,
       total: Number(rows.rows[0]?.total ?? 0),
     };
   });
+
+  app.get<{
+    Params: { projectId: string; draftId: string };
+    Querystring: { after?: string };
+  }>(
+    `${draftByIdPath}/events`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      if (!(await draftRead(request, reply, request.params.projectId))) return;
+      const after = Number(request.query.after ?? "0");
+      if (!Number.isSafeInteger(after) || after < 0)
+        return reply
+          .code(422)
+          .send({ error: { code: "draft_cursor_invalid" } });
+      const draft = await db.query(
+        `SELECT revision,status FROM collaborative_draft WHERE id=$1 AND project_id=$2`,
+        [request.params.draftId, request.params.projectId],
+      );
+      if (!draft.rowCount)
+        return reply.code(404).send({ error: { code: "draft_not_found" } });
+      const result = await db.query(
+        `SELECT revision,status,changed_by,created_at FROM collaborative_draft_event
+         WHERE draft_id=$1 AND revision>$2 ORDER BY revision LIMIT 101`,
+        [request.params.draftId, after],
+      );
+      const events = result.rows.slice(0, 100).map((row) => ({
+        draftId: request.params.draftId,
+        revision: Number(row.revision),
+        status: String(row.status),
+        changedBy: row.changed_by ? String(row.changed_by) : null,
+        at: row.created_at,
+      }));
+      return {
+        events,
+        cursor: events.at(-1)?.revision ?? after,
+        hasMore: result.rows.length > 100,
+        needsSnapshot:
+          Number(draft.rows[0].revision) < after ||
+          (events.length > 0 && events[0].revision > after + 1) ||
+          (events.length === 0 && Number(draft.rows[0].revision) > after),
+        status: String(draft.rows[0].status),
+      };
+    },
+  );
 
   app.patch<{ Params: { projectId: string; draftId: string }; Body: unknown }>(
     draftByIdPath,
@@ -3705,8 +3955,16 @@ export async function buildApp(
             );
           }
           await client.query(
+            `INSERT INTO collaborative_draft_attribution
+              (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)
+             SELECT $2,id,case_id,'{}'::jsonb,updated_by,updated_at
+             FROM collaborative_draft_record
+             WHERE draft_id=$1 AND deleted=true AND case_id IS NOT NULL`,
+            [collaborativeDraftId, versionId],
+          );
+          await client.query(
             `UPDATE collaborative_draft SET status='published',
-            test_set_id=$2,published_version_id=$3,updated_by=$4,updated_at=now()
+            test_set_id=$2,published_version_id=$3,revision=revision+1,updated_by=$4,updated_at=now()
             WHERE id=$1 AND status='editing'`,
             [collaborativeDraftId, testSetId, versionId, actor.id],
           );
@@ -3786,6 +4044,16 @@ export async function buildApp(
     > | null;
     source: SoloVersionRecord["source"];
     changedFields: string[];
+    fieldEditors: Record<
+      string,
+      { userId: string; name: string; avatarColor: string; at: string }
+    >;
+    recordEditor: {
+      userId: string;
+      name: string;
+      avatarColor: string;
+      at: string;
+    } | null;
   };
 
   function soloVersionRecord(row: Record<string, unknown>): SoloVersionRecord {
@@ -3951,9 +4219,72 @@ export async function buildApp(
           cutFact && Array.isArray(cutFact.changed_fields)
             ? (cutFact.changed_fields as string[])
             : changedFields,
+        fieldEditors: {},
+        recordEditor: null,
       });
     }
 
+    const attributionRows = await queryClient.query(
+      `SELECT case_id,field_attribution,saved_by,saved_at
+       FROM collaborative_draft_attribution WHERE version_id=$1`,
+      [versionId],
+    );
+    const attributionByCase = new Map(
+      attributionRows.rows.map((row) => [String(row.case_id), row]),
+    );
+    const authorIds = [
+      ...new Set(
+        attributionRows.rows.flatMap((row) => [
+          String(row.saved_by),
+          ...Object.values(
+            isPlainObject(row.field_attribution) ? row.field_attribution : {},
+          ).flatMap((fact) =>
+            isPlainObject(fact) && typeof fact.userId === "string"
+              ? [fact.userId]
+              : [],
+          ),
+        ]),
+      ),
+    ];
+    const authorRows = authorIds.length
+      ? await queryClient.query(
+          `SELECT id,coalesce(display_name,username) AS name,avatar_color FROM app_user WHERE id=ANY($1::text[])`,
+          [authorIds],
+        )
+      : { rows: [] as Array<Record<string, unknown>> };
+    const authors = new Map(
+      authorRows.rows.map((row) => [String(row.id), row]),
+    );
+    for (const change of changes) {
+      const row = attributionByCase.get(change.id);
+      if (!row) continue;
+      const savedBy = authors.get(String(row.saved_by));
+      if (savedBy)
+        change.recordEditor = {
+          userId: String(row.saved_by),
+          name: String(savedBy.name),
+          avatarColor: String(savedBy.avatar_color),
+          at: String(row.saved_at),
+        };
+      if (isPlainObject(row.field_attribution)) {
+        for (const [field, fact] of Object.entries(row.field_attribution)) {
+          if (
+            !isPlainObject(fact) ||
+            typeof fact.userId !== "string" ||
+            typeof fact.at !== "string"
+          )
+            continue;
+          const person = authors.get(fact.userId);
+          if (!person) continue;
+          change.fieldEditors[field] = {
+            userId: fact.userId,
+            name: String(person.name),
+            avatarColor: String(person.avatar_color),
+            at: fact.at,
+          };
+        }
+      }
+    }
     const sourceAssetIds = [
       ...new Set(
         changes.flatMap((change) =>

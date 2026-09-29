@@ -853,8 +853,16 @@ export async function publishSparseVersion(
         );
       }
       await client.query(
+        `INSERT INTO collaborative_draft_attribution
+          (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)
+         SELECT $2,id,case_id,'{}'::jsonb,updated_by,updated_at
+         FROM collaborative_draft_record
+         WHERE draft_id=$1 AND deleted=true AND case_id IS NOT NULL`,
+        [request.draftId, versionId],
+      );
+      await client.query(
         `UPDATE collaborative_draft SET status='published',
-        published_version_id=$2,updated_by=$3,updated_at=now()
+        revision=revision+1,published_version_id=$2,updated_by=$3,updated_at=now()
         WHERE id=$1 AND status='editing'`,
         [request.draftId, versionId, request.actorId],
       );

@@ -89,6 +89,15 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
           total: 1,
         },
       });
+    if (path.endsWith("/presence"))
+      return route.request().method() === "POST"
+        ? route.fulfill({ status: 204 })
+        : route.fulfill({ json: { users: [] } });
+    if (path.includes("/presence/")) return route.fulfill({ status: 204 });
+    if (path.endsWith("/events"))
+      return route.fulfill({
+        json: { events: [], cursor: 1, hasMore: false, needsSnapshot: false, status: "editing" },
+      });
     if (path.endsWith("/collaborative-draft-source-files"))
       return route.fulfill({
         json: {

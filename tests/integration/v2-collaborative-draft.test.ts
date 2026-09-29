@@ -123,6 +123,102 @@ describe("V2-03 shared draft and publication", () => {
     }
   });
 
+  it("delivers committed draft revisions only to authorized collaborators", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: base(),
+      headers: headers(),
+      payload: {},
+    });
+    expect(created.statusCode).toBe(201);
+    const draftId: string = created.json().draft.id;
+    const saved = await app.inject({
+      method: "PATCH",
+      url: `${base()}/${draftId}`,
+      headers: headers(admin),
+      payload: {
+        field: "name",
+        value: "双人实时草稿",
+        expectedFieldRevision: 0,
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    const received = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}/events?after=0`,
+      headers: { cookie: editor.cookie },
+    });
+    expect(received.statusCode, received.body).toBe(200);
+    expect(received.json().events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ draftId, revision: 1, status: "editing" }),
+      ]),
+    );
+    const forbidden = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}/events?after=0`,
+      headers: { cookie: viewer.cookie },
+    });
+    expect(forbidden.statusCode).toBe(404);
+  });
+
+  it("aggregates online tabs and keeps draft focus private to editors", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: base(),
+      headers: headers(),
+      payload: {},
+    });
+    const draftId: string = created.json().draft.id;
+    for (const clientId of ["tab-one", "tab-two"]) {
+      const beat = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/presence`,
+        headers: headers(admin),
+        payload: { clientId, draftId, recordId: "row-one", field: "question" },
+      });
+      expect(beat.statusCode, beat.body).toBe(204);
+    }
+    const projectPresence = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/presence`,
+      headers: { cookie: viewer.cookie },
+    });
+    expect(projectPresence.statusCode).toBe(200);
+    expect(projectPresence.json().users).toHaveLength(1);
+    expect(projectPresence.json().users[0]).not.toHaveProperty("focus");
+    const draftPresence = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/presence?draftId=${draftId}`,
+      headers: { cookie: editor.cookie },
+    });
+    expect(draftPresence.json().users[0].focus).toEqual({
+      draftId,
+      recordId: "row-one",
+      field: "question",
+    });
+    const viewerDraft = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/presence?draftId=${draftId}`,
+      headers: { cookie: viewer.cookie },
+    });
+    expect(viewerDraft.statusCode).toBe(404);
+    for (const clientId of ["tab-one", "tab-two"]) {
+      const left = await app.inject({
+        method: "DELETE",
+        url: `/api/projects/${projectId}/presence/${clientId}`,
+        headers: headers(admin),
+      });
+      expect(left.statusCode).toBe(204);
+    }
+    const empty = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/presence`,
+      headers: { cookie: editor.cookie },
+    });
+    expect(empty.json().users).toHaveLength(0);
+  });
+
   it("keeps new drafts independent and creates one shared draft per parent", async () => {
     const fresh = await Promise.all(
       [0, 1].map(() =>
@@ -340,6 +436,55 @@ describe("V2-03 shared draft and publication", () => {
     expect(attribution.rows[0].field_attribution.metadata.userId).toBe(
       byEmail.get("admin@example.test"),
     );
+    const provenanceUrl = `/api/projects/${projectId}/solo-test-sets/${testSetId}/versions/${publishedLeafVersionId}/provenance`;
+    const provenance = await app.inject({
+      method: "GET",
+      url: provenanceUrl,
+      headers: { cookie: editor.cookie },
+    });
+    expect(provenance.statusCode, provenance.body).toBe(200);
+    const changed = provenance
+      .json()
+      .changes.find(
+        (item: { id: string }) => item.id === loaded.json().records[0].caseId,
+      );
+    expect(changed.fieldEditors.question).toMatchObject({
+      userId: byEmail.get("admin@example.test"),
+      name: "管理员",
+    });
+    expect(changed.fieldEditors.expectedOutput).toMatchObject({
+      userId: byEmail.get("editor@example.test"),
+      name: "editor",
+    });
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: headers(editor),
+      payload: { displayName: "编辑成员", avatarColor: "#9333ea" },
+    });
+    expect(renamed.statusCode, renamed.body).toBe(200);
+    const afterRename = await app.inject({
+      method: "GET",
+      url: provenanceUrl,
+      headers: { cookie: admin.cookie },
+    });
+    expect(
+      afterRename
+        .json()
+        .changes.find((item: { id: string }) => item.id === changed.id)
+        .fieldEditors.expectedOutput,
+    ).toMatchObject({
+      userId: byEmail.get("editor@example.test"),
+      name: "编辑成员",
+      avatarColor: "#9333ea",
+    });
+    const restoredProfile = await app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: headers(editor),
+      payload: { displayName: "editor", avatarColor: "#6366f1" },
+    });
+    expect(restoredProfile.statusCode, restoredProfile.body).toBe(200);
   });
   it("hides draft bodies from viewers and preserves published blank metadata", async () => {
     const list = await app.inject({

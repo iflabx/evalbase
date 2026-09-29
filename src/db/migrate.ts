@@ -1294,6 +1294,32 @@ CREATE TABLE IF NOT EXISTS collaborative_draft_record (
   PRIMARY KEY (draft_id,id),
   UNIQUE (draft_id,position)
 );
+CREATE TABLE IF NOT EXISTS collaborative_draft_event (
+  draft_id text NOT NULL REFERENCES collaborative_draft(id) ON DELETE CASCADE,
+  revision bigint NOT NULL,
+  project_id text NOT NULL REFERENCES project(id),
+  status text NOT NULL,
+  changed_by text REFERENCES app_user(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (draft_id,revision)
+);
+CREATE OR REPLACE FUNCTION record_collaborative_draft_event() RETURNS trigger AS $$
+BEGIN
+  IF NEW.revision IS DISTINCT FROM OLD.revision THEN
+    INSERT INTO collaborative_draft_event (draft_id,revision,project_id,status,changed_by)
+    VALUES (NEW.id,NEW.revision,NEW.project_id,NEW.status,NEW.updated_by)
+    ON CONFLICT (draft_id,revision) DO NOTHING;
+    DELETE FROM collaborative_draft_event
+    WHERE draft_id=NEW.id AND
+      (revision <= NEW.revision - 10000 OR created_at < now() - interval '24 hours');
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS collaborative_draft_event_written ON collaborative_draft;
+CREATE TRIGGER collaborative_draft_event_written
+  AFTER UPDATE OF revision ON collaborative_draft FOR EACH ROW
+  EXECUTE FUNCTION record_collaborative_draft_event();
 CREATE TABLE IF NOT EXISTS collaborative_draft_attribution (
   version_id text NOT NULL REFERENCES test_set_version(id) ON DELETE CASCADE,
   draft_row_id text NOT NULL,
@@ -1314,11 +1340,19 @@ CREATE OR REPLACE FUNCTION terminate_collaborative_drafts() RETURNS trigger AS $
 BEGIN
   IF TG_TABLE_NAME = 'test_set' AND NEW.status = 'permanently_deleted' THEN
     UPDATE collaborative_draft SET status='terminated', name='', purpose='',
-      updated_at=now() WHERE test_set_id=NEW.id AND status='editing';
+      revision=revision+1, updated_at=now() WHERE test_set_id=NEW.id AND status='editing';
   ELSIF TG_TABLE_NAME = 'test_set_version'
     AND NEW.status IN ('permanently_deleted','tombstoned') THEN
     UPDATE collaborative_draft SET status='terminated', name='', purpose='',
-      updated_at=now() WHERE parent_version_id=NEW.id AND status='editing';
+      revision=revision+1, updated_at=now() WHERE parent_version_id=NEW.id AND status='editing';
+  ELSIF NEW.status IS DISTINCT FROM OLD.status THEN
+    IF TG_TABLE_NAME = 'test_set' THEN
+      UPDATE collaborative_draft SET revision=revision+1, updated_at=now()
+        WHERE test_set_id=NEW.id AND status='editing';
+    ELSE
+      UPDATE collaborative_draft SET revision=revision+1, updated_at=now()
+        WHERE parent_version_id=NEW.id AND status='editing';
+    END IF;
   END IF;
   DELETE FROM collaborative_draft_record WHERE draft_id IN
     (SELECT id FROM collaborative_draft WHERE status='terminated'

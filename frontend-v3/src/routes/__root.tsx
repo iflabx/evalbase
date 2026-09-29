@@ -1,9 +1,16 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { HeadContent, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
+import {
+  HeadContent,
+  Outlet,
+  createRootRouteWithContext,
+  useRouterState,
+} from "@tanstack/react-router";
 
 import { AccountGate } from "@/components/account-gate";
 import { AppSidebar } from "@/components/app-sidebar";
+import { OnlineAvatars } from "@/components/online-avatars";
+import { heartbeat, leavePresence, projectPresence } from "@/services/collaboration";
 import { RecordDensityProvider } from "@/components/record-density";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
@@ -33,6 +40,8 @@ function RootComponent() {
 }
 
 function AuthenticatedApp() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const projectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? "";
   useEffect(() => {
     const expired = () => window.location.replace("/");
     window.addEventListener("evalbase:session-expired", expired);
@@ -45,6 +54,24 @@ function AuthenticatedApp() {
     enabled: status.data?.needsAdministrator === false && !status.data?.needsMigration,
     retry: false,
   });
+  const online = useQuery({
+    queryKey: ["project-presence", projectId],
+    queryFn: () => projectPresence(projectId),
+    enabled: Boolean(projectId) && Boolean(session.data),
+    refetchInterval: 2000,
+    retry: false,
+  });
+  useEffect(() => {
+    if (!projectId || !session.data) return;
+    void heartbeat(projectId)
+      .then(() => online.refetch())
+      .catch(() => undefined);
+    const timer = window.setInterval(() => void heartbeat(projectId).catch(() => undefined), 5000);
+    return () => {
+      window.clearInterval(timer);
+      void leavePresence(projectId).catch(() => undefined);
+    };
+  }, [projectId, session.data, online.refetch]);
   if (status.isPending) return <div className="auth-loading">正在连接 EvalBase…</div>;
   if (status.isError)
     return (
@@ -70,9 +97,15 @@ function AuthenticatedApp() {
             <header className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur">
               <SidebarTrigger />
               <span className="text-sm text-muted-foreground">团队测试资料库</span>
+              <OnlineAvatars
+                users={online.data ?? []}
+                selfId={session.data.actor.id}
+                className="ml-auto"
+              />
               <button
-                className="ml-auto text-sm hover:text-primary"
+                className="text-sm hover:text-primary"
                 onClick={async () => {
+                  if (projectId) await leavePresence(projectId).catch(() => undefined);
                   await logout();
                   window.location.assign("/");
                 }}
