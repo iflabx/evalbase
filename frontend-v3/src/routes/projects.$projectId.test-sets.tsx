@@ -178,37 +178,39 @@ function TestSetsPage() {
           </>
         }
       />
-      <div className="relative mb-4 w-full max-w-64">
-        <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
-        <Input
-          aria-label="搜索测试集"
-          placeholder="搜索测试集"
-          className="pl-8"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
-        />
-      </div>
-      {access.canWrite && (
-        <div role="group" aria-label="按状态筛选测试集" className="mb-4 flex flex-wrap gap-2">
-          {(["all", "draft", "published"] as const).map((value) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={filter === value ? "default" : "outline"}
-              aria-pressed={filter === value}
-              onClick={() => {
-                setFilter(value);
-                setPage(1);
-              }}
-            >
-              {{ all: "全部", draft: "草稿", published: "已发布" }[value]}
-            </Button>
-          ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-64">
+          <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
+          <Input
+            aria-label="搜索测试集"
+            placeholder="搜索测试集"
+            className="pl-8"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+          />
         </div>
-      )}
+        {access.canWrite && (
+          <div role="group" aria-label="按状态筛选测试集" className="flex flex-wrap gap-2">
+            {(["all", "draft", "published"] as const).map((value) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={filter === value ? "default" : "outline"}
+                aria-pressed={filter === value}
+                onClick={() => {
+                  setFilter(value);
+                  setPage(1);
+                }}
+              >
+                {{ all: "全部", draft: "草稿", published: "已发布" }[value]}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
       <StateView
         isLoading={
           (access.canWrite && effectiveFilter !== "published" && drafts.isLoading) ||
