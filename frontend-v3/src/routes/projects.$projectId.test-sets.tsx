@@ -281,7 +281,8 @@ function TestSetsPage() {
                           {access.canManage && (
                             <Button
                               variant="outline"
-                              size="icon"
+                              size="sm"
+                              className="w-8 px-0"
                               aria-label={`移入回收站：${item.name}`}
                               title="移入回收站"
                               onClick={() => setTrashTarget(item)}
