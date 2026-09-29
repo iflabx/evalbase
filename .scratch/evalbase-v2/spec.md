@@ -79,7 +79,7 @@ Owner 浏览器验收库每批只保留一个易读名称的合成项目、两�
 | V2-01 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-02 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-03 | completed | 0df0228 | B，Owner 已验收；资源已释放 |
-| V2-04 | in-progress | dd08f9d | C，草稿表序号列间距修复，待 Owner 复验 |
+| V2-04 | in-progress | 8e56920 | C，原始数据界面术语更新，待 Owner 复验 |
 
 Status 是 triage 标签，Implementation 才是实现生命周期。每次完成更新本表和对应 Ticket Comments，引用真实实现 SHA、验证命令、复审与批次结果。v1 的 progress 台账保留已交付历史，不写入 v2 假完成记录。
 
@@ -110,3 +110,5 @@ Status 是 triage 标签，Implementation 才是实现生命周期。每次完�
 - 2026-09-29：Owner 要求移除派生草稿未修改记录及字段上的「本草稿尚未修改」文案。`bf9c50c` 让这些位置留空，保存修改后仍显示对应作者；浏览器回归与静态检查见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。C 仍待 Owner 验收。
 
 - 2026-09-29：Owner 反馈草稿表序号列与问题列间距过大。`dd08f9d` 收窄序号列并增加浏览器几何回归，验证见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。C 仍待 Owner 验收。
+
+- 2026-09-29：Owner 确认将原始文件管理的「数据集」界面名称改为「原始数据」，固定「未整理」的类型改为「默认收纳区」。实现 `8e56920`，范围与验证见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)；C 仍待 Owner 验收。
