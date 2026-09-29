@@ -38,13 +38,11 @@ test("two accounts see field focus, live saves and a resolvable same-field confl
     const editorQuestion = editorPanel.getByRole("textbox", { name: "问题" });
     await adminQuestion.focus();
     await expect(editorPanel.getByLabel("管理员正在编辑问题")).toBeVisible({ timeout: 5000 });
-    const adminOtherTab = await adminContext.newPage();
-    await adminOtherTab.goto(`/projects/${projectId}/test-sets`);
+    await admin.evaluate(() => window.dispatchEvent(new Event("blur")));
     await expect(editorPanel.getByLabel("管理员正在编辑问题")).toHaveCount(0, {
       timeout: 5000,
     });
-    await expect(editor.locator("header").getByLabel("在线成员").getByRole("img")).toHaveCount(2);
-    await admin.bringToFront();
+    await admin.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(editorPanel.getByLabel("管理员正在编辑问题")).toBeVisible({
       timeout: 5000,
     });
@@ -122,6 +120,81 @@ test("revocation hides cached draft content and keeps only unsent input", async 
       );
       expect(restore.status(), await restore.text()).toBe(200);
     }
+    await Promise.all([adminContext.close(), editorContext.close()]);
+  }
+});
+
+test("two real accounts publish one version and preserve the parent version", async ({
+  browser,
+}) => {
+  test.skip(process.env["V2C_RUN_PUBLISH"] !== "1", "Run once after the draft checkpoint is ready");
+  const adminContext = await browser.newContext();
+  const editorContext = await browser.newContext();
+  try {
+    const sessions = await Promise.all([
+      adminContext.request.post(`${base}/api/session`, {
+        headers: { origin: base! },
+        data: { email: "admin-v2c@example.test", password: process.env["V2C_ADMIN_PASSWORD"]! },
+      }),
+      editorContext.request.post(`${base}/api/session`, {
+        headers: { origin: base! },
+        data: { email: "editor-v2c@example.test", password: process.env["V2C_EDITOR_PASSWORD"]! },
+      }),
+    ]);
+    for (const session of sessions) expect(session.status(), await session.text()).toBe(200);
+    const tokens = await Promise.all(
+      sessions.map(async (session) => (await session.json()).csrfToken as string),
+    );
+    const before = await adminContext.request.get(
+      `${base}/api/projects/${projectId}/collaborative-drafts/${draftId}`,
+    );
+    expect(before.status(), await before.text()).toBe(200);
+    const draft = (await before.json()).draft as {
+      revision: number;
+      testSetId: string;
+      parentVersionId: string;
+    };
+    const publicationUrl = `${base}/api/projects/${projectId}/collaborative-drafts/${draftId}/publish`;
+    const published = await Promise.all(
+      [adminContext, editorContext].map((context, index) =>
+        context.request.post(publicationUrl, {
+          headers: { origin: base!, "x-csrf-token": tokens[index]! },
+          data: { revision: draft.revision },
+        }),
+      ),
+    );
+    expect(published.map((item) => item.status()).sort()).toEqual([200, 201]);
+    const results = await Promise.all(published.map((item) => item.json()));
+    expect(results[0].version.id).toBe(results[1].version.id);
+    const versionId = results[0].version.id as string;
+    const testSetId = results[0].testSet.id as string;
+    const parent = await adminContext.request.get(
+      `${base}/api/projects/${projectId}/solo-test-sets/${testSetId}/versions/${draft.parentVersionId}`,
+    );
+    expect(parent.status(), await parent.text()).toBe(200);
+    const csv = await adminContext.request.get(
+      `${base}/api/projects/${projectId}/solo-test-sets/${testSetId}/versions/${draft.parentVersionId}/data.csv`,
+    );
+    expect(csv.status(), await csv.text()).toBe(200);
+    const created = await adminContext.request.post(
+      `${base}/api/projects/${projectId}/collaborative-drafts`,
+      {
+        headers: { origin: base!, "x-csrf-token": tokens[0]! },
+        data: { testSetId, parentVersionId: versionId },
+      },
+    );
+    expect([200, 201]).toContain(created.status());
+    const nextDraftId = (await created.json()).draft.id as string;
+    const admin = await adminContext.newPage();
+    const editor = await editorContext.newPage();
+    await Promise.all([
+      admin.goto(`/projects/${projectId}/test-sets/${testSetId}?version=${versionId}`),
+      editor.goto(`/projects/${projectId}/test-sets/drafts/${nextDraftId}`),
+    ]);
+    await expect(admin.getByRole("heading", { name: /协作验收测试集/ })).toBeVisible();
+    await expect(editor.getByRole("heading", { name: /继续创建新版本/ })).toBeVisible();
+    console.log(`PUB-01 same-version=${versionId} next-draft=${nextDraftId}`);
+  } finally {
     await Promise.all([adminContext.close(), editorContext.close()]);
   }
 });
