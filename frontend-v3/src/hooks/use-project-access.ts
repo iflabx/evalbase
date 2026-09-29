@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { request } from "@/services/workspace";
 
-export function useProjectAccess(projectId: string) {
+export function useProjectAccess(projectId: string, enabled = true) {
   const query = useQuery({
     queryKey: ["project-access", projectId],
     queryFn: async () =>
@@ -13,7 +13,7 @@ export function useProjectAccess(projectId: string) {
           };
         }>(`/api/projects/${encodeURIComponent(projectId)}/access`)
       ).access,
-    enabled: !!projectId,
+    enabled: !!projectId && enabled,
   });
   return {
     ...query,

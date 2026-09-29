@@ -1264,6 +1264,8 @@ CREATE TABLE IF NOT EXISTS collaborative_draft (
 );
 ALTER TABLE collaborative_draft ADD COLUMN IF NOT EXISTS created_by text REFERENCES app_user(id);
 ALTER TABLE collaborative_draft ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE collaborative_draft ADD COLUMN IF NOT EXISTS name_updated_by text REFERENCES app_user(id);
+ALTER TABLE collaborative_draft ADD COLUMN IF NOT EXISTS purpose_updated_by text REFERENCES app_user(id);
 CREATE UNIQUE INDEX IF NOT EXISTS collaborative_draft_active_parent
   ON collaborative_draft (project_id,test_set_id,parent_version_id)
   WHERE status = 'editing' AND parent_version_id IS NOT NULL;

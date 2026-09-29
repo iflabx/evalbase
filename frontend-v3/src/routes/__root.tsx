@@ -8,13 +8,19 @@ import {
 } from "@tanstack/react-router";
 
 import { AccountGate } from "@/components/account-gate";
+import { useProjectAccess } from "@/hooks/use-project-access";
 import { AppSidebar } from "@/components/app-sidebar";
 import { OnlineAvatars } from "@/components/online-avatars";
-import { heartbeat, leavePresence, projectPresence } from "@/services/collaboration";
+import {
+  heartbeat,
+  leavePresence,
+  projectPresence,
+  type OnlineUser,
+} from "@/services/collaboration";
 import { RecordDensityProvider } from "@/components/record-density";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
-import { currentSession, installation, logout } from "@/services/account";
+import { currentSession, installation, logout, myAccount } from "@/services/account";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
@@ -54,6 +60,13 @@ function AuthenticatedApp() {
     enabled: status.data?.needsAdministrator === false && !status.data?.needsMigration,
     retry: false,
   });
+  const profile = useQuery({
+    queryKey: ["my-account"],
+    queryFn: myAccount,
+    enabled: Boolean(session.data),
+    retry: false,
+  });
+  const access = useProjectAccess(projectId, Boolean(session.data));
   const online = useQuery({
     queryKey: ["project-presence", projectId],
     queryFn: () => projectPresence(projectId),
@@ -88,6 +101,28 @@ function AuthenticatedApp() {
   if (status.data.needsAdministrator || session.isError)
     return <AccountGate setup={status.data.needsAdministrator} />;
   if (session.isPending) return <div className="auth-loading">正在恢复会话…</div>;
+  const presenceRevoked =
+    online.error instanceof Error && online.error.message === "project_not_found";
+  const users: OnlineUser[] =
+    !access.data?.capabilities.read || presenceRevoked ? [] : [...(online.data ?? [])];
+  if (
+    projectId &&
+    profile.data &&
+    access.data &&
+    !users.some((user) => user.id === session.data.actor.id)
+  ) {
+    users.unshift({
+      id: profile.data.id,
+      name: profile.data.displayName,
+      avatarColor: profile.data.avatarColor,
+      role:
+        access.data.role === "admin"
+          ? "admin"
+          : access.data.role === "viewer"
+            ? "viewer"
+            : "editor",
+    });
+  }
   return (
     <RecordDensityProvider>
       <SidebarProvider>
@@ -97,11 +132,7 @@ function AuthenticatedApp() {
             <header className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur">
               <SidebarTrigger />
               <span className="text-sm text-muted-foreground">团队测试资料库</span>
-              <OnlineAvatars
-                users={online.data ?? []}
-                selfId={session.data.actor.id}
-                className="ml-auto"
-              />
+              <OnlineAvatars users={users} selfId={session.data.actor.id} className="ml-auto" />
               <button
                 className="text-sm hover:text-primary"
                 onClick={async () => {

@@ -160,6 +160,34 @@ describe("V2-03 shared draft and publication", () => {
       headers: { cookie: viewer.cookie },
     });
     expect(forbidden.statusCode).toBe(404);
+    const purposeChange = await app.inject({
+      method: "PATCH",
+      url: `${base()}/${draftId}`,
+      headers: headers(editor),
+      payload: {
+        field: "purpose",
+        value: "由编辑者填写的用途",
+        expectedFieldRevision: 0,
+      },
+    });
+    expect(purposeChange.statusCode, purposeChange.body).toBe(200);
+    const editorId = String(
+      (
+        await db.query(
+          "SELECT id FROM app_user WHERE email='editor@example.test'",
+        )
+      ).rows[0].id,
+    );
+    const loaded = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(loaded.json().draft.purposeUpdatedBy).toBe(editorId);
+    expect(loaded.json().authors[editorId]).toMatchObject({
+      name: expect.any(String),
+      avatarColor: expect.any(String),
+    });
   });
 
   it("aggregates online tabs and keeps draft focus private to editors", async () => {
@@ -1097,5 +1125,47 @@ describe("V2-03 shared draft and publication", () => {
         )
       ).rows[0].count,
     ).toBe(0);
+  });
+
+  it("stops event and focus reads immediately after an editor is removed", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: base(),
+      headers: headers(admin),
+      payload: {},
+    });
+    expect(created.statusCode).toBe(201);
+    const draftId: string = created.json().draft.id;
+    const before = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}/events?after=0`,
+      headers: { cookie: editor.cookie },
+    });
+    expect(before.statusCode).toBe(200);
+    const editorId = String(
+      (
+        await db.query(
+          "SELECT id FROM app_user WHERE email='editor@example.test'",
+        )
+      ).rows[0].id,
+    );
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/members/${editorId}`,
+      headers: headers(admin),
+    });
+    expect(removed.statusCode, removed.body).toBe(204);
+    for (const url of [
+      `${base()}/${draftId}/events?after=0`,
+      `${base()}/${draftId}`,
+      `/api/projects/${projectId}/presence?draftId=${draftId}`,
+    ]) {
+      const denied = await app.inject({
+        method: "GET",
+        url,
+        headers: { cookie: editor.cookie },
+      });
+      expect(denied.statusCode, denied.body).toBe(404);
+    }
   });
 });

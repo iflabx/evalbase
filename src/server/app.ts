@@ -1973,6 +1973,10 @@ export async function buildApp(
     revision: Number(row.revision),
     nameRevision: Number(row.name_revision),
     purposeRevision: Number(row.purpose_revision),
+    nameUpdatedBy: row.name_updated_by ? String(row.name_updated_by) : null,
+    purposeUpdatedBy: row.purpose_updated_by
+      ? String(row.purpose_updated_by)
+      : null,
     updatedBy: String(row.updated_by),
     updatedByName: String(
       row.updated_by_name ?? row.updated_by_username ?? row.updated_by,
@@ -2254,16 +2258,20 @@ export async function buildApp(
     );
     const authorIds = [
       ...new Set(
-        rows.rows.flatMap((row) => [
-          String(row.updated_by),
-          ...Object.values(
-            isPlainObject(row.field_attribution) ? row.field_attribution : {},
-          ).flatMap((fact) =>
-            isPlainObject(fact) && typeof fact.userId === "string"
-              ? [fact.userId]
-              : [],
-          ),
-        ]),
+        [
+          summary.nameUpdatedBy,
+          summary.purposeUpdatedBy,
+          ...rows.rows.flatMap((row) => [
+            String(row.updated_by),
+            ...Object.values(
+              isPlainObject(row.field_attribution) ? row.field_attribution : {},
+            ).flatMap((fact) =>
+              isPlainObject(fact) && typeof fact.userId === "string"
+                ? [fact.userId]
+                : [],
+            ),
+          ]),
+        ].filter((id): id is string => Boolean(id)),
       ),
     ];
     const people = authorIds.length
@@ -2373,7 +2381,7 @@ export async function buildApp(
         }
         await client.query(
           `UPDATE collaborative_draft SET ${field}=$2,${revField}=${revField}+1,
-          revision=revision+1,updated_by=$3,updated_at=now() WHERE id=$1`,
+          ${field}_updated_by=$3,revision=revision+1,updated_by=$3,updated_at=now() WHERE id=$1`,
           [request.params.draftId, body.value, actor.id],
         );
         const updated = await client.query(`${draftSelect} WHERE d.id=$1`, [

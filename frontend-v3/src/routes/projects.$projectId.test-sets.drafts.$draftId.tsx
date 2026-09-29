@@ -199,6 +199,36 @@ function DraftWorkspace() {
       void heartbeat(projectId).catch(() => undefined);
     };
   }, [projectId, draftId, data?.draft.id, recordSearch, recordPage, accessLost]);
+  useEffect(() => {
+    if (!data?.draft.id || accessLost) return;
+    const syncWindowFocus = () => {
+      const element = document.activeElement as HTMLElement | null;
+      const field = !document.hidden ? element?.dataset["presenceField"] : undefined;
+      const focus = field
+        ? {
+            draftId,
+            field: field as "question" | "expectedOutput" | "metadata" | "name" | "purpose",
+            ...(element?.dataset["presenceRecordId"]
+              ? { recordId: element.dataset["presenceRecordId"] }
+              : {}),
+          }
+        : { draftId };
+      setPresenceFocus(focus);
+      void heartbeat(projectId).catch(() => undefined);
+    };
+    const clearWindowFocus = () => {
+      setPresenceFocus({ draftId });
+      void heartbeat(projectId).catch(() => undefined);
+    };
+    window.addEventListener("blur", clearWindowFocus);
+    window.addEventListener("focus", syncWindowFocus);
+    document.addEventListener("visibilitychange", syncWindowFocus);
+    return () => {
+      window.removeEventListener("blur", clearWindowFocus);
+      window.removeEventListener("focus", syncWindowFocus);
+      document.removeEventListener("visibilitychange", syncWindowFocus);
+    };
+  }, [data?.draft.id, projectId, draftId, accessLost]);
   const unsavedRecordInput = Boolean(
     selectedSnapshot &&
     edit &&
@@ -298,7 +328,7 @@ function DraftWorkspace() {
         nextConflicts.name = {
           local: name,
           remote: data.draft.name,
-          authorId: data.draft.updatedBy,
+          authorId: data.draft.nameUpdatedBy ?? undefined,
           at: data.draft.updatedAt,
         };
       setNameBaseline({ value: data.draft.name, revision: data.draft.nameRevision });
@@ -314,7 +344,7 @@ function DraftWorkspace() {
         nextConflicts.purpose = {
           local: purpose,
           remote: data.draft.purpose,
-          authorId: data.draft.updatedBy,
+          authorId: data.draft.purposeUpdatedBy ?? undefined,
           at: data.draft.updatedAt,
         };
       setPurposeBaseline({ value: data.draft.purpose, revision: data.draft.purposeRevision });
@@ -773,6 +803,60 @@ function DraftWorkspace() {
       </Button>
     </div>
   );
+  if (accessLost) {
+    const localInputs = [
+      nameBaseline && name !== undefined && name !== nameBaseline.value
+        ? { label: "测试集名称", value: name }
+        : null,
+      purposeBaseline && purpose !== undefined && purpose !== purposeBaseline.value
+        ? { label: "用途说明", value: purpose }
+        : null,
+      selectedSnapshot && edit && edit.question !== selectedSnapshot.question
+        ? { label: "问题", value: edit.question }
+        : null,
+      selectedSnapshot && edit && edit.expectedOutput !== selectedSnapshot.expectedOutput
+        ? { label: "期望输出", value: edit.expectedOutput }
+        : null,
+      selectedSnapshot &&
+      edit &&
+      JSON.stringify(edit.metadata) !== JSON.stringify(selectedSnapshot.metadata)
+        ? { label: "Metadata", value: JSON.stringify(edit.metadata, null, 2) }
+        : null,
+    ].filter((item): item is { label: string; value: string } => item !== null);
+    return (
+      <main className="draft-workspace mx-auto w-full max-w-7xl pb-12">
+        <PageHeader
+          eyebrow="测试集草稿"
+          title="草稿访问已结束"
+          description={error || "项目权限或草稿状态已改变，无法继续查看与编辑。"}
+        />
+        <Card>
+          <CardContent className="grid gap-4 p-5">
+            <p className="text-sm text-muted-foreground">
+              已停止同步，草稿正文不再显示。下方只列出本页面未提交的输入，供你复制留存。
+            </p>
+            {localInputs.length ? (
+              localInputs.map((item) => (
+                <div key={item.label} className="rounded-md border bg-background p-3">
+                  <strong className="text-sm">{item.label} · 未提交</strong>
+                  <pre className="mt-2 whitespace-pre-wrap break-words text-sm">{item.value}</pre>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">没有未提交的输入。</p>
+            )}
+            <Button
+              variant="outline"
+              className="w-fit"
+              onClick={() => window.location.assign("/projects")}
+            >
+              返回项目列表
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
   return (
     <main className="draft-workspace mx-auto w-full max-w-7xl pb-12">
       <StateView
@@ -982,6 +1066,7 @@ function DraftWorkspace() {
                       disabled={!canEdit || busy}
                       onChange={(event) => setName(event.target.value)}
                       placeholder="例如：客服基础问答"
+                      data-presence-field="name"
                       onFocus={() => focusField(undefined, "name")}
                       onBlur={clearFocus}
                     />
@@ -996,6 +1081,7 @@ function DraftWorkspace() {
                       disabled={!canEdit || busy}
                       onChange={(event) => setPurpose(event.target.value)}
                       placeholder="简述测试集用途"
+                      data-presence-field="purpose"
                       onFocus={() => focusField(undefined, "purpose")}
                       onBlur={clearFocus}
                     />
@@ -1093,16 +1179,18 @@ function DraftWorkspace() {
                                   }
                                 }}
                               >
-                                <td className="px-4 py-3">{record.position}</td>
-                                <td className="max-w-[260px] px-4 py-3">
-                                  <p className="inline-flex max-w-full items-center gap-1">
-                                    <span className="truncate">{record.question || "未填写"}</span>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex items-center gap-1">
+                                    {record.position}
                                     <OnlineAvatars
                                       users={editingUsers(record.id)}
                                       small
                                       editingField="此记录"
                                     />
-                                  </p>
+                                  </span>
+                                </td>
+                                <td className="max-w-[260px] px-4 py-3">
+                                  <p className="truncate">{record.question || "未填写"}</p>
                                   <small className="text-muted-foreground">
                                     {authorMarkup(
                                       record.updatedBy,
@@ -1180,6 +1268,8 @@ function DraftWorkspace() {
                           rows={5}
                           disabled={!canEdit || busy}
                           value={edit.question}
+                          data-presence-field="question"
+                          data-presence-record-id={selected.id}
                           onFocus={() => focusField(selected.id, "question")}
                           onBlur={clearFocus}
                           onChange={(event) => setEdit({ ...edit, question: event.target.value })}
@@ -1202,6 +1292,8 @@ function DraftWorkspace() {
                           rows={5}
                           disabled={!canEdit || busy}
                           value={edit.expectedOutput}
+                          data-presence-field="expectedOutput"
+                          data-presence-record-id={selected.id}
                           onFocus={() => focusField(selected.id, "expectedOutput")}
                           onBlur={clearFocus}
                           onChange={(event) =>
@@ -1233,6 +1325,8 @@ function DraftWorkspace() {
                               placeholder="例如：渠道"
                               disabled={!canEdit || busy}
                               value={entry.key}
+                              data-presence-field="metadata"
+                              data-presence-record-id={selected.id}
                               onFocus={() => focusField(selected.id, "metadata")}
                               onBlur={clearFocus}
                               onChange={(event) =>
@@ -1249,6 +1343,8 @@ function DraftWorkspace() {
                               placeholder="例如：帮助中心"
                               disabled={!canEdit || busy}
                               value={entry.value}
+                              data-presence-field="metadata"
+                              data-presence-record-id={selected.id}
                               onFocus={() => focusField(selected.id, "metadata")}
                               onBlur={clearFocus}
                               onChange={(event) =>

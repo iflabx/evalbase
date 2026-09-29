@@ -17,6 +17,8 @@ export type SharedDraft = {
   revision: number;
   nameRevision: number;
   purposeRevision: number;
+  nameUpdatedBy: string | null;
+  purposeUpdatedBy: string | null;
   updatedBy: string;
   updatedByName: string;
   updatedAt: string;
