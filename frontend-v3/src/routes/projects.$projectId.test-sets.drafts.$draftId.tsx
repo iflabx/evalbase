@@ -1437,7 +1437,7 @@ function DraftWorkspace() {
                     <div className="border-t px-4 py-3">
                       <Input
                         aria-label="搜索资料文件"
-                        placeholder="搜索数据集或文件"
+                        placeholder="搜索原始数据或文件"
                         value={fileSearch}
                         onChange={(event) => {
                           setFileSearch(event.target.value);
@@ -1503,7 +1503,7 @@ function DraftWorkspace() {
                           <tr>
                             <th className="px-4 py-2"></th>
                             <th className="px-4 py-2">文件</th>
-                            <th className="px-4 py-2">数据集</th>
+                            <th className="px-4 py-2">原始数据</th>
                             <th className="px-4 py-2">记录数</th>
                           </tr>
                         </thead>

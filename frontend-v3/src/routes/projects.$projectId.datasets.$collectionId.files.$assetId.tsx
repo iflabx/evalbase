@@ -67,7 +67,7 @@ function FileRecordsPage() {
                 to="/projects/$projectId/datasets/$collectionId"
                 params={{ projectId, collectionId }}
               >
-                返回数据集
+                返回原始数据
               </Link>
             </Button>
             <Button variant="outline" onClick={() => setRawOpen(true)}>

@@ -133,7 +133,7 @@ export function AppSidebar() {
                     <SidebarMenuButton asChild isActive={pathname.includes("/datasets")}>
                       <Link to="/projects/$projectId/datasets" params={{ projectId }}>
                         <Database className="size-4" />
-                        {!collapsed && <span>数据集</span>}
+                        {!collapsed && <span>原始数据</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -199,12 +199,12 @@ export function AppSidebar() {
           onOpenChange={setCreating}
           title="新建项目"
           confirm="创建项目"
-          intro="用一个项目把相关的数据集和测试集放在同一个工作区。"
+          intro="用一个项目把相关的原始数据和测试集放在同一个工作区。"
           nameLabel="项目名称"
           descriptionLabel="项目说明"
           namePlaceholder="例如：客服体验评测"
           descriptionPlaceholder="例如：客服帮助和预约场景"
-          note="创建后会自动包含一个“未整理”数据集。"
+          note="创建后会自动包含“未整理”默认收纳区。"
           onSubmit={async (input) => {
             const created = await createProject(input);
             await queryClient.invalidateQueries({ queryKey: ["projects"] });

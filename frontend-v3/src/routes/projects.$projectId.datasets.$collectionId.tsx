@@ -91,12 +91,12 @@ function CollectionBrowser() {
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader
-        title={collection?.name ?? "数据集"}
+        title={collection?.name ?? "原始数据"}
         actions={
           <>
             <Button variant="outline" asChild>
               <Link to="/projects/$projectId/datasets" params={{ projectId }}>
-                返回数据集
+                返回原始数据
               </Link>
             </Button>
             {access.canWrite && <Button onClick={() => setUploading(true)}>上传文件</Button>}
@@ -266,7 +266,7 @@ function FileTable({
                         variant="outline"
                         size="sm"
                         disabled={!canMove}
-                        title={canMove ? "移动到其他数据集" : "当前项目中没有其他数据集"}
+                        title={canMove ? "移动到其他原始数据" : "当前项目中没有其他原始数据"}
                         onClick={(event) => {
                           event.stopPropagation();
                           onMove(file);
@@ -337,11 +337,11 @@ function MoveFileDialog({
         <p className="move-file-name">{file?.fileName}</p>
         <div className="grid gap-2">
           <label className="text-sm font-medium" htmlFor="move-target">
-            目标数据集
+            目标原始数据
           </label>
           <Select value={targetId} onValueChange={setTargetId}>
-            <SelectTrigger id="move-target" aria-label="目标数据集">
-              <SelectValue placeholder="请选择数据集" />
+            <SelectTrigger id="move-target" aria-label="目标原始数据">
+              <SelectValue placeholder="请选择原始数据" />
             </SelectTrigger>
             <SelectContent>
               {targets.map((item) => (

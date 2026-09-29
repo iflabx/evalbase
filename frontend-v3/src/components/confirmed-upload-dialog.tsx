@@ -284,7 +284,7 @@ export function ConfirmedUploadDialog({
               <div className="space-y-2">
                 <Label>保存到</Label>
                 <Select value={collectionId} onValueChange={setCollectionId}>
-                  <SelectTrigger aria-label="选择数据集">
+                  <SelectTrigger aria-label="选择原始数据">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -339,7 +339,7 @@ export function ConfirmedUploadDialog({
                 </p>
               ))}
               <p className="text-xs leading-5 text-muted-foreground">
-                文件会先解析和预览；确认前不会保存。上传到“未整理”后，仍可移动到其他数据集。
+                文件会先解析和预览；确认前不会保存。上传到“未整理”后，仍可移动到其他原始数据。
               </p>
             </div>
             {error && (

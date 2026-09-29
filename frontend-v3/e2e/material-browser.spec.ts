@@ -29,10 +29,23 @@ test("browses material files and records without a side panel", async ({ page })
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
+    if (url.pathname === "/api/installation") {
+      await route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
+      return;
+    }
     if (url.pathname === "/api/session") {
-      await route.fulfill(
-        method === "POST" ? { json: { csrfToken: "csrf" } } : { status: 401, body: "" },
-      );
+      await route.fulfill({ json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } } });
+      return;
+    }
+    if (url.pathname === "/api/projects/project_browser/access") {
+      await route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      });
       return;
     }
     if (url.pathname === "/api/projects") {
@@ -213,7 +226,7 @@ test("browses material files and records without a side panel", async ({ page })
   await expect(page.getByText("question,answer,tag", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("link", { name: "返回数据集" }).click();
+  await page.getByRole("link", { name: "返回原始数据" }).click();
   await page.getByRole("button", { name: "全部记录" }).click();
   const recordSearch = page.getByLabel("搜索记录");
   const densityButton = page.getByRole("button", { name: "行高" });
@@ -273,7 +286,7 @@ test("browses material files and records without a side panel", async ({ page })
   const viewButton = page
     .getByRole("row", { name: /faq\.csv/ })
     .getByRole("link", { name: "查看" });
-  await expect(moveButton).toHaveAttribute("title", "移动到其他数据集");
+  await expect(moveButton).toHaveAttribute("title", "移动到其他原始数据");
   expect(await moveButton.getAttribute("class")).toBe(await viewButton.getAttribute("class"));
   await moveButton.click();
   await expect(page.getByRole("heading", { name: "移动文件" })).toBeVisible();
@@ -281,8 +294,8 @@ test("browses material files and records without a side panel", async ({ page })
   await expect(
     page.getByText("文件内容、字段映射和已创建测试集中的来源信息不会改变。", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("请选择数据集", { exact: true })).toBeVisible();
-  await page.getByLabel("目标数据集").click();
+  await expect(page.getByText("请选择原始数据", { exact: true })).toBeVisible();
+  await page.getByLabel("目标原始数据").click();
   await page.getByText("已整理", { exact: true }).last().click();
   await page.getByRole("button", { name: "移动", exact: true }).last().click();
   await expect(page.getByText("faq-2.csv", { exact: true })).toBeVisible();
@@ -293,5 +306,5 @@ test("browses material files and records without a side panel", async ({ page })
     .getByRole("row", { name: /faq-2\.csv/ })
     .getByRole("button", { name: "移动" });
   await expect(disabledMove).toBeDisabled();
-  await expect(disabledMove).toHaveAttribute("title", "当前项目中没有其他数据集");
+  await expect(disabledMove).toHaveAttribute("title", "当前项目中没有其他原始数据");
 });

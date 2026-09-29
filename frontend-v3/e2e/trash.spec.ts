@@ -76,10 +76,23 @@ test("keeps entire-Test-Set trash on the list and only version deletion on detai
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
+    if (url.pathname === "/api/installation")
+      return void (await route.fulfill({
+        json: { needsAdministrator: false, needsMigration: false },
+      }));
     if (url.pathname === "/api/session")
-      return void (await route.fulfill(
-        method === "POST" ? { json: { csrfToken: "csrf" } } : { status: 401 },
-      ));
+      return void (await route.fulfill({
+        json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } },
+      }));
+    if (url.pathname === "/api/projects/project_browser/access")
+      return void (await route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      }));
     if (method === "POST" && url.pathname.endsWith("/solo-test-sets/testset_browser/trash")) {
       trashed = true;
       return void (await route.fulfill({ status: 201, json: { entry: { id: "trash_set" } } }));
@@ -96,7 +109,7 @@ test("keeps entire-Test-Set trash on the list and only version deletion on detai
   });
 
   await page.goto("/projects/project_browser/test-sets");
-  await page.getByRole("button", { name: "回收站" }).click();
+  await page.getByRole("button", { name: "回收站", exact: true }).click();
   const emptyTrash = page.getByRole("dialog", { name: "回收站" });
   await expect(emptyTrash.getByText("测试集", { exact: true })).toBeVisible();
   await expect(emptyTrash.getByText("版本与版本分支", { exact: true })).toBeVisible();
@@ -106,7 +119,7 @@ test("keeps entire-Test-Set trash on the list and only version deletion on detai
   await expect(row.getByRole("link", { name: "查看" })).toBeVisible();
   await row.getByRole("button", { name: "移入回收站：客服问答" }).click();
   const dialog = page.getByRole("alertdialog", { name: "移入回收站" });
-  await expect(dialog).toContainText("数据集中的原始文件不会被删除");
+  await expect(dialog).toContainText("原始数据中的文件不会被删除");
   await dialog.getByRole("button", { name: "移入回收站" }).click();
   await expect(page.getByText("还没有测试集")).toBeVisible();
 
@@ -124,10 +137,23 @@ test("groups Trash and enables permanent deletion only for an exact current name
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
+    if (url.pathname === "/api/installation")
+      return void (await route.fulfill({
+        json: { needsAdministrator: false, needsMigration: false },
+      }));
     if (url.pathname === "/api/session")
-      return void (await route.fulfill(
-        method === "POST" ? { json: { csrfToken: "csrf" } } : { status: 401 },
-      ));
+      return void (await route.fulfill({
+        json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } },
+      }));
+    if (url.pathname === "/api/projects/project_browser/access")
+      return void (await route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      }));
     if (
       method === "POST" &&
       url.pathname ===
@@ -172,7 +198,7 @@ test("groups Trash and enables permanent deletion only for an exact current name
   });
 
   await page.goto("/projects/project_browser/test-sets");
-  await page.getByRole("button", { name: "回收站" }).click();
+  await page.getByRole("button", { name: "回收站", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "回收站" });
   await expect(dialog.getByText("测试集", { exact: true })).toBeVisible();
   await expect(dialog.getByText("版本与版本分支", { exact: true })).toBeVisible();

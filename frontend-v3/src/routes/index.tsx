@@ -95,7 +95,7 @@ function ProjectsPage() {
                 <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 font-medium">名称</th>
-                    <th className="px-4 py-2 font-medium">数据集</th>
+                    <th className="px-4 py-2 font-medium">原始数据</th>
                     <th className="px-4 py-2 font-medium">测试集</th>
                     <th className="px-4 py-2 font-medium">最近更新</th>
                     <th className="px-4 py-2 text-right font-medium">操作</th>
@@ -161,12 +161,12 @@ function ProjectsPage() {
           onOpenChange={setCreating}
           title="新建项目"
           confirm="创建项目"
-          intro="用一个项目把相关的数据集和测试集放在同一个工作区。"
+          intro="用一个项目把相关的原始数据和测试集放在同一个工作区。"
           nameLabel="项目名称"
           descriptionLabel="说明（可选）"
           namePlaceholder="例如：客服体验评测"
           descriptionPlaceholder="例如：客服帮助和预约场景"
-          note="创建后会自动包含一个“未整理”数据集。"
+          note="创建后会自动包含“未整理”默认收纳区。"
           onSubmit={async (input) => {
             const project = await createProject(input);
             await queryClient.invalidateQueries({ queryKey: ["projects"] });

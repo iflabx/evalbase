@@ -66,7 +66,7 @@ function DatasetsPage() {
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader
-        title="数据集"
+        title="原始数据"
         actions={
           access.canWrite ? (
             <div className="flex gap-2">
@@ -76,7 +76,7 @@ function DatasetsPage() {
               </Button>
               <Button onClick={() => setCreating(true)}>
                 <Plus className="size-4" />
-                新建数据集
+                新建原始数据
               </Button>
             </div>
           ) : undefined
@@ -86,8 +86,8 @@ function DatasetsPage() {
         <div className="relative w-64">
           <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
           <Input
-            aria-label="搜索数据集"
-            placeholder="搜索数据集"
+            aria-label="搜索原始数据"
+            placeholder="搜索原始数据"
             className="pl-8"
             value={search}
             onChange={(event) => {
@@ -108,8 +108,8 @@ function DatasetsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部类型</SelectItem>
-            <SelectItem value="dataset">数据集</SelectItem>
-            <SelectItem value="system">系统数据集</SelectItem>
+            <SelectItem value="dataset">原始数据</SelectItem>
+            <SelectItem value="system">默认收纳区</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -125,7 +125,7 @@ function DatasetsPage() {
           <SelectContent>
             <SelectItem value="all">全部内容</SelectItem>
             <SelectItem value="populated">有文件</SelectItem>
-            <SelectItem value="empty">空数据集</SelectItem>
+            <SelectItem value="empty">无文件</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="outline" size="sm" onClick={() => setDescending((value) => !value)}>
@@ -141,10 +141,10 @@ function DatasetsPage() {
         onRetry={() => void collections.refetch()}
         empty={
           <EmptyBlock
-            title="没有符合条件的数据集"
+            title="没有符合条件的原始数据"
             action={
               access.canWrite ? (
-                <Button onClick={() => setCreating(true)}>新建数据集</Button>
+                <Button onClick={() => setCreating(true)}>新建原始数据</Button>
               ) : undefined
             }
           />
@@ -182,7 +182,9 @@ function DatasetsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline">{item.isUnfiled ? "系统数据集" : "数据集"}</Badge>
+                        <Badge variant="outline">
+                          {item.isUnfiled ? "默认收纳区" : "原始数据"}
+                        </Badge>
                       </td>
                       <td className="mono px-4 py-3">{item.fileCount}</td>
                       <td className="mono px-4 py-3">{item.unifiedRecordCount}</td>
@@ -225,17 +227,17 @@ function DatasetsPage() {
           current={current}
           pages={pages}
           onChange={setPage}
-          unit="个数据集"
+          unit="项原始数据"
         />
       )}
       {access.canWrite && (
         <NameDialog
           open={creating}
           onOpenChange={setCreating}
-          title="新建数据集"
-          confirm="创建数据集"
+          title="新建原始数据"
+          confirm="创建原始数据"
           intro="用一个简单名称把同一领域或方向的文件放在一起。"
-          nameLabel="数据集名称"
+          nameLabel="原始数据名称"
           descriptionLabel="说明（可选）"
           namePlaceholder="例如：客服公开资料"
           descriptionPlaceholder="例如：帮助中心和常见问题"

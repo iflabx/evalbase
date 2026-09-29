@@ -5,10 +5,23 @@ test("creates and opens a project from the project list", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
+    if (url.pathname === "/api/installation") {
+      await route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
+      return;
+    }
     if (url.pathname === "/api/session") {
-      await route.fulfill(
-        method === "POST" ? { json: { csrfToken: "csrf" } } : { status: 401, body: "" },
-      );
+      await route.fulfill({ json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } } });
+      return;
+    }
+    if (url.pathname === "/api/projects/project_browser/access") {
+      await route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      });
       return;
     }
     if (url.pathname === "/api/projects") {
@@ -109,36 +122,41 @@ test("creates and opens a project from the project list", async ({ page }) => {
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "项目" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "新建项目" }).click();
   await expect(
-    page.getByText("用一个项目把相关的数据集和测试集放在同一个工作区。", { exact: true }),
+    page.getByText("用一个项目把相关的原始数据和测试集放在同一个工作区。", { exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("说明（可选）")).toBeVisible();
   await page.getByLabel("项目名称").fill("浏览器项目");
   await page.getByRole("button", { name: "创建项目" }).click();
 
   await expect(page).toHaveURL(/\/projects\/project_browser\/datasets$/);
-  await expect(page.getByRole("heading", { name: "数据集" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "原始数据" })).toBeVisible();
   await expect(page.getByText("未整理", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "默认收纳区" })).toBeVisible();
+  await page.getByRole("combobox", { name: "按类型筛选" }).click();
+  await expect(page.getByRole("option", { name: "原始数据" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "默认收纳区" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByText("等待文件", { exact: true })).toHaveClass(/border-amber-500/);
   await expect(page.getByRole("button", { name: /更新时间 降序/ })).toHaveClass(/border/);
-  await expect(page.getByText("个人测试资料库", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("团队测试资料库", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("当前项目", { exact: true })).toBeVisible();
   await expect(page.getByLabel("切换项目")).toBeVisible();
-  await expect(page.getByRole("button", { name: "测试集" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "测试集" })).toBeVisible();
   const projectChildren = page.getByTestId("project-nav-children");
   await expect(projectChildren).toHaveCSS("border-left-width", "1px");
   await expect(projectChildren).toHaveCSS("margin-left", "16px");
   await expect(page.getByLabel("切换项目").locator("svg").first()).toHaveClass(/lucide-database/);
-  await expect(page.getByRole("link", { name: "数据集" }).locator("svg")).toHaveClass(
+  await expect(page.getByRole("link", { name: "原始数据" }).locator("svg")).toHaveClass(
     /lucide-database/,
   );
-  await expect(page.getByRole("button", { name: "测试集" }).locator("svg")).toHaveClass(
+  await expect(page.getByRole("link", { name: "测试集" }).locator("svg")).toHaveClass(
     /lucide-file-text/,
   );
 
-  await page.getByRole("button", { name: "新建数据集" }).click();
+  await page.getByRole("button", { name: "新建原始数据" }).click();
   await expect(
     page.getByText("用一个简单名称把同一领域或方向的文件放在一起。", { exact: true }),
   ).toBeVisible();
@@ -161,6 +179,7 @@ test("creates and opens a project from the project list", async ({ page }) => {
     mimeType: "text/csv",
     buffer: Buffer.from("question,answer\n如何重置密码？,在设置中重置。\n"),
   });
+  await expect(page.getByText("已选择 1 个文件", { exact: true })).toBeVisible();
   await page.getByLabel("选择文件").setInputFiles({
     name: "guide.json",
     mimeType: "application/json",
@@ -169,12 +188,6 @@ test("creates and opens a project from the project list", async ({ page }) => {
   await expect(page.getByText("已选择 2 个文件", { exact: true })).toBeVisible();
   await expect(page.getByText("faq.csv", { exact: true })).toBeVisible();
   await expect(page.getByText("guide.json", { exact: true })).toBeVisible();
-  await page.getByLabel("选择文件").setInputFiles({
-    name: "faq.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from("question,answer\n如何重置密码？,在设置中重置。\n"),
-  });
-  await expect(page.getByText("已选择 2 个文件", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "下一步" }).click();
   await expect(page.getByRole("heading", { name: "字段映射与预览" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "如何重置密码？" }).last()).toBeVisible();

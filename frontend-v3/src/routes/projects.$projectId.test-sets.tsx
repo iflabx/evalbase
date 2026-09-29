@@ -143,7 +143,7 @@ function TestSetsPage() {
     <div className="mx-auto max-w-7xl">
       <PageHeader
         title="测试集"
-        description="从数据集选择记录，编辑后创建或迭代测试集版本。"
+        description="从原始数据选择记录，编辑后创建或迭代测试集版本。"
         actions={
           <>
             {access.canManage && (
@@ -322,7 +322,7 @@ function TestSetsPage() {
               <AlertDialogDescription>{trashTarget?.name}</AlertDialogDescription>
             </AlertDialogHeader>
             <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-              测试集会从正常列表隐藏；其中的版本和数据溯源都会保留在回收站中。数据集中的原始文件不会被删除。
+              测试集会从正常列表隐藏；其中的版本和数据溯源都会保留在回收站中。原始数据中的文件不会被删除。
             </p>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={trashing}>取消</AlertDialogCancel>
