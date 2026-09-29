@@ -87,3 +87,4 @@ COLLAB-01–08、TRACE-01–02；双浏览器 PUB-01/02/04、ACL-04、DELETE-02 
 - 实现 `6d2994f`：仅移除管理员成员页说明卡与不再使用的 CSS。管理员、编辑者两种身份的浏览器语义核对通过：说明卡均不存在；管理员仍可打开「邀请成员」表单，编辑者仍可见成员卡。frontend-v3 typecheck、lint（0 error，9 条原有 warning）、正式构建和 `docs:check` 通过；Standards/Spec 复审无发现。批次 C 继续待 Owner 验收。
 
 - 2026-09-29：Owner 将界面角色名称「编辑者」「查看者」改为「编辑」「查看」。仅调整显示文案，保留 `editor`/`viewer` 标识与权限。
+- 实现 `44ed547`：项目成员、邀请选择和在线头像统一显示「编辑」「查看」；PRD 与 CONTEXT 明确这是展示名称，内部角色及权限不变。管理员和编辑账号浏览器语义核对通过（旧称不出现、两个选项正确、在线提示为「编辑」）；frontend-v3 typecheck、lint（0 error，9 条原有 warning）、正式构建与 `docs:check` 通过。Standards/Spec 复审未发现阻断项，批次 C 仍待 Owner 验收。

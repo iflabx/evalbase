@@ -79,7 +79,7 @@ Owner 浏览器验收库每批只保留一个易读名称的合成项目、两�
 | V2-01 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-02 | completed | 1c53638 | A，Owner 已验收；资源已释放 |
 | V2-03 | completed | 0df0228 | B，Owner 已验收；资源已释放 |
-| V2-04 | in-progress | 6d2994f | C，成员页说明卡已移除，待 Owner 复验 |
+| V2-04 | in-progress | 44ed547 | C，角色显示名已改为「编辑」「查看」，待 Owner 复验 |
 
 Status 是 triage 标签，Implementation 才是实现生命周期。每次完成更新本表和对应 Ticket Comments，引用真实实现 SHA、验证命令、复审与批次结果。v1 的 progress 台账保留已交付历史，不写入 v2 假完成记录。
 
@@ -100,3 +100,5 @@ Status 是 triage 标签，Implementation 才是实现生命周期。每次完�
 - 2026-09-29：C 的设置页在线头像和完整成员列表反馈由 `83a6c99` 修复；真实双账号与直接打开设置的浏览器回归 3/3。对应证据见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。最终固定 HEAD 与健康状态以本次文档提交后的验收环境记录为准；Owner 尚未重新验收，C 资源保留。
 
 - 2026-09-29：Owner 要求移除管理员成员页「如何邀请新成员」卡片，代码提交 `6d2994f`。管理员与编辑者浏览器核对和受影响检查见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)；批次 C 保持待验收。
+
+- 2026-09-29：Owner 将界面角色显示名改为「编辑」「查看」，实现与产品术语提交 `44ed547`，验证见 [V2-04 Comments](issues/04-realtime-collaboration-and-attribution.md#comments)。内部角色与权限不变，批次 C 继续待验收。
