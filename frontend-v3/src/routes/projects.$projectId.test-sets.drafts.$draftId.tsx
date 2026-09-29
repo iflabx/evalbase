@@ -268,12 +268,13 @@ function DraftWorkspace() {
       expectedOutput: record.expectedOutputRevision,
       metadata: record.metadataRevision,
     }[field];
-    if (record.caseId && revision === 0) return <span>本草稿尚未修改</span>;
+    if (record.caseId && revision === 0) return null;
     const fact = record.fieldAttribution?.[field];
-    return fact?.userId ? (
-      authorMarkup(fact.userId, fact.at, "修改者未记录")
-    ) : (
-      <span>修改者未记录</span>
+    return (
+      <small className="text-xs text-muted-foreground">
+        最近修改：
+        {fact?.userId ? authorMarkup(fact.userId, fact.at, "修改者未记录") : "修改者未记录"}
+      </small>
     );
   };
   const files = useQuery({
@@ -1201,15 +1202,15 @@ function DraftWorkspace() {
                                 </td>
                                 <td className="max-w-[260px] px-4 py-3">
                                   <p className="truncate">{record.question || "未填写"}</p>
-                                  <small className="text-muted-foreground">
-                                    {record.caseId && record.rowRevision === 0
-                                      ? "本草稿尚未修改"
-                                      : authorMarkup(
-                                          record.updatedBy,
-                                          record.updatedAt,
-                                          "修改者未记录",
-                                        )}
-                                  </small>
+                                  {(!record.caseId || record.rowRevision > 0) && (
+                                    <small className="text-muted-foreground">
+                                      {authorMarkup(
+                                        record.updatedBy,
+                                        record.updatedAt,
+                                        "修改者未记录",
+                                      )}
+                                    </small>
+                                  )}
                                 </td>
                                 <td className="max-w-[220px] truncate px-4 py-3">
                                   {record.expectedOutput || "未填写"}
@@ -1286,9 +1287,7 @@ function DraftWorkspace() {
                           onBlur={clearFocus}
                           onChange={(event) => setEdit({ ...edit, question: event.target.value })}
                         />
-                        <small className="text-xs text-muted-foreground">
-                          最近修改：{fieldAuthor(selected, "question")}
-                        </small>
+                        {fieldAuthor(selected, "question")}
                       </div>
                       <div className="grid gap-2">
                         <div className="flex items-center gap-1">
@@ -1312,9 +1311,7 @@ function DraftWorkspace() {
                             setEdit({ ...edit, expectedOutput: event.target.value })
                           }
                         />
-                        <small className="text-xs text-muted-foreground">
-                          最近修改：{fieldAuthor(selected, "expectedOutput")}
-                        </small>
+                        {fieldAuthor(selected, "expectedOutput")}
                       </div>
                       <div className="grid gap-2">
                         <div className="flex items-center gap-1">
@@ -1384,9 +1381,7 @@ function DraftWorkspace() {
                             </Button>
                           </div>
                         ))}
-                        <small className="text-xs text-muted-foreground">
-                          最近修改：{fieldAuthor(selected, "metadata")}
-                        </small>
+                        {fieldAuthor(selected, "metadata")}
                         {metadataProblem(edit.metadata) && (
                           <p role="alert" className="text-sm text-destructive">
                             {metadataProblem(edit.metadata)}

@@ -224,14 +224,14 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   await expect(page.getByText(/已继承父版本 12 条记录/)).toBeVisible();
   await expect(page.getByLabel("测试集名称")).toHaveCount(0);
   const inheritedRow = page.getByRole("row", { name: /如何重置密码/ });
-  await expect(inheritedRow).toContainText("本草稿尚未修改");
+  await expect(inheritedRow.locator("td").nth(1).locator("small")).toHaveCount(0);
   await inheritedRow.click();
-  await expect(page.getByLabel("记录编辑区").getByText("最近修改：本草稿尚未修改")).toHaveCount(3);
+  await expect(page.getByLabel("记录编辑区").getByText(/最近修改：/)).toHaveCount(0);
   derivedEdited = true;
   await page.reload();
   const editedRow = page.getByRole("row", { name: /如何重置密码/ });
   await expect(editedRow).toContainText("协作编辑");
   await editedRow.click();
   await expect(page.getByLabel("记录编辑区")).toContainText("协作编辑");
-  await expect(page.getByLabel("记录编辑区").getByText("最近修改：本草稿尚未修改")).toHaveCount(2);
+  await expect(page.getByLabel("记录编辑区").getByText(/最近修改：/)).toHaveCount(1);
 });
