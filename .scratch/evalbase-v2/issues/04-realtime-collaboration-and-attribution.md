@@ -88,3 +88,5 @@ COLLAB-01–08、TRACE-01–02；双浏览器 PUB-01/02/04、ACL-04、DELETE-02 
 
 - 2026-09-29：Owner 将界面角色名称「编辑者」「查看者」改为「编辑」「查看」。仅调整显示文案，保留 `editor`/`viewer` 标识与权限。
 - 实现 `44ed547`：项目成员、邀请选择和在线头像统一显示「编辑」「查看」；PRD 与 CONTEXT 明确这是展示名称，内部角色及权限不变。管理员和编辑账号浏览器语义核对通过（旧称不出现、两个选项正确、在线提示为「编辑」）；frontend-v3 typecheck、lint（0 error，9 条原有 warning）、正式构建与 `docs:check` 通过。Standards/Spec 复审未发现阻断项，批次 C 仍待 Owner 验收。
+
+- 2026-09-29：Owner 在 C checkpoint 的草稿记录表看到 20 条有效记录却从 101 编号。该草稿先移除 100 条记录，持久化 `position` 为保持顺序继续递增。实现 `2284a00` 在草稿 GET 中先对全部有效记录计算 `activeOrdinal`，再搜索与分页；正式前端的表格、右侧编辑区和移除确认均使用展示序号，内部 `position`、记录身份和发布顺序不变。浏览器回归先复现 101，再验证首条显示 1、搜索第二条仍显示 2；草稿 HTTP 集成 11/11，含跨页序号 21 与搜索后原序号 2。前后端 typecheck、前端构建、前端 lint（0 error、9 条原有 warning）、受影响后端文件 lint、`docs:check` 通过。全量根 lint 会扫入旧 `frontend-v2/dist` 产生无关错误，未将其记为通过。Standards/Spec 复审无阻断项；C 继续待 Owner 验收。
