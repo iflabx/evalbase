@@ -8,7 +8,7 @@ This repository contains the EvalBase Phase 1A product definition and applicatio
 
 For specs, Tickets, implementation, or checkpoint work under `.scratch/evalbase-v2/`, read [v2 Implementation Spec](.scratch/evalbase-v2/spec.md) first. It defines the v2 source-of-truth overrides, four Ticket dependencies, three checkpoint batches, authorization semantics, and progress ledger. Use the v2 PRD and frozen login/multiuser prototype for changed behavior; keep v1 contracts for inherited behavior. Continue using `frontend-v1/` as the immutable donor and `frontend-v3/` as the implementation target.
 
-Apply the implementation skill pair, TDD, necessary validation, review, and resource-isolation rules below to v2 as well. For v2 only, the Spec's per-feature branch and batch authorization/checkpoint rules replace per-Ticket branching, repeated authorization within an authorized batch, and individual Owner checkpoints. Explicitly authorizing one Ticket still authorizes only that Ticket. Keep v1 history unchanged. Run docs:check and also validate v2 links, dependencies, and the Spec lifecycle table; the existing checker covers the v1 ledger only.
+Apply the implementation skill pair, TDD, necessary validation, review, and resource-isolation rules below to v2 behavior-changing Ticket work as well. Use **Proportional changes** for presentation-only follow-ups. For v2 only, the Spec's per-feature branch and batch authorization/checkpoint rules replace per-Ticket branching, repeated authorization within an authorized batch, and individual Owner checkpoints. Explicitly authorizing one Ticket still authorizes only that Ticket. Keep v1 history unchanged. Run docs:check and also validate v2 links, dependencies, and the Spec lifecycle table; the existing checker covers the v1 ledger only.
 
 ## Current implementation state
 
@@ -17,6 +17,14 @@ Confirm the exact branch, `HEAD`, and [implementation progress](docs/agents/phas
 Run `npm run docs:check` when a Ticket changes documentation, lifecycle records, the progress ledger, or cross-document status. It is not required for a code-only Ticket that cannot affect those files.
 
 For branch creation, integration, GitHub push, Release and deployment handoff, follow [development workflow](docs/agents/development-workflow.md).
+
+## Proportional changes
+
+Choose checks by the effect of the diff. A presentation-only follow-up changes visible wording, accessible labels, or styling without changing an operation, navigation, state, permission, API, stored data, or domain meaning. Handle it on the authorized branch with the smallest diff; it does not need a new Ticket, parity table, red-green test, full Standards/Spec review, or broad suite solely because it touches `frontend-v3/`. Review the final diff and affected wording occurrences; for changed TS/TSX run frontend typecheck, and use one focused browser check when available. A checkpoint Web rebuild already covers the frontend build. Update an existing assertion only when its expected wording changed. If an unrelated stale test fixture blocks that check, report it and use a direct browser check; repair the fixture as separate work.
+
+For a terminology change, update only current normative documents that define the affected term. Preserve historical PRDs and frozen prototypes unless the Owner requests their revision. Regenerate a flow diagram only when the flow changes. Run `docs:check` when documentation changes. Prefer one local commit for the change and its necessary documentation.
+
+For an existing Owner checkpoint, reuse its data and resources. Rebuild only services whose code changed, then verify the fixed Web SHA, health, and affected page; a frontend-only change needs only Web. A documentation-only edit needs no container rebuild. Use the Ticket protocol and wider validation when behavior, data, security, or another public contract changes, or when the Owner explicitly requests them.
 
 ## Sources of truth
 
@@ -29,7 +37,7 @@ For branch creation, integration, GitHub push, Release and deployment handoff, f
 
 ### Frontend prototype parity
 
-For every Ticket that changes `frontend-v3/`, treat frozen v5.3 as the interaction contract and `frontend-v1/` as the visual/component donor. Before editing, write a compact Ticket-local parity table covering the affected page's visible fields, control order, labels, enabled states, empty/error states, and explicit exclusions. Do not replace that comparison with a generic component library interpretation.
+For every behavior-changing Ticket that changes `frontend-v3/`, treat frozen v5.3 as the interaction contract and `frontend-v1/` as the visual/component donor. Presentation-only follow-ups use **Proportional changes** above. Before editing, write a compact Ticket-local parity table covering the affected page's visible fields, control order, labels, enabled states, empty/error states, and explicit exclusions. Do not replace that comparison with a generic component library interpretation.
 
 - Reuse copied donor typography, tokens, components, icons, layout and decorative transitions directly where they fit. Decorative donor animation may remain when it adds no user operation, page, state or workflow and honors `prefers-reduced-motion`.
 - Implement only the frozen paths that belong to the current Ticket. Do not make a later-Ticket path look callable through a fake route, placeholder page, hidden wide API, or speculative control; record any necessary staged inactive item explicitly in the Ticket.
@@ -51,11 +59,11 @@ This is a single-context repository: use the root `CONTEXT.md` and record qualif
 
 ## Phase 1A ticket execution protocol
 
-Apply this protocol to every implementation Ticket under `.scratch/phase1a-test-data-management/issues/`. A Ticket marked `ready-for-agent` is eligible for work only when all dependencies are complete and no Project Owner execution hold remains.
+Apply this protocol to every behavior-changing implementation Ticket under `.scratch/phase1a-test-data-management/issues/`. Presentation-only follow-ups use **Proportional changes**. A Ticket marked `ready-for-agent` is eligible for work only when all dependencies are complete and no Project Owner execution hold remains.
 
 ### Required skill pair
 
-For every Project Owner-authorized Ticket implementation, use `implement` and `ponytail full` together. Confirm that both skill instructions are loaded before implementation; if either skill is unavailable in the active session, report the missing skill and stop instead of simulating it.
+For every Project Owner-authorized behavior-changing Ticket implementation, use `implement` and `ponytail full` together. Confirm that both skill instructions are loaded before implementation; if either skill is unavailable in the active session, report the missing skill and stop instead of simulating it.
 
 - `implement` owns the outer workflow: execute the current Ticket from its approved Spec, use TDD at the agreed public seams, run regular and final checks, perform the required code review, and create the permitted local commit.
 - `ponytail full` owns each implementation decision: understand the affected flow first, then prefer existing code, the standard library, native platform behavior, installed dependencies, and the smallest working diff—in that order.
@@ -133,7 +141,7 @@ Stop after the report. Never start the next Ticket without a separate Project Ow
 Use the checkpoint cadence in [Test Plan §H.3](docs/test-plan-phase1a.md#h3-切换与验收规则) for the incremental-storage iteration. An intermediate Ticket in a combined batch closes with automated evidence and its own report, then waits for separate Owner authorization for the next Ticket; its batch checkpoint is created at the final Ticket's fixed `HEAD`. Other Tickets retain their own checkpoint after the local implementation commit. A checkpoint is a verification environment, not a production deployment.
 
 1. Give the Compose project, edge/internal networks, PostgreSQL volume, MinIO volume, database and bucket a checkpoint-batch-specific `owner-checkpoint` name. Bind Web only to a free loopback port unless the Project Owner explicitly authorizes an already approved access path. Never restart, replace, or reuse another checkpoint or project's running resources.
-2. Start the current Ticket's backend, Worker and `frontend-v3` together. Point the frontend API proxy only at that checkpoint backend. Do not leave the Owner testing a stale frontend or backend from an earlier Ticket.
+2. At initial checkpoint creation, start the Ticket's backend, Worker and `frontend-v3` together. For a follow-up to an existing checkpoint, rebuild only changed services as described in **Proportional changes**. Point the frontend API proxy only at that checkpoint backend. Do not leave the Owner testing stale changed code.
 3. Set `GIT_SHA` from the fixed commit, verify `/health.git_sha` and `/health/ready`, then verify one frontend API request reaches that same backend. Report any unavailable prerequisite as a blocked checkpoint; do not describe it as ready.
 4. Before handoff, seed the isolated checkpoint with small, allowed synthetic test data for its Ticket/batch. Verify the seeded records through the same frontend API the Owner will use. In the report give the browser URL, SSH tunnel command when needed, test-set/version identifiers, setup data, short browser actions, expected results and any behavior supported only by automated evidence. The Owner should be able to open the page and start testing without preparing the fixture.
 5. Keep the checkpoint running for feedback. After explicit Owner acceptance, record the accepted SHA, result and evidence in the Ticket Comments and progress ledger, then stop and remove only that checkpoint's containers, networks, PostgreSQL/MinIO volumes, seeded test data and port binding. Verify the exact Compose project and resource names before removal; preserve acceptance logs and hashes outside the disposable volumes, and report cleanup completion or any failed removal. Acceptance releases only the dependency stated in the tracker and never authorizes the next Ticket automatically.
