@@ -399,15 +399,6 @@ function SettingsPage() {
           )}
           {section === "members" && activeId && (
             <>
-              {isAdmin && (
-                <div className="member-guide">
-                  <b>如何邀请新成员</b>
-                  <p>
-                    点击页面右上角「邀请成员」，填写已注册账号的邮箱并选择角色。对方登录后可在「设置
-                    → 信息」接受邀请。
-                  </p>
-                </div>
-              )}
               <section className="member-card">
                 <div className="member-card-head">
                   <h2>成员与权限</h2>
