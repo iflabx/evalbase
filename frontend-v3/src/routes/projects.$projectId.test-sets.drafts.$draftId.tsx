@@ -1168,7 +1168,7 @@ function DraftWorkspace() {
                       <table className="w-full min-w-[660px] table-fixed text-sm">
                         <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                           <tr>
-                            <th className="px-4 py-2">序号</th>
+                            <th className="w-[88px] px-4 py-2">序号</th>
                             <th className="px-4 py-2">问题 / 最近修改</th>
                             <th className="px-4 py-2">期望输出</th>
                             <th className="px-4 py-2">来源</th>

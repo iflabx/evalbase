@@ -185,7 +185,11 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
       .locator("td")
       .first(),
   ).toHaveText("1");
-  await page.getByRole("row", { name: /如何重置密码/ }).click();
+  const firstRow = page.getByRole("row", { name: /如何重置密码/ });
+  const numberCell = await firstRow.locator("td").first().boundingBox();
+  const questionText = await firstRow.locator("td").nth(1).locator("p").boundingBox();
+  expect(questionText!.x - numberCell!.x).toBeLessThanOrEqual(112);
+  await firstRow.click();
   await expect(page.getByLabel("记录编辑区")).toContainText("编辑记录");
   await expect(page.getByLabel("记录编辑区")).toContainText("第 1 条");
   await expect(page.getByLabel("第 1 项 Metadata 值")).toHaveValue("");
