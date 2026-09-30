@@ -1,3 +1,4 @@
+import { createRequestId } from "@/lib/request-id";
 import { request } from "@/services/workspace";
 
 export type OnlineUser = {
@@ -19,7 +20,7 @@ export type PresenceFocus = {
   recordId?: string;
   field?: "question" | "expectedOutput" | "metadata" | "name" | "purpose";
 };
-const clientId = crypto.randomUUID();
+const clientId = createRequestId();
 let activeFocus: PresenceFocus = {};
 const projectPath = (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}`;
 export function setPresenceFocus(focus: PresenceFocus) {
