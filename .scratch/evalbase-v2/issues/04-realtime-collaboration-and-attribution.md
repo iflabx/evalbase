@@ -121,3 +121,5 @@ COLLAB-01–08、TRACE-01–02；双浏览器 PUB-01/02/04、ACL-04、DELETE-02 
 - 2026-09-29：Owner 明确确认批次 C checkpoint 验收通过，接受固定应用 HEAD `0ff3dab268c3d5087183250562a73a921cb761e3`。验收前健康检查的 `git_sha` 与 HEAD 一致，PostgreSQL/MinIO ready；本次列表筛选布局与此前 C 功能一并接受。证据已保存至 `/home/bistu/.local/share/evalbase-checkpoints/C-0ff3dab`。此接受仅结束 V2-04/C，不授权合并 main、推送 GitHub 或正式部署。
 
 - 批次 C 专属资源已释放：4 个容器、2 个网络、2 个 PostgreSQL/MinIO 数据卷、3 个 C 专属镜像及服务器 4217 端口；本机仅对应的 `ssh -N -L 4217:127.0.0.1:4217` 隧道进程已关闭。容器、网络、数据卷、镜像、服务器监听端口与本机监听端口残留均为 0。验收健康响应、提交哈希、数据数量、构建与容器日志、清理前后清单保存在 `/home/bistu/.local/share/evalbase-checkpoints/C-0ff3dab`；其他 EvalBase 容器未更动。
+
+- 2026-09-30：Owner 授权修复整合复审发现的删除正文泄漏、批量移除缺少行 CAS、混合保存失败解除冲突，以及陈旧响应回退。针对性回归及独立两轴复审通过，详见 [整合修复复审记录](../../../docs/reviews/evalbase-v2-integration-fixes.md)。原 A/B/C checkpoint 接受记录不改写。

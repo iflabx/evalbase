@@ -1341,12 +1341,24 @@ CREATE INDEX IF NOT EXISTS collaborative_draft_record_page
 CREATE OR REPLACE FUNCTION terminate_collaborative_drafts() RETURNS trigger AS $$
 BEGIN
   IF TG_TABLE_NAME = 'test_set' AND NEW.status = 'permanently_deleted' THEN
-    UPDATE collaborative_draft SET status='terminated', name='', purpose='',
-      revision=revision+1, updated_at=now() WHERE test_set_id=NEW.id AND status='editing';
+    UPDATE collaborative_draft SET
+      status=CASE WHEN status='editing' THEN 'terminated' ELSE status END,
+      name='', purpose='', revision=revision+1, updated_at=now()
+      WHERE test_set_id=NEW.id AND status IN ('editing','published');
+    DELETE FROM collaborative_draft_record WHERE draft_id IN
+      (SELECT id FROM collaborative_draft WHERE test_set_id=NEW.id
+       AND status IN ('terminated','published'));
   ELSIF TG_TABLE_NAME = 'test_set_version'
     AND NEW.status IN ('permanently_deleted','tombstoned') THEN
-    UPDATE collaborative_draft SET status='terminated', name='', purpose='',
-      revision=revision+1, updated_at=now() WHERE parent_version_id=NEW.id AND status='editing';
+    UPDATE collaborative_draft SET
+      status=CASE WHEN status='editing' THEN 'terminated' ELSE status END,
+      name='', purpose='', revision=revision+1, updated_at=now()
+      WHERE (parent_version_id=NEW.id AND status='editing')
+         OR (published_version_id=NEW.id AND status='published');
+    DELETE FROM collaborative_draft_record WHERE draft_id IN
+      (SELECT id FROM collaborative_draft
+       WHERE (parent_version_id=NEW.id AND status='terminated')
+          OR (published_version_id=NEW.id AND status='published'));
   ELSIF NEW.status IS DISTINCT FROM OLD.status THEN
     IF TG_TABLE_NAME = 'test_set' THEN
       UPDATE collaborative_draft SET revision=revision+1, updated_at=now()
@@ -1356,9 +1368,6 @@ BEGIN
         WHERE parent_version_id=NEW.id AND status='editing';
     END IF;
   END IF;
-  DELETE FROM collaborative_draft_record WHERE draft_id IN
-    (SELECT id FROM collaborative_draft WHERE status='terminated'
-       AND (test_set_id=NEW.id OR parent_version_id=NEW.id));
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -1636,6 +1645,29 @@ export async function migrate(
        VALUES ($1) ON CONFLICT (id) DO NOTHING`,
       [TRANSFORMATION_LINEAGE_MIGRATION],
     );
+    const deletedDraftsClaimed = await client.query(
+      `INSERT INTO schema_migration (id)
+       VALUES ('v2-published-draft-deletion-cleanup-v1')
+       ON CONFLICT (id) DO NOTHING RETURNING id`,
+    );
+    if (deletedDraftsClaimed.rowCount) {
+      // Repair bodies retained by deployments predating the deletion trigger fix.
+      await client.query(`
+        UPDATE collaborative_draft d SET name='', purpose='',
+          revision=revision+1, updated_at=now()
+        FROM test_set ts, test_set_version v
+        WHERE d.status='published' AND ts.id=d.test_set_id
+          AND v.id=d.published_version_id
+          AND (ts.status='permanently_deleted'
+            OR v.status IN ('permanently_deleted','tombstoned'))`);
+      await client.query(`
+        DELETE FROM collaborative_draft_record r USING collaborative_draft d,
+          test_set ts, test_set_version v
+        WHERE r.draft_id=d.id AND d.status='published'
+          AND ts.id=d.test_set_id AND v.id=d.published_version_id
+          AND (ts.status='permanently_deleted'
+            OR v.status IN ('permanently_deleted','tombstoned'))`);
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

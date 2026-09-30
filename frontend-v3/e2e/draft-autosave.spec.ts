@@ -48,6 +48,13 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
   };
   const savedFields: string[] = [];
   let failNextSave = false;
+  let conflictNextQuestion = false;
+  let failNextAnswer = false;
+  let holdRecordSave = false;
+  let releaseRecordSave = () => {};
+  let forceSnapshot = false;
+  let holdDraftField: "name" | "purpose" | undefined;
+  let releaseDraftSave = () => {};
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -73,7 +80,36 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
       return route.fulfill({ json: { drafts: [draft] } });
     if (path === `/api/projects/${projectId}/solo-test-sets`)
       return route.fulfill({ json: { testSets: [], pagination: { total: 0 } } });
-    if (path === `/api/projects/${projectId}/collaborative-drafts/${draftId}` && method === "GET")
+    if (
+      path === `/api/projects/${projectId}/collaborative-drafts/${draftId}` &&
+      method === "PATCH"
+    ) {
+      const body = route.request().postDataJSON() as {
+        field: "name" | "purpose";
+        value: string;
+        expectedFieldRevision: number;
+      };
+      if (body.expectedFieldRevision !== draft[`${body.field}Revision`])
+        return route.fulfill({ status: 409, json: { error: { code: "draft_field_conflict" } } });
+      draft[body.field] = body.value;
+      draft[`${body.field}Revision`]++;
+      draft.revision++;
+      if (holdDraftField === body.field) {
+        holdDraftField = undefined;
+        const acknowledged = JSON.parse(JSON.stringify(draft));
+        draft[body.field] = `更新的远端${body.field}`;
+        draft[`${body.field}Revision`]++;
+        draft.revision++;
+        forceSnapshot = true;
+        await new Promise<void>((resolve) => {
+          releaseDraftSave = resolve;
+        });
+        return route.fulfill({ json: { draft: acknowledged } });
+      }
+      return route.fulfill({ json: { draft } });
+    }
+    if (path === `/api/projects/${projectId}/collaborative-drafts/${draftId}` && method === "GET") {
+      forceSnapshot = false;
       return route.fulfill({
         json: {
           draft,
@@ -82,6 +118,7 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
           total: 1,
         },
       });
+    }
     if (
       path === `/api/projects/${projectId}/collaborative-drafts/${draftId}/records/row_1` &&
       method === "PATCH"
@@ -90,6 +127,19 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
         field: "question" | "expectedOutput" | "metadata";
         value: string | Array<{ key: string; value: string }>;
       };
+      if (body.field === "question" && conflictNextQuestion) {
+        conflictNextQuestion = false;
+        record.question = "其他成员的新问题";
+        record.questionRevision++;
+        record.rowRevision++;
+        draft.revision++;
+        return route.fulfill({ status: 409, json: { error: { code: "draft_field_conflict" } } });
+      }
+      if (body.field === "expectedOutput" && failNextAnswer) {
+        failNextAnswer = false;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        return route.fulfill({ status: 503, json: { error: { code: "temporary_failure" } } });
+      }
       if (failNextSave) {
         failNextSave = false;
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -103,6 +153,19 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
       });
       draft.revision++;
       savedFields.push(body.field);
+      if (body.field === "question" && holdRecordSave) {
+        holdRecordSave = false;
+        const acknowledged = JSON.parse(JSON.stringify(record));
+        record.question = "更新的远端问题";
+        record.questionRevision++;
+        record.rowRevision++;
+        draft.revision++;
+        forceSnapshot = true;
+        await new Promise<void>((resolve) => {
+          releaseRecordSave = resolve;
+        });
+        return route.fulfill({ json: { record: acknowledged } });
+      }
       return route.fulfill({ json: { record } });
     }
     if (path.endsWith("/events"))
@@ -111,7 +174,7 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
           events: [],
           cursor: draft.revision,
           hasMore: false,
-          needsSnapshot: false,
+          needsSnapshot: forceSnapshot,
           status: "editing",
         },
       });
@@ -174,4 +237,58 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
   await page.getByRole("button", { name: "重试保存" }).click();
   await expect(page.getByText("已保存", { exact: true })).toBeVisible();
   expect(record.question).toBe("并发失败的问题");
+  conflictNextQuestion = true;
+  failNextAnswer = true;
+  await retryAnswer.fill("等待重试的答案");
+  await retryAnswer.blur();
+  await retryQuestion.fill("冲突保留的本地问题");
+  await retryQuestion.blur();
+  await expect(page.getByText("temporary_failure", { exact: false })).toBeVisible();
+  await expect(retryQuestion).toHaveValue("冲突保留的本地问题");
+  await expect(page.getByRole("button", { name: "创建 v1", exact: true })).toBeDisabled();
+
+  await page.getByRole("button", { name: "采用对方输入", exact: true }).click();
+  await retryAnswer.focus();
+  await retryAnswer.blur();
+  await expect(page.getByText("已保存", { exact: true })).toBeVisible();
+  holdRecordSave = true;
+  await retryQuestion.fill("已提交等待响应的问题");
+  await retryQuestion.blur();
+  await expect(page.getByRole("row", { name: /更新的远端问题/ })).toBeVisible();
+  const acknowledged = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" && response.url().endsWith("/records/row_1"),
+  );
+  releaseRecordSave();
+  await acknowledged;
+  await expect(retryQuestion).toBeEnabled();
+  await expect(page.getByRole("row", { name: /更新的远端问题/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /已提交等待响应的问题/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "采用对方输入", exact: true }).click();
+  for (const field of ["name", "purpose"] as const) {
+    const input = page.getByLabel(field === "name" ? "测试集名称" : "用途说明（可选）", {
+      exact: true,
+    });
+    holdDraftField = field;
+    await input.fill(`已提交${field}`);
+    await input.blur();
+    await expect(
+      page.getByRole("alert").getByText(new RegExp(`对方当前输入.*更新的远端${field}`)),
+    ).toBeVisible();
+    const response = page.waitForResponse(
+      (reply) =>
+        reply.request().method() === "PATCH" &&
+        new URL(reply.url()).pathname.endsWith(`/collaborative-drafts/${draftId}`),
+    );
+    releaseDraftSave();
+    await response;
+    await expect(input).toBeEnabled();
+    await page.getByRole("button", { name: "采用对方输入", exact: true }).click();
+    await expect(input).toHaveValue(`更新的远端${field}`);
+    await input.fill(`后续${field}`);
+    await input.blur();
+    await expect(page.getByText("已保存", { exact: true })).toBeVisible();
+    expect(draft[field]).toBe(`后续${field}`);
+  }
 });

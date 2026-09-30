@@ -1990,14 +1990,19 @@ export async function buildApp(
   });
   const draftSelect = `SELECT d.*, ts.status AS test_set_status,
     v.status AS parent_status, v.version_label AS parent_version_label,
-    v.item_count AS parent_record_count,
+    v.item_count AS parent_record_count, published.status AS published_status,
     u.display_name AS updated_by_name, u.username AS updated_by_username,
     creator.display_name AS created_by_name,
     creator.username AS created_by_username FROM collaborative_draft d
     LEFT JOIN test_set ts ON ts.id=d.test_set_id
     LEFT JOIN test_set_version v ON v.id=d.parent_version_id
+    LEFT JOIN test_set_version published ON published.id=d.published_version_id
     LEFT JOIN app_user u ON u.id=d.updated_by
     LEFT JOIN app_user creator ON creator.id=d.created_by`;
+  const publishedDraftUnavailable = (row: Record<string, unknown>) =>
+    row.status === "published" &&
+    (row.test_set_status !== "available" ||
+      row.published_status !== "published");
   const draftWrite = async (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -2239,7 +2244,8 @@ export async function buildApp(
     if (
       !draft.rowCount ||
       draft.rows[0].status === "discarded" ||
-      draft.rows[0].status === "terminated"
+      draft.rows[0].status === "terminated" ||
+      publishedDraftUnavailable(draft.rows[0])
     )
       return reply.code(404).send({ error: { code: "draft_not_found" } });
     const summary = draftSummary(draft.rows[0]);
@@ -2793,20 +2799,18 @@ export async function buildApp(
         `${draftSelect} WHERE d.id=$1 AND d.project_id=$2`,
         [request.params.draftId, request.params.projectId],
       );
-      if (!draft.rowCount)
+      if (!draft.rowCount || publishedDraftUnavailable(draft.rows[0]))
         return reply.code(404).send({ error: { code: "draft_not_found" } });
       const saved = draft.rows[0];
       if (saved.status === "published" && saved.published_version_id) {
         const result = await db.query(
           `SELECT v.id,v.version_label,v.item_count,v.test_set_id,
           ts.name,ts.purpose FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id
-          WHERE v.id=$1`,
+          WHERE v.id=$1 AND v.status='published' AND ts.status='available'`,
           [saved.published_version_id],
         );
         if (!result.rowCount)
-          return reply
-            .code(409)
-            .send({ error: { code: "idempotency_result_missing" } });
+          return reply.code(404).send({ error: { code: "draft_not_found" } });
         return {
           testSet: {
             id: result.rows[0].test_set_id,
@@ -3051,12 +3055,12 @@ export async function buildApp(
         AND d.status IN ('editing','published')`,
         [request.params.draftId, request.params.projectId],
       );
-      if (!draft.rowCount)
+      if (!draft.rowCount || publishedDraftUnavailable(draft.rows[0]))
         return reply.code(404).send({ error: { code: "draft_not_found" } });
       if (draftSummary(draft.rows[0]).suspended)
         return reply.code(409).send({ error: { code: "draft_not_editable" } });
       const rows = await db.query(
-        `SELECT source->>'assetId' AS asset_id,
+        `SELECT id, row_revision, source->>'assetId' AS asset_id,
         (source->>'ordinal')::integer AS ordinal FROM collaborative_draft_record
         WHERE draft_id=$1 AND deleted=false AND source IS NOT NULL`,
         [request.params.draftId],
@@ -3065,6 +3069,8 @@ export async function buildApp(
         sources: rows.rows.map((row) => ({
           assetId: row.asset_id,
           ordinal: row.ordinal,
+          recordId: row.id,
+          rowRevision: Number(row.row_revision),
         })),
       };
     },
@@ -3084,6 +3090,18 @@ export async function buildApp(
         body.assetIds.some((id) => typeof id !== "string") ||
         new Set(body.assetIds).size !== body.assetIds.length ||
         !["add", "remove"].includes(String(body.mode)) ||
+        (body.mode === "remove" &&
+          (!Array.isArray(body.expectedRecords) ||
+            body.expectedRecords.length > 10000 ||
+            body.expectedRecords.some(
+              (item) =>
+                !isPlainObject(item) ||
+                typeof item.id !== "string" ||
+                !Number.isSafeInteger(item.rowRevision) ||
+                Number(item.rowRevision) < 0,
+            ) ||
+            new Set(body.expectedRecords.map((item) => item.id)).size !==
+              body.expectedRecords.length)) ||
         (body.search !== undefined &&
           (typeof body.search !== "string" || body.search.length > 200)) ||
         (body.exclude !== undefined &&
@@ -3251,15 +3269,42 @@ export async function buildApp(
             changed += inserted.rowCount ?? 0;
           }
         } else {
-          for (const row of selected) {
+          const expected = new Map(
+            (
+              body.expectedRecords as Array<{ id: string; rowRevision: number }>
+            ).map((row) => [row.id, row.rowRevision]),
+          );
+          const selectedKeys = new Set(
+            selected.map((row) => `${row.asset_id}:${row.ordinal}`),
+          );
+          const current = await client.query(
+            `SELECT id,row_revision,source->>'assetId' AS asset_id,
+              (source->>'ordinal')::integer AS ordinal
+             FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false
+               AND source->>'assetId'=ANY($2::text[]) FOR UPDATE`,
+            [request.params.draftId, assetIds],
+          );
+          const affected = current.rows.filter((row) =>
+            selectedKeys.has(`${row.asset_id}:${row.ordinal}`),
+          );
+          if (
+            affected.some(
+              (row) => expected.get(row.id) !== Number(row.row_revision),
+            )
+          ) {
+            await client.query("ROLLBACK");
+            return reply
+              .code(409)
+              .send({ error: { code: "draft_row_conflict" } });
+          }
+          if (affected.length) {
             const removed = await client.query(
               `UPDATE collaborative_draft_record SET deleted=true,
-              row_revision=row_revision+1,updated_by=$4,updated_at=now()
-              WHERE draft_id=$1 AND deleted=false
-                AND source->>'assetId'=$2 AND (source->>'ordinal')::integer=$3`,
-              [request.params.draftId, row.asset_id, row.ordinal, actor.id],
+               row_revision=row_revision+1,updated_by=$3,updated_at=now()
+               WHERE draft_id=$1 AND id=ANY($2::text[]) AND deleted=false`,
+              [request.params.draftId, affected.map((row) => row.id), actor.id],
             );
-            changed += removed.rowCount ?? 0;
+            changed = removed.rowCount ?? 0;
           }
         }
         if (changed)

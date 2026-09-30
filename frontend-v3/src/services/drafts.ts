@@ -196,6 +196,7 @@ export async function selectDraftSources(
     exclude?: Array<{ assetId: string; ordinal: number }>;
     ordinals?: number[];
     mode: "add" | "remove";
+    expectedRecords?: Array<{ id: string; rowRevision: number }>;
   },
 ) {
   return request<{ matched: number; changed: number }>(
@@ -206,8 +207,8 @@ export async function selectDraftSources(
 
 export async function listSelectedDraftSources(projectId: string, draftId: string) {
   return (
-    await request<{ sources: Array<{ assetId: string; ordinal: number }> }>(
-      `${item(projectId, draftId)}/selected-sources`,
-    )
+    await request<{
+      sources: Array<{ assetId: string; ordinal: number; recordId: string; rowRevision: number }>;
+    }>(`${item(projectId, draftId)}/selected-sources`)
   ).sources;
 }

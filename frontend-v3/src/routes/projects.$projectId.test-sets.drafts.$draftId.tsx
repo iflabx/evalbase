@@ -497,26 +497,34 @@ function DraftWorkspace() {
             (baseline as { revision: number }).revision,
           );
           const nextBaseline = {
-            value: value as string,
+            value: result.draft[field],
             revision: field === "name" ? result.draft.nameRevision : result.draft.purposeRevision,
           };
-          if (field === "name") setNameBaseline(nextBaseline);
-          else setPurposeBaseline(nextBaseline);
+          const mergeBaseline = (current: { value: string; revision: number } | undefined) =>
+            current && current.revision > nextBaseline.revision ? current : nextBaseline;
+          if (field === "name") setNameBaseline(mergeBaseline);
+          else setPurposeBaseline(mergeBaseline);
           queryClient.setQueriesData<Awaited<ReturnType<typeof getSharedDraft>>>(
             { queryKey: ["shared-draft", projectId, draftId] },
             (old) =>
-              old
+              old &&
+              nextBaseline.revision >=
+                old.draft[field === "name" ? "nameRevision" : "purposeRevision"]
                 ? {
                     ...old,
                     draft: {
                       ...old.draft,
-                      [field]: value,
+                      [field]: nextBaseline.value,
                       [field === "name" ? "nameRevision" : "purposeRevision"]:
                         nextBaseline.revision,
                       revision: Math.max(old.draft.revision, result.draft.revision),
-                      updatedAt: result.draft.updatedAt,
-                      updatedBy: result.draft.updatedBy,
-                      updatedByName: result.draft.updatedByName,
+                      ...(result.draft.revision >= old.draft.revision
+                        ? {
+                            updatedAt: result.draft.updatedAt,
+                            updatedBy: result.draft.updatedBy,
+                            updatedByName: result.draft.updatedByName,
+                          }
+                        : {}),
                     },
                   }
                 : old,
@@ -532,6 +540,7 @@ function DraftWorkspace() {
             record[`${field}Revision`],
           );
           const mergeSaved = (current: SharedDraftRecord) => {
+            if (result.record[`${field}Revision`] < current[`${field}Revision`]) return current;
             const changed =
               field === "metadata"
                 ? {
@@ -597,7 +606,7 @@ function DraftWorkspace() {
           setRemovedRecord(true);
         }
         failedSaves.current.add(field);
-        setConflict(collided);
+        if (collided) setConflict(true);
         setError(
           rowRemoved
             ? "这条记录已被其他成员移除。可将当前输入保存为新记录，或放弃本地输入。"
@@ -817,12 +826,23 @@ function DraftWorkspace() {
       await selectDraftSources(projectId, draftId, {
         assetIds,
         mode,
+        ...(mode === "remove"
+          ? {
+              expectedRecords: (selectedSources.data ?? []).map((source) => ({
+                id: source.recordId,
+                rowRevision: source.rowRevision,
+              })),
+            }
+          : {}),
         ...(search ? { search } : {}),
         ...(ordinals ? { ordinals } : {}),
       });
       await Promise.all([draftQuery.refetch(), selectedSources.refetch()]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "选择资料失败。");
+      if (cause instanceof Error && cause.message === "draft_row_conflict") {
+        await Promise.all([draftQuery.refetch(), selectedSources.refetch()]);
+        setError("所选记录已被其他成员修改。本次未移除任何记录，请检查最新内容后重新选择。");
+      } else setError(cause instanceof Error ? cause.message : "选择资料失败。");
     } finally {
       setBusy(false);
     }
@@ -1065,7 +1085,7 @@ function DraftWorkspace() {
                         ? "未保存"
                         : "已保存"}
             </p>
-            {(syncIssue || error || draft.suspended) && (
+            {(syncIssue || error || conflict || draft.suspended) && (
               <Card className="mb-5 min-w-0">
                 <CardContent className="p-0">
                   {draft.suspended && (
@@ -1078,12 +1098,15 @@ function DraftWorkspace() {
                       {syncIssue}
                     </p>
                   )}
-                  {error && (
+                  {(error || conflict) && (
                     <div
                       role="alert"
                       className="border-t border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive"
                     >
-                      <p>{error} 输入内容仍保留在页面上。</p>
+                      <p>
+                        {error || "同一字段已被其他成员修改。请选择如何处理冲突。"}{" "}
+                        输入内容仍保留在页面上。
+                      </p>
                       {Object.entries(fieldConflicts).map(
                         ([field, item]) =>
                           item && (

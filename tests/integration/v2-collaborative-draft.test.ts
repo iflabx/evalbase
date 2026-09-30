@@ -21,6 +21,7 @@ describe("V2-03 shared draft and publication", () => {
   let publishedLeafVersionId: string;
   let publishedLeafDraftId: string;
   let publishedThirdVersionId: string;
+  let publishedThirdDraftId: string;
   const db = createPool(testUrl);
   const headers = (session: Session = admin) => ({
     cookie: session.cookie,
@@ -700,16 +701,63 @@ describe("V2-03 shared draft and publication", () => {
       assetId,
     ]);
     const selectionUrl = `${base()}/${draftId}/source-selection`;
+    const expectedRecords = async (id: string) => {
+      const snapshot = await app.inject({
+        method: "GET",
+        url: `${base()}/${id}?limit=100`,
+        headers: { cookie: editor.cookie },
+      });
+      return snapshot
+        .json()
+        .records.map((row: { id: string; rowRevision: number }) => ({
+          id: row.id,
+          rowRevision: row.rowRevision,
+        }));
+    };
     const select = async (payload: Record<string, unknown>) =>
       app.inject({
         method: "POST",
         url: selectionUrl,
         headers: headers(editor),
-        payload: { assetIds: [assetId], ...payload },
+        payload: {
+          assetIds: [assetId],
+          ...(payload.mode === "remove"
+            ? { expectedRecords: await expectedRecords(draftId) }
+            : {}),
+          ...payload,
+        },
       });
     const first = await select({ mode: "add", ordinals: [0, 1] });
     expect(first.statusCode, first.body).toBe(200);
     expect(first.json().changed).toBe(2);
+    const staleSelection = await expectedRecords(draftId);
+    const edited = await app.inject({
+      method: "PATCH",
+      url: `${base()}/${draftId}/records/${staleSelection[0].id}`,
+      headers: headers(),
+      payload: {
+        field: "expectedOutput",
+        value: "另一用户刚保存的答案",
+        expectedFieldRevision: 0,
+      },
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const staleRemoval = await select({
+      mode: "remove",
+      ordinals: [0, 1],
+      expectedRecords: staleSelection,
+    });
+    expect(staleRemoval.statusCode, staleRemoval.body).toBe(409);
+    expect(staleRemoval.json().error.code).toBe("draft_row_conflict");
+    expect(await expectedRecords(draftId)).toHaveLength(2);
+    const unchecked = await app.inject({
+      method: "POST",
+      url: selectionUrl,
+      headers: headers(editor),
+      payload: { assetIds: [assetId], mode: "remove", ordinals: [0] },
+    });
+    expect(unchecked.statusCode).toBe(422);
+
     expect(
       (await select({ mode: "add", ordinals: [0, 1] })).json().changed,
     ).toBe(0);
@@ -781,7 +829,12 @@ describe("V2-03 shared draft and publication", () => {
       method: "POST",
       url: inheritedUrl,
       headers: headers(editor),
-      payload: { assetIds: [assetId], mode: "remove", ordinals: [1] },
+      payload: {
+        assetIds: [assetId],
+        mode: "remove",
+        ordinals: [1],
+        expectedRecords: await expectedRecords(inheritedId),
+      },
     });
     expect(removed.json().changed).toBe(1);
     const restored = await app.inject({
@@ -954,6 +1007,7 @@ describe("V2-03 shared draft and publication", () => {
     expect(retry.statusCode, retry.body).toBe(201);
     expect(retry.json().version.label).toBe("v3");
     publishedThirdVersionId = retry.json().version.id;
+    publishedThirdDraftId = draftId;
     const replay = await app.inject({
       method: "POST",
       url: `${base()}/${draftId}/publish`,
@@ -1005,6 +1059,23 @@ describe("V2-03 shared draft and publication", () => {
         })
       ).statusCode,
     ).toBe(404);
+    const deletedReplay = await app.inject({
+      method: "POST",
+      url: `${base()}/${publishedThirdDraftId}/publish`,
+      headers: headers(),
+      payload: { revision: 0 },
+    });
+    expect(deletedReplay.statusCode, deletedReplay.body).toBe(404);
+    for (const suffix of ["", "/selected-sources"]) {
+      const stalePublishedDraft = await app.inject({
+        method: "GET",
+        url: `${base()}/${publishedThirdDraftId}${suffix}`,
+        headers: { cookie: admin.cookie },
+      });
+      expect(stalePublishedDraft.statusCode, stalePublishedDraft.body).toBe(
+        404,
+      );
+    }
     const survivor = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/solo-test-sets/${publishedRoot.testSetId}/versions/${publishedLeafVersionId}`,
@@ -1110,6 +1181,67 @@ describe("V2-03 shared draft and publication", () => {
       [publishedLeafDraftId],
     );
     expect(publishedState.rows[0].status).toBe("published");
+    const deletedReplay = await app.inject({
+      method: "POST",
+      url: `${base()}/${publishedLeafDraftId}/publish`,
+      headers: headers(),
+      payload: { revision: 0 },
+    });
+    expect(deletedReplay.statusCode, deletedReplay.body).toBe(404);
+    for (const suffix of ["", "/selected-sources"]) {
+      const stalePublishedDraft = await app.inject({
+        method: "GET",
+        url: `${base()}/${publishedLeafDraftId}${suffix}`,
+        headers: { cookie: admin.cookie },
+      });
+      expect(stalePublishedDraft.statusCode, stalePublishedDraft.body).toBe(
+        404,
+      );
+    }
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM collaborative_draft_record WHERE draft_id=$1",
+          [publishedLeafDraftId],
+        )
+      ).rows[0].count,
+    ).toBe(0);
+
+    await db.query(
+      `UPDATE collaborative_draft SET name='旧泄漏名称',purpose='旧泄漏用途' WHERE id=$1`,
+      [publishedLeafDraftId],
+    );
+    await db.query(
+      `INSERT INTO collaborative_draft_record
+      (draft_id,id,position,question,expected_output,metadata,updated_by)
+      SELECT id,'legacy_leak_row',1,'旧泄漏问题','旧泄漏答案','[]',updated_by
+      FROM collaborative_draft WHERE id=$1`,
+      [publishedLeafDraftId],
+    );
+    await db.query(
+      `DELETE FROM schema_migration WHERE id='v2-published-draft-deletion-cleanup-v1'`,
+    );
+    await migrate(testUrl);
+    await migrate(testUrl);
+    const repaired = await db.query(
+      `SELECT status,name,purpose,published_version_id FROM collaborative_draft WHERE id=$1`,
+      [publishedLeafDraftId],
+    );
+    expect(repaired.rows[0]).toMatchObject({
+      status: "published",
+      name: "",
+      purpose: "",
+      published_version_id: publishedLeafVersionId,
+    });
+    expect(
+      (
+        await db.query(
+          `SELECT count(*)::int AS count FROM collaborative_draft_record WHERE draft_id=$1`,
+          [publishedLeafDraftId],
+        )
+      ).rows[0].count,
+    ).toBe(0);
+
     const terminated = await app.inject({
       method: "GET",
       url: `${base()}/${draftId}`,
