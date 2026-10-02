@@ -28,3 +28,5 @@ Blocked by: none
 - 最终门禁：后端单元 21 文件/137 项通过；编码相关稀疏/共享草稿 21 项通过；切换/Checkpoint/统一读取 22 项通过；compiled 模式双账号及设置 6 项通过；前端语义 16 项通过。typecheck、受影响 lint（0 errors，既有 hook warnings）、编译构建、JSON 解析、diff check 通过。宿主 `npm run docs:check` 通过；容器内首次文档检查因宿主 Git 提交不可见而失败，未修改历史提交引用。
 - 运行闭环：compiled runtime Node 24.6.0、非 root、无 src/tsx/typescript、迁移重复执行退出 0；隔离 Web/Worker 正常重启后正式版本仍可读，CSV SHA-256 不变，未认证含测试身份头仍 401。正式 evalbase 的镜像与 2026-09-30 启动时间不变。
 - 测量与限制见 [结果报告](../../../docs/research/architecture-performance-optimization-2026-10-02.md)：SQL 大幅下降，10 会话延迟降低；发布混合 P95 与 RSS 的取舍、未控制 GC/冷缓存、历史 131 同集合失败均保留。Owner 人工验收 pending，Implementation 继续 in-progress。
+
+- 实现提交 `ea4fa68`（基线 `cb20aea`）。该提交已完成双轴复审和上述自动化闭环；后续进度提交不更改应用代码。固定运行 HEAD 用独立健康证据记录，避免文档提交自引用。验收环境使用 `evalbase-architecture-checkpoint`、loopback 4217、独立数据库卷及 `evalbase-architecture-checkpoint` 桶；只含一个「架构优化验收项目」和管理员、编辑两个账号。自动化测试资源在证据封存后释放；此环境保留至 Owner 验收后释放。未合并 main、未推送 GitHub、未正式部署。
