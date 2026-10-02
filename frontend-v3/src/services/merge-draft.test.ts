@@ -23,6 +23,27 @@ const row = (input: Partial<SharedDraftRecord> = {}): SharedDraftRecord => ({
   ...input,
 });
 describe("mergeRecordSnapshot", () => {
+  it.each(["", "   "])("ignores an untouched blank Metadata placeholder (%j)", (key) => {
+    const result = mergeRecordSnapshot(
+      row({ metadata: [] }),
+      { question: "我的问题", expectedOutput: "原输出", metadata: [{ key, value: "" }] },
+      row({ metadata: [{ key: "备注", value: "" }], metadataRevision: 1 }),
+    );
+    expect(result.edit).toMatchObject({
+      question: "我的问题",
+      metadata: [{ key: "备注", value: "" }],
+    });
+    expect(result.conflicts).toEqual({});
+  });
+  it("preserves a real Metadata edit with an empty value as a conflict", () => {
+    const result = mergeRecordSnapshot(
+      row({ metadata: [] }),
+      { question: "原问题", expectedOutput: "原输出", metadata: [{ key: "本地备注", value: "" }] },
+      row({ metadata: [{ key: "远端备注", value: "" }], metadataRevision: 1 }),
+    );
+    expect(result.edit.metadata).toEqual([{ key: "本地备注", value: "" }]);
+    expect(result.conflicts.metadata?.remote).toEqual([{ key: "远端备注", value: "" }]);
+  });
   it("merges different fields without losing local input", () => {
     const result = mergeRecordSnapshot(
       row(),

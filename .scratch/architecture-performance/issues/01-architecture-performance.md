@@ -30,3 +30,14 @@ Blocked by: none
 - 测量与限制见 [结果报告](../../../docs/research/architecture-performance-optimization-2026-10-02.md)：SQL 大幅下降，10 会话延迟降低；发布混合 P95 与 RSS 的取舍、未控制 GC/冷缓存、历史 131 同集合失败均保留。Owner 人工验收 pending，Implementation 继续 in-progress。
 
 - 实现提交 `ea4fa68`（基线 `cb20aea`）。该提交已完成双轴复审和上述自动化闭环；后续进度提交不更改应用代码。固定运行 HEAD 用独立健康证据记录，避免文档提交自引用。验收环境使用 `evalbase-architecture-checkpoint`、loopback 4217、独立数据库卷及 `evalbase-architecture-checkpoint` 桶；只含一个「架构优化验收项目」和管理员、编辑两个账号。自动化测试资源在证据封存后释放；此环境保留至 Owner 验收后释放。未合并 main、未推送 GitHub、未正式部署。
+
+- 2026-10-02 Owner 授权五账号协作测试后，发现新记录的空白 Metadata 输入占位行误判为本地修改，与其他用户新增的合法空值项冲突。Owner 授权修复并制定全面性能测试方案；本次基线 `c5e791683c65730e11bfb205c50a6bf32ddbda31`，沿用当前功能分支，不改写此前验收。公共 seam 为 `mergeRecordSnapshot`、草稿浏览器自动保存/快照合并；现有 collaborative-drafts 快照、字段保存、事件与在线路由均 reused，无 API/数据库/布局变更。
+
+| 本次草稿页对照 | 保留的字段/顺序/标签 | 状态和错误语义 |
+| --- | --- | --- |
+| 记录编辑区 Metadata | donor 行内键值、空白输入占位及原有操作 | 空白占位不算修改；命名空值项保留；真实竞争保留本地输入和原有解决按钮 |
+| 页头自动保存状态/退出 | 原有已保存、未保存、失败、退出草稿顺序 | 未编辑字段自动采用远端；真正未确认输入和冲突仍阻止退出/发布 |
+
+扩展性能方案见 [性能与瓶颈测试方案](../../../docs/test-plan-performance.md)，覆盖 10 个独立用户持续负载、容量、重操作干扰、稳定性和恢复；当前仅制定方案，不记为性能通过。五账号测试覆盖原有一个项目，临时增加三个账号由本次 Owner 指令授权；不能把该例外改写为以后验收的默认账号数量。
+
+- 修复验证：`npm --prefix frontend-v3 test -- src/services/merge-draft.test.ts` 先 RED（2 个占位用例失败、3 个通过），修复后 5/5 GREEN。`draft-autosave.spec.ts` 浏览器回归 1/1，包含空占位采用远端、空值显示、离焦保存、退出等待、失败重试及原有真实输入冲突语义；宿主浏览器缺系统库，改用既有固定 Playwright 镜像。最初测试容器 network=none 导致浏览器被判离线，改用隔离 bridge 后通过，环境失败不算应用失败。受影响 typecheck/lint、构建、docs:check/diff check 与双轴复审记录在任务专属证据目录；Standards 0、Spec 0 发现。真实双账号空值冲突及固定 HEAD 健康将在提交后写入独立证据，未运行全量历史后端/容量套件，因为无服务端、存储或权限改动。本轮 Owner 验收仍 pending。

@@ -113,3 +113,5 @@
 按 [性能优化规格](../.scratch/architecture-performance/spec.md) 与 [实施 Ticket](../.scratch/architecture-performance/issues/01-architecture-performance.md) 验证。对同一确定性 10,000 条合成数据及隔离资源执行至少三次热运行和 10 个并发会话，记录原始结果、p50/p95、错误/冲突、SQL 次数、空闲领取次数和进程内存；未控制冷缓存则不报告冷启动收益。既有 COLLAB/PUB/DELETE/REG 与容量合同继续成立。Owner 验收库只保留一个项目和管理员/编辑两个账号，自动化夹具使用另库/桶。
 
 性能优化的实际数据、基线失败集合、编码固定字节、并发上传/批量回滚及浏览器结果见 [优化结果报告](research/architecture-performance-optimization-2026-10-02.md) 和 PERF-01 Comments；编码线程必须覆盖生产编译路径及错误后队列释放。
+
+针对 10 个独立用户持续使用、最大字节容量、重操作干扰、稳定运行及分层瓶颈定位的扩展范围见 [性能与瓶颈测试方案](test-plan-performance.md)。该方案当前待执行，不代表已通过性能验收。

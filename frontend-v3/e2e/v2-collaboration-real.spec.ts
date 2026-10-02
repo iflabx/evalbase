@@ -13,6 +13,63 @@ async function signedIn(context: BrowserContext, email: string, password: string
   expect(response.ok(), await response.text()).toBeTruthy();
 }
 
+test("empty Metadata accepts peer updates but genuine empty-value edits still conflict", async ({
+  browser,
+}) => {
+  const adminContext = await browser.newContext();
+  const editorContext = await browser.newContext();
+  try {
+    await signedIn(
+      adminContext,
+      process.env["V2C_ADMIN_EMAIL"] ?? "admin-v2c@example.test",
+      process.env["V2C_ADMIN_PASSWORD"]!,
+    );
+    await signedIn(
+      editorContext,
+      process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test",
+      process.env["V2C_EDITOR_PASSWORD"]!,
+    );
+    const admin = await adminContext.newPage();
+    const editor = await editorContext.newPage();
+    const path = `/projects/${projectId}/test-sets/drafts/${draftId}`;
+    await Promise.all([admin.goto(path), editor.goto(path)]);
+    await admin.getByRole("button", { name: "新增记录", exact: true }).click();
+    const adminPanel = admin.getByLabel("记录编辑区");
+    const question = `Metadata 协作回归 ${Date.now()}`;
+    await adminPanel.getByRole("textbox", { name: "问题" }).fill(question);
+    await adminPanel.getByRole("textbox", { name: "问题" }).blur();
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
+    await editor.getByRole("row").filter({ hasText: question }).click();
+    const editorPanel = editor.getByLabel("记录编辑区");
+    const editorKey = editorPanel.getByRole("textbox", { name: "第 1 项 Metadata 字段名" });
+    const adminKey = adminPanel.getByRole("textbox", { name: "第 1 项 Metadata 字段名" });
+    await editorKey.fill("备注");
+    await editorPanel.getByRole("textbox", { name: "问题" }).focus();
+    await expect(editor.getByText("已保存", { exact: true })).toBeVisible();
+    await expect(adminKey).toHaveValue("备注", { timeout: 5000 });
+    await expect(adminPanel.getByRole("textbox", { name: "第 1 项 Metadata 值" })).toHaveValue("");
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
+    await expect(admin.getByRole("button", { name: "采用对方输入" })).toHaveCount(0);
+    await editorContext.setOffline(true);
+    await editorKey.fill("本地备注");
+    await adminKey.fill("远端备注");
+    await adminPanel.getByRole("textbox", { name: "问题" }).focus();
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
+    await editorContext.setOffline(false);
+    await expect(editor.getByRole("button", { name: "采用对方输入" })).toBeVisible({
+      timeout: 7000,
+    });
+    await expect(editorKey).toHaveValue("本地备注");
+    await editor.getByRole("button", { name: "采用对方输入" }).click();
+    await expect(editorKey).toHaveValue("远端备注");
+    await expect(editor.getByText("已保存", { exact: true })).toBeVisible();
+    await admin.getByRole("button", { name: "退出草稿" }).click();
+    await expect(admin).toHaveURL(new RegExp(`/projects/${projectId}/test-sets/`));
+  } finally {
+    await Promise.all([adminContext.close(), editorContext.close()]);
+  }
+});
+
 test("two accounts see field focus, live saves and a resolvable same-field conflict", async ({
   browser,
 }) => {

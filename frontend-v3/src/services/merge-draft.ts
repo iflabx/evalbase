@@ -10,8 +10,10 @@ export type FieldConflict = {
   at?: string | undefined;
 };
 const fields: RecordField[] = ["question", "expectedOutput", "metadata"];
+const comparable = (value: string | MetadataEntry[]) =>
+  Array.isArray(value) ? value.filter((entry) => entry.key.trim() || entry.value) : value;
 const equal = (a: string | MetadataEntry[], b: string | MetadataEntry[]) =>
-  JSON.stringify(a) === JSON.stringify(b);
+  JSON.stringify(comparable(a)) === JSON.stringify(comparable(b));
 export function mergeRecordSnapshot(
   base: SharedDraftRecord,
   local: RecordEdit,

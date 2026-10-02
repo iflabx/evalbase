@@ -34,7 +34,7 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
     beforeRevisionId: null,
     question: "旧问题",
     expectedOutput: "旧答案",
-    metadata: [{ key: "渠道", value: "" }],
+    metadata: [] as Array<{ key: string; value: string }>,
     source: null,
     sourceFileName: null,
     rowRevision: 0,
@@ -194,6 +194,18 @@ test("draft fields save on blur and exit waits for in-flight saves", async ({ pa
   const editor = page.getByLabel("记录编辑区");
   const question = editor.getByRole("textbox", { name: "问题" });
   const answer = editor.getByRole("textbox", { name: "期望输出" });
+  // The untouched empty editor placeholder must accept a peer's named empty value.
+  record.metadata = [{ key: "渠道", value: "" }];
+  record.metadataRevision++;
+  record.rowRevision++;
+  draft.revision++;
+  forceSnapshot = true;
+  await expect(editor.getByRole("textbox", { name: "第 1 项 Metadata 字段名" })).toHaveValue(
+    "渠道",
+  );
+  await expect(editor.getByRole("textbox", { name: "第 1 项 Metadata 值" })).toHaveValue("");
+  await expect(page.getByText("已保存", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "采用对方输入" })).toHaveCount(0);
   await question.fill("新问题");
   await question.blur();
   await expect(answer).toBeEnabled();
