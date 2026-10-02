@@ -1,7 +1,7 @@
 # PERF-01 架构与性能优化
 
 Status: ready-for-human
-Implementation: in-progress
+Implementation: completed
 Blocked by: none
 
 ## 范围
@@ -51,3 +51,7 @@ Blocked by: none
 - 本轮修复与复测：真实 HTTP 完整 413、分页只携带成员 ID 后读取当前页、数据库证据指纹检查后直接返回暖 CSV。统一 resolver 的 Checkpoint 引用校验物化后执行 fail-closed。原生上传 10 项（含同步自有流取消先 RED 后 GREEN）、统一读取/筛选/暖缓存 12 项、当前回收/永久删除 19 项及其他必要回归合计 208 项通过。旧删除三文件 18 failed / 2 skipped 与 `58d997c` 同集合失败，未恢复退役登录 seam。后端 typecheck、受影响 eslint、diff check 与正式 Docker 编译通过；docs:check 及固定 HEAD 交付证据独立保存。
 - 本轮 Standards/Spec 五项 P2（基线诊断可复现、同步流立即中止、冷/暖样本不足、聚合 STOP 路径与账号说明）已修复并复查。万条真实 HTTP 补测三冷三暖及分页/保存各三次，两个 variant 各 38 请求无错误、36 诊断与两种 CSV 哈希一致；中位分页 227→108 ms，重复数据 CSV 724→194 ms。2/3 账号重操作无意外请求错误；100 MB 发布与内存未证明改善，缓存预算压力仍在，详见 [修复报告](../../../docs/research/performance-repair-2026-10-03.md)。
 - 本轮追加诊断后原自动化 MinIO 页缓存触发持续 90% STOP，无 OOM/共享健康失败；保持标记，封存并释放专属资源后，以全新同预算环境仅补万条采样。新环境 96 个资源样本无 OOM/重启/健康错误。未重置 Owner 数据；现场核对其一个项目、原管理员/编辑及前次 Owner 明确授权五账号测试添加的三账号仍在，属于既有授权例外。本轮不新增 Owner 账号；以后默认两个账号的约定不变。所有自动化资源封存后回收，固定 HEAD 更新既有 Owner Web/Worker；人工 checkpoint pending，Implementation 继续 in-progress。本地提交 SHA、实际健康与回收清单写入独立交付证据，避免提交自引用；未合并、推送或正式部署。
+
+- 2026-10-03 Owner 人工验收通过：Owner 明确回复「我已经通过人工验收」，对应固定应用 HEAD `9bd65b3329bc9cfe1915b7d3752e52143908a90e`。回收前确认 Owner 健康返回相同 SHA，Standards/Spec 复审无未解决发现；Implementation 改为 completed，Status 保留 ready-for-human（职责标签）。原性能报告的失败、STOP、测量限制和未执行项保留，不因本次人工验收改写为通过。
+- 验收日志、镜像 ID、健康、资源清单及回收核对存入 `local-acceptance-evidence/performance-repair-owner-acceptance-2026-10-03/`，与此前自动化封存证据分开。仅回收 `evalbase-architecture-checkpoint` 的 Web、Worker、PostgreSQL、MinIO 四个容器、edge/internal 两个网络及 postgres-data/minio-data 两个专属数据卷，合成验收数据随卷释放；4217 监听已消失，按项目标签核对剩余容器、网络、数据卷均为零。正式 `evalbase` 的镜像、启动时间及健康 SHA `cb20aea` 不变。此次仅提交验收进度文档；尚未合并 main、推送 GitHub 或正式部署，后续按开发流程另行授权。
+- 本次进度文档的 `npm run docs:check` 和 `git diff --check` 通过。未改应用代码，未重复自动化测试或审阅；原实现、复测与审阅证据适用于上述已验收 SHA。

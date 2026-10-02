@@ -1,7 +1,7 @@
 # 架构与性能优化实施规格
 
 Status: ready-for-human
-Implementation: in-progress
+Implementation: completed
 
 Owner 于 2026-10-02 授权完成此前架构审查中的优化、文档、审阅与测试。应用基线和远端 main 为 `cb20aead26caaa5e34c4a7f7074d58fee2891014`；开发分支 `codex/architecture-performance`。目标规模为最多 10 个并发会话。本轮只交付开发分支与隔离验收环境，合并、推送和正式部署按既有开发流程另行授权。
 
@@ -42,3 +42,5 @@ frontend-v1 和冻结原型只读；不新增状态卡、提示、设置或诊�
 所有基准、自动化及人工验收资源使用本任务专属 Compose 名称和数据，不使用正式库/桶或其他项目。自动化数据与 Owner 验收数据分开；Owner 环境只保留一个易读项目与管理员、编辑两个账号。固定 HEAD 校验健康及同源请求；人工验收尚未发生时只记录 pending，不代替 Owner 判定。
 
 本规格是本轮唯一进度索引；实现、测量、复审、提交与 checkpoint 记录写入 Ticket Comments，完成后链接结果报告。
+
+2026-10-03：Owner 已人工验收通过固定 HEAD `9bd65b3329bc9cfe1915b7d3752e52143908a90e`，专属 checkpoint 资源已回收；详见 [Ticket Comments](issues/01-architecture-performance.md#comments) 和 [修复报告](../../docs/research/performance-repair-2026-10-03.md)。

@@ -1,6 +1,6 @@
 # 性能发现修复与短场景复测（2026-10-03）
 
-关联 [原测试报告](performance-validation-2026-10-02.md)、[修复规格](../../.scratch/performance-repair/spec.md) 与 [PERF-01](../../.scratch/architecture-performance/issues/01-architecture-performance.md)。原报告的上传失败、STOP 与未执行项保持不变；本报告只说明本轮修复验证。自动化与最终双轴复审完成；本地提交后的固定 HEAD、Owner 健康及资源回收证据独立封存，人工 checkpoint 仍 pending。
+关联 [原测试报告](performance-validation-2026-10-02.md)、[修复规格](../../.scratch/performance-repair/spec.md) 与 [PERF-01](../../.scratch/architecture-performance/issues/01-architecture-performance.md)。原报告的上传失败、STOP 与未执行项保持不变；本报告只说明本轮修复验证。自动化与最终双轴复审完成；Owner 于 2026-10-03 人工验收通过固定 HEAD `9bd65b3329bc9cfe1915b7d3752e52143908a90e`，健康与资源回收证据独立封存。
 
 ## 修复内容
 
@@ -48,5 +48,5 @@
 
 - 原生上传 10 项、统一读取/筛选/暖缓存损坏 12 项、当前回收/永久删除 19 项通过。共享存储/解析变更扩大到后端单元与当前上传、Checkpoint、稀疏切换、共享草稿；合计 208 项通过。
 - 扩大检查中的三份旧 Ticket 14 删除测试在退役登录 seam 失败：18 failed / 2 skipped，修复前同文件重跑同集合失败；未恢复退役接口，未把这组失败算作通过。当前 `solo-test-set-trash.test.ts` 包含父内容切断、空后代、暖缓存失效、失败重试和共享对象保留，19/19 通过。
-- 后端 typecheck、受影响 eslint、diff check 已通过。Standards/Spec 提出的基线脚本、同步取消、采样次数、聚合 STOP 路径与账号说明五项 P2 已修复并复查，无未解决发现。正式编译构建、docs:check、固定 HEAD 健康和回收结果以交付证据记录；Owner 人工 checkpoint 仍 pending，PERF-01 Implementation 保持 in-progress。
-- 原始证据位于 `local-acceptance-evidence/performance-repair-2026-10-03/`，万条补测另存 `performance-repair-review-2026-10-03/normal-retest/`；回收前生成封存清单。保存第一次环境/取消尝试与 STOP，未覆写 RED。自动化资源在封存后回收。既有 Owner 环境保持一个项目与原管理员/编辑账号；现场只读核对仍有 Owner 前次授权五账号测试添加的三个账号，本轮不新增、删除或重置它们及其历史数据。这是之前明确授权的例外，不改变以后验收默认两个账号的约定。本轮不合并 main、不推送 GitHub、不正式部署。
+- 后端 typecheck、受影响 eslint、diff check 已通过。Standards/Spec 提出的基线脚本、同步取消、采样次数、聚合 STOP 路径与账号说明五项 P2 已修复并复查，无未解决发现。正式编译构建、docs:check、固定 HEAD 健康和回收结果以交付证据记录；Owner 于 2026-10-03 人工 checkpoint 通过，PERF-01 Implementation 为 completed。
+- 原始证据位于 `local-acceptance-evidence/performance-repair-2026-10-03/`，万条补测另存 `performance-repair-review-2026-10-03/normal-retest/`；回收前生成封存清单。保存第一次环境/取消尝试与 STOP，未覆写 RED。自动化资源在封存后回收。验收期间，既有 Owner 环境保留一个项目、原管理员/编辑及前次 Owner 授权五账号测试添加的三个账号；这是既有授权例外，以后默认两个账号的约定不变。Owner 人工验收通过后，专属 checkpoint 的四个容器、两个网络、两个数据卷及其合成数据已释放，4217 监听和项目资源均核对无残留；正式环境镜像、启动时间和健康 SHA 不变。此次验收与回收证据另存 `local-acceptance-evidence/performance-repair-owner-acceptance-2026-10-03/`。本轮不合并 main、不推送 GitHub、不正式部署。
