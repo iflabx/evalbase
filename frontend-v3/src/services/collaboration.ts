@@ -14,6 +14,7 @@ export type DraftEvent = {
   status: string;
   changedBy: string | null;
   at: string;
+  scope?: { recordId?: string; rowRevision?: number };
 };
 export type PresenceFocus = {
   draftId?: string;

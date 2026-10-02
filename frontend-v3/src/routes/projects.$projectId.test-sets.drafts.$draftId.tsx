@@ -124,10 +124,9 @@ function DraftWorkspace() {
   });
   const data = draftQuery.data;
   const draftPresence = useQuery({
-    queryKey: ["draft-presence", projectId, draftId],
+    queryKey: ["project-presence", projectId, draftId],
     queryFn: () => projectPresence(projectId, draftId),
-    enabled: data?.draft.status === "editing" && !accessLost,
-    refetchInterval: 2000,
+    enabled: data?.draft.status === "editing" && !accessLost && access.canWrite,
     retry: false,
   });
   const editingUsers = (recordId: string, field?: string): OnlineUser[] =>
@@ -153,7 +152,7 @@ function DraftWorkspace() {
     let closed = false;
     let running = false;
     const poll = async () => {
-      if (closed || running || accessLost) return;
+      if (closed || running || accessLost || document.hidden) return;
       if (!navigator.onLine) {
         setSyncIssue("连接已中断，输入暂存在当前页面。");
         return;
@@ -173,10 +172,45 @@ function DraftWorkspace() {
           return;
         }
         if (response.events.length || response.needsSnapshot) {
-          await draftQuery.refetch();
-          await queryClient.invalidateQueries({
-            queryKey: ["draft-selected-sources", projectId, draftId],
-          });
+          const precise =
+            !response.needsSnapshot &&
+            response.events.every(
+              (event) =>
+                typeof event.scope?.recordId === "string" &&
+                Number.isSafeInteger(event.scope.rowRevision),
+            );
+          const currentPage = queryClient.getQueryData<Awaited<ReturnType<typeof getSharedDraft>>>([
+            "shared-draft",
+            projectId,
+            draftId,
+            recordSearch,
+            recordPage,
+          ]);
+          const touchesPage = response.events.some((event) =>
+            currentPage?.records.some((record) => record.id === event.scope?.recordId),
+          );
+          if (!precise || recordSearch || touchesPage) await draftQuery.refetch();
+          else
+            queryClient.setQueriesData<Awaited<ReturnType<typeof getSharedDraft>>>(
+              { queryKey: ["shared-draft", projectId, draftId] },
+              (old) => (old ? { ...old, draft: { ...old.draft, revision: response.cursor } } : old),
+            );
+          if (precise) {
+            queryClient.setQueryData<Awaited<ReturnType<typeof listSelectedDraftSources>>>(
+              ["draft-selected-sources", projectId, draftId],
+              (old) =>
+                old?.map((source) => {
+                  const changed = response.events
+                    .filter((event) => event.scope?.recordId === source.recordId)
+                    .at(-1);
+                  return changed ? { ...source, rowRevision: changed.scope!.rowRevision! } : source;
+                }),
+            );
+          } else {
+            await queryClient.invalidateQueries({
+              queryKey: ["draft-selected-sources", projectId, draftId],
+            });
+          }
         }
         cursorRef.current = response.cursor;
         setSyncIssue("");
@@ -187,6 +221,7 @@ function DraftWorkspace() {
           (cause.message === "project_not_found" || cause.message === "draft_not_found")
         ) {
           setAccessLost(true);
+          void queryClient.invalidateQueries({ queryKey: ["project-access", projectId] });
           setError("项目权限或草稿状态已变更，无法继续编辑。当前输入仍保留在页面上。");
         } else setSyncIssue("实时同步中断，正在重连；输入暂存在当前页面。");
       } finally {
@@ -195,10 +230,12 @@ function DraftWorkspace() {
     };
     const timer = window.setInterval(() => void poll(), 1000);
     window.addEventListener("online", poll);
+    document.addEventListener("visibilitychange", poll);
     return () => {
       closed = true;
       window.clearInterval(timer);
       window.removeEventListener("online", poll);
+      document.removeEventListener("visibilitychange", poll);
       setPresenceFocus({});
       void heartbeat(projectId).catch(() => undefined);
     };

@@ -577,6 +577,17 @@ describe("V2-03 shared draft and publication", () => {
       },
     });
     expect(changed.statusCode, changed.body).toBe(200);
+    const cursor = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}/events?after=0`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(cursor.statusCode, cursor.body).toBe(200);
+    expect(cursor.json().events.at(-1).scope).toEqual({
+      recordId: rowId,
+      rowRevision: 1,
+    });
+    expect(cursor.body).not.toContain("另一位编辑者已保存");
     const stale = await app.inject({
       method: "DELETE",
       url: `${base()}/${draftId}/records/${rowId}`,
@@ -597,6 +608,12 @@ describe("V2-03 shared draft and publication", () => {
       payload: { expectedRowRevision: current.json().records[0].rowRevision },
     });
     expect(removed.statusCode).toBe(204);
+    const deletionCursor = await app.inject({
+      method: "GET",
+      url: `${base()}/${draftId}/events?after=0`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(deletionCursor.json().events.at(-1).scope).toEqual({});
     const removedSave = await app.inject({
       method: "PATCH",
       url: `${base()}/${draftId}/records/${rowId}`,

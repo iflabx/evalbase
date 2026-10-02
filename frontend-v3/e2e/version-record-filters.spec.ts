@@ -1,3 +1,4 @@
+import { mockAccountRoute } from "./mock-account";
 import { expect, test } from "@playwright/test";
 
 const version = {
@@ -30,6 +31,7 @@ const records = [
 
 test("filters paged version records and opens an ordinal detail", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
+    if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === "/api/session") {

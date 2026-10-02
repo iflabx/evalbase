@@ -1,3 +1,4 @@
+import { mockAccountRoute } from "./mock-account";
 import { expect, test } from "@playwright/test";
 
 const graph = [
@@ -89,6 +90,7 @@ const records = [
 
 test("shows the selected version summary before its highlighted source path", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
+    if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === "/api/session") {

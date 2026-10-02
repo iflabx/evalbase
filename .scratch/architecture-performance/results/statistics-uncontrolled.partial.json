@@ -1,0 +1,227 @@
+{
+  "variant": "baseline",
+  "source": "/workspace/.scratch/architecture-performance/baseline",
+  "started": "2026-10-02T11:03:52.140Z",
+  "finished": "2026-10-02T11:08:28.226Z",
+  "recordsPerRun": 10000,
+  "repetitions": 3,
+  "concurrentSessions": 10,
+  "distinctAccounts": 2,
+  "coldCacheControlled": false,
+  "samples": [
+    {
+      "run": 1,
+      "stage": "upload-preview",
+      "durationMs": 302.846896,
+      "sqlStatements": 9,
+      "rssPeakBytes": 347348992,
+      "heapPeakBytes": 57750664,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "mapping-preview",
+      "durationMs": 200.39461100000017,
+      "sqlStatements": 5,
+      "rssPeakBytes": 351645696,
+      "heapPeakBytes": 57758144,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "confirm-upload",
+      "durationMs": 2181.781553,
+      "sqlStatements": 10016,
+      "rssPeakBytes": 369504256,
+      "heapPeakBytes": 77653944,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "select-10000-records",
+      "durationMs": 4182.955843999999,
+      "sqlStatements": 10012,
+      "rssPeakBytes": 430452736,
+      "heapPeakBytes": 114699520,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "publish-initial",
+      "durationMs": 16421.481797,
+      "sqlStatements": 50190,
+      "rssPeakBytes": 760369152,
+      "heapPeakBytes": 369744608,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "version-page",
+      "durationMs": 630.5802399999993,
+      "sqlStatements": 8,
+      "rssPeakBytes": 685551616,
+      "heapPeakBytes": 120546744,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "version-filter",
+      "durationMs": 598.8437170000034,
+      "sqlStatements": 8,
+      "rssPeakBytes": 685551616,
+      "heapPeakBytes": 120824208,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "csv-download",
+      "durationMs": 1346.127424000002,
+      "sqlStatements": 16,
+      "rssPeakBytes": 727117824,
+      "heapPeakBytes": 319695256,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "derive-10000-records",
+      "durationMs": 3490.659649000001,
+      "sqlStatements": 10009,
+      "rssPeakBytes": 727511040,
+      "heapPeakBytes": 331129136,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "10-session-edit-and-read",
+      "durationMs": 1104.6557299999986,
+      "sqlStatements": 230,
+      "rssPeakBytes": 727007232,
+      "heapPeakBytes": 308494120,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "publish-sparse-10",
+      "durationMs": 3767.592635000001,
+      "sqlStatements": 10047,
+      "rssPeakBytes": 782229504,
+      "heapPeakBytes": 411793304,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "upload-preview",
+      "durationMs": 257.5147900000011,
+      "sqlStatements": 9,
+      "rssPeakBytes": 729833472,
+      "heapPeakBytes": 136153408,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "mapping-preview",
+      "durationMs": 160.3426860000036,
+      "sqlStatements": 5,
+      "rssPeakBytes": 730255360,
+      "heapPeakBytes": 141289280,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "confirm-upload",
+      "durationMs": 2149.895169000003,
+      "sqlStatements": 10016,
+      "rssPeakBytes": 730808320,
+      "heapPeakBytes": 175412072,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "select-10000-records",
+      "durationMs": 4769.096935000001,
+      "sqlStatements": 10012,
+      "rssPeakBytes": 731725824,
+      "heapPeakBytes": 187224472,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "publish-initial",
+      "durationMs": 17561.137555,
+      "sqlStatements": 50190,
+      "rssPeakBytes": 804880384,
+      "heapPeakBytes": 254923800,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "version-page",
+      "durationMs": 214544.69483099997,
+      "sqlStatements": 9,
+      "rssPeakBytes": 784150528,
+      "heapPeakBytes": 255480448,
+      "failed": true
+    }
+  ],
+  "mixedLoadSamples": [
+    {
+      "run": 1,
+      "stage": "publish-initial",
+      "latencies": [
+        1061.523622,
+        1028.257313,
+        1042.457175,
+        1046.398426,
+        1066.86701,
+        1035.424058,
+        1053.8909330000001,
+        1057.684032,
+        1080.7525870000002,
+        1034.805686
+      ],
+      "p50Ms": 1046.398426,
+      "p95Ms": 1080.7525870000002,
+      "failures": 0
+    },
+    {
+      "run": 2,
+      "stage": "publish-initial",
+      "latencies": [
+        580.832512,
+        548.202959,
+        562.144112,
+        998.170883,
+        1003.316804,
+        1028.771287,
+        1025.638163,
+        976.4787179999998,
+        1010.0240100000001,
+        563.678228
+      ],
+      "p50Ms": 976.4787179999998,
+      "p95Ms": 1028.771287,
+      "failures": 0
+    }
+  ],
+  "sessionLatencies": [
+    {
+      "run": 1,
+      "latencies": [
+        765.0619850000003,
+        765.8451690000002,
+        765.572951999995,
+        765.4000399999968,
+        767.1062700000002,
+        864.276163999999,
+        953.2102080000004,
+        1020.4453890000004,
+        1052.9984669999976,
+        1103.2283839999982
+      ]
+    }
+  ],
+  "idleWindows": [],
+  "completed": false,
+  "failureName": "AssertionError",
+  "runtime": "v24.6.0"
+}

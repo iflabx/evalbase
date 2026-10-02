@@ -21,7 +21,7 @@ describe("Ticket 35 sparse publication", () => {
   const db = createPool(schemaUrl.toString());
   const artifacts = new ArtifactRepository(config.minio);
 
-  it("encodes the frozen canonical manifest fixture", () => {
+  it("encodes the frozen canonical manifest fixture", async () => {
     const unsigned = {
       format: "evalbase.test-set-delta-manifest",
       format_version: 1,
@@ -50,7 +50,12 @@ describe("Ticket 35 sparse publication", () => {
       ],
       new_revisions: [],
     };
-    const encoded = encodeDeltaManifest(unsigned);
+    let otherRequestCanRun = false;
+    setImmediate(() => {
+      otherRequestCanRun = true;
+    });
+    const encoded = await encodeDeltaManifest(unsigned);
+    expect(otherRequestCanRun).toBe(true);
     expect(encoded.manifestHash).toBe(
       "d9b863bb486d3e220636df3f434b3033856bf45bb0d580a218ebf7d3d2b4f69f",
     );
@@ -548,4 +553,70 @@ describe("Ticket 35 sparse publication", () => {
       }),
     ).rejects.toThrow("test_set_capacity_exceeded");
   }, 30_000);
+  it("rolls back a second batch failure and retries all 600 revisions in order", async () => {
+    const request = {
+      projectId: "project35",
+      testSetId: "scale35",
+      parentVersionId: "scale_base35",
+      actorId: "owner35",
+      idempotencyKey: "batch-600-retry",
+      operations: Array.from({ length: 600 }, (_, index) => ({
+        operation: "update" as const,
+        caseId: `scale_case_${index + 1}`,
+        beforeRevisionId: `scale_rev_${index + 1}`,
+        after: {
+          question: `batch changed ${index + 1}`,
+          expectedOutput: "answer",
+          metadata: [],
+        },
+      })),
+    };
+    const counts = async () =>
+      (
+        await db.query(`SELECT
+      (SELECT count(*)::int FROM case_revision) AS revisions,
+      (SELECT count(*)::int FROM test_set_version) AS versions,
+      (SELECT count(*)::int FROM version_change) AS changes`)
+      ).rows[0];
+    const before = await counts();
+    // A sequence survives rollback and proves the first 500 inserts ran before failure.
+    await db.query("CREATE SEQUENCE batch_insert_count");
+    await db.query(`CREATE FUNCTION abort_second_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF nextval('batch_insert_count') > 500 THEN RAISE EXCEPTION 'second_batch_failure'; END IF;
+      RETURN NEW; END $$`);
+    await db.query(`CREATE TRIGGER abort_second_batch BEFORE INSERT ON case_revision
+      FOR EACH ROW EXECUTE FUNCTION abort_second_batch()`);
+    try {
+      await expect(
+        publishSparseVersion(db, artifacts, request),
+      ).rejects.toThrow("second_batch_failure");
+      expect(
+        (await db.query("SELECT last_value::int AS n FROM batch_insert_count"))
+          .rows[0].n,
+      ).toBe(501);
+      expect(await counts()).toEqual(before);
+    } finally {
+      await db.query("DROP TRIGGER abort_second_batch ON case_revision");
+      await db.query("DROP FUNCTION abort_second_batch()");
+      await db.query("DROP SEQUENCE batch_insert_count");
+    }
+    const result = await publishSparseVersion(db, artifacts, request);
+    const after = await counts();
+    expect(after).toEqual({
+      revisions: before.revisions + 600,
+      versions: before.versions + 1,
+      changes: before.changes + 600,
+    });
+    const rows = await db.query(
+      `SELECT cr.input->>'question' AS question
+      FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id=vm.case_revision_id ORDER BY vm.ordinal LIMIT 601`,
+      [result.id],
+    );
+    expect(rows.rows[0].question).toBe("batch changed 1");
+    expect(rows.rows[599].question).toBe("batch changed 600");
+    expect(rows.rows[600].question).toBe("question 601");
+    expect((await publishSparseVersion(db, artifacts, request)).id).toBe(
+      result.id,
+    );
+  }, 30000);
 });

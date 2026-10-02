@@ -10,3 +10,11 @@ test-results
 frontend-v3/node_modules
 frontend-v3/dist
 frontend-v3/vite.v2a.config.ts
+
+.env
+.env.*
+!.env.example
+.scratch/architecture-performance/baseline
+local-acceptance-evidence
+**/*.pem
+**/id_ed25519*

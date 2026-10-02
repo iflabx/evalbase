@@ -1,0 +1,55 @@
+services:
+  web:
+    image: ${EVALBASE_ARCHITECTURE_IMAGE:-evalbase-web:latest}
+    environment:
+      APP_ORIGIN: http://web:3000
+      NODE_ENV: production
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_architecture_browser
+      MINIO_BUCKET: evalbase-architecture-browser
+    ports: !override
+      - 127.0.0.1:4218:3000
+  worker:
+    image: ${EVALBASE_ARCHITECTURE_IMAGE:-evalbase-web:latest}
+    environment:
+      NODE_ENV: production
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_architecture_browser
+      APP_ORIGIN: http://web:3000
+      WORKER_HEALTH_HOST: 0.0.0.0
+      MINIO_BUCKET: evalbase-architecture-browser
+  test:
+    image: ${EVALBASE_ARCHITECTURE_IMAGE:-evalbase-web:latest}
+    user: "1000:1000"
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      APP_ORIGIN: http://127.0.0.1:3000
+      MINIO_BUCKET: evalbase-architecture-tests
+      WORKER_HEALTH_PORT: "0"
+      NPM_CONFIG_CACHE: /tmp/evalbase-architecture-npm
+    command: ["sleep", "infinity"]
+  e2e:
+    image: evalbase-architecture-browser-tests:working
+    user: "1000:1000"
+    working_dir: /workspace/frontend-v3
+    volumes:
+      - ./:/workspace
+      - ./local-acceptance-evidence/architecture-performance:/evidence
+    environment:
+      PLAYWRIGHT_BASE_URL: http://web:3000
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      BASE_URL: http://web:3000
+networks:
+  edge:
+    name: evalbase-architecture-test-edge
+  internal:
+    name: evalbase-architecture-test-internal
+volumes:
+  postgres-data:
+    name: evalbase-architecture-test-postgres-data
+  minio-data:
+    name: evalbase-architecture-test-minio-data

@@ -1,3 +1,4 @@
+import { mockAccountRoute } from "./mock-account";
 import { expect, test } from "@playwright/test";
 
 const detail = {
@@ -74,6 +75,7 @@ test("keeps entire-Test-Set trash on the list and only version deletion on detai
 }) => {
   let trashed = false;
   await page.route("**/api/**", async (route) => {
+    if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === "/api/installation")
@@ -135,6 +137,7 @@ test("groups Trash and enables permanent deletion only for an exact current name
 }) => {
   let confirmation = "";
   await page.route("**/api/**", async (route) => {
+    if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === "/api/installation")

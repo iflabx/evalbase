@@ -8,11 +8,7 @@ services:
       POSTGRES_USER: evalbase_phase1a
       POSTGRES_PASSWORD: synthetic-nonproduction-only
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U evalbase_phase1a -d evalbase_phase1a",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U evalbase_phase1a -d evalbase_phase1a"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -97,7 +93,9 @@ services:
       retries: 30
 
   test:
-    build: .
+    build:
+      context: .
+      target: build
     command: ["npm", "run", "test:integration"]
     environment: *app-environment
     depends_on:

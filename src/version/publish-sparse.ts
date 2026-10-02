@@ -1,3 +1,6 @@
+import { encodeDeltaManifest } from "./delta-manifest.js";
+export { encodeDeltaManifest } from "./delta-manifest.js";
+import { writeBatches } from "../db/batch.js";
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
@@ -73,25 +76,6 @@ const invalid = (code: string): never => {
 };
 const sourceKey = (assetId: string, ordinal: number): string =>
   JSON.stringify([assetId, ordinal]);
-export function encodeDeltaManifest(unsigned: Record<string, unknown>): {
-  bytes: Buffer;
-  manifestHash: string;
-} {
-  const deltaHash = sha256(
-    canonicalJson({
-      changes: unsigned.changes,
-      new_revisions: unsigned.new_revisions,
-    }),
-  );
-  const withoutHash = { ...unsigned, delta_hash: deltaHash };
-  const manifestHash = sha256(canonicalJson(withoutHash));
-  return {
-    bytes: Buffer.from(
-      `${canonicalJson({ ...withoutHash, manifest_hash: manifestHash })}\n`,
-    ),
-    manifestHash,
-  };
-}
 
 function normalizeRecord(value: unknown): SparseRecord {
   if (
@@ -624,7 +608,7 @@ export async function publishSparseVersion(
       new_revisions: revisionRows,
     };
     const { bytes: manifestBytes, manifestHash } =
-      encodeDeltaManifest(withoutHash);
+      await encodeDeltaManifest(withoutHash);
     const stored = await artifacts.storeImmutable(
       manifestBytes,
       `sparse-version-${versionId}`,
@@ -683,55 +667,41 @@ export async function publishSparseVersion(
         label,
       ],
     );
-    for (const change of changes) {
-      if (change.operation === "add")
-        await client.query(
-          `INSERT INTO test_case (id,test_set_id) VALUES ($1,$2)`,
-          [change.caseId, request.testSetId],
-        );
-      if (change.after) {
-        const revision = revisionRows.find(
-          (row) => row.revision_id === change.afterRevisionId,
-        )!;
-        await client.query(
-          `INSERT INTO case_revision
-             (id,case_id,parent_revision_id,input,expected_output,metadata,
-              source_record_ordinal,content_hash,origin_kind,origin_ref,
-              lineage_fingerprint,lineage_level)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [
-            revision.revision_id,
-            revision.case_id,
-            revision.parent_revision_id,
-            revision.input,
-            revision.expected_output,
-            { entries: revision.metadata },
-            revision.source_record_ordinal,
-            revision.content_hash,
-            revision.origin_kind,
-            revision.origin_ref,
-            revision.lineage_fingerprint,
-            revision.lineage_level,
-          ],
-        );
-      }
-      await client.query(
-        `INSERT INTO version_change
-           (version_id,case_id,operation,position,before_revision_id,before_content_hash,
-            after_revision_id,after_content_hash)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [
-          versionId,
-          change.caseId,
-          change.operation,
-          change.position.toString(),
-          change.beforeRevisionId,
-          change.beforeContentHash,
-          change.afterRevisionId,
-          change.afterContentHash,
-        ],
-      );
-    }
+    await writeBatches(
+      client,
+      `INSERT INTO test_case (id,test_set_id)
+      SELECT x.case_id,$1 FROM jsonb_to_recordset($2::jsonb) AS x(case_id text)`,
+      [request.testSetId],
+      changes
+        .filter((change) => change.operation === "add")
+        .map((change) => ({ case_id: change.caseId })),
+    );
+    await writeBatches(
+      client,
+      `INSERT INTO case_revision
+      (id,case_id,parent_revision_id,input,expected_output,metadata,source_record_ordinal,content_hash,origin_kind,origin_ref,lineage_fingerprint,lineage_level)
+      SELECT x.revision_id,x.case_id,x.parent_revision_id,x.input,x.expected_output,jsonb_build_object('entries',x.metadata),x.source_record_ordinal,x.content_hash,x.origin_kind,x.origin_ref,x.lineage_fingerprint,x.lineage_level
+      FROM jsonb_to_recordset($1::jsonb) AS x(revision_id text,case_id text,parent_revision_id text,input jsonb,expected_output jsonb,metadata jsonb,source_record_ordinal integer,content_hash text,origin_kind text,origin_ref jsonb,lineage_fingerprint text,lineage_level text)`,
+      [],
+      revisionRows,
+    );
+    await writeBatches(
+      client,
+      `INSERT INTO version_change
+      (version_id,case_id,operation,position,before_revision_id,before_content_hash,after_revision_id,after_content_hash)
+      SELECT $1,x.case_id,x.operation,x.position,x.before_revision_id,x.before_content_hash,x.after_revision_id,x.after_content_hash
+      FROM jsonb_to_recordset($2::jsonb) AS x(case_id text,operation text,position bigint,before_revision_id text,before_content_hash text,after_revision_id text,after_content_hash text)`,
+      [versionId],
+      changes.map((change) => ({
+        case_id: change.caseId,
+        operation: change.operation,
+        position: change.position.toString(),
+        before_revision_id: change.beforeRevisionId,
+        before_content_hash: change.beforeContentHash,
+        after_revision_id: change.afterRevisionId,
+        after_content_hash: change.afterContentHash,
+      })),
+    );
     if (nextDepth > 40 || nextChanges > thresholds.hardChanges) {
       if (
         (await createCheckpoint(
@@ -808,7 +778,7 @@ export async function publishSparseVersion(
       );
       const added = changes.filter((change) => change.operation === "add");
       let nextAdded = 0;
-      for (const row of savedRows.rows) {
+      const attributionRows = savedRows.rows.map((row) => {
         const caseId = row.case_id
           ? String(row.case_id)
           : added[nextAdded++]?.caseId;
@@ -838,20 +808,23 @@ export async function publishSparseVersion(
             }
           }
         }
-        await client.query(
-          `INSERT INTO collaborative_draft_attribution
-          (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)
-          VALUES ($1,$2,$3,$4,$5,$6)`,
-          [
-            versionId,
-            row.id,
-            caseId,
-            attribution,
-            row.updated_by,
-            row.updated_at,
-          ],
-        );
-      }
+        return {
+          draft_row_id: row.id,
+          case_id: caseId,
+          field_attribution: attribution,
+          saved_by: row.updated_by,
+          saved_at: row.updated_at,
+        };
+      });
+      await writeBatches(
+        client,
+        `INSERT INTO collaborative_draft_attribution
+        (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)
+        SELECT $1,x.draft_row_id,x.case_id,x.field_attribution,x.saved_by,x.saved_at
+        FROM jsonb_to_recordset($2::jsonb) AS x(draft_row_id text,case_id text,field_attribution jsonb,saved_by text,saved_at timestamptz)`,
+        [versionId],
+        attributionRows,
+      );
       await client.query(
         `INSERT INTO collaborative_draft_attribution
           (version_id,draft_row_id,case_id,field_attribution,saved_by,saved_at)

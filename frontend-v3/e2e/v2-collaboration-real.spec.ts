@@ -16,13 +16,32 @@ async function signedIn(context: BrowserContext, email: string, password: string
 test("two accounts see field focus, live saves and a resolvable same-field conflict", async ({
   browser,
 }) => {
+  test.setTimeout(45000);
   const adminContext = await browser.newContext();
   const editorContext = await browser.newContext();
   try {
-    await signedIn(adminContext, "admin-v2c@example.test", process.env["V2C_ADMIN_PASSWORD"]!);
-    await signedIn(editorContext, "editor-v2c@example.test", process.env["V2C_EDITOR_PASSWORD"]!);
+    await signedIn(
+      adminContext,
+      process.env["V2C_ADMIN_EMAIL"] ?? "admin-v2c@example.test",
+      process.env["V2C_ADMIN_PASSWORD"]!,
+    );
+    await signedIn(
+      editorContext,
+      process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test",
+      process.env["V2C_EDITOR_PASSWORD"]!,
+    );
     const admin = await adminContext.newPage();
     const editor = await editorContext.newPage();
+    let sourceReads = 0,
+      presenceReads = 0,
+      eventReads = 0;
+    editor.on("request", (request) => {
+      if (request.method() !== "GET") return;
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith("/source-selection") || path.endsWith("/selected-sources")) sourceReads++;
+      if (path.endsWith("/presence")) presenceReads++;
+      if (path.endsWith("/events")) eventReads++;
+    });
     const path = `/projects/${projectId}/test-sets/drafts/${draftId}`;
     await Promise.all([admin.goto(path), editor.goto(path)]);
     await expect(admin.getByRole("heading", { name: /继续创建新版本/ })).toBeVisible();
@@ -46,6 +65,7 @@ test("two accounts see field focus, live saves and a resolvable same-field confl
     await expect(editorPanel.getByLabel("管理员正在编辑问题")).toBeVisible({
       timeout: 5000,
     });
+    const sourcesBefore = sourceReads;
     const update = `协作同步问题 ${Date.now()}`;
     await adminQuestion.fill(update);
     await adminQuestion.blur();
@@ -53,6 +73,7 @@ test("two accounts see field focus, live saves and a resolvable same-field confl
     const savedAt = Date.now();
     await expect(editorQuestion).toHaveValue(update, { timeout: 2500 });
     console.log(`COLLAB-07 confirmed-save-to-peer-ms=${Date.now() - savedAt}`);
+    expect(sourceReads).toBe(sourcesBefore);
     await editorContext.setOffline(true);
     await editorQuestion.fill(`编辑者本地值 ${Date.now()}`);
     const local = await editorQuestion.inputValue();
@@ -68,6 +89,27 @@ test("two accounts see field focus, live saves and a resolvable same-field confl
     await expect(adminQuestion).toHaveValue(local, { timeout: 2500 });
     await admin.screenshot({ path: "/evidence/v2c-admin-draft.png", fullPage: true });
     await editor.screenshot({ path: "/evidence/v2c-editor-draft.png", fullPage: true });
+    const presenceBefore = presenceReads;
+    await editor.waitForTimeout(4200);
+    expect(presenceReads - presenceBefore).toBeLessThanOrEqual(3);
+    await editor.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, value: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await editor.waitForTimeout(200);
+    const eventsBefore = eventReads;
+    await editor.waitForTimeout(2200);
+    expect(eventReads).toBe(eventsBefore);
+    await editor.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, value: false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => eventReads, { timeout: 2000 }).toBeGreaterThan(eventsBefore);
+    await editor.setViewportSize({ width: 960, height: 760 });
+    await editor.screenshot({ path: "/evidence/architecture-draft-narrow.png", fullPage: true });
+    expect(
+      await editor.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBeTruthy();
     await editorContext.close();
     await expect(admin.locator("header").getByLabel("在线成员").getByRole("img")).toHaveCount(1, {
       timeout: 20000,
@@ -85,15 +127,23 @@ test("revocation hides cached draft content and keeps only unsent input", async 
   try {
     const login = await adminContext.request.post(`${base}/api/session`, {
       headers: { origin: base! },
-      data: { email: "admin-v2c@example.test", password: process.env["V2C_ADMIN_PASSWORD"]! },
+      data: {
+        email: process.env["V2C_ADMIN_EMAIL"] ?? "admin-v2c@example.test",
+        password: process.env["V2C_ADMIN_PASSWORD"]!,
+      },
     });
     expect(login.ok(), await login.text()).toBeTruthy();
     csrf = (await login.json()).csrfToken;
-    await signedIn(editorContext, "editor-v2c@example.test", process.env["V2C_EDITOR_PASSWORD"]!);
+    await signedIn(
+      editorContext,
+      process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test",
+      process.env["V2C_EDITOR_PASSWORD"]!,
+    );
     const members = await adminContext.request.get(`${base}/api/projects/${projectId}/members`);
     expect(members.ok()).toBeTruthy();
     editorId = (await members.json()).members.find(
-      (member: { email: string }) => member.email === "editor-v2c@example.test",
+      (member: { email: string }) =>
+        member.email === (process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test"),
     ).id;
     expect(editorId).toBeTruthy();
     const editor = await editorContext.newPage();
@@ -103,6 +153,18 @@ test("revocation hides cached draft content and keeps only unsent input", async 
     const remoteAnswer = await panel.getByRole("textbox", { name: "期望输出" }).inputValue();
     const local = `失权前未提交的输入 ${Date.now()}`;
     await panel.getByRole("textbox", { name: "问题" }).fill(local);
+    const projectPresence = editor.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === `/api/projects/${projectId}/presence` &&
+          url.search === "" &&
+          response.request().method() === "GET" &&
+          response.status() === 200
+        );
+      },
+      { timeout: 10000 },
+    );
     const revoke = await adminContext.request.patch(
       `${base}/api/projects/${projectId}/members/${editorId}`,
       { headers: { origin: base!, "x-csrf-token": csrf }, data: { role: "viewer" } },
@@ -113,6 +175,10 @@ test("revocation hides cached draft content and keeps only unsent input", async 
     });
     await expect(editor.getByText(local)).toBeVisible();
     await expect(editor.getByLabel("记录编辑区")).toHaveCount(0);
+    await projectPresence;
+    await expect(
+      editor.locator("header").getByRole("img", { name: "编辑（我） · 查看 · 在线" }),
+    ).toBeVisible();
     await expect(editor.locator("main").last()).not.toContainText(remoteAnswer);
   } finally {
     if (editorId && csrf) {
@@ -136,11 +202,17 @@ test("two real accounts publish one version and preserve the parent version", as
     const sessions = await Promise.all([
       adminContext.request.post(`${base}/api/session`, {
         headers: { origin: base! },
-        data: { email: "admin-v2c@example.test", password: process.env["V2C_ADMIN_PASSWORD"]! },
+        data: {
+          email: process.env["V2C_ADMIN_EMAIL"] ?? "admin-v2c@example.test",
+          password: process.env["V2C_ADMIN_PASSWORD"]!,
+        },
       }),
       editorContext.request.post(`${base}/api/session`, {
         headers: { origin: base! },
-        data: { email: "editor-v2c@example.test", password: process.env["V2C_EDITOR_PASSWORD"]! },
+        data: {
+          email: process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test",
+          password: process.env["V2C_EDITOR_PASSWORD"]!,
+        },
       }),
     ]);
     for (const session of sessions) expect(session.status(), await session.text()).toBe(200);
@@ -196,6 +268,46 @@ test("two real accounts publish one version and preserve the parent version", as
     await expect(admin.getByRole("heading", { name: /协作验收测试集/ })).toBeVisible();
     await expect(editor.getByRole("heading", { name: /继续创建新版本/ })).toBeVisible();
     console.log(`PUB-01 same-version=${versionId} next-draft=${nextDraftId}`);
+  } finally {
+    await Promise.all([adminContext.close(), editorContext.close()]);
+  }
+});
+
+test("a newly added visible record keeps synchronizing later edits", async ({ browser }) => {
+  const adminContext = await browser.newContext();
+  const editorContext = await browser.newContext();
+  try {
+    await signedIn(
+      adminContext,
+      process.env["V2C_ADMIN_EMAIL"] ?? "admin-v2c@example.test",
+      process.env["V2C_ADMIN_PASSWORD"]!,
+    );
+    await signedIn(
+      editorContext,
+      process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test",
+      process.env["V2C_EDITOR_PASSWORD"]!,
+    );
+    const admin = await adminContext.newPage();
+    const editor = await editorContext.newPage();
+    const path = `/projects/${projectId}/test-sets/drafts/${draftId}`;
+    await Promise.all([admin.goto(path), editor.goto(path)]);
+    await expect(editor.getByRole("heading", { name: /继续创建新版本/ })).toBeVisible();
+    await admin.getByRole("button", { name: "新增记录", exact: true }).click();
+    const question = admin.getByLabel("记录编辑区").getByRole("textbox", { name: "问题" });
+    const initial = `新增初值${Date.now().toString().slice(-5)}`;
+    const changed = `新增改值${Date.now().toString().slice(-5)}`;
+    await question.fill(initial);
+    await question.blur();
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
+    await expect(editor.locator("tbody tr").filter({ hasText: initial })).toHaveCount(1, {
+      timeout: 2500,
+    });
+    await question.fill(changed);
+    await question.blur();
+    await expect(admin.getByText("已保存", { exact: true })).toBeVisible();
+    await expect(editor.locator("tbody tr").filter({ hasText: changed })).toHaveCount(1, {
+      timeout: 2500,
+    });
   } finally {
     await Promise.all([adminContext.close(), editorContext.close()]);
   }

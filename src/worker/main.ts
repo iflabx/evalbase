@@ -1,10 +1,11 @@
+import { RuntimeMetrics } from "../observability/runtime.js";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import type { PoolClient } from "pg";
 
 import { strFromU8, unzipSync } from "fflate";
-import { jobRetryDelayMs, loadConfig } from "../config.js";
+import { jobRetryDelayMs, loadConfig, workerIdleDelayMs } from "../config.js";
 import { isAllowedSourceAttribution } from "../attribution.js";
 import {
   CAPACITY_LIMITS,
@@ -3313,7 +3314,8 @@ async function generateLangfuseCsv(
 }
 
 const config = loadConfig();
-const db = createPool(config.databaseUrl);
+const runtimeMetrics = new RuntimeMetrics(config.runtimeMetricsEnabled);
+const db = createPool(config.databaseUrl, runtimeMetrics);
 const artifacts = new ArtifactRepository(config.minio);
 const workerId = randomUUID();
 
@@ -3708,7 +3710,7 @@ const workerHealth =
         metrics: async () =>
           renderMetrics(
             await metricSnapshot(db, await dependencyHealth(db, artifacts)),
-          ),
+          ) + runtimeMetrics.render(db),
       })
     : undefined;
 let stopping = false;
@@ -3753,10 +3755,11 @@ setInterval(() => {
     });
 }, config.consistencyScanCadenceMs).unref();
 
+let emptyClaims = 0;
 while (!stopping) {
   let job: Awaited<ReturnType<typeof claim>> | undefined;
   try {
-    if (Date.now() - lastMaintenanceAt >= 250) {
+    if (Date.now() - lastMaintenanceAt >= 1_000) {
       await failExpiredJobs(db);
       await requeueDueRetries(db);
       lastMaintenanceAt = Date.now();
@@ -3778,9 +3781,11 @@ while (!stopping) {
     continue;
   }
   if (!job) {
-    await delay(50);
+    await delay(workerIdleDelayMs(emptyClaims));
+    emptyClaims = Math.min(emptyClaims + 1, 5);
     continue;
   }
+  emptyClaims = 0;
   if (job.status === "cancelled") continue;
   const startedAt = Date.now();
   activeJobStages.set(job.id, { stage: "claim", startedAt });
@@ -3900,4 +3905,5 @@ while (!stopping) {
     clearInterval(heartbeat);
   }
 }
+runtimeMetrics.close();
 await db.end();

@@ -1,0 +1,39 @@
+# Template only. Supply deployment-specific secrets and keep the project name/volumes distinct.
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+  web:
+    environment: &production-environment
+      NODE_ENV: production
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:?set MINIO_BUCKET}
+      APP_ORIGIN: ${APP_ORIGIN:?set APP_ORIGIN}
+      GIT_SHA: ${GIT_SHA:?set GIT_SHA}
+      RUNTIME_METRICS_ENABLED: ${RUNTIME_METRICS_ENABLED:-true}
+  worker:
+    environment:
+      <<: *production-environment
+      WORKER_HEALTH_HOST: 0.0.0.0
+networks:
+  edge:
+    name: ${COMPOSE_PROJECT_NAME:?set COMPOSE_PROJECT_NAME}-edge
+  internal:
+    name: ${COMPOSE_PROJECT_NAME:?set COMPOSE_PROJECT_NAME}-internal
+volumes:
+  postgres-data:
+    name: ${COMPOSE_PROJECT_NAME:?set COMPOSE_PROJECT_NAME}-postgres-data
+  minio-data:
+    name: ${COMPOSE_PROJECT_NAME:?set COMPOSE_PROJECT_NAME}-minio-data

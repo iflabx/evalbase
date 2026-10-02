@@ -2,6 +2,8 @@ import { expect, test, type BrowserContext } from "@playwright/test";
 
 const projectId = process.env["V2C_PROJECT_ID"];
 const base = process.env["PLAYWRIGHT_BASE_URL"];
+const adminEmail = process.env["V2C_ADMIN_EMAIL"] ?? "admin-v2c@example.test";
+const editorEmail = process.env["V2C_EDITOR_EMAIL"] ?? "editor-v2c@example.test";
 test.skip(!projectId || !base, "Requires the isolated V2-C checkpoint");
 
 async function signedIn(context: BrowserContext, email: string, password: string) {
@@ -16,8 +18,8 @@ test("project settings keeps the member online for peers", async ({ browser }) =
   const adminContext = await browser.newContext();
   const editorContext = await browser.newContext();
   try {
-    await signedIn(adminContext, "admin-v2c@example.test", process.env["V2C_ADMIN_PASSWORD"]!);
-    await signedIn(editorContext, "editor-v2c@example.test", process.env["V2C_EDITOR_PASSWORD"]!);
+    await signedIn(adminContext, adminEmail, process.env["V2C_ADMIN_PASSWORD"]!);
+    await signedIn(editorContext, editorEmail, process.env["V2C_EDITOR_PASSWORD"]!);
     const admin = await adminContext.newPage();
     const editor = await editorContext.newPage();
     await Promise.all([
@@ -43,7 +45,7 @@ test("project settings keeps the member online for peers", async ({ browser }) =
 test("project members lists both accepted accounts", async ({ browser }) => {
   const adminContext = await browser.newContext();
   try {
-    await signedIn(adminContext, "admin-v2c@example.test", process.env["V2C_ADMIN_PASSWORD"]!);
+    await signedIn(adminContext, adminEmail, process.env["V2C_ADMIN_PASSWORD"]!);
     const admin = await adminContext.newPage();
     await admin.goto(`/projects/${projectId}/test-sets`);
     await admin.getByText("设置", { exact: true }).click();
@@ -51,11 +53,9 @@ test("project members lists both accepted accounts", async ({ browser }) => {
     const memberCard = admin.locator("section").filter({
       has: admin.getByRole("heading", { name: "成员与权限" }),
     });
-    await expect(memberCard.getByText("admin-v2c@example.test")).toBeVisible();
-    await expect(memberCard.getByText("editor-v2c@example.test")).toBeVisible();
-    const administrator = memberCard
-      .locator(".member-row")
-      .filter({ hasText: "admin-v2c@example.test" });
+    await expect(memberCard.getByText(adminEmail)).toBeVisible();
+    await expect(memberCard.getByText(editorEmail)).toBeVisible();
+    const administrator = memberCard.locator(".member-row").filter({ hasText: adminEmail });
     await expect(administrator.locator(".role-chip")).toHaveText("管理员");
     await expect(memberCard.getByRole("button", { name: "移除" })).toHaveCount(1);
     await expect(memberCard.getByRole("combobox")).toHaveCount(1);
@@ -70,7 +70,7 @@ test("project members lists both accepted accounts", async ({ browser }) => {
 test("direct settings entry resolves the current project before presence", async ({ browser }) => {
   const adminContext = await browser.newContext();
   try {
-    await signedIn(adminContext, "admin-v2c@example.test", process.env["V2C_ADMIN_PASSWORD"]!);
+    await signedIn(adminContext, adminEmail, process.env["V2C_ADMIN_PASSWORD"]!);
     const admin = await adminContext.newPage();
     await admin.goto("/settings?section=members");
     await expect(admin).toHaveURL(new RegExp(`project=${projectId}`));
@@ -83,7 +83,7 @@ test("direct settings entry resolves the current project before presence", async
     ).toBeVisible();
     await admin.goto("/settings?project=missing&section=members");
     await expect(admin).toHaveURL(new RegExp(`project=${projectId}`));
-    await expect(admin.getByText("admin-v2c@example.test")).toBeVisible();
+    await expect(admin.getByText(adminEmail)).toBeVisible();
     await expect(
       admin
         .locator("header")

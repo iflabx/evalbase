@@ -123,3 +123,11 @@ frontend-v1 仅作为视觉与组件样式来源；正式实现落在 frontend-v
 ## 9. 交付与验证
 
 迁移、权限、字段 CAS、唯一发布和删除竞态必须先通过服务端集成测试，再按 [测试计划](../test-plan-evalbase-v2.md) 进行独立浏览器身份验收。实施归属和阶段边界见 [Implementation Spec](../../.scratch/evalbase-v2/spec.md)，本文件不改变部署。架构决策见 [ADR 0012](../adr/0012-v2-account-and-project-authorization.md) 与 [ADR 0013](../adr/0013-v2-shared-draft-publication.md)；状态均为 Proposed，产品确认项不能被技术实现弱化。
+
+## 10. 架构与性能优化迭代
+
+2026-10-02，Owner 授权针对最多 10 个并发会话优化现有实现，范围和可验证不变量见 [实施规格](../../.scratch/architecture-performance/spec.md)。维持 Web、Worker、PostgreSQL、MinIO 拓扑与产品合同；优化诊断、空闲轮询、批量写入、版本查询、上传重复解析、协作查询、业务模块和生产启动。测量完成前不宣称容量或速度结论；本轮不更改部署中的正式实例。
+
+### 10.1 本轮测量结果与 CPU 编码
+
+见 [2026-10-02 优化结果](../research/architecture-performance-optimization-2026-10-02.md)。清单编码使用同一 canonical JSON/哈希算法，在每进程最多一个 Node 工作线程中完成，退出后释放队列；只移动 CPU 执行位置，发布响应、事务与最终对象写入协议不变。指标的 heap 值是主线程堆，RSS 包含线程；诊断不记录 SQL 正文或参数。

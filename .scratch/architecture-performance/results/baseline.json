@@ -1,0 +1,427 @@
+{
+  "variant": "baseline",
+  "source": "/workspace/.scratch/architecture-performance/baseline",
+  "started": "2026-10-02T11:08:29.629Z",
+  "finished": "2026-10-02T11:10:54.728Z",
+  "recordsPerRun": 10000,
+  "repetitions": 3,
+  "concurrentSessions": 10,
+  "distinctAccounts": 2,
+  "coldCacheControlled": false,
+  "plannerStatisticsControlled": true,
+  "statementTimeoutMs": 60000,
+  "samples": [
+    {
+      "run": 1,
+      "stage": "upload-preview",
+      "durationMs": 308.823026,
+      "sqlStatements": 9,
+      "rssPeakBytes": 350097408,
+      "heapPeakBytes": 59809392,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "mapping-preview",
+      "durationMs": 181.94595600000002,
+      "sqlStatements": 5,
+      "rssPeakBytes": 358027264,
+      "heapPeakBytes": 66960040,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "confirm-upload",
+      "durationMs": 2264.2899039999998,
+      "sqlStatements": 10016,
+      "rssPeakBytes": 378621952,
+      "heapPeakBytes": 84511600,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "select-10000-records",
+      "durationMs": 3938.1017280000005,
+      "sqlStatements": 10012,
+      "rssPeakBytes": 408231936,
+      "heapPeakBytes": 99573800,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "publish-initial",
+      "durationMs": 16583.271779,
+      "sqlStatements": 50190,
+      "rssPeakBytes": 761675776,
+      "heapPeakBytes": 369525152,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "version-page",
+      "durationMs": 641.6803570000011,
+      "sqlStatements": 8,
+      "rssPeakBytes": 685621248,
+      "heapPeakBytes": 121018712,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "version-filter",
+      "durationMs": 586.9587920000013,
+      "sqlStatements": 8,
+      "rssPeakBytes": 685621248,
+      "heapPeakBytes": 121302896,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "csv-download",
+      "durationMs": 1349.8747859999967,
+      "sqlStatements": 16,
+      "rssPeakBytes": 726638592,
+      "heapPeakBytes": 329120856,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "derive-10000-records",
+      "durationMs": 3438.1274120000016,
+      "sqlStatements": 10009,
+      "rssPeakBytes": 726900736,
+      "heapPeakBytes": 331507816,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "10-session-edit-and-read",
+      "durationMs": 1425.6556710000004,
+      "sqlStatements": 230,
+      "rssPeakBytes": 726380544,
+      "heapPeakBytes": 311701944,
+      "failed": false
+    },
+    {
+      "run": 1,
+      "stage": "publish-sparse-10",
+      "durationMs": 3886.8556119999994,
+      "sqlStatements": 10047,
+      "rssPeakBytes": 782385152,
+      "heapPeakBytes": 412617192,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "upload-preview",
+      "durationMs": 255.37666699999681,
+      "sqlStatements": 9,
+      "rssPeakBytes": 730017792,
+      "heapPeakBytes": 138531568,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "mapping-preview",
+      "durationMs": 158.01920500000415,
+      "sqlStatements": 5,
+      "rssPeakBytes": 730464256,
+      "heapPeakBytes": 143216792,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "confirm-upload",
+      "durationMs": 2026.267753,
+      "sqlStatements": 10016,
+      "rssPeakBytes": 731148288,
+      "heapPeakBytes": 176352784,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "select-10000-records",
+      "durationMs": 4261.953211,
+      "sqlStatements": 10012,
+      "rssPeakBytes": 731148288,
+      "heapPeakBytes": 176240760,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "publish-initial",
+      "durationMs": 17005.630881000005,
+      "sqlStatements": 50190,
+      "rssPeakBytes": 795156480,
+      "heapPeakBytes": 243320768,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "version-page",
+      "durationMs": 769.5438039999863,
+      "sqlStatements": 8,
+      "rssPeakBytes": 774291456,
+      "heapPeakBytes": 239808608,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "version-filter",
+      "durationMs": 718.7323299999989,
+      "sqlStatements": 8,
+      "rssPeakBytes": 774291456,
+      "heapPeakBytes": 240100088,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "csv-download",
+      "durationMs": 1481.8015490000107,
+      "sqlStatements": 16,
+      "rssPeakBytes": 815083520,
+      "heapPeakBytes": 397637008,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "derive-10000-records",
+      "durationMs": 3675.2205669999967,
+      "sqlStatements": 10009,
+      "rssPeakBytes": 821448704,
+      "heapPeakBytes": 424612552,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "10-session-edit-and-read",
+      "durationMs": 1426.7172389999905,
+      "sqlStatements": 230,
+      "rssPeakBytes": 821710848,
+      "heapPeakBytes": 426624864,
+      "failed": false
+    },
+    {
+      "run": 2,
+      "stage": "publish-sparse-10",
+      "durationMs": 3965.0905529999873,
+      "sqlStatements": 10047,
+      "rssPeakBytes": 898588672,
+      "heapPeakBytes": 498686368,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "upload-preview",
+      "durationMs": 246.56696999999986,
+      "sqlStatements": 9,
+      "rssPeakBytes": 847560704,
+      "heapPeakBytes": 127598672,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "mapping-preview",
+      "durationMs": 175.19104499999958,
+      "sqlStatements": 5,
+      "rssPeakBytes": 847982592,
+      "heapPeakBytes": 127601176,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "confirm-upload",
+      "durationMs": 2047.8364189999993,
+      "sqlStatements": 10016,
+      "rssPeakBytes": 848535552,
+      "heapPeakBytes": 151371912,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "select-10000-records",
+      "durationMs": 4656.195619999999,
+      "sqlStatements": 10012,
+      "rssPeakBytes": 848535552,
+      "heapPeakBytes": 155852760,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "publish-initial",
+      "durationMs": 17002.09149600001,
+      "sqlStatements": 50190,
+      "rssPeakBytes": 875626496,
+      "heapPeakBytes": 256026608,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "version-page",
+      "durationMs": 879.3960860000079,
+      "sqlStatements": 8,
+      "rssPeakBytes": 331407360,
+      "heapPeakBytes": 33719816,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "version-filter",
+      "durationMs": 757.5392739999952,
+      "sqlStatements": 8,
+      "rssPeakBytes": 331800576,
+      "heapPeakBytes": 34026240,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "csv-download",
+      "durationMs": 1529.650152999995,
+      "sqlStatements": 16,
+      "rssPeakBytes": 625221632,
+      "heapPeakBytes": 247076080,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "derive-10000-records",
+      "durationMs": 3989.902627000003,
+      "sqlStatements": 10009,
+      "rssPeakBytes": 585388032,
+      "heapPeakBytes": 106631880,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "10-session-edit-and-read",
+      "durationMs": 1674.9382929999992,
+      "sqlStatements": 230,
+      "rssPeakBytes": 585519104,
+      "heapPeakBytes": 86590976,
+      "failed": false
+    },
+    {
+      "run": 3,
+      "stage": "publish-sparse-10",
+      "durationMs": 4159.921166,
+      "sqlStatements": 10047,
+      "rssPeakBytes": 597835776,
+      "heapPeakBytes": 198593864,
+      "failed": false
+    }
+  ],
+  "mixedLoadSamples": [
+    {
+      "run": 1,
+      "stage": "publish-initial",
+      "latencies": [
+        1144.178342,
+        1111.384083,
+        1128.8616220000001,
+        1123.1477020000002,
+        1131.713313,
+        1115.58626,
+        1154.374111,
+        1147.968458,
+        1141.861606,
+        1109.085869
+      ],
+      "p50Ms": 1128.8616220000001,
+      "p95Ms": 1154.374111,
+      "failures": 0
+    },
+    {
+      "run": 2,
+      "stage": "publish-initial",
+      "latencies": [
+        1068.0522019999999,
+        574.219652,
+        1033.543906,
+        1025.375475,
+        1051.0243380000002,
+        1017.4911920000001,
+        1061.770232,
+        1079.411962,
+        1067.0502040000001,
+        1012.8482799999999
+      ],
+      "p50Ms": 1033.543906,
+      "p95Ms": 1079.411962,
+      "failures": 0
+    },
+    {
+      "run": 3,
+      "stage": "publish-initial",
+      "latencies": [
+        1070.0055149999998,
+        577.721679,
+        1016.1400290000001,
+        1017.0939480000001,
+        1066.9995410000001,
+        1048.758773,
+        1014.7158829999998,
+        1033.580175,
+        1023.4690050000002,
+        988.640129
+      ],
+      "p50Ms": 1017.0939480000001,
+      "p95Ms": 1070.0055149999998,
+      "failures": 0
+    }
+  ],
+  "sessionLatencies": [
+    {
+      "run": 1,
+      "latencies": [
+        835.1214949999994,
+        842.1993460000012,
+        840.830888000004,
+        848.2472200000047,
+        861.6563489999971,
+        939.4083360000004,
+        1042.8857799999969,
+        1088.9345969999995,
+        1211.4443850000025,
+        1419.784421000004
+      ]
+    },
+    {
+      "run": 2,
+      "latencies": [
+        999.7005070000014,
+        999.9967719999986,
+        999.970478999996,
+        999.1268779999955,
+        1001.5159039999999,
+        1064.0574100000085,
+        1237.828370000003,
+        1259.79970399999,
+        1261.8595020000066,
+        1423.1736600000004
+      ]
+    },
+    {
+      "run": 3,
+      "latencies": [
+        1135.4938479999983,
+        1136.0466729999898,
+        1136.2117550000112,
+        1135.38175700001,
+        1173.6671579999966,
+        1235.0593979999976,
+        1376.6683159999957,
+        1393.4760830000014,
+        1603.1165829999954,
+        1673.3257169999997
+      ]
+    }
+  ],
+  "idleWindows": [
+    233,
+    135,
+    160
+  ],
+  "workerPickupMs": 47.05305600000429,
+  "workerResult": "succeeded",
+  "completed": true,
+  "runtime": "v24.6.0"
+}

@@ -8,8 +8,8 @@
   },
   "scripts": {
     "dev": "tsx src/dev.ts",
-    "start:web": "tsx src/server/main.ts",
-    "start:worker": "tsx src/worker/main.ts",
+    "start:web": "node dist/server/src/server/main.js",
+    "start:worker": "node dist/server/src/worker/main.js",
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
@@ -22,28 +22,23 @@
     "persistence:verify": "node scripts/persistence-check.mjs verify",
     "spike:incremental": "tsx src/spikes/run-incremental-version-storage-spike.ts",
     "build": "npm --prefix frontend-v3 run build:formal && tsc -p tsconfig.server.json",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "db:bind-legacy-admin": "tsx src/security/bind-legacy-administrator.ts"
+    "db:migrate": "node dist/server/src/db/migrate.js",
+    "db:bind-legacy-admin": "node dist/server/src/security/bind-legacy-administrator.js",
+    "dev:web": "tsx src/server/main.ts",
+    "dev:worker": "tsx src/worker/main.ts",
+    "db:migrate:dev": "tsx src/db/migrate.ts",
+    "db:bind-legacy-admin:dev": "tsx src/security/bind-legacy-administrator.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",
     "@fastify/static": "10.1.3",
-    "@radix-ui/react-slot": "1.2.4",
-    "@tanstack/react-query": "5.85.5",
-    "@vitejs/plugin-react": "5.2.0",
     "ajv": "8.20.0",
-    "class-variance-authority": "0.7.1",
-    "clsx": "2.1.1",
     "csv-parse": "6.1.0",
     "fastify": "5.12.0",
     "fflate": "0.8.3",
     "json-canonicalize": "1.2.0",
     "minio": "8.0.7",
-    "pg": "8.23.0",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "tailwind-merge": "3.5.0",
-    "vite": "8.2.1"
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@eslint/js": "9.32.0",
@@ -62,6 +57,15 @@
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "typescript-eslint": "8.56.1",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "@radix-ui/react-slot": "1.2.4",
+    "@tanstack/react-query": "5.85.5",
+    "@vitejs/plugin-react": "5.2.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "tailwind-merge": "3.5.0",
+    "vite": "8.2.1"
   }
 }

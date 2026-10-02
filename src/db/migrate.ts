@@ -1305,11 +1305,13 @@ CREATE TABLE IF NOT EXISTS collaborative_draft_event (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (draft_id,revision)
 );
+ALTER TABLE collaborative_draft_event ADD COLUMN IF NOT EXISTS change_scope jsonb NOT NULL DEFAULT '{}'::jsonb;
 CREATE OR REPLACE FUNCTION record_collaborative_draft_event() RETURNS trigger AS $$
 BEGIN
   IF NEW.revision IS DISTINCT FROM OLD.revision THEN
-    INSERT INTO collaborative_draft_event (draft_id,revision,project_id,status,changed_by)
-    VALUES (NEW.id,NEW.revision,NEW.project_id,NEW.status,NEW.updated_by)
+    INSERT INTO collaborative_draft_event (draft_id,revision,project_id,status,changed_by,change_scope)
+    VALUES (NEW.id,NEW.revision,NEW.project_id,NEW.status,NEW.updated_by,
+      coalesce(nullif(current_setting('evalbase.draft_change',true),'')::jsonb,'{}'::jsonb))
     ON CONFLICT (draft_id,revision) DO NOTHING;
     DELETE FROM collaborative_draft_event
     WHERE draft_id=NEW.id AND

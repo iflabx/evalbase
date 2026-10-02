@@ -1,0 +1,28 @@
+services:
+  web:
+    image: ${EVALBASE_ARCHITECTURE_IMAGE:?set checkpoint image}
+    environment: &checkpoint-environment
+      NODE_ENV: production
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+      APP_ORIGIN: http://127.0.0.1:4217
+      MINIO_BUCKET: evalbase-architecture-checkpoint
+      GIT_SHA: ${GIT_SHA:?set fixed checkpoint HEAD}
+      RUNTIME_METRICS_ENABLED: "true"
+    ports: !override
+      - 127.0.0.1:4217:3000
+  worker:
+    image: ${EVALBASE_ARCHITECTURE_IMAGE:?set checkpoint image}
+    environment:
+      <<: *checkpoint-environment
+      WORKER_HEALTH_HOST: 0.0.0.0
+networks:
+  edge:
+    name: evalbase-architecture-checkpoint-edge
+  internal:
+    name: evalbase-architecture-checkpoint-internal
+volumes:
+  postgres-data:
+    name: evalbase-architecture-checkpoint-postgres-data
+  minio-data:
+    name: evalbase-architecture-checkpoint-minio-data

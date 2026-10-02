@@ -7,5 +7,5 @@
     "isolatedModules": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/web"]
+  "exclude": ["src/web", "src/dev.ts", "src/spikes"]
 }

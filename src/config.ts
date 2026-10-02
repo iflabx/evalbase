@@ -1,5 +1,12 @@
+export const WORKER_IDLE_MAX_DELAY_MS = 1_000;
+
+export function workerIdleDelayMs(emptyClaims: number): number {
+  return Math.min(WORKER_IDLE_MAX_DELAY_MS, 50 * 2 ** Math.min(emptyClaims, 5));
+}
+
 export interface Config {
   databaseUrl: string;
+  runtimeMetricsEnabled: boolean;
   minio: {
     endPoint: string;
     port: number;
@@ -89,7 +96,7 @@ export function loadConfig(env = process.env): Config {
     jobConfig.jobOrphanGraceMs <=
       jobConfig.jobLeaseDurationMs +
         retryWindowMs +
-        jobConfig.jobClaimDelayMs ||
+        Math.max(jobConfig.jobClaimDelayMs, WORKER_IDLE_MAX_DELAY_MS) ||
     !Number.isInteger(jobConfig.orphanScanCadenceMs) ||
     jobConfig.orphanScanCadenceMs < 1
   )
@@ -124,6 +131,7 @@ export function loadConfig(env = process.env): Config {
   }
 
   return {
+    runtimeMetricsEnabled: env.RUNTIME_METRICS_ENABLED !== "false",
     databaseUrl:
       env.DATABASE_URL ??
       "postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_phase1a",

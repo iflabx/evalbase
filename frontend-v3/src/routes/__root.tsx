@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
   HeadContent,
@@ -70,14 +70,21 @@ function AuthenticatedApp() {
     enabled: Boolean(session.data),
     retry: false,
   });
+  const queryClient = useQueryClient();
   const access = useProjectAccess(projectId, Boolean(session.data));
+  const draftId = location.pathname.match(/\/test-sets\/drafts\/([^/]+)/)?.[1] ?? "";
+  const presenceDraftId = access.canWrite ? draftId : "";
   const online = useQuery({
-    queryKey: ["project-presence", projectId],
-    queryFn: () => projectPresence(projectId),
-    enabled: Boolean(projectId) && Boolean(session.data),
+    queryKey: ["project-presence", projectId, presenceDraftId],
+    queryFn: () => projectPresence(projectId, presenceDraftId || undefined),
+    enabled: Boolean(projectId) && Boolean(session.data) && access.data?.capabilities.read === true,
     refetchInterval: 2000,
     retry: false,
   });
+  useEffect(() => {
+    if (online.isError)
+      void queryClient.invalidateQueries({ queryKey: ["project-access", projectId] });
+  }, [online.isError, online.error, projectId, queryClient]);
   useEffect(() => {
     if (!projectId || !session.data) return;
     void heartbeat(projectId)
