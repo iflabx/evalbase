@@ -15,6 +15,7 @@ frontend-v3/vite.v2a.config.ts
 .env.*
 !.env.example
 .scratch/architecture-performance/baseline
+.scratch/performance-repair/baseline
 local-acceptance-evidence
 **/*.pem
 **/id_ed25519*

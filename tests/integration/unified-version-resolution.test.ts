@@ -366,6 +366,132 @@ describe("Ticket 34 unified version resolution", () => {
     }
   });
 
+  it("invalidates warm exports on actual body and source changes", async () => {
+    const base = `/api/projects/${projectId}/solo-test-sets/${setId}/versions/v2`;
+    const get = (suffix: string) =>
+      app.inject({ method: "GET", url: base + suffix, headers: { cookie } });
+    const data = await get("/data.csv");
+    const provenance = await get("/provenance.csv");
+    expect((await get("/data.csv")).body).toBe(data.body);
+    expect((await get("/provenance.csv")).body).toBe(provenance.body);
+    await db.query(
+      `UPDATE case_revision SET expected_output=$1::jsonb WHERE id='rev_b2'`,
+      [JSON.stringify({ text: '=1+2,"quoted"' })],
+    );
+    await db.query(
+      `UPDATE data_asset SET file_name='renamed.csv' WHERE id='asset34'`,
+    );
+    try {
+      const changed = await get("/data.csv");
+      expect(changed.statusCode, changed.body).toBe(200);
+      expect(changed.body).not.toBe(data.body);
+      expect(changed.body).toContain("'=1+2");
+      expect((await get("/data.csv")).body).toBe(changed.body);
+      const renamed = await get("/provenance.csv");
+      expect(renamed.body).toContain("renamed.csv");
+      expect(renamed.body).not.toBe(provenance.body);
+    } finally {
+      await db.query(
+        `UPDATE case_revision SET expected_output='{"text":"answer"}'::jsonb WHERE id='rev_b2'`,
+      );
+      await db.query(
+        `UPDATE data_asset SET file_name='synthetic.csv' WHERE id='asset34'`,
+      );
+    }
+  });
+
+  it("keeps all filter options on searched, empty and past-end pages", async () => {
+    await db.query(
+      `UPDATE case_revision SET metadata='"legacy"'::jsonb WHERE id='rev_c'`,
+    );
+    try {
+      for (const id of ["v1", "v2", "v3"]) {
+        for (const query of [
+          "&search=bravo",
+          "&search=no-match",
+          "&offset=99",
+        ]) {
+          const response = await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/solo-test-sets/${setId}/versions/${id}/records?limit=10${query}`,
+            headers: { cookie },
+          });
+          expect(response.statusCode, response.body).toBe(200);
+          expect(response.json().filterOptions).toEqual({
+            sourceFiles: [{ id: "asset34", name: "synthetic.csv" }],
+            metadataFields: ["Metadata", "tag"],
+          });
+          if (query.includes("no-match") || query.includes("offset"))
+            expect(response.json().records).toEqual([]);
+        }
+      }
+    } finally {
+      await db.query(
+        `UPDATE case_revision SET metadata='{"entries":[{"key":"tag","value":"synthetic"}]}'::jsonb WHERE id='rev_c'`,
+      );
+    }
+  });
+
+  it("validates members even when an export is already cached", async () => {
+    const base = `/api/projects/${projectId}/solo-test-sets/${setId}/versions/v2`;
+    const get = () =>
+      app.inject({
+        method: "GET",
+        url: base + "/data.csv",
+        headers: { cookie },
+      });
+    expect((await get()).statusCode).toBe(200);
+    await db.query(
+      `UPDATE version_change SET after_revision_id='foreign_rev34' WHERE version_id='v2' AND case_id='case_b'`,
+    );
+    try {
+      const blocked = await get();
+      expect(blocked.statusCode).toBe(500);
+      expect(blocked.body).not.toContain("bravo updated");
+    } finally {
+      await db.query(
+        `UPDATE version_change SET after_revision_id='rev_b2' WHERE version_id='v2' AND case_id='case_b'`,
+      );
+    }
+    await db.query(`UPDATE test_set_version SET item_count=4 WHERE id='v2'`);
+    try {
+      expect((await get()).statusCode).toBe(500);
+    } finally {
+      await db.query(`UPDATE test_set_version SET item_count=3 WHERE id='v2'`);
+    }
+    await db.query(
+      `UPDATE test_set_version SET status='tombstoned' WHERE id='v2'`,
+    );
+    try {
+      expect((await get()).statusCode).toBe(404);
+    } finally {
+      await db.query(
+        `UPDATE test_set_version SET status='published' WHERE id='v2'`,
+      );
+    }
+  });
+
+  it("rejects a valid-hash Checkpoint referencing the wrong case", async () => {
+    await db.query(
+      `UPDATE version_checkpoint_member SET case_revision_id='foreign_rev34' WHERE version_id='v3' AND case_id='case_b'`,
+    );
+    await db.query(
+      `UPDATE version_checkpoint SET members_hash=checkpoint_members_hash('v3') WHERE version_id='v3'`,
+    );
+    try {
+      await expect(
+        db.query("SELECT * FROM resolve_version_members('v3')"),
+      ).rejects.toThrow(/version_resolution_cross_test_set_reference/);
+    } finally {
+      await db.query(
+        `UPDATE version_checkpoint_member SET case_revision_id='rev_b2' WHERE version_id='v3' AND case_id='case_b'`,
+      );
+      await db.query(
+        `UPDATE version_checkpoint SET members_hash=checkpoint_members_hash('v3') WHERE version_id='v3'`,
+      );
+    }
+  });
+
   it("rejects cross-project and tombstoned public reads", async () => {
     const otherProject = await app.inject({
       method: "GET",

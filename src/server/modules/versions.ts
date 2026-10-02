@@ -1133,6 +1133,81 @@ export function registerVersions(
       : protectedValue;
   }
 
+  async function soloVersionExportEvidence(
+    projectId: string,
+    testSetId: string,
+    versionId: string,
+    client: PoolClient,
+  ) {
+    const state = await client.query(
+      `SELECT v.version_label, v.parent_version_id, to_jsonb(v) AS version_evidence,
+              to_jsonb(p) AS parent_evidence, p.status AS parent_status,
+              p.cleanup_pending AS parent_cleanup_pending, p.manifest_object_ref AS parent_manifest,
+              EXISTS(SELECT 1 FROM version_provenance_cut_state c
+                     WHERE c.version_id=v.id AND c.parent_version_id=p.id) AS parent_cut
+       FROM test_set ts JOIN test_set_version v ON v.test_set_id=ts.id
+       LEFT JOIN test_set_version p ON p.id=v.parent_version_id
+       WHERE ts.project_id=$1 AND ts.id=$2 AND v.id=$3
+         AND ts.status='available' AND v.status='published'`,
+      [projectId, testSetId, versionId],
+    );
+    if (!state.rowCount) return undefined;
+    const version = state.rows[0];
+    const parentUnavailable = [
+      "tombstoned",
+      "permanently_deleted",
+      "degraded_by_deletion",
+    ].includes(version.parent_status);
+    const parentPending =
+      parentUnavailable &&
+      !version.parent_cut &&
+      version.parent_cleanup_pending &&
+      !String(version.parent_manifest).startsWith("tombstone:") &&
+      !String(version.parent_manifest).startsWith("deleted:");
+    const parentId =
+      !parentUnavailable || parentPending ? version.parent_version_id : null;
+    // Validate all logical members before accepting a cache hit. Hash actual bodies
+    // in PostgreSQL as well as IDs; a stale stored content_hash is not sufficient.
+    const facts = await client.query(
+      `WITH members AS MATERIALIZED (
+         SELECT 'current' AS side,vm.ordinal,vm.case_id,vm.case_revision_id
+         FROM resolve_version_members($1) vm
+         UNION ALL
+         SELECT 'parent',vm.ordinal,vm.case_id,vm.case_revision_id
+         FROM resolve_version_members_internal($2,$3,true) vm
+       ), body_facts AS MATERIALIZED (
+         SELECT m.side,m.ordinal,m.case_revision_id,
+                encode(sha256(convert_to(jsonb_build_array(m.case_id,cr.input,cr.expected_output,
+                  cr.metadata,cr.origin_kind,cr.origin_ref)::text,'UTF8')),'hex') AS body_hash,
+                CASE WHEN cr.origin_kind='source_record' THEN cr.origin_ref->>'assetId' END AS asset_id
+         FROM members m JOIN case_revision cr ON cr.id=m.case_revision_id
+       )
+       SELECT
+         encode(sha256(convert_to(coalesce((SELECT string_agg(
+           jsonb_build_array(side,ordinal,case_revision_id,body_hash)::text,',' ORDER BY side,ordinal)
+           FROM body_facts),''),'UTF8')),'hex') AS members,
+         coalesce((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM (
+           SELECT da.id,da.file_name,da.collection_id,da.status,pv.display_mapping
+           FROM data_asset da LEFT JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current
+           WHERE da.project_id=$4 AND da.id IN (SELECT asset_id FROM body_facts)
+         ) s),'[]'::jsonb) AS sources,
+         coalesce((SELECT jsonb_agg(jsonb_build_array(case_id,change_type,changed_fields) ORDER BY case_id)
+           FROM version_provenance_cut_fact WHERE version_id=$1),'[]'::jsonb) AS cuts`,
+      [versionId, parentId, Boolean(parentPending), projectId],
+    );
+    return {
+      label: String(version.version_label),
+      fingerprint: sha256(
+        canonicalJson({
+          version: version.version_evidence,
+          parent: version.parent_evidence,
+          parentCut: version.parent_cut,
+          facts: facts.rows[0],
+        }),
+      ),
+    };
+  }
+
   function csvDocument(rows: string[][]) {
     return `${rows.map((row) => row.map(csvField).join(",")).join("\r\n")}\r\n`;
   }
@@ -1373,35 +1448,39 @@ export function registerVersions(
             )) LIKE '%' || LOWER(${valueParameter}) || '%')
         )`);
       }
-      const where =
-        conditions
-          .slice(5)
-          .join(" AND ")
-          .replaceAll("da.file_name", "cr.file_name") || "true";
+      const where = conditions.slice(5).join(" AND ") || "true";
       const pageLimit = add(limit),
         pageOffset = add(offset);
       const page = await db.query(
         `WITH visible_version AS MATERIALIZED (
           SELECT v.id,ts.project_id FROM test_set ts JOIN test_set_version v ON v.test_set_id=ts.id
           WHERE ts.project_id=$1 AND ts.id=$2 AND v.id=$3 AND ts.status='available' AND v.status='published'
-        ), all_records AS MATERIALIZED (
-          SELECT vm.ordinal,cr.input,cr.expected_output,cr.metadata,cr.origin_kind,cr.origin_ref,da.file_name
+        ), members AS MATERIALIZED (
+          SELECT vm.ordinal,vm.case_revision_id
           FROM visible_version v CROSS JOIN LATERAL resolve_version_members(v.id) vm
+        ), filtered AS MATERIALIZED (
+          SELECT vm.ordinal,vm.case_revision_id FROM members vm
           JOIN case_revision cr ON cr.id=vm.case_revision_id
-          LEFT JOIN data_asset da ON da.id=cr.origin_ref->>'assetId' AND da.project_id=v.project_id
-        ), filtered AS MATERIALIZED (SELECT * FROM all_records cr WHERE ${where})
+          LEFT JOIN data_asset da ON da.id=cr.origin_ref->>'assetId' AND da.project_id=$1
+          WHERE ${where}
+        )
         SELECT EXISTS(SELECT 1 FROM visible_version) AS visible,
           (SELECT count(*)::integer FROM filtered) AS total,
           coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.ordinal) FROM
-            (SELECT * FROM filtered ORDER BY ordinal LIMIT ${pageLimit} OFFSET ${pageOffset}) p),'[]'::jsonb) AS records,
+            (SELECT vm.ordinal,cr.input,cr.expected_output,cr.metadata,cr.origin_kind,cr.origin_ref,da.file_name
+             FROM (SELECT * FROM filtered ORDER BY ordinal LIMIT ${pageLimit} OFFSET ${pageOffset}) vm
+             JOIN case_revision cr ON cr.id=vm.case_revision_id
+             LEFT JOIN data_asset da ON da.id=cr.origin_ref->>'assetId' AND da.project_id=$1) p),'[]'::jsonb) AS records,
           coalesce((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.name) FROM
-            (SELECT DISTINCT origin_ref->>'assetId' AS id,file_name AS name FROM all_records
-             WHERE origin_kind='source_record' AND file_name IS NOT NULL) f),'[]'::jsonb) AS source_files,
+            (SELECT DISTINCT cr.origin_ref->>'assetId' AS id,da.file_name AS name FROM members vm
+             JOIN case_revision cr ON cr.id=vm.case_revision_id
+             JOIN data_asset da ON da.id=cr.origin_ref->>'assetId' AND da.project_id=$1
+             WHERE cr.origin_kind='source_record' AND da.file_name IS NOT NULL) f),'[]'::jsonb) AS source_files,
           coalesce((SELECT jsonb_agg(key ORDER BY key) FROM (
-            SELECT DISTINCT entry->>'key' AS key FROM all_records
-            CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(metadata->'entries')='array'
-              THEN metadata->'entries' ELSE '[]'::jsonb END) entry
-            UNION SELECT 'Metadata' FROM all_records WHERE jsonb_typeof(metadata->'entries') IS DISTINCT FROM 'array'
+            SELECT DISTINCT entry->>'key' AS key FROM members vm
+            JOIN case_revision cr ON cr.id=vm.case_revision_id
+            CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(cr.metadata->'entries')='array'
+              THEN cr.metadata->'entries' ELSE '[{"key":"Metadata"}]'::jsonb END) entry
           ) fields WHERE key IS NOT NULL AND key<>''),'[]'::jsonb) AS metadata_fields`,
         values,
       );
@@ -2046,47 +2125,50 @@ export function registerVersions(
             `SELECT id FROM test_set WHERE id=$1 AND project_id=$2 FOR SHARE`,
             [request.params.testSetId, request.params.projectId],
           );
-          const result = await soloVersionChanges(
+          const evidence = await soloVersionExportEvidence(
             request.params.projectId,
             request.params.testSetId,
             request.params.versionId,
             lock,
           );
-          if (!result) {
+          if (!evidence) {
             await lock.query("COMMIT");
             return reply
               .code(404)
               .send({ error: { code: "version_not_found" } });
           }
-          const evidenceFingerprint = sha256(
-            canonicalJson({
-              evidenceHash: result.version.evidence_hash,
-              parentStatus: result.parentStatus,
-              sourceFingerprint: result.sourceFingerprint,
-              current: result.current,
-              changes: result.changes,
-              addedFiles: result.addedFiles,
-            }),
-          );
+          const evidenceFingerprint = evidence.fingerprint;
           await lock.query(
             `DELETE FROM version_export_cache
             WHERE version_id=$1 AND export_type=$2
-              AND (serializer_version<>1 OR evidence_fingerprint<>$3)`,
+              AND (serializer_version<>2 OR evidence_fingerprint<>$3)`,
             [request.params.versionId, name, evidenceFingerprint],
           );
           const cached = await lock.query(
             `SELECT document FROM version_export_cache
             WHERE version_id=$1 AND export_type=$2
-              AND serializer_version=1 AND evidence_fingerprint=$3`,
+              AND serializer_version=2 AND evidence_fingerprint=$3`,
             [request.params.versionId, name, evidenceFingerprint],
           );
-          const document =
-            cached.rows[0]?.document ?? csvDocument(rows(result));
-          if (!cached.rowCount)
+          let document = cached.rows[0]?.document as string | undefined;
+          if (document === undefined) {
+            const result = await soloVersionChanges(
+              request.params.projectId,
+              request.params.testSetId,
+              request.params.versionId,
+              lock,
+            );
+            if (!result) {
+              await lock.query("COMMIT");
+              return reply
+                .code(404)
+                .send({ error: { code: "version_not_found" } });
+            }
+            document = csvDocument(rows(result));
             await lock.query(
               `INSERT INTO version_export_cache
              (version_id,export_type,serializer_version,evidence_fingerprint,document)
-             SELECT v.id,$2,1,$3,$4 FROM test_set_version v
+             SELECT v.id,$2,2,$3,$4 FROM test_set_version v
               JOIN test_set ts ON ts.id=v.test_set_id
               WHERE v.id=$1 AND v.status='published'
                 AND ts.status='available' AND ts.project_id=$5
@@ -2099,12 +2181,13 @@ export function registerVersions(
                 request.params.projectId,
               ],
             );
+          }
           await lock.query("COMMIT");
           return reply
             .type("text/csv; charset=utf-8")
             .header(
               "content-disposition",
-              `attachment; filename="agentbench-${result.version.version_label}-${name}"`,
+              `attachment; filename="agentbench-${evidence.label}-${name}"`,
             )
             .send(document);
         } catch (error) {

@@ -152,20 +152,31 @@ export class ArtifactRepository {
     stream: Readable,
     maximumBytes: number,
     errorCode: string,
+    destroySourceOnFailure = true,
   ): Promise<StagedArtifact> {
     const hash = createHash("sha256");
     let size = 0;
     let failed = false;
+    let upload: Promise<unknown> | undefined;
+    let rejectMeter!: (error: Error) => void;
+    const meterFailure = new Promise<never>((_resolve, reject) => {
+      rejectMeter = reject;
+    });
     const meter = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
         size += chunk.byteLength;
         if (size > maximumBytes) {
-          callback(
+          if (destroySourceOnFailure) {
+            stream.unpipe(meter);
+            stream.destroy();
+          }
+          rejectMeter(
             Object.assign(new Error("Artifact exceeds exact byte limit"), {
               code: errorCode,
               observedBytes: size,
             }),
           );
+          callback();
           return;
         }
         hash.update(chunk);
@@ -175,20 +186,24 @@ export class ArtifactRepository {
 
     try {
       const metered = stream.pipe(meter);
-      const meterFailure = new Promise<never>((_resolve, reject) =>
-        meter.once("error", reject),
-      );
+      meter.once("error", rejectMeter);
       const sourceFailure = new Promise<never>((_resolve, reject) =>
         stream.once("error", reject),
       );
-      const upload = this.client.putObject(this.bucket, stagingKey, metered);
+      upload = this.client.putObject(this.bucket, stagingKey, metered);
       upload.catch(() => undefined);
       await Promise.race([upload, meterFailure, sourceFailure]);
       await upload;
       return { stagingKey, sha256: hash.digest("hex"), size };
     } catch (error) {
       failed = true;
-      stream.destroy();
+      stream.unpipe(meter);
+      if (destroySourceOnFailure) stream.destroy();
+      else stream.resume(); // Borrowed HTTP input must remain alive for the error response.
+      // MinIO does not propagate input errors through its multipart pipe.
+      // Finish the partial staging stream, await it, then remove its object.
+      meter.end();
+      await upload?.catch(() => undefined);
       meter.destroy();
       throw error;
     } finally {
@@ -304,6 +319,7 @@ export class ArtifactRepository {
       stream,
       maximumBytes,
       "asset_too_large",
+      false,
     );
     return await this.commitStaged(staged);
   }

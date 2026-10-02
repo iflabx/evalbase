@@ -867,11 +867,15 @@ BEGIN
     WHERE vm.version_id = anchor_id AND anchor_format = 'legacy_full_v1'
       AND NOT anchor_is_checkpoint AND tc.test_set_id <> target_test_set_id
   ) OR EXISTS (
-    SELECT 1 FROM version_checkpoint_member cm
-    JOIN test_case tc ON tc.id = cm.case_id
-    JOIN case_revision cr ON cr.id = cm.case_revision_id
-    WHERE cm.version_id = anchor_id AND anchor_is_checkpoint
-      AND (tc.test_set_id <> target_test_set_id OR cr.case_id <> cm.case_id)
+    WITH checkpoint_references AS MATERIALIZED (
+      SELECT cm.case_id, tc.test_set_id, cr.case_id AS revision_case_id
+      FROM version_checkpoint_member cm
+      JOIN test_case tc ON tc.id = cm.case_id
+      JOIN case_revision cr ON cr.id = cm.case_revision_id
+      WHERE cm.version_id = anchor_id AND anchor_is_checkpoint
+    )
+    SELECT 1 FROM checkpoint_references r
+    WHERE r.test_set_id <> target_test_set_id OR r.revision_case_id <> r.case_id
   ) OR EXISTS (
     WITH RECURSIVE path AS (
       SELECT v.id, v.parent_version_id, 0 AS depth
