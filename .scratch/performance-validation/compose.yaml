@@ -1,0 +1,95 @@
+name: evalbase-performance-validation
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    cpus: 2.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    environment:
+      POSTGRES_DB: evalbase_performance_validation
+      POSTGRES_USER: performance_validation
+      POSTGRES_PASSWORD: synthetic-performance-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U performance_validation -d evalbase_performance_validation"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    logging: &logging
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    cpus: 1.0
+    mem_limit: 1g
+    memswap_limit: 1g
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: performance-validation
+      MINIO_ROOT_PASSWORD: synthetic-performance-only
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+    volumes: ["minio-data:/data"]
+    logging: *logging
+  web:
+    image: evalbase-architecture-performance:1d62240
+    cpus: 2.0
+    mem_limit: 3g
+    memswap_limit: 3g
+    command: ["sh", "-c", "npm run db:migrate && npm run start:web"]
+    environment: &environment
+      DATABASE_URL: postgresql://performance_validation:synthetic-performance-only@postgres:5432/evalbase_performance_validation
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: performance-validation
+      MINIO_SECRET_KEY: synthetic-performance-only
+      MINIO_BUCKET: evalbase-performance-validation
+      APP_ORIGIN: http://127.0.0.1:4240
+      GIT_SHA: 1d622405f19f19300203ba82a08f80966b3573e3
+      NODE_ENV: production
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "false"
+      RUNTIME_METRICS_ENABLED: "true"
+      HOST: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [edge, internal]
+    ports: ["127.0.0.1:4240:3000"]
+    logging: *logging
+  worker:
+    image: evalbase-architecture-performance:1d62240
+    cpus: 1.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    command: ["npm", "run", "start:worker"]
+    environment:
+      <<: *environment
+      WORKER_HEALTH_PORT: "3001"
+      WORKER_HEALTH_HOST: 0.0.0.0
+    depends_on:
+      web: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+    logging: *logging
+networks:
+  edge: {name: evalbase-performance-validation-edge}
+  internal: {name: evalbase-performance-validation-internal, internal: true}
+volumes:
+  postgres-data: {name: evalbase-performance-validation-postgres-data}
+  minio-data: {name: evalbase-performance-validation-minio-data}

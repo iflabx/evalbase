@@ -41,3 +41,7 @@ Blocked by: none
 扩展性能方案见 [性能与瓶颈测试方案](../../../docs/test-plan-performance.md)。按 2026-10-02 Owner 后续指令，本轮改为 2/3 个独立用户并发负载，保留容量、重操作干扰和分层瓶颈定位，不安排 5/10 人负载、两小时稳定运行、断线和重启恢复；当前仅修改方案，不记为性能通过。此前五账号测试覆盖原有一个项目，临时增加三个账号由当次 Owner 指令授权；不能把该例外改写为以后验收的默认账号数量。
 
 - 修复验证：`npm --prefix frontend-v3 test -- src/services/merge-draft.test.ts` 先 RED（2 个占位用例失败、3 个通过），修复后 5/5 GREEN。`draft-autosave.spec.ts` 浏览器回归 1/1，包含空占位采用远端、空值显示、离焦保存、退出等待、失败重试及原有真实输入冲突语义；宿主浏览器缺系统库，改用既有固定 Playwright 镜像。最初测试容器 network=none 导致浏览器被判离线，改用隔离 bridge 后通过，环境失败不算应用失败。受影响 typecheck/lint、构建、docs:check/diff check 与双轴复审记录在任务专属证据目录；Standards 0、Spec 0 发现。真实双账号空值冲突及固定 HEAD 健康将在提交后写入独立证据，未运行全量历史后端/容量套件，因为无服务端、存储或权限改动。本轮 Owner 验收仍 pending。
+
+- 2026-10-03 扩展性能执行结果：应用镜像固定 `1d622405f19f19300203ba82a08f80966b3573e3`，方案基线 `1002c7b`，复用当前分支。新增脚本仅调用现有路由并准备隔离合成夹具；没有改应用/API/数据库结构。两人、三人各三轮（每轮预热 2 分钟 + 测量 20 分钟）及各 180 秒固定到达探针完成，无意外正常档失败。前置真实浏览器同步 20 次约 803–1,321 ms；Metadata 空白占位采用远端、同字段冲突保留输入、同草稿唯一发布通过。
+- 本轮**未整体通过**：50,000,001 byte 上传真实 HTTP 连接重置而非 413；首轮失败/hash 保留，原生复核后只继续尚未执行的容量场景。重操作浏览器翻页最高 5.8 秒，双万条发布最高约 17.5 秒。数据库容器内存连续 12 次超过 2 GiB 的 90% 后触发 STOP，未清除 STOP；无 OOM/重启。深链/legacy/删除及列表容量等后续用例未运行，正常档部分操作样本不足 200。详见 [验证结果](../../../docs/research/performance-validation-2026-10-02.md)，不以已有周期任务成功替代未执行场景。
+- 测试脚本 Standards/Spec 发现均已修正并复查，包括原生诊断入口及发送前 STOP guard；本地模拟覆盖 STOP 重复执行、子进程失败/deadline 与失败/取消/未完成聚合。应用未改，未重复应用全量套件或构建；新增工具与结果文档的语法、diff、docs:check 及封存结果记录于 `local-acceptance-evidence/performance-validation/`。正式与 Owner 环境保留，自动化专属资源封存后回收；Owner checkpoint 仍 pending，Implementation 保持 in-progress。没有合并 main、推送或正式部署。
