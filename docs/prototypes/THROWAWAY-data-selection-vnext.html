@@ -8243,7 +8243,7 @@
         return shuffled;
       }
       function selectionRecipeLabel(recipe) {
-        if (recipe.method === 'all') return '全部符合条件';
+        if (recipe.method === 'all') return '全部选取';
         const amount = recipe.unit === 'percent' ? `${recipe.amount}%（向下取整）` : `${recipe.amount} 条`;
         return `随机抽取 · ${amount} · 种子 ${recipe.seed}`;
       }
@@ -8386,8 +8386,8 @@
       }
       function selectionOptions(options, value) { return options.map((option) => `<option value="${escape(option.value)}" ${value === option.value ? 'selected' : ''}>${escape(option.label)}</option>`).join(''); }
       function selectionMethodMarkup() {
-        return `<strong>选取方式</strong><div class="selection-methods">${[{value:'all',label:'全部符合条件'},{value:'random',label:'随机抽取'}].map((item) => `<label><input type="radio" name="selection-method" ${selection.method === item.value ? 'checked' : ''} onchange="app.selectionSet('method', '${item.value}')" />${item.label}</label>`).join('')}</div>
-          ${selection.method !== 'all' ? `<div class="selection-amount"><select aria-label="选取数量或比例" onchange="app.selectionSet('unit', this.value)">${selectionOptions([{value:'count',label:'按数量'},{value:'percent',label:'按比例'}],selection.unit)}</select><input aria-label="抽取${selection.unit === 'count' ? '数量' : '比例'}" type="number" min="${selection.unit === 'count' ? 1 : 0.01}" max="${selection.unit === 'count' ? 10000 : 100}" step="${selection.unit === 'count' ? 1 : 0.01}" value="${escape(selection.amount)}" oninput="app.selectionInput('amount', this.value)" /><span>${selection.unit === 'count' ? '条' : '%'}</span></div><p id="selection-amount-hint" class="selection-help">${selectionAmountHint()}</p>` : ''}
+        return `<strong>选取方式</strong><div class="selection-methods">${[{value:'all',label:'全部选取'},{value:'random',label:'随机抽取'}].map((item) => `<label><input type="radio" name="selection-method" ${selection.method === item.value ? 'checked' : ''} onchange="app.selectionSet('method', '${item.value}')" />${item.label}</label>`).join('')}</div>
+          ${selection.method !== 'all' ? `<div class="selection-amount"><select aria-label="选取数量或比例" onchange="app.selectionSet('unit', this.value)">${selectionOptions([{value:'count',label:'按数量'},{value:'percent',label:'按比例'}],selection.unit)}</select><input aria-label="抽取${selection.unit === 'count' ? '数量' : '比例'}" type="number" min="${selection.unit === 'count' ? 1 : 0.01}" max="${selection.unit === 'count' ? 10000 : 100}" step="${selection.unit === 'count' ? 1 : 0.01}" value="${escape(selection.amount)}" oninput="app.selectionInput('amount', this.value)" /><span>${selection.unit === 'count' ? '条' : '%'}</span></div><p id="selection-amount-hint" class="selection-help">${selectionAmountHint()}</p>` : '<p class="selection-help">选取筛选后的全部记录；未设置筛选条件时选取全部记录。</p>'}
           ${selection.method === 'random' ? `<details class="selection-details"><summary>复现设置</summary><label>随机种子<input aria-label="随机种子" value="${escape(selection.seed)}" oninput="app.selectionInput('seed', this.value)" /></label><p class="selection-help">同一来源、条件和种子生成相同结果。“重新抽一批”更换种子；“恢复原抽样结果”保留种子、撤销人工调整。</p></details>` : ''}`;
       }
       function selectionConfigMarkup() {
