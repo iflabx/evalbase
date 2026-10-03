@@ -3428,6 +3428,7 @@
       .selection-details label { display: grid; gap: 6px; margin-top: 12px; }
       .selection-preview-button { margin-top: 8px; width: 100%; }
       .selection-results { overflow: hidden; }
+      #selection-preview-region { min-width: 0; }
       .selection-results .editor-card-head { flex-wrap: wrap; gap: 8px; }
       .selection-empty { padding: 76px 20px; text-align: center; color: var(--muted-foreground); }
       .selection-empty svg { width: 32px; height: 32px; margin-bottom: 12px; }
@@ -3454,6 +3455,9 @@
       .selection-table td small { display: block; font-size: 11px; color: var(--muted-foreground); margin-top: 5px; }
       .selection-table td:last-child span { display: block; font-size: 12px; }
       .selection-table input { accent-color: var(--primary); }
+      .selection-table tbody tr[role="button"] { cursor: pointer; }
+      .selection-table tbody tr[role="button"]:hover { background: var(--accent); }
+      .selection-table tbody tr[role="button"]:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
       .selection-model-table { min-width: 900px; }
       .selection-model-table th:nth-child(2) { width: 21%; }
       .selection-model-table th:nth-child(3) { width: 16%; }
@@ -3470,6 +3474,11 @@
       .selection-confirm { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 20px; border-top: 1px solid var(--border); }
       .selection-confirm strong { font-size: 13px; font-weight: 500; }
       .selection-confirm small { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 5px; }
+      .selection-record-dialog { padding: 0; margin: auto; color: var(--foreground); }
+      .selection-record-dialog:not([open]) { display: none; }
+      .selection-record-dialog::backdrop { background: rgb(0 0 0 / 80%); }
+      .selection-detail-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .selection-detail-wide { grid-column: 1 / -1; }
       .selection-history { font-size: 12px; margin: 0; }
       .selection-history > div { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--border); }
       .selection-history span, .selection-history small { color: var(--muted-foreground); }
@@ -3478,7 +3487,7 @@
       .editor-record-layout .editor-table th:nth-child(2) { width: 35%; }
       .editor-record-layout .editor-table th:nth-child(3) { width: 28%; }
       @media(max-width: 1080px) { .selection-layout { grid-template-columns: 1fr; } .selection-config .selection-content { display: block; } }
-      @media(max-width: 680px) { .selection-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .selection-confirm .button { width: 100%; } .selection-sources .search { width: 100%; } }
+      @media(max-width: 680px) { .selection-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .selection-confirm .button { width: 100%; } .selection-sources .search { width: 100%; } .selection-detail-grid { grid-template-columns: 1fr; } }
       @media(max-width: 860px) { .rail { flex-wrap: wrap; gap: 8px; } .rail > div:not(.brand):not(.rail-bottom) { min-width: 0; } }
 
     </style>
@@ -8210,7 +8219,7 @@
       }
 
       const selection = {
-        rules: [], method: 'random', unit: 'count', amount: '500', seed: 'evalbase-2026',
+        rules: [], method: 'random', unit: 'count', amount: '500', amounts: { count: '500', percent: '5' }, seed: 'evalbase-2026',
         evaluationBatch: 'demo-evaluation-a', modelStrategy: 'lowScore',
         result: null, page: 0, query: '', view: 'selected', error: '', history: new Map(),
       };
@@ -8284,7 +8293,36 @@
         return new Set(state.editRecords.map((record) => record.origin?.assetId && record.origin.sourceRecordOrdinal
           ? recordKey(record.origin.assetId, record.origin.sourceRecordOrdinal) : record.id));
       }
-      function selectionInvalidate() { selection.result = null; selection.page = 0; selection.error = ''; }
+      function selectionInvalidate(reset = false) {
+        if (reset) selection.result = null;
+        else if (selection.result) selection.result.stale = true;
+        selection.page = 0; selection.error = '';
+      }
+      function selectionGenerateLabel() {
+        if (!selection.result) return '预览选取结果';
+        if (selection.result.stale) return '更新预览';
+        return selection.method === 'random' ? '恢复原抽样结果' : '恢复原选取结果';
+      }
+      function selectionAmountHint() {
+        const filtered = selectionPool().filter(selectionMatches);
+        const count = selection.method === 'model'
+          ? selectionModelCandidates(filtered, selection.evaluationBatch, selection.modelStrategy).length : filtered.length;
+        const amount = Number(selection.amount);
+        if (selection.unit === 'percent') return Number.isFinite(amount) && amount > 0 && amount <= 100
+          ? `可选 ${count.toLocaleString()} 条 × ${amount}% = ${Math.floor(count * amount / 100).toLocaleString()} 条（向下取整）。`
+          : `比例基于 ${count.toLocaleString()} 条可选记录，向下取整。`;
+        return selection.method === 'model' ? '按分数从低到高选取；同分按来源身份稳定排序。' : '无放回抽取，每条候选最多选中一次。';
+      }
+      function selectionRefreshPreview() {
+        const region = document.getElementById('selection-preview-region');
+        if (region) region.innerHTML = selectionResultMarkup();
+        const button = document.getElementById('selection-generate-button');
+        if (button) button.textContent = selectionGenerateLabel();
+        const hint = document.getElementById('selection-amount-hint');
+        if (hint) hint.textContent = selectionAmountHint();
+        document.getElementById('selection-error')?.remove();
+        if (selection.result?.stale) document.getElementById('selection-restore-hint')?.remove();
+      }
       function selectionFile(id, checked) {
         const ids = checked ? [...new Set([...state.setSources, id])] : state.setSources.filter((value) => value !== id);
         if (ids.length > 5) { selection.error = '最多选择 5 个文件，请先取消一个文件。'; render(); return; }
@@ -8297,9 +8335,24 @@
         if (ids.length > 5) { selection.error = `本次将选中 ${ids.length} 个文件，超过 5 个文件上限。请分别选择。`; render(); return; }
         state.setSources = ids; selectionInvalidate(); render();
       }
-      function selectionSet(field, value) { selection[field] = value; selectionInvalidate(); render(); }
-      function selectionInput(field, value) { selection[field] = value; selectionInvalidate(); }
-      function selectionRuleInput(index, value) { selection.rules[index].value = value; selectionInvalidate(); }
+      function selectionSet(field, value) {
+        if (selection[field] === value) return;
+        if (field === 'unit') {
+          selection.amounts[selection.unit] = selection.amount;
+          selection.amount = selection.amounts[value];
+        }
+        selection[field] = value; selectionInvalidate(); render();
+      }
+      function selectionInput(field, value) {
+        if (selection[field] === value) return;
+        selection[field] = value;
+        if (field === 'amount') selection.amounts[selection.unit] = value;
+        selectionInvalidate(); selectionRefreshPreview();
+      }
+      function selectionRuleInput(index, value) {
+        if (selection.rules[index].value === value) return;
+        selection.rules[index].value = value; selectionInvalidate(); selectionRefreshPreview();
+      }
       function selectionRuleAdd() { selection.rules.push({ field: 'prediction', operator: 'filled', value: '' }); selectionInvalidate(); render(); }
       function selectionRuleSet(index, field, value) { selection.rules[index][field] = value; selectionInvalidate(); render(); }
       function selectionRuleRemove(index) { selection.rules.splice(index, 1); selectionInvalidate(); render(); }
@@ -8331,13 +8384,13 @@
           recipe: { sourceIds: [...state.setSources], rules: structuredClone(selection.rules), method: selection.method, unit: selection.unit, amount, seed: selection.seed,
             evaluationBatch: selection.evaluationBatch, modelStrategy: selection.modelStrategy,
             algorithm: selection.method === 'model' ? 'mock-evaluation-rank-v1' : 'mock-fisher-yates-v1' },
-          createdAt: Date.now(), applied: false, conflict: false,
+          createdAt: Date.now(), applied: false, conflict: false, stale: false,
         };
         selection.page = 0; selection.query = ''; selection.view = 'selected'; render();
       }
       function selectionToggle(key, checked) {
         const result = selection.result;
-        if (!result || result.applied) return;
+        if (!result || result.applied || result.stale) return;
         if (checked) { result.chosen.add(key); if (!result.originalKeys.includes(key)) result.originalKeys.push(key); }
         else result.chosen.delete(key);
         render();
@@ -8346,17 +8399,18 @@
       function selectionQuery(value) { selection.query = value; selection.page = 0; render(); }
       function selectionPage(page) { selection.page = page; render(); }
       function selectionReconfirm() {
-        if (!selection.result) return;
+        if (!selection.result || selection.result.stale) return;
         selection.result.fingerprint = selectionDraftFingerprint();
         selection.result.conflict = false; render();
       }
       function selectionConfirm() {
         const result = selection.result;
-        if (!result || result.applied || result.draftKey !== editorDraftKey()) return;
+        if (!result || result.applied || result.stale || result.draftKey !== editorDraftKey()) return;
         if (result.fingerprint !== selectionDraftFingerprint()) { result.conflict = true; render(); return; }
         const existing = selectionExistingKeys();
         const picked = result.entries.filter((entry) => result.chosen.has(entry.key));
         const additions = picked.filter((entry) => !existing.has(entry.key));
+        if (!additions.length) { notify('所选记录已在草稿中，无需重复加入。'); render(); return; }
         if (state.editRecords.length + additions.length > 10000) { selection.error = '加入后草稿超过 10,000 条，请减少本次选中记录。'; render(); return; }
         const now = Date.now();
         additions.forEach(({ item, record, key }) => state.editRecords.push({
@@ -8379,37 +8433,69 @@
       }
       function selectionOptions(options, value) { return options.map((option) => `<option value="${escape(option.value)}" ${value === option.value ? 'selected' : ''}>${escape(option.label)}</option>`).join(''); }
       function selectionMethodMarkup() {
-        const batch = selectionEvaluationBatches.find((item) => item.id === selection.evaluationBatch);
-        return `<strong>选取方式</strong><div class="selection-methods">${[{value:'all',label:'全部符合条件'},{value:'random',label:'随机抽取'},{value:'model',label:'模型选样（Mock）'}].map((item) => `<label><input type="radio" name="selection-method" ${selection.method === item.value ? 'checked' : ''} onchange="app.selectionSet('method', '${item.value}')" />${item.label}</label>`).join('')}</div>${selection.method === 'model' ? `<label class="selection-field"><span>评测批次</span><select aria-label="评测批次" onchange="app.selectionSet('evaluationBatch', this.value)">${selectionOptions(selectionEvaluationBatches.map((item)=>({value:item.id,label:item.label})),selection.evaluationBatch)}</select></label><label class="selection-field"><span>选样策略</span><select aria-label="模型选样策略" onchange="app.selectionSet('modelStrategy', this.value)">${selectionOptions(selectionModelStrategies,selection.modelStrategy)}</select></label><p class="selection-help">使用 ${escape(batch.label)} 的已有结果，按分数从低到高选取。未评测记录不参与。</p><p class="selection-help">分数、回答均为 Mock。演示中低于 60 分记为失败；低分衡量模型回答表现。</p>` : ''}${selection.method !== 'all' ? `<div class="selection-amount"><select aria-label="选取数量或比例" onchange="app.selectionSet('unit', this.value)">${selectionOptions([{value:'count',label:'按数量'},{value:'percent',label:'按比例'}],selection.unit)}</select><input aria-label="抽取${selection.unit === 'count' ? '数量' : '比例'}" type="number" min="${selection.unit === 'count' ? 1 : 0.01}" max="${selection.unit === 'count' ? 10000 : 100}" step="${selection.unit === 'count' ? 1 : 0.01}" value="${escape(selection.amount)}" oninput="app.selectionInput('amount', this.value)" onchange="app.selectionSet('amount', this.value)" /><span>${selection.unit === 'count' ? '条' : '%'}</span></div><p class="selection-help">${selection.unit === 'percent' ? '比例基于当前可选记录数，向下取整。' : selection.method === 'model' ? '选取指定数量的低分记录；同分按来源身份稳定排序。' : '无放回抽取，每条候选最多选中一次。'}</p>` : ''}${selection.method === 'random' ? `<details class="selection-details"><summary>复现设置</summary><label>随机种子<input aria-label="随机种子" value="${escape(selection.seed)}" oninput="app.selectionInput('seed', this.value)" onchange="app.selectionSet('seed', this.value)" /></label><p class="selection-help">同一来源、条件和种子生成相同结果。“重新抽样”会更换种子。</p></details>` : ''}`;
+        return `<strong>选取方式</strong><div class="selection-methods">${[{value:'all',label:'全部符合条件'},{value:'random',label:'随机抽取'},{value:'model',label:'模型选样（Mock）'}].map((item) => `<label><input type="radio" name="selection-method" ${selection.method === item.value ? 'checked' : ''} onchange="app.selectionSet('method', '${item.value}')" />${item.label}</label>`).join('')}</div>
+          ${selection.method === 'model' ? `<label class="selection-field"><span>评测批次</span><select aria-label="评测批次" onchange="app.selectionSet('evaluationBatch', this.value)">${selectionOptions(selectionEvaluationBatches.map((item)=>({value:item.id,label:item.label})),selection.evaluationBatch)}</select></label><label class="selection-field"><span>选样策略</span><select aria-label="模型选样策略" onchange="app.selectionSet('modelStrategy', this.value)">${selectionOptions(selectionModelStrategies,selection.modelStrategy)}</select></label><p class="selection-help">${selection.modelStrategy === 'failedOnly' ? '仅从失败记录中取最低分，不选通过记录。' : '从全部已评测记录中取最低分，包含失败和通过记录。'}数量较小时，两种方式可能得到相同结果。</p><p class="selection-help">Mock 评分 0–100，越高表现越好；低于 60 分为失败，未评测不参与。</p>` : ''}
+          ${selection.method !== 'all' ? `<div class="selection-amount"><select aria-label="选取数量或比例" onchange="app.selectionSet('unit', this.value)">${selectionOptions([{value:'count',label:'按数量'},{value:'percent',label:'按比例'}],selection.unit)}</select><input aria-label="抽取${selection.unit === 'count' ? '数量' : '比例'}" type="number" min="${selection.unit === 'count' ? 1 : 0.01}" max="${selection.unit === 'count' ? 10000 : 100}" step="${selection.unit === 'count' ? 1 : 0.01}" value="${escape(selection.amount)}" oninput="app.selectionInput('amount', this.value)" /><span>${selection.unit === 'count' ? '条' : '%'}</span></div><p id="selection-amount-hint" class="selection-help">${selectionAmountHint()}</p>` : ''}
+          ${selection.method === 'random' ? `<details class="selection-details"><summary>复现设置</summary><label>随机种子<input aria-label="随机种子" value="${escape(selection.seed)}" oninput="app.selectionInput('seed', this.value)" /></label><p class="selection-help">同一来源、条件和种子生成相同结果。“重新抽一批”更换种子；“恢复原抽样结果”保留种子、撤销人工调整。</p></details>` : ''}`;
       }
       function selectionConfigMarkup() {
         const pool = selectionPool();
         const fields = [...selectionFields, ...[...new Set(pool.flatMap((entry) => (entry.record.metadataEntries || []).map((pair) => pair.key)))].map((key) => ({ value: `meta:${key}`, label: `Metadata · ${key}` }))];
         const operators = Object.entries(selectionOperators).map(([value, label]) => ({ value, label }));
-        return `<section class="dataset-card selection-config"><div class="editor-card-head"><div><h2>筛选与选取</h2><p>先确定范围，再控制选取数量。</p></div></div><div class="selection-content"><div class="selection-section-head"><strong>筛选条件</strong><button class="button ghost" onclick="app.selectionRuleAdd()">＋ 添加条件</button></div><p class="selection-help">所有条件同时满足；不添加条件时保留全部记录。</p>${selection.rules.length ? selection.rules.map((rule, index) => `<div class="selection-rule"><select aria-label="条件 ${index + 1} 的字段" onchange="app.selectionRuleSet(${index}, 'field', this.value)">${selectionOptions(fields, rule.field)}</select><div class="selection-rule-value"><select aria-label="条件 ${index + 1} 的运算符" onchange="app.selectionRuleSet(${index}, 'operator', this.value)">${selectionOptions(operators, rule.operator)}</select><input aria-label="条件 ${index + 1} 的值" value="${escape(rule.value)}" ${['empty', 'filled'].includes(rule.operator) ? 'disabled placeholder="无需填写"' : 'placeholder="填写筛选值"'} oninput="app.selectionRuleInput(${index}, this.value)" onchange="app.selectionRuleSet(${index}, 'value', this.value)" /><button class="button ghost" aria-label="删除条件 ${index + 1}" onclick="app.selectionRuleRemove(${index})">×</button></div></div>`).join('') : '<div class="selection-placeholder">暂无条件 · 使用全部来源记录</div>'}<div class="selection-divider"></div>${selectionMethodMarkup()}<button class="button primary selection-preview-button" ${pool.length ? '' : 'disabled'} onclick="app.selectionGenerate()">${selection.result ? '重新生成预览' : '预览选取结果'}</button></div></section>`;
+        return `<section class="dataset-card selection-config"><div class="editor-card-head"><div><h2>筛选与选取</h2><p>先确定范围，再控制选取数量。</p></div></div><div class="selection-content"><div class="selection-section-head"><strong>筛选条件</strong><button class="button ghost" onclick="app.selectionRuleAdd()">＋ 添加条件</button></div><p class="selection-help">所有条件同时满足；不添加条件时保留全部记录。</p>${selection.rules.length ? selection.rules.map((rule, index) => `<div class="selection-rule"><select aria-label="条件 ${index + 1} 的字段" onchange="app.selectionRuleSet(${index}, 'field', this.value)">${selectionOptions(fields, rule.field)}</select><div class="selection-rule-value"><select aria-label="条件 ${index + 1} 的运算符" onchange="app.selectionRuleSet(${index}, 'operator', this.value)">${selectionOptions(operators, rule.operator)}</select><input aria-label="条件 ${index + 1} 的值" value="${escape(rule.value)}" ${['empty', 'filled'].includes(rule.operator) ? 'disabled placeholder="无需填写"' : 'placeholder="填写筛选值"'} oninput="app.selectionRuleInput(${index}, this.value)" /><button class="button ghost" aria-label="删除条件 ${index + 1}" onclick="app.selectionRuleRemove(${index})">×</button></div></div>`).join('') : '<div class="selection-placeholder">暂无条件 · 使用全部来源记录</div>'}<div class="selection-divider"></div>${selectionMethodMarkup()}<button id="selection-generate-button" class="button primary selection-preview-button" ${pool.length ? '' : 'disabled'} onclick="app.selectionGenerate()">${selectionGenerateLabel()}</button>${selection.result && !selection.result.stale ? '<p id="selection-restore-hint" class="selection-help">恢复原结果会撤销本次人工勾选或排除。</p>' : ''}</div></section>`;
       }
       function selectionResultMarkup() {
         const result = selection.result;
         if (!result) return `<section class="dataset-card selection-results"><div class="editor-card-head"><div><h2>结果预览</h2><p>生成预览后，再确认加入草稿。</p></div></div><div class="selection-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 4h16v4l-6 6v6l-4-2v-4L4 8z"/></svg><h3>先预览，再加入</h3><p>选择资料并配置规则，系统会选出一批固定记录。<br>翻页和搜索都不会重新抽样。</p></div></section>`;
-        if (result.draftKey !== editorDraftKey()) { selectionInvalidate(); return selectionResultMarkup(); }
+        if (result.draftKey !== editorDraftKey()) { selectionInvalidate(true); return selectionResultMarkup(); }
         const selected = result.entries.filter((entry) => result.chosen.has(entry.key));
         const existing = selectionExistingKeys();
         const overlap = selected.filter((entry) => existing.has(entry.key)).length;
+        const additions = selected.length - overlap;
+        const locked = result.applied || result.stale;
+        const model = result.recipe.method === 'model';
         const entries = result.entries.filter((entry) => (selection.view === 'all' || result.originalKeys.includes(entry.key)) && `${entry.record.question} ${entry.record.prediction} ${entry.item.name}`.toLocaleLowerCase().includes(selection.query.trim().toLocaleLowerCase()));
         const page = Math.min(selection.page, Math.max(0, Math.ceil(entries.length / 20) - 1));
+        const last = Math.max(0, Math.ceil(entries.length / 20) - 1);
         const distributions = [...new Set(result.entries.map((entry) => entry.item.id))].map((id) => {
           const entry = result.entries.find((row) => row.item.id === id);
           return `<span>${escape(entry.item.name)} <b>${selected.filter((row) => row.item.id === id).length}</b></span>`;
         }).join('');
-        const last = Math.max(0, Math.ceil(entries.length / 20) - 1);
-        const warnings = [result.entries.length < result.target ? `目标 ${result.target} 条，候选只有 ${result.entries.length} 条，已选取全部候选。` : '', result.target === 0 ? '按当前比例取整后不足 1 条，请增加比例或改用数量。' : '', !result.applied && overlap ? `${overlap} 条已在草稿中，确认时会跳过，不生成重复行。` : ''].filter(Boolean);
-        return `<section class="dataset-card selection-results"><div class="editor-card-head"><div><h2>结果预览</h2><p>本次结果已固定，可人工勾选或排除。</p></div>${selection.method === 'random' ? '<button class="button" onclick="app.selectionGenerate(true)">重新抽样</button>' : ''}</div><div class="selection-metrics"><div><span>来源记录</span><b>${result.before.toLocaleString()}</b></div><div><span>${result.recipe.method === 'model' ? '可选记录' : '筛选后'}</span><b>${result.entries.length.toLocaleString()}</b></div><div><span>目标数量</span><b>${result.target.toLocaleString()}</b></div><div><span>实际选中</span><b>${selected.length.toLocaleString()}</b></div></div><div class="selection-distribution">${distributions}</div>${result.recipe.method === 'model' ? `<p class="selection-notice">Mock 评测 · ${escape(selectionEvaluationBatches.find((batch) => batch.id === result.recipe.evaluationBatch)?.label)} · 条件筛选后 ${result.filteredCount.toLocaleString()} 条，其中 ${result.unscoredCount.toLocaleString()} 条未评测；${result.recipe.modelStrategy === 'failedOnly' ? '仅使用失败记录' : '使用全部有评分记录'}，按分数从低到高选取。</p>` : ''}${warnings.map((message) => `<p class="selection-notice" role="status">${escape(message)}</p>`).join('')}${result.conflict ? `<div class="selection-conflict" role="alert"><strong>预览后草稿已有变化</strong><p>本次结果已保留。先在“草稿记录”核对最新内容，再重新确认；系统不会覆盖已有记录。</p><button class="button" onclick="app.selectionReconfirm()">已核对，继续使用本次结果</button></div>` : ''}<div class="editor-toolbar selection-result-toolbar"><input aria-label="搜索预览记录" data-search-key="selection-preview" value="${escape(selection.query)}" placeholder="搜索问题、输出或来源" oninput="app.selectionQuery(this.value)" /><button class="button ${selection.view === 'selected' ? 'primary' : ''}" onclick="app.selectionView('selected')">选取结果</button><button class="button ${selection.view === 'all' ? 'primary' : ''}" onclick="app.selectionView('all')">全部候选</button></div><div class="editor-table-scroll"><table class="dataset-table selection-table ${result.recipe.method === 'model' ? 'selection-model-table' : ''}"><thead><tr><th>选中</th><th>问题</th><th>期望输出</th>${result.recipe.method === 'model' ? '<th>评测结果（Mock）</th>' : ''}<th>来源 / 位置</th><th>Metadata</th></tr></thead><tbody>${entries.slice(page * 20, (page + 1) * 20).map((entry) => `<tr class="${result.chosen.has(entry.key) ? '' : 'selection-excluded'}"><td><input type="checkbox" aria-label="选中 ${escape(entry.key)}" ${result.chosen.has(entry.key) ? 'checked' : ''} ${result.applied ? 'disabled' : ''} onchange="app.selectionToggle('${entry.key}', this.checked)" /></td><td title="${escape(entry.record.question)}">${escape(entry.record.question || '未填写')}</td><td title="${escape(entry.record.prediction)}">${escape(entry.record.prediction || '未填写')}</td>${result.recipe.method === 'model' ? `<td class="selection-evaluation"><b>${selectionEvaluation(entry, result.recipe.evaluationBatch).score} / 100</b><span class="badge ${selectionEvaluation(entry, result.recipe.evaluationBatch).outcome === 'failed' ? 'editing' : 'available'}">${selectionEvaluation(entry, result.recipe.evaluationBatch).outcome === 'failed' ? '失败' : '通过'}</span><small title="${escape(selectionEvaluation(entry, result.recipe.evaluationBatch).response)}">模型回答：${escape(selectionEvaluation(entry, result.recipe.evaluationBatch).response)}</small></td>` : ''}<td>${escape(entry.item.name)}<small>第 ${entry.record.sequence} 条${existing.has(entry.key) ? ' · 已在草稿中' : ''}</small></td><td>${metadataEntries(entry.record).slice(0, 2).map((pair) => `<span>${escape(pair.key)}：${escape(pair.value)}</span>`).join('')}</td></tr>`).join('') || `<tr><td colspan="${result.recipe.method === 'model' ? 6 : 5}" class="editor-empty">${result.entries.length ? '没有匹配的预览记录。' : result.recipe.method === 'model' ? '没有符合选样规则的已评测记录，请调整批次、策略或筛选条件。' : '没有符合条件的记录，请调整左侧筛选。'}</td></tr>`}</tbody></table></div><div class="editor-pager"><span>共 ${entries.length} 条 · 第 ${page + 1} / ${last + 1} 页</span><button class="button" ${page === 0 ? 'disabled' : ''} onclick="app.selectionPage(${page - 1})">上一页</button><button class="button" ${page === last ? 'disabled' : ''} onclick="app.selectionPage(${page + 1})">下一页</button></div><div class="selection-confirm"><div>${result.applied ? `<strong>已加入 ${result.added} 条${result.skipped ? ` · 已有 ${result.skipped} 条跳过` : ''}</strong><small>草稿已有 ${state.editRecords.length} 条；正式版本尚未改变。</small>` : `<strong>本次将新增 ${selected.length - overlap} 条</strong><small>人工排除后不会自动补足；草稿已有记录保持不变。</small>`}</div><button class="button ${result.applied ? '' : 'primary'}" ${result.applied ? 'onclick="app.editorTab(\'records\')"' : `onclick="app.selectionConfirm()" ${!selected.length || result.conflict ? 'disabled' : ''}`}>${result.applied ? '查看草稿记录' : '确认加入草稿'}</button></div></section>`;
+        const warnings = [result.entries.length && result.entries.length < result.target ? `目标 ${result.target} 条，候选只有 ${result.entries.length} 条，已选取全部候选。` : '', result.entries.length && result.target === 0 ? '按当前比例取整后不足 1 条，请增加比例或改用数量。' : ''].filter(Boolean);
+        const confirmation = `<div class="selection-confirm"><div>${result.applied ? `<strong>已加入 ${result.added} 条${result.skipped ? ` · 已有 ${result.skipped} 条跳过` : ''}</strong><small>草稿已有 ${state.editRecords.length} 条；正式版本尚未改变。</small>` : `<strong>已选 ${selected.length} 条 · 已在草稿 ${overlap} 条 · ${result.stale ? '待重新预览' : `本次将新增 ${additions} 条`}</strong><small>${!result.stale && selected.length && !additions ? '所选记录已在草稿中，无需重复加入。' : '人工排除不自动补足；草稿已有记录保持不变。'}</small>`}</div><button class="button ${result.applied && !result.stale ? '' : 'primary'}" ${result.applied && !result.stale ? 'onclick="app.editorTab(\'records\')"' : `onclick="app.selectionConfirm()" ${!additions || result.stale || result.conflict ? 'disabled' : ''}`}>${result.applied && !result.stale ? '查看草稿记录' : '确认加入草稿'}</button></div>`;
+        return `<section class="dataset-card selection-results">
+          <div class="editor-card-head"><div><h2>结果预览</h2><p>${result.stale ? '上次结果已保留，当前条件尚未生成预览。' : '结果已固定；点击整行查看完整内容。'}</p></div>${result.recipe.method === 'random' ? `<button class="button" ${result.stale ? 'disabled' : ''} onclick="app.selectionGenerate(true)">重新抽一批</button>` : ''}</div>
+          ${result.stale ? '<p class="selection-notice" role="status">条件已修改，请重新预览。旧结果不能加入草稿。</p>' : ''}
+          <div class="selection-metrics"><div><span>来源记录</span><b>${result.before.toLocaleString()}</b></div><div><span>${model ? '可选记录' : '筛选后'}</span><b>${result.entries.length.toLocaleString()}</b></div><div><span>目标数量</span><b>${result.target.toLocaleString()}</b></div><div><span>实际选中</span><b>${selected.length.toLocaleString()}</b></div></div>
+          <div class="selection-distribution">${distributions}</div>
+          ${model ? `<p class="selection-notice">${escape(selectionEvaluationBatches.find((batch) => batch.id === result.recipe.evaluationBatch)?.label)} · ${result.recipe.modelStrategy === 'failedOnly' ? '失败记录中最低分' : '全部已评测记录中最低分'} · 未评测 ${result.unscoredCount.toLocaleString()} 条${result.recipe.unit === 'percent' ? ` · ${result.entries.length.toLocaleString()} × ${result.recipe.amount}% = ${result.target.toLocaleString()} 条` : ''}</p>` : ''}
+          ${warnings.map((message) => `<p class="selection-notice" role="status">${escape(message)}</p>`).join('')}
+          ${result.conflict ? `<div class="selection-conflict" role="alert"><strong>预览后草稿已有变化</strong><p>本次结果已保留。先在“草稿记录”核对最新内容，再重新确认；系统不会覆盖已有记录。</p><button class="button" ${result.stale ? 'disabled' : ''} onclick="app.selectionReconfirm()">已核对，继续使用本次结果</button></div>` : ''}
+          ${confirmation}
+          <div class="editor-toolbar selection-result-toolbar"><input aria-label="搜索预览记录" data-search-key="selection-preview" value="${escape(selection.query)}" placeholder="搜索问题、输出或来源" oninput="app.selectionQuery(this.value)" /><button class="button ${selection.view === 'selected' ? 'primary' : ''}" onclick="app.selectionView('selected')">选取结果</button><button class="button ${selection.view === 'all' ? 'primary' : ''}" onclick="app.selectionView('all')">全部候选</button></div>
+          <div class="editor-table-scroll"><table class="dataset-table selection-table ${model ? 'selection-model-table' : ''}"><thead><tr><th>选中</th><th>问题</th><th>期望输出</th>${model ? '<th>评测结果（Mock）</th>' : ''}<th>来源 / 位置</th><th>Metadata</th></tr></thead><tbody>${entries.slice(page * 20, (page + 1) * 20).map((entry) => {
+            const evaluation = model ? selectionEvaluation(entry, result.recipe.evaluationBatch) : null;
+            return `<tr class="${result.chosen.has(entry.key) ? '' : 'selection-excluded'}" role="button" tabindex="0" aria-label="查看完整记录 ${escape(entry.key)}" onclick="app.selectionShowRecord('${entry.key}')" onkeydown="if(event.target === this && (event.key === 'Enter' || event.key === ' ')){event.preventDefault();app.selectionShowRecord('${entry.key}')}"><td onclick="event.stopPropagation()"><input type="checkbox" aria-label="选中 ${escape(entry.key)}" ${result.chosen.has(entry.key) ? 'checked' : ''} ${locked ? 'disabled' : ''} onchange="app.selectionToggle('${entry.key}', this.checked)" /></td><td title="${escape(entry.record.question)}">${escape(entry.record.question || '未填写')}</td><td title="${escape(entry.record.prediction)}">${escape(entry.record.prediction || '未填写')}</td>${model ? `<td class="selection-evaluation"><b>${evaluation.score} / 100</b><span class="badge ${evaluation.outcome === 'failed' ? 'editing' : 'available'}">${evaluation.outcome === 'failed' ? '失败' : '通过'}</span><small title="${escape(evaluation.response)}">模型回答：${escape(evaluation.response)}</small></td>` : ''}<td>${escape(entry.item.name)}<small>第 ${entry.record.sequence} 条${existing.has(entry.key) ? ' · 已在草稿中' : ''}</small></td><td>${metadataEntries(entry.record).slice(0, 2).map((pair) => `<span>${escape(pair.key)}：${escape(pair.value)}</span>`).join('')}</td></tr>`;
+          }).join('') || `<tr><td colspan="${model ? 6 : 5}" class="editor-empty">${result.entries.length ? '没有匹配的预览记录。' : model ? '没有符合选样规则的已评测记录，请调整批次、策略或筛选条件。' : '没有符合条件的记录，请调整左侧筛选。'}</td></tr>`}</tbody></table></div>
+          <div class="editor-pager"><span>共 ${entries.length} 条 · 第 ${page + 1} / ${last + 1} 页</span><button class="button" ${page === 0 ? 'disabled' : ''} onclick="app.selectionPage(${page - 1})">上一页</button><button class="button" ${page === last ? 'disabled' : ''} onclick="app.selectionPage(${page + 1})">下一页</button></div>
+        </section>`;
       }
+      function selectionShowRecord(key) {
+        const result = selection.result;
+        const entry = result?.entries.find((row) => row.key === key);
+        const dialog = document.getElementById('selection-record-dialog');
+        if (!entry || !dialog) return;
+        const evaluation = result.recipe.method === 'model' ? selectionEvaluation(entry, result.recipe.evaluationBatch) : null;
+        const metadata = metadataEntries(entry.record);
+        dialog.innerHTML = `<header class="modal-head"><div><h2>第 ${entry.record.sequence} 条记录</h2><p>${escape(entry.item.name)} · 只读预览</p></div><button class="close" aria-label="关闭完整记录" onclick="app.selectionCloseRecord()">×</button></header><div class="modal-body"><div class="record-detail-grid selection-detail-grid"><section><h3>问题</h3><p>${escape(entry.record.question || '未填写')}</p></section><section><h3>期望输出</h3><p>${escape(entry.record.prediction || '未填写')}</p></section>${evaluation ? `<section class="selection-detail-wide"><h3>模型回答（Mock）</h3><p>${escape(evaluation.response)}</p></section><section class="selection-detail-wide"><h3>评测结果</h3><p>${escape(selectionEvaluationBatches.find((batch) => batch.id === result.recipe.evaluationBatch)?.label)} · ${evaluation.score} / 100 · ${evaluation.outcome === 'failed' ? '失败' : '通过'}</p></section>` : ''}<section class="selection-detail-wide"><h3>Metadata · ${metadata.length} 项</h3>${metadata.length ? metadataList(metadata) : '<p>未填写</p>'}</section><section class="selection-detail-wide"><h3>来源</h3><p>${escape(entry.item.name)} · 第 ${entry.record.sequence} 条${selectionExistingKeys().has(key) ? ' · 已在草稿中' : ''}</p></section></div></div><footer class="modal-foot"><span></span><button class="button primary" onclick="app.selectionCloseRecord()">返回预览</button></footer>`;
+        dialog.showModal();
+      }
+      function selectionCloseRecord() { document.getElementById('selection-record-dialog')?.close(); }
       function editorSourcesPanel() {
         const files = editorFilesFiltered();
         const total = selectionPool().length;
         const history = selection.history.get(editorDraftKey()) || [];
-        return `<section class="dataset-card selection-sources"><div class="editor-card-head"><div><h2>选择资料范围</h2><p>已选 ${state.setSources.length} / 5 个文件 · ${total.toLocaleString()} 条记录。勾选文件不会直接加入草稿。</p></div><input class="search" aria-label="搜索资料文件" data-search-key="editor-files" value="${escape(state.editorSourceQuery)}" placeholder="搜索文件" oninput="app.setEditorSourceQuery(this.value)" /></div><div class="selection-file-list">${files.map((item) => `<label class="selection-file ${state.setSources.includes(item.id) ? 'is-selected' : ''}"><input type="checkbox" aria-label="选择 ${escape(item.name)}" ${state.setSources.includes(item.id) ? 'checked' : ''} onchange="app.selectionFile('${item.id}', this.checked)" /><span><strong>${escape(item.name)}</strong><small>${escape(item.type)} · ${item.sampleRecords.length.toLocaleString()} 条记录 · ${escape(collectionById(item.collectionId)?.name || '原始数据')}</small></span></label>`).join('') || '<p class="editor-empty">没有匹配的文件。</p>'}</div><div class="editor-bulk"><span>范围覆盖所选文件的全部记录</span><button class="button" onclick="app.selectionFiles(true)">选择全部结果中的文件</button><button class="button ghost" onclick="app.selectionFiles(false)">取消这些文件</button></div></section>${state.modal === 'iterate' ? `<p class="selection-scope-note">只选取新增资料；从 ${escape(state.editorParentVersion)} 继承的记录不参与抽样。</p>` : ''}${selection.error ? `<p class="simple-form-error" role="alert">${escape(selection.error)}</p>` : ''}<div class="selection-layout">${selectionConfigMarkup()}${selectionResultMarkup()}</div>${history.length ? `<details class="selection-history"><summary>选取记录 · ${history.length} 次</summary>${history.map((entry) => `<div><strong>${escape(access.users.find((user) => user.id === entry.userId)?.name || '未记录')} · ${escape(draftTime(entry.at))}</strong><span>来源 ${entry.before} 条 → ${entry.recipe.method === 'model' ? '可选' : '筛选后'} ${entry.candidates} 条 → 选中 ${entry.selectedKeys.length} 条 → 新增 ${entry.added} 条</span><small>${escape(selectionRecipeLabel(entry.recipe))} · ${entry.recipe.rules.length} 个筛选条件${entry.skipped ? ` · 已有 ${entry.skipped} 条跳过` : ''}</small></div>`).join('')}</details>` : ''}`;
+        return `<section class="dataset-card selection-sources"><div class="editor-card-head"><div><h2>选择资料范围</h2><p>已选 ${state.setSources.length} / 5 个文件 · ${total.toLocaleString()} 条记录。勾选文件不会直接加入草稿。</p></div><input class="search" aria-label="搜索资料文件" data-search-key="editor-files" value="${escape(state.editorSourceQuery)}" placeholder="搜索文件" oninput="app.setEditorSourceQuery(this.value)" /></div><div class="selection-file-list">${files.map((item) => `<label class="selection-file ${state.setSources.includes(item.id) ? 'is-selected' : ''}"><input type="checkbox" aria-label="选择 ${escape(item.name)}" ${state.setSources.includes(item.id) ? 'checked' : ''} onchange="app.selectionFile('${item.id}', this.checked)" /><span><strong>${escape(item.name)}</strong><small>${escape(item.type)} · ${item.sampleRecords.length.toLocaleString()} 条记录 · ${escape(collectionById(item.collectionId)?.name || '原始数据')}</small></span></label>`).join('') || '<p class="editor-empty">没有匹配的文件。</p>'}</div><div class="editor-bulk"><span>范围覆盖所选文件的全部记录</span><button class="button" onclick="app.selectionFiles(true)">选择全部结果中的文件</button><button class="button ghost" onclick="app.selectionFiles(false)">取消这些文件</button></div></section>${state.modal === 'iterate' ? `<p class="selection-scope-note">只选取新增资料；从 ${escape(state.editorParentVersion)} 继承的记录不参与抽样。</p>` : ''}${selection.error ? `<p id="selection-error" class="simple-form-error" role="alert">${escape(selection.error)}</p>` : ''}<div class="selection-layout">${selectionConfigMarkup()}<div id="selection-preview-region">${selectionResultMarkup()}</div></div><dialog id="selection-record-dialog" class="modal selection-record-dialog" aria-label="查看完整记录"></dialog>${history.length ? `<details class="selection-history"><summary>选取记录 · ${history.length} 次</summary>${history.map((entry) => `<div><strong>${escape(access.users.find((user) => user.id === entry.userId)?.name || '未记录')} · ${escape(draftTime(entry.at))}</strong><span>来源 ${entry.before} 条 → ${entry.recipe.method === 'model' ? '可选' : '筛选后'} ${entry.candidates} 条 → 选中 ${entry.selectedKeys.length} 条 → 新增 ${entry.added} 条</span><small>${escape(selectionRecipeLabel(entry.recipe))} · ${entry.recipe.rules.length} 个筛选条件${entry.skipped ? ` · 已有 ${entry.skipped} 条跳过` : ''}</small></div>`).join('')}</details>` : ''}`;
       }
       function editorPageActions() {
         const plan = state.modal === 'iterate' ? nextVersionPlan(selectedItem(), activeSet(selectedItem())) : null;
@@ -8423,9 +8509,9 @@
       function lineageSourceSummary(current) {
         return baseLineageSourceSummary(current) + (current.selectionHistory?.length ? `<details class="selection-history" style="margin-top:12px"><summary>查看本版本的数据选取规则 · ${current.selectionHistory.length} 次</summary>${current.selectionHistory.map((entry) => `<div><strong>${escape(access.users.find((user) => user.id === entry.userId)?.name || '未记录')} · ${escape(draftTime(entry.at))}</strong><span>${entry.before} 条来源 → ${entry.candidates} 条${entry.recipe.method === 'model' ? '可选记录' : '符合条件'} → 选中 ${entry.selectedKeys.length} 条 → 新增 ${entry.added} 条</span><small>${escape(selectionRecipeLabel(entry.recipe))}${entry.recipe.method === 'model' ? ` · 条件筛选后 ${entry.filteredCount} 条 · 未评测 ${entry.unscoredCount} 条` : ''}</small><small>${entry.recipe.rules.map((rule) => `${escape(selectionFields.find((field) => field.value === rule.field)?.label || rule.field.replace('meta:', 'Metadata · '))} ${selectionOperators[rule.operator]} ${escape(rule.value)}`).join('；') || '未设置筛选条件'} · 已有 ${entry.skipped} 条跳过</small></div>`).join('')}</details>` : '');
       }
-      Object.assign(baseActions, { selectionFile, selectionFiles, selectionSet, selectionInput, selectionRuleInput, selectionRuleAdd, selectionRuleSet, selectionRuleRemove, selectionGenerate, selectionToggle, selectionView, selectionQuery, selectionPage, selectionConfirm, selectionReconfirm });
+      Object.assign(baseActions, { selectionFile, selectionFiles, selectionSet, selectionInput, selectionRuleInput, selectionRuleAdd, selectionRuleSet, selectionRuleRemove, selectionGenerate, selectionToggle, selectionView, selectionQuery, selectionPage, selectionConfirm, selectionReconfirm, selectionShowRecord, selectionCloseRecord });
       const selectionOpenModal = baseActions.openModal;
-      baseActions.openModal = (...args) => { if (['set', 'iterate'].includes(args[0])) selectionInvalidate(); return selectionOpenModal(...args); };
+      baseActions.openModal = (...args) => { if (['set', 'iterate'].includes(args[0])) selectionInvalidate(true); return selectionOpenModal(...args); };
       selectionFixture();
 
       render();
