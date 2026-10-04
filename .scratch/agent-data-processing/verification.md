@@ -87,3 +87,19 @@
 - 后端类型、受影响 lint、23 文件 142 项单元通过；前端未新增源码改动。
 - Standards 未发现违规；Spec 提出的“一律按当前对象重读”提示歧义已修正为仅针对误读，明确指定其他对象时遵从用户指定。
 - 终态证据：`evidence/assistant-focus-http.log`、`evidence/assistant-focus-static.log`。固定代码提交后的真实 Qwen 原会话与新会话复验仍待完成，不以此替代人工验收。
+
+### 固定应用代码的真实模型与浏览器闭环
+
+应用代码 `3b7706873576eae829d58dbe701478b45c4a6802`，2026-10-04。真实端点 Qwen 配合现有独立模型 Worker；操作经 Computer Use 完成，未以假模型回归替代此项证明。
+
+| 流程 | 实际结果 |
+| --- | --- |
+| 原会话 4 | 正确读取原“邹豪”草稿 10 条；改写候选 10 条、原 Metadata 保留；确认采用后仍为 10 条；发布“邹豪 · v1” |
+| 新会话 5 | 建立“助手连续流程复验”；随机选取、确认加入 3 条；仅用“刚才的这3条”定位；改写、预览、采纳及发布 v1；4 个回合均成功 |
+| 真实结果 | 两个正式版本的正文、期望输出、Metadata 与已采纳草稿逐条一致；两个确认重放返回同一版本；数据库各只有 1 个正式版本 |
+| 保留与隔离 | 未重置数据库，旧同名空草稿保持 0 条、revision 0；仍为 1 项目、2 账号；仅更新 Web，其他验收服务与正式 Web/Worker 的镜像及启动时间保持原状；main/origin/main 不变 |
+| 失败边界 | 原会话发布请求有 1 次模型响应失败，工具为空、未产生发布副作用；明确重发后成功。具体供应商/SDK 原因未定位，不宣称全程无失败或模型服务始终可用 |
+
+当前固定运行提交健康就绪，人工验收 pending。截图及脱敏事实保存在 `evidence/session4-real-qwen-preview.png`、`session4-real-published-version.png`、`fresh-session-real-preview.png`、`assistant-final-real-flow.json`；原会话及新会话完整记录、发布重放另保存 JSON 证据。后续验证记录若单独提交，不改已验证应用源码；运行环境仍需核对实际 SHA。
+
+本次必要命令：`vitest run tests/integration/project-assistant.test.ts tests/unit/validator.test.ts`（隔离 PostgreSQL/MinIO，42/42），`tsc --noEmit`、`eslint src/assistant/agent.ts tests/integration/project-assistant.test.ts`、`vitest run tests/unit`（142/142），已有资源限制的 `docker build`（正式前端及服务端构建），服务器仓库内 `node scripts/check-docs.mjs`（38 条历史 Ticket）。未重复全站 E2E 或压力测试：本次新增源码只涉及助手上下文与读取结果；前端面板此前 8/8，真实浏览器补齐连续业务链，未改变前端源码。
