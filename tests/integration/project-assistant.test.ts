@@ -351,6 +351,7 @@ describe("project assistant public contract", () => {
     });
     expect(derived.statusCode, derived.body).toBe(201);
     const derivedId = derived.json().draft.id;
+    const requestStart = calls.length;
     requestedTool = {
       name: "query_project",
       input: { kind: "versions", search: "助手创建的测试集" },
@@ -400,6 +401,27 @@ describe("project assistant public contract", () => {
         }),
       }),
     );
+    const wire = calls[requestStart];
+    expect(wire.tool_choice).toBe("required");
+    const historyResults = wire.messages.filter((m: any) => m.role === "tool");
+    expect(historyResults.length).toBeGreaterThan(0);
+    for (const result of historyResults)
+      expect(
+        wire.messages.some(
+          (m: any) =>
+            m.role === "assistant" &&
+            m.tool_calls?.some((call: any) => call.id === result.tool_call_id),
+        ),
+      ).toBe(true);
+    expect(
+      wire.messages
+        .filter((m: any) => m.role === "assistant")
+        .some(
+          (m: any) =>
+            typeof m.content === "string" &&
+            m.content.includes("真实操作记录："),
+        ),
+    ).toBe(false);
     const db = createPool(databaseUrl);
     try {
       expect(
