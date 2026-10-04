@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { MessageSquare, Plus, Send } from "lucide-react";
@@ -31,6 +31,8 @@ type ToolResult = {
     draftId?: string;
     runId?: string;
     selectedCount?: number;
+    inputCount?: number;
+    total?: number;
     requiresUserConfirmation?: boolean;
   };
   error?: { code: string };
@@ -50,8 +52,39 @@ type Proposal = {
   summary: { title?: string; target?: string; count?: number; revision?: number; url?: string };
   status: string;
   expires_at: string;
+  receipt?: {
+    receipt?: { draftId?: string; added?: number; adopted?: number; changedFields?: number };
+    testSet?: { id: string };
+    version?: { id: string; label: string; recordCount: number };
+  };
 };
-type Conversation = { sessionId: string; turns: Turn[]; proposals: Proposal[] };
+type Conversation = {
+  sessionId: string;
+  turns: Turn[];
+  proposals: Proposal[];
+  context?: {
+    focusDraft?: string;
+    drafts?: { ref: string; name: string; recordCount: number }[];
+    pageObject?: { kind: string; name: string; recordCount?: number; label?: string };
+  };
+};
+export type AssistantPageContext = { kind: "draft" | "asset" | "version" | "testSet"; id: string };
+type PageData = {
+  draft?: { name: string };
+  testSet?: { name: string };
+  version?: { id: string; label: string; recordCount: number };
+  fileName?: string;
+  recordCount?: number;
+  total?: number;
+};
+type Submission = {
+  message: string;
+  key: string;
+  sessionId?: string | undefined;
+  context?: AssistantPageContext | undefined;
+  turnId?: string;
+  status: "submitting" | "accepted" | "failed";
+};
 const toolLabels: Record<string, string> = {
   query_project: "查询项目",
   read_records: "读取记录",
@@ -77,6 +110,11 @@ const messages: Record<string, string> = {
   draft_field_conflict: "同一字段已有新修改，未覆盖当前内容。",
   model_connection_unavailable: "请管理员先在设置中启用模型连接。",
   assistant_not_found: "当前会话不可访问。",
+  assistant_reference_invalid: "对象引用无效，请重新查询或明确选择目标。",
+  assistant_source_invalid: "缺少来源，请明确文件、草稿或版本。",
+  processing_scope_invalid: "尚未确定处理记录，请明确范围。",
+  processing_still_running: "处理任务仍在运行，可在任务卡中查看进度。",
+  processing_not_found: "当前任务不可访问，或来源已被删除。",
 };
 const errorText = (error: unknown) =>
   messages[error instanceof Error ? error.message : ""] ?? "操作未完成，请重试。输入已保留。";
@@ -87,30 +125,96 @@ const post = <T,>(path: string, body: unknown, key?: string) =>
     body: JSON.stringify(body),
   });
 
-export function ProjectAssistant({ projectId }: { projectId: string }) {
+export function ProjectAssistant({
+  projectId,
+  pageContext,
+  canWrite,
+}: {
+  projectId: string;
+  pageContext?: AssistantPageContext | undefined;
+  canWrite: boolean;
+}) {
   const [open, setOpen] = useState(false),
     [selectedSession, setSelectedSession] = useState<string>(),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const submitted = useRef<{ message: string; key: string } | null>(null),
-    queryClient = useQueryClient();
+    [error, setError] = useState(""),
+    [pendingSubmissions, setPendingSubmissions] = useState<Record<string, Submission>>({});
+  const queryClient = useQueryClient(),
+    historyRef = useRef<HTMLDivElement>(null),
+    contentRef = useRef<HTMLDivElement>(null),
+    follow = useRef(true),
+    lastSession = useRef<string | undefined>(undefined);
+  const pageData = useSyncExternalStore(
+    (notify) => queryClient.getQueryCache().subscribe(notify),
+    () => {
+      if (!pageContext) return undefined;
+      const prefix =
+        pageContext.kind === "draft"
+          ? "shared-draft"
+          : pageContext.kind === "asset"
+            ? "material-file"
+            : "solo-test-set-version";
+      return queryClient
+        .getQueriesData<PageData>({ queryKey: [prefix, projectId] })
+        .find(
+          ([key, value]) =>
+            value &&
+            key[pageContext.kind === "asset" || pageContext.kind === "version" ? 3 : 2] ===
+              pageContext.id,
+        )?.[1];
+    },
+    () => undefined,
+  );
   const base = `/api/projects/${encodeURIComponent(projectId)}/assistant`;
   const sessions = useQuery({
     queryKey: ["assistant-sessions", projectId],
-    queryFn: () => request<{ sessions: { id: string; updated_at: string }[] }>(`${base}/sessions`),
+    queryFn: () =>
+      request<{ sessions: { id: string; ordinal: number; updated_at: string }[] }>(
+        `${base}/sessions`,
+      ),
     enabled: open,
   });
   const sessionId = selectedSession ?? sessions.data?.sessions[0]?.id;
   const conversation = useQuery({
-    queryKey: ["assistant-conversation", projectId, sessionId],
+    queryKey: ["assistant-conversation", projectId, sessionId, canWrite],
     queryFn: () => request<Conversation>(`${base}/sessions/${encodeURIComponent(sessionId!)}`),
     enabled: open && Boolean(sessionId),
     retry: false,
     refetchInterval: (q) =>
       q.state.data?.turns.some((t) => t.status === "running") ? 1500 : false,
   });
-  const running = conversation.data?.turns.some((t) => t.status === "running") ?? false;
+  const visible = conversation.error ? undefined : conversation.data;
+  const pending = pendingSubmissions[sessionId ?? "new"];
+  function setPending(submission: Submission) {
+    setPendingSubmissions((current) => {
+      const next = { ...current, [submission.sessionId ?? "new"]: submission };
+      if (submission.sessionId && next["new"]?.key === submission.key) delete next["new"];
+      return next;
+    });
+  }
+  const running = visible?.turns.some((t) => t.status === "running") ?? false;
+  useLayoutEffect(() => {
+    if (!selectedSession && sessionId) setSelectedSession(sessionId);
+    if (lastSession.current !== sessionId) follow.current = true;
+    lastSession.current = sessionId;
+    const scroll = () => {
+      if (follow.current && historyRef.current)
+        historyRef.current.scrollTop = historyRef.current.scrollHeight;
+    };
+    scroll();
+    const observer = new ResizeObserver(scroll);
+    if (contentRef.current) observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [open, sessionId, selectedSession]);
+  const focus = visible?.context?.drafts?.find((d) => d.ref === visible?.context?.focusDraft);
+  const currentName = pageData?.draft?.name ?? pageData?.testSet?.name ?? pageData?.fileName;
+  const currentCount = pageData?.total ?? pageData?.version?.recordCount ?? pageData?.recordCount;
+  const currentLabel = pageContext
+    ? `当前${pageContext.kind === "draft" ? "草稿" : pageContext.kind === "asset" ? "原始数据" : pageContext.kind === "version" ? "版本" : "测试集"}：${currentName ?? "正在定位…"}${pageData?.version?.label ? ` · ${pageData.version.label}` : ""}${currentCount !== undefined ? ` · ${currentCount} 条记录` : ""}`
+    : focus
+      ? `当前草稿：${focus.name} · ${focus.recordCount} 条记录`
+      : undefined;
   const validLink = (url: string | undefined) =>
     url?.startsWith(`/projects/${projectId}/`) ? url : undefined;
   async function createSession() {
@@ -119,21 +223,45 @@ export function ProjectAssistant({ projectId }: { projectId: string }) {
     await sessions.refetch();
     return value.sessionId;
   }
-  async function send() {
-    if (!message.trim() || busy || running) return;
+  async function send(retry?: Submission) {
+    const text = retry?.message ?? message;
+    if (!text.trim() || busy || running) return;
     setBusy(true);
     setError("");
+    follow.current = true;
+    const retrySame =
+      pending?.status === "failed" &&
+      pending.message === text &&
+      pending.sessionId === sessionId &&
+      JSON.stringify(pending.context) === JSON.stringify(pageContext);
+    const submission: Submission =
+      retry ??
+      (retrySame
+        ? pending!
+        : {
+            message: text,
+            key: crypto.randomUUID(),
+            sessionId,
+            context: pageContext,
+            status: "submitting",
+          });
+    setPending({ ...submission, status: "submitting" });
     try {
-      const id = sessionId ?? (await createSession());
-      if (submitted.current?.message !== message)
-        submitted.current = { message, key: crypto.randomUUID() };
-      await post(`${base}/sessions/${id}/turns`, { message }, submitted.current!.key);
-      setMessage("");
-      submitted.current = null;
+      const id = submission.sessionId ?? (await createSession());
+      submission.sessionId = id;
+      setPending({ ...submission, status: "submitting" });
+      const result = await post<{ turnId: string }>(
+        `${base}/sessions/${id}/turns`,
+        { message: text, ...(submission.context ? { context: submission.context } : {}) },
+        submission.key,
+      );
+      setMessage((current) => (current === text ? "" : current));
+      setPending({ ...submission, turnId: result.turnId, status: "accepted" });
       await queryClient.invalidateQueries({ queryKey: ["assistant-conversation", projectId, id] });
       await sessions.refetch();
     } catch (e) {
       setError(errorText(e));
+      setPending({ ...submission, status: "failed" });
     } finally {
       setBusy(false);
     }
@@ -183,9 +311,9 @@ export function ProjectAssistant({ projectId }: { projectId: string }) {
               <SelectValue placeholder="新会话" />
             </SelectTrigger>
             <SelectContent>
-              {sessions.data?.sessions.map((s, index) => (
+              {sessions.data?.sessions.map((s) => (
                 <SelectItem value={s.id} key={s.id}>
-                  会话 {sessions.data!.sessions.length - index} ·{" "}
+                  会话 {s.ordinal} ·{" "}
                   {new Date(s.updated_at).toLocaleString("zh-CN", {
                     month: "numeric",
                     day: "numeric",
@@ -216,133 +344,223 @@ export function ProjectAssistant({ projectId }: { projectId: string }) {
             新会话
           </Button>
         </div>
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5" aria-live="polite">
-          {(sessions.error || conversation.error) && (
-            <p role="alert" className="text-sm text-destructive">
-              {errorText(conversation.error ?? sessions.error)}
-            </p>
-          )}
-          {conversation.isLoading && sessionId ? (
-            <p className="text-sm text-muted-foreground">正在读取会话…</p>
-          ) : null}
-          {!conversation.data?.turns.length && !conversation.error && (
-            <div className="rounded-md border bg-card p-5 text-sm shadow-sm">
-              <h3 className="font-semibold">从当前项目开始</h3>
-              <p className="mt-2 leading-6 text-muted-foreground">
-                例如：“列出项目里的原始文件”“创建一个意图识别测试集草稿”“把这个草稿的问题改写得更自然，保留答案和
-                Metadata”。
+        {currentLabel && (
+          <p className="border-b px-5 py-3 text-sm text-muted-foreground">{currentLabel}</p>
+        )}
+        <div
+          ref={historyRef}
+          role="log"
+          aria-label="助手消息"
+          className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            follow.current = el.scrollHeight - el.clientHeight - el.scrollTop < 80;
+          }}
+        >
+          <div ref={contentRef} className="space-y-5">
+            {(sessions.error || conversation.error) && (
+              <p role="alert" className="text-sm text-destructive">
+                {errorText(conversation.error ?? sessions.error)}
               </p>
-              <p className="mt-3 text-xs text-muted-foreground">
-                范围不清楚时，助手会先询问。处理结果可以先预览，再决定是否采用。
-              </p>
-            </div>
-          )}
-          {conversation.data?.turns.map((turn) => (
-            <section key={turn.id} className="space-y-3">
-              {turn.userText && (
-                <div className="ml-8 rounded-md bg-muted p-3 text-sm">
-                  <p className="mb-1 text-xs text-muted-foreground">你</p>
-                  <p className="whitespace-pre-wrap break-words">{turn.userText}</p>
+            )}
+            {conversation.isLoading && sessionId ? (
+              <p className="text-sm text-muted-foreground">正在读取会话…</p>
+            ) : null}
+            {!sessions.isPending &&
+              !(sessionId && conversation.isPending) &&
+              !(pending && (!pending.sessionId || pending.sessionId === sessionId)) &&
+              !visible?.turns.length &&
+              !conversation.error && (
+                <div className="rounded-md border bg-card p-5 text-sm shadow-sm">
+                  <h3 className="font-semibold">从当前项目开始</h3>
+                  <p className="mt-2 leading-6 text-muted-foreground">
+                    例如：“列出项目里的原始文件”“创建一个意图识别测试集草稿”“把这个草稿的问题改写得更自然，保留答案和
+                    Metadata”。
+                  </p>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    范围不清楚时，助手会先询问。处理结果可以先预览，再决定是否采用。
+                  </p>
                 </div>
               )}
-              <div className="space-y-3 text-sm">
-                <p className="font-medium">项目助手</p>
-                {turn.assistantText && (
-                  <p className="whitespace-pre-wrap break-words leading-6">{turn.assistantText}</p>
+            {visible?.turns.map((turn) => (
+              <section key={turn.id} className="space-y-3">
+                {turn.userText && (
+                  <div className="ml-8 rounded-md bg-muted p-3 text-sm">
+                    <p className="mb-1 text-xs text-muted-foreground">你</p>
+                    <p className="whitespace-pre-wrap break-words">{turn.userText}</p>
+                  </div>
                 )}
-                {turn.status === "running" && (
-                  <p className="text-muted-foreground">正在处理… 关闭面板后可再回来查看结果。</p>
-                )}
-                {turn.errorCode && (
-                  <p role="alert" className="text-destructive">
-                    {messages[turn.errorCode] ?? "本轮未完成，请核对已执行的操作后再试。"}
-                  </p>
-                )}
-                {turn.tools
-                  .filter((t) => !t.result?.requiresUserConfirmation)
-                  .map((item, index) => (
-                    <div
-                      key={`${item.key}:${index}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
-                    >
-                      <span>
-                        {toolLabels[item.name] ?? "操作"} ·{" "}
-                        {item.status === "succeeded"
-                          ? "已完成"
-                          : item.status === "started"
-                            ? "已发起，待核对"
-                            : "未完成"}
-                        {item.result?.name ? ` · ${item.result.name}` : ""}
-                      </span>
-                      {validLink(item.result?.url) && (
-                        <Link
-                          to={validLink(item.result?.url)!}
-                          className="text-primary underline-offset-4 hover:underline"
-                          onClick={() => setOpen(false)}
-                        >
-                          查看结果
-                        </Link>
-                      )}
-                    </div>
-                  ))}
-                {conversation.data?.proposals
-                  .filter((p) => p.turn_id === turn.id && p.status !== "invalid")
-                  .map((p) => (
-                    <div key={p.id} className="space-y-3 rounded-md border bg-card p-4 shadow-sm">
-                      <h4 className="font-semibold">{p.summary.title}</h4>
-                      <p className="break-words text-muted-foreground">
-                        {p.summary.target} · {p.summary.count ?? 0} 条记录
-                        {p.summary.revision !== undefined
-                          ? ` · 草稿修订 ${p.summary.revision}`
-                          : ""}
-                      </p>
-                      {p.status === "pending" ? (
-                        <>
-                          <p className="text-xs text-muted-foreground">
-                            确认将执行以上操作；范围变化后需要重新核对。
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              disabled={busy || new Date(p.expires_at).getTime() <= Date.now()}
-                              onClick={() => void confirm(p.id, "confirm")}
-                            >
-                              确认{p.action === "publish" ? "发布" : "采用"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => void confirm(p.id, "reject")}
-                            >
-                              暂不执行
-                            </Button>
-                            {validLink(p.summary.url) && (
-                              <Button size="sm" variant="ghost" asChild>
-                                <Link to={validLink(p.summary.url)!} onClick={() => setOpen(false)}>
-                                  查看内容
-                                </Link>
-                              </Button>
-                            )}
-                          </div>
-                          {new Date(p.expires_at).getTime() <= Date.now() && (
-                            <p className="text-xs text-destructive">确认已过期，请重新生成。</p>
-                          )}
-                        </>
+                <div className="space-y-3 text-sm">
+                  <p className="font-medium">项目助手</p>
+                  {turn.assistantText && (
+                    <p className="whitespace-pre-wrap break-words leading-6">
+                      {turn.assistantText}
+                    </p>
+                  )}
+                  {turn.status === "running" && (
+                    <p className="text-muted-foreground">正在处理… 关闭面板后可再回来查看结果。</p>
+                  )}
+                  {turn.errorCode && (
+                    <p role="alert" className="text-destructive">
+                      {messages[turn.errorCode] ?? "本轮未完成，请核对已执行的操作后再试。"}
+                    </p>
+                  )}
+                  {turn.tools
+                    .filter((t) => !t.result?.requiresUserConfirmation)
+                    .map((item, index) =>
+                      item.name === "submit_processing" &&
+                      item.status === "succeeded" &&
+                      item.result?.runId ? (
+                        <ProcessingTaskCard
+                          key={`${item.key}:${index}`}
+                          projectId={projectId}
+                          runId={item.result.runId}
+                          open={open}
+                          onNavigate={() => setOpen(false)}
+                        />
                       ) : (
-                        <p className="text-muted-foreground">
-                          {p.status === "succeeded"
-                            ? "已完成"
-                            : p.status === "executing"
-                              ? "正在提交…"
-                              : "已取消"}
+                        <div
+                          key={`${item.key}:${index}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
+                        >
+                          <span>
+                            {toolLabels[item.name] ?? "操作"} ·{" "}
+                            {item.status === "succeeded"
+                              ? "已完成"
+                              : item.status === "started"
+                                ? "已发起，待核对"
+                                : "未完成"}
+                            {item.result?.name ? ` · ${item.result.name}` : ""}
+                            {item.status === "failed" && (
+                              <span className="block text-xs text-destructive">
+                                {messages[item.error?.code ?? ""] ??
+                                  "操作未完成，请核对范围后重试。"}
+                              </span>
+                            )}
+                          </span>
+                          {validLink(item.result?.url) && (
+                            <Link
+                              to={validLink(item.result?.url)!}
+                              className="text-primary underline-offset-4 hover:underline"
+                              onClick={() => setOpen(false)}
+                            >
+                              查看结果
+                            </Link>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  {visible?.proposals
+                    .filter((p) => p.turn_id === turn.id && p.status !== "invalid")
+                    .map((p) => (
+                      <div key={p.id} className="space-y-3 rounded-md border bg-card p-4 shadow-sm">
+                        <h4 className="font-semibold">{p.summary.title}</h4>
+                        <p className="break-words text-muted-foreground">
+                          {p.summary.target} · {p.summary.count ?? 0} 条记录
+                          {p.summary.revision !== undefined
+                            ? ` · 草稿修订 ${p.summary.revision}`
+                            : ""}
                         </p>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </section>
-          ))}
+                        {p.status === "pending" ? (
+                          <>
+                            <p className="text-xs text-muted-foreground">
+                              确认将执行以上操作；范围变化后需要重新核对。
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                disabled={busy || new Date(p.expires_at).getTime() <= Date.now()}
+                                onClick={() => void confirm(p.id, "confirm")}
+                              >
+                                确认{p.action === "publish" ? "发布" : "采用"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => void confirm(p.id, "reject")}
+                              >
+                                暂不执行
+                              </Button>
+                              {validLink(p.summary.url) && (
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link
+                                    to={validLink(p.summary.url)!}
+                                    onClick={() => setOpen(false)}
+                                  >
+                                    查看内容
+                                  </Link>
+                                </Button>
+                              )}
+                            </div>
+                            {new Date(p.expires_at).getTime() <= Date.now() && (
+                              <p className="text-xs text-destructive">确认已过期，请重新生成。</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-muted-foreground">
+                            {p.status === "succeeded"
+                              ? p.action === "publish"
+                                ? `已发布${p.receipt?.version?.label ? ` · ${p.receipt.version.label}` : ""}`
+                                : p.action === "processing"
+                                  ? `已采用${p.receipt?.receipt?.adopted !== undefined ? ` · ${p.receipt.receipt.adopted} 条记录` : ""}`
+                                  : `已加入草稿${p.receipt?.receipt?.added !== undefined ? ` · 新增 ${p.receipt.receipt.added} 条记录` : ""}`
+                              : p.status === "executing"
+                                ? "正在提交…"
+                                : "已取消"}
+                          </p>
+                        )}
+                        {p.status === "succeeded" &&
+                          (p.receipt?.testSet && p.receipt.version ? (
+                            <Link
+                              to="/projects/$projectId/test-sets/$testSetId"
+                              params={{ projectId, testSetId: p.receipt.testSet.id }}
+                              search={{ version: p.receipt.version.id }}
+                              className="inline-block text-primary hover:underline"
+                              onClick={() => setOpen(false)}
+                            >
+                              查看已发布版本
+                            </Link>
+                          ) : validLink(p.summary.url) ? (
+                            <Link
+                              to={p.summary.url!}
+                              className="inline-block text-primary hover:underline"
+                              onClick={() => setOpen(false)}
+                            >
+                              查看结果
+                            </Link>
+                          ) : null)}
+                      </div>
+                    ))}
+                </div>
+              </section>
+            ))}
+            {pending &&
+              (!pending.sessionId || pending.sessionId === sessionId) &&
+              !visible?.turns.some((t) => t.id === pending.turnId) && (
+                <div className="ml-8 space-y-2 rounded-md bg-muted p-3 text-sm">
+                  <p className="text-xs text-muted-foreground">你</p>
+                  <p className="whitespace-pre-wrap break-words">{pending.message}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {pending.status === "failed"
+                      ? "提交尚未确认，消息已保留。"
+                      : pending.status === "accepted"
+                        ? "已受理，正在处理…"
+                        : "正在提交…"}
+                  </p>
+                  {pending.status === "failed" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || running}
+                      onClick={() => void send(pending)}
+                    >
+                      重新提交这条
+                    </Button>
+                  )}
+                </div>
+              )}
+          </div>
         </div>
         <form
           className="space-y-3 border-t bg-background px-5 py-4"
@@ -377,7 +595,14 @@ export function ProjectAssistant({ projectId }: { projectId: string }) {
             <span className="text-xs text-muted-foreground">Ctrl / ⌘ + Enter 发送</span>
             <Button
               type="submit"
-              disabled={busy || running || !message.trim() || Boolean(conversation.error)}
+              disabled={
+                busy ||
+                running ||
+                !message.trim() ||
+                sessions.isPending ||
+                Boolean(sessionId && conversation.isPending) ||
+                Boolean(conversation.error)
+              }
             >
               <Send className="size-4" />
               {busy ? "正在提交…" : "发送"}
@@ -386,5 +611,81 @@ export function ProjectAssistant({ projectId }: { projectId: string }) {
         </form>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ProcessingTaskCard({
+  projectId,
+  runId,
+  open,
+  onNavigate,
+}: {
+  projectId: string;
+  runId: string;
+  open: boolean;
+  onNavigate: () => void;
+}) {
+  const task = useQuery({
+    queryKey: ["assistant-processing-run", projectId, runId],
+    queryFn: () =>
+      request<{
+        run: {
+          status: string;
+          inputCount: number;
+          progress: number;
+          partial?: boolean;
+          errorCode?: string;
+          options: { operation: string };
+        };
+        total: number;
+      }>(
+        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}?limit=1`,
+      ),
+    enabled: open,
+    retry: false,
+    refetchInterval: (q) =>
+      ["queued", "running", "retry_wait", "cancel_requested"].includes(
+        q.state.data?.run.status ?? "",
+      )
+        ? 2000
+        : false,
+  });
+  const run = task.data?.run,
+    done = run && ["succeeded", "failed", "cancelled"].includes(run.status);
+  const statuses: Record<string, string> = {
+    queued: "等待中",
+    running: "处理中",
+    retry_wait: "等待重试",
+    succeeded: "已完成",
+    failed: "失败",
+    cancel_requested: "正在取消",
+    cancelled: "已取消",
+  };
+  const operations: Record<string, string> = { clean: "清洗", rewrite: "改写", augment: "扩充" };
+  return (
+    <div className="space-y-2 rounded-md border bg-card px-3 py-3">
+      <p>
+        {run
+          ? `${operations[run.options.operation] ?? "数据处理"} · ${run.partial ? "部分成功" : (statuses[run.status] ?? run.status)} · ${done ? `${task.data!.total} 条有效结果` : `${run.inputCount} 条输入`}`
+          : "处理任务已提交，正在读取进度…"}
+      </p>
+      {run?.status === "running" && (
+        <p className="text-xs text-muted-foreground">进度 {Math.round(run.progress)}%</p>
+      )}
+      {task.error && (
+        <p role="alert" className="text-xs text-destructive">
+          {errorText(task.error)}
+        </p>
+      )}
+      <Link
+        to="/projects/$projectId/processing"
+        params={{ projectId }}
+        search={{ source: undefined, sourceId: undefined, run: runId }}
+        onClick={onNavigate}
+        className="inline-block text-sm text-primary hover:underline"
+      >
+        {done && task.data!.total > 0 ? "预览结果" : "查看任务"}
+      </Link>
+    </div>
   );
 }

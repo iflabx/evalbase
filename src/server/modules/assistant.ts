@@ -12,6 +12,7 @@ import {
   executeAssistantTurn,
   type DraftCommand,
 } from "../../assistant/agent.js";
+import { assistantContext } from "../../assistant/context.js";
 import {
   assistantAccess,
   AssistantError,
@@ -105,7 +106,7 @@ export function registerAssistant({
         return {
           sessions: (
             await db.query(
-              "SELECT id,created_at,updated_at FROM assistant_session WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC LIMIT 50",
+              "SELECT id,created_at,updated_at,(row_number() OVER(ORDER BY created_at,id))::int AS ordinal FROM assistant_session WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC LIMIT 50",
               [context.projectId, context.actorId],
             )
           ).rows,
@@ -136,9 +137,24 @@ export function registerAssistant({
     `${path}/sessions/:sessionId`,
     { preHandler: authenticate },
     async (request, reply) =>
-      respond(reply, () =>
-        readSession(db, scope(request), request.params.sessionId),
-      ),
+      respond(reply, async () => {
+        const currentScope = scope(request);
+        return readSession(
+          db,
+          currentScope,
+          request.params.sessionId,
+          async () => {
+            const context = await assistantContext(
+              db,
+              currentScope,
+              request.params.sessionId,
+            );
+            await assistantAccess(db, currentScope, context.drafts.length > 0);
+            await dependenciesAvailable(db, currentScope, context.dependencies);
+            return context.state;
+          },
+        );
+      }),
   );
   app.post<{ Params: Params; Body: unknown }>(
     `${path}/sessions/:sessionId/turns`,
@@ -148,7 +164,9 @@ export function registerAssistant({
       return respond(reply, async () => {
         if (
           !isPlainObject(request.body) ||
-          Object.keys(request.body).some((k) => k !== "message")
+          Object.keys(request.body).some(
+            (k) => !["message", "context"].includes(k),
+          )
         )
           throw new AssistantError(422, "assistant_message_invalid");
         const context = scope(request),
@@ -158,6 +176,7 @@ export function registerAssistant({
             request.params.sessionId,
             request.headers["idempotency-key"],
             request.body.message,
+            request.body.context,
           );
         if (!started.replayed) {
           const work = executeAssistantTurn(

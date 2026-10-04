@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as contextModule from "../../src/assistant/context.js";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
 import { createPool } from "../../src/db/pool.js";
 import { migrate } from "../../src/db/migrate.js";
@@ -177,12 +178,12 @@ describe("project assistant public contract", () => {
       url: `${base()}/sessions/${sessionId}`,
       headers,
     });
-  async function send(message: string) {
+  async function send(message: string, context?: { kind: string; id: string }) {
     const result = await app.inject({
       method: "POST",
       url: `${base()}/sessions/${sessionId}/turns`,
       headers: { ...headers, "idempotency-key": randomUUID() },
-      payload: { message },
+      payload: { message, ...(context ? { context } : {}) },
     });
     expect(result.statusCode, result.body).toBe(202);
     await expect
@@ -636,6 +637,214 @@ describe("project assistant public contract", () => {
     sessionId = originalSession;
     expect((await read()).json().turns[0].userText).toBeTruthy();
   });
+  it("does not return captured history when deletion finishes during context assembly", async () => {
+    const originalSession = sessionId;
+    const fresh = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions`,
+      headers,
+      payload: {},
+    });
+    sessionId = fresh.json().sessionId;
+    requestedTool = {
+      name: "create_draft",
+      input: { name: "删除竞态验证草稿" },
+    };
+    const state = (await send("创建删除竞态验证草稿")).json();
+    const created = state.turns[0].tools[0].result.draftId;
+    const originalContext = contextModule.assistantContext;
+    const spy = vi
+      .spyOn(contextModule, "assistantContext")
+      .mockImplementationOnce(async (...args) => {
+        const deleted = await app.inject({
+          method: "DELETE",
+          url: `/api/projects/${projectId}/collaborative-drafts/${created}`,
+          headers,
+        });
+        expect(deleted.statusCode, deleted.body).toBe(204);
+        return originalContext(...args);
+      });
+    try {
+      const response = await read();
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json().error.code).toBe("assistant_context_deleted");
+      expect(response.body).not.toContain("创建删除竞态验证草稿");
+    } finally {
+      spy.mockRestore();
+      sessionId = originalSession;
+    }
+  });
+  it("reuses a session-created draft even when it is outside the twenty-object summary", async () => {
+    const originalSession = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    let firstId = "";
+    try {
+      for (let index = 0; index < 21; index++) {
+        requestedTool = {
+          name: "create_draft",
+          input: { name: `摘要边界草稿 ${index}` },
+        };
+        const state = (await send(`创建摘要边界草稿 ${index}`)).json();
+        if (!index) firstId = state.turns[0].tools[0].result.draftId;
+      }
+      requestedTool = {
+        name: "create_draft",
+        input: { name: "摘要边界草稿 0" },
+      };
+      const state = (await send("继续摘要边界草稿 0")).json();
+      expect(state.turns.at(-1).tools[0].result).toMatchObject({
+        draftId: firstId,
+        reused: true,
+      });
+    } finally {
+      sessionId = originalSession;
+    }
+  }, 60000);
+  it("binds the current page to the authorized turn without trusting client history or shifting session numbers", async () => {
+    const originalSession = sessionId;
+    try {
+      const draft = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "当前页面草稿" },
+        })
+      ).json().draft;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const sessionsBefore = (
+        await app.inject({ method: "GET", url: `${base()}/sessions`, headers })
+      ).json().sessions;
+      const ordinal = sessionsBefore.find(
+        (s: any) => s.id === sessionId,
+      ).ordinal;
+      expect(ordinal).toBeGreaterThan(0);
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "draft", id: draft.id } },
+      };
+      const start = calls.length;
+      const reply = await send("读取这个草稿", { kind: "draft", id: draft.id });
+      expect(reply.statusCode, reply.body).toBe(200);
+      const current = JSON.parse(
+        calls[start].messages
+          .find((m: any) => m.role === "system")
+          .content.split("当前业务上下文：\n")[1],
+      );
+      expect(current.pageObject).toMatchObject({
+        kind: "draft",
+        name: draft.name,
+        recordCount: 0,
+      });
+      expect(current.focusDraft).toBe(current.pageObject.ref);
+      requestedTool = {
+        name: "query_project",
+        input: { kind: "drafts", search: "当前页面草稿" },
+      };
+      expect(
+        (await send("查询当前草稿数量")).json().turns.at(-1).tools[0].result
+          .items[0].recordCount,
+      ).toBe(0);
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "draft", id: current.pageObject.ref } },
+      };
+      expect(
+        (await send("继续读取当前记录")).json().turns.at(-1).tools[0],
+      ).toMatchObject({ status: "succeeded", result: { total: 0 } });
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "draft", id: "d:unknown" } },
+      };
+      expect(
+        (await send("未知引用应可恢复")).json().turns.at(-1).tools[0].error
+          .code,
+      ).toBe("assistant_reference_invalid");
+      const sessionsAfter = (
+        await app.inject({ method: "GET", url: `${base()}/sessions`, headers })
+      ).json().sessions;
+      expect(sessionsAfter.find((s: any) => s.id === sessionId).ordinal).toBe(
+        ordinal,
+      );
+      const beforeDenied = calls.length;
+      const denied = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "读取不存在的对象",
+          context: { kind: "draft", id: "another-project-draft" },
+        },
+      });
+      expect(denied.statusCode).toBe(409);
+      expect(calls.length).toBe(beforeDenied);
+      const boundRequest = {
+        method: "POST" as const,
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "读取绑定页面",
+          context: { kind: "draft", id: draft.id },
+        },
+      };
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "draft", id: draft.id } },
+      };
+      const bound = await app.inject(boundRequest);
+      expect(bound.statusCode).toBe(202);
+      expect((await app.inject(boundRequest)).json().turnId).toBe(
+        bound.json().turnId,
+      );
+      expect(
+        (
+          await app.inject({
+            ...boundRequest,
+            payload: {
+              ...boundRequest.payload,
+              context: { kind: "version", id: publishedVersionId },
+            },
+          })
+        ).statusCode,
+      ).toBe(409);
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.find((t: any) => t.id === bound.json().turnId)?.status,
+        )
+        .toBe("succeeded");
+      const beforeInvalid = calls.length;
+      const invalid = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "客户端不能覆盖操作者",
+          context: { kind: "draft", id: draft.id, actorId: "other" },
+        },
+      });
+      expect(invalid.statusCode).toBe(422);
+      expect(calls.length).toBe(beforeInvalid);
+    } finally {
+      sessionId = originalSession;
+    }
+  });
   it("runs processing and selection tools against real domain services, with expiry and revision-bound confirmation", async () => {
     const db = createPool(databaseUrl),
       originalSession = sessionId;
@@ -665,6 +874,16 @@ describe("project assistant public contract", () => {
       const beforeInvalid = (
         await db.query("SELECT count(*)::int AS count FROM processing_run")
       ).rows[0].count;
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "assets" } },
+      };
+      const missingSource = (await send("读取资料但缺少来源引用"))
+        .json()
+        .turns.at(-1);
+      expect(missingSource.tools[0].error.code).toBe(
+        "assistant_source_invalid",
+      );
       requestedTool = {
         name: "submit_processing",
         input: {
@@ -744,6 +963,9 @@ describe("project assistant public contract", () => {
         .proposals.find((p: any) => p.id === proposal.id);
       expect(recovered.status).toBe("succeeded");
       expect(recovered.receipt.receipt.assetId).toBe(assetId);
+      const oldPage = await invoke("create_draft", { name: "旧页面焦点草稿" });
+      requestedTool = { name: "query_project", input: { kind: "drafts" } };
+      await send("读取当前草稿", { kind: "draft", id: oldPage.draftId });
       const target = await invoke("create_draft", { name: "助手筛选草稿" });
       const preview = await invoke("preview_selection", {
         draftId: target.draftId,
@@ -780,6 +1002,51 @@ describe("project assistant public contract", () => {
       ).toBe(0);
       const applied = await confirm(proposal.id);
       expect(applied.statusCode, applied.body).toBe(200);
+      const requestStart = calls.length;
+      await invoke("read_records", {
+        source: { kind: "draft", id: target.draftId },
+      });
+      const contextMessage = calls[requestStart].messages.find(
+        (m: any) =>
+          m.role === "system" &&
+          String(m.content).includes("当前业务上下文：\n"),
+      );
+      expect(
+        contextMessage,
+        "confirmed selection must be visible in the next model turn",
+      ).toBeTruthy();
+      const current = JSON.parse(
+        contextMessage.content.split("当前业务上下文：\n")[1],
+      );
+      const active = current.drafts.find((d: any) => d.name === "助手筛选草稿");
+      expect(active).toMatchObject({ recordCount: 1, revision: 1 });
+      expect(current.focusDraft).toEqual(active.ref);
+      expect(current.confirmedOperations).toContainEqual(
+        expect.objectContaining({
+          action: "selection",
+          status: "succeeded",
+          added: 1,
+          draftRef: active.ref,
+        }),
+      );
+      const beforeReuse = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+        })
+      ).json().drafts.length;
+      const reused = await invoke("create_draft", { name: "助手筛选草稿" });
+      expect(reused).toMatchObject({ draftId: target.draftId, reused: true });
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/collaborative-drafts`,
+            headers,
+          })
+        ).json().drafts,
+      ).toHaveLength(beforeReuse);
       await invoke("request_publish", { draftId: target.draftId });
       proposal = (await read())
         .json()

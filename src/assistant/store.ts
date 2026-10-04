@@ -1,13 +1,14 @@
 import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
-import { opaqueId } from "../server/support.js";
+import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 
 export type AssistantScope = { projectId: string; actorId: string };
 export type Dependency = {
   kind: "asset" | "draft" | "version" | "testSet";
   id: string;
+  focus?: true;
 };
 export class AssistantError extends Error {
   constructor(
@@ -82,6 +83,7 @@ export async function readSession(
   db: Database,
   scope: AssistantScope,
   id: string,
+  readContext?: () => Promise<unknown>,
 ) {
   const session = await sessionRow(db, scope, id);
   await db.query(
@@ -130,6 +132,7 @@ export async function readSession(
       [id, scope.actorId],
     )
   ).rows;
+  const context = await readContext?.();
   await assistantAccess(
     db,
     scope,
@@ -150,6 +153,7 @@ export async function readSession(
       createdAt: t.created_at,
     })),
     proposals,
+    context,
   };
 }
 export async function startTurn(
@@ -158,6 +162,7 @@ export async function startTurn(
   sessionId: string,
   key: unknown,
   text: unknown,
+  pageContext?: unknown,
 ) {
   if (
     typeof key !== "string" ||
@@ -168,6 +173,35 @@ export async function startTurn(
     text.length > 4000
   )
     throw new AssistantError(422, "assistant_message_invalid");
+  let page: Dependency | undefined;
+  if (pageContext !== undefined) {
+    if (
+      !isPlainObject(pageContext) ||
+      Object.keys(pageContext).some((k) => !["kind", "id"].includes(k)) ||
+      !["asset", "draft", "version", "testSet"].includes(
+        String(pageContext.kind),
+      ) ||
+      typeof pageContext.id !== "string" ||
+      !pageContext.id.trim() ||
+      pageContext.id.length > 250
+    )
+      throw new AssistantError(422, "assistant_message_invalid");
+    page = {
+      kind: pageContext.kind as Dependency["kind"],
+      id: pageContext.id,
+      focus: true,
+    };
+    await assistantAccess(db, scope, page.kind === "draft");
+    await dependenciesAvailable(db, scope, [page]);
+  }
+  const requestHash = page
+    ? sha256(
+        canonicalJson({
+          message: text,
+          context: { kind: page.kind, id: page.id },
+        }),
+      )
+    : sha256(text);
   await readSession(db, scope, sessionId);
   const client = await db.connect();
   try {
@@ -183,7 +217,7 @@ export async function startTurn(
       )
     ).rows[0];
     if (prior) {
-      if (prior.request_hash !== sha256(text))
+      if (prior.request_hash !== requestHash)
         throw new AssistantError(409, "idempotency_conflict");
       await client.query("COMMIT");
       return { turn: prior, replayed: true };
@@ -194,7 +228,7 @@ export async function startTurn(
     );
     const turns = (
       await client.query(
-        "SELECT status,dependencies,requires_write FROM assistant_turn WHERE session_id=$1",
+        "SELECT status,dependencies,requires_write FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id",
         [sessionId],
       )
     ).rows;
@@ -210,9 +244,16 @@ export async function startTurn(
       ...new Map(
         turns
           .flatMap((t) => t.dependencies)
-          .map((d: Dependency) => [`${d.kind}:${d.id}`, d]),
+          .map((d: Dependency) => [
+            `${d.kind}:${d.id}`,
+            { kind: d.kind, id: d.id },
+          ]),
       ).values(),
     ];
+    if (page) {
+      await dependenciesAvailable(client, scope, [page]);
+      dependencies.push(page);
+    }
     const active = await client.query(
       "SELECT s.actor_id FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.status='running' AND t.expires_at>now()",
     );
@@ -228,9 +269,9 @@ export async function startTurn(
           opaqueId("turn"),
           sessionId,
           key,
-          sha256(text),
+          requestHash,
           text.trim(),
-          turns.some((t) => t.requires_write),
+          page?.kind === "draft" || turns.some((t) => t.requires_write),
           JSON.stringify(dependencies),
         ],
       )

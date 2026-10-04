@@ -7,7 +7,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 
-import { ProjectAssistant } from "@/components/project-assistant";
+import { ProjectAssistant, type AssistantPageContext } from "@/components/project-assistant";
 import { AccountGate } from "@/components/account-gate";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -75,6 +75,19 @@ function AuthenticatedApp() {
   const access = useProjectAccess(projectId, Boolean(session.data));
   const draftId = location.pathname.match(/\/test-sets\/drafts\/([^/]+)/)?.[1] ?? "";
   const presenceDraftId = access.canWrite ? draftId : "";
+  const assetId = location.pathname.match(/\/files\/([^/]+)/)?.[1];
+  const testSetId = location.pathname.match(/\/test-sets\/([^/]+)$/)?.[1];
+  const pageContext: AssistantPageContext | undefined = draftId
+    ? access.canWrite
+      ? { kind: "draft", id: draftId }
+      : undefined
+    : assetId
+      ? { kind: "asset", id: assetId }
+      : testSetId
+        ? typeof location.search.version === "string"
+          ? { kind: "version", id: location.search.version }
+          : { kind: "testSet", id: testSetId }
+        : undefined;
   const online = useQuery({
     queryKey: ["project-presence", projectId, presenceDraftId],
     queryFn: () => projectPresence(projectId, presenceDraftId || undefined),
@@ -146,8 +159,10 @@ function AuthenticatedApp() {
               <span className="text-sm text-muted-foreground">团队测试资料库</span>
               {projectId && access.data?.capabilities.read && (
                 <ProjectAssistant
-                  key={`${projectId}:${session.data.actor.id}`}
+                  key={`${projectId}:${session.data.actor.id}:${access.canWrite}`}
                   projectId={projectId}
+                  pageContext={pageContext}
+                  canWrite={access.canWrite}
                 />
               )}
               <OnlineAvatars users={users} selfId={session.data.actor.id} className="ml-auto" />
