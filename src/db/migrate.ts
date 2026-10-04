@@ -1689,14 +1689,17 @@ export async function migrate(
       );
     `);
     await client.query(`
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS parent_run_id text REFERENCES processing_run(id);
       ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS execution_config jsonb NOT NULL DEFAULT '{"recipeVersion":"processing-v1","batchSize":20,"maxInputBytesPerBatch":40000,"maxOutputTokens":8192,"batchTimeoutMs":60000,"maxOutputBytes":100000000,"maxAttempts":3}';
       ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS output_bytes bigint NOT NULL DEFAULT 0;
+      ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS result_indices integer[];
       CREATE TABLE IF NOT EXISTS processing_cleanup (
         project_id text NOT NULL, object_ref text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(project_id,object_ref)
       );
       CREATE OR REPLACE FUNCTION purge_processing_run_body() RETURNS trigger AS $$
       BEGIN
         IF OLD.input_ref IS NOT NULL AND NEW.input_ref IS NULL THEN
+          -- Refinements retain the same root source and are purged by the owning source invalidator.
           INSERT INTO processing_cleanup(project_id,object_ref) VALUES(OLD.project_id,OLD.input_ref) ON CONFLICT DO NOTHING;
           INSERT INTO processing_cleanup(project_id,object_ref) SELECT OLD.project_id,result_ref FROM processing_batch
             WHERE run_id=OLD.id AND result_ref IS NOT NULL ON CONFLICT DO NOTHING;
@@ -1757,6 +1760,19 @@ export async function migrate(
         expires_at timestamptz NOT NULL,lease_until timestamptz,receipt jsonb,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(turn_id,digest)
       );
       ALTER TABLE assistant_proposal ADD COLUMN IF NOT EXISTS lease_token text;
+      ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS task jsonb NOT NULL DEFAULT '{}';
+      ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
+      ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT '';
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS event text NOT NULL DEFAULT 'user';
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS execution_token text;
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS execution_attempt integer NOT NULL DEFAULT 0;
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS resuming boolean NOT NULL DEFAULT false;
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS candidate_selection jsonb;
+      ALTER TABLE assistant_turn DROP CONSTRAINT IF EXISTS assistant_turn_status_check;
+      ALTER TABLE assistant_turn ADD CONSTRAINT assistant_turn_status_check CHECK(status IN('queued','running','succeeded','failed','interrupted'));
+      ALTER TABLE assistant_proposal ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
+
       CREATE OR REPLACE FUNCTION purge_project_assistant_body() RETURNS trigger AS $$
       DECLARE affected_project text; affected_kind text; affected_sessions text[];
       BEGIN
@@ -1767,8 +1783,8 @@ export async function migrate(
           WHERE s.project_id=affected_project AND (t.dependencies @> jsonb_build_array(jsonb_build_object('kind',affected_kind,'id',NEW.id))
             OR (TG_TABLE_NAME='test_set_version' AND EXISTS(SELECT 1 FROM collaborative_draft d WHERE d.published_version_id=NEW.id
               AND t.dependencies @> jsonb_build_array(jsonb_build_object('kind','draft','id',d.id)))));
-          UPDATE assistant_session SET content_revision=content_revision+1 WHERE id=ANY(affected_sessions);
-          UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',dependencies='[]',status='interrupted',error_code='assistant_context_deleted'
+          UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=ANY(affected_sessions);
+          UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',dependencies='[]',candidate_selection=NULL,execution_token=NULL,status='interrupted',error_code='assistant_context_deleted'
           WHERE session_id=ANY(affected_sessions);
           UPDATE assistant_proposal SET parameters='{}',summary='{}',receipt=NULL,status='invalid'
           WHERE project_id=affected_project AND session_id=ANY(affected_sessions);

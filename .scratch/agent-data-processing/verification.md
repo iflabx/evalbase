@@ -14,20 +14,20 @@
 
 ## 需求证据索引
 
-| 测试计划编号 | 对应证据 |
-| --- | --- |
-| SEL-1–6 | `tests/unit/data-selection.test.ts`、`tests/integration/data-selection.test.ts`；`frontend-v3/e2e/data-selection.spec.ts`；真实浏览器条件失效、固定预览与确认加入 |
-| CONN-1–2 | `tests/integration/model-connection.test.ts`、`frontend-v3/e2e/model-connection.spec.ts`；真实已保存连接调用 |
-| RAW-1–2 | `tests/integration/raw-material-mapping.test.ts`、既有 material-browser 回归、`frontend-v3/e2e/raw-material-mapping.spec.ts`；真实原件后整理 |
-| RUN-1–3 | `tests/unit/processing-protocol.test.ts`、`tests/integration/processing-runs.test.ts`；真实独立 Worker 与 Qwen 改写/扩充 |
-| APPLY-1–2 | processing-runs、project-assistant 和 v2-collaboration 集成；真实确认采用、发布后 11 条记录 |
-| TRACE-1 | processing-runs 的接受/发布/来源断言；真实父版本 v1 → v2 的新增、处理归属和选取历史；`frontend-v3/e2e/provenance.spec.ts` |
-| DELETE-1 | processing-runs 的回收/删除与迟到写入场景；project-assistant 的关联正文清理、无关会话保留和撤权场景 |
-| AGENT-1–3 | `tests/integration/project-assistant.test.ts` 八项；`frontend-v3/e2e/project-assistant.spec.ts`；真实查询、创建草稿和点击发布确认 |
-| MODEL-1 | 少量合成兼容探针及真实三条改写、一条输入生成三条扩充；输出有语义偏差时人工排除 |
-| UI-1 | 五组新界面浏览器语义/窄屏检查与来源页回归；真实 Computer Use 截图；donor 与冻结原型保持只读 |
-| PERF-1 | 下述受控会话检查；不作为最大容量结论 |
-| HEALTH-1 | 固定提交镜像与健康检查、专属 Compose 项目、一个项目两个账号；具体运行 SHA 和最终状态保存在验收环境证据 |
+| 测试计划编号 | 对应证据                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SEL-1–6      | `tests/unit/data-selection.test.ts`、`tests/integration/data-selection.test.ts`；`frontend-v3/e2e/data-selection.spec.ts`；真实浏览器条件失效、固定预览与确认加入 |
+| CONN-1–2     | `tests/integration/model-connection.test.ts`、`frontend-v3/e2e/model-connection.spec.ts`；真实已保存连接调用                                                      |
+| RAW-1–2      | `tests/integration/raw-material-mapping.test.ts`、既有 material-browser 回归、`frontend-v3/e2e/raw-material-mapping.spec.ts`；真实原件后整理                      |
+| RUN-1–3      | `tests/unit/processing-protocol.test.ts`、`tests/integration/processing-runs.test.ts`；真实独立 Worker 与 Qwen 改写/扩充                                          |
+| APPLY-1–2    | processing-runs、project-assistant 和 v2-collaboration 集成；真实确认采用、发布后 11 条记录                                                                       |
+| TRACE-1      | processing-runs 的接受/发布/来源断言；真实父版本 v1 → v2 的新增、处理归属和选取历史；`frontend-v3/e2e/provenance.spec.ts`                                         |
+| DELETE-1     | processing-runs 的回收/删除与迟到写入场景；project-assistant 的关联正文清理、无关会话保留和撤权场景                                                               |
+| AGENT-1–3    | `tests/integration/project-assistant.test.ts` 八项；`frontend-v3/e2e/project-assistant.spec.ts`；真实查询、创建草稿和点击发布确认                                 |
+| MODEL-1      | 少量合成兼容探针及真实三条改写、一条输入生成三条扩充；输出有语义偏差时人工排除                                                                                    |
+| UI-1         | 五组新界面浏览器语义/窄屏检查与来源页回归；真实 Computer Use 截图；donor 与冻结原型保持只读                                                                       |
+| PERF-1       | 下述受控会话检查；不作为最大容量结论                                                                                                                              |
+| HEALTH-1     | 固定提交镜像与健康检查、专属 Compose 项目、一个项目两个账号；具体运行 SHA 和最终状态保存在验收环境证据                                                            |
 
 命令、完整脱敏日志、截图及运行状态保存于此目录下的 `evidence/`，不纳入源代码提交；测试源码提供可重跑的行为证据。
 
@@ -35,10 +35,10 @@
 
 使用现有管理员/编辑账号创建 2 和 3 个会话，每会话 6 次读取；在一个输入、三个输出的扩充任务入队后立即开始。通过本机 SSH 隧道测量：
 
-| 并发会话 | 请求数 | 错误 | 中位数 | P95 | 最大 |
-| --- | --- | --- | --- | --- | --- |
-| 2 | 12 | 0 | 345 ms | 420.5 ms | 474.9 ms |
-| 3 | 18 | 0 | 416 ms | 487.9 ms | 562 ms |
+| 并发会话 | 请求数 | 错误 | 中位数 | P95      | 最大     |
+| -------- | ------ | ---- | ------ | -------- | -------- |
+| 2        | 12     | 0    | 345 ms | 420.5 ms | 474.9 ms |
+| 3        | 18     | 0    | 416 ms | 487.9 ms | 562 ms   |
 
 同期一次资源采样：Web 124.3 MiB / CPU 4.16%；模型 Worker 89.38 MiB / CPU 0.57%；PostgreSQL 47.73 MiB / CPU 9.67%。这些是小样本与单次资源快照，包含隧道延迟，不证明 10 人容量或持续峰值。未运行 5/10 人压力或两小时稳定性测试。另以编辑账号完成一次草稿用途字段保存，218.8 ms，重新读取确认持久化；该编辑检查单独执行，不称作模型并发压力结果。
 
@@ -92,14 +92,18 @@
 
 应用代码 `3b7706873576eae829d58dbe701478b45c4a6802`，2026-10-04。真实端点 Qwen 配合现有独立模型 Worker；操作经 Computer Use 完成，未以假模型回归替代此项证明。
 
-| 流程 | 实际结果 |
-| --- | --- |
-| 原会话 4 | 正确读取原“邹豪”草稿 10 条；改写候选 10 条、原 Metadata 保留；确认采用后仍为 10 条；发布“邹豪 · v1” |
-| 新会话 5 | 建立“助手连续流程复验”；随机选取、确认加入 3 条；仅用“刚才的这3条”定位；改写、预览、采纳及发布 v1；4 个回合均成功 |
-| 真实结果 | 两个正式版本的正文、期望输出、Metadata 与已采纳草稿逐条一致；两个确认重放返回同一版本；数据库各只有 1 个正式版本 |
+| 流程       | 实际结果                                                                                                                                                        |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 原会话 4   | 正确读取原“邹豪”草稿 10 条；改写候选 10 条、原 Metadata 保留；确认采用后仍为 10 条；发布“邹豪 · v1”                                                             |
+| 新会话 5   | 建立“助手连续流程复验”；随机选取、确认加入 3 条；仅用“刚才的这3条”定位；改写、预览、采纳及发布 v1；4 个回合均成功                                               |
+| 真实结果   | 两个正式版本的正文、期望输出、Metadata 与已采纳草稿逐条一致；两个确认重放返回同一版本；数据库各只有 1 个正式版本                                                |
 | 保留与隔离 | 未重置数据库，旧同名空草稿保持 0 条、revision 0；仍为 1 项目、2 账号；仅更新 Web，其他验收服务与正式 Web/Worker 的镜像及启动时间保持原状；main/origin/main 不变 |
-| 失败边界 | 原会话发布请求有 1 次模型响应失败，工具为空、未产生发布副作用；明确重发后成功。具体供应商/SDK 原因未定位，不宣称全程无失败或模型服务始终可用 |
+| 失败边界   | 原会话发布请求有 1 次模型响应失败，工具为空、未产生发布副作用；明确重发后成功。具体供应商/SDK 原因未定位，不宣称全程无失败或模型服务始终可用                    |
 
 当前固定运行提交健康就绪，人工验收 pending。截图及脱敏事实保存在 `evidence/session4-real-qwen-preview.png`、`session4-real-published-version.png`、`fresh-session-real-preview.png`、`assistant-final-real-flow.json`；原会话及新会话完整记录、发布重放另保存 JSON 证据。后续验证记录若单独提交，不改已验证应用源码；运行环境仍需核对实际 SHA。
 
 本次必要命令：`vitest run tests/integration/project-assistant.test.ts tests/unit/validator.test.ts`（隔离 PostgreSQL/MinIO，42/42），`tsc --noEmit`、`eslint src/assistant/agent.ts tests/integration/project-assistant.test.ts`、`vitest run tests/unit`（142/142），已有资源限制的 `docker build`（正式前端及服务端构建），服务器仓库内 `node scripts/check-docs.mjs`（38 条历史 Ticket）。未重复全站 E2E 或压力测试：本次新增源码只涉及助手上下文与读取结果；前端面板此前 8/8，真实浏览器补齐连续业务链，未改变前端源码。
+
+## 2026-10-05 持续任务优化验证
+
+本轮六项优化、自动化、真实 Qwen、Computer Use、独立复审、历史夹具限制与 Owner 入口见 [持续任务验证](assistant-task-verification.md)。既有历史记录保留；本轮没有重新将旧验收记为通过。

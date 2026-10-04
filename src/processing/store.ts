@@ -1,4 +1,10 @@
+import {
+  guardAssistantCommit,
+  linkAssistantProcessing,
+  type AssistantGuard,
+} from "../assistant/fence.js";
 import type { PoolClient } from "pg";
+import { cleanupProcessingObjects } from "./cleanup.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -27,23 +33,38 @@ export class ProcessingError extends Error {
     super(code);
   }
 }
-export type ProcessingScope = { projectId: string; actorId: string };
+export type ProcessingScope = {
+  projectId: string;
+  actorId: string;
+  assistantGuard?: AssistantGuard;
+};
 export type ProcessingSource =
   | { kind: "assets"; assetIds: string[]; recordIds: string[] }
   | { kind: "draft" | "version"; id: string; recordIds: string[] };
 export type InputSnapshot = {
   records: (ProcessingInput & {
+    baseline?: ProcessingInput & {
+      source?: unknown;
+      revisions?: Record<string, number>;
+    };
     source?: unknown;
     revisions?: Record<string, number>;
   })[];
   source: ProcessingSource;
   revision?: number;
+  refinement?: {
+    parentRunId: string;
+    selectedIds: string[];
+    rootOperation: ProcessingOptions["operation"];
+    adoptionFields: ProcessingOptions["allowedFields"];
+  };
 };
 export type ProcessingRun = {
   id: string;
   project_id: string;
   actor_id: string;
   job_id: string;
+  parent_run_id?: string | null;
   request_hash: string;
   source: ProcessingSource;
   options: ProcessingOptions;
@@ -270,6 +291,7 @@ async function snapshot(
 function summary(row: ProcessingRun) {
   return {
     id: row.id,
+    parentRunId: row.parent_run_id ?? null,
     jobId: row.job_id,
     source: row.source,
     options: row.options,
@@ -343,6 +365,7 @@ export async function createProcessingRun(
         : null;
   const digest = sha256(canonicalJson({ source, options, target }));
   const client = await db.connect();
+  let storedInput: string | undefined;
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
@@ -388,6 +411,7 @@ export async function createProcessingRun(
       modelRevision = Number(model.rows[0].revision);
     } else if (data.records.some((row) => row.raw !== undefined))
       throw new ProcessingError(422, "processing_mapping_required");
+    await guardAssistantCommit(client, scope);
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     const stored = await artifacts.storeProcessing(
@@ -395,6 +419,7 @@ export async function createProcessingRun(
       runId,
       "input",
     );
+    storedInput = stored.objectRef;
     await client.query(
       `INSERT INTO job(id,project_id,actor_id,kind,payload,status,idempotency_key,correlation_id)
       VALUES($1,$2,$3,'process_data',$4,'queued',$5,$1)`,
@@ -423,16 +448,45 @@ export async function createProcessingRun(
     const run = (
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])
     ).rows[0];
+    await linkAssistantProcessing(client, scope, runId);
     await client.query("COMMIT");
     return { run: summary(run), replayed: false };
   } catch (error) {
     await client.query("ROLLBACK");
+    if (storedInput) {
+      await db.query(
+        "INSERT INTO processing_cleanup(project_id,object_ref) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [scope.projectId, storedInput],
+      );
+      await cleanupProcessingObjects(db, artifacts, scope.projectId);
+    }
     throw error;
   } finally {
     client.release();
   }
 }
 
+export async function readProcessingStatus(
+  db: Database,
+  scope: ProcessingScope,
+  id: string,
+) {
+  const run = await getProcessingRun(db, scope, id);
+  return {
+    run: {
+      id: run.id,
+      status: run.status,
+      progress: run.progress,
+      inputCount: run.input_count,
+      partial:
+        (run.status === "failed" && Number(run.output_count) > 0) ||
+        Number(run.issue_count) > 0,
+      errorCode: run.error_code,
+      options: { operation: run.options.operation },
+    },
+    total: Number(run.output_count ?? 0),
+  };
+}
 export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
   await processingAccess(db, scope);
   const rows = await db.query<ProcessingRun>(
@@ -457,6 +511,7 @@ export async function readProcessingRun(
   scope: ProcessingScope,
   runId: string,
   query: { offset?: string; limit?: string },
+  all = false,
 ) {
   const offset = Number(query.offset ?? 0),
     limit = Number(query.limit ?? 20);
@@ -465,7 +520,7 @@ export async function readProcessingRun(
     offset < 0 ||
     !Number.isSafeInteger(limit) ||
     limit < 1 ||
-    limit > 100
+    limit > (all ? 10000 : 100)
   )
     throw new ProcessingError(422, "query_parameter_invalid");
   const run = await getProcessingRun(db, scope, runId);
@@ -497,7 +552,7 @@ export async function readProcessingRun(
       for (let i = 0; i < result.records.length; i++)
         if (cursor + i >= offset && cursor + i < offset + limit)
           records.push({
-            id: `${batch.ordinal}:${i}`,
+            id: `${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
             original: originals.get(result.records[i].sourceId),
             result: result.records[i],
           });
@@ -514,7 +569,8 @@ export async function readProcessingRun(
     allIds: batches.rows.flatMap((batch) =>
       Array.from(
         { length: Number(batch.output_count) },
-        (_, index) => `${batch.ordinal}:${index}`,
+        (_, index) =>
+          `${batch.ordinal}:${batch.result_indices?.[index] ?? index}`,
       ),
     ),
     total: cursor,
@@ -533,6 +589,7 @@ export async function controlProcessingRun(
     await client.query("BEGIN");
     const run = await getProcessingRun(client, scope, runId, true);
     await processingAccess(client, scope, true);
+    await guardAssistantCommit(client, scope);
     if (action === "cancel")
       await client.query(
         "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=$1 AND status IN('queued','running','retry_wait')",
@@ -542,7 +599,7 @@ export async function controlProcessingRun(
       if (!["failed", "cancelled", "succeeded"].includes(run.status))
         throw new ProcessingError(409, "processing_still_running");
       const incomplete = await client.query(
-        "SELECT 1 FROM processing_batch WHERE run_id=$1 AND result_ref IS NULL LIMIT 1",
+        "SELECT 1 FROM processing_batch WHERE run_id=$1 AND (result_ref IS NULL OR error_code IS NOT NULL) LIMIT 1",
         [runId],
       );
       if (run.status !== "succeeded" || incomplete.rowCount)
@@ -554,6 +611,8 @@ export async function controlProcessingRun(
     const updated = (
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])
     ).rows[0];
+    if (action === "retry") await linkAssistantProcessing(client, scope, runId);
+    else await guardAssistantCommit(client, scope);
     await client.query("COMMIT");
     return { run: summary(updated) };
   } catch (error) {

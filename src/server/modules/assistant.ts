@@ -1,3 +1,12 @@
+import type { registerDrafts } from "./drafts.js";
+import { createSharedDraft } from "../../drafts/create.js";
+import {
+  claimAssistantTurn,
+  collectProcessingEvents,
+  controlAssistantTask,
+  queueContinuation,
+} from "../../assistant/tasks.js";
+import { readProcessingRun } from "../../processing/store.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { ServerContext } from "../context.js";
 import {
@@ -8,16 +17,14 @@ import {
 import { canonicalJson, sha256 } from "../../package/contract.js";
 import { applySelectionPreview } from "../../selection/store.js";
 import { acceptProcessingResults } from "../../processing/accept.js";
-import {
-  executeAssistantTurn,
-  type DraftCommand,
-} from "../../assistant/agent.js";
+import { executeAssistantTurn } from "../../assistant/agent.js";
 import { assistantContext } from "../../assistant/context.js";
 import {
   assistantAccess,
   AssistantError,
   dependenciesAvailable,
   readSession,
+  listSessions,
   recoverProposalReceipt,
   sessionRow,
   startTurn,
@@ -31,10 +38,11 @@ export function registerAssistant({
   config,
   authenticate,
   writeAllowed,
+  publishDraft,
 }: Pick<
   ServerContext,
   "app" | "db" | "artifacts" | "config" | "authenticate" | "writeAllowed"
->) {
+> & { publishDraft: ReturnType<typeof registerDrafts> }) {
   const path = "/api/projects/:projectId/assistant",
     running = new Set<Promise<void>>();
   type Params = { projectId: string; sessionId: string; proposalId: string };
@@ -44,43 +52,62 @@ export function registerAssistant({
     projectId: request.params.projectId,
     actorId: (request as AuthenticatedRequest).actor.id,
   });
-  const command =
-    (request: FastifyRequest<{ Params: Params }>): DraftCommand =>
-    async (action, input, key) => {
-      // Reuse the existing authorized application commands without duplicating either publication protocol.
-      const project = encodeURIComponent(request.params.projectId);
-      const response = await app.inject({
-        method: "POST",
-        url:
-          action === "create"
-            ? `/api/projects/${project}/collaborative-drafts`
-            : `/api/projects/${project}/collaborative-drafts/${encodeURIComponent(String(input.draftId))}/publish`,
-        headers: {
-          cookie: String(request.headers.cookie ?? ""),
-          origin: config.appOrigin,
-          "x-csrf-token": String(request.headers["x-csrf-token"] ?? ""),
-          "idempotency-key": key,
-        },
-        payload: action === "create" ? input : { revision: input.revision },
-      });
-      const body = response.json();
-      if (response.statusCode >= 400)
-        throw new AssistantError(
-          response.statusCode,
-          body.error?.code ?? "assistant_operation_failed",
+  let polling = false,
+    closed = false;
+  async function dispatch() {
+    if (polling || closed) return;
+    polling = true;
+    try {
+      await collectProcessingEvents(db);
+      for (let i = 0; i < 3; i++) {
+        const turn = await claimAssistantTurn(db);
+        if (!turn) break;
+        const currentScope = {
+          projectId: turn.project_id,
+          actorId: turn.actor_id,
+        };
+        const work = executeAssistantTurn(
+          db,
+          artifacts,
+          config,
+          currentScope,
+          turn,
+          async (action, input, key) => {
+            if (action !== "create")
+              throw new AssistantError(422, "assistant_confirmation_required");
+            return createSharedDraft(
+              db,
+              {
+                ...currentScope,
+                assistantGuard: {
+                  sessionId: turn.session_id,
+                  revision: turn.task_revision,
+                  turnId: turn.id,
+                  token: turn.execution_token,
+                },
+              },
+              input,
+              key,
+            );
+          },
         );
-      if (action === "publish") {
-        const saved = (
-          await db.query(
-            "SELECT revision FROM collaborative_draft WHERE id=$1 AND project_id=$2 AND status='published'",
-            [input.draftId, request.params.projectId],
-          )
-        ).rows[0];
-        if (!saved || Number(saved.revision) !== Number(input.revision) + 1)
-          throw new AssistantError(409, "draft_revision_conflict");
+        running.add(work);
+        void work
+          .catch(() => undefined)
+          .finally(() => {
+            running.delete(work);
+            void dispatch();
+          });
       }
-      return body;
-    };
+    } finally {
+      polling = false;
+    }
+  }
+  const timer = setInterval(
+    () => void dispatch().catch((error) => app.log.error(error)),
+    1000,
+  );
+  timer.unref();
   const write = (request: FastifyRequest, reply: FastifyReply) => {
     if (writeAllowed(request, (request as AuthenticatedRequest).actor))
       return true;
@@ -102,15 +129,7 @@ export function registerAssistant({
     async (request, reply) =>
       respond(reply, async () => {
         const context = scope(request);
-        await assistantAccess(db, context);
-        return {
-          sessions: (
-            await db.query(
-              "SELECT id,created_at,updated_at,(row_number() OVER(ORDER BY created_at,id))::int AS ordinal FROM assistant_session WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC LIMIT 50",
-              [context.projectId, context.actorId],
-            )
-          ).rows,
-        };
+        return { sessions: await listSessions(db, context) };
       }),
   );
   app.post<{ Params: Params; Body: unknown }>(
@@ -165,7 +184,7 @@ export function registerAssistant({
         if (
           !isPlainObject(request.body) ||
           Object.keys(request.body).some(
-            (k) => !["message", "context"].includes(k),
+            (k) => !["message", "context", "candidates"].includes(k),
           )
         )
           throw new AssistantError(422, "assistant_message_invalid");
@@ -177,19 +196,10 @@ export function registerAssistant({
             request.headers["idempotency-key"],
             request.body.message,
             request.body.context,
+            request.body.candidates,
           );
-        if (!started.replayed) {
-          const work = executeAssistantTurn(
-            db,
-            artifacts,
-            config,
-            context,
-            started.turn,
-            command(request),
-          );
-          running.add(work);
-          void work.catch(() => undefined).finally(() => running.delete(work));
-        }
+        if (!started.replayed)
+          void dispatch().catch((error) => app.log.error(error));
         return reply.code(started.replayed ? 200 : 202).send({
           turnId: started.turn.id,
           status: started.turn.status,
@@ -213,14 +223,30 @@ export function registerAssistant({
         const leaseToken = opaqueId("confirmation");
         try {
           await client.query("BEGIN");
-          proposal = (
+          const located = (
             await client.query(
-              "SELECT * FROM assistant_proposal WHERE id=$1 AND project_id=$2 AND actor_id=$3 FOR UPDATE",
+              "SELECT session_id FROM assistant_proposal WHERE id=$1 AND project_id=$2 AND actor_id=$3",
               [request.params.proposalId, context.projectId, context.actorId],
             )
           ).rows[0];
-          if (!proposal) throw new AssistantError(404, "assistant_not_found");
-          await sessionRow(client, context, proposal.session_id);
+          if (!located) throw new AssistantError(404, "assistant_not_found");
+          const session = await sessionRow(
+            client,
+            context,
+            located.session_id,
+            true,
+          );
+          proposal = (
+            await client.query(
+              "SELECT * FROM assistant_proposal WHERE id=$1 FOR UPDATE",
+              [request.params.proposalId],
+            )
+          ).rows[0];
+          if (
+            proposal.status !== "succeeded" &&
+            proposal.task_revision !== session.task_revision
+          )
+            throw new AssistantError(409, "assistant_confirmation_expired");
           const turn = (
             await client.query(
               "SELECT dependencies FROM assistant_turn WHERE id=$1",
@@ -273,11 +299,20 @@ export function registerAssistant({
         }
         try {
           const p = proposal.parameters;
+          const effectScope = {
+            ...context,
+            assistantGuard: {
+              sessionId: proposal.session_id,
+              revision: proposal.task_revision,
+              proposalId: proposal.id,
+              leaseToken,
+            },
+          };
           let receipt: unknown;
           if (proposal.action === "selection")
             receipt = await applySelectionPreview(
               db,
-              { ...context, draftId: p.draftId },
+              { ...effectScope, draftId: p.draftId },
               p.previewId,
               {
                 selectedIds: p.selectedIds,
@@ -288,14 +323,51 @@ export function registerAssistant({
             receipt = await acceptProcessingResults(
               db,
               artifacts,
-              context,
+              effectScope,
               p.runId,
               proposal.id,
               { resultIds: p.resultIds, target: p.target },
             );
-          else if (proposal.action === "publish")
-            receipt = await command(request)("publish", p, proposal.id);
-          else throw new AssistantError(422, "assistant_confirmation_invalid");
+          else if (proposal.action === "publish") {
+            let status = 200,
+              payload: unknown;
+            const output = {
+              code(value: number) {
+                status = value;
+                return this;
+              },
+              send(value: unknown) {
+                payload = value;
+                return this;
+              },
+            } as FastifyReply;
+            const returned = await publishDraft(
+              Object.assign(Object.create(request), {
+                params: { projectId: context.projectId, draftId: p.draftId },
+                body: { revision: p.revision },
+              }),
+              output,
+              effectScope.assistantGuard,
+            );
+            receipt = payload ?? returned;
+            if (status >= 400)
+              throw new AssistantError(
+                status,
+                (receipt as any)?.error?.code ?? "assistant_operation_failed",
+              );
+            const published = (
+              await db.query(
+                "SELECT revision FROM collaborative_draft WHERE id=$1 AND project_id=$2 AND status='published'",
+                [p.draftId, context.projectId],
+              )
+            ).rows[0];
+            if (
+              !published ||
+              Number(published.revision) !== Number(p.revision) + 1
+            )
+              throw new AssistantError(409, "draft_revision_conflict");
+          } else
+            throw new AssistantError(422, "assistant_confirmation_invalid");
           await assistantAccess(db, context, true);
           const saved = await db.query(
             "UPDATE assistant_proposal SET status='succeeded',receipt=$2,lease_until=NULL WHERE id=$1 AND status='executing' AND digest=$3 AND lease_token=$4 RETURNING id",
@@ -303,6 +375,13 @@ export function registerAssistant({
           );
           if (!saved.rowCount)
             throw new AssistantError(409, "assistant_context_unavailable");
+          await queueContinuation(
+            db,
+            proposal.session_id,
+            "confirmed",
+            proposal.id,
+            proposal.task_revision,
+          );
           return { receipt, replayed: false };
         } catch (e) {
           await db.query(
@@ -323,16 +402,66 @@ export function registerAssistant({
         const context = scope(request);
         await assistantAccess(db, context);
         const result = await db.query(
-          "UPDATE assistant_proposal SET status='rejected' WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND status='pending' RETURNING id",
+          "UPDATE assistant_proposal SET status='rejected' WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND status='pending' RETURNING id,session_id",
           [request.params.proposalId, context.projectId, context.actorId],
         );
         if (!result.rowCount)
           throw new AssistantError(409, "assistant_confirmation_unavailable");
+        await db.query(
+          "UPDATE assistant_session SET task=task||'{\"stage\":\"waiting_input\"}'::jsonb WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM assistant_proposal WHERE session_id=$1 AND status IN('pending','executing'))",
+          [result.rows[0].session_id],
+        );
         return { rejected: true };
       });
     },
   );
+  for (const action of ["stop", "retry"] as const)
+    app.post<{ Params: Params; Body: unknown }>(
+      `${path}/sessions/:sessionId/${action}`,
+      { preHandler: authenticate },
+      async (request, reply) => {
+        if (!write(request, reply)) return;
+        return respond(reply, async () => {
+          if (!isPlainObject(request.body) || Object.keys(request.body).length)
+            throw new AssistantError(422, "assistant_request_invalid");
+          const currentScope = scope(request);
+          await controlAssistantTask(
+            db,
+            currentScope,
+            request.params.sessionId,
+            action,
+          );
+          void dispatch().catch((error) => app.log.error(error));
+          return { accepted: true };
+        });
+      },
+    );
+  app.get<{ Params: Params; Querystring: { offset?: string; limit?: string } }>(
+    `${path}/sessions/:sessionId/candidates`,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, async () => {
+        const currentScope = scope(request),
+          session = await sessionRow(
+            db,
+            currentScope,
+            request.params.sessionId,
+          );
+        await assistantAccess(db, currentScope, true);
+        if (!session.task?.runId)
+          throw new AssistantError(404, "processing_not_found");
+        return readProcessingRun(
+          db,
+          artifacts,
+          currentScope,
+          session.task.runId,
+          request.query,
+        );
+      }),
+  );
   app.addHook("onClose", async () => {
+    closed = true;
+    clearInterval(timer);
     await Promise.allSettled([...running]);
   });
 }

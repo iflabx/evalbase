@@ -1,3 +1,4 @@
+import type { AssistantGuard } from "../assistant/fence.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Database } from "../db/pool.js";
 import type { Config } from "../config.js";
@@ -9,6 +10,7 @@ export interface ServerContext {
   publishInitial: (
     request: FastifyRequest<{ Params: { projectId: string }; Body: unknown }>,
     reply: FastifyReply,
+    assistantGuard?: AssistantGuard,
   ) => Promise<unknown>;
   app: FastifyInstance;
   db: Database;

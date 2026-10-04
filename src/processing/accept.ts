@@ -1,3 +1,4 @@
+import { guardAssistantCommit } from "../assistant/fence.js";
 import type { Database } from "../db/pool.js";
 import { writeBatches } from "../db/batch.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -93,6 +94,13 @@ export async function acceptProcessingResults(
     const run = await getProcessingRun(client, scope, runId);
     if (!["succeeded", "failed", "cancelled"].includes(run.status))
       throw new ProcessingError(409, "processing_still_running");
+    const snapshot = JSON.parse(
+      (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
+    ) as InputSnapshot;
+    const adoptionFields =
+      snapshot.refinement?.adoptionFields ?? run.options.allowedFields;
+    const rootOperation =
+      snapshot.refinement?.rootOperation ?? run.options.operation;
     let draftId: string | null =
       target.kind === "draft" ? String(target.id) : null;
     let revision = 0;
@@ -115,7 +123,7 @@ export async function acceptProcessingResults(
         !(
           run.source.kind === "draft" &&
           run.source.id === draftId &&
-          run.options.operation !== "augment"
+          rootOperation !== "augment"
         ) &&
         revision !== target.expectedRevision
       )
@@ -126,13 +134,11 @@ export async function acceptProcessingResults(
     if (!["succeeded", "failed", "cancelled"].includes(locked.status))
       throw new ProcessingError(409, "processing_still_running");
     await processingAccess(client, scope, true);
-    const snapshot = JSON.parse(
-      (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
-    ) as InputSnapshot;
+
     const original = new Map(snapshot.records.map((row) => [row.id, row]));
     const batchIds = [...new Set(ids.map((id) => Number(id.split(":")[0])))];
     const batches = await client.query(
-      "SELECT ordinal,result_ref FROM processing_batch WHERE run_id=$1 AND ordinal=ANY($2::integer[]) AND result_ref IS NOT NULL",
+      "SELECT ordinal,result_ref,result_indices FROM processing_batch WHERE run_id=$1 AND ordinal=ANY($2::integer[]) AND result_ref IS NOT NULL",
       [runId, batchIds],
     );
     const available = new Map<string, ProcessingOutput>();
@@ -143,41 +149,50 @@ export async function acceptProcessingResults(
         ),
       ) as ProcessingResult;
       result.records.forEach((row, index) =>
-        available.set(`${batch.ordinal}:${index}`, row),
+        available.set(
+          `${batch.ordinal}:${batch.result_indices?.[index] ?? index}`,
+          row,
+        ),
       );
     }
     const selected = ids.map((id) => {
       const row = available.get(id);
       if (!row || !original.has(row.sourceId))
         throw new ProcessingError(422, "processing_result_invalid");
-      return { id, ...row };
+      return {
+        id,
+        ...row,
+        originalId: original.get(row.sourceId)!.baseline?.id ?? row.sourceId,
+      };
     });
     const replacing =
       draftId !== null &&
       run.source.kind === "draft" &&
       run.source.id === draftId &&
-      run.options.operation !== "augment";
+      rootOperation !== "augment";
     const updates: { id: string; field: string; value: unknown }[] = [];
     if (replacing) {
       const current = await client.query(
         "SELECT * FROM collaborative_draft_record WHERE draft_id=$1 AND id=ANY($2::text[]) AND deleted=false ORDER BY id FOR UPDATE",
-        [draftId, selected.map((row) => row.sourceId)],
+        [draftId, selected.map((row) => row.originalId)],
       );
       const byId = new Map(current.rows.map((row) => [row.id, row]));
       for (const row of selected) {
-        const before = original.get(row.sourceId)!,
-          now = byId.get(row.sourceId);
+        const input = original.get(row.sourceId)!;
+        const before = input.baseline ?? input,
+          now = byId.get(row.originalId);
         if (!now) throw new ProcessingError(409, "draft_record_removed");
-        for (const field of run.options.allowedFields) {
+        for (const field of adoptionFields) {
           if (canonicalJson(before[field]) === canonicalJson(row[field]))
             continue;
           const column = field === "expectedOutput" ? "expected_output" : field;
           if (Number(now[`${column}_revision`]) !== before.revisions?.[field])
             throw new ProcessingError(409, "draft_field_conflict");
-          updates.push({ id: row.sourceId, field, value: row[field] });
+          updates.push({ id: row.originalId, field, value: row[field] });
         }
       }
     }
+    await guardAssistantCommit(client, scope);
     if (target.kind === "newDraft") {
       draftId = opaqueId("collabdraft");
       await client.query(
@@ -211,7 +226,7 @@ export async function acceptProcessingResults(
         await client.query(
           `SELECT count(*) FILTER(WHERE NOT deleted)::int AS count,coalesce(max(position),0)::bigint AS position,
         array_agg(DISTINCT source->>'assetId') FILTER(WHERE NOT deleted AND source IS NOT NULL AND NOT(id=ANY($2::text[]))) AS assets FROM collaborative_draft_record WHERE draft_id=$1`,
-          [draftId, replacing ? selected.map((row) => row.sourceId) : []],
+          [draftId, replacing ? selected.map((row) => row.originalId) : []],
         )
       ).rows[0];
       const assets = capacity.assets ?? [];
@@ -329,7 +344,7 @@ export async function acceptProcessingResults(
         for (const [index, row] of selected.entries())
           await client.query(
             "UPDATE collaborative_draft_record SET source=$3 WHERE draft_id=$1 AND id=$2",
-            [draftId, row.sourceId, { assetId, ordinal: index + 1 }],
+            [draftId, row.originalId, { assetId, ordinal: index + 1 }],
           );
       } else
         await writeBatches(
@@ -380,6 +395,7 @@ export async function acceptProcessingResults(
         receipt,
       ],
     );
+    await guardAssistantCommit(client, scope);
     await client.query("COMMIT");
     return { receipt, replayed: false };
   } catch (error) {

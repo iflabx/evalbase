@@ -15,11 +15,11 @@ Implementation: in-progress
 
 ## 2. 功能 Ticket 与授权
 
-| Ticket | 完整交付 | 依赖 | Implementation | 实现/证据 |
-| --- | --- | --- | --- | --- |
-| [SEL-01](issues/01-selection.md) | 固定筛选、抽取、调整、入稿、发布溯源与正式 UI | 无 | ready-for-owner-checkpoint | 算法、HTTP 集成及受影响草稿回归通过；固定预览、入稿与发布来源已实测 |
-| [AI-02](issues/02-model-processing.md) | 模型连接、原件整理、三类后台处理、预览/接受与来源 | SEL-01 共享选择/应用边界 | ready-for-owner-checkpoint | 连接、后整理、三类处理/接受、真实 Worker、删除竞态和来源检查通过 |
-| [AI-03](issues/03-project-assistant.md) | 自然语言业务工具、持久会话/确认、完整跨流程测试 | AI-02 | in-progress | 原 checkpoint 保留；Owner 会话 4 的连续操作优化正在复验，历史证据不代替本次完成证明 |
+| Ticket                                  | 完整交付                                          | 依赖                     | Implementation             | 实现/证据                                                                           |
+| --------------------------------------- | ------------------------------------------------- | ------------------------ | -------------------------- | ----------------------------------------------------------------------------------- |
+| [SEL-01](issues/01-selection.md)        | 固定筛选、抽取、调整、入稿、发布溯源与正式 UI     | 无                       | ready-for-owner-checkpoint | 算法、HTTP 集成及受影响草稿回归通过；固定预览、入稿与发布来源已实测                 |
+| [AI-02](issues/02-model-processing.md)  | 模型连接、原件整理、三类后台处理、预览/接受与来源 | SEL-01 共享选择/应用边界 | ready-for-owner-checkpoint | 连接、后整理、三类处理/接受、真实 Worker、删除竞态和来源检查通过                    |
+| [AI-03](issues/03-project-assistant.md) | 自然语言业务工具、持久会话/确认、完整跨流程测试   | AI-02                    | in-progress                | 原 checkpoint 保留；Owner 会话 4 的连续操作优化正在复验，历史证据不代替本次完成证明 |
 
 三张功能 Ticket 属于本次整体授权，自动化验证与复审后连续推进；一个最终人工 checkpoint，不以中间完成为由停工或要求重复授权。完成依然要求全部 PRD 行为和测试证据。合并 main、GitHub 推送、tag、正式部署不在本次授权内。
 
@@ -47,3 +47,7 @@ Implementation: in-progress
 实现、必要回归和独立复审已完成，统一记录见 [验证与交接](verification.md)。历史 Comments 保留当时状态；当前状态以上表和最终交接为准。Owner 人工验收 pending，运行环境固定提交由健康检查和最终交付消息标识。
 
 2026-10-04 Owner 后续反馈：AI-03 连续对话优化重新进入实现与验证；沿用同一分支、库和桶，保留会话 4 原草稿。当前完成状态以本次追加验收证据为准。
+
+## 2026-10-05 助手持续任务覆盖
+
+Owner 选择“自动做到候选结果”并授权文档、审查、开发与测试。AI-03 的新增行为与六项验收以 [任务体验合同](../../docs/assistant-task-experience.md) 为权威补充。执行基线 `519d94256026`；原 checkpoint 历史数据保留。自动生成、核对和局部调整后仍等待固定范围的人工采纳/发布确认。

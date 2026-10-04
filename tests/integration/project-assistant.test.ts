@@ -43,7 +43,12 @@ describe("project assistant public contract", () => {
         content: "操作结果请查看下方真实回执。",
       },
       finish = "stop";
-    if (body.messages.at(-1)?.role !== "tool") {
+    const automatic =
+      String(body.messages.at(-1)?.content ?? "").startsWith(
+        "[processing_completed]",
+      ) ||
+      String(body.messages.at(-1)?.content ?? "").startsWith("[confirmed]");
+    if (body.messages.at(-1)?.role !== "tool" && !automatic) {
       const prompt = body.messages.findLast(
         (m: any) => m.role === "user",
       ).content;
@@ -179,6 +184,25 @@ describe("project assistant public contract", () => {
       headers,
     });
   async function send(message: string, context?: { kind: string; id: string }) {
+    await expect
+      .poll(
+        async () => {
+          const state = (
+            await app.inject({
+              method: "GET",
+              url: `/api/projects/${projectId}/assistant/sessions/${sessionId}`,
+              headers,
+            })
+          ).json();
+          return (
+            state.turns?.some((turn: any) =>
+              ["queued", "running"].includes(turn.status),
+            ) ?? false
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(false);
     const result = await app.inject({
       method: "POST",
       url: `${base()}/sessions/${sessionId}/turns`,
@@ -403,7 +427,7 @@ describe("project assistant public contract", () => {
       }),
     );
     const wire = calls[requestStart];
-    expect(wire.tool_choice).toBe("required");
+    expect(wire.tool_choice).toBe("auto");
     expect(JSON.stringify(wire.tools)).not.toContain('"uniqueItems"');
     const historyResults = wire.messages.filter((m: any) => m.role === "tool");
     expect(historyResults.length).toBeGreaterThan(0);
@@ -557,6 +581,15 @@ describe("project assistant public contract", () => {
         [projectId, actor],
       );
       expect((await read()).statusCode).toBe(404);
+      const list = await app.inject({
+        method: "GET",
+        url: `${base()}/sessions`,
+        headers,
+      });
+      expect(list.statusCode, list.body).toBe(200);
+      expect(
+        list.json().sessions.some((item: any) => item.id === originalSession),
+      ).toBe(false);
       expect(
         (
           await app.inject({
@@ -581,6 +614,17 @@ describe("project assistant public contract", () => {
       );
       expect(tool.status, JSON.stringify(response)).toBe("succeeded");
       expect(tool.result.records[0].question).toBe("Synthetic");
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `${base()}/sessions`,
+            headers,
+          })
+        )
+          .json()
+          .sessions.some((item: any) => item.id === sessionId),
+      ).toBe(true);
     } finally {
       sessionId = originalSession;
       await db.query("UPDATE app_user SET role='admin' WHERE id=$1", [actor]);
@@ -933,6 +977,15 @@ describe("project assistant public contract", () => {
     const db = createPool(databaseUrl),
       originalSession = sessionId;
     async function invoke(name: string, input: Record<string, unknown>) {
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 15000 },
+        )
+        .toBe(false);
       requestedTool = { name, input };
       const state = (await send(`执行已明确范围的 ${name}`)).json();
       const tool = state.turns.at(-1).tools.find((t: any) => t.name === name);
@@ -1009,6 +1062,19 @@ describe("project assistant public contract", () => {
         "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
         [job.id, completed],
       );
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some(
+                (t: any) =>
+                  t.event === "processing_completed" &&
+                  t.status === "succeeded",
+              ),
+          { timeout: 6000 },
+        )
+        .toBe(true);
       const output = await invoke("read_processing", {
         runId: submitted.runId,
       });

@@ -87,7 +87,7 @@ export async function readSession(
 ) {
   const session = await sessionRow(db, scope, id);
   await db.query(
-    "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now()",
+    "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
     [id],
   );
   const turns = (
@@ -111,6 +111,7 @@ export async function readSession(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      await sessionRow(client, scope, id, true);
       const proposal = (
         await client.query(
           "SELECT * FROM assistant_proposal WHERE id=$1 FOR UPDATE",
@@ -143,8 +144,11 @@ export async function readSession(
     throw new AssistantError(409, "assistant_context_deleted");
   return {
     sessionId: id,
+    task: current.task,
+    title: current.title,
     turns: turns.map((t) => ({
       id: t.id,
+      event: t.event,
       userText: t.user_text,
       assistantText: t.assistant_text,
       status: t.status,
@@ -156,6 +160,59 @@ export async function readSession(
     context,
   };
 }
+/** Apply the same historical-content boundary as the detail route, without receipt mutations. */
+export async function listSessions(db: Database, scope: AssistantScope) {
+  await assistantAccess(db, scope);
+  const sessions = (
+    await db.query(
+      `SELECT s.id,s.title,s.task,s.content_revision,s.created_at,s.updated_at,
+    (row_number() OVER(ORDER BY s.created_at,s.id))::int AS ordinal,
+    coalesce((SELECT bool_or(t.requires_write) FROM assistant_turn t WHERE t.session_id=s.id),false) AS requires_write,
+    coalesce((SELECT jsonb_agg(t.dependencies) FROM assistant_turn t WHERE t.session_id=s.id),'[]'::jsonb) AS dependencies
+    FROM assistant_session s WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC LIMIT 50`,
+      [scope.projectId, scope.actorId],
+    )
+  ).rows;
+  const writable = await hasProjectCapability(
+    db,
+    scope.projectId,
+    scope.actorId,
+    "write",
+  );
+  const visible: Record<string, any>[] = [];
+  for (const { requires_write, dependencies, ...session } of sessions) {
+    if (requires_write && !writable) continue;
+    try {
+      await dependenciesAvailable(db, scope, dependencies.flat());
+      visible.push(session);
+    } catch (error) {
+      if (!(error instanceof AssistantError)) throw error;
+    }
+  }
+  await assistantAccess(
+    db,
+    scope,
+    visible.length > 0 &&
+      sessions.some(
+        (s) => visible.some((v) => v.id === s.id) && s.requires_write,
+      ),
+  );
+  const current = new Map(
+    (
+      await db.query(
+        "SELECT id,content_revision FROM assistant_session WHERE id=ANY($1::text[])",
+        [visible.map((s) => s.id)],
+      )
+    ).rows.map((s) => [s.id, s.content_revision]),
+  );
+  return visible
+    .filter((s) => current.get(s.id) === s.content_revision)
+    .map((row) => {
+      const session = { ...row };
+      delete session.content_revision;
+      return session;
+    });
+}
 export async function startTurn(
   db: Database,
   scope: AssistantScope,
@@ -163,6 +220,7 @@ export async function startTurn(
   key: unknown,
   text: unknown,
   pageContext?: unknown,
+  candidateSelection?: unknown,
 ) {
   if (
     typeof key !== "string" ||
@@ -194,14 +252,39 @@ export async function startTurn(
     await assistantAccess(db, scope, page.kind === "draft");
     await dependenciesAvailable(db, scope, [page]);
   }
-  const requestHash = page
+  if (
+    candidateSelection !== undefined &&
+    (!isPlainObject(candidateSelection) ||
+      Object.keys(candidateSelection).some(
+        (k) => !["runId", "resultIds"].includes(k),
+      ) ||
+      typeof candidateSelection.runId !== "string" ||
+      !Array.isArray(candidateSelection.resultIds) ||
+      !candidateSelection.resultIds.length ||
+      candidateSelection.resultIds.length > 10000 ||
+      candidateSelection.resultIds.some(
+        (id) => typeof id !== "string" || !/^\d+:\d+$/u.test(id),
+      ) ||
+      new Set(candidateSelection.resultIds).size !==
+        candidateSelection.resultIds.length)
+  )
+    throw new AssistantError(422, "assistant_candidate_selection_invalid");
+  const requestHash = candidateSelection
     ? sha256(
         canonicalJson({
           message: text,
-          context: { kind: page.kind, id: page.id },
+          ...(page ? { context: { kind: page.kind, id: page.id } } : {}),
+          candidates: candidateSelection,
         }),
       )
-    : sha256(text);
+    : page
+      ? sha256(
+          canonicalJson({
+            message: text,
+            context: { kind: page.kind, id: page.id },
+          }),
+        )
+      : sha256(text);
   await readSession(db, scope, sessionId);
   const client = await db.connect();
   try {
@@ -209,7 +292,7 @@ export async function startTurn(
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext('assistant-concurrency'))",
     );
-    await sessionRow(client, scope, sessionId, true);
+    const session = await sessionRow(client, scope, sessionId, true);
     const prior = (
       await client.query(
         "SELECT * FROM assistant_turn WHERE session_id=$1 AND operation_key=$2",
@@ -223,16 +306,30 @@ export async function startTurn(
       return { turn: prior, replayed: true };
     }
     await client.query(
-      "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now()",
+      "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
       [sessionId],
     );
+    if (
+      (
+        await client.query(
+          "SELECT id FROM assistant_proposal WHERE session_id=$1 AND status='executing' AND lease_until>now()",
+          [sessionId],
+        )
+      ).rowCount
+    )
+      throw new AssistantError(409, "assistant_confirmation_running");
+    if (
+      candidateSelection &&
+      (candidateSelection as { runId: string }).runId !== session.task?.runId
+    )
+      throw new AssistantError(409, "assistant_candidate_selection_changed");
     const turns = (
       await client.query(
         "SELECT status,dependencies,requires_write FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id",
         [sessionId],
       )
     ).rows;
-    if (turns.some((t) => t.status === "running"))
+    if (turns.some((t) => ["queued", "running"].includes(t.status)))
       throw new AssistantError(409, "assistant_turn_running");
     if (turns.length >= 50)
       throw new AssistantError(422, "assistant_session_full");
@@ -255,7 +352,7 @@ export async function startTurn(
       dependencies.push(page);
     }
     const active = await client.query(
-      "SELECT s.actor_id FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.status='running' AND t.expires_at>now()",
+      "SELECT s.actor_id FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.status IN('queued','running') AND t.expires_at>now()",
     );
     if (
       active.rows.length >= 3 ||
@@ -264,7 +361,7 @@ export async function startTurn(
       throw new AssistantError(409, "assistant_busy");
     const turn = (
       await client.query(
-        "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,expires_at,requires_write,dependencies) VALUES($1,$2,$3,$4,$5,'running',now()+interval '90 seconds',$6,$7) RETURNING *",
+        "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,expires_at,requires_write,dependencies,task_revision,candidate_selection) VALUES($1,$2,$3,$4,$5,'queued',now()+interval '90 seconds',$6,$7,$8,$9) RETURNING *",
         [
           opaqueId("turn"),
           sessionId,
@@ -273,12 +370,41 @@ export async function startTurn(
           text.trim(),
           page?.kind === "draft" || turns.some((t) => t.requires_write),
           JSON.stringify(dependencies),
+          Number(session.task_revision) + 1,
+          candidateSelection ?? null,
         ],
       )
     ).rows[0];
+    const continuing =
+      session.task?.goal &&
+      !["complete", "stopped"].includes(session.task.stage);
+    const task = continuing
+      ? {
+          ...session.task,
+          supplements: [...(session.task.supplements ?? []), text.trim()],
+          stage: "inspecting",
+          error: null,
+          autoCount:
+            session.task.error === "assistant_task_limit"
+              ? 0
+              : session.task.autoCount,
+        }
+      : {
+          goal: text.trim(),
+          title: text.trim().slice(0, 40),
+          supplements: [],
+          requirements: [],
+          stage: "inspecting",
+          autoCount: 0,
+          ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
+        };
     await client.query(
-      "UPDATE assistant_session SET updated_at=now() WHERE id=$1",
+      "UPDATE assistant_proposal SET status='invalid' WHERE session_id=$1 AND status='pending'",
       [sessionId],
+    );
+    await client.query(
+      "UPDATE assistant_session SET updated_at=now(),task=$2,title=$3,task_revision=task_revision+1 WHERE id=$1",
+      [sessionId, task, task.title],
     );
     await client.query("COMMIT");
     return { turn, replayed: false };
@@ -293,12 +419,13 @@ export async function turnFence(
   db: Database,
   scope: AssistantScope,
   turnId: string,
+  token?: string,
 ) {
   await assistantAccess(db, scope);
   const row = (
     await db.query(
-      "SELECT t.dependencies,t.requires_write FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1 AND s.project_id=$2 AND s.actor_id=$3 AND t.status='running' AND t.expires_at>now()",
-      [turnId, scope.projectId, scope.actorId],
+      "SELECT t.dependencies,t.requires_write FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1 AND s.project_id=$2 AND s.actor_id=$3 AND t.status='running' AND t.expires_at>now() AND t.task_revision=s.task_revision AND ($4::text IS NULL OR t.execution_token=$4)",
+      [turnId, scope.projectId, scope.actorId, token ?? null],
     )
   ).rows[0];
   if (!row) throw new AssistantError(409, "assistant_interrupted");
@@ -312,14 +439,15 @@ export async function saveProposal(
   action: string,
   parameters: Record<string, unknown>,
   summary: Record<string, unknown>,
+  token?: string,
 ) {
-  await turnFence(db, scope, turnId);
+  await turnFence(db, scope, turnId, token);
   await assistantAccess(db, scope, true);
   const digest = sha256(canonicalJson({ action, parameters }));
   const row = (
     await db.query(
-      `INSERT INTO assistant_proposal(id,turn_id,session_id,project_id,actor_id,action,parameters,digest,summary,expires_at)
-    SELECT $1,t.id,t.session_id,$2,$3,$4,$5,$6,$7,now()+interval '20 minutes' FROM assistant_turn t WHERE t.id=$8 AND t.status='running' AND t.expires_at>now()
+      `INSERT INTO assistant_proposal(id,turn_id,session_id,project_id,actor_id,action,parameters,digest,summary,expires_at,task_revision)
+    SELECT $1,t.id,t.session_id,$2,$3,$4,$5,$6,$7,now()+interval '20 minutes'  ,t.task_revision FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$8 AND ($9::text IS NULL OR t.execution_token=$9) AND t.task_revision=s.task_revision AND t.status='running' AND t.expires_at>now()
     ON CONFLICT(turn_id,digest) DO UPDATE SET digest=excluded.digest RETURNING id,summary,status`,
       [
         opaqueId("proposal"),
@@ -330,6 +458,7 @@ export async function saveProposal(
         digest,
         summary,
         turnId,
+        token ?? null,
       ],
     )
   ).rows[0];

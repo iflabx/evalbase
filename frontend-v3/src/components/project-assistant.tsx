@@ -1,3 +1,4 @@
+import { AssistantCandidates, type CandidateSelection } from "./assistant-candidates";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -39,6 +40,7 @@ type ToolResult = {
 };
 type Turn = {
   id: string;
+  event?: string;
   userText: string;
   assistantText: string;
   status: string;
@@ -60,6 +62,29 @@ type Proposal = {
 };
 type Conversation = {
   sessionId: string;
+  title?: string;
+  task?: {
+    title?: string;
+    goal?: string;
+    stage: string;
+    runId?: string;
+    checkedStatus?: string;
+    error?: string;
+    target?: { kind: string; id?: string };
+    targetName?: string;
+    review?: {
+      total: number;
+      expectedCount: number;
+      countSatisfied: boolean;
+      emptyQuestions: number;
+      duplicates: number;
+      protectedFieldChanges: number;
+      outsideLabels?: number;
+      labels: { label: string; count: number }[];
+      formatIssues?: unknown[];
+      complete?: boolean;
+    };
+  };
   turns: Turn[];
   proposals: Proposal[];
   context?: {
@@ -82,6 +107,7 @@ type Submission = {
   key: string;
   sessionId?: string | undefined;
   context?: AssistantPageContext | undefined;
+  candidates?: CandidateSelection | undefined;
   turnId?: string;
   status: "submitting" | "accepted" | "failed";
 };
@@ -92,11 +118,19 @@ const toolLabels: Record<string, string> = {
   preview_selection: "筛选预览",
   submit_processing: "提交处理任务",
   read_processing: "读取处理结果",
+  plan_task: "整理任务要求",
+  refine_candidates: "局部重改候选",
+  retry_processing: "重试失败部分",
   request_selection_apply: "准备采用筛选结果",
   request_processing_apply: "准备采用处理结果",
   request_publish: "准备发布版本",
 };
 const messages: Record<string, string> = {
+  assistant_stopped: "任务已停止，已有结果仍保留。",
+  assistant_task_limit: "任务已达到自动执行上限。已有结果保留，请补充要求后继续。",
+  assistant_session_limit: "此会话已达到回合上限。已有结果保留，请在新会话中继续。",
+  assistant_retry_parameters_changed: "重试参数与原操作不同，已阻止重复操作。请核对原任务要求。",
+  assistant_candidate_selection_changed: "候选批次已经变化，请重新选择。",
   assistant_turn_running: "本会话还有一条消息正在处理，请稍候。",
   assistant_busy: "当前已有任务正在使用助手，请稍后再试。",
   assistant_session_full: "本会话已达到消息上限，请新建会话继续。",
@@ -136,6 +170,7 @@ export function ProjectAssistant({
 }) {
   const [open, setOpen] = useState(false),
     [selectedSession, setSelectedSession] = useState<string>(),
+    [picked, setPicked] = useState<CandidateSelection>(),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -170,7 +205,7 @@ export function ProjectAssistant({
   const sessions = useQuery({
     queryKey: ["assistant-sessions", projectId],
     queryFn: () =>
-      request<{ sessions: { id: string; ordinal: number; updated_at: string }[] }>(
+      request<{ sessions: { id: string; title?: string; ordinal: number; updated_at: string }[] }>(
         `${base}/sessions`,
       ),
     enabled: open,
@@ -182,7 +217,16 @@ export function ProjectAssistant({
     enabled: open && Boolean(sessionId),
     retry: false,
     refetchInterval: (q) =>
-      q.state.data?.turns.some((t) => t.status === "running") ? 1500 : false,
+      (pendingSubmissions[sessionId ?? "new"]?.status === "accepted" &&
+        !q.state.data?.turns.some(
+          (t) => t.id === pendingSubmissions[sessionId ?? "new"]?.turnId,
+        )) ||
+      q.state.data?.turns.some((t) => ["queued", "running"].includes(t.status)) ||
+      ["inspecting", "processing", "checking", "awaiting_confirmation"].includes(
+        q.state.data?.task?.stage ?? "",
+      )
+        ? 1500
+        : false,
   });
   const visible = conversation.error ? undefined : conversation.data;
   const pending = pendingSubmissions[sessionId ?? "new"];
@@ -193,7 +237,7 @@ export function ProjectAssistant({
       return next;
     });
   }
-  const running = visible?.turns.some((t) => t.status === "running") ?? false;
+  const running = visible?.turns.some((t) => ["queued", "running"].includes(t.status)) ?? false;
   useLayoutEffect(() => {
     if (!selectedSession && sessionId) setSelectedSession(sessionId);
     if (lastSession.current !== sessionId) follow.current = true;
@@ -220,6 +264,7 @@ export function ProjectAssistant({
   async function createSession() {
     const value = await post<{ sessionId: string }>(`${base}/sessions`, {});
     setSelectedSession(value.sessionId);
+    setPicked(undefined);
     await sessions.refetch();
     return value.sessionId;
   }
@@ -243,6 +288,9 @@ export function ProjectAssistant({
             key: crypto.randomUUID(),
             sessionId,
             context: pageContext,
+            ...(picked?.runId === visible?.task?.runId && picked?.resultIds.length
+              ? { candidates: picked }
+              : {}),
             status: "submitting",
           });
     setPending({ ...submission, status: "submitting" });
@@ -252,7 +300,11 @@ export function ProjectAssistant({
       setPending({ ...submission, status: "submitting" });
       const result = await post<{ turnId: string }>(
         `${base}/sessions/${id}/turns`,
-        { message: text, ...(submission.context ? { context: submission.context } : {}) },
+        {
+          message: text,
+          ...(submission.context ? { context: submission.context } : {}),
+          ...(submission.candidates ? { candidates: submission.candidates } : {}),
+        },
         submission.key,
       );
       setMessage((current) => (current === text ? "" : current));
@@ -283,6 +335,19 @@ export function ProjectAssistant({
       setBusy(false);
     }
   }
+  async function control(action: "stop" | "retry") {
+    if (!sessionId || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await post(`${base}/sessions/${sessionId}/${action}`, {});
+      await conversation.refetch();
+    } catch (error) {
+      setError(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -304,6 +369,7 @@ export function ProjectAssistant({
             disabled={busy}
             onValueChange={(id) => {
               setSelectedSession(id);
+              setPicked(undefined);
               setError("");
             }}
           >
@@ -313,7 +379,10 @@ export function ProjectAssistant({
             <SelectContent>
               {sessions.data?.sessions.map((s) => (
                 <SelectItem value={s.id} key={s.id}>
-                  会话 {s.ordinal} ·{" "}
+                  {(s.id === visible?.sessionId && (visible.task?.title || visible.title)) ||
+                    s.title ||
+                    `会话 ${s.ordinal}`}{" "}
+                  ·{" "}
                   {new Date(s.updated_at).toLocaleString("zh-CN", {
                     month: "numeric",
                     day: "numeric",
@@ -382,22 +451,30 @@ export function ProjectAssistant({
                   </p>
                 </div>
               )}
+
             {visible?.turns.map((turn) => (
               <section key={turn.id} className="space-y-3">
-                {turn.userText && (
+                {turn.userText && (!turn.event || turn.event === "user") && (
                   <div className="ml-8 rounded-md bg-muted p-3 text-sm">
                     <p className="mb-1 text-xs text-muted-foreground">你</p>
                     <p className="whitespace-pre-wrap break-words">{turn.userText}</p>
                   </div>
                 )}
                 <div className="space-y-3 text-sm">
-                  <p className="font-medium">项目助手</p>
+                  <p className="font-medium">
+                    项目助手
+                    {turn.event && turn.event !== "user" ? (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        自动继续
+                      </span>
+                    ) : null}
+                  </p>
                   {turn.assistantText && (
                     <p className="whitespace-pre-wrap break-words leading-6">
                       {turn.assistantText}
                     </p>
                   )}
-                  {turn.status === "running" && (
+                  {["queued", "running"].includes(turn.status) && (
                     <p className="text-muted-foreground">正在处理… 关闭面板后可再回来查看结果。</p>
                   )}
                   {turn.errorCode && (
@@ -405,51 +482,48 @@ export function ProjectAssistant({
                       {messages[turn.errorCode] ?? "本轮未完成，请核对已执行的操作后再试。"}
                     </p>
                   )}
-                  {turn.tools
-                    .filter((t) => !t.result?.requiresUserConfirmation)
-                    .map((item, index) =>
-                      item.name === "submit_processing" &&
-                      item.status === "succeeded" &&
-                      item.result?.runId ? (
-                        <ProcessingTaskCard
-                          key={`${item.key}:${index}`}
-                          projectId={projectId}
-                          runId={item.result.runId}
-                          open={open}
-                          onNavigate={() => setOpen(false)}
-                        />
-                      ) : (
-                        <div
-                          key={`${item.key}:${index}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
-                        >
-                          <span>
-                            {toolLabels[item.name] ?? "操作"} ·{" "}
-                            {item.status === "succeeded"
-                              ? "已完成"
-                              : item.status === "started"
-                                ? "已发起，待核对"
-                                : "未完成"}
-                            {item.result?.name ? ` · ${item.result.name}` : ""}
-                            {item.status === "failed" && (
-                              <span className="block text-xs text-destructive">
-                                {messages[item.error?.code ?? ""] ??
-                                  "操作未完成，请核对范围后重试。"}
-                              </span>
-                            )}
-                          </span>
-                          {validLink(item.result?.url) && (
-                            <Link
-                              to={validLink(item.result?.url)!}
-                              className="text-primary underline-offset-4 hover:underline"
-                              onClick={() => setOpen(false)}
+                  {turn.tools.length > 0 && (
+                    <details className="rounded-md border bg-card p-3">
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        操作记录（{turn.tools.length}）
+                      </summary>
+                      <div className="mt-3 space-y-2">
+                        {turn.tools
+                          .filter((t) => !t.result?.requiresUserConfirmation)
+                          .map((item, index) => (
+                            <div
+                              key={`${item.key}:${index}`}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
                             >
-                              查看结果
-                            </Link>
-                          )}
-                        </div>
-                      ),
-                    )}
+                              <span>
+                                {toolLabels[item.name] ?? "操作"} ·{" "}
+                                {item.status === "succeeded"
+                                  ? "已完成"
+                                  : item.status === "started"
+                                    ? "已发起，待核对"
+                                    : "未完成"}
+                                {item.result?.name ? ` · ${item.result.name}` : ""}
+                                {item.status === "failed" && (
+                                  <span className="block text-xs text-destructive">
+                                    {messages[item.error?.code ?? ""] ??
+                                      "操作未完成，请核对范围后重试。"}
+                                  </span>
+                                )}
+                              </span>
+                              {validLink(item.result?.url) && (
+                                <Link
+                                  to={validLink(item.result?.url)!}
+                                  className="text-primary underline-offset-4 hover:underline"
+                                  onClick={() => setOpen(false)}
+                                >
+                                  查看结果
+                                </Link>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </details>
+                  )}
                   {visible?.proposals
                     .filter((p) => p.turn_id === turn.id && p.status !== "invalid")
                     .map((p) => (
@@ -535,6 +609,131 @@ export function ProjectAssistant({
                 </div>
               </section>
             ))}
+            {visible?.task?.goal && (
+              <section
+                aria-label="当前任务"
+                className="space-y-3 rounded-md border bg-card p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="break-words font-semibold">
+                      {visible.task.title || visible.title || "当前任务"}
+                    </h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {(
+                        {
+                          inspecting: "检查资料与要求",
+                          processing: "处理中",
+                          checking: "核对结果",
+                          awaiting_review: "候选待审核",
+                          awaiting_confirmation: "等待确认",
+                          waiting_input: "等待补充",
+                          failed: "任务未完成",
+                          stopped: "已停止",
+                          complete: "已完成",
+                        } as Record<string, string>
+                      )[visible.task.stage] ?? "检查任务"}
+                    </p>
+                  </div>
+                  {canWrite && sessionId && (
+                    <div className="flex gap-1">
+                      {((visible.task.stage === "failed" &&
+                        visible.task.error !== "assistant_session_limit") ||
+                        (visible.task.stage === "awaiting_review" &&
+                          (visible.task.checkedStatus === "failed" ||
+                            visible.task.checkedStatus === "cancelled"))) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void control("retry")}
+                        >
+                          重试未完成步骤
+                        </Button>
+                      )}
+                      {!["stopped", "complete"].includes(visible.task.stage) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void control("stop")}
+                        >
+                          停止任务
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {visible.task.target && (
+                  <p className="text-xs text-muted-foreground">
+                    任务对象：
+                    {visible.task.targetName ??
+                      (
+                        {
+                          assets: "所选原始数据",
+                          draft: "已固定的草稿",
+                          version: "已固定的版本",
+                        } as Record<string, string>
+                      )[visible.task.target.kind] ??
+                      "已固定的来源"}
+                  </p>
+                )}
+                {visible.task.runId && (
+                  <ProcessingTaskCard
+                    projectId={projectId}
+                    runId={visible.task.runId}
+                    open={open}
+                    onNavigate={() => setOpen(false)}
+                  />
+                )}
+                {visible.task.review && (
+                  <div className="space-y-2 border-t pt-3 text-xs">
+                    <p>
+                      候选 {visible.task.review.total} / 目标 {visible.task.review.expectedCount} 条
+                      · {visible.task.review.countSatisfied ? "数量达标" : "数量未达标"}
+                    </p>
+                    <p className="text-muted-foreground">
+                      空问题 {visible.task.review.emptyQuestions} · 完全重复{" "}
+                      {visible.task.review.duplicates} · 受保护字段变化{" "}
+                      {visible.task.review.protectedFieldChanges}
+                      {visible.task.review.outsideLabels
+                        ? ` · 范围外标签 ${visible.task.review.outsideLabels}`
+                        : ""}
+                    </p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {visible.task.review.labels?.map((label) => (
+                        <span key={label.label}>
+                          {label.label || "空期望输出"}：{label.count}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-muted-foreground">
+                      以上是结构与数量核对，内容是否正确请审核候选。
+                    </p>
+                  </div>
+                )}
+                {visible.task.error && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {messages[visible.task.error] ?? "任务未完成，已有输入与候选仍保留。"}
+                  </p>
+                )}
+              </section>
+            )}
+            {canWrite &&
+              sessionId &&
+              visible?.task?.runId &&
+              ["awaiting_review", "awaiting_confirmation", "failed", "stopped"].includes(
+                visible.task.stage,
+              ) && (
+                <AssistantCandidates
+                  key={`${sessionId}:${visible.task.runId}`}
+                  base={base}
+                  sessionId={sessionId}
+                  runId={visible.task.runId}
+                  selected={picked}
+                  onSelect={setPicked}
+                />
+              )}
             {pending &&
               (!pending.sessionId || pending.sessionId === sessionId) &&
               !visible?.turns.some((t) => t.id === pending.turnId) && (
@@ -572,6 +771,11 @@ export function ProjectAssistant({
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}
+            </p>
+          )}
+          {picked?.runId === visible?.task?.runId && Boolean(picked?.resultIds.length) && (
+            <p className="text-xs text-muted-foreground">
+              本条要求仅重改选中的 {picked!.resultIds.length} 条候选，其余保留。
             </p>
           )}
           <label className="sr-only" htmlFor="project-assistant-message">
@@ -639,7 +843,7 @@ function ProcessingTaskCard({
         };
         total: number;
       }>(
-        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}?limit=1`,
+        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}/status`,
       ),
     enabled: open,
     retry: false,

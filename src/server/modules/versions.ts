@@ -1,3 +1,7 @@
+import {
+  guardAssistantCommit,
+  type AssistantGuard,
+} from "../../assistant/fence.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { writeBatches } from "../../db/batch.js";
 import type { PoolClient } from "pg";
@@ -35,6 +39,7 @@ export function registerVersions(
   const publishInitial = async (
     request: FastifyRequest<{ Params: { projectId: string }; Body: unknown }>,
     reply: FastifyReply,
+    assistantGuard?: AssistantGuard,
   ) => {
     const actor = (request as AuthenticatedRequest).actor;
     if (!writeAllowed(request, actor))
@@ -722,6 +727,11 @@ export function registerVersions(
           [collaborativeDraftId, testSetId, versionId, actor.id],
         );
       }
+      await guardAssistantCommit(client, {
+        projectId: request.params.projectId,
+        actorId: actor.id,
+        ...(assistantGuard ? { assistantGuard } : {}),
+      });
       commitAttempted = true;
       await client.query("COMMIT");
       return reply.code(201).send({

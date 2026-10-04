@@ -122,35 +122,50 @@ export async function runProcessing(
   let output = 0,
     failed = 0,
     warningCount = 0;
+  const positions = new Map(input.records.map((row, index) => [row.id, index]));
   for (let index = 0; index < groups.length; index++) {
     await fence(db, job);
     await processingAccess(db, scope);
     await processingSourceAvailable(db, job.project_id, run.source);
     const prior = (
       await db.query(
-        "SELECT result_ref,output_count,issues FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
+        "SELECT result_ref,output_count,issues,error_code FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
         [run.id, index],
       )
     ).rows[0];
-    if (prior?.result_ref) {
+    if (prior?.result_ref && !prior.error_code) {
       output += Number(prior.output_count);
       warningCount += prior.issues.length;
       continue;
     }
     const group = groups[index];
+    const selected = new Set(input.refinement?.selectedIds ?? []);
+    const modelInputs = input.refinement
+      ? group.inputs.filter((row) => selected.has(row.id))
+      : group.inputs;
     let errorCode: string | null = null;
     let stored: { objectRef: string } | undefined;
     let count = 0;
     let outputBytes = 0;
     let body: Buffer | undefined;
     let issues: unknown[] = [];
+    let resultIndices: number[] = [];
     try {
       let result;
       if (!model) result = cleanRecords(group.inputs, run.options);
+      else if (!modelInputs.length)
+        result = cleanRecords(group.inputs, {
+          ...run.options,
+          allowedFields: [],
+        });
       else {
         const response = await generateText({
           model: model.model,
-          ...processingPrompt(group.inputs, run.options, group.count),
+          ...processingPrompt(
+            modelInputs,
+            run.options,
+            input.refinement ? modelInputs.length : group.count,
+          ),
           maxOutputTokens: run.execution_config.maxOutputTokens,
           maxRetries: 0,
           abortSignal: AbortSignal.timeout(run.execution_config.batchTimeoutMs),
@@ -162,20 +177,42 @@ export async function runProcessing(
           .replace(/\s*```$/u, "");
         result = validateModelRows(
           JSON.parse(text),
-          group.inputs,
+          modelInputs,
           run.options,
-          group.count,
+          input.refinement ? modelInputs.length : group.count,
         );
       }
+      if (input.refinement && modelInputs.length) {
+        const changed = new Map(
+          result.records.map((row) => [row.sourceId, row]),
+        );
+        const retained = cleanRecords(group.inputs, {
+          ...run.options,
+          allowedFields: [],
+        }).records;
+        result = {
+          ...result,
+          records: retained.flatMap((row) =>
+            selected.has(row.sourceId)
+              ? changed.has(row.sourceId)
+                ? [changed.get(row.sourceId)!]
+                : []
+              : [row],
+          ),
+        };
+      }
       count = result.records.length;
+      resultIndices = result.records.map((row, i) =>
+        input.refinement ? positions.get(row.sourceId)! : i,
+      );
       issues = result.issues;
       body = Buffer.from(canonicalJson(result));
       if (body.byteLength > 100000000)
         throw new Error("processing_output_too_large");
       const used = (
         await db.query(
-          "SELECT coalesce(sum(output_bytes),0)::bigint AS bytes FROM processing_batch WHERE run_id=$1",
-          [run.id],
+          "SELECT coalesce(sum(output_bytes),0)::bigint AS bytes FROM processing_batch WHERE run_id=$1 AND ordinal<>$2",
+          [run.id, index],
         )
       ).rows[0];
       if (Number(used.bytes) + body.byteLength > 100000000)
@@ -185,6 +222,22 @@ export async function runProcessing(
       if (error instanceof ProcessingError) throw error;
       errorCode = "processing_batch_failed";
       failed++;
+      if (input.refinement) {
+        const retained = cleanRecords(
+          group.inputs.filter((row) => !selected.has(row.id)),
+          { ...run.options, allowedFields: [] },
+        );
+        issues = modelInputs.map((row) => ({
+          code: "missing_output",
+          sourceId: row.id,
+        }));
+        body = Buffer.from(canonicalJson({ ...retained, issues }));
+        count = retained.records.length;
+        resultIndices = retained.records.map(
+          (row) => positions.get(row.sourceId)!,
+        );
+        outputBytes = body.byteLength;
+      }
     }
     const client = await db.connect();
     try {
@@ -206,10 +259,10 @@ export async function runProcessing(
           `batch-${index}`,
         );
       await client.query(
-        `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes)
-        VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,ordinal) DO UPDATE SET result_ref=excluded.result_ref,
-        output_count=excluded.output_count,issues=excluded.issues,error_code=excluded.error_code,output_bytes=excluded.output_bytes
-        WHERE processing_batch.result_ref IS NULL`,
+        `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes,result_indices)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(run_id,ordinal) DO UPDATE SET result_ref=excluded.result_ref,
+        output_count=excluded.output_count,issues=excluded.issues,error_code=excluded.error_code,output_bytes=excluded.output_bytes,result_indices=excluded.result_indices
+        WHERE processing_batch.result_ref IS NULL OR processing_batch.error_code IS NOT NULL`,
         [
           run.id,
           index,
@@ -218,12 +271,18 @@ export async function runProcessing(
           JSON.stringify(issues),
           errorCode,
           outputBytes,
+          resultIndices,
         ],
       );
       await client.query(
         "UPDATE job SET stage='processing',progress=$2,updated_at=now() WHERE id=$1",
         [job.id, Math.floor(((index + 1) * 100) / groups.length)],
       );
+      if (prior?.result_ref && prior.result_ref !== stored?.objectRef)
+        await client.query(
+          "INSERT INTO processing_cleanup(project_id,object_ref) VALUES($1,$2) ON CONFLICT DO NOTHING",
+          [job.project_id, prior.result_ref],
+        );
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");

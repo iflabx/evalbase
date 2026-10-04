@@ -1,3 +1,7 @@
+import {
+  guardAssistantCommit,
+  type AssistantGuard,
+} from "../assistant/fence.js";
 import { encodeDeltaManifest } from "./delta-manifest.js";
 export { encodeDeltaManifest } from "./delta-manifest.js";
 import { writeBatches } from "../db/batch.js";
@@ -44,6 +48,7 @@ type PublishRequest = {
   operations: SparseOperation[];
   draftId?: string;
   draftRevision?: number;
+  assistantGuard?: AssistantGuard;
 };
 
 type Member = {
@@ -840,6 +845,13 @@ export async function publishSparseVersion(
         [request.draftId, versionId, request.actorId],
       );
     }
+    await guardAssistantCommit(client, {
+      projectId: request.projectId,
+      actorId: request.actorId,
+      ...(request.assistantGuard
+        ? { assistantGuard: request.assistantGuard }
+        : {}),
+    });
     commitAttempted = true;
     await client.query("COMMIT");
     return { id: versionId, label, replayed: false };

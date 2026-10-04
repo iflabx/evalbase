@@ -1,6 +1,120 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAccountRoute } from "./mock-account";
 
+test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
+  page,
+}) => {
+  let sent: unknown;
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [
+            {
+              id: "task",
+              title: "尚未更新的旧名称",
+              ordinal: 9,
+              updated_at: "2026-10-05T08:00:00Z",
+            },
+          ],
+        },
+      });
+    if (path.endsWith("/sessions/task"))
+      return route.fulfill({
+        json: {
+          sessionId: "task",
+          task: {
+            title: "退款问题改写",
+            goal: "改写25条，保留答案",
+            stage: "awaiting_review",
+            runId: "candidate_run",
+            review: {
+              total: 25,
+              expectedCount: 25,
+              countSatisfied: true,
+              emptyQuestions: 0,
+              duplicates: 0,
+              protectedFieldChanges: 0,
+              labels: [{ label: "退款", count: 25 }],
+              semanticReview: "required",
+            },
+          },
+          turns: [
+            {
+              id: "auto",
+              event: "processing_completed",
+              userText: "[processing_completed]",
+              assistantText: "已核对25条候选。",
+              status: "succeeded",
+              tools: [{ key: "read", name: "read_processing", status: "succeeded" }],
+              errorCode: null,
+            },
+          ],
+          proposals: [],
+        },
+      });
+    if (path.endsWith("/candidates")) {
+      const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
+      return route.fulfill({
+        json: {
+          total: 25,
+          offset,
+          limit: 10,
+          records: Array.from({ length: Math.min(10, 25 - offset) }, (_, i) => ({
+            id: `0:${offset + i}`,
+            original: {
+              question: `原问题 ${offset + i + 1}`,
+              expectedOutput: "退款",
+              metadata: [],
+            },
+            result: { question: `新问题 ${offset + i + 1}`, expectedOutput: "退款", metadata: [] },
+          })),
+        },
+      });
+    }
+    if (path.includes("/processing-runs/"))
+      return route.fulfill({
+        json: {
+          run: {
+            status: "succeeded",
+            inputCount: 25,
+            progress: 100,
+            options: { operation: "rewrite" },
+          },
+          total: 25,
+        },
+      });
+    if (path.endsWith("/turns")) {
+      sent = route.request().postDataJSON();
+      return route.fulfill({ status: 202, json: { turnId: "next", status: "queued" } });
+    }
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("退款问题改写");
+  await expect(page.getByText("候选待审核", { exact: true })).toBeVisible();
+  await page.getByLabel("选择候选 1", { exact: true }).check();
+  await page.getByRole("button", { name: "下一页候选" }).click();
+  await page.getByLabel("选择候选 11", { exact: true }).check();
+  await expect(page.getByText("已选 2 条候选", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "查看候选 11" }).click();
+  await expect(page.getByRole("dialog")).toContainText("原问题 11");
+  await expect(page.getByRole("dialog")).toContainText("新问题 11");
+  await page.keyboard.press("Escape");
+  await page.getByLabel("向项目助手发送消息").fill("只把选中的问题写得更口语");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  expect(sent).toEqual({
+    message: "只把选中的问题写得更口语",
+    candidates: { runId: "candidate_run", resultIds: ["0:0", "0:10"] },
+  });
+  await expect(
+    page.getByRole("log").getByText("[processing_completed]", { exact: true }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 420, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
 test("keeps the assistant conversation across close/reload and submits only an explicit bound confirmation", async ({
   page,
 }) => {
@@ -364,6 +478,12 @@ test("shows actual background progress, current draft scope and recoverable tool
       return route.fulfill({
         json: {
           sessionId: "four",
+          task: {
+            title: "改写当前问题",
+            goal: "改写当前十条问题",
+            stage: "processing",
+            runId: "processing_ten",
+          },
           context: {
             focusDraft: "d:ten",
             drafts: [{ ref: "d:ten", name: "意图识别草稿", recordCount: 10 }],
@@ -398,7 +518,7 @@ test("shows actual background progress, current draft scope and recoverable tool
           ],
         },
       });
-    if (path.endsWith("/processing-runs/processing_ten"))
+    if (path.endsWith("/processing-runs/processing_ten/status"))
       return route.fulfill({
         json: {
           run: {
@@ -415,6 +535,7 @@ test("shows actual background progress, current draft scope and recoverable tool
   });
   await expect(page.getByText("当前草稿：意图识别草稿 · 10 条记录")).toBeVisible();
   await expect(page.getByText("改写 · 等待中 · 10 条输入")).toBeVisible();
+  await page.getByText("操作记录（2）", { exact: true }).click();
   await expect(
     page.getByText("对象引用无效，请重新查询或明确选择目标。", { exact: true }),
   ).toBeVisible();

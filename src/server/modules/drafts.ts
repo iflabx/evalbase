@@ -1,4 +1,11 @@
-import { canonicalJson, sha256 } from "../../package/contract.js";
+import type { AssistantGuard } from "../../assistant/fence.js";
+import {
+  createSharedDraft,
+  DraftCreateError,
+  draftSummary,
+  draftSelect,
+  draftLive,
+} from "../../drafts/create.js";
 import { cleanupProcessingObjects } from "../../processing/cleanup.js";
 import { writeBatches } from "../../db/batch.js";
 import { type FastifyReply, type FastifyRequest } from "fastify";
@@ -10,11 +17,9 @@ import {
   opaqueId,
   isPlainObject,
   normalizeDisplayMapping,
-  displayText,
   displayFieldName,
   MetadataEntry,
   normalizeMetadataEntries,
-  readMetadataEntries,
   mapMaterialRecord,
 } from "../support.js";
 
@@ -217,57 +222,6 @@ export function registerDrafts(
   // V2 shared draft identities are separate from legacy lease-based working_draft.
   const draftPath = "/api/projects/:projectId/collaborative-drafts";
   const draftByIdPath = `${draftPath}/:draftId`;
-  const draftSummary = (row: Record<string, unknown>) => ({
-    id: String(row.id),
-    projectId: String(row.project_id),
-    testSetId: row.test_set_id ? String(row.test_set_id) : null,
-    parentVersionId: row.parent_version_id
-      ? String(row.parent_version_id)
-      : null,
-    parentVersionLabel: row.parent_version_label
-      ? String(row.parent_version_label)
-      : null,
-    parentRecordCount:
-      row.parent_record_count == null ? null : Number(row.parent_record_count),
-    createdBy: row.created_by ? String(row.created_by) : null,
-    createdByName: row.created_by
-      ? String(row.created_by_name ?? row.created_by_username ?? row.created_by)
-      : null,
-    createdAt: row.created_at ?? null,
-    name: String(row.name),
-    purpose: String(row.purpose),
-    status: String(row.status),
-    suspended:
-      row.status === "editing" &&
-      ((row.test_set_status !== null && row.test_set_status !== "available") ||
-        (row.parent_status !== null && row.parent_status !== "published")),
-    revision: Number(row.revision),
-    nameRevision: Number(row.name_revision),
-    purposeRevision: Number(row.purpose_revision),
-    nameUpdatedBy: row.name_updated_by ? String(row.name_updated_by) : null,
-    purposeUpdatedBy: row.purpose_updated_by
-      ? String(row.purpose_updated_by)
-      : null,
-    updatedBy: String(row.updated_by),
-    updatedByName: String(
-      row.updated_by_name ?? row.updated_by_username ?? row.updated_by,
-    ),
-    updatedAt: row.updated_at,
-    publishedVersionId: row.published_version_id
-      ? String(row.published_version_id)
-      : null,
-  });
-  const draftSelect = `SELECT d.*, ts.status AS test_set_status,
-    v.status AS parent_status, v.version_label AS parent_version_label,
-    v.item_count AS parent_record_count, published.status AS published_status,
-    u.display_name AS updated_by_name, u.username AS updated_by_username,
-    creator.display_name AS created_by_name,
-    creator.username AS created_by_username FROM collaborative_draft d
-    LEFT JOIN test_set ts ON ts.id=d.test_set_id
-    LEFT JOIN test_set_version v ON v.id=d.parent_version_id
-    LEFT JOIN test_set_version published ON published.id=d.published_version_id
-    LEFT JOIN app_user u ON u.id=d.updated_by
-    LEFT JOIN app_user creator ON creator.id=d.created_by`;
   const publishedDraftUnavailable = (row: Record<string, unknown>) =>
     row.status === "published" &&
     (row.test_set_status !== "available" ||
@@ -324,10 +278,6 @@ export function registerDrafts(
     updatedByName: String(row.updated_by_name ?? row.updated_by),
     updatedAt: row.updated_at,
   });
-  const draftLive = (row: Record<string, unknown>) =>
-    row.status === "editing" &&
-    (row.test_set_status === null || row.test_set_status === "available") &&
-    (row.parent_status === null || row.parent_status === "published");
   const draftFieldValue = (field: string, value: unknown) => {
     if (field === "question" || field === "expectedOutput")
       return typeof value === "string" && value.length <= 100_000
@@ -366,210 +316,22 @@ export function registerDrafts(
     { preHandler: authenticate },
     async (request, reply) => {
       if (!(await draftWrite(request, reply, request.params.projectId))) return;
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        Object.keys(body).some(
-          (k) =>
-            !["testSetId", "parentVersionId", "name", "purpose"].includes(k),
-        ) ||
-        (body.name !== undefined &&
-          (typeof body.name !== "string" || body.name.length > 200)) ||
-        (body.purpose !== undefined &&
-          (typeof body.purpose !== "string" || body.purpose.length > 2000)) ||
-        (body.testSetId !== undefined &&
-          (body.name !== undefined || body.purpose !== undefined)) ||
-        (body.testSetId === undefined) !==
-          (body.parentVersionId === undefined) ||
-        (body.testSetId !== undefined &&
-          (typeof body.testSetId !== "string" ||
-            typeof body.parentVersionId !== "string"))
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "draft_request_invalid" } });
-      const actor = (request as AuthenticatedRequest).actor;
-      const key = request.headers["idempotency-key"];
-      if (
-        key !== undefined &&
-        (typeof key !== "string" || !key.trim() || key.length > 200)
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "idempotency_key_invalid" } });
-      const requestHash = sha256(canonicalJson(body));
-      const stableId =
-        typeof key === "string"
-          ? `collabdraft_${sha256(canonicalJson([request.params.projectId, actor.id, key]))}`
-          : undefined;
-      const client = await db.connect();
       try {
-        await client.query("BEGIN");
-        await client.query("SELECT id FROM app_user WHERE id=$1 FOR SHARE", [
-          actor.id,
-        ]);
-        await client.query(
-          "SELECT user_id FROM project_member WHERE project_id=$1 AND user_id=$2 FOR SHARE",
-          [request.params.projectId, actor.id],
+        const value = await createSharedDraft(
+          db,
+          {
+            projectId: request.params.projectId,
+            actorId: (request as AuthenticatedRequest).actor.id,
+          },
+          request.body,
+          request.headers["idempotency-key"],
         );
-        if (
-          !(await hasProjectCapability(
-            client,
-            request.params.projectId,
-            actor.id,
-            "write",
-          ))
-        ) {
-          await client.query("ROLLBACK");
-          return reply.code(404).send({ error: { code: "project_not_found" } });
-        }
-        if (stableId) {
-          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-            stableId,
-          ]);
-          const prior = await client.query(
-            `${draftSelect} JOIN draft_creation_receipt receipt ON receipt.draft_id=d.id WHERE receipt.project_id=$1 AND receipt.actor_id=$2 AND receipt.operation_key=$3`,
-            [request.params.projectId, actor.id, key],
-          );
-          const savedHash = await client.query(
-            "SELECT request_hash FROM draft_creation_receipt WHERE project_id=$1 AND actor_id=$2 AND operation_key=$3",
-            [request.params.projectId, actor.id, key],
-          );
-          if (prior.rowCount) {
-            if (savedHash.rows[0]?.request_hash !== requestHash) {
-              await client.query("ROLLBACK");
-              return reply
-                .code(409)
-                .send({ error: { code: "idempotency_conflict" } });
-            }
-            if (
-              !draftLive(prior.rows[0]) &&
-              prior.rows[0].status !== "published"
-            ) {
-              await client.query("ROLLBACK");
-              return reply
-                .code(409)
-                .send({ error: { code: "draft_not_editable" } });
-            }
-            await client.query("COMMIT");
-            return { draft: draftSummary(prior.rows[0]), replayed: true };
-          }
-        }
-        let name = typeof body.name === "string" ? body.name.trim() : "",
-          purpose = typeof body.purpose === "string" ? body.purpose : "";
-        if (body.testSetId) {
-          const parent = await client.query(
-            `SELECT ts.name,ts.purpose,ts.status AS test_set_status,
-            v.status AS parent_status FROM test_set ts JOIN test_set_version v
-              ON v.test_set_id=ts.id AND v.id=$3
-            WHERE ts.id=$2 AND ts.project_id=$1 FOR SHARE OF ts,v`,
-            [request.params.projectId, body.testSetId, body.parentVersionId],
-          );
-          if (
-            !parent.rowCount ||
-            parent.rows[0].test_set_status !== "available" ||
-            parent.rows[0].parent_status !== "published"
-          ) {
-            await client.query("ROLLBACK");
-            return reply
-              .code(404)
-              .send({ error: { code: "parent_version_not_found" } });
-          }
-          name = String(parent.rows[0].name);
-          purpose = String(parent.rows[0].purpose);
-        }
-        const draftId = stableId ?? opaqueId("collabdraft");
-        const inserted = await client.query(
-          `INSERT INTO collaborative_draft
-          (id,project_id,test_set_id,parent_version_id,name,purpose,updated_by,created_by,created_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$7,now()) ON CONFLICT DO NOTHING RETURNING id`,
-          [
-            draftId,
-            request.params.projectId,
-            body.testSetId ?? null,
-            body.parentVersionId ?? null,
-            name,
-            purpose,
-            actor.id,
-          ],
-        );
-        const actualId = inserted.rowCount
-          ? draftId
-          : String(
-              (
-                await client.query(
-                  `SELECT id FROM collaborative_draft
-          WHERE project_id=$1 AND test_set_id=$2 AND parent_version_id=$3 AND status='editing'`,
-                  [
-                    request.params.projectId,
-                    body.testSetId,
-                    body.parentVersionId,
-                  ],
-                )
-              ).rows[0]?.id ?? "",
-            );
-        if (!actualId) throw new Error("draft_create_conflict");
-        if (inserted.rowCount && body.parentVersionId) {
-          const records = await client.query(
-            `SELECT vm.position,vm.case_id,vm.case_revision_id,
-            cr.input,cr.expected_output,cr.metadata,cr.origin_kind,cr.origin_ref,
-            coalesce(attr.field_attribution,'{}'::jsonb) AS inherited_attribution
-            FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id=vm.case_revision_id
-            LEFT JOIN collaborative_draft_attribution attr
-              ON attr.version_id=$1 AND attr.case_id=vm.case_id
-            ORDER BY vm.ordinal`,
-            [body.parentVersionId],
-          );
-          await writeBatches(
-            client,
-            `INSERT INTO collaborative_draft_record
-            (draft_id,id,position,case_id,before_revision_id,question,expected_output,metadata,source,updated_by,field_attribution)
-            SELECT $1,x.id,x.position,x.case_id,x.before_revision_id,x.question,x.expected_output,x.metadata,x.source,$2,x.field_attribution
-            FROM jsonb_to_recordset($3::jsonb) AS x(id text,position bigint,case_id text,before_revision_id text,question text,expected_output text,metadata jsonb,source jsonb,field_attribution jsonb)`,
-            [draftId, actor.id],
-            records.rows.map((row) => ({
-              id: opaqueId("draftrow"),
-              position: row.position,
-              case_id: row.case_id,
-              before_revision_id: row.case_revision_id,
-              question: isPlainObject(row.input)
-                ? String(row.input.question ?? "")
-                : displayText(row.input),
-              expected_output: isPlainObject(row.expected_output)
-                ? String(row.expected_output.text ?? "")
-                : displayText(row.expected_output),
-              metadata: readMetadataEntries(row.metadata),
-              source:
-                isPlainObject(row.origin_ref) &&
-                row.origin_kind === "source_record" &&
-                typeof row.origin_ref.assetId === "string"
-                  ? {
-                      assetId: row.origin_ref.assetId,
-                      ordinal: Number(row.origin_ref.ordinal),
-                    }
-                  : null,
-              field_attribution: row.inherited_attribution,
-            })),
-          );
-        }
-        if (stableId)
-          await client.query(
-            "INSERT INTO draft_creation_receipt(project_id,actor_id,operation_key,request_hash,draft_id) VALUES($1,$2,$3,$4,$5)",
-            [request.params.projectId, actor.id, key, requestHash, actualId],
-          );
-        const draft = await client.query(`${draftSelect} WHERE d.id=$1`, [
-          actualId,
-        ]);
-        await client.query("COMMIT");
-        return reply.code(inserted.rowCount ? 201 : 200).send({
-          draft: draftSummary(draft.rows[0]),
-          replayed: !inserted.rowCount,
-        });
+        const { statusCode, ...body } = value;
+        return reply.code(statusCode).send(body);
       } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
+        if (error instanceof DraftCreateError)
+          return reply.code(error.status).send({ error: { code: error.code } });
         throw error;
-      } finally {
-        client.release();
       }
     },
   );
@@ -1133,179 +895,187 @@ export function registerDrafts(
     },
   );
 
+  const publishDraft = async (
+    request: FastifyRequest<{
+      Params: { projectId: string; draftId: string };
+      Body: unknown;
+    }>,
+    reply: FastifyReply,
+    assistantGuard?: AssistantGuard,
+  ) => {
+    if (!(await draftWrite(request, reply, request.params.projectId))) return;
+    const body = request.body;
+    if (
+      !isPlainObject(body) ||
+      !Number.isInteger(body.revision) ||
+      Object.keys(body).some((key) => key !== "revision")
+    )
+      return reply
+        .code(422)
+        .send({ error: { code: "draft_revision_required" } });
+    const actor = (request as AuthenticatedRequest).actor;
+    const draft = await db.query(
+      `${draftSelect} WHERE d.id=$1 AND d.project_id=$2`,
+      [request.params.draftId, request.params.projectId],
+    );
+    if (!draft.rowCount || publishedDraftUnavailable(draft.rows[0]))
+      return reply.code(404).send({ error: { code: "draft_not_found" } });
+    const saved = draft.rows[0];
+    if (saved.status === "published" && saved.published_version_id) {
+      const result = await db.query(
+        `SELECT v.id,v.version_label,v.item_count,v.test_set_id,
+          ts.name,ts.purpose FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id
+          WHERE v.id=$1 AND v.status='published' AND ts.status='available'`,
+        [saved.published_version_id],
+      );
+      if (!result.rowCount)
+        return reply.code(404).send({ error: { code: "draft_not_found" } });
+      return {
+        testSet: {
+          id: result.rows[0].test_set_id,
+          name: result.rows[0].name,
+          purpose: result.rows[0].purpose,
+        },
+        version: {
+          id: result.rows[0].id,
+          label: result.rows[0].version_label,
+          recordCount: Number(result.rows[0].item_count),
+        },
+        replayed: true,
+      };
+    }
+    if (!draftLive(saved))
+      return reply.code(409).send({ error: { code: "draft_not_editable" } });
+    if (Number(saved.revision) !== body.revision)
+      return reply.code(409).send({
+        error: { code: "draft_revision_conflict" },
+        draft: draftSummary(saved),
+      });
+    if (!String(saved.name).trim())
+      return reply
+        .code(422)
+        .send({ error: { code: "test_set_name_required" } });
+    const records = await db.query(
+      `SELECT * FROM collaborative_draft_record
+        WHERE draft_id=$1 AND deleted=false ORDER BY position`,
+      [request.params.draftId],
+    );
+    if (!records.rowCount)
+      return reply
+        .code(422)
+        .send({ error: { code: "test_set_records_required" } });
+    if (!saved.parent_version_id) {
+      const normalized = records.rows.map((row) => ({
+        question: String(row.question),
+        expectedOutput: String(row.expected_output),
+        metadata: row.metadata as MetadataEntry[],
+        ...(row.source
+          ? { source: row.source as { assetId: string; ordinal: number } }
+          : {}),
+      }));
+      const selections = [
+        ...new Map(
+          normalized.flatMap((record) =>
+            record.source
+              ? [
+                  [
+                    `${record.source.assetId}:${record.source.ordinal}`,
+                    record.source,
+                  ] as const,
+                ]
+              : [],
+          ),
+        ).values(),
+      ];
+      return publishInitial(
+        Object.assign(Object.create(request), {
+          headers: {
+            cookie: String(request.headers.cookie ?? ""),
+            origin: String(request.headers.origin ?? ""),
+            "x-csrf-token": String(request.headers["x-csrf-token"] ?? ""),
+            "idempotency-key": `draft:${request.params.draftId}:${body.revision}`,
+          },
+          body: {
+            name: saved.name,
+            purpose: saved.purpose,
+            selections,
+            operations: normalized.map((after) => ({
+              operation: "add",
+              after,
+            })),
+            collaborativeDraftId: request.params.draftId,
+            draftRevision: body.revision,
+          },
+        }),
+        reply,
+        assistantGuard,
+      );
+    }
+    try {
+      const published = await publishSparseVersion(db, artifacts, {
+        projectId: request.params.projectId,
+        testSetId: String(saved.test_set_id),
+        parentVersionId: String(saved.parent_version_id),
+        actorId: actor.id,
+        idempotencyKey: `draft:${request.params.draftId}:${body.revision}`,
+        operations: [],
+        draftId: request.params.draftId,
+        draftRevision: Number(body.revision),
+        ...(assistantGuard ? { assistantGuard } : {}),
+      });
+      const count = await db.query(
+        `SELECT item_count FROM test_set_version WHERE id=$1`,
+        [published.id],
+      );
+      return reply.code(published.replayed ? 200 : 201).send({
+        testSet: {
+          id: saved.test_set_id,
+          name: saved.name,
+          purpose: saved.purpose,
+        },
+        version: {
+          id: published.id,
+          label: published.label,
+          recordCount: Number(count.rows[0]?.item_count ?? 0),
+          parentVersionId: saved.parent_version_id,
+        },
+        replayed: published.replayed,
+      });
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (
+        code &&
+        ["draft_not_found", "version_not_found", "test_set_not_found"].includes(
+          code,
+        )
+      )
+        return reply.code(404).send({ error: { code } });
+      if (
+        code &&
+        ["draft_revision_conflict", "idempotency_conflict"].includes(code)
+      )
+        return reply.code(409).send({ error: { code } });
+      if (
+        code &&
+        [
+          "test_set_records_required",
+          "test_record_invalid",
+          "source_selection_invalid",
+          "test_set_capacity_exceeded",
+          "parent_record_invalid",
+          "draft_parent_incomplete",
+        ].includes(code)
+      )
+        return reply.code(422).send({ error: { code } });
+      if (code === "checkpoint_hard_limit_failed")
+        return reply.code(503).send({ error: { code } });
+      throw error;
+    }
+  };
   app.post<{ Params: { projectId: string; draftId: string }; Body: unknown }>(
     `${draftByIdPath}/publish`,
     { preHandler: authenticate },
-    async (request, reply) => {
-      if (!(await draftWrite(request, reply, request.params.projectId))) return;
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        !Number.isInteger(body.revision) ||
-        Object.keys(body).some((key) => key !== "revision")
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "draft_revision_required" } });
-      const actor = (request as AuthenticatedRequest).actor;
-      const draft = await db.query(
-        `${draftSelect} WHERE d.id=$1 AND d.project_id=$2`,
-        [request.params.draftId, request.params.projectId],
-      );
-      if (!draft.rowCount || publishedDraftUnavailable(draft.rows[0]))
-        return reply.code(404).send({ error: { code: "draft_not_found" } });
-      const saved = draft.rows[0];
-      if (saved.status === "published" && saved.published_version_id) {
-        const result = await db.query(
-          `SELECT v.id,v.version_label,v.item_count,v.test_set_id,
-          ts.name,ts.purpose FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id
-          WHERE v.id=$1 AND v.status='published' AND ts.status='available'`,
-          [saved.published_version_id],
-        );
-        if (!result.rowCount)
-          return reply.code(404).send({ error: { code: "draft_not_found" } });
-        return {
-          testSet: {
-            id: result.rows[0].test_set_id,
-            name: result.rows[0].name,
-            purpose: result.rows[0].purpose,
-          },
-          version: {
-            id: result.rows[0].id,
-            label: result.rows[0].version_label,
-            recordCount: Number(result.rows[0].item_count),
-          },
-          replayed: true,
-        };
-      }
-      if (!draftLive(saved))
-        return reply.code(409).send({ error: { code: "draft_not_editable" } });
-      if (Number(saved.revision) !== body.revision)
-        return reply.code(409).send({
-          error: { code: "draft_revision_conflict" },
-          draft: draftSummary(saved),
-        });
-      if (!String(saved.name).trim())
-        return reply
-          .code(422)
-          .send({ error: { code: "test_set_name_required" } });
-      const records = await db.query(
-        `SELECT * FROM collaborative_draft_record
-        WHERE draft_id=$1 AND deleted=false ORDER BY position`,
-        [request.params.draftId],
-      );
-      if (!records.rowCount)
-        return reply
-          .code(422)
-          .send({ error: { code: "test_set_records_required" } });
-      if (!saved.parent_version_id) {
-        const normalized = records.rows.map((row) => ({
-          question: String(row.question),
-          expectedOutput: String(row.expected_output),
-          metadata: row.metadata as MetadataEntry[],
-          ...(row.source
-            ? { source: row.source as { assetId: string; ordinal: number } }
-            : {}),
-        }));
-        const selections = [
-          ...new Map(
-            normalized.flatMap((record) =>
-              record.source
-                ? [
-                    [
-                      `${record.source.assetId}:${record.source.ordinal}`,
-                      record.source,
-                    ] as const,
-                  ]
-                : [],
-            ),
-          ).values(),
-        ];
-        return publishInitial(
-          Object.assign(Object.create(request), {
-            headers: {
-              cookie: String(request.headers.cookie ?? ""),
-              origin: String(request.headers.origin ?? ""),
-              "x-csrf-token": String(request.headers["x-csrf-token"] ?? ""),
-              "idempotency-key": `draft:${request.params.draftId}:${body.revision}`,
-            },
-            body: {
-              name: saved.name,
-              purpose: saved.purpose,
-              selections,
-              operations: normalized.map((after) => ({
-                operation: "add",
-                after,
-              })),
-              collaborativeDraftId: request.params.draftId,
-              draftRevision: body.revision,
-            },
-          }),
-          reply,
-        );
-      }
-      try {
-        const published = await publishSparseVersion(db, artifacts, {
-          projectId: request.params.projectId,
-          testSetId: String(saved.test_set_id),
-          parentVersionId: String(saved.parent_version_id),
-          actorId: actor.id,
-          idempotencyKey: `draft:${request.params.draftId}:${body.revision}`,
-          operations: [],
-          draftId: request.params.draftId,
-          draftRevision: Number(body.revision),
-        });
-        const count = await db.query(
-          `SELECT item_count FROM test_set_version WHERE id=$1`,
-          [published.id],
-        );
-        return reply.code(published.replayed ? 200 : 201).send({
-          testSet: {
-            id: saved.test_set_id,
-            name: saved.name,
-            purpose: saved.purpose,
-          },
-          version: {
-            id: published.id,
-            label: published.label,
-            recordCount: Number(count.rows[0]?.item_count ?? 0),
-            parentVersionId: saved.parent_version_id,
-          },
-          replayed: published.replayed,
-        });
-      } catch (error) {
-        const code = (error as { code?: string }).code;
-        if (
-          code &&
-          [
-            "draft_not_found",
-            "version_not_found",
-            "test_set_not_found",
-          ].includes(code)
-        )
-          return reply.code(404).send({ error: { code } });
-        if (
-          code &&
-          ["draft_revision_conflict", "idempotency_conflict"].includes(code)
-        )
-          return reply.code(409).send({ error: { code } });
-        if (
-          code &&
-          [
-            "test_set_records_required",
-            "test_record_invalid",
-            "source_selection_invalid",
-            "test_set_capacity_exceeded",
-            "parent_record_invalid",
-            "draft_parent_incomplete",
-          ].includes(code)
-        )
-          return reply.code(422).send({ error: { code } });
-        if (code === "checkpoint_hard_limit_failed")
-          return reply.code(503).send({ error: { code } });
-        throw error;
-      }
-    },
+    publishDraft,
   );
 
   app.get<{
@@ -1679,4 +1449,5 @@ export function registerDrafts(
       }
     },
   );
+  return publishDraft;
 }

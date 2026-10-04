@@ -1,3 +1,5 @@
+import { createRefinementRun } from "../../processing/refine.js";
+import { reviewCandidates } from "../../processing/review.js";
 import { acceptProcessingResults } from "../../processing/accept.js";
 import type { FastifyReply } from "fastify";
 import type { ServerContext } from "../context.js";
@@ -6,6 +8,7 @@ import {
   previewProcessingInput,
   createProcessingRun,
   readProcessingRun,
+  readProcessingStatus,
   listProcessingRuns,
   controlProcessingRun,
   ProcessingError,
@@ -32,11 +35,22 @@ export function registerProcessing({
       throw error;
     }
   }
-  app.post<{Params:Params;Body:unknown}>("/api/projects/:projectId/processing-inputs",{preHandler:authenticate},async(request,reply)=>{
-    const actor=(request as AuthenticatedRequest).actor;
-    if(!writeAllowed(request,actor))return reply.code(403).send({error:{code:"csrf_rejected"}});
-    return respond(reply,()=>previewProcessingInput(db,{projectId:request.params.projectId,actorId:actor.id},request.body));
-  });
+  app.post<{ Params: Params; Body: unknown }>(
+    "/api/projects/:projectId/processing-inputs",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      return respond(reply, () =>
+        previewProcessingInput(
+          db,
+          { projectId: request.params.projectId, actorId: actor.id },
+          request.body,
+        ),
+      );
+    },
+  );
   app.post<{ Params: Params; Body: unknown }>(
     path,
     { preHandler: authenticate },
@@ -53,6 +67,60 @@ export function registerProcessing({
           request.body,
         );
         return reply.code(result.replayed ? 200 : 201).send(result);
+      });
+    },
+  );
+  app.get<{ Params: Params }>(
+    `${path}/:runId/status`,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, () =>
+        readProcessingStatus(
+          db,
+          {
+            projectId: request.params.projectId,
+            actorId: (request as AuthenticatedRequest).actor.id,
+          },
+          request.params.runId,
+        ),
+      ),
+  );
+  app.get<{ Params: Params }>(
+    `${path}/:runId/review`,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, async () => {
+        const data = await readProcessingRun(
+          db,
+          artifacts,
+          {
+            projectId: request.params.projectId,
+            actorId: (request as AuthenticatedRequest).actor.id,
+          },
+          request.params.runId,
+          { limit: "10000" },
+          true,
+        );
+        return { review: reviewCandidates(data) };
+      }),
+  );
+  app.post<{ Params: Params; Body: unknown }>(
+    `${path}/:runId/refinements`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      return respond(reply, async () => {
+        const value = await createRefinementRun(
+          db,
+          artifacts,
+          { projectId: request.params.projectId, actorId: actor.id },
+          request.params.runId,
+          request.headers["idempotency-key"],
+          request.body,
+        );
+        return reply.code(value.replayed ? 200 : 201).send(value);
       });
     },
   );
