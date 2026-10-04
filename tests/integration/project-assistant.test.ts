@@ -403,6 +403,7 @@ describe("project assistant public contract", () => {
     );
     const wire = calls[requestStart];
     expect(wire.tool_choice).toBe("required");
+    expect(JSON.stringify(wire.tools)).not.toContain('"uniqueItems"');
     const historyResults = wire.messages.filter((m: any) => m.role === "tool");
     expect(historyResults.length).toBeGreaterThan(0);
     for (const result of historyResults)
@@ -661,6 +662,27 @@ describe("project assistant public contract", () => {
           payload: {},
         })
       ).json().sessionId;
+      const beforeInvalid = (
+        await db.query("SELECT count(*)::int AS count FROM processing_run")
+      ).rows[0].count;
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "version", id: publishedVersionId },
+          allRecords: true,
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question", "question"],
+        },
+      };
+      const duplicateFields = (await send("重复字段应拒绝"))
+        .json()
+        .turns.at(-1);
+      expect(duplicateFields.tools).toEqual([]);
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM processing_run"))
+          .rows[0].count,
+      ).toBe(beforeInvalid);
       const submitted = await invoke("submit_processing", {
         source: { kind: "version", id: publishedVersionId },
         allRecords: true,

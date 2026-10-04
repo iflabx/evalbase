@@ -64,8 +64,15 @@ function schema(properties: Record<string, unknown>, required: string[]) {
     additionalProperties: false,
   } as const;
   const validate = ajv.compile(definition);
+  // Some compatible servers cannot constrain uniqueItems during forced tool decoding.
+  // Keep the full contract in Ajv; omit only this unsupported generation hint on the wire.
+  const modelDefinition = JSON.parse(
+    JSON.stringify(definition, (key, value) =>
+      key === "uniqueItems" ? undefined : value,
+    ),
+  );
   return jsonSchema<Record<string, any>>(
-    definition as Parameters<typeof jsonSchema>[0],
+    modelDefinition as Parameters<typeof jsonSchema>[0],
     {
       validate: (value) =>
         validate(value)
