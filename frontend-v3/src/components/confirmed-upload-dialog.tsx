@@ -1,5 +1,6 @@
-import { useEffect, useState, type DragEvent } from "react";
-import { Check, CloudUpload, FileText, GripVertical, Loader2, X } from "lucide-react";
+import { FieldMappingEditor } from "@/components/field-mapping-editor";
+import { useEffect, useState } from "react";
+import { CloudUpload, FileText, Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -41,8 +42,6 @@ type QueueItem = {
   }>;
 };
 
-type MappingTarget = "question" | "expectedOutput" | "metadata";
-
 export function ConfirmedUploadDialog({
   open,
   projectId,
@@ -68,8 +67,6 @@ export function ConfirmedUploadDialog({
   const [error, setError] = useState("");
   const [ignoredLocalCount, setIgnoredLocalCount] = useState(0);
   const [skippedDuplicates, setSkippedDuplicates] = useState<string[]>([]);
-  const [draggedPath, setDraggedPath] = useState<string>();
-  const [dropTarget, setDropTarget] = useState<MappingTarget>();
 
   useEffect(() => {
     if (open) setCollectionId(defaultCollectionId);
@@ -147,32 +144,9 @@ export function ConfirmedUploadDialog({
     }
   }
 
-  async function setTarget(path: string, target: MappingTarget | undefined) {
+  async function updateMapping(mapping: DisplayMapping) {
     const item = queue[current];
     if (!item) return;
-    const mapping = {
-      question:
-        target === "question"
-          ? path
-          : item.mapping.question === path
-            ? undefined
-            : item.mapping.question,
-      expectedOutput:
-        target === "expectedOutput"
-          ? path
-          : item.mapping.expectedOutput === path
-            ? undefined
-            : item.mapping.expectedOutput,
-      metadata:
-        target === "metadata"
-          ? [...new Set([...item.mapping.metadata, path])]
-          : item.mapping.metadata.filter((value) => value !== path),
-    };
-    if (target === "question")
-      mapping.expectedOutput =
-        item.mapping.expectedOutput === path ? undefined : mapping.expectedOutput;
-    if (target === "expectedOutput")
-      mapping.question = item.mapping.question === path ? undefined : mapping.question;
     setError("");
     setPending(true);
     try {
@@ -191,37 +165,7 @@ export function ConfirmedUploadDialog({
     }
   }
 
-  function startMappingDrag(event: DragEvent<HTMLElement>, path: string) {
-    if (pending) return;
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", path);
-    setDraggedPath(path);
-  }
-
-  function endMappingDrag() {
-    setDraggedPath(undefined);
-    setDropTarget(undefined);
-  }
-
-  function dragOverMapping(event: DragEvent<HTMLElement>, target: MappingTarget) {
-    if (pending) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDropTarget(target);
-  }
-
-  function leaveMapping(event: DragEvent<HTMLElement>) {
-    if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTarget(undefined);
-  }
-
-  function dropMapping(event: DragEvent<HTMLElement>, target: MappingTarget) {
-    event.preventDefault();
-    const path = event.dataTransfer.getData("text/plain") || draggedPath;
-    endMappingDrag();
-    if (path && !pending) void setTarget(path, target);
-  }
-
-  async function confirm() {
+  async function confirm(mode: "mapped" | "raw" = "mapped") {
     setPending(true);
     setError("");
     try {
@@ -229,7 +173,8 @@ export function ConfirmedUploadDialog({
         projectId,
         collectionId,
         queue.map((item) => item.pending.id),
-        confirmationKey,
+        `${confirmationKey}:${mode}`,
+        mode,
       );
       await onConfirmed();
       setFiles([]);
@@ -380,128 +325,12 @@ export function ConfirmedUploadDialog({
                   {message}
                 </p>
               ))}
-              <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-                <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-sm">
-                  <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
-                    <h3 className="text-sm font-semibold">原始字段</h3>
-                    <span className="text-xs text-muted-foreground">
-                      {item.pending.fields.length} 个字段
-                    </span>
-                  </div>
-                  <div className="grid max-h-[348px] gap-2 overflow-y-auto p-3" role="list">
-                    {item.pending.fields.map((field) => {
-                      const mapped = isMapped(item.mapping, field.path);
-                      return (
-                        <div
-                          key={field.path}
-                          role="listitem"
-                          aria-label={`${displayFieldPath(field.path)}，样例：${sampleValue(field.sample)}`}
-                          draggable={!pending}
-                          onDragStart={(event) => startMappingDrag(event, field.path)}
-                          onDragEnd={endMappingDrag}
-                          className={`flex min-w-0 items-start gap-2 rounded-md border bg-background p-2.5 transition-colors ${
-                            draggedPath === field.path
-                              ? "opacity-40"
-                              : "hover:border-ring hover:bg-accent"
-                          } ${pending ? "cursor-not-allowed" : "cursor-grab"}`}
-                        >
-                          <GripVertical
-                            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                            aria-hidden="true"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <span className="mono block truncate text-[13px] font-semibold">
-                              {displayFieldPath(field.path)}
-                            </span>
-                            <span className="mono mt-1 block truncate text-xs text-muted-foreground">
-                              样例：{sampleValue(field.sample)}
-                            </span>
-                          </div>
-                          {mapped && (
-                            <span
-                              className="grid size-[18px] shrink-0 self-center place-items-center rounded-full border border-primary/60 bg-transparent text-primary"
-                              aria-label={`${displayFieldPath(field.path)} 已映射`}
-                            >
-                              <Check className="size-3" aria-hidden="true" />
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-                <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-sm">
-                  <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
-                    <h3 className="text-sm font-semibold">映射后的统一记录</h3>
-                    <span className="text-xs text-muted-foreground">拖入字段完成映射</span>
-                  </div>
-                  <div className="grid gap-2.5 p-3">
-                    {(
-                      [
-                        ["question", "问题", "仅一个字段"],
-                        ["expectedOutput", "期望输出", "可选 · 仅一个字段"],
-                        ["metadata", "Metadata", "可多个字段"],
-                      ] as const
-                    ).map(([target, label, hint]) => {
-                      const paths = mappingPaths(item.mapping, target);
-                      return (
-                        <section
-                          key={target}
-                          role="region"
-                          aria-label={label}
-                          onDragOver={(event) => dragOverMapping(event, target)}
-                          onDragLeave={leaveMapping}
-                          onDrop={(event) => dropMapping(event, target)}
-                          className={`min-h-[76px] rounded-md border border-dashed p-2.5 transition-colors ${
-                            dropTarget === target
-                              ? "border-solid border-primary bg-accent"
-                              : paths.length > 0
-                                ? "border-solid border-primary/45 bg-primary/[0.06]"
-                                : "border-border bg-background"
-                          }`}
-                        >
-                          <div className="flex items-baseline justify-between gap-2">
-                            <strong className="text-[13px]">{label}</strong>
-                            <span className="text-xs text-muted-foreground">{hint}</span>
-                          </div>
-                          {paths.length ? (
-                            <div className="mt-2.5 flex flex-wrap gap-1.5">
-                              {paths.map((path) => (
-                                <span
-                                  key={path}
-                                  aria-label={`已映射字段 ${displayFieldPath(path)}`}
-                                  draggable={!pending}
-                                  onDragStart={(event) => startMappingDrag(event, path)}
-                                  onDragEnd={endMappingDrag}
-                                  className={`inline-flex max-w-full items-center gap-1 rounded-sm bg-primary py-1 pl-2 pr-1 text-xs font-semibold text-primary-foreground ${
-                                    draggedPath === path ? "opacity-40" : "cursor-grab"
-                                  }`}
-                                >
-                                  <span className="truncate">{displayFieldPath(path)}</span>
-                                  <button
-                                    type="button"
-                                    className="grid size-4 shrink-0 place-items-center rounded-sm hover:bg-primary-foreground/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-foreground"
-                                    aria-label={`取消 ${displayFieldPath(path)} 的映射`}
-                                    title="取消映射"
-                                    onClick={() => void setTarget(path, undefined)}
-                                    disabled={pending}
-                                  >
-                                    <X className="size-3" />
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="mt-2.5 block text-xs text-muted-foreground">
-                              拖到这里
-                            </span>
-                          )}
-                        </section>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
+              <FieldMappingEditor
+                fields={item.pending.fields}
+                mapping={item.mapping}
+                pending={pending}
+                onChange={updateMapping}
+              />
               <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                 已映射 {item.preview.length} 条统一记录 / 共 {item.pending.recordCount} 条原始记录
               </div>
@@ -554,6 +383,14 @@ export function ConfirmedUploadDialog({
                 取消
               </Button>
               <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => void confirm("raw")}
+                >
+                  先保存原文件，稍后整理
+                </Button>
                 {current > 0 && (
                   <Button
                     type="button"
@@ -631,27 +468,6 @@ function suggestedMapping(upload: PendingUpload): DisplayMapping {
     ...(expectedOutput ? { expectedOutput } : {}),
     metadata: [],
   };
-}
-
-function mappingPaths(mapping: DisplayMapping, target: MappingTarget) {
-  if (target === "question") return mapping.question ? [mapping.question] : [];
-  if (target === "expectedOutput") return mapping.expectedOutput ? [mapping.expectedOutput] : [];
-  return mapping.metadata;
-}
-
-function isMapped(mapping: DisplayMapping, path: string) {
-  return Boolean(
-    mapping.question === path || mapping.expectedOutput === path || mapping.metadata.includes(path),
-  );
-}
-
-function sampleValue(value: unknown) {
-  if (value === undefined || value === null || value === "") return "未填写";
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function displayFieldPath(path: string) {
-  return path.replace(/^\/+/, "") || path;
 }
 
 function formatFileSize(bytes: number) {

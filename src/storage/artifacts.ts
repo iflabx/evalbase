@@ -133,6 +133,28 @@ export class ArtifactRepository {
     }
   }
 
+  /** Task bodies have independent lifetimes; they must never alias another run or uploaded asset. */
+  async storeProcessing(
+    bytes: Uint8Array,
+    runId: string,
+    part: string,
+  ): Promise<StoredArtifact> {
+    if (
+      !/^processing_[a-zA-Z0-9_-]+$/.test(runId) ||
+      !/^(input|batch-[0-9]+)$/.test(part)
+    )
+      throw new Error("Invalid processing artifact scope");
+    const digest = sha256(bytes),
+      objectRef = `processing/${runId}/${part}/${randomUUID()}/${digest}`;
+    await this.client.putObject(
+      this.bucket,
+      objectRef,
+      Buffer.from(bytes),
+      bytes.byteLength,
+    );
+    return { sha256: digest, size: bytes.byteLength, objectRef };
+  }
+
   async stageStream(
     operationId: string,
     stream: Readable,

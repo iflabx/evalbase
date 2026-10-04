@@ -1,0 +1,93 @@
+name: evalbase-agent-owner-checkpoint
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    environment:
+      POSTGRES_DB: agent_owner
+      POSTGRES_USER: agent_owner
+      POSTGRES_PASSWORD: ${CHECKPOINT_DB_PASSWORD:?required}
+    cpus: 1
+    mem_limit: 512m
+    networks: [internal]
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U agent_owner -d agent_owner]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: [server, /data]
+    environment:
+      MINIO_ROOT_USER: agent-owner
+      MINIO_ROOT_PASSWORD: ${CHECKPOINT_STORAGE_PASSWORD:?required}
+    cpus: 1
+    mem_limit: 512m
+    networks: [internal]
+    volumes: [minio:/data]
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  web:
+    image: ${CHECKPOINT_IMAGE:-evalbase-agent-checkpoint:dev}
+    init: true
+    command: [sh, -c, "npm run db:migrate && npm run start:web"]
+    cpus: 1
+    mem_limit: 1g
+    environment: &app
+      DATABASE_URL: postgresql://agent_owner:${CHECKPOINT_DB_PASSWORD}@postgres:5432/agent_owner
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: agent-owner
+      MINIO_SECRET_KEY: ${CHECKPOINT_STORAGE_PASSWORD}
+      MINIO_BUCKET: agent-owner-checkpoint
+      MODEL_ENCRYPTION_KEY: ${MODEL_ENCRYPTION_KEY:?required}
+      APP_ORIGIN: http://127.0.0.1:4217
+      GIT_SHA: ${GIT_SHA:-work-in-progress}
+      NODE_ENV: production
+      ALLOW_TEST_IDENTITY: "false"
+      HOST: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [edge, internal]
+    ports: ["127.0.0.1:4217:3000"]
+  worker:
+    image: ${CHECKPOINT_IMAGE:-evalbase-agent-checkpoint:dev}
+    init: true
+    command: [npm, run, start:worker]
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      <<: *app
+      WORKER_TASK_GROUP: ordinary
+    depends_on:
+      web: {condition: service_healthy}
+    networks: [internal]
+  model-worker:
+    image: ${CHECKPOINT_IMAGE:-evalbase-agent-checkpoint:dev}
+    init: true
+    command: [npm, run, start:worker]
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      <<: *app
+      WORKER_TASK_GROUP: model
+    depends_on:
+      web: {condition: service_healthy}
+    networks: [edge, internal]
+networks:
+  internal:
+    internal: true
+  edge: {}
+volumes:
+  postgres: {}
+  minio: {}

@@ -17,5 +17,6 @@ frontend-v3/vite.v2a.config.ts
 .scratch/architecture-performance/baseline
 .scratch/performance-repair/baseline
 local-acceptance-evidence
+.scratch/agent-data-processing
 **/*.pem
 **/id_ed25519*

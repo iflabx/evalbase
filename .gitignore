@@ -4,3 +4,11 @@ coverage/
 playwright-report/
 test-results/
 .env
+.scratch/agent-data-processing/*.env
+.scratch/agent-data-processing/model-probe-key
+.scratch/agent-data-processing/lock-refresh/
+.scratch/agent-data-processing/evidence/
+.scratch/agent-data-processing/checkpoint-fixture.json
+.scratch/agent-data-processing/seed_checkpoint.py
+.scratch/agent-data-processing/model-compatibility-probe.mjs
+.scratch/agent-data-processing/*.sql

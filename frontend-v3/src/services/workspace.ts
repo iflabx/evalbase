@@ -44,7 +44,8 @@ export type MaterialFile = {
   size: number;
   recordCount: number;
   uploadedAt: string;
-  status: "可浏览" | "等待解析";
+  status: "可浏览" | "等待解析" | "待整理字段";
+  mappingReady?: boolean;
 };
 
 export type MetadataEntry = { key: string; value: string };
@@ -189,6 +190,7 @@ export type ProvenanceRecord = {
     ordinal: number;
     fileName?: string;
     collectionId?: string;
+    processing?: { runId: string; operation: string; inputKind: string; inputId: string };
   } | null;
 };
 
@@ -373,13 +375,14 @@ export async function confirmPendingUploads(
   collectionId: string,
   pendingUploadIds: string[],
   idempotencyKey: string,
+  mode: "mapped" | "raw" = "mapped",
 ) {
   return request<{ assets: Array<{ id: string; fileName: string }> }>(
     `/api/projects/${encodeURIComponent(projectId)}/pending-upload-batches/confirm`,
     {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
-      body: JSON.stringify({ collectionId, pendingUploadIds }),
+      body: JSON.stringify({ collectionId, pendingUploadIds, mode }),
     },
   );
 }
@@ -409,9 +412,9 @@ export async function getMaterialFile(
   projectId: string,
   collectionId: string,
   assetId: string,
-): Promise<Pick<MaterialFile, "fileName" | "format" | "recordCount">> {
+): Promise<Pick<MaterialFile, "fileName" | "format" | "recordCount" | "mappingReady">> {
   const response = await request<{
-    asset: Pick<MaterialFile, "fileName" | "format" | "recordCount">;
+    asset: Pick<MaterialFile, "fileName" | "format" | "recordCount" | "mappingReady">;
   }>(
     `/api/projects/${encodeURIComponent(projectId)}/collections/${encodeURIComponent(collectionId)}/assets/${encodeURIComponent(assetId)}`,
   );

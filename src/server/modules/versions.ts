@@ -357,7 +357,7 @@ export function registerVersions(
                       sr.locator, sr.record_hash
                  FROM selected
                  JOIN data_asset da ON da.id = selected.asset_id AND da.project_id = $1
-                 JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready'
+                 JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready' AND pv.mapping_ready
                  JOIN source_record sr
                    ON sr.parsed_view_id = pv.id AND sr.ordinal = selected.ordinal
                 WHERE da.status NOT IN ('deletion_pending', 'tombstoned')
@@ -786,6 +786,12 @@ export function registerVersions(
       ordinal: number;
       fileName?: string;
       collectionId?: string;
+      processing?: {
+        runId: string;
+        operation: string;
+        inputKind: string;
+        inputId: string;
+      };
     } | null;
   };
 
@@ -1067,11 +1073,33 @@ export function registerVersions(
     const assetById = new Map(
       assets.rows.map((asset) => [String(asset.id), asset]),
     );
+    const processed = sourceAssetIds.length
+      ? await queryClient.query(
+          `SELECT pv.asset_id,sr.ordinal,sr.locator,r.id,r.options->>'operation' AS operation,r.source->>'kind' AS input_kind
+       FROM parsed_view pv JOIN source_record sr ON sr.parsed_view_id=pv.id
+       JOIN processing_run r ON r.id=sr.locator->>'processingRunId' AND r.project_id=$1
+       WHERE pv.asset_id=ANY($2::text[]) AND pv.is_current`,
+          [projectId, sourceAssetIds],
+        )
+      : { rows: [] };
+    const processingBySource = new Map(
+      processed.rows.map((row) => [`${row.asset_id}:${row.ordinal}`, row]),
+    );
     const enrichSource = (source: SoloVersionRecord["source"]) => {
       if (source) {
         const asset = assetById.get(source.assetId);
         source.fileName = String(asset?.file_name ?? "未记录资料");
         source.collectionId = String(asset?.collection_id ?? "");
+        const processed = processingBySource.get(
+          `${source.assetId}:${source.ordinal}`,
+        );
+        if (processed)
+          source.processing = {
+            runId: processed.id,
+            operation: processed.operation,
+            inputKind: processed.input_kind,
+            inputId: String(processed.locator.inputId),
+          };
       }
     };
     for (const change of changes) {

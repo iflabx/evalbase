@@ -447,6 +447,8 @@ export type DisplayMapping = {
   question?: string;
   expectedOutput?: string;
   metadata: string[];
+  /** Internal canonical processing output; user mappings only select source paths. */
+  metadataEntries?: "/metadata";
 };
 
 export const CONFIRMED_UPLOAD_ENVIRONMENT_SOURCE = {
@@ -493,8 +495,20 @@ export function normalizeDisplayMapping(
   if (
     !isPlainObject(value) ||
     Object.keys(value).some(
-      (key) => !["question", "expectedOutput", "metadata"].includes(key),
+      (key) =>
+        ![
+          "question",
+          "expectedOutput",
+          "metadata",
+          ...(requireDistinctMetadataKeys ? [] : ["metadataEntries"]),
+        ].includes(key),
     )
+  )
+    return undefined;
+  if (
+    value.metadataEntries !== undefined &&
+    (value.metadataEntries !== "/metadata" ||
+      (Array.isArray(value.metadata) && value.metadata.length))
   )
     return undefined;
   const question = value.question;
@@ -512,6 +526,14 @@ export function normalizeDisplayMapping(
   const normalizedMetadata = [
     ...new Set(metadata.filter(Boolean).map(canonicalSourcePath)),
   ];
+  const assignedPaths = [question, expectedOutput, ...normalizedMetadata]
+    .filter((path): path is string => typeof path === "string" && Boolean(path))
+    .map(canonicalSourcePath);
+  if (
+    requireDistinctMetadataKeys &&
+    new Set(assignedPaths).size !== assignedPaths.length
+  )
+    return undefined;
   if (
     requireDistinctMetadataKeys &&
     new Set(
@@ -525,6 +547,7 @@ export function normalizeDisplayMapping(
       ? { expectedOutput: canonicalSourcePath(expectedOutput) }
       : {}),
     metadata: normalizedMetadata,
+    ...(value.metadataEntries ? { metadataEntries: "/metadata" as const } : {}),
   };
 }
 
@@ -592,12 +615,16 @@ export function mapMaterialRecord(fields: unknown, mapping: DisplayMapping) {
   return {
     question: mappedDisplayValue(fields, mapping.question),
     expectedOutput: mappedDisplayValue(fields, mapping.expectedOutput),
-    metadata: mapping.metadata.map(
-      (path): MetadataEntry => ({
-        key: displayFieldName(path),
-        value: mappedDisplayValue(fields, path),
-      }),
-    ),
+    metadata: mapping.metadataEntries
+      ? (normalizeMetadataEntries(
+          sourceValueAt(fields, mapping.metadataEntries).value,
+        ) ?? [])
+      : mapping.metadata.map(
+          (path): MetadataEntry => ({
+            key: displayFieldName(path),
+            value: mappedDisplayValue(fields, path),
+          }),
+        ),
   };
 }
 

@@ -1,3 +1,5 @@
+import { canonicalJson, sha256 } from "../../package/contract.js";
+import { cleanupProcessingObjects } from "../../processing/cleanup.js";
 import { writeBatches } from "../../db/batch.js";
 import { type FastifyReply, type FastifyRequest } from "fastify";
 import { hasProjectCapability } from "../../security/project-access.js";
@@ -9,6 +11,7 @@ import {
   isPlainObject,
   normalizeDisplayMapping,
   displayText,
+  displayFieldName,
   MetadataEntry,
   normalizeMetadataEntries,
   readMetadataEntries,
@@ -367,8 +370,15 @@ export function registerDrafts(
       if (
         !isPlainObject(body) ||
         Object.keys(body).some(
-          (k) => !["testSetId", "parentVersionId"].includes(k),
+          (k) =>
+            !["testSetId", "parentVersionId", "name", "purpose"].includes(k),
         ) ||
+        (body.name !== undefined &&
+          (typeof body.name !== "string" || body.name.length > 200)) ||
+        (body.purpose !== undefined &&
+          (typeof body.purpose !== "string" || body.purpose.length > 2000)) ||
+        (body.testSetId !== undefined &&
+          (body.name !== undefined || body.purpose !== undefined)) ||
         (body.testSetId === undefined) !==
           (body.parentVersionId === undefined) ||
         (body.testSetId !== undefined &&
@@ -379,11 +389,74 @@ export function registerDrafts(
           .code(422)
           .send({ error: { code: "draft_request_invalid" } });
       const actor = (request as AuthenticatedRequest).actor;
+      const key = request.headers["idempotency-key"];
+      if (
+        key !== undefined &&
+        (typeof key !== "string" || !key.trim() || key.length > 200)
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "idempotency_key_invalid" } });
+      const requestHash = sha256(canonicalJson(body));
+      const stableId =
+        typeof key === "string"
+          ? `collabdraft_${sha256(canonicalJson([request.params.projectId, actor.id, key]))}`
+          : undefined;
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        let name = "",
-          purpose = "";
+        await client.query("SELECT id FROM app_user WHERE id=$1 FOR SHARE", [
+          actor.id,
+        ]);
+        await client.query(
+          "SELECT user_id FROM project_member WHERE project_id=$1 AND user_id=$2 FOR SHARE",
+          [request.params.projectId, actor.id],
+        );
+        if (
+          !(await hasProjectCapability(
+            client,
+            request.params.projectId,
+            actor.id,
+            "write",
+          ))
+        ) {
+          await client.query("ROLLBACK");
+          return reply.code(404).send({ error: { code: "project_not_found" } });
+        }
+        if (stableId) {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+            stableId,
+          ]);
+          const prior = await client.query(
+            `${draftSelect} JOIN draft_creation_receipt receipt ON receipt.draft_id=d.id WHERE receipt.project_id=$1 AND receipt.actor_id=$2 AND receipt.operation_key=$3`,
+            [request.params.projectId, actor.id, key],
+          );
+          const savedHash = await client.query(
+            "SELECT request_hash FROM draft_creation_receipt WHERE project_id=$1 AND actor_id=$2 AND operation_key=$3",
+            [request.params.projectId, actor.id, key],
+          );
+          if (prior.rowCount) {
+            if (savedHash.rows[0]?.request_hash !== requestHash) {
+              await client.query("ROLLBACK");
+              return reply
+                .code(409)
+                .send({ error: { code: "idempotency_conflict" } });
+            }
+            if (
+              !draftLive(prior.rows[0]) &&
+              prior.rows[0].status !== "published"
+            ) {
+              await client.query("ROLLBACK");
+              return reply
+                .code(409)
+                .send({ error: { code: "draft_not_editable" } });
+            }
+            await client.query("COMMIT");
+            return { draft: draftSummary(prior.rows[0]), replayed: true };
+          }
+        }
+        let name = typeof body.name === "string" ? body.name.trim() : "",
+          purpose = typeof body.purpose === "string" ? body.purpose : "";
         if (body.testSetId) {
           const parent = await client.query(
             `SELECT ts.name,ts.purpose,ts.status AS test_set_status,
@@ -405,7 +478,7 @@ export function registerDrafts(
           name = String(parent.rows[0].name);
           purpose = String(parent.rows[0].purpose);
         }
-        const draftId = opaqueId("collabdraft");
+        const draftId = stableId ?? opaqueId("collabdraft");
         const inserted = await client.query(
           `INSERT INTO collaborative_draft
           (id,project_id,test_set_id,parent_version_id,name,purpose,updated_by,created_by,created_at)
@@ -479,6 +552,11 @@ export function registerDrafts(
             })),
           );
         }
+        if (stableId)
+          await client.query(
+            "INSERT INTO draft_creation_receipt(project_id,actor_id,operation_key,request_hash,draft_id) VALUES($1,$2,$3,$4,$5)",
+            [request.params.projectId, actor.id, key, requestHash, actualId],
+          );
         const draft = await client.query(`${draftSelect} WHERE d.id=$1`, [
           actualId,
         ]);
@@ -785,7 +863,7 @@ export function registerDrafts(
         if (source) {
           const material = await client.query(
             `SELECT sr.value,pv.display_mapping FROM data_asset da
-            JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready'
+            JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready' AND pv.mapping_ready
             JOIN source_record sr ON sr.parsed_view_id=pv.id AND sr.ordinal=$3 AND sr.parse_status='valid'
             WHERE da.id=$2 AND da.project_id=$1 AND da.status NOT IN ('deletion_pending','tombstoned')`,
             [request.params.projectId, source.assetId, source.ordinal],
@@ -1044,6 +1122,7 @@ export function registerDrafts(
           [request.params.draftId],
         );
         await client.query("COMMIT");
+        await cleanupProcessingObjects(db, artifacts, request.params.projectId);
         return reply.code(204).send();
       } catch (error) {
         await client.query("ROLLBACK").catch(() => undefined);
@@ -1244,14 +1323,14 @@ export function registerDrafts(
       const offset = Math.max(0, Number(request.query.offset) || 0);
       const search = String(request.query.search ?? "").slice(0, 200);
       const rows = await db.query(
-        `SELECT da.id,da.file_name,c.name AS collection_name,
+        `SELECT da.id,da.file_name,c.name AS collection_name,pv.display_mapping,
         count(sr.ordinal)::integer AS record_count,count(*) OVER() AS total
         FROM data_asset da JOIN raw_material_collection c ON c.id=da.collection_id
-        JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready'
+        JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready' AND pv.mapping_ready
         JOIN source_record sr ON sr.parsed_view_id=pv.id AND sr.parse_status='valid'
         WHERE da.project_id=$1 AND da.status NOT IN ('deletion_pending','tombstoned')
           AND ($2='' OR da.file_name ILIKE '%'||$2||'%' OR c.name ILIKE '%'||$2||'%')
-        GROUP BY da.id,da.file_name,c.name ORDER BY c.name,da.file_name,da.id
+        GROUP BY da.id,da.file_name,c.name,pv.display_mapping ORDER BY c.name,da.file_name,da.id
         LIMIT $3 OFFSET $4`,
         [request.params.projectId, search, limit, offset],
       );
@@ -1261,6 +1340,9 @@ export function registerDrafts(
           fileName: row.file_name,
           collectionName: row.collection_name,
           recordCount: Number(row.record_count),
+          metadataKeys: (
+            normalizeDisplayMapping(row.display_mapping)?.metadata ?? []
+          ).map(displayFieldName),
         })),
         total: Number(rows.rows[0]?.total ?? 0),
       };
@@ -1292,7 +1374,7 @@ export function registerDrafts(
       const rows = await db.query(
         `SELECT sr.ordinal,sr.value,pv.display_mapping,
         count(*) OVER() AS total FROM data_asset da
-        JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready'
+        JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready' AND pv.mapping_ready
         JOIN source_record sr ON sr.parsed_view_id=pv.id AND sr.parse_status='valid'
         WHERE da.id=$2 AND da.project_id=$1 AND da.status NOT IN ('deletion_pending','tombstoned')
           AND ($3='' OR sr.value::text ILIKE '%'||$3||'%')
@@ -1424,7 +1506,7 @@ export function registerDrafts(
         }
         const assets = await client.query(
           `SELECT da.id,da.size_bytes FROM data_asset da
-          JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready'
+          JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready' AND pv.mapping_ready
           WHERE da.project_id=$1 AND da.id=ANY($2::text[]) AND da.status NOT IN ('deletion_pending','tombstoned')`,
           [request.params.projectId, assetIds],
         );
@@ -1440,7 +1522,7 @@ export function registerDrafts(
         }
         const sources = await client.query(
           `SELECT da.id AS asset_id,sr.ordinal,sr.value,pv.display_mapping
-          FROM data_asset da JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready'
+          FROM data_asset da JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready' AND pv.mapping_ready
           JOIN source_record sr ON sr.parsed_view_id=pv.id AND sr.parse_status='valid'
           WHERE da.project_id=$1 AND da.id=ANY($2::text[])
             AND ($3='' OR sr.value::text ILIKE '%'||$3||'%')

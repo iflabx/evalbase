@@ -17,6 +17,8 @@ import { RecordDensityControl } from "@/components/record-density";
 import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
 import { getMaterialFile, getMaterialRawPreview, listUnifiedRecords } from "@/services/workspace";
 import { Pagination } from "@/routes/index";
+import { MaterialPreparation } from "@/components/material-preparation";
+import { useProjectAccess } from "@/hooks/use-project-access";
 
 const PAGE_SIZE = 10;
 
@@ -26,6 +28,7 @@ export const Route = createFileRoute("/projects/$projectId/datasets/$collectionI
 
 function FileRecordsPage() {
   const { projectId, collectionId, assetId } = Route.useParams();
+  const access = useProjectAccess(projectId);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rawOpen, setRawOpen] = useState(false);
@@ -42,6 +45,7 @@ function FileRecordsPage() {
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       }),
+    enabled: file.data?.mappingReady !== false,
   });
   const total = records.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -70,46 +74,77 @@ function FileRecordsPage() {
                 返回原始数据
               </Link>
             </Button>
+            {access.canWrite && (
+              <Button variant="outline" asChild>
+                <Link
+                  to="/projects/$projectId/processing"
+                  params={{ projectId }}
+                  search={{ source: "assets", sourceId: assetId, run: undefined }}
+                >
+                  处理数据
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setRawOpen(true)}>
               查看原始内容
             </Button>
           </div>
         }
       />
-      <div className="mb-4 flex flex-wrap items-center gap-1">
-        <div className="relative w-80">
-          <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            aria-label="搜索文件记录"
-            placeholder="搜索问题、期望输出或 Metadata"
-            className="pl-8"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        <RecordDensityControl />
-      </div>
-      <StateView
-        isLoading={records.isLoading}
-        error={records.error}
-        data={records.data}
-        isEmpty={(data) => data.items.length === 0}
-        onRetry={() => void records.refetch()}
-        empty={<EmptyBlock title="没有可浏览的记录" />}
-      >
-        {(data) => (
-          <MaterialRecordTable
-            projectId={projectId}
-            collectionId={collectionId}
-            records={data.items}
-          />
-        )}
-      </StateView>
-      {total > 0 && (
-        <Pagination total={total} current={page} pages={pages} onChange={setPage} unit="条记录" />
+      {file.data?.mappingReady === false ? (
+        <MaterialPreparation
+          projectId={projectId}
+          assetId={assetId}
+          canWrite={access.canWrite}
+          onPrepared={async () => {
+            await file.refetch();
+            await records.refetch();
+          }}
+        />
+      ) : (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-1">
+            <div className="relative w-80">
+              <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                aria-label="搜索文件记录"
+                placeholder="搜索问题、期望输出或 Metadata"
+                className="pl-8"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <RecordDensityControl />
+          </div>
+          <StateView
+            isLoading={records.isLoading}
+            error={records.error}
+            data={records.data}
+            isEmpty={(data) => data.items.length === 0}
+            onRetry={() => void records.refetch()}
+            empty={<EmptyBlock title="没有可浏览的记录" />}
+          >
+            {(data) => (
+              <MaterialRecordTable
+                projectId={projectId}
+                collectionId={collectionId}
+                records={data.items}
+              />
+            )}
+          </StateView>
+          {total > 0 && (
+            <Pagination
+              total={total}
+              current={page}
+              pages={pages}
+              onChange={setPage}
+              unit="条记录"
+            />
+          )}
+        </>
       )}
       <Dialog open={rawOpen} onOpenChange={setRawOpen}>
         <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-hidden">

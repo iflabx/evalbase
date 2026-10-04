@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
+import { SelectionHistory } from "@/components/selection-history";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -192,6 +193,17 @@ function TestSetDetailPage() {
                     <Button variant="outline" onClick={() => setView("provenance")}>
                       查看来源与修改
                     </Button>
+                    {access.canWrite && (
+                      <Button variant="outline" asChild>
+                        <Link
+                          to="/projects/$projectId/processing"
+                          params={{ projectId }}
+                          search={{ source: "version", sourceId: data.version.id, run: undefined }}
+                        >
+                          处理数据
+                        </Link>
+                      </Button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline">下载</Button>
@@ -702,6 +714,9 @@ function ProvenanceView({
                 </div>
               </dl>
             </Card>
+            <SelectionHistory
+              path={`/api/projects/${encodeURIComponent(projectId)}/solo-test-sets/${encodeURIComponent(testSetId)}/versions/${encodeURIComponent(versionId)}/selection-history`}
+            />
             <section className="mb-3">
               <h2 className="text-base font-semibold">逐条查看变化</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -764,7 +779,10 @@ function ProvenanceView({
                                   {change.source.fileName ?? "原始资料"}
                                 </span>
                                 <span className="mt-1 block text-xs text-muted-foreground">
-                                  第 {change.source.ordinal + 1} 条记录
+                                  第 {change.source.ordinal} 条记录
+                                  {change.source.processing
+                                    ? ` · ${processingLabel(change.source.processing.operation)}产物`
+                                    : ""}
                                 </span>
                               </>
                             ) : (
@@ -918,6 +936,7 @@ function ChangeDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const access = useProjectAccess(projectId);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -958,7 +977,7 @@ function ChangeDetailDialog({
                 <div>
                   <dt className="inline text-muted-foreground">来源记录：</dt>
                   <dd className="inline">
-                    {change.source ? `第 ${change.source.ordinal + 1} 条记录` : "本次编辑"}
+                    {change.source ? `第 ${change.source.ordinal} 条记录` : "本次编辑"}
                   </dd>
                 </div>
                 <div>
@@ -969,6 +988,33 @@ function ChangeDetailDialog({
                       : "无字段内容修改"}
                   </dd>
                 </div>
+                {change.source?.processing && (
+                  <div className="mt-2 border-t pt-3">
+                    <p>
+                      {processingLabel(change.source.processing.operation)} · 来自
+                      {(
+                        { assets: "原始文件", draft: "草稿", version: "正式版本" } as Record<
+                          string,
+                          string
+                        >
+                      )[change.source.processing.inputKind] ?? "原始输入"}
+                    </p>
+                    {access.canWrite && (
+                      <Link
+                        className="mt-1 inline-block text-primary hover:underline"
+                        to="/projects/$projectId/processing"
+                        params={{ projectId }}
+                        search={{
+                          run: change.source.processing.runId,
+                          source: undefined,
+                          sourceId: undefined,
+                        }}
+                      >
+                        查看处理任务与原始输入
+                      </Link>
+                    )}
+                  </div>
+                )}
               </dl>
             </div>
           </div>
@@ -994,6 +1040,13 @@ function ChangeDetailDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+function processingLabel(operation: string) {
+  return (
+    ({ clean: "规则清洗", rewrite: "模型改写", augment: "模型扩充" } as Record<string, string>)[
+      operation
+    ] ?? "数据处理"
   );
 }
 
@@ -1032,10 +1085,7 @@ function ChangeContent({ title, record }: { title: string; record: ProvenanceCha
           <dt className="inline text-muted-foreground">来源：</dt>
           <dd className="inline">
             {record.source
-              ? (record.source.fileName ?? "原始资料") +
-                " 第 " +
-                (record.source.ordinal + 1) +
-                " 条记录"
+              ? (record.source.fileName ?? "原始资料") + " 第 " + record.source.ordinal + " 条记录"
               : "手工新增"}
           </dd>
         </div>
@@ -1634,7 +1684,7 @@ function VersionRecordDetail({
               <h3 className="font-medium">来源</h3>
               <p className="mt-1 text-muted-foreground">
                 {record.source
-                  ? `${record.source.fileName ?? "原始资料"} · 第 ${record.source.ordinal + 1} 条记录`
+                  ? `${record.source.fileName ?? "原始资料"} · 第 ${record.source.ordinal} 条记录`
                   : "手工新增"}
               </p>
             </section>

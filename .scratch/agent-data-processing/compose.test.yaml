@@ -1,0 +1,34 @@
+name: evalbase-agent-test
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    environment:
+      POSTGRES_DB: agent_test
+      POSTGRES_USER: agent_test
+      POSTGRES_PASSWORD: synthetic-agent-test
+    cpus: 1
+    mem_limit: 512m
+    networks: [test]
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U agent_test -d agent_test]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: [server, /data]
+    environment:
+      MINIO_ROOT_USER: agent-test
+      MINIO_ROOT_PASSWORD: synthetic-agent-test
+    cpus: 1
+    mem_limit: 512m
+    networks: [test]
+    volumes: [minio:/data]
+networks:
+  test:
+    name: evalbase-agent-test
+    internal: true
+volumes:
+  postgres:
+  minio:

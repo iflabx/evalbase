@@ -182,7 +182,7 @@ async function sourceFacts(
             sr.locator, sr.record_hash
        FROM selected
        JOIN data_asset da ON da.id=selected.asset_id AND da.project_id=$1
-       JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready'
+       JOIN parsed_view pv ON pv.asset_id=da.id AND pv.is_current AND pv.status='ready' AND pv.mapping_ready
        JOIN source_record sr ON sr.parsed_view_id=pv.id AND sr.ordinal=selected.ordinal
        WHERE da.status NOT IN ('deletion_pending','tombstoned')
          AND sr.parse_status='valid'

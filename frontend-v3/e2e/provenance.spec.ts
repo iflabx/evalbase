@@ -252,14 +252,14 @@ test("shows the frozen provenance controls and record detail for the selected ve
   await expect(page.getByRole("button", { name: "下载数据与溯源" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "记录" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "状态" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "变更字段" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "变更字段 / 修改者" })).toBeVisible();
   await expect(page.getByText("共 2 条记录 · 第 1/1 页", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "查看" }).first().click();
   await expect(page.getByRole("heading", { name: "记录来源与修改" })).toBeVisible();
   await expect(page.getByText("来源与本次修改", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "查看原始资料" })).toBeVisible();
   await expect(page.getByText("修改前内容", { exact: true })).toBeVisible();
-  await expect(page.getByText("原始资料.csv 第 2 条记录", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("原始资料.csv 第 1 条记录", { exact: true }).first()).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "查看" }).nth(2).click();
   await expect(page.getByText("移除前内容", { exact: true })).toBeVisible();

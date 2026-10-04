@@ -31,7 +31,7 @@ export function isTestIdentityRole(role: unknown): boolean {
 }
 
 export async function hasProjectCapability(
-  db: Database,
+  db: Pick<Database, "query">,
   projectId: string,
   actorId: string,
   capability: ProjectCapability,

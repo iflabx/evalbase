@@ -50,6 +50,7 @@ export type DraftSourceFile = {
   fileName: string;
   collectionName: string;
   recordCount: number;
+  metadataKeys?: string[];
 };
 export type DraftSourceRecord = {
   assetId: string;

@@ -1,3 +1,4 @@
+import { cleanupProcessingObjects } from "../../processing/cleanup.js";
 import type { PoolClient } from "pg";
 import { canonicalJson, sha256 } from "../../package/contract.js";
 import { hasProjectCapability } from "../../security/project-access.js";
@@ -429,6 +430,7 @@ export function registerDeletion(
     objectRefs: string[],
   ) {
     await removeUnreferencedObjects(objectRefs);
+    await cleanupProcessingObjects(db, artifacts);
     await db.query(
       `UPDATE test_set_version
           SET cleanup_object_refs = '[]'::jsonb, cleanup_pending = false
@@ -996,6 +998,7 @@ export function registerDeletion(
         const entryId = String(row.id);
         try {
           await removeUnreferencedObjects(objectRefs);
+          await cleanupProcessingObjects(db, artifacts);
           await db.query(
             "UPDATE test_set_trash_entry SET status = 'permanently_deleted', updated_at = now() WHERE id = $1",
             [entryId],

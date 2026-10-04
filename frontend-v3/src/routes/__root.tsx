@@ -7,6 +7,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 
+import { ProjectAssistant } from "@/components/project-assistant";
 import { AccountGate } from "@/components/account-gate";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -143,6 +144,12 @@ function AuthenticatedApp() {
             <header className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur">
               <SidebarTrigger />
               <span className="text-sm text-muted-foreground">团队测试资料库</span>
+              {projectId && access.data?.capabilities.read && (
+                <ProjectAssistant
+                  key={`${projectId}:${session.data.actor.id}`}
+                  projectId={projectId}
+                />
+              )}
               <OnlineAvatars users={users} selfId={session.data.actor.id} className="ml-auto" />
               <button
                 className="text-sm hover:text-primary"

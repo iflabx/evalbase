@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, UserRound, UsersRound } from "lucide-react";
+import { Info, UserRound, UsersRound, Plug } from "lucide-react";
+import { ModelConnectionSettings } from "@/components/model-connection-settings";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/state-view";
 import {
@@ -20,14 +21,15 @@ import {
 } from "@/services/account";
 import { listProjects } from "@/services/workspace";
 
-type Section = "profile" | "info" | "members";
+type Section = "profile" | "info" | "members" | "models";
 export const Route = createFileRoute("/settings")({
   validateSearch: (search: Record<string, unknown>) => ({
     project: typeof search["project"] === "string" ? search["project"] : "",
     section:
       search["section"] === "profile" ||
       search["section"] === "info" ||
-      search["section"] === "members"
+      search["section"] === "members" ||
+      search["section"] === "models"
         ? (search["section"] as Section)
         : undefined,
   }),
@@ -196,13 +198,23 @@ function SettingsPage() {
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader
-        title={section === "profile" ? "个人资料" : section === "info" ? "信息" : "项目成员"}
+        title={
+          section === "profile"
+            ? "个人资料"
+            : section === "info"
+              ? "信息"
+              : section === "models"
+                ? "模型连接"
+                : "项目成员"
+        }
         description={
           section === "profile"
             ? "管理你的显示名称与头像颜色。"
             : section === "info"
               ? "查看并接受发给你的项目邀请。"
-              : `${project?.name ?? "当前项目"} · 管理项目成员和访问权限。`
+              : section === "models"
+                ? "配置团队共用的模型服务。"
+                : `${project?.name ?? "当前项目"} · 管理项目成员和访问权限。`
         }
         actions={
           section === "members" && isAdmin ? (
@@ -271,8 +283,26 @@ function SettingsPage() {
               </button>
             </div>
           )}
+          {isAdmin && (
+            <div className="settings-nav-group">
+              <div className="settings-nav-title">管理设置</div>
+              <button
+                aria-current={section === "models" ? "page" : undefined}
+                onClick={() => openSection("models")}
+              >
+                <Plug />
+                模型连接
+              </button>
+            </div>
+          )}
         </aside>
         <div className="settings-stack">
+          {section === "models" &&
+            (isAdmin ? (
+              <ModelConnectionSettings />
+            ) : (
+              <p className="text-sm text-muted-foreground">只有管理员可以配置模型连接。</p>
+            ))}
           {section === "profile" && (
             <section className="member-card profile-card">
               <div className="member-card-head">

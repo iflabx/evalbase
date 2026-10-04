@@ -1,0 +1,730 @@
+import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
+import { createPool } from "../../src/db/pool.js";
+import { migrate } from "../../src/db/migrate.js";
+import { loadConfig } from "../../src/config.js";
+import { runProcessing } from "../../src/processing/execute.js";
+import { ArtifactRepository } from "../../src/storage/artifacts.js";
+
+const origin = "http://127.0.0.1:4217",
+  baseUrl = loadConfig().databaseUrl,
+  name = `assistant_${randomUUID().replaceAll("-", "")}`,
+  databaseUrl = baseUrl.replace(/\/[^/]+$/, `/${name}`);
+describe("project assistant public contract", () => {
+  let app: AgentBenchApp,
+    headers: Record<string, string>,
+    projectId: string,
+    draftId: string,
+    sessionId: string,
+    publishedVersionId: string;
+  const calls: Record<string, any>[] = [];
+  let requestedTool:
+    | { name: string; input: Record<string, unknown> }
+    | undefined;
+  let hold = false,
+    release: () => void = () => undefined,
+    entered: () => void = () => undefined;
+  const server = createServer(async (req, res) => {
+    let text = "";
+    for await (const chunk of req) text += chunk;
+    const body = JSON.parse(text);
+    calls.push(body);
+    if (hold) {
+      entered();
+      await new Promise<void>((r) => (release = r));
+      hold = false;
+    }
+    let message: Record<string, unknown> = {
+        role: "assistant",
+        content: "操作结果请查看下方真实回执。",
+      },
+      finish = "stop";
+    if (body.messages.at(-1)?.role !== "tool") {
+      const prompt = body.messages.findLast(
+        (m: any) => m.role === "user",
+      ).content;
+      const action =
+        requestedTool?.name ??
+        (prompt.includes("读取版本")
+          ? "read_records"
+          : prompt.includes("发布")
+            ? "request_publish"
+            : prompt.includes("查询")
+              ? "query_project"
+              : "create_draft");
+      const args =
+        requestedTool?.input ??
+        (action === "read_records"
+          ? { source: { kind: "version", id: publishedVersionId } }
+          : action === "request_publish"
+            ? { draftId }
+            : action === "query_project"
+              ? { kind: "project" }
+              : { name: "助手创建的测试集", purpose: "合成测试" });
+      requestedTool = undefined;
+      message = {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: `call_${calls.length}`,
+            type: "function",
+            function: { name: action, arguments: JSON.stringify(args) },
+          },
+        ],
+      };
+      finish = "tool_calls";
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "synthetic",
+        object: "chat.completion",
+        created: 1,
+        model: "synthetic",
+        choices: [{ index: 0, message, finish_reason: finish }],
+        usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
+      }),
+    );
+  });
+  beforeAll(async () => {
+    const root = createPool(baseUrl);
+    try {
+      await root.query(`CREATE DATABASE ${name}`);
+    } finally {
+      await root.end();
+    }
+    await migrate(databaseUrl);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    app = await buildApp(
+      {
+        databaseUrl,
+        appOrigin: origin,
+        soloOwnerMode: false,
+        allowTestIdentity: false,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      },
+      { disableLegacyTestBootstrap: true },
+    );
+    const account = {
+      email: "admin@example.test",
+      password: "Assistant123",
+      confirmPassword: "Assistant123",
+      displayName: "管理员",
+    };
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/installation/administrator",
+          headers: { origin },
+          payload: account,
+        })
+      ).statusCode,
+    ).toBe(201);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/session",
+      headers: { origin },
+      payload: account,
+    });
+    headers = {
+      origin,
+      cookie: `${login.cookies[0].name}=${login.cookies[0].value}`,
+      "x-csrf-token": login.json().csrfToken,
+    };
+    projectId = (
+      await app.inject({
+        method: "POST",
+        url: "/api/projects",
+        headers,
+        payload: { name: "助手合同测试" },
+      })
+    ).json().project.id;
+    const connection = await app.inject({
+      method: "PUT",
+      url: "/api/settings/model-connection",
+      headers,
+      payload: {
+        revision: 0,
+        name: "合成模型",
+        endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+        model: "synthetic",
+        apiKey: "synthetic-test-key",
+        enabled: true,
+      },
+    });
+    expect(connection.statusCode, connection.body).toBe(200);
+  });
+  afterAll(async () => {
+    release();
+    await app?.close();
+    await new Promise<void>((r) => server.close(() => r()));
+    const root = createPool(baseUrl);
+    try {
+      await root.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    } finally {
+      await root.end();
+    }
+  });
+  const base = () => `/api/projects/${projectId}/assistant`;
+  const read = () =>
+    app.inject({
+      method: "GET",
+      url: `${base()}/sessions/${sessionId}`,
+      headers,
+    });
+  async function send(message: string) {
+    const result = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions/${sessionId}/turns`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message },
+    });
+    expect(result.statusCode, result.body).toBe(202);
+    await expect
+      .poll(
+        async () => {
+          const r = await read();
+          return r.json().turns?.find((t: any) => t.id === result.json().turnId)
+            ?.status;
+        },
+        { timeout: 15000 },
+      )
+      .toBe("succeeded");
+    return read();
+  }
+  it("uses real SDK tool calls and keeps one active turn and an idempotent created draft", async () => {
+    const session = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions`,
+      headers,
+      payload: {},
+    });
+    expect(session.statusCode, session.body).toBe(201);
+    sessionId = session.json().sessionId;
+    hold = true;
+    const waiting = new Promise<void>((r) => (entered = r)),
+      key = randomUUID(),
+      payload = { message: "创建一个测试集草稿" };
+    const request = {
+      method: "POST" as const,
+      url: `${base()}/sessions/${sessionId}/turns`,
+      headers: { ...headers, "idempotency-key": key },
+      payload,
+    };
+    const submitted = await app.inject(request);
+    expect(submitted.statusCode, submitted.body).toBe(202);
+    await waiting;
+    const replay = await app.inject(request);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().turnId).toBe(submitted.json().turnId);
+    expect(
+      (
+        await app.inject({
+          ...request,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (await app.inject({ ...request, payload: { message: "changed" } }))
+        .statusCode,
+    ).toBe(409);
+    release();
+    await expect
+      .poll(async () => (await read()).json().turns[0].status, {
+        timeout: 15000,
+      })
+      .toBe("succeeded");
+    const state = (await read()).json();
+    const created = state.turns[0].tools.find(
+      (t: any) => t.name === "create_draft" && t.status === "succeeded",
+    );
+    expect(created, JSON.stringify(state)).toBeTruthy();
+    draftId = created.result.draftId;
+    const drafts = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/collaborative-drafts`,
+      headers,
+    });
+    expect(drafts.json().drafts).toHaveLength(1);
+    expect(drafts.json().drafts[0].name).toBe("助手创建的测试集");
+    expect(
+      calls[0].tools.some((t: any) => t.function.name === "create_draft"),
+    ).toBe(true);
+    expect(JSON.stringify(state)).not.toContain("synthetic-test-key");
+  });
+  it("requires a bound explicit confirmation, then publishes once and replays the receipt", async () => {
+    const row = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${draftId}/records`,
+      headers,
+      payload: { question: "Synthetic", expectedOutput: "", metadata: [] },
+    });
+    expect(row.statusCode, row.body).toBe(201);
+    const state = (await send("请发布这个草稿")).json();
+    const proposal = state.proposals.find((p: any) => p.action === "publish");
+    expect(proposal).toBeTruthy();
+    expect(proposal.status).toBe("pending");
+    const db = createPool(databaseUrl);
+    try {
+      expect(
+        Number(
+          (await db.query("SELECT count(*) FROM test_set_version")).rows[0]
+            .count,
+        ),
+      ).toBe(0);
+    } finally {
+      await db.end();
+    }
+    const url = `${base()}/proposals/${proposal.id}/confirm`;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers,
+          payload: { revision: 999 },
+        })
+      ).statusCode,
+    ).toBe(422);
+    const confirmed = await app.inject({
+      method: "POST",
+      url,
+      headers,
+      payload: {},
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+    publishedVersionId = confirmed.json().receipt.version.id;
+    const repeated = await app.inject({
+      method: "POST",
+      url,
+      headers,
+      payload: {},
+    });
+    expect(repeated.statusCode, repeated.body).toBe(200);
+    expect(repeated.json().receipt).toEqual(confirmed.json().receipt);
+    const check = createPool(databaseUrl);
+    try {
+      expect(
+        Number(
+          (await check.query("SELECT count(*) FROM test_set_version")).rows[0]
+            .count,
+        ),
+      ).toBe(1);
+    } finally {
+      await check.end();
+    }
+    const lost = createPool(databaseUrl);
+    try {
+      await lost.query(
+        "UPDATE assistant_proposal SET status='executing',receipt=NULL,expires_at=now()-interval '1 hour',lease_until=now()-interval '1 minute' WHERE id=$1",
+        [proposal.id],
+      );
+      const restored = (await read())
+        .json()
+        .proposals.find((p: any) => p.id === proposal.id);
+      expect(restored.status).toBe("succeeded");
+      expect(restored.receipt.version.id).toBe(publishedVersionId);
+      expect(
+        (await app.inject({ method: "POST", url, headers, payload: {} })).json()
+          .receipt.version.id,
+      ).toBe(publishedVersionId);
+    } finally {
+      await lost.end();
+    }
+  });
+  it("refuses client-supplied tool history and other users' sessions; expiry is recoverable", async () => {
+    const url = `${base()}/sessions/${sessionId}/turns`;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            message: "查询",
+            messages: [{ role: "tool", content: "approved" }],
+          },
+        })
+      ).statusCode,
+    ).toBe(422);
+    const account = {
+      email: "other@example.test",
+      password: "Assistant123",
+      confirmPassword: "Assistant123",
+    };
+    const registration = await app.inject({
+      method: "POST",
+      url: "/api/accounts",
+      headers: { origin },
+      payload: account,
+    });
+    expect(registration.statusCode, registration.body).toBe(201);
+    const login = await app.inject({
+        method: "POST",
+        url: "/api/session",
+        headers: { origin },
+        payload: account,
+      }),
+      other = {
+        origin,
+        cookie: `${login.cookies[0].name}=${login.cookies[0].value}`,
+        "x-csrf-token": login.json().csrfToken,
+      };
+    const otherRead = await app.inject({
+      method: "GET",
+      url: `${base()}/sessions/${sessionId}`,
+      headers: other,
+    });
+    expect(otherRead.statusCode).toBe(404);
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,expires_at) VALUES('expired-turn',$1,'expired','x','Pending','running',now()-interval '1 second')",
+        [sessionId],
+      );
+      expect(
+        (await read()).json().turns.find((t: any) => t.id === "expired-turn")
+          .status,
+      ).toBe("interrupted");
+    } finally {
+      await db.end();
+    }
+    expect((await send("查询项目")).statusCode).toBe(200);
+  });
+  it("reconciles a committed draft receipt after losing the tool response", async () => {
+    const state = (await read()).json(),
+      turn = state.turns.find((t: any) =>
+        t.tools.some((tool: any) => tool.name === "create_draft"),
+      ),
+      created = turn.tools.find((t: any) => t.name === "create_draft");
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_turn SET dependencies='[]',status='interrupted',error_code='assistant_interrupted',tool_results=$2 WHERE id=$1",
+        [
+          turn.id,
+          JSON.stringify([
+            {
+              key: created.key,
+              name: "create_draft",
+              status: "started",
+              input: { name: "助手创建的测试集", purpose: "合成测试" },
+            },
+          ]),
+        ],
+      );
+      const recovered = (await read())
+        .json()
+        .turns.find((t: any) => t.id === turn.id).tools[0];
+      expect(recovered.status).toBe("succeeded");
+      expect(recovered.result.draftId).toBe(draftId);
+      expect(recovered.result.recovered).toBe(true);
+      expect(
+        Number(
+          (await db.query("SELECT count(*) FROM collaborative_draft")).rows[0]
+            .count,
+        ),
+      ).toBe(1);
+      expect(
+        (
+          await db.query(
+            "SELECT dependencies FROM assistant_turn WHERE id=$1",
+            [turn.id],
+          )
+        ).rows[0].dependencies,
+      ).toContainEqual({ kind: "draft", id: draftId });
+    } finally {
+      await db.end();
+    }
+  });
+  it("blocks private history after editor-to-viewer downgrade while allowing published record queries in a fresh session", async () => {
+    const db = createPool(databaseUrl),
+      originalSession = sessionId;
+    const actor = (
+      await db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+        sessionId,
+      ])
+    ).rows[0].actor_id;
+    try {
+      await db.query("UPDATE app_user SET role='user' WHERE id=$1", [actor]);
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'viewer') ON CONFLICT(project_id,user_id) DO UPDATE SET role='viewer'",
+        [projectId, actor],
+      );
+      expect((await read()).statusCode).toBe(404);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: { message: "查询" },
+          })
+        ).statusCode,
+      ).toBe(404);
+      const fresh = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      });
+      expect(fresh.statusCode, fresh.body).toBe(201);
+      sessionId = fresh.json().sessionId;
+      const response = (await send("读取版本里的记录")).json();
+      const tool = response.turns[0].tools.find(
+        (t: any) => t.name === "read_records",
+      );
+      expect(tool.status, JSON.stringify(response)).toBe("succeeded");
+      expect(tool.result.records[0].question).toBe("Synthetic");
+    } finally {
+      sessionId = originalSession;
+      await db.query("UPDATE app_user SET role='admin' WHERE id=$1", [actor]);
+      await db.query(
+        "UPDATE project_member SET role='owner' WHERE project_id=$1 AND user_id=$2",
+        [projectId, actor],
+      );
+      await db.end();
+    }
+  });
+  it("keeps unrelated conversations when deleting a draft, and erases sessions that referenced the deleted body", async () => {
+    const dbase = `/api/projects/${projectId}/collaborative-drafts`,
+      originalSession = sessionId;
+    const unrelated = await app.inject({
+      method: "POST",
+      url: dbase,
+      headers,
+      payload: { name: "未引用草稿" },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `${dbase}/${unrelated.json().draft.id}`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect((await read()).json().turns[0].userText).toBeTruthy();
+    const fresh = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions`,
+      headers,
+      payload: {},
+    });
+    sessionId = fresh.json().sessionId;
+    const state = (await send("创建一个新草稿用于删除验证")).json(),
+      created = state.turns[0].tools.find(
+        (t: any) => t.name === "create_draft",
+      ).result;
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `${dbase}/${created.draftId}`,
+      headers,
+    });
+    expect(removed.statusCode, removed.body).toBe(204);
+    const deleted = (await read()).json();
+    expect(deleted.turns[0]).toMatchObject({
+      userText: "",
+      assistantText: "",
+      tools: [],
+      errorCode: "assistant_context_deleted",
+    });
+    sessionId = originalSession;
+    expect((await read()).json().turns[0].userText).toBeTruthy();
+  });
+  it("runs processing and selection tools against real domain services, with expiry and revision-bound confirmation", async () => {
+    const db = createPool(databaseUrl),
+      originalSession = sessionId;
+    async function invoke(name: string, input: Record<string, unknown>) {
+      requestedTool = { name, input };
+      const state = (await send(`执行已明确范围的 ${name}`)).json();
+      const tool = state.turns.at(-1).tools.find((t: any) => t.name === name);
+      expect(tool.status, JSON.stringify(tool)).toBe("succeeded");
+      return tool.result;
+    }
+    const confirm = (id: string) =>
+      app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${id}/confirm`,
+        headers,
+        payload: {},
+      });
+    try {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const submitted = await invoke("submit_processing", {
+        source: { kind: "version", id: publishedVersionId },
+        allRecords: true,
+        operation: "clean",
+        instructions: "",
+      });
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=attempt+1,lease_owner='assistant-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [submitted.runId],
+        )
+      ).rows[0];
+      const config = { ...loadConfig(), databaseUrl };
+      const completed = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, completed],
+      );
+      const output = await invoke("read_processing", {
+        runId: submitted.runId,
+      });
+      expect(output.records[0].question).toBe("Synthetic");
+      requestedTool = {
+        name: "request_processing_apply",
+        input: {
+          runId: submitted.runId,
+          allValid: true,
+          target: { kind: "newDraft" },
+        },
+      };
+      const invalid = (await send("将结果加入新草稿")).json();
+      expect(invalid.turns.at(-1).tools[0].status).toBe("failed");
+      expect(invalid.proposals).toHaveLength(0);
+      await invoke("request_processing_apply", {
+        runId: submitted.runId,
+        allValid: true,
+        target: { kind: "asset" },
+      });
+      let proposal = (await read())
+        .json()
+        .proposals.find((p: any) => p.action === "processing");
+      const accepted = await confirm(proposal.id);
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      const assetId = accepted.json().receipt.receipt.assetId;
+      expect((await confirm(proposal.id)).json().receipt).toEqual(
+        accepted.json().receipt,
+      );
+      await db.query(
+        "UPDATE assistant_proposal SET status='executing',receipt=NULL,expires_at=now()-interval '1 hour',lease_until=now()-interval '1 minute' WHERE id=$1",
+        [proposal.id],
+      );
+      const recovered = (await read())
+        .json()
+        .proposals.find((p: any) => p.id === proposal.id);
+      expect(recovered.status).toBe("succeeded");
+      expect(recovered.receipt.receipt.assetId).toBe(assetId);
+      const target = await invoke("create_draft", { name: "助手筛选草稿" });
+      const preview = await invoke("preview_selection", {
+        draftId: target.draftId,
+        assetIds: [assetId],
+        method: "all",
+        conditions: [],
+      });
+      expect(preview.selectedCount).toBe(1);
+      await invoke("request_selection_apply", {
+        draftId: target.draftId,
+        previewId: preview.previewId,
+      });
+      proposal = (await read())
+        .json()
+        .proposals.find((p: any) => p.action === "selection");
+      await db.query(
+        "UPDATE assistant_proposal SET expires_at=now()-interval '1 second' WHERE id=$1",
+        [proposal.id],
+      );
+      expect((await confirm(proposal.id)).statusCode).toBe(409);
+      await db.query(
+        "UPDATE assistant_proposal SET expires_at=now()+interval '1 minute' WHERE id=$1",
+        [proposal.id],
+      );
+      expect(
+        Number(
+          (
+            await db.query(
+              "SELECT count(*) FROM collaborative_draft_record WHERE draft_id=$1",
+              [target.draftId],
+            )
+          ).rows[0].count,
+        ),
+      ).toBe(0);
+      const applied = await confirm(proposal.id);
+      expect(applied.statusCode, applied.body).toBe(200);
+      await invoke("request_publish", { draftId: target.draftId });
+      proposal = (await read())
+        .json()
+        .proposals.find((p: any) => p.action === "publish");
+      const added = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${target.draftId}/records`,
+        headers,
+        payload: {
+          question: "Other editor changed this draft",
+          expectedOutput: "",
+          metadata: [],
+        },
+      });
+      expect(added.statusCode).toBe(201);
+      const conflict = await confirm(proposal.id);
+      expect(conflict.statusCode, conflict.body).toBe(409);
+      const actual = (
+        await db.query("SELECT revision FROM collaborative_draft WHERE id=$1", [
+          target.draftId,
+        ])
+      ).rows[0];
+      const publishedElsewhere = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${target.draftId}/publish`,
+        headers,
+        payload: { revision: Number(actual.revision) },
+      });
+      expect(publishedElsewhere.statusCode, publishedElsewhere.body).toBe(201);
+      expect(
+        (await read()).json().proposals.find((p: any) => p.id === proposal.id)
+          .status,
+      ).toBe("pending");
+      expect((await confirm(proposal.id)).statusCode).toBe(409);
+      // A conversation that only saw a test-set name also loses that body on permanent deletion.
+      await db.query(
+        "UPDATE assistant_turn SET dependencies=$2 WHERE session_id=$1",
+        [
+          sessionId,
+          JSON.stringify([
+            {
+              kind: "testSet",
+              id: (
+                await db.query(
+                  "SELECT test_set_id FROM test_set_version WHERE id=$1",
+                  [publishedVersionId],
+                )
+              ).rows[0].test_set_id,
+            },
+          ]),
+        ],
+      );
+      await db.query(
+        "UPDATE test_set SET status='permanently_deleted' WHERE id=(SELECT test_set_id FROM test_set_version WHERE id=$1)",
+        [publishedVersionId],
+      );
+      expect(
+        (await read())
+          .json()
+          .turns.every((t: any) => t.userText === "" && t.tools.length === 0),
+      ).toBe(true);
+    } finally {
+      requestedTool = undefined;
+      sessionId = originalSession;
+      await db.end();
+    }
+  });
+});

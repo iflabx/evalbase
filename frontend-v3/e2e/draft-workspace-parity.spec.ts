@@ -129,6 +129,7 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
         ? route.fulfill({ status: 204 })
         : route.fulfill({ json: { users: [] } });
     if (path.includes("/presence/")) return route.fulfill({ status: 204 });
+    if (path.endsWith("/selection-history")) return route.fulfill({ json: { history: [] } });
     if (path.endsWith("/events"))
       return route.fulfill({
         json: { events: [], cursor: 1, hasMore: false, needsSnapshot: false, status: "editing" },
@@ -224,12 +225,13 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
     .evaluate((node) => node.scrollWidth - node.clientWidth);
   expect(sidebarOverflow).toBeLessThanOrEqual(0);
   await page.getByRole("tab", { name: /添加资料/ }).click();
-  await expect(page.getByText(/已选 1 \/ 5 个文件，还可选 4 个/)).toBeVisible();
+  await expect(page.getByText(/已选 0 \/ 5 个文件/)).toBeVisible();
   await expect(page.getByRole("button", { name: "选择本页文件" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "选择搜索结果中的全部文件" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "选择本页记录" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择全部结果中的文件" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "筛选与选取" })).toBeVisible();
   await page.getByRole("checkbox", { name: "选择 资料A.json" }).click();
-  await expect(page.getByText("源记录X")).toBeVisible();
+  await expect(page.getByRole("button", { name: "生成预览", exact: true })).toBeEnabled();
+  await expect(page.getByText("源记录X")).toHaveCount(0);
   await page.getByRole("tab", { name: /草稿记录/ }).click();
   const geometry = await page.evaluate(() => ({
     width: document.documentElement.clientWidth,
@@ -259,8 +261,8 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   includeSixthFile = true;
   await page.goto(`/projects/${projectId}/test-sets/drafts/draft_new`);
   await page.getByRole("tab", { name: /添加资料/ }).click();
-  await expect(page.getByText(/已选 5 \/ 5 个文件，还可选 0 个/)).toBeVisible();
+  await expect(page.getByText(/已选 0 \/ 5 个文件/)).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "选择 资料F.json" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "选择搜索结果中的全部文件" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "选择全部结果中的文件" })).toBeDisabled();
   await expect(page.getByRole("checkbox", { name: "选择 资料A.json" })).toBeEnabled();
 });

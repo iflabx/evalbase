@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2, X } from "lucide-react";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { DataSelection } from "@/components/data-selection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,14 +34,11 @@ import {
   addSharedDraftRecord,
   discardSharedDraft,
   getSharedDraft,
-  listDraftSourceFiles,
-  listDraftSourceRecords,
   listSelectedDraftSources,
   publishSharedDraft,
   removeSharedDraftRecord,
   saveSharedDraftField,
   saveSharedDraftRecordField,
-  selectDraftSources,
   type SharedDraftRecord,
 } from "@/services/drafts";
 import type { MetadataEntry } from "@/services/workspace";
@@ -54,10 +51,9 @@ function DraftWorkspaceRoute() {
   const { projectId, draftId } = Route.useParams();
   return <DraftWorkspace key={`${projectId}:${draftId}`} />;
 }
-const keyOf = (assetId: string, ordinal: number) => `${assetId}:${ordinal}`;
 const sourceLabel = (record: SharedDraftRecord) =>
   record.source
-    ? `${record.sourceFileName ?? "资料文件"} · 第 ${record.source.ordinal + 1} 条${record.caseId ? " · 继承自父版本" : ""}`
+    ? `${record.sourceFileName ?? "资料文件"} · 第 ${record.source.ordinal} 条${record.caseId ? " · 继承自父版本" : ""}`
     : record.caseId
       ? "原版本手工新增 · 继承自父版本"
       : "手工新增 · 本草稿添加";
@@ -107,11 +103,6 @@ function DraftWorkspace() {
   );
   const savingPromises = useRef(new Map<RecordField | "name" | "purpose", Promise<boolean>>());
   const failedSaves = useRef(new Set<RecordField | "name" | "purpose">());
-  const [fileSearch, setFileSearch] = useState("");
-  const [filePage, setFilePage] = useState(0);
-  const [fileId, setFileId] = useState<string>();
-  const [sourceSearch, setSourceSearch] = useState("");
-  const [sourcePage, setSourcePage] = useState(0);
   const allowNavigation = useRef(false);
   const draftQuery = useQuery({
     queryKey: ["shared-draft", projectId, draftId, recordSearch, recordPage],
@@ -318,39 +309,11 @@ function DraftWorkspace() {
       </small>
     );
   };
-  const files = useQuery({
-    queryKey: ["draft-files", projectId, fileSearch, filePage],
-    queryFn: () =>
-      listDraftSourceFiles(projectId, { search: fileSearch, limit: 10, offset: filePage * 10 }),
-    enabled: tab === "sources",
-  });
-  const sourceRows = useQuery({
-    queryKey: ["draft-source-records", projectId, fileId, sourceSearch, sourcePage],
-    queryFn: () =>
-      listDraftSourceRecords(projectId, fileId!, {
-        search: sourceSearch,
-        limit: 20,
-        offset: sourcePage * 20,
-      }),
-    enabled: tab === "sources" && Boolean(fileId),
-  });
   const selectedSources = useQuery({
     queryKey: ["draft-selected-sources", projectId, draftId],
     queryFn: () => listSelectedDraftSources(projectId, draftId),
     enabled: Boolean(data),
   });
-  const selectedFileIds = new Set((selectedSources.data ?? []).map((source) => source.assetId));
-  const remainingFiles = Math.max(0, 5 - selectedFileIds.size);
-  const filePageIds = (files.data?.files ?? []).map((file) => file.id);
-  const canAddFiles = (ids: string[]) => new Set([...selectedFileIds, ...ids]).size <= 5;
-  const pageFilesFit = canAddFiles(filePageIds);
-  const allFilesFit = (files.data?.total ?? 0) <= 5 && pageFilesFit;
-  const currentSourceFits = !fileId || selectedFileIds.has(fileId) || remainingFiles > 0;
-  const sourceSet = useMemo(
-    () =>
-      new Set((selectedSources.data ?? []).map((source) => keyOf(source.assetId, source.ordinal))),
-    [selectedSources.data],
-  );
   useEffect(() => {
     if (data && name === undefined) {
       setName(data.draft.name);
@@ -845,45 +808,6 @@ function DraftWorkspace() {
       setBusy(false);
     }
   }
-  async function chooseSources(
-    assetIds: string[],
-    mode: "add" | "remove",
-    ordinals?: number[],
-    search?: string,
-  ) {
-    if (!assetIds.length) return;
-    if (mode === "add" && !canAddFiles(assetIds)) {
-      setError(`一个草稿最多选择 5 个资料文件，目前还可选 ${remainingFiles} 个。`);
-      return;
-    }
-    if (dirty && !(await save())) return;
-    setBusy(true);
-    setError("");
-    try {
-      await selectDraftSources(projectId, draftId, {
-        assetIds,
-        mode,
-        ...(mode === "remove"
-          ? {
-              expectedRecords: (selectedSources.data ?? []).map((source) => ({
-                id: source.recordId,
-                rowRevision: source.rowRevision,
-              })),
-            }
-          : {}),
-        ...(search ? { search } : {}),
-        ...(ordinals ? { ordinals } : {}),
-      });
-      await Promise.all([draftQuery.refetch(), selectedSources.refetch()]);
-    } catch (cause) {
-      if (cause instanceof Error && cause.message === "draft_row_conflict") {
-        await Promise.all([draftQuery.refetch(), selectedSources.refetch()]);
-        setError("所选记录已被其他成员修改。本次未移除任何记录，请检查最新内容后重新选择。");
-      } else setError(cause instanceof Error ? cause.message : "选择资料失败。");
-    } finally {
-      setBusy(false);
-    }
-  }
   async function changeRecordPage(page: number) {
     if (dirty && !conflict && !(await save())) return;
     setRecordPage(page);
@@ -1091,6 +1015,23 @@ function DraftWorkspace() {
               }
               actions={
                 <div className="draft-page-actions">
+                  <Button
+                    variant="outline"
+                    disabled={busy || conflict || !canEdit}
+                    onClick={() =>
+                      void (async () => {
+                        if (!(await save())) return;
+                        allowNavigation.current = true;
+                        await navigate({
+                          to: "/projects/$projectId/processing",
+                          params: { projectId },
+                          search: { source: "draft", sourceId: draftId, run: undefined },
+                        });
+                      })()
+                    }
+                  >
+                    处理数据
+                  </Button>
                   <Button
                     variant="outline"
                     className="text-destructive"
@@ -1631,277 +1572,27 @@ function DraftWorkspace() {
                   )}
                 </Card>
               </div>
-            ) : (
-              <div
-                id="draft-workspace-panel"
-                role="tabpanel"
-                aria-labelledby="draft-sources-tab"
-                className="draft-sources-layout"
-              >
-                <Card className="min-w-0">
-                  <CardHeader>
-                    <CardTitle>1. 选择资料文件</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      已选 {selectedFileIds.size} / 5 个文件，还可选 {remainingFiles}{" "}
-                      个。勾选文件时默认纳入其全部记录。
-                    </p>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="border-t px-4 py-3">
-                      <Input
-                        aria-label="搜索资料文件"
-                        placeholder="搜索原始数据或文件"
-                        value={fileSearch}
-                        onChange={(event) => {
-                          setFileSearch(event.target.value);
-                          setFilePage(0);
-                        }}
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3 text-xs">
-                      <span className="mr-auto text-muted-foreground">
-                        当前搜索结果 {files.data?.total ?? 0} 个文件
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!canEdit || busy || selectedSources.isLoading || !pageFilesFit}
-                        onClick={() => void chooseSources(filePageIds, "add")}
-                      >
-                        选择本页文件
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!canEdit || busy || selectedSources.isLoading || !allFilesFit}
-                        onClick={async () => {
-                          const all = await listDraftSourceFiles(projectId, {
-                            search: fileSearch,
-                            limit: 5,
-                          });
-                          await chooseSources(
-                            all.files.map((file) => file.id),
-                            "add",
-                          );
-                        }}
-                      >
-                        选择搜索结果中的全部文件
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={!canEdit || busy}
-                        onClick={() =>
-                          void chooseSources(
-                            (files.data?.files ?? []).map((file) => file.id),
-                            "remove",
-                          )
-                        }
-                      >
-                        取消本页文件
-                      </Button>
-                      {!pageFilesFit || !allFilesFit ? (
-                        <span className="w-full text-amber-700" role="status">
-                          当前选择超出剩余名额；还可选 {remainingFiles}{" "}
-                          个文件，请缩小范围或先取消已选文件。
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[420px] text-sm">
-                        <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
-                          <tr>
-                            <th className="px-4 py-2"></th>
-                            <th className="px-4 py-2">文件</th>
-                            <th className="px-4 py-2">原始数据</th>
-                            <th className="px-4 py-2">记录数</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(files.data?.files ?? []).map((file) => (
-                            <tr
-                              key={file.id}
-                              className={`cursor-pointer border-t hover:bg-accent/40 ${fileId === file.id ? "bg-accent/50" : ""}`}
-                              onClick={() => {
-                                setFileId(file.id);
-                                setSourcePage(0);
-                              }}
-                            >
-                              <td className="px-4 py-3">
-                                <Checkbox
-                                  aria-label={`选择 ${file.fileName}`}
-                                  onClick={(event) => event.stopPropagation()}
-                                  checked={(selectedSources.data ?? []).some(
-                                    (source) => source.assetId === file.id,
-                                  )}
-                                  disabled={
-                                    !canEdit ||
-                                    busy ||
-                                    selectedSources.isLoading ||
-                                    (!selectedFileIds.has(file.id) && remainingFiles === 0)
-                                  }
-                                  onCheckedChange={(checked) => {
-                                    setFileId(file.id);
-                                    setSourcePage(0);
-                                    void chooseSources([file.id], checked ? "add" : "remove");
-                                  }}
-                                />
-                              </td>
-                              <td className="px-4 py-3">
-                                <button
-                                  type="button"
-                                  className="text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
-                                  onClick={() => {
-                                    setFileId(file.id);
-                                    setSourcePage(0);
-                                  }}
-                                >
-                                  {file.fileName}
-                                </button>
-                              </td>
-                              <td className="px-4 py-3">{file.collectionName}</td>
-                              <td className="px-4 py-3">{file.recordCount}</td>
-                            </tr>
-                          ))}
-                          {!files.data?.files.length && (
-                            <tr>
-                              <td
-                                colSpan={4}
-                                className="px-4 py-8 text-center text-muted-foreground"
-                              >
-                                没有匹配的文件。
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    {pager(files.data?.total ?? 0, filePage, setFilePage, 10)}
-                  </CardContent>
-                </Card>
-                <Card className="min-w-0">
-                  <CardHeader>
-                    <CardTitle>2. 选择记录</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      已选 {selectedSources.data?.length ?? 0} 条资料记录；父版本记录会自动继承。
-                    </p>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="border-t px-4 py-3">
-                      <Input
-                        aria-label="搜索资料记录"
-                        placeholder="搜索问题、输出或文件"
-                        value={sourceSearch}
-                        onChange={(event) => {
-                          setSourceSearch(event.target.value);
-                          setSourcePage(0);
-                        }}
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3 text-xs">
-                      <span className="mr-auto text-muted-foreground">
-                        当前搜索结果 {sourceRows.data?.total ?? 0} 条
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!canEdit || !fileId || !currentSourceFits}
-                        onClick={() =>
-                          void chooseSources(
-                            [fileId!],
-                            "add",
-                            sourceRows.data?.records.map((record) => record.ordinal) ?? [],
-                          )
-                        }
-                      >
-                        选择本页记录
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!canEdit || !fileId || !currentSourceFits}
-                        onClick={() =>
-                          void chooseSources([fileId!], "add", undefined, sourceSearch)
-                        }
-                      >
-                        选择搜索结果中的全部记录
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={!canEdit || !fileId}
-                        onClick={() =>
-                          void chooseSources([fileId!], "remove", undefined, sourceSearch)
-                        }
-                      >
-                        取消搜索结果中的全部记录
-                      </Button>
-                      {!currentSourceFits && (
-                        <span role="status" className="w-full text-amber-700">
-                          已达到 5 个文件上限，请先取消一个已选文件。
-                        </span>
-                      )}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[420px] text-sm">
-                        <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
-                          <tr>
-                            <th className="px-4 py-2"></th>
-                            <th className="px-4 py-2">问题</th>
-                            <th className="px-4 py-2">文件</th>
-                            <th className="px-4 py-2">序号</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(sourceRows.data?.records ?? []).map((record) => (
-                            <tr key={keyOf(record.assetId, record.ordinal)} className="border-t">
-                              <td className="px-4 py-3">
-                                <Checkbox
-                                  aria-label={`选择第 ${record.ordinal + 1} 条`}
-                                  checked={sourceSet.has(keyOf(record.assetId, record.ordinal))}
-                                  disabled={
-                                    !canEdit ||
-                                    busy ||
-                                    (!sourceSet.has(keyOf(record.assetId, record.ordinal)) &&
-                                      !currentSourceFits)
-                                  }
-                                  onCheckedChange={(checked) =>
-                                    void chooseSources(
-                                      [record.assetId],
-                                      checked ? "add" : "remove",
-                                      [record.ordinal],
-                                    )
-                                  }
-                                />
-                              </td>
-                              <td className="max-w-[240px] truncate px-4 py-3">
-                                {record.question || "未填写"}
-                              </td>
-                              <td className="px-4 py-3">
-                                {files.data?.files.find((file) => file.id === record.assetId)
-                                  ?.fileName ?? "资料文件"}
-                              </td>
-                              <td className="px-4 py-3">{record.ordinal + 1}</td>
-                            </tr>
-                          ))}
-                          {!sourceRows.data?.records.length && (
-                            <tr>
-                              <td
-                                colSpan={4}
-                                className="px-4 py-8 text-center text-muted-foreground"
-                              >
-                                {fileId ? "没有匹配的记录。" : "先选择资料文件。"}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    {pager(sourceRows.data?.total ?? 0, sourcePage, setSourcePage, 20)}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+            ) : null}
+            <div
+              hidden={tab !== "sources"}
+              role="tabpanel"
+              aria-labelledby="draft-sources-tab"
+              id={tab === "sources" ? "draft-workspace-panel" : undefined}
+            >
+              <DataSelection
+                projectId={projectId}
+                draftId={draftId}
+                revision={data?.draft.revision ?? 0}
+                parentLabel={data?.draft.parentVersionLabel ?? null}
+                canEdit={canEdit && !busy}
+                active={tab === "sources"}
+                existing={selectedSources.data ?? []}
+                onApplied={async () => {
+                  await Promise.all([draftQuery.refetch(), selectedSources.refetch()]);
+                }}
+                onViewDraft={() => void changeTab("records")}
+              />
+            </div>
           </>
         )}
       </StateView>

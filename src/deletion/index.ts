@@ -1,3 +1,4 @@
+import { cleanupProcessingObjects } from "../processing/cleanup.js";
 import type { PoolClient } from "pg";
 
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -1285,8 +1286,10 @@ export async function executeControlledDeletion(
     expectedPreviewHash !== event.rows[0].preview_hash
   )
     throw new ControlledDeletionError("deletion_job_payload_mismatch", "load");
-  if (event.rows[0].status === "completed")
+  if (event.rows[0].status === "completed") {
+    await cleanupProcessingObjects(db, artifacts, event.rows[0].project_id);
     return { eventId, status: "completed" };
+  }
   const closure = event.rows[0].closure as DeletionClosure;
   const deferredBlobTombstones: Array<{
     type: "data_blob";
@@ -1333,6 +1336,7 @@ export async function executeControlledDeletion(
       throw new ControlledDeletionError("deletion_event_not_found", "finalize");
     if (locked.rows[0].status === "completed") {
       await client.query("COMMIT");
+      await cleanupProcessingObjects(db, artifacts, event.rows[0].project_id);
       return { eventId, status: "completed" };
     }
     if (!["confirmed", "running", "failed"].includes(locked.rows[0].status))
@@ -1787,6 +1791,7 @@ export async function executeControlledDeletion(
       ],
     );
     await client.query("COMMIT");
+    await cleanupProcessingObjects(db, artifacts, projectId);
     return {
       eventId,
       status: "completed",

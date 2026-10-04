@@ -374,8 +374,11 @@ export function registerUploads(
       const ids =
         isPlainObject(body) &&
         Object.keys(body).every((key) =>
-          ["collectionId", "pendingUploadIds"].includes(key),
+          ["collectionId", "pendingUploadIds", "mode"].includes(key),
         ) &&
+        (body.mode === undefined ||
+          body.mode === "mapped" ||
+          body.mode === "raw") &&
         typeof body.collectionId === "string" &&
         Array.isArray(body.pendingUploadIds) &&
         body.pendingUploadIds.every((id) => typeof id === "string")
@@ -389,13 +392,28 @@ export function registerUploads(
         return reply
           .code(422)
           .send({ error: { code: "pending_upload_batch_invalid" } });
+      const rawOnly = isPlainObject(body) && body.mode === "raw";
+      const requestHash = sha256(
+        canonicalJson({
+          collectionId,
+          pendingUploadIds: ids,
+          mode: rawOnly ? "raw" : "mapped",
+        }),
+      );
+      const receiptResponse = (row: {
+        request_hash?: string;
+        receipt: unknown;
+      }) =>
+        row.request_hash && row.request_hash !== requestHash
+          ? reply.code(409).send({ error: { code: "idempotency_conflict" } })
+          : { assets: row.receipt, replayed: true };
       const earlierReceipt = await db.query(
-        `SELECT receipt FROM confirmed_upload_batch
+        `SELECT receipt,request_hash FROM confirmed_upload_batch
         WHERE project_id=$1 AND actor_id=$2 AND idempotency_key=$3`,
         [request.params.projectId, actor.id, idempotencyKey],
       );
       if (earlierReceipt.rowCount)
-        return { assets: earlierReceipt.rows[0].receipt, replayed: true };
+        return receiptResponse(earlierReceipt.rows[0]);
       const committedReceipt = async () => {
         const receiptClient = await db.connect();
         try {
@@ -407,12 +425,12 @@ export function registerUploads(
             ],
           );
           const result = await receiptClient.query(
-            `SELECT receipt FROM confirmed_upload_batch
+            `SELECT receipt,request_hash FROM confirmed_upload_batch
             WHERE project_id=$1 AND actor_id=$2 AND idempotency_key=$3`,
             [request.params.projectId, actor.id, idempotencyKey],
           );
           await receiptClient.query("COMMIT");
-          return result.rows[0]?.receipt;
+          return result.rows[0];
         } catch (error) {
           await receiptClient.query("ROLLBACK").catch(() => undefined);
           throw error;
@@ -427,7 +445,7 @@ export function registerUploads(
       );
       if (preliminary.rowCount !== ids.length) {
         const receipt = await committedReceipt();
-        if (receipt) return { assets: receipt, replayed: true };
+        if (receipt) return receiptResponse(receipt);
         return reply
           .code(404)
           .send({ error: { code: "pending_upload_not_found" } });
@@ -447,7 +465,7 @@ export function registerUploads(
           });
       } catch (error) {
         const receipt = await committedReceipt();
-        if (receipt) return { assets: receipt, replayed: true };
+        if (receipt) return receiptResponse(receipt);
         throw error;
       }
       const client = await db.connect();
@@ -456,14 +474,32 @@ export function registerUploads(
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
           `agentbench:confirmed-upload:${request.params.projectId}:${actor.id}:${idempotencyKey}`,
         ]);
+        await client.query("SELECT id FROM app_user WHERE id=$1 FOR SHARE", [
+          actor.id,
+        ]);
+        await client.query(
+          "SELECT user_id FROM project_member WHERE project_id=$1 AND user_id=$2 FOR SHARE",
+          [request.params.projectId, actor.id],
+        );
+        if (
+          !(await hasProjectCapability(
+            client,
+            request.params.projectId,
+            actor.id,
+            "write",
+          ))
+        ) {
+          await client.query("ROLLBACK");
+          return reply.code(404).send({ error: { code: "project_not_found" } });
+        }
         const replay = await client.query(
-          `SELECT receipt FROM confirmed_upload_batch
+          `SELECT receipt,request_hash FROM confirmed_upload_batch
            WHERE project_id = $1 AND actor_id = $2 AND idempotency_key = $3 FOR UPDATE`,
           [request.params.projectId, actor.id, idempotencyKey],
         );
         if (replay.rowCount) {
           await client.query("COMMIT");
-          return { assets: replay.rows[0].receipt, replayed: true };
+          return receiptResponse(replay.rows[0]);
         }
         const collection = await client.query(
           `SELECT id FROM raw_material_collection
@@ -529,7 +565,7 @@ export function registerUploads(
         if (
           rows.some(
             (row, index) =>
-              !row.display_mapping ||
+              (!rawOnly && !row.display_mapping) ||
               parsed[index].summary.blockingErrors?.length,
           )
         ) {
@@ -589,9 +625,9 @@ export function registerUploads(
                (id, asset_id, format, parser_name, parser_version, parser_config,
                 parser_config_hash, display_mapping, status, record_count,
                 success_count, failure_count, boundary_trusted, draft_eligible,
-                is_current, field_summary, error_summary)
+                is_current, field_summary, error_summary, mapping_ready, mapping_revision)
              VALUES ($1, $2, $3, 'format-adapter', $4, $5, $6, $7, 'ready',
-                     $8, $9, $10, $11, $12, true, $13, $14)`,
+                     $8, $9, $10, $11, $12, true, $13, $14, $15, $16)`,
             [
               parsedViewId,
               assetId,
@@ -599,14 +635,18 @@ export function registerUploads(
               PARSER_VERSION,
               parserConfig,
               sha256(canonicalJson(parserConfig)),
-              JSON.stringify(row.display_mapping as DisplayMapping),
+              JSON.stringify(
+                rawOnly ? {} : (row.display_mapping as DisplayMapping),
+              ),
               parsed[index].summary.totalCount,
               parsed[index].summary.successCount,
               parsed[index].summary.failureCount,
               parsed[index].summary.boundaryTrusted,
-              parsed[index].summary.draftEligible,
+              !rawOnly && parsed[index].summary.draftEligible,
               JSON.stringify(parsed[index].summary.fieldProfiles ?? []),
               JSON.stringify(parsed[index].summary.blockingErrors ?? []),
+              !rawOnly,
+              rawOnly ? 0 : 1,
             ],
           );
           await writeBatches(
@@ -639,14 +679,15 @@ export function registerUploads(
         );
         await client.query(
           `INSERT INTO confirmed_upload_batch
-             (project_id, actor_id, idempotency_key, collection_id, receipt)
-           VALUES ($1, $2, $3, $4, $5)`,
+             (project_id, actor_id, idempotency_key, collection_id, receipt, request_hash)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             request.params.projectId,
             actor.id,
             idempotencyKey,
             collectionId,
             JSON.stringify(assets),
+            requestHash,
           ],
         );
         await client.query("COMMIT");

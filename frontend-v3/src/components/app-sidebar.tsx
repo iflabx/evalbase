@@ -1,3 +1,4 @@
+import { useProjectAccess } from "@/hooks/use-project-access";
 import { useState } from "react";
 import { Activity, ChevronDown, Database, FileText, Settings } from "lucide-react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -52,6 +53,7 @@ export function AppSidebar() {
       ? (projects.data?.items.find((item) => item.id === requestedProjectId)?.id ??
         projects.data?.items[0]?.id)
       : requestedProjectId;
+  const access = useProjectAccess(projectId ?? "");
   const [creating, setCreating] = useState(false);
   const account = useQuery({ queryKey: ["session"], queryFn: currentSession });
   const isAdmin = account.data?.actor.role === "admin";
@@ -145,6 +147,20 @@ export function AppSidebar() {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  {access.canWrite && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild isActive={pathname.includes("/processing")}>
+                        <Link
+                          to="/projects/$projectId/processing"
+                          params={{ projectId }}
+                          search={{ source: undefined, sourceId: undefined, run: undefined }}
+                        >
+                          <Activity className="size-4" />
+                          {!collapsed && <span>数据处理</span>}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

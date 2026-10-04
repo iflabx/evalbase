@@ -107,6 +107,11 @@ import {
 } from "./support.js";
 import { registerAccounts } from "./modules/accounts.js";
 import { registerDrafts } from "./modules/drafts.js";
+import { registerSelection } from "./modules/selection.js";
+import { registerModelConnection } from "./modules/model-connection.js";
+import { registerAssistant } from "./modules/assistant.js";
+import { registerProcessing } from "./modules/processing.js";
+import { registerMaterialMapping } from "./modules/material-mapping.js";
 import { registerVersions } from "./modules/versions.js";
 import { registerDeletion } from "./modules/deletion.js";
 import { registerUploads } from "./modules/uploads.js";
@@ -436,6 +441,8 @@ export async function buildApp(
     publishInitial,
   });
   registerDeletion({ db, artifacts, app, authenticate, writeAllowed });
+  registerSelection({ db, app, authenticate, writeAllowed });
+  registerModelConnection({ db, app, config, authenticate, writeAllowed });
   app.post<{ Body: unknown }>(
     "/api/projects",
     { preHandler: authenticate },
@@ -764,7 +771,7 @@ export async function buildApp(
           AND da.status NOT IN ('deletion_pending', 'tombstoned')
          LEFT JOIN LATERAL (
            SELECT record_count FROM parsed_view
-           WHERE asset_id = da.id AND is_current
+           WHERE asset_id = da.id AND is_current AND mapping_ready
            ORDER BY created_at DESC, id DESC LIMIT 1
          ) pv ON true
          WHERE ${conditions.join(" AND ")}
@@ -846,11 +853,11 @@ export async function buildApp(
       if (name) values.push(name);
       const assets = await db.query(
         `SELECT da.id, da.file_name, da.format, da.size_bytes, da.uploaded_at,
-                pv.record_count, pv.status AS parsed_status
+                pv.record_count, pv.mapping_ready, pv.status AS parsed_status
          FROM raw_material_collection c
          JOIN data_asset da ON da.collection_id = c.id AND da.project_id = c.project_id
          LEFT JOIN LATERAL (
-           SELECT record_count, status FROM parsed_view
+           SELECT record_count, status, mapping_ready FROM parsed_view
            WHERE asset_id = da.id AND is_current ORDER BY created_at DESC, id DESC LIMIT 1
          ) pv ON true
          WHERE c.project_id = $1 AND c.id = $2
@@ -874,7 +881,13 @@ export async function buildApp(
           size: Number(row.size_bytes),
           recordCount: Number(row.record_count ?? 0),
           uploadedAt: new Date(row.uploaded_at).toISOString(),
-          status: row.parsed_status === "ready" ? "可浏览" : "等待解析",
+          mappingReady: row.mapping_ready !== false,
+          status:
+            row.parsed_status === "ready"
+              ? row.mapping_ready === false
+                ? "待整理字段"
+                : "可浏览"
+              : "等待解析",
         })),
         pagination: { total: Number(total.rows[0]?.total ?? 0), limit, offset },
       };
@@ -898,11 +911,11 @@ export async function buildApp(
       )
         return reply.code(404).send({ error: { code: "asset_not_found" } });
       const asset = await db.query(
-        `SELECT da.file_name, da.format, pv.record_count
+        `SELECT da.file_name, da.format, pv.record_count, pv.mapping_ready
          FROM data_asset da
          JOIN raw_material_collection c ON c.id = da.collection_id AND c.project_id = da.project_id
          LEFT JOIN LATERAL (
-           SELECT record_count FROM parsed_view
+           SELECT record_count, mapping_ready FROM parsed_view
            WHERE asset_id = da.id AND is_current ORDER BY created_at DESC, id DESC LIMIT 1
          ) pv ON true
          WHERE da.project_id = $1 AND da.collection_id = $2 AND da.id = $3
@@ -921,6 +934,7 @@ export async function buildApp(
           fileName: row.file_name,
           format: row.format,
           recordCount: Number(row.record_count ?? 0),
+          mappingReady: row.mapping_ready !== false,
         },
       };
     },
@@ -980,7 +994,7 @@ export async function buildApp(
         `SELECT da.id AS asset_id, da.file_name, pv.display_mapping, sr.ordinal, sr.value
          FROM raw_material_collection c
          JOIN data_asset da ON da.collection_id = c.id AND da.project_id = c.project_id
-         JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready'
+         JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready' AND pv.mapping_ready
          JOIN source_record sr ON sr.parsed_view_id = pv.id AND sr.parse_status = 'valid'
          WHERE c.project_id = $1 AND c.id = $2
            AND da.status NOT IN ('deletion_pending', 'tombstoned')
@@ -1047,7 +1061,7 @@ export async function buildApp(
         `SELECT da.id AS asset_id, da.file_name, pv.display_mapping, sr.ordinal, sr.value
            FROM raw_material_collection c
            JOIN data_asset da ON da.collection_id = c.id AND da.project_id = c.project_id
-           JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready'
+           JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready' AND pv.mapping_ready
            JOIN source_record sr ON sr.parsed_view_id = pv.id AND sr.parse_status = 'valid'
           WHERE c.project_id = $1 AND c.id = $2 AND da.id = $3 AND sr.ordinal = $4
             AND da.status NOT IN ('deletion_pending', 'tombstoned')`,
@@ -1223,6 +1237,9 @@ export async function buildApp(
   );
 
   registerUploads({ db, artifacts, app, authenticate, writeAllowed });
+  registerMaterialMapping({ db, app, authenticate, writeAllowed });
+  registerProcessing({ db, app, artifacts, authenticate, writeAllowed });
+  registerAssistant({ db, app, artifacts, config, authenticate, writeAllowed });
   if (config.allowTestIdentity)
     app.post<{ Params: { projectId: string }; Body: Readable }>(
       "/api/projects/:projectId/assets",

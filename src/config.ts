@@ -5,6 +5,7 @@ export function workerIdleDelayMs(emptyClaims: number): number {
 }
 
 export interface Config {
+  modelEncryptionKey: string;
   databaseUrl: string;
   runtimeMetricsEnabled: boolean;
   minio: {
@@ -131,6 +132,7 @@ export function loadConfig(env = process.env): Config {
   }
 
   return {
+    modelEncryptionKey: env.MODEL_ENCRYPTION_KEY ?? "",
     runtimeMetricsEnabled: env.RUNTIME_METRICS_ENABLED !== "false",
     databaseUrl:
       env.DATABASE_URL ??

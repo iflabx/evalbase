@@ -742,7 +742,7 @@ export function registerAccounts(
            JOIN source_record sr ON sr.parsed_view_id = pv.id
           WHERE c.project_id = $1
             AND da.status NOT IN ('deletion_pending', 'tombstoned')
-            AND pv.status = 'ready'
+            AND pv.status = 'ready' AND pv.mapping_ready
             AND sr.parse_status = 'valid'
           ORDER BY c.name, da.file_name, sr.ordinal`,
         [request.params.projectId],

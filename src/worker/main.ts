@@ -1,3 +1,6 @@
+import { cleanupProcessingObjects } from "../processing/cleanup.js";
+import { runProcessing } from "../processing/execute.js";
+import { ProcessingError } from "../processing/store.js";
 import { RuntimeMetrics } from "../observability/runtime.js";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -230,6 +233,7 @@ async function claim(
   db: Database,
   workerId: string,
   leaseDurationMs: number,
+  taskGroup: "ordinary" | "model",
 ): Promise<Job | undefined> {
   const client = await db.connect();
   try {
@@ -237,6 +241,7 @@ async function claim(
     const cancellation = await client.query(
       `WITH selected AS (
          SELECT id FROM job WHERE status = 'cancel_requested'
+           AND (($1='model' AND kind='process_data') OR ($1='ordinary' AND kind<>'process_data'))
          ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1
        )
        UPDATE job job SET status = 'cancelled', stage = 'cancelled',
@@ -244,6 +249,7 @@ async function claim(
        FROM selected WHERE job.id = selected.id
       RETURNING job.id, job.kind, job.project_id, job.actor_id,
                 job.payload, job.status, job.attempt`,
+      [taskGroup],
     );
     if (cancellation.rowCount) {
       const cancelled = cancellation.rows[0];
@@ -310,21 +316,22 @@ async function claim(
     const result = await client.query(
       `WITH selected AS (
          SELECT id FROM job
-         WHERE (status = 'queued' AND next_run_at <= now())
+         WHERE ((status = 'queued' AND next_run_at <= now())
             OR (status = 'running' AND lease_expires_at < now()
-                AND attempt < max_attempts)
+                AND attempt < max_attempts))
+           AND (($3='model' AND kind='process_data') OR ($3='ordinary' AND kind<>'process_data'))
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED LIMIT 1
        )
        UPDATE job job
        SET status = 'running', stage = 'starting', attempt = job.attempt + 1,
-           lease_owner = $1,
+           lease_owner = $1 || ':' || gen_random_uuid()::text,
            lease_expires_at = now() + ($2::bigint * interval '1 millisecond'),
            updated_at = now()
        FROM selected WHERE job.id = selected.id
       RETURNING job.id, job.kind, job.project_id, job.actor_id,
                 job.payload, job.lease_owner, job.attempt`,
-      [workerId, leaseDurationMs],
+      [workerId, leaseDurationMs, taskGroup],
     );
     if (!result.rowCount) {
       await client.query("COMMIT");
@@ -3317,6 +3324,9 @@ const config = loadConfig();
 const runtimeMetrics = new RuntimeMetrics(config.runtimeMetricsEnabled);
 const db = createPool(config.databaseUrl, runtimeMetrics);
 const artifacts = new ArtifactRepository(config.minio);
+const taskGroup = process.env.WORKER_TASK_GROUP ?? "ordinary";
+if (taskGroup !== "ordinary" && taskGroup !== "model")
+  throw new Error("Invalid WORKER_TASK_GROUP");
 const workerId = randomUUID();
 
 async function renewLease(job: Job) {
@@ -3324,7 +3334,8 @@ async function renewLease(job: Job) {
     `UPDATE job
      SET lease_expires_at = now() + ($2::bigint * interval '1 millisecond'),
          updated_at = now()
-     WHERE id = $1 AND lease_owner = $3 AND status = 'running'`,
+     WHERE id = $1 AND lease_owner = $3 AND status = 'running'
+       AND (kind<>'process_data' OR lease_expires_at>now())`,
     [job.id, config.jobLeaseDurationMs, job.lease_owner],
   );
 }
@@ -3484,6 +3495,8 @@ async function collectOrphans(
         UNION SELECT evidence_object_ref FROM candidate_snapshot
         UNION SELECT manifest_object_ref FROM test_set_version
         UNION SELECT object_ref FROM delivery_record
+        UNION SELECT input_ref FROM processing_run
+        UNION SELECT result_ref FROM processing_batch
       `)
     ).rows
       .map((row: { object_ref?: string | null }) => row.object_ref)
@@ -3511,6 +3524,18 @@ async function collectOrphans(
       // A consistency finding will report an unreadable descriptor or child.
     }
   }
+  let processingCursor: string | undefined;
+  do {
+    const objects = await artifacts.list("processing/", processingCursor);
+    for (const object of objects)
+      if (
+        object.lastModified.getTime() <= cutoff &&
+        !hasActiveJob &&
+        !references.has(object.key)
+      )
+        await artifacts.remove(object.key);
+    processingCursor = objects.length >= 1000 ? objects.at(-1)!.key : undefined;
+  } while (processingCursor);
   let markerCursor: string | undefined;
   do {
     const markers = await artifacts.list("markers/", markerCursor);
@@ -3541,6 +3566,7 @@ async function scheduleJobRetry(
     const owned = await client.query(
       `SELECT id FROM job
        WHERE id = $1 AND lease_owner = $2 AND status = 'running'
+         AND (kind<>'process_data' OR lease_expires_at>now())
        FOR UPDATE`,
       [job.id, job.lease_owner],
     );
@@ -3590,6 +3616,7 @@ async function finalizeJobFailure(
     const owned = await client.query(
       `SELECT id, kind, payload FROM job
        WHERE id = $1 AND lease_owner = $2 AND status = 'running'
+         AND (kind<>'process_data' OR lease_expires_at>now())
        FOR UPDATE`,
       [job.id, job.lease_owner],
     );
@@ -3760,11 +3787,12 @@ while (!stopping) {
   let job: Awaited<ReturnType<typeof claim>> | undefined;
   try {
     if (Date.now() - lastMaintenanceAt >= 1_000) {
+      await cleanupProcessingObjects(db, artifacts);
       await failExpiredJobs(db);
       await requeueDueRetries(db);
       lastMaintenanceAt = Date.now();
     }
-    job = await claim(db, workerId, config.jobLeaseDurationMs);
+    job = await claim(db, workerId, config.jobLeaseDurationMs, taskGroup);
   } catch {
     console.error(
       JSON.stringify({
@@ -3796,6 +3824,8 @@ while (!stopping) {
     let result: Record<string, unknown> = {};
     if (job.kind === "parse_csv" || job.kind === "parse_asset")
       result = await parseAsset(db, artifacts, job);
+    else if (job.kind === "process_data")
+      result = await runProcessing(db, artifacts, config, job);
     else if (job.kind === "materialize_candidate")
       result = await materializeCandidate(db, artifacts, job);
     else if (job.kind === "publish_version")
@@ -3828,7 +3858,8 @@ while (!stopping) {
           result = $2, counts = COALESCE($3::jsonb, counts), error_code = NULL,
           retryable = NULL, lease_owner = NULL, lease_expires_at = NULL,
           next_run_at = NULL, updated_at = now()
-      WHERE id = $1 AND lease_owner = $4 AND status = 'running'`,
+      WHERE id = $1 AND lease_owner = $4 AND status = 'running'
+        AND (kind<>'process_data' OR lease_expires_at>now())`,
       [job.id, result, JSON.stringify(result.counts ?? null), job.lease_owner],
     );
     if (completed.rowCount)
@@ -3858,6 +3889,7 @@ while (!stopping) {
     await recordStageDuration(db, job, "terminal").catch(() => undefined);
     if (!(error instanceof JobCancelledError)) {
       const permanent =
+        error instanceof ProcessingError ||
         error instanceof CandidateValidationError ||
         error instanceof PermanentJobError ||
         error instanceof PublicationCapacityError ||
@@ -3865,7 +3897,13 @@ while (!stopping) {
       const willRetry =
         !permanent && Number(job.attempt) < config.jobMaxAttempts;
       let errorCode = "infrastructure_unavailable";
-      if (error instanceof CandidateValidationError)
+      if (error instanceof ProcessingError) errorCode = error.code;
+      else if (
+        error instanceof Error &&
+        error.message === "processing_batch_failed"
+      )
+        errorCode = "processing_batch_failed";
+      else if (error instanceof CandidateValidationError)
         errorCode = "candidate_validation_failed";
       else if (error instanceof ControlledDeletionError) errorCode = error.code;
       else if (error instanceof PermanentJobError) errorCode = error.code;

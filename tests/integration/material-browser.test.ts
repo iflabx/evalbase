@@ -120,7 +120,12 @@ describe("Ticket 22 material file and unified record browser", () => {
     });
     expect(file.statusCode, file.body).toBe(200);
     expect(file.json()).toEqual({
-      asset: { fileName: "browser.csv", format: "csv", recordCount: 11 },
+      asset: {
+        fileName: "browser.csv",
+        format: "csv",
+        recordCount: 11,
+        mappingReady: true,
+      },
     });
 
     const records = await app.inject({

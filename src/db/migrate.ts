@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS confirmed_upload_batch (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (project_id, actor_id, idempotency_key)
 );
+ALTER TABLE confirmed_upload_batch ADD COLUMN IF NOT EXISTS request_hash text;
 ALTER TABLE upload_idempotency ADD COLUMN IF NOT EXISTS actor_id text REFERENCES app_user(id);
 ALTER TABLE upload_idempotency ADD COLUMN IF NOT EXISTS operation text;
 UPDATE upload_idempotency ui SET actor_id = p.owner_id
@@ -337,6 +338,8 @@ ALTER TABLE parsed_view ADD COLUMN IF NOT EXISTS draft_eligible boolean;
 ALTER TABLE parsed_view ADD COLUMN IF NOT EXISTS is_current boolean NOT NULL DEFAULT false;
 ALTER TABLE parsed_view ADD COLUMN IF NOT EXISTS error_summary jsonb;
 ALTER TABLE parsed_view ADD COLUMN IF NOT EXISTS display_mapping jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE parsed_view ADD COLUMN IF NOT EXISTS mapping_ready boolean NOT NULL DEFAULT true;
+ALTER TABLE parsed_view ADD COLUMN IF NOT EXISTS mapping_revision integer NOT NULL DEFAULT 1;
 UPDATE parsed_view SET format = 'csv' WHERE format IS NULL;
 UPDATE parsed_view SET parser_config = jsonb_build_object(
   'encoding', 'utf8', 'delimiter', ',', 'headerRow', 1, 'quote', chr(34)
@@ -1621,6 +1624,166 @@ export async function migrate(
   try {
     await client.query("BEGIN");
     await client.query(migrationSql);
+    await client.query(`CREATE TABLE IF NOT EXISTS model_connection (
+      revision integer PRIMARY KEY CHECK(revision>0), name text NOT NULL, endpoint text NOT NULL,
+      model text NOT NULL, enabled boolean NOT NULL, credential jsonb NOT NULL,
+      updated_by text NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
+      tested_at timestamptz, test_ok boolean, test_code text
+    )`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS selection_preview (
+        id text PRIMARY KEY,
+        project_id text NOT NULL REFERENCES project(id),
+        draft_id text NOT NULL REFERENCES collaborative_draft(id),
+        creator_id text NOT NULL REFERENCES app_user(id),
+        configuration jsonb NOT NULL,
+        source_snapshot jsonb NOT NULL,
+        candidate_ids jsonb NOT NULL,
+        selected_ids jsonb NOT NULL,
+        scope_count integer NOT NULL,
+        target_count integer NOT NULL,
+        draft_revision bigint NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        applied_at timestamptz,
+        applied_ids jsonb,
+        apply_digest text,
+        receipt jsonb
+      );
+      CREATE INDEX IF NOT EXISTS selection_preview_draft_idx
+        ON selection_preview(draft_id, created_at DESC, id);
+      ALTER TABLE selection_preview ADD COLUMN IF NOT EXISTS applied_by text REFERENCES app_user(id);
+      CREATE OR REPLACE FUNCTION purge_draft_selection_previews() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.status IN ('discarded','terminated') OR EXISTS
+          (SELECT 1 FROM test_set WHERE id=NEW.test_set_id AND status='permanently_deleted') OR EXISTS
+          (SELECT 1 FROM test_set_version WHERE id=NEW.published_version_id AND status IN ('permanently_deleted','tombstoned')) THEN
+          DELETE FROM selection_preview WHERE draft_id=NEW.id;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS draft_selection_cleanup ON collaborative_draft;
+      CREATE TRIGGER draft_selection_cleanup AFTER UPDATE ON collaborative_draft
+        FOR EACH ROW EXECUTE FUNCTION purge_draft_selection_previews();
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS processing_run (
+        id text PRIMARY KEY, project_id text NOT NULL REFERENCES project(id), actor_id text NOT NULL REFERENCES app_user(id),
+        job_id text NOT NULL UNIQUE REFERENCES job(id), idempotency_key text NOT NULL, request_hash text NOT NULL,
+        source jsonb NOT NULL, options jsonb NOT NULL, input_ref text, input_hash text NOT NULL, input_count integer NOT NULL,
+        model_revision integer REFERENCES model_connection(revision), target_draft_id text REFERENCES collaborative_draft(id),
+        created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(project_id,actor_id,idempotency_key)
+      );
+      ALTER TABLE data_asset ADD COLUMN IF NOT EXISTS processing_run_id text REFERENCES processing_run(id);
+      CREATE TABLE IF NOT EXISTS processing_acceptance (
+        id text PRIMARY KEY, run_id text NOT NULL REFERENCES processing_run(id), project_id text NOT NULL REFERENCES project(id),
+        actor_id text NOT NULL REFERENCES app_user(id), idempotency_key text NOT NULL, request_hash text NOT NULL,
+        result_ids jsonb NOT NULL, asset_id text NOT NULL REFERENCES data_asset(id), draft_id text REFERENCES collaborative_draft(id),
+        receipt jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(project_id,actor_id,idempotency_key)
+      );
+      CREATE INDEX IF NOT EXISTS processing_run_project_idx ON processing_run(project_id,created_at DESC,id);
+      CREATE TABLE IF NOT EXISTS processing_batch (
+        run_id text NOT NULL REFERENCES processing_run(id), ordinal integer NOT NULL, result_ref text,
+        output_count integer NOT NULL DEFAULT 0, issues jsonb NOT NULL DEFAULT '[]', error_code text,
+        PRIMARY KEY(run_id,ordinal)
+      );
+    `);
+    await client.query(`
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS execution_config jsonb NOT NULL DEFAULT '{"recipeVersion":"processing-v1","batchSize":20,"maxInputBytesPerBatch":40000,"maxOutputTokens":8192,"batchTimeoutMs":60000,"maxOutputBytes":100000000,"maxAttempts":3}';
+      ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS output_bytes bigint NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS processing_cleanup (
+        project_id text NOT NULL, object_ref text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(project_id,object_ref)
+      );
+      CREATE OR REPLACE FUNCTION purge_processing_run_body() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.input_ref IS NOT NULL AND NEW.input_ref IS NULL THEN
+          INSERT INTO processing_cleanup(project_id,object_ref) VALUES(OLD.project_id,OLD.input_ref) ON CONFLICT DO NOTHING;
+          INSERT INTO processing_cleanup(project_id,object_ref) SELECT OLD.project_id,result_ref FROM processing_batch
+            WHERE run_id=OLD.id AND result_ref IS NOT NULL ON CONFLICT DO NOTHING;
+          UPDATE processing_batch SET result_ref=NULL,issues='[]'::jsonb,error_code='processing_source_deleted' WHERE run_id=OLD.id;
+          NEW.options=jsonb_set(NEW.options,'{instructions}','""'::jsonb);
+          UPDATE job SET status='cancelled',stage='cancelled',lease_owner=NULL,lease_expires_at=NULL,
+            error_code='processing_source_deleted',updated_at=now() WHERE id=OLD.job_id;
+        END IF;
+        RETURN NEW;
+      END; $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS processing_run_body_cleanup ON processing_run;
+      CREATE TRIGGER processing_run_body_cleanup BEFORE UPDATE OF input_ref ON processing_run FOR EACH ROW EXECUTE FUNCTION purge_processing_run_body();
+      CREATE OR REPLACE FUNCTION invalidate_processing_sources() RETURNS trigger AS $$
+      BEGIN
+        IF TG_TABLE_NAME='data_asset' AND NEW.status='tombstoned' THEN
+          UPDATE processing_run SET input_ref=NULL WHERE input_ref IS NOT NULL AND source->>'kind'='assets' AND source->'assetIds' ? NEW.id;
+        ELSIF TG_TABLE_NAME='test_set_version' AND NEW.status IN('tombstoned','permanently_deleted') THEN
+          UPDATE processing_run SET input_ref=NULL WHERE input_ref IS NOT NULL AND source->>'kind'='version' AND source->>'id'=NEW.id;
+        ELSIF TG_TABLE_NAME='collaborative_draft' THEN
+          IF (NEW.status IN('discarded','terminated') OR
+          EXISTS(SELECT 1 FROM test_set WHERE id=NEW.test_set_id AND status='permanently_deleted') OR
+          EXISTS(SELECT 1 FROM test_set_version WHERE id=NEW.published_version_id AND status IN('tombstoned','permanently_deleted'))) THEN
+          UPDATE processing_run SET input_ref=NULL WHERE input_ref IS NOT NULL AND ((source->>'kind'='draft' AND source->>'id'=NEW.id) OR target_draft_id=NEW.id);
+          END IF;
+        END IF;
+        RETURN NEW;
+      END; $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS processing_asset_cleanup ON data_asset;
+      CREATE TRIGGER processing_asset_cleanup AFTER UPDATE OF status ON data_asset FOR EACH ROW EXECUTE FUNCTION invalidate_processing_sources();
+      DROP TRIGGER IF EXISTS processing_version_cleanup ON test_set_version;
+      CREATE TRIGGER processing_version_cleanup AFTER UPDATE OF status ON test_set_version FOR EACH ROW EXECUTE FUNCTION invalidate_processing_sources();
+      DROP TRIGGER IF EXISTS processing_draft_cleanup ON collaborative_draft;
+      CREATE TRIGGER processing_draft_cleanup AFTER UPDATE ON collaborative_draft FOR EACH ROW EXECUTE FUNCTION invalidate_processing_sources();
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS draft_creation_receipt(
+        project_id text NOT NULL REFERENCES project(id),actor_id text NOT NULL REFERENCES app_user(id),operation_key text NOT NULL,
+        request_hash text NOT NULL,draft_id text NOT NULL REFERENCES collaborative_draft(id),PRIMARY KEY(project_id,actor_id,operation_key)
+      );
+      CREATE TABLE IF NOT EXISTS assistant_session(
+        id text PRIMARY KEY,project_id text NOT NULL REFERENCES project(id),actor_id text NOT NULL REFERENCES app_user(id),
+        created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS content_revision integer NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS assistant_turn(
+        id text PRIMARY KEY,session_id text NOT NULL REFERENCES assistant_session(id),operation_key text NOT NULL,request_hash text NOT NULL,
+        user_text text NOT NULL,assistant_text text NOT NULL DEFAULT '',tool_results jsonb NOT NULL DEFAULT '[]',dependencies jsonb NOT NULL DEFAULT '[]',
+        status text NOT NULL CHECK(status IN('running','succeeded','failed','interrupted')),error_code text,
+        expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(session_id,operation_key)
+      );
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS requires_write boolean NOT NULL DEFAULT false;
+      CREATE INDEX IF NOT EXISTS assistant_turn_session_idx ON assistant_turn(session_id,created_at,id);
+      CREATE TABLE IF NOT EXISTS assistant_proposal(
+        id text PRIMARY KEY,turn_id text NOT NULL REFERENCES assistant_turn(id),session_id text NOT NULL REFERENCES assistant_session(id),
+        project_id text NOT NULL REFERENCES project(id),actor_id text NOT NULL REFERENCES app_user(id),
+        action text NOT NULL,parameters jsonb NOT NULL,digest text NOT NULL,summary jsonb NOT NULL,
+        status text NOT NULL DEFAULT 'pending' CHECK(status IN('pending','executing','succeeded','rejected','invalid')),
+        expires_at timestamptz NOT NULL,lease_until timestamptz,receipt jsonb,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(turn_id,digest)
+      );
+      ALTER TABLE assistant_proposal ADD COLUMN IF NOT EXISTS lease_token text;
+      CREATE OR REPLACE FUNCTION purge_project_assistant_body() RETURNS trigger AS $$
+      DECLARE affected_project text; affected_kind text; affected_sessions text[];
+      BEGIN
+        IF TG_TABLE_NAME='test_set_version' THEN SELECT project_id INTO affected_project FROM test_set WHERE id=NEW.test_set_id; ELSE affected_project=NEW.project_id; END IF;
+        IF NEW.status IN('tombstoned','permanently_deleted','discarded','terminated') AND OLD.status IS DISTINCT FROM NEW.status THEN
+          affected_kind=CASE TG_TABLE_NAME WHEN 'data_asset' THEN 'asset' WHEN 'test_set_version' THEN 'version' WHEN 'test_set' THEN 'testSet' ELSE 'draft' END;
+          SELECT array_agg(DISTINCT t.session_id) INTO affected_sessions FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id
+          WHERE s.project_id=affected_project AND (t.dependencies @> jsonb_build_array(jsonb_build_object('kind',affected_kind,'id',NEW.id))
+            OR (TG_TABLE_NAME='test_set_version' AND EXISTS(SELECT 1 FROM collaborative_draft d WHERE d.published_version_id=NEW.id
+              AND t.dependencies @> jsonb_build_array(jsonb_build_object('kind','draft','id',d.id)))));
+          UPDATE assistant_session SET content_revision=content_revision+1 WHERE id=ANY(affected_sessions);
+          UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',dependencies='[]',status='interrupted',error_code='assistant_context_deleted'
+          WHERE session_id=ANY(affected_sessions);
+          UPDATE assistant_proposal SET parameters='{}',summary='{}',receipt=NULL,status='invalid'
+          WHERE project_id=affected_project AND session_id=ANY(affected_sessions);
+        END IF;
+        RETURN NEW;
+      END; $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS assistant_asset_cleanup ON data_asset;
+      CREATE TRIGGER assistant_asset_cleanup AFTER UPDATE OF status ON data_asset FOR EACH ROW EXECUTE FUNCTION purge_project_assistant_body();
+      DROP TRIGGER IF EXISTS assistant_version_cleanup ON test_set_version;
+      CREATE TRIGGER assistant_version_cleanup AFTER UPDATE OF status ON test_set_version FOR EACH ROW EXECUTE FUNCTION purge_project_assistant_body();
+      DROP TRIGGER IF EXISTS assistant_draft_cleanup ON collaborative_draft;
+      CREATE TRIGGER assistant_draft_cleanup AFTER UPDATE OF status ON collaborative_draft FOR EACH ROW EXECUTE FUNCTION purge_project_assistant_body();
+      DROP TRIGGER IF EXISTS assistant_test_set_cleanup ON test_set;
+      CREATE TRIGGER assistant_test_set_cleanup AFTER UPDATE OF status ON test_set FOR EACH ROW EXECUTE FUNCTION purge_project_assistant_body();
+    `);
     const claimed = await client.query(
       `INSERT INTO schema_migration (id)
        VALUES ($1) ON CONFLICT (id) DO NOTHING RETURNING id`,

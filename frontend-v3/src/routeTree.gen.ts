@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsProjectIdDatasetsRouteImport } from './routes/projects.$projectId.datasets'
+import { Route as ProjectsProjectIdProcessingRouteImport } from './routes/projects.$projectId.processing'
 import { Route as ProjectsProjectIdTestSetsRouteImport } from './routes/projects.$projectId.test-sets'
 import { Route as ProjectsProjectIdDatasetsCollectionIdRouteImport } from './routes/projects.$projectId.datasets.$collectionId'
 import { Route as ProjectsProjectIdTestSetsTestSetIdRouteImport } from './routes/projects.$projectId.test-sets.$testSetId'
@@ -38,6 +39,12 @@ const ProjectsProjectIdDatasetsRoute =
   ProjectsProjectIdDatasetsRouteImport.update({
     id: '/projects/$projectId/datasets',
     path: '/projects/$projectId/datasets',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ProjectsProjectIdProcessingRoute =
+  ProjectsProjectIdProcessingRouteImport.update({
+    id: '/projects/$projectId/processing',
+    path: '/projects/$projectId/processing',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ProjectsProjectIdTestSetsRoute =
@@ -76,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/datasets': typeof ProjectsProjectIdDatasetsRouteWithChildren
+  '/projects/$projectId/processing': typeof ProjectsProjectIdProcessingRoute
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
   '/projects/$projectId/datasets/$collectionId': typeof ProjectsProjectIdDatasetsCollectionIdRouteWithChildren
   '/projects/$projectId/test-sets/$testSetId': typeof ProjectsProjectIdTestSetsTestSetIdRoute
@@ -87,6 +95,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/datasets': typeof ProjectsProjectIdDatasetsRouteWithChildren
+  '/projects/$projectId/processing': typeof ProjectsProjectIdProcessingRoute
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
   '/projects/$projectId/datasets/$collectionId': typeof ProjectsProjectIdDatasetsCollectionIdRouteWithChildren
   '/projects/$projectId/test-sets/$testSetId': typeof ProjectsProjectIdTestSetsTestSetIdRoute
@@ -99,6 +108,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/datasets': typeof ProjectsProjectIdDatasetsRouteWithChildren
+  '/projects/$projectId/processing': typeof ProjectsProjectIdProcessingRoute
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
   '/projects/$projectId/datasets/$collectionId': typeof ProjectsProjectIdDatasetsCollectionIdRouteWithChildren
   '/projects/$projectId/test-sets/$testSetId': typeof ProjectsProjectIdTestSetsTestSetIdRoute
@@ -112,6 +122,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects/'
     | '/projects/$projectId/datasets'
+    | '/projects/$projectId/processing'
     | '/projects/$projectId/test-sets'
     | '/projects/$projectId/datasets/$collectionId'
     | '/projects/$projectId/test-sets/$testSetId'
@@ -123,6 +134,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects'
     | '/projects/$projectId/datasets'
+    | '/projects/$projectId/processing'
     | '/projects/$projectId/test-sets'
     | '/projects/$projectId/datasets/$collectionId'
     | '/projects/$projectId/test-sets/$testSetId'
@@ -134,6 +146,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects/'
     | '/projects/$projectId/datasets'
+    | '/projects/$projectId/processing'
     | '/projects/$projectId/test-sets'
     | '/projects/$projectId/datasets/$collectionId'
     | '/projects/$projectId/test-sets/$testSetId'
@@ -146,6 +159,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   ProjectsProjectIdDatasetsRoute: typeof ProjectsProjectIdDatasetsRouteWithChildren
+  ProjectsProjectIdProcessingRoute: typeof ProjectsProjectIdProcessingRoute
   ProjectsProjectIdTestSetsRoute: typeof ProjectsProjectIdTestSetsRouteWithChildren
 }
 
@@ -177,6 +191,13 @@ declare module '@tanstack/react-router' {
       path: '/projects/$projectId/datasets'
       fullPath: '/projects/$projectId/datasets'
       preLoaderRoute: typeof ProjectsProjectIdDatasetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$projectId/processing': {
+      id: '/projects/$projectId/processing'
+      path: '/projects/$projectId/processing'
+      fullPath: '/projects/$projectId/processing'
+      preLoaderRoute: typeof ProjectsProjectIdProcessingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/$projectId/test-sets': {
@@ -270,6 +291,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   ProjectsProjectIdDatasetsRoute: ProjectsProjectIdDatasetsRouteWithChildren,
+  ProjectsProjectIdProcessingRoute: ProjectsProjectIdProcessingRoute,
   ProjectsProjectIdTestSetsRoute: ProjectsProjectIdTestSetsRouteWithChildren,
 }
 export const routeTree = rootRouteImport
