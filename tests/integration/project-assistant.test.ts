@@ -18,7 +18,8 @@ describe("project assistant public contract", () => {
     projectId: string,
     draftId: string,
     sessionId: string,
-    publishedVersionId: string;
+    publishedVersionId: string,
+    publishedTestSetId: string;
   const calls: Record<string, any>[] = [];
   let requestedTool:
     | { name: string; input: Record<string, unknown> }
@@ -299,6 +300,7 @@ describe("project assistant public contract", () => {
     });
     expect(confirmed.statusCode, confirmed.body).toBe(200);
     publishedVersionId = confirmed.json().receipt.version.id;
+    publishedTestSetId = confirmed.json().receipt.testSet.id;
     const repeated = await app.inject({
       method: "POST",
       url,
@@ -335,6 +337,77 @@ describe("project assistant public contract", () => {
       ).toBe(publishedVersionId);
     } finally {
       await lost.end();
+    }
+  });
+  it("discovers published versions and the related draft before requesting publication", async () => {
+    const derived = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts`,
+      headers,
+      payload: {
+        testSetId: publishedTestSetId,
+        parentVersionId: publishedVersionId,
+      },
+    });
+    expect(derived.statusCode, derived.body).toBe(201);
+    const derivedId = derived.json().draft.id;
+    requestedTool = {
+      name: "query_project",
+      input: { kind: "versions", search: "助手创建的测试集" },
+    };
+    const versions = (await send("查询测试集版本")).json().turns.at(-1)
+      .tools[0];
+    expect(versions.status, JSON.stringify(versions)).toBe("succeeded");
+    expect(versions.result.items).toContainEqual(
+      expect.objectContaining({
+        id: publishedVersionId,
+        label: "v1",
+        count: 1,
+        test_set_id: publishedTestSetId,
+      }),
+    );
+    requestedTool = {
+      name: "query_project",
+      input: { kind: "drafts", testSetId: publishedTestSetId },
+    };
+    const drafts = (await send("查询关联草稿")).json().turns.at(-1).tools[0];
+    expect(drafts.status, JSON.stringify(drafts)).toBe("succeeded");
+    expect(drafts.result.items).toEqual([
+      expect.objectContaining({
+        id: derivedId,
+        test_set_id: publishedTestSetId,
+        parent_version_id: publishedVersionId,
+        parent_label: "v1",
+      }),
+    ]);
+    requestedTool = {
+      name: "query_project",
+      input: { kind: "drafts", testSetId: "another-project-test-set" },
+    };
+    expect(
+      (await send("查询其他测试集的草稿")).json().turns.at(-1).tools[0].result
+        .items,
+    ).toEqual([]);
+    requestedTool = { name: "request_publish", input: { draftId: derivedId } };
+    const state = (await send("请求发布关联草稿")).json();
+    expect(state.proposals).toContainEqual(
+      expect.objectContaining({
+        action: "publish",
+        status: "pending",
+        summary: expect.objectContaining({
+          count: 1,
+          target: "助手创建的测试集",
+        }),
+      }),
+    );
+    const db = createPool(databaseUrl);
+    try {
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM test_set_version"))
+          .rows[0].count,
+      ).toBe(1);
+    } finally {
+      await db.end();
     }
   });
   it("refuses client-supplied tool history and other users' sessions; expiry is recoverable", async () => {
@@ -426,8 +499,11 @@ describe("project assistant public contract", () => {
       expect(recovered.result.recovered).toBe(true);
       expect(
         Number(
-          (await db.query("SELECT count(*) FROM collaborative_draft")).rows[0]
-            .count,
+          (
+            await db.query(
+              "SELECT count(*) FROM collaborative_draft WHERE parent_version_id IS NULL",
+            )
+          ).rows[0].count,
         ),
       ).toBe(1);
       expect(

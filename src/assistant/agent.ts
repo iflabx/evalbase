@@ -205,7 +205,7 @@ export async function executeAssistantTurn(
   const tools = {
     query_project: businessTool(
       "query_project",
-      "查询当前项目名称或分页列出文件、测试集、版本、草稿；必须使用返回的真实ID。",
+      "查询当前项目或分页列出文件、测试集、版本、草稿，search按名称过滤。versions/drafts可传testSetId限定测试集；必须使用返回的真实ID。发布已有测试集时先查询testSets，再用其testSetId查询drafts，从返回草稿ID请求发布；不要用原始文件代替草稿。",
       {
         kind: { enum: ["project", "files", "testSets", "versions", "drafts"] },
         search: { type: "string", maxLength: 100 },
@@ -253,8 +253,8 @@ export async function executeAssistantTurn(
         if (input.kind === "versions") {
           const rows = (
             await db.query(
-              "SELECT v.id,v.version_label AS label,v.item_count AS count,v.test_set_id FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id WHERE ts.project_id=$1 AND ts.status='available' AND v.status='published' AND ts.id=$2 ORDER BY v.created_at DESC,v.id LIMIT 20 OFFSET $3",
-              [scope.projectId, input.testSetId ?? "", offset],
+              "SELECT v.id,v.version_label AS label,v.item_count AS count,v.test_set_id,ts.name AS test_set_name FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id WHERE ts.project_id=$1 AND ts.status='available' AND v.status='published' AND ($2::text IS NULL OR ts.id=$2) AND ts.name ILIKE $3 ORDER BY v.published_at DESC,v.id LIMIT 20 OFFSET $4",
+              [scope.projectId, input.testSetId ?? null, search, offset],
             )
           ).rows;
           await depend(rows.map((r) => ({ kind: "version", id: r.id })));
@@ -266,8 +266,8 @@ export async function executeAssistantTurn(
         await assistantAccess(db, scope, true);
         const rows = (
           await db.query(
-            "SELECT id,name,parent_version_id,revision FROM collaborative_draft WHERE project_id=$1 AND status='editing' AND name ILIKE $2 ORDER BY updated_at DESC,id LIMIT 20 OFFSET $3",
-            [scope.projectId, search, offset],
+            "SELECT d.id,d.name,d.test_set_id,d.parent_version_id,v.version_label AS parent_label,d.revision FROM collaborative_draft d LEFT JOIN test_set_version v ON v.id=d.parent_version_id WHERE d.project_id=$1 AND d.status='editing' AND d.name ILIKE $2 AND ($4::text IS NULL OR d.test_set_id=$4) ORDER BY d.updated_at DESC,d.id LIMIT 20 OFFSET $3",
+            [scope.projectId, search, offset, input.testSetId ?? null],
           )
         ).rows;
         await depend(rows.map((r) => ({ kind: "draft", id: r.id })));

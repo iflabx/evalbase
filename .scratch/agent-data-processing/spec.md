@@ -19,7 +19,7 @@ Implementation: ready-for-owner-checkpoint
 | --- | --- | --- | --- | --- |
 | [SEL-01](issues/01-selection.md) | 固定筛选、抽取、调整、入稿、发布溯源与正式 UI | 无 | ready-for-owner-checkpoint | 算法、HTTP 集成及受影响草稿回归通过；固定预览、入稿与发布来源已实测 |
 | [AI-02](issues/02-model-processing.md) | 模型连接、原件整理、三类后台处理、预览/接受与来源 | SEL-01 共享选择/应用边界 | ready-for-owner-checkpoint | 连接、后整理、三类处理/接受、真实 Worker、删除竞态和来源检查通过 |
-| [AI-03](issues/03-project-assistant.md) | 自然语言业务工具、持久会话/确认、完整跨流程测试 | AI-02 | ready-for-owner-checkpoint | 助手公共接口 7 项、浏览器、真实 Qwen 和独立复审通过；统一 Owner checkpoint 待人工验收 |
+| [AI-03](issues/03-project-assistant.md) | 自然语言业务工具、持久会话/确认、完整跨流程测试 | AI-02 | ready-for-owner-checkpoint | 助手公共接口 8 项、浏览器、真实 Qwen 和独立复审通过；统一 Owner checkpoint 待人工验收 |
 
 三张功能 Ticket 属于本次整体授权，自动化验证与复审后连续推进；一个最终人工 checkpoint，不以中间完成为由停工或要求重复授权。完成依然要求全部 PRD 行为和测试证据。合并 main、GitHub 推送、tag、正式部署不在本次授权内。
 
