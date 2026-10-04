@@ -78,3 +78,12 @@
 命令和终态日志见 `evidence/assistant-review-http-green.log`、`assistant-review-ui-green.log`、`assistant-static-backend.log`、`assistant-static-front-repair.log`、`assistant-docs-native.log`、`assistant-doc-manual.json`。后端综合脚本最后的旧容器文档子检查失败，不能把整份脚本称为通过；其类型、lint、单元子检查通过，文档由上述独立检查补齐。
 
 此处先记录已完成的代码验证。原会话真实 Qwen 改写、浏览器预览、采纳和唯一发布，以及新会话完整闭环仍需在新的固定代码提交复验；Owner 人工验收仍为 pending。
+
+### 本轮对象快照与同名草稿读取修复
+
+`97bc8a52aa9b` 的真实模型复验仍读取了 0 条记录的同名草稿；当前页面的原草稿仍为 10 条、revision 1。修复将本轮授权对象快照放到历史之后、当前请求之前；记录结果标明实际 source、currentObject 和是否为当前对象。明确指定其他对象时不重定向，快照也不构成新增操作授权。没有改公开接口、数据库表、权限或确认规则。
+
+- 新增公共 HTTP / 真实 SDK 回归证明快照顺序、同名空草稿识别及原内容保留；助手 12 项和 validator 30 项共 42 项通过。
+- 后端类型、受影响 lint、23 文件 142 项单元通过；前端未新增源码改动。
+- Standards 未发现违规；Spec 提出的“一律按当前对象重读”提示歧义已修正为仅针对误读，明确指定其他对象时遵从用户指定。
+- 终态证据：`evidence/assistant-focus-http.log`、`evidence/assistant-focus-static.log`。固定代码提交后的真实 Qwen 原会话与新会话复验仍待完成，不以此替代人工验收。

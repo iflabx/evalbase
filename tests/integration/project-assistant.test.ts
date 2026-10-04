@@ -707,6 +707,90 @@ describe("project assistant public contract", () => {
       sessionId = originalSession;
     }
   }, 60000);
+  it("distinguishes an empty namesake from the current draft after conflicting tool history", async () => {
+    const previousSession = sessionId;
+    try {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      async function create(createAnother = false) {
+        requestedTool = {
+          name: "create_draft",
+          input: { name: "同名当前草稿", createAnother },
+        };
+        const response = (await send("按明确要求创建草稿")).json().turns.at(-1);
+        return response.tools[0].result.draftId as string;
+      }
+      const currentDraft = await create();
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/collaborative-drafts/${currentDraft}/records`,
+            headers,
+            payload: {
+              question: "如何修改昵称？",
+              expectedOutput: "修改昵称",
+              metadata: [],
+            },
+          })
+        ).statusCode,
+      ).toBe(201);
+      const emptyNamesake = await create(true);
+      expect(emptyNamesake).not.toBe(currentDraft);
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "draft", id: emptyNamesake } },
+      };
+      const requestStart = calls.length;
+      const selectedTool = (
+        await send("继续处理当前草稿中的数据", {
+          kind: "draft",
+          id: currentDraft,
+        })
+      )
+        .json()
+        .turns.at(-1).tools[0];
+      expect(selectedTool.status, JSON.stringify(selectedTool)).toBe(
+        "succeeded",
+      );
+      const result = selectedTool.result;
+      const wire = calls[requestStart].messages;
+      expect(wire.at(-2).content).toContain("当前业务上下文：\n");
+      const current = JSON.parse(
+        wire.at(-2).content.split("当前业务上下文：\n")[1],
+      );
+      expect(current.pageObject).toMatchObject({
+        name: "同名当前草稿",
+        recordCount: 1,
+        ref: current.focusDraft,
+      });
+      expect(result).toMatchObject({
+        source: { kind: "draft", id: emptyNamesake },
+        total: 0,
+        isCurrentObject: false,
+        currentObject: current.pageObject,
+      });
+      expect(result.currentObject.ref).not.toBe(
+        current.drafts.find((draft: any) => draft.recordCount === 0).ref,
+      );
+      const preserved = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${currentDraft}`,
+        headers,
+      });
+      expect(preserved.statusCode, preserved.body).toBe(200);
+      expect(preserved.json().total).toBe(1);
+    } finally {
+      sessionId = previousSession;
+    }
+  });
+
   it("binds the current page to the authorized turn without trusting client history or shifting session numbers", async () => {
     const originalSession = sessionId;
     try {
@@ -742,7 +826,7 @@ describe("project assistant public contract", () => {
       expect(reply.statusCode, reply.body).toBe(200);
       const current = JSON.parse(
         calls[start].messages
-          .find((m: any) => m.role === "system")
+          .find((m: any) => String(m.content).includes("当前业务上下文：\n"))
           .content.split("当前业务上下文：\n")[1],
       );
       expect(current.pageObject).toMatchObject({
@@ -1006,10 +1090,8 @@ describe("project assistant public contract", () => {
       await invoke("read_records", {
         source: { kind: "draft", id: target.draftId },
       });
-      const contextMessage = calls[requestStart].messages.find(
-        (m: any) =>
-          m.role === "system" &&
-          String(m.content).includes("当前业务上下文：\n"),
+      const contextMessage = calls[requestStart].messages.find((m: any) =>
+        String(m.content).includes("当前业务上下文：\n"),
       );
       expect(
         contextMessage,
