@@ -27,6 +27,7 @@ describe("project assistant public contract", () => {
   let requestedTool:
     | { name: string; input: Record<string, unknown> }
     | undefined;
+  let toolSequence: { name: string; input: Record<string, unknown> }[] = [];
   let repeatRead: boolean | "progress" = false;
   let hold = false,
     release: () => void = () => undefined,
@@ -90,7 +91,9 @@ describe("project assistant public contract", () => {
       ) ||
       String(body.messages.at(-1)?.content ?? "").startsWith("[confirmed]");
     const inspectRun = body.tool_choice?.function?.name === "read_processing";
+    const scriptedTool = toolSequence.shift();
     if (
+      scriptedTool ||
       inspectRun ||
       repeatRead ||
       (body.messages.at(-1)?.role !== "tool" && !automatic)
@@ -99,6 +102,7 @@ describe("project assistant public contract", () => {
         (m: any) => m.role === "user",
       ).content;
       const action =
+        scriptedTool?.name ??
         (inspectRun
           ? "read_processing"
           : repeatRead
@@ -112,6 +116,7 @@ describe("project assistant public contract", () => {
               ? "query_project"
               : "create_draft");
       const args =
+        scriptedTool?.input ??
         (inspectRun
           ? {
               runId: JSON.parse(
@@ -1593,6 +1598,80 @@ describe("project assistant public contract", () => {
       expect((await read()).json().task.review ?? null).toBeNull();
     } finally {
       await db.end();
+      sessionId = previous;
+    }
+  });
+  it("recovers an invalid plan by reading real sources before replanning", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const ownDraft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "定位恢复草稿" },
+      })
+    ).json().draft.id;
+    await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${ownDraft}/records`,
+      headers,
+      payload: {
+        question: "真实来源问题",
+        expectedOutput: "正常回答",
+        metadata: [],
+      },
+    });
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "定位恢复",
+            requirements: ["清洗当前草稿"],
+            target: { kind: "assets" },
+            nextAction: "submit_processing",
+          },
+        },
+        { name: "query_project", input: { kind: "drafts" } },
+        {
+          name: "plan_task",
+          input: {
+            title: "定位恢复",
+            requirements: ["清洗当前草稿"],
+            target: { kind: "draft", id: ownDraft },
+            nextAction: "submit_processing",
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: ownDraft },
+            allRecords: true,
+            operation: "clean",
+            instructions: "清洗",
+            allowedFields: ["question"],
+          },
+        },
+      ];
+      const state = (await send("先检查来源，再清洗当前草稿")).json();
+      const turn = state.turns.at(-1);
+      expect(turn.tools[0].error.code).toBe("assistant_source_invalid");
+      expect(
+        turn.tools.find((entry: any) => entry.name === "query_project")?.status,
+      ).toBe("succeeded");
+      expect(turn.status, JSON.stringify(state)).toBe("succeeded");
+      expect(state.task.stage).toBe("processing");
+      expect(state.task.runId).toBeTruthy();
+    } finally {
+      toolSequence = [];
       sessionId = previous;
     }
   });

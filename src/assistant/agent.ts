@@ -456,11 +456,15 @@ export async function executeAssistantTurn(
         },
         targetDraftId: string,
         allowedLabels: {
+          description:
+            "仅用于用户明确指定的期望输出固定标签。期望输出为逐题回答行为时不填写；Metadata分类与配额用classifications指定对应key。",
           type: "array",
           items: { type: "string", maxLength: 500 },
           maxItems: 100,
         },
         classifications: {
+          description:
+            "在用户指定的字段核对类别和配额。题库类型、风险编号等Metadata分类必须用field:metadata及真实key，不能替代期望输出中的逐题回答行为。",
           type: "array",
           maxItems: 5,
           items: {
@@ -1655,10 +1659,8 @@ export async function executeAssistantTurn(
           return {
             toolChoice: { type: "tool" as const, toolName: "read_processing" },
           };
-        if (
-          plannedAction === "read_processing" ||
-          plannedAction === "plan_task"
-        )
+        // An invalid plan may need source/background reads before it can be repaired.
+        if (plannedAction === "read_processing")
           return {
             toolChoice: { type: "tool" as const, toolName: plannedAction },
           };

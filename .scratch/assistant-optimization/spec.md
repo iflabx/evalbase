@@ -45,3 +45,5 @@ Implementation: in-progress
 - DOC-1/2 后台进展：新增 PDF/MD/TXT 个人背景的保存/刷新/定位读取/移除；真实 Worker 请求携带原文位置、哈希与持久用户纠正。GB PDF 31 物理页、附录 A 五大类及全部 31 项验证通过，字体与字符映射只读包内文件。跨账号、撤权、五份上限及个人背景运行隔离已过 HTTP 检查（`background-private-run-green.log`）；前端入口、多批汇总和新 200 条闭环仍待完成。
 
 - 2026-10-06 最终复审：Standards 与 Spec 的 P0/P1 已全部修复并窄范围复核通过。67 项受影响后台回归、16 项浏览器回归及类型/lint 通过；最后两处非首条候选去重、旧批次恢复仅重跑直接受影响 8 项，全部通过。真实模型单会话新 200 条闭环尚未完成，不标记实施完成，不替代 Owner 验收。
+
+- 真实短请求恢复补修：无效计划后仍允许查询来源/读取背景，保留未执行义务；公开 SDK redgreen（2 项）、类型和 lint 通过，双向窄复核无新问题。日志 `real-flow-plan-recovery-red.log` / `real-flow-plan-recovery-green.log`。
