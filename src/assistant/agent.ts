@@ -142,6 +142,7 @@ export async function executeAssistantTurn(
   let toolCalls = 0;
   let plannedAction: string | undefined;
   let yieldToProcessing = false;
+  let recoveredProcessingKey: string | undefined;
   let processingEventRunId: string | undefined;
   const restoring = Number(turn.execution_attempt) > 1 || turn.resuming;
   const restoringLegacyProcessing =
@@ -257,6 +258,7 @@ export async function executeAssistantTurn(
                 )
               : undefined;
           const key =
+            recoveredProcessingKey ??
             legacy?.key ??
             `assistant:${turn.id}:${sha256(canonicalJson({ name, input }))}`;
           if (
@@ -1336,10 +1338,37 @@ export async function executeAssistantTurn(
       maxRetries: 0,
       experimental_telemetry: { isEnabled: false },
     });
-    const response = await agent.generate({
-      messages,
-      abortSignal: AbortSignal.timeout(80000),
-    });
+    const savedProcessing =
+      restoring && !processingEventRunId
+        ? turn.tool_results.findLast(
+            (r: Record<string, any>) =>
+              r.status === "succeeded" &&
+              ["submit_processing", "refine_candidates"].includes(r.name) &&
+              (!plannedAction ||
+                plannedAction === "any" ||
+                plannedAction === r.name),
+          )
+        : undefined;
+    if (savedProcessing) {
+      recoveredProcessingKey = savedProcessing.key;
+      await tools[
+        savedProcessing.name as "submit_processing" | "refine_candidates"
+      ].execute!(savedProcessing.input, {
+        toolCallId: savedProcessing.key,
+        messages,
+        context: {},
+        abortSignal: AbortSignal.timeout(80000),
+      });
+      recoveredProcessingKey = undefined;
+      if (!yieldToProcessing)
+        throw new AssistantError(422, "assistant_task_not_executed");
+    }
+    const response = yieldToProcessing
+      ? { text: "", finishReason: "stop" }
+      : await agent.generate({
+          messages,
+          abortSignal: AbortSignal.timeout(80000),
+        });
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
     if (plannedAction || processingEventRunId)

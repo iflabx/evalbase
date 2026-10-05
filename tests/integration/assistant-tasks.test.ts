@@ -830,36 +830,41 @@ describe("assistant continuous task public contract", () => {
     expect(receipt.result).toMatchObject({ refinedCount: 1 });
     const db = createPool(databaseUrl);
     try {
-      await db.query(
-        "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed' WHERE id=$1",
-        [id],
-      );
-      await db.query(
-        'UPDATE assistant_session SET task=task||\'{"stage":"failed","nextAction":"submit_processing"}\'::jsonb WHERE id=$1',
-        [sessionId],
-      );
-      expect(
-        (
-          await app.inject({
-            method: "POST",
-            url: `${base()}/sessions/${sessionId}/retry`,
-            headers,
-            payload: {},
-          })
-        ).statusCode,
-      ).toBe(200);
-      await expect
-        .poll(
-          async () =>
-            (await read()).turns.find((turn: any) => turn.id === id).status,
-          { timeout: 15000 },
-        )
-        .toBe("succeeded");
-      expect((await read()).task).toMatchObject({
-        runId: receipt.result.runId,
-        stage: "processing",
-        nextAction: null,
-      });
+      mode = "explain";
+      const beforeRetryRequests = requests.length;
+      for (const nextAction of ["submit_processing", "any"]) {
+        await db.query(
+          "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed' WHERE id=$1",
+          [id],
+        );
+        await db.query(
+          "UPDATE assistant_session SET task=task||jsonb_build_object('stage','failed','nextAction',$2::text) WHERE id=$1",
+          [sessionId, nextAction],
+        );
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions/${sessionId}/retry`,
+              headers,
+              payload: {},
+            })
+          ).statusCode,
+        ).toBe(200);
+        await expect
+          .poll(
+            async () =>
+              (await read()).turns.find((turn: any) => turn.id === id).status,
+            { timeout: 15000 },
+          )
+          .toBe("succeeded");
+        expect((await read()).task).toMatchObject({
+          runId: receipt.result.runId,
+          stage: "processing",
+          nextAction: null,
+        });
+        expect(requests).toHaveLength(beforeRetryRequests);
+      }
       expect(
         (
           await app.inject({
@@ -1491,7 +1496,7 @@ describe("assistant continuous task public contract", () => {
           stage: "processing",
         });
         expect(requests.filter((request) => request.tools).length).toBe(
-          resumeCalls + 1,
+          resumeCalls,
         );
         expect(
           (
