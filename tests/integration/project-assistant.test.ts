@@ -8,6 +8,7 @@ import { migrate } from "../../src/db/migrate.js";
 import { loadConfig } from "../../src/config.js";
 import { runProcessing } from "../../src/processing/execute.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
+import { canonicalJson, sha256 } from "../../src/package/contract.js";
 
 const origin = "http://127.0.0.1:4217",
   baseUrl = loadConfig().databaseUrl,
@@ -1504,6 +1505,131 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it.each([false, true])(
+    "resumes a saved legacy processing default with explicit fields (%s)",
+    async (explicit) => {
+      const previous = sessionId;
+      const db = createPool(databaseUrl);
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const legacyDraft = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "旧回合恢复" },
+        })
+      ).json().draft.id;
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/collaborative-drafts/${legacyDraft}/records`,
+            headers,
+            payload: {
+              question: " 示例 ",
+              expectedOutput: "类别",
+              metadata: [],
+            },
+          })
+        ).statusCode,
+      ).toBe(201);
+      const input = {
+        source: { kind: "draft", id: legacyDraft },
+        allRecords: true,
+        operation: "clean",
+        instructions: "",
+      };
+      try {
+        requestedTool = { name: "submit_processing", input };
+        const submitted = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/turns`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: { message: "仅清洗问题，保护其他字段" },
+        });
+        expect(submitted.statusCode).toBe(202);
+        await expect
+          .poll(async () => (await read()).json().turns.at(-1).status)
+          .not.toMatch(/queued|running/);
+        const turnId = submitted.json().turnId;
+        const key = `assistant:${turnId}:${sha256(canonicalJson({ name: "submit_processing", input }))}`;
+        // Upgrade fixture: the old application persisted this default before a failed effect.
+        await db.query(
+          "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed',assistant_text='',tool_results=$2 WHERE id=$1",
+          [
+            turnId,
+            JSON.stringify([
+              {
+                key,
+                name: "submit_processing",
+                input,
+                status: "failed",
+                error: { code: "assistant_operation_failed" },
+              },
+            ]),
+          ],
+        );
+        requestedTool = {
+          name: "submit_processing",
+          input: {
+            ...input,
+            ...(explicit ? { allowedFields: ["question"] } : {}),
+          },
+        };
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions/${sessionId}/retry`,
+              headers,
+              payload: {},
+            })
+          ).statusCode,
+        ).toBe(200);
+        await expect
+          .poll(async () => (await read()).json().turns.at(-1).status, {
+            timeout: 15000,
+          })
+          .toBe("succeeded");
+        const state = (await read()).json();
+        expect(state.turns.at(-1).id).toBe(turnId);
+        expect(state.turns.at(-1).tools).toHaveLength(1);
+        expect(state.turns.at(-1).tools[0]).toMatchObject({
+          key,
+          status: "succeeded",
+        });
+        const run = (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/processing-runs/${state.task.runId}`,
+            headers,
+          })
+        ).json().run;
+        expect(run.options.allowedFields).toEqual(["question"]);
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions/${sessionId}/stop`,
+              headers,
+              payload: {},
+            })
+          ).statusCode,
+        ).toBe(200);
+      } finally {
+        requestedTool = undefined;
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
   it("uses a short task title without losing the full original goal", async () => {
     const previous = sessionId;
     sessionId = (
