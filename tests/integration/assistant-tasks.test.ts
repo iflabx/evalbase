@@ -34,6 +34,8 @@ describe("assistant continuous task public contract", () => {
   afterEach(() => {
     extraAfterSubmit = false;
     wrongEventRunId = undefined;
+    repeatWrongEventRun = false;
+    finishRetryRead = false;
   });
   let mode:
       | "clean"
@@ -53,6 +55,8 @@ describe("assistant continuous task public contract", () => {
   let repairCalls = 0;
   let extraAfterSubmit = false;
   let wrongEventRunId: string | undefined;
+  let repeatWrongEventRun = false;
+  let finishRetryRead = false;
   let release = () => {},
     entered = () => {};
   const appConfig = () => ({
@@ -277,7 +281,7 @@ describe("assistant continuous task public contract", () => {
       body.tool_choice?.function?.name === "read_processing"
     ) {
       const inspectedRunId = wrongEventRunId ?? runId;
-      wrongEventRunId = undefined;
+      if (!repeatWrongEventRun) wrongEventRunId = undefined;
       message = {
         role: "assistant",
         content: null,
@@ -288,6 +292,30 @@ describe("assistant continuous task public contract", () => {
             function: {
               name: "read_processing",
               arguments: JSON.stringify({ runId: inspectedRunId }),
+            },
+          },
+        ],
+      };
+      finish = "tool_calls";
+    }
+    if (
+      requestMode === "clean" &&
+      finishRetryRead &&
+      body.tool_choice === "required"
+    ) {
+      finishRetryRead = false;
+      message = {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: `retry_read_${requests.length}`,
+            type: "function",
+            function: {
+              name: "read_records",
+              arguments: JSON.stringify({
+                source: { kind: "draft", id: draftId },
+              }),
             },
           },
         ],
@@ -669,10 +697,7 @@ describe("assistant continuous task public contract", () => {
       );
       expect(requests[start].tool_choice.function.name).toBe("read_processing");
       wrongEventRunId = undefined;
-      await db.query(
-        "UPDATE assistant_session SET task=task||'{\"nextAction\":null}'::jsonb WHERE id=$1",
-        [sessionId],
-      );
+      finishRetryRead = true;
       expect(
         (
           await app.inject({
@@ -694,8 +719,71 @@ describe("assistant continuous task public contract", () => {
       expect((await read()).task).toMatchObject({
         runId,
         stage: "awaiting_review",
+        nextAction: null,
         review: { runId },
       });
+      expect(
+        (await read()).turns.find((turn: any) => turn.id === event.id).tools,
+      ).toContainEqual(
+        expect.objectContaining({ name: "read_records", status: "succeeded" }),
+      );
+      for (const responseMode of ["clean", "explain"] as const) {
+        mode = responseMode;
+        wrongEventRunId = other.json().run.id;
+        repeatWrongEventRun = true;
+        await db.query(
+          "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed' WHERE id=$1",
+          [event.id],
+        );
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions/${sessionId}/retry`,
+              headers,
+              payload: {},
+            })
+          ).statusCode,
+        ).toBe(200);
+        await expect
+          .poll(
+            async () =>
+              (await read()).turns.find((turn: any) => turn.id === event.id)
+                .status,
+            { timeout: 15000 },
+          )
+          .toBe("failed");
+        expect(
+          (await read()).turns.find((turn: any) => turn.id === event.id)
+            .errorCode,
+        ).toBe("assistant_task_not_executed");
+        expect((await read()).task).toMatchObject({
+          runId,
+          nextAction: null,
+          review: { runId },
+        });
+      }
+      repeatWrongEventRun = false;
+      wrongEventRunId = undefined;
+      mode = "clean";
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read()).turns.find((turn: any) => turn.id === event.id)
+              .status,
+          { timeout: 15000 },
+        )
+        .toBe("succeeded");
     } finally {
       await db.end();
     }

@@ -1335,7 +1335,7 @@ export async function executeAssistantTurn(
     });
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
-    if (plannedAction)
+    if (plannedAction || processingEventRunId)
       throw new AssistantError(422, "assistant_task_not_executed");
     const pending = (
       await db.query(
@@ -1406,7 +1406,8 @@ export async function executeAssistantTurn(
     const errorCode =
       e instanceof AssistantError
         ? e.code
-        : plannedAction && ToolChoiceViolationError.isInstance(e)
+        : (plannedAction || processingEventRunId) &&
+            ToolChoiceViolationError.isInstance(e)
           ? "assistant_task_not_executed"
           : "assistant_model_failed";
     await updateTask(db, turn, {
