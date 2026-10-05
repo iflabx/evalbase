@@ -140,6 +140,13 @@ export async function executeAssistantTurn(
   let toolCalls = 0;
   let plannedAction: string | undefined;
   const restoring = Number(turn.execution_attempt) > 1 || turn.resuming;
+  const restoringLegacyProcessing =
+    restoring &&
+    turn.tool_results.some(
+      (record: Record<string, any>) =>
+        record.name === "submit_processing" &&
+        record.input?.allowedFields === undefined,
+    );
   async function sourceName(source: Record<string, any>) {
     if (source.kind === "assets")
       return (
@@ -700,7 +707,7 @@ export async function executeAssistantTurn(
         "source",
         "operation",
         "instructions",
-        ...(restoring ? [] : ["allowedFields"]),
+        ...(restoringLegacyProcessing ? [] : ["allowedFields"]),
       ],
       async (input, key) => {
         await depend(references(input.source));
