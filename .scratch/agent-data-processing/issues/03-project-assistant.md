@@ -60,3 +60,9 @@ AGENT-1–3、PERF-1、HEALTH-1 及全需求矩阵审计有证据；完整单元
 Owner 授权完成 [任务体验合同](../../../docs/assistant-task-experience.md) 的文档、审查、开发和测试。基线 `519d94256026`；公共 seam 为助手 HTTP、真实 SDK、处理/采纳/发布和 Browser。首个红测：一个已提交处理完成后，会话没有自动核对结果的后续回合。Implementation 保持 in-progress，完成证据须按新合同逐项记录。
 
 2026-10-05：持续任务六项优化完成，公共 HTTP/真实 SDK 9 项新回归、原助手 12 项、完整单元 142 项、迁移 3 项、受影响处理/选取/共享草稿/现行 V2 账号及面板 9 项通过；真实 Qwen 局部调整与自动核对、确认后续做通过。Standards/Spec 无未关闭 P0/P1。具体命令、历史夹具限制、浏览器与固定 HEAD 交接见 [本轮验证](../assistant-task-verification.md)。Implementation completed；Owner 人工验收 pending，不合并、推送、打 tag 或正式部署。
+
+## 2026-10-05 验收反馈：计划结束后假等待
+
+Owner 的“根据100问题扩写10条”会话只调用 plan_task，承诺提交后台任务但没有提交，状态却为 waiting_input。基线 `5537734d4c5215cac0986c041c1bba0594065d02`，同一分支和验收库继续修复。首个公开 HTTP / 真实 SDK 红测准确复现 `waiting_input` 与预期 `processing` 不符。
+
+计划新增 nextAction 和可选澄清问题；本轮在实际业务工具成功前要求继续调用，结束时复检；纯回答/澄清可以明确暂停。沿用权限、执行令牌、预算、业务回执、确认和现有路由。前端只补失败文案，页面布局不变。最终检查、独立复审与原会话恢复结果追加到 [验证记录](../assistant-task-verification.md)。原数据、账号和项目保留；人工验收仍 pending。

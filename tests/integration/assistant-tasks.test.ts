@@ -29,6 +29,11 @@ describe("assistant continuous task public contract", () => {
       | "held"
       | "held_explain"
       | "explain"
+      | "planned"
+      | "planned_read"
+      | "planned_clarify"
+      | "planned_ignore"
+      | "planned_retry_text"
       | "proposal" = "clean",
     failReply = false,
     failRefinement = false;
@@ -105,8 +110,73 @@ describe("assistant continuous task public contract", () => {
     }
     let message: any = { role: "assistant", content: "已按真实结果更新任务。" };
     let finish = "stop";
+    if (requestMode.startsWith("planned")) {
+      const lastTool = body.messages
+        .findLast((item: any) => item.tool_calls?.length)
+        ?.tool_calls.at(-1).function.name;
+      const name =
+        requestMode === "planned_retry_text"
+          ? null
+          : last?.role !== "tool"
+            ? "plan_task"
+            : requestMode !== "planned_ignore" &&
+                body.tool_choice === "required"
+              ? requestMode === "planned_read" && lastTool === "plan_task"
+                ? "read_records"
+                : "submit_processing"
+              : null;
+      if (name) {
+        message = {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: `plan_call_${requests.length}`,
+              type: "function",
+              function: {
+                name,
+                arguments: JSON.stringify(
+                  name === "plan_task"
+                    ? {
+                        title: "整理问题验收",
+                        target: { kind: "draft", id: draftId },
+                        requirements: [
+                          "清洗全部25条问题，保留期望输出和Metadata",
+                        ],
+                        targetCount: 25,
+                        ...(requestMode === "planned"
+                          ? {}
+                          : requestMode === "planned_clarify"
+                            ? {
+                                nextAction: "none",
+                                question: "请问需要处理哪些记录？",
+                              }
+                            : { nextAction: "submit_processing" }),
+                      }
+                    : name === "read_records"
+                      ? { source: { kind: "draft", id: draftId } }
+                      : {
+                          source: { kind: "draft", id: draftId },
+                          allRecords: true,
+                          operation: "clean",
+                          instructions: "",
+                          allowedFields: ["question"],
+                        },
+                ),
+              },
+            },
+          ],
+        };
+        finish = "tool_calls";
+      } else
+        message.content =
+          requestMode === "planned_clarify"
+            ? "请问需要处理哪些记录？"
+            : "接下来我会提交后台任务，并在完成后核对候选。";
+    }
     if (
       last?.role !== "tool" &&
+      !requestMode.startsWith("planned") &&
       requestMode !== "explain" &&
       requestMode !== "held_explain"
     ) {
@@ -1310,6 +1380,173 @@ describe("assistant continuous task public contract", () => {
       await db.end();
     }
   });
+
+  it("executes the planned operation instead of ending with a future-tense promise and waiting for input", async () => {
+    mode = "planned";
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const state = async () =>
+      (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${id}`,
+          headers,
+        })
+      ).json();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${id}/turns`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            message: "请清洗当前草稿的全部25条问题",
+            context: { kind: "draft", id: draftId },
+          },
+        })
+      ).statusCode,
+    ).toBe(202);
+    await expect
+      .poll(async () => (await state()).turns.at(-1).status, { timeout: 15000 })
+      .toBe("succeeded");
+    const current = await state();
+    expect(current.task.stage).toBe("processing");
+    expect(current.task.runId).toBeTruthy();
+    expect(
+      current.turns
+        .at(-1)
+        .tools.filter(
+          (tool: any) =>
+            tool.name === "submit_processing" && tool.status === "succeeded",
+        ),
+    ).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${id}/stop`,
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    mode = "explain";
+  });
+
+  it.each([
+    { modelMode: "planned_read", stage: "processing" },
+    { modelMode: "planned_clarify", stage: "waiting_input" },
+    { modelMode: "planned_ignore", stage: "failed" },
+  ] as const)(
+    "handles a plan with $modelMode without false waiting",
+    async ({ modelMode, stage }) => {
+      mode = modelMode;
+      const id = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const state = async () =>
+        (
+          await app.inject({
+            method: "GET",
+            url: `${base()}/sessions/${id}`,
+            headers,
+          })
+        ).json();
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${id}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: {
+              message: "请清洗问题并核对候选",
+              context: { kind: "draft", id: draftId },
+            },
+          })
+        ).statusCode,
+      ).toBe(202);
+      await expect
+        .poll(async () => (await state()).turns.at(-1).status, {
+          timeout: 15000,
+        })
+        .toBe(stage === "failed" ? "failed" : "succeeded");
+      const current = await state();
+      expect(current.task.stage).toBe(stage);
+      if (stage === "processing") {
+        expect(current.task.runId).toBeTruthy();
+        const run = (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/processing-runs/${current.task.runId}`,
+            headers,
+          })
+        ).json().run;
+        expect(run.source).toMatchObject({ kind: "draft", id: draftId });
+        expect(run.status).toBe("queued");
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions/${id}/stop`,
+              headers,
+              payload: {},
+            })
+          ).statusCode,
+        ).toBe(200);
+      } else {
+        expect(current.task.runId).toBeUndefined();
+        if (stage === "failed")
+          expect(current.turns.at(-1).errorCode).toBe(
+            "assistant_task_not_executed",
+          );
+        else
+          expect(current.turns.at(-1).assistantText).toContain(
+            "需要处理哪些记录",
+          );
+        if (stage === "failed") {
+          mode = "planned_retry_text";
+          const beforeRequests = requests.length;
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: `${base()}/sessions/${id}/retry`,
+                headers,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+          await expect
+            .poll(() => requests.length, { timeout: 15000 })
+            .toBeGreaterThan(beforeRequests);
+          await expect
+            .poll(async () => (await state()).turns.at(-1).status, {
+              timeout: 15000,
+            })
+            .not.toMatch(/queued|running/);
+          const retried = await state();
+          expect(retried.turns.at(-1).id).toBe(current.turns.at(-1).id);
+          expect(retried.turns.at(-1).status).toBe("failed");
+          expect(retried.turns.at(-1).errorCode).toBe(
+            "assistant_task_not_executed",
+          );
+          expect(retried.task.runId).toBeUndefined();
+        }
+      }
+      mode = "explain";
+    },
+  );
 
   it("purges task goals and chained candidate bodies when their draft is deleted", async () => {
     const removed = await app.inject({

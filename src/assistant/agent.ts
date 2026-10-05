@@ -6,6 +6,7 @@ import {
   tool,
   jsonSchema,
   stepCountIs,
+  ToolChoiceViolationError,
   type ModelMessage,
 } from "ai";
 import { Ajv } from "ajv";
@@ -136,6 +137,7 @@ export async function executeAssistantTurn(
   let context: Awaited<ReturnType<typeof assistantContext>>;
   let queue: Promise<unknown> = Promise.resolve();
   let toolCalls = 0;
+  let plannedAction: string | undefined;
   async function sourceName(source: Record<string, any>) {
     if (source.kind === "assets")
       return (
@@ -242,8 +244,13 @@ export async function executeAssistantTurn(
               "read_processing",
               "plan_task",
             ].includes(name)
-          )
+          ) {
+            if (plannedAction === name || plannedAction === "any") {
+              await updateTask(db, turn, { nextAction: null, question: null });
+              plannedAction = undefined;
+            }
             return context.encode(prior.result);
+          }
           await updateTurn(
             "UPDATE assistant_turn SET tool_results=tool_results||$2::jsonb WHERE id=$1 AND status='running'",
             [
@@ -268,6 +275,13 @@ export async function executeAssistantTurn(
                 ]),
               ],
             );
+            if (
+              name !== "plan_task" &&
+              (plannedAction === name || plannedAction === "any")
+            ) {
+              await updateTask(db, turn, { nextAction: null, question: null });
+              plannedAction = undefined;
+            }
             return context.encode(value);
           } catch (e) {
             const error = {
@@ -307,7 +321,7 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "记录原任务的标题、要求、目标数量和标签范围；准备处理前调用。标题使用15个字以内的简短任务名称，不照搬整段要求；完整要求放requirements。后续补充保留既有要求，用户明确改变时更新。计划只整理授权，不增加权限。",
+      "记录任务标题、要求、数量、标签及nextAction。nextAction是本轮必须实际调用的下一业务工具；只读目标用read_records/read_processing等，处理用submit_processing/refine_candidates。真正需澄清或纯解释用none，缺失信息写question并向用户询问。整理计划不等于提交，不能用‘接下来会执行’结束。标题15字以内，完整要求放requirements，保留既有要求；计划不增加权限。",
       {
         title: { type: "string", minLength: 1, maxLength: 40 },
         requirements: {
@@ -322,17 +336,42 @@ export async function executeAssistantTurn(
           maxItems: 100,
         },
         target: sourceSchema,
+        nextAction: {
+          enum: [
+            "query_project",
+            "read_records",
+            "create_draft",
+            "preview_selection",
+            "submit_processing",
+            "refine_candidates",
+            "retry_processing",
+            "read_processing",
+            "request_selection_apply",
+            "request_processing_apply",
+            "request_publish",
+            "none",
+          ],
+        },
+        question: { type: "string", minLength: 1, maxLength: 1000 },
       },
       ["title", "requirements"],
       async (input) => {
+        if (input.question && input.nextAction !== "none")
+          throw new AssistantError(422, "assistant_tool_input_invalid");
         if (input.target) await depend(references(input.target));
         const task = await updateTask(db, turn, {
           ...input,
+          nextAction:
+            input.nextAction === "none" ? null : (input.nextAction ?? "any"),
+          question: input.question ?? null,
           ...(input.target
             ? { targetName: await sourceName(input.target) }
             : {}),
-          stage: "inspecting",
+          stage: input.question ? "waiting_input" : "inspecting",
         });
+        // Legacy plans require one real follow-up tool; explicit plans keep their intended action pending through preparatory reads.
+        plannedAction =
+          input.nextAction === "none" ? undefined : (input.nextAction ?? "any");
         return { task };
       },
     ),
@@ -1033,6 +1072,11 @@ export async function executeAssistantTurn(
         turn.session_id,
       ])
     ).rows[0]?.task;
+    if (Number(turn.execution_attempt) > 1 || turn.resuming)
+      plannedAction =
+        typeof task.nextAction === "string" && task.nextAction !== "none"
+          ? task.nextAction
+          : undefined;
     messages.push({
       role: "assistant",
       content:
@@ -1079,7 +1123,7 @@ export async function executeAssistantTurn(
       stopWhen: stepCountIs(8),
       prepareStep: async () => {
         await turnFence(db, scope, turn.id, turn.execution_token);
-        return {};
+        return plannedAction ? { toolChoice: "required" as const } : {};
       },
       maxOutputTokens: 2048,
       maxRetries: 0,
@@ -1091,6 +1135,8 @@ export async function executeAssistantTurn(
     });
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
+    if (plannedAction)
+      throw new AssistantError(422, "assistant_task_not_executed");
     const pending = (
       await db.query(
         "SELECT id FROM assistant_proposal WHERE turn_id=$1 AND status='pending'",
@@ -1143,16 +1189,19 @@ export async function executeAssistantTurn(
     );
   } catch (e) {
     await queue;
+    const errorCode =
+      e instanceof AssistantError
+        ? e.code
+        : plannedAction && ToolChoiceViolationError.isInstance(e)
+          ? "assistant_task_not_executed"
+          : "assistant_model_failed";
     await updateTask(db, turn, {
       stage: "failed",
-      error: e instanceof AssistantError ? e.code : "assistant_model_failed",
+      error: errorCode,
     }).catch(() => undefined);
     await updateTurn(
       "UPDATE assistant_turn SET status='failed',error_code=$2 WHERE id=$1 AND status='running'",
-      [
-        turn.id,
-        e instanceof AssistantError ? e.code : "assistant_model_failed",
-      ],
+      [turn.id, errorCode],
     );
   }
 }

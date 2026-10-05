@@ -138,6 +138,7 @@ const messages: Record<string, string> = {
   assistant_context_deleted: "相关内容已删除，本会话正文已清理。",
   assistant_interrupted: "这一轮已中断。请先核对下方已完成的操作，再发送后续要求。",
   assistant_model_failed: "模型未完成本轮回复。已完成操作仍保留在下方，可核对后重试。",
+  assistant_task_not_executed: "计划中的操作尚未执行。已有结果保留，请重试继续。",
   assistant_confirmation_expired: "确认已过期，请让助手重新准备操作。",
   assistant_confirmation_running: "这项操作正在提交，请稍后查看结果。",
   draft_revision_conflict: "草稿已经变化，请重新核对并生成确认卡片。",
