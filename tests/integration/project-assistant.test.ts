@@ -25,7 +25,7 @@ describe("project assistant public contract", () => {
   let requestedTool:
     | { name: string; input: Record<string, unknown> }
     | undefined;
-  let repeatRead = false;
+  let repeatRead: boolean | "progress" = false;
   let hold = false,
     release: () => void = () => undefined,
     entered: () => void = () => undefined;
@@ -74,7 +74,7 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
       message = {
         role: "assistant",
-        content: null,
+        content: repeatRead === "progress" ? "继续统计，请稍候。" : null,
         tool_calls: [
           {
             id: `call_${calls.length}`,
@@ -1349,48 +1349,53 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
-  it("reports exhausted model steps without pretending a result was delivered", async () => {
-    const previous = sessionId;
-    sessionId = (
-      await app.inject({
-        method: "POST",
-        url: `${base()}/sessions`,
-        headers,
-        payload: {},
-      })
-    ).json().sessionId;
-    repeatRead = true;
-    try {
-      const submitted = await app.inject({
-        method: "POST",
-        url: `${base()}/sessions/${sessionId}/turns`,
-        headers: { ...headers, "idempotency-key": randomUUID() },
-        payload: { message: "统计整个文件的结果" },
-      });
-      expect(submitted.statusCode).toBe(202);
-      await expect
-        .poll(async () => (await read()).json().turns.at(-1)?.status, {
-          timeout: 15000,
+  it.each([true, "progress"] as const)(
+    "reports exhausted model steps without pretending a result was delivered (%s)",
+    async (repeatMode) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
         })
-        .not.toBe("running");
-      await expect
-        .poll(async () => (await read()).json().turns.at(-1)?.status, {
-          timeout: 15000,
-        })
-        .toBe("failed");
-      const state = (await read()).json();
-      expect(state.turns.at(-1).errorCode).toBe("assistant_result_incomplete");
-      expect(state.turns.at(-1).assistantText ?? "").not.toContain(
-        "操作结果已显示",
-      );
-      expect(
-        state.turns.at(-1).tools.some((t: any) => t.status === "succeeded"),
-      ).toBe(true);
-    } finally {
-      repeatRead = false;
-      sessionId = previous;
-    }
-  });
+      ).json().sessionId;
+      repeatRead = repeatMode;
+      try {
+        const submitted = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/turns`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: { message: "统计整个文件的结果" },
+        });
+        expect(submitted.statusCode).toBe(202);
+        await expect
+          .poll(async () => (await read()).json().turns.at(-1)?.status, {
+            timeout: 15000,
+          })
+          .not.toBe("running");
+        await expect
+          .poll(async () => (await read()).json().turns.at(-1)?.status, {
+            timeout: 15000,
+          })
+          .toBe("failed");
+        const state = (await read()).json();
+        expect(state.turns.at(-1).errorCode).toBe(
+          "assistant_result_incomplete",
+        );
+        expect(state.turns.at(-1).assistantText ?? "").not.toContain(
+          "操作结果已显示",
+        );
+        expect(
+          state.turns.at(-1).tools.some((t: any) => t.status === "succeeded"),
+        ).toBe(true);
+      } finally {
+        repeatRead = false;
+        sessionId = previous;
+      }
+    },
+  );
   it("keeps completed retries terminal and clears review when a new run starts", async () => {
     const previous = sessionId;
     sessionId = (
@@ -1515,6 +1520,32 @@ describe("project assistant public contract", () => {
       const state = (await send(goal)).json();
       expect(state.task.title).toBe("资料查询验收");
       expect(state.task.goal).toBe(goal);
+    } finally {
+      sessionId = previous;
+    }
+  });
+  it("preserves a plan title equal to its original short goal", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "核对结果",
+          requirements: ["解释核对方法"],
+          nextAction: "none",
+        },
+      };
+      const state = (await send("核对结果")).json();
+      expect(state.task.title).toBe("核对结果");
+      expect(state.title).toBe("核对结果");
     } finally {
       sessionId = previous;
     }

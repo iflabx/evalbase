@@ -160,6 +160,9 @@ export async function runProcessing(
         });
       else {
         const deadline = Date.now() + run.execution_config.batchTimeoutMs;
+        const batchSignal = AbortSignal.timeout(
+          run.execution_config.batchTimeoutMs,
+        );
         const response = await generateText({
           model: model.model,
           ...processingPrompt(
@@ -169,7 +172,7 @@ export async function runProcessing(
           ),
           maxOutputTokens: run.execution_config.maxOutputTokens,
           maxRetries: 0,
-          abortSignal: AbortSignal.timeout(run.execution_config.batchTimeoutMs),
+          abortSignal: batchSignal,
           experimental_telemetry: { isEnabled: false },
         });
         const text = response.text
@@ -213,7 +216,7 @@ export async function runProcessing(
               prompt: JSON.stringify(correction),
               maxOutputTokens: run.execution_config.maxOutputTokens,
               maxRetries: 0,
-              abortSignal: AbortSignal.timeout(remainingMs),
+              abortSignal: batchSignal,
               experimental_telemetry: { isEnabled: false },
             });
             const validated = validateModelRows(

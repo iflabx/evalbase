@@ -1241,7 +1241,9 @@ export async function executeAssistantTurn(
       ])
     ).rows[0]?.task;
     if (
-      !response.text.trim() &&
+      (!response.text.trim() ||
+        response.finishReason === "tool-calls" ||
+        response.finishReason === "length") &&
       !pending &&
       state?.stage !== "processing" &&
       state?.stage !== "awaiting_review"

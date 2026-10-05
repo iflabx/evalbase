@@ -13,7 +13,9 @@ function taskPresentation(task: Record<string, any> | null) {
   if (!task) return task;
   return {
     ...task,
-    ...(task.goal && task.title === task.goal.slice(0, 40)
+    ...(task.goal?.length > 40 &&
+    !Object.hasOwn(task, "nextAction") &&
+    task.title === task.goal.slice(0, 40)
       ? { title: initialTaskTitle(task.goal) }
       : {}),
     ...(task.review && task.review.runId !== task.runId
