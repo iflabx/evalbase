@@ -159,6 +159,7 @@ export async function runProcessing(
           allowedFields: [],
         });
       else {
+        const deadline = Date.now() + run.execution_config.batchTimeoutMs;
         const response = await generateText({
           model: model.model,
           ...processingPrompt(
@@ -181,6 +182,81 @@ export async function runProcessing(
           run.options,
           input.refinement ? modelInputs.length : group.count,
         );
+        // Only fill missing augmentation rows. Accepted candidates are never regenerated.
+        for (
+          let attempt = 1;
+          run.options.operation === "augment" &&
+          result.records.length < group.count &&
+          attempt < run.execution_config.maxAttempts;
+          attempt++
+        ) {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs <= 0) break;
+          await fence(db, job);
+          await processingAccess(db, scope);
+          await processingSourceAvailable(db, job.project_id, run.source);
+          const missing = group.count - result.records.length;
+          const prompt = processingPrompt(modelInputs, run.options, missing);
+          const correction = {
+            ...JSON.parse(prompt.prompt),
+            originalOutputCount: group.count,
+            alreadyAccepted: result.records.map((row) => ({
+              question: row.question.slice(0, 300),
+              expectedOutput: row.expectedOutput.slice(0, 300),
+            })),
+            rule: "Return only the missing new records. Do not repeat or rewrite accepted candidates. Count alreadyAccepted toward any category quotas in the original instructions.",
+          };
+          try {
+            const extra = await generateText({
+              model: model.model,
+              system: prompt.system,
+              prompt: JSON.stringify(correction),
+              maxOutputTokens: run.execution_config.maxOutputTokens,
+              maxRetries: 0,
+              abortSignal: AbortSignal.timeout(remainingMs),
+              experimental_telemetry: { isEnabled: false },
+            });
+            const validated = validateModelRows(
+              JSON.parse(
+                extra.text
+                  .trim()
+                  .replace(/^```(?:json)?\s*/u, "")
+                  .replace(/\s*```$/u, ""),
+              ),
+              modelInputs,
+              run.options,
+              missing,
+            );
+            const seen = new Set(
+              result.records.map((row) =>
+                canonicalJson({
+                  question: row.question,
+                  expectedOutput: row.expectedOutput,
+                  metadata: row.metadata,
+                }),
+              ),
+            );
+            const added = validated.records.filter((row) => {
+              const key = canonicalJson({
+                question: row.question,
+                expectedOutput: row.expectedOutput,
+                metadata: row.metadata,
+              });
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            result = validateModelRows(
+              { records: [...result.records, ...added] },
+              modelInputs,
+              run.options,
+              group.count,
+            );
+          } catch {
+            // A failed correction must not discard valid output from the first response.
+            break;
+          }
+        }
       }
       if (input.refinement && modelInputs.length) {
         const changed = new Map(

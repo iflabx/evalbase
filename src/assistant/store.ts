@@ -5,6 +5,22 @@ import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 
 export type AssistantScope = { projectId: string; actorId: string };
+function initialTaskTitle(text: string) {
+  const named = text.match(/本会话命名为[“"「]([^”"」\n]{1,40})[”"」]/u)?.[1];
+  return named ?? "新任务";
+}
+function taskPresentation(task: Record<string, any> | null) {
+  if (!task) return task;
+  return {
+    ...task,
+    ...(task.goal && task.title === task.goal.slice(0, 40)
+      ? { title: initialTaskTitle(task.goal) }
+      : {}),
+    ...(task.review && task.review.runId !== task.runId
+      ? { review: null, checkedStatus: null }
+      : {}),
+  };
+}
 export type Dependency = {
   kind: "asset" | "draft" | "version" | "testSet";
   id: string;
@@ -144,8 +160,8 @@ export async function readSession(
     throw new AssistantError(409, "assistant_context_deleted");
   return {
     sessionId: id,
-    task: current.task,
-    title: current.title,
+    task: taskPresentation(current.task),
+    title: taskPresentation(current.task)?.title ?? current.title,
     turns: turns.map((t) => ({
       id: t.id,
       event: t.event,
@@ -209,6 +225,8 @@ export async function listSessions(db: Database, scope: AssistantScope) {
     .filter((s) => current.get(s.id) === s.content_revision)
     .map((row) => {
       const session = { ...row };
+      session.task = taskPresentation(row.task);
+      session.title = session.task?.title ?? session.title;
       delete session.content_revision;
       return session;
     });
@@ -391,7 +409,7 @@ export async function startTurn(
         }
       : {
           goal: text.trim(),
-          title: text.trim().slice(0, 40),
+          title: initialTaskTitle(text.trim()),
           supplements: [],
           requirements: [],
           stage: "inspecting",

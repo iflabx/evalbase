@@ -611,7 +611,8 @@ export async function controlProcessingRun(
     const updated = (
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])
     ).rows[0];
-    if (action === "retry") await linkAssistantProcessing(client, scope, runId);
+    if (action === "retry" && updated.status === "queued")
+      await linkAssistantProcessing(client, scope, runId);
     else await guardAssistantCommit(client, scope);
     await client.query("COMMIT");
     return { run: summary(updated) };
@@ -628,6 +629,7 @@ export async function previewProcessingInput(
   scope: ProcessingScope,
   input: unknown,
   capability: "read" | "write" = "write",
+  fullSource = false,
 ) {
   if (
     !isPlainObject(input) ||
@@ -645,7 +647,7 @@ export async function previewProcessingInput(
     offset < 0 ||
     !Number.isSafeInteger(limit) ||
     limit < 1 ||
-    limit > 100
+    limit > (fullSource ? 10000 : 100)
   )
     throw new ProcessingError(422, "query_parameter_invalid");
   const client = await db.connect();

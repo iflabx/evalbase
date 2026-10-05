@@ -49,6 +49,7 @@ export function reviewCandidates(
     ].includes(issue.code),
   );
   return {
+    runId: data.run.id,
     total: data.total,
     expectedCount,
     countSatisfied: data.total === expectedCount,

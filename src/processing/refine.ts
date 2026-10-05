@@ -121,8 +121,10 @@ export async function createRefinementRun(
         expectedOutput: row.result.expectedOutput,
         metadata: row.result.metadata,
         baseline: original.baseline ?? original,
-        source: original.source,
-        revisions: original.revisions,
+        ...(original.source === undefined ? {} : { source: original.source }),
+        ...(original.revisions === undefined
+          ? {}
+          : { revisions: original.revisions }),
       };
     });
     if (
@@ -144,7 +146,7 @@ export async function createRefinementRun(
       Buffer.from(
         canonicalJson({
           source: input.source,
-          revision: input.revision,
+          ...(input.revision === undefined ? {} : { revision: input.revision }),
           records,
           refinement,
         }),

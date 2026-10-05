@@ -25,6 +25,7 @@ describe("project assistant public contract", () => {
   let requestedTool:
     | { name: string; input: Record<string, unknown> }
     | undefined;
+  let repeatRead = false;
   let hold = false,
     release: () => void = () => undefined,
     entered: () => void = () => undefined;
@@ -48,12 +49,12 @@ describe("project assistant public contract", () => {
         "[processing_completed]",
       ) ||
       String(body.messages.at(-1)?.content ?? "").startsWith("[confirmed]");
-    if (body.messages.at(-1)?.role !== "tool" && !automatic) {
+    if (repeatRead || (body.messages.at(-1)?.role !== "tool" && !automatic)) {
       const prompt = body.messages.findLast(
         (m: any) => m.role === "user",
       ).content;
       const action =
-        requestedTool?.name ??
+        (repeatRead ? "query_project" : requestedTool?.name) ??
         (prompt.includes("读取版本")
           ? "read_records"
           : prompt.includes("发布")
@@ -62,7 +63,7 @@ describe("project assistant public contract", () => {
               ? "query_project"
               : "create_draft");
       const args =
-        requestedTool?.input ??
+        (repeatRead ? { kind: "project" } : requestedTool?.input) ??
         (action === "read_records"
           ? { source: { kind: "version", id: publishedVersionId } }
           : action === "request_publish"
@@ -1260,6 +1261,262 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
       sessionId = originalSession;
       await db.end();
+    }
+  });
+  it("aggregates and filters all 100 records without model pagination", async () => {
+    const previous = sessionId;
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "全文件查询" },
+      })
+    ).json().draft.id;
+    for (let i = 1; i <= 100; i++)
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+            headers,
+            payload: {
+              question: `问题${i}`,
+              expectedOutput: i <= 5 ? "指数分析" : "指数对比",
+              metadata: [{ key: "用途", value: "查询" }],
+            },
+          })
+        ).statusCode,
+      ).toBe(201);
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      requestedTool = {
+        name: "read_records",
+        input: {
+          source: { kind: "draft", id: draft },
+          groupBy: "expectedOutput",
+        },
+      };
+      const stats = (await send("统计全部100条的类别数量")).json().turns.at(-1)
+        .tools[0];
+      expect(stats.status, JSON.stringify(stats)).toBe("succeeded");
+      expect(stats.result.total).toBe(100);
+      expect(stats.result.distribution).toEqual([
+        { label: "指数分析", count: 5 },
+        { label: "指数对比", count: 95 },
+      ]);
+      requestedTool = {
+        name: "read_records",
+        input: {
+          source: { kind: "draft", id: draft },
+          conditions: [
+            { field: "expectedOutput", operator: "equals", value: "指数对比" },
+          ],
+          limit: 3,
+        },
+      };
+      const filtered = (await send("仅查询指数对比的总数与前三条"))
+        .json()
+        .turns.at(-1).tools[0];
+      expect(filtered.status, JSON.stringify(filtered)).toBe("succeeded");
+      expect(filtered.result).toMatchObject({
+        total: 100,
+        matchingTotal: 95,
+        nextOffset: 3,
+      });
+      expect(filtered.result.records.map((r: any) => r.question)).toEqual([
+        "问题6",
+        "问题7",
+        "问题8",
+      ]);
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/collaborative-drafts/${draft}?limit=100`,
+            headers,
+          })
+        ).json().total,
+      ).toBe(100);
+    } finally {
+      sessionId = previous;
+    }
+  });
+  it("reports exhausted model steps without pretending a result was delivered", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    repeatRead = true;
+    try {
+      const submitted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: "统计整个文件的结果" },
+      });
+      expect(submitted.statusCode).toBe(202);
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1)?.status, {
+          timeout: 15000,
+        })
+        .not.toBe("running");
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1)?.status, {
+          timeout: 15000,
+        })
+        .toBe("failed");
+      const state = (await read()).json();
+      expect(state.turns.at(-1).errorCode).toBe("assistant_result_incomplete");
+      expect(state.turns.at(-1).assistantText ?? "").not.toContain(
+        "操作结果已显示",
+      );
+      expect(
+        state.turns.at(-1).tools.some((t: any) => t.status === "succeeded"),
+      ).toBe(true);
+    } finally {
+      repeatRead = false;
+      sessionId = previous;
+    }
+  });
+  it("keeps completed retries terminal and clears review when a new run starts", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "任务状态" },
+      })
+    ).json().draft.id;
+    const record = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+        headers,
+        payload: { question: "  示例  ", expectedOutput: "分类", metadata: [] },
+      })
+    ).json().record.id;
+    const path = `/api/projects/${projectId}/processing-runs`;
+    const initial = await app.inject({
+      method: "POST",
+      url: path,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        source: { kind: "draft", id: draft, recordIds: [record] },
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    });
+    expect(initial.statusCode, initial.body).toBe(201);
+    const id = initial.json().run.id,
+      db = createPool(databaseUrl);
+    try {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=attempt+1,lease_owner='terminal-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [id],
+        )
+      ).rows[0];
+      const config = { ...loadConfig(), databaseUrl };
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$1",
+        [job.id, result],
+      );
+      requestedTool = { name: "read_processing", input: { runId: id } };
+      await send("核对结果");
+      expect((await read()).json().task.review).toMatchObject({ total: 1 });
+      requestedTool = { name: "retry_processing", input: { runId: id } };
+      const retry = (await send("重试失败部分")).json();
+      expect(
+        retry.turns.find((t: any) => t.userText === "重试失败部分").tools[0]
+          ?.result?.status,
+      ).toBe("succeeded");
+      expect(retry.task.stage).toBe("awaiting_review");
+      expect(
+        (
+          await app.inject({ method: "GET", url: `${path}/${id}`, headers })
+        ).json().run.status,
+      ).toBe("succeeded");
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "draft", id: draft },
+          allRecords: true,
+          operation: "clean",
+          instructions: "再清洗",
+          allowedFields: ["question"],
+        },
+      };
+      const started = (await send("开始新的清洗任务")).json();
+      expect(started.task.runId).not.toBe(id);
+      expect(started.task.stage).toBe("processing");
+      expect(started.task.review ?? null).toBeNull();
+      expect(started.task.checkedStatus ?? null).toBeNull();
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/stop`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect((await read()).json().task.review ?? null).toBeNull();
+    } finally {
+      await db.end();
+      sessionId = previous;
+    }
+  });
+  it("uses a short task title without losing the full original goal", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      const goal =
+        "本会话命名为“资料查询验收”。请查询所有资料，保留原始内容，不创建任何数据。";
+      const state = (await send(goal)).json();
+      expect(state.task.title).toBe("资料查询验收");
+      expect(state.task.goal).toBe(goal);
+    } finally {
+      sessionId = previous;
     }
   });
 });

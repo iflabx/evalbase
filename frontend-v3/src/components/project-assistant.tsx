@@ -21,6 +21,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { request } from "@/services/workspace";
+import { assistantReply } from "@/lib/assistant-reply";
 
 type ToolResult = {
   key: string;
@@ -73,6 +74,7 @@ type Conversation = {
     target?: { kind: string; id?: string };
     targetName?: string;
     review?: {
+      runId: string;
       total: number;
       expectedCount: number;
       countSatisfied: boolean;
@@ -139,6 +141,7 @@ const messages: Record<string, string> = {
   assistant_interrupted: "这一轮已中断。请先核对下方已完成的操作，再发送后续要求。",
   assistant_model_failed: "模型未完成本轮回复。已完成操作仍保留在下方，可核对后重试。",
   assistant_task_not_executed: "计划中的操作尚未执行。已有结果保留，请重试继续。",
+  assistant_result_incomplete: "本轮未给出完整结果。已完成操作保留在下方，请补充要求或重试。",
   assistant_confirmation_expired: "确认已过期，请让助手重新准备操作。",
   assistant_confirmation_running: "这项操作正在提交，请稍后查看结果。",
   draft_revision_conflict: "草稿已经变化，请重新核对并生成确认卡片。",
@@ -472,7 +475,7 @@ export function ProjectAssistant({
                   </p>
                   {turn.assistantText && (
                     <p className="whitespace-pre-wrap break-words leading-6">
-                      {turn.assistantText}
+                      {assistantReply(turn.assistantText)}
                     </p>
                   )}
                   {["queued", "running"].includes(turn.status) && (
@@ -687,7 +690,7 @@ export function ProjectAssistant({
                     onNavigate={() => setOpen(false)}
                   />
                 )}
-                {visible.task.review && (
+                {visible.task.review?.runId === visible.task.runId && visible.task.review && (
                   <div className="space-y-2 border-t pt-3 text-xs">
                     <p>
                       候选 {visible.task.review.total} / 目标 {visible.task.review.expectedCount} 条

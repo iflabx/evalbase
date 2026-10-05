@@ -29,6 +29,7 @@ test("reviews candidates inside the assistant and preserves cross-page selection
             stage: "awaiting_review",
             runId: "candidate_run",
             review: {
+              runId: "candidate_run",
               total: 25,
               expectedCount: 25,
               countSatisfied: true,
@@ -707,4 +708,68 @@ test("follows new results at the bottom without pulling the user away from readi
   await expect
     .poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
     .toBeLessThan(5);
+});
+
+test("hides another run's diagnostics and displays model prose as readable text", async ({
+  page,
+}) => {
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [{ id: "four", title: "核对", ordinal: 4, updated_at: "2026-10-05T08:00:00Z" }],
+        },
+      });
+    if (path.endsWith("/sessions/four"))
+      return route.fulfill({
+        json: {
+          sessionId: "four",
+          task: {
+            title: "已停止",
+            stage: "stopped",
+            runId: "new",
+            review: {
+              runId: "old",
+              total: 3,
+              expectedCount: 3,
+              countSatisfied: true,
+              emptyQuestions: 0,
+              duplicates: 0,
+              protectedFieldChanges: 0,
+              labels: [],
+            },
+          },
+          proposals: [],
+          turns: [
+            {
+              id: "reply",
+              userText: "核对",
+              assistantText:
+                "## 核对\n共 **100条**，`protectedFieldChanges`：0，outsideLabels：1。",
+              status: "succeeded",
+              tools: [],
+              errorCode: null,
+            },
+          ],
+        },
+      });
+    if (path.includes("/processing-runs/"))
+      return route.fulfill({
+        json: {
+          run: {
+            status: "cancelled",
+            inputCount: 20,
+            progress: 0,
+            options: { operation: "augment" },
+          },
+          total: 0,
+        },
+      });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await expect(
+    page.getByText("核对\n共 100条，受保护字段变化：0，超出类别：1。", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/候选 3 \/ 目标 3/)).toHaveCount(0);
+  await expect(page.getByText(/protectedFieldChanges/)).toHaveCount(0);
 });

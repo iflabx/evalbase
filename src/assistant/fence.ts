@@ -70,7 +70,7 @@ export async function linkAssistantProcessing(
   if (!scope.assistantGuard) return;
   await guardAssistantCommit(db, scope);
   await db.query(
-    "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'stage','processing','error',NULL),updated_at=now() WHERE id=$1",
+    "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'stage','processing','error',NULL,'review',NULL,'checkedStatus',NULL),updated_at=now() WHERE id=$1",
     [scope.assistantGuard.sessionId, runId],
   );
 }
