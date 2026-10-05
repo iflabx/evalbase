@@ -1045,6 +1045,7 @@ describe("project assistant public contract", () => {
         allRecords: true,
         operation: "clean",
         instructions: "",
+        allowedFields: ["question"],
       });
       const job = (
         await db.query(

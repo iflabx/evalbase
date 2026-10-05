@@ -223,7 +223,7 @@ describe("assistant continuous task public contract", () => {
                   : requestMode === "retry" || requestMode === "held"
                     ? "create_draft"
                     : automatic
-                      ? "read_processing"
+                      ? "plan_task"
                       : "submit_processing",
               arguments: JSON.stringify(
                 requestMode === "proposal"
@@ -239,7 +239,11 @@ describe("assistant continuous task public contract", () => {
                         purpose: "合成测试",
                       }
                     : automatic
-                      ? { runId }
+                      ? {
+                          title: "清洗结果核对",
+                          requirements: ["读取当前处理结果并核对候选"],
+                          nextAction: "read_processing",
+                        }
                       : {
                           source: { kind: "draft", id: draftId },
                           allRecords: true,
@@ -248,6 +252,26 @@ describe("assistant continuous task public contract", () => {
                           allowedFields: ["question"],
                         },
               ),
+            },
+          },
+        ],
+      };
+      finish = "tool_calls";
+    }
+    if (
+      requestMode === "clean" &&
+      body.tool_choice?.function?.name === "read_processing"
+    ) {
+      message = {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: `forced_read_${requests.length}`,
+            type: "function",
+            function: {
+              name: "read_processing",
+              arguments: JSON.stringify({ runId }),
             },
           },
         ],
@@ -498,6 +522,16 @@ describe("assistant continuous task public contract", () => {
         expect(eventRequest.messages.at(-1).content).toContain(
           "不构成新的用户授权",
         );
+        expect(
+          requests.some(
+            (body) => body.tool_choice?.function?.name === "read_processing",
+          ),
+        ).toBe(true);
+        expect(
+          eventRequest.tools.find(
+            (item: any) => item.function.name === "submit_processing",
+          ).function.parameters.required,
+        ).toContain("allowedFields");
       } finally {
         await competitor.close();
       }

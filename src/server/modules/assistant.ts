@@ -52,55 +52,57 @@ export function registerAssistant({
     projectId: request.params.projectId,
     actorId: (request as AuthenticatedRequest).actor.id,
   });
-  let polling = false,
+  let polling: Promise<void> | undefined,
     closed = false;
-  async function dispatch() {
-    if (polling || closed) return;
-    polling = true;
-    try {
-      await collectProcessingEvents(db);
-      for (let i = 0; i < 3; i++) {
-        const turn = await claimAssistantTurn(db);
-        if (!turn) break;
-        const currentScope = {
-          projectId: turn.project_id,
-          actorId: turn.actor_id,
-        };
-        const work = executeAssistantTurn(
-          db,
-          artifacts,
-          config,
-          currentScope,
-          turn,
-          async (action, input, key) => {
-            if (action !== "create")
-              throw new AssistantError(422, "assistant_confirmation_required");
-            return createSharedDraft(
-              db,
-              {
-                ...currentScope,
-                assistantGuard: {
-                  sessionId: turn.session_id,
-                  revision: turn.task_revision,
-                  turnId: turn.id,
-                  token: turn.execution_token,
-                },
+  function dispatch(): Promise<void> {
+    if (polling || closed) return polling ?? Promise.resolve();
+    polling = dispatchWork().finally(() => {
+      polling = undefined;
+    });
+    return polling;
+  }
+  async function dispatchWork() {
+    await collectProcessingEvents(db);
+    for (let i = 0; i < 3; i++) {
+      if (closed) break;
+      const turn = await claimAssistantTurn(db);
+      if (!turn) break;
+      const currentScope = {
+        projectId: turn.project_id,
+        actorId: turn.actor_id,
+      };
+      const work = executeAssistantTurn(
+        db,
+        artifacts,
+        config,
+        currentScope,
+        turn,
+        async (action, input, key) => {
+          if (action !== "create")
+            throw new AssistantError(422, "assistant_confirmation_required");
+          return createSharedDraft(
+            db,
+            {
+              ...currentScope,
+              assistantGuard: {
+                sessionId: turn.session_id,
+                revision: turn.task_revision,
+                turnId: turn.id,
+                token: turn.execution_token,
               },
-              input,
-              key,
-            );
-          },
-        );
-        running.add(work);
-        void work
-          .catch(() => undefined)
-          .finally(() => {
-            running.delete(work);
-            void dispatch();
-          });
-      }
-    } finally {
-      polling = false;
+            },
+            input,
+            key,
+          );
+        },
+      );
+      running.add(work);
+      void work
+        .catch(() => undefined)
+        .finally(() => {
+          running.delete(work);
+          void dispatch().catch((error) => app.log.error(error));
+        });
     }
   }
   const timer = setInterval(
@@ -462,6 +464,7 @@ export function registerAssistant({
   app.addHook("onClose", async () => {
     closed = true;
     clearInterval(timer);
+    if (polling) await polling.catch((error) => app.log.error(error));
     await Promise.allSettled([...running]);
   });
 }

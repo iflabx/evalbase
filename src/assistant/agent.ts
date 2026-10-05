@@ -659,7 +659,7 @@ export async function executeAssistantTurn(
     ),
     submit_processing: businessTool(
       "submit_processing",
-      "用户已明确范围和要求时提交后台清洗/改写/扩充。默认只允许修改question。allRecords=true表示已明确整个来源范围；否则传recordIds。不会应用或发布结果。",
+      "用户已明确范围和要求时提交后台清洗/改写/扩充。必须显式列出allowedFields：仅改问题用question；用户允许为新候选设置类别或数量分配时还须包含expectedOutput，否则服务端会从参考记录复制期望输出，忽略模型新标签。Metadata仅在用户明确允许修改时包含。allRecords=true表示已明确整个来源范围；否则传recordIds。不会应用或发布结果。",
       {
         source: sourceSchema,
         recordIds: ids,
@@ -675,7 +675,7 @@ export async function executeAssistantTurn(
         },
         outputCount: { type: "integer", minimum: 1, maximum: 10000 },
       },
-      ["source", "operation", "instructions"],
+      ["source", "operation", "instructions", "allowedFields"],
       async (input, key) => {
         await depend(references(input.source));
         let recordIds = input.recordIds;
@@ -1215,6 +1215,10 @@ export async function executeAssistantTurn(
       stopWhen: stepCountIs(8),
       prepareStep: async () => {
         await turnFence(db, scope, turn.id, turn.execution_token);
+        if (plannedAction === "read_processing")
+          return {
+            toolChoice: { type: "tool" as const, toolName: "read_processing" },
+          };
         return plannedAction ? { toolChoice: "required" as const } : {};
       },
       maxOutputTokens: 2048,
