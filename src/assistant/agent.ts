@@ -433,6 +433,11 @@ export async function executeAssistantTurn(
       },
       ["title", "requirements"],
       async (input) => {
+        if (
+          turn.candidate_selection &&
+          input.nextAction === "submit_processing"
+        )
+          input = { ...input, nextAction: "refine_candidates" };
         if (input.question && input.nextAction !== "none")
           throw new AssistantError(422, "assistant_tool_input_invalid");
         if (input.target) await depend(references(input.target));
@@ -1263,6 +1268,8 @@ export async function executeAssistantTurn(
         typeof task.nextAction === "string" && task.nextAction !== "none"
           ? task.nextAction
           : undefined;
+    if (turn.candidate_selection && plannedAction === "submit_processing")
+      plannedAction = "refine_candidates";
     // Inspect the completed run first, preserving any unexecuted retry obligation.
     if (turn.event === "processing_completed" && task.runId)
       processingEventRunId = task.runId;

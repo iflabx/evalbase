@@ -45,6 +45,7 @@ describe("assistant continuous task public contract", () => {
       | "explain"
       | "planned"
       | "planned_read"
+      | "planned_refine"
       | "planned_clarify"
       | "planned_ignore"
       | "planned_retry_text"
@@ -162,7 +163,9 @@ describe("assistant continuous task public contract", () => {
                 body.tool_choice === "required"
               ? requestMode === "planned_read" && lastTool === "plan_task"
                 ? "read_records"
-                : "submit_processing"
+                : requestMode === "planned_refine"
+                  ? "refine_candidates"
+                  : "submit_processing"
               : null;
       if (name) {
         message = {
@@ -194,13 +197,20 @@ describe("assistant continuous task public contract", () => {
                       }
                     : name === "read_records"
                       ? { source: { kind: "draft", id: draftId } }
-                      : {
-                          source: { kind: "draft", id: draftId },
-                          allRecords: true,
-                          operation: "clean",
-                          instructions: "",
-                          allowedFields: ["question"],
-                        },
+                      : name === "refine_candidates"
+                        ? {
+                            runId,
+                            allSelected: true,
+                            instructions: "以请问开头，其他字段保留",
+                            allowedFields: ["question"],
+                          }
+                        : {
+                            source: { kind: "draft", id: draftId },
+                            allRecords: true,
+                            operation: "clean",
+                            instructions: "",
+                            allowedFields: ["question"],
+                          },
                 ),
               },
             },
@@ -784,6 +794,82 @@ describe("assistant continuous task public contract", () => {
           { timeout: 15000 },
         )
         .toBe("succeeded");
+    } finally {
+      await db.end();
+    }
+  });
+  it("maps a selected-candidate processing plan to actual refinement and replays its receipt", async () => {
+    mode = "planned_refine";
+    const response = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions/${sessionId}/turns`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        message: "仅改我勾选的候选问题",
+        candidates: { runId, resultIds: ["0:0"] },
+      },
+    });
+    expect(response.statusCode, response.body).toBe(202);
+    const id = response.json().turnId;
+    await expect
+      .poll(
+        async () =>
+          (await read()).turns.find((turn: any) => turn.id === id).status,
+        { timeout: 15000 },
+      )
+      .toBe("succeeded");
+    const state = await read();
+    const receipt = state.turns
+      .find((turn: any) => turn.id === id)
+      .tools.find((tool: any) => tool.name === "refine_candidates");
+    expect(state.task).toMatchObject({
+      runId: receipt.result.runId,
+      stage: "processing",
+      nextAction: null,
+    });
+    expect(receipt.result).toMatchObject({ refinedCount: 1 });
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed' WHERE id=$1",
+        [id],
+      );
+      await db.query(
+        'UPDATE assistant_session SET task=task||\'{"stage":"failed","nextAction":"submit_processing"}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read()).turns.find((turn: any) => turn.id === id).status,
+          { timeout: 15000 },
+        )
+        .toBe("succeeded");
+      expect((await read()).task).toMatchObject({
+        runId: receipt.result.runId,
+        stage: "processing",
+        nextAction: null,
+      });
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/stop`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
     } finally {
       await db.end();
     }

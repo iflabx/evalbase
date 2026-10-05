@@ -50,12 +50,21 @@ describe("project assistant public contract", () => {
         "[processing_completed]",
       ) ||
       String(body.messages.at(-1)?.content ?? "").startsWith("[confirmed]");
-    if (repeatRead || (body.messages.at(-1)?.role !== "tool" && !automatic)) {
+    const inspectRun = body.tool_choice?.function?.name === "read_processing";
+    if (
+      inspectRun ||
+      repeatRead ||
+      (body.messages.at(-1)?.role !== "tool" && !automatic)
+    ) {
       const prompt = body.messages.findLast(
         (m: any) => m.role === "user",
       ).content;
       const action =
-        (repeatRead ? "query_project" : requestedTool?.name) ??
+        (inspectRun
+          ? "read_processing"
+          : repeatRead
+            ? "query_project"
+            : requestedTool?.name) ??
         (prompt.includes("读取版本")
           ? "read_records"
           : prompt.includes("发布")
@@ -64,7 +73,21 @@ describe("project assistant public contract", () => {
               ? "query_project"
               : "create_draft");
       const args =
-        (repeatRead ? { kind: "project" } : requestedTool?.input) ??
+        (inspectRun
+          ? {
+              runId: JSON.parse(
+                body.messages
+                  .findLast((m: any) =>
+                    String(m.content).startsWith("持久任务（"),
+                  )
+                  .content.split("：")
+                  .slice(1)
+                  .join("："),
+              ).runId,
+            }
+          : repeatRead
+            ? { kind: "project" }
+            : requestedTool?.input) ??
         (action === "read_records"
           ? { source: { kind: "version", id: publishedVersionId } }
           : action === "request_publish"
