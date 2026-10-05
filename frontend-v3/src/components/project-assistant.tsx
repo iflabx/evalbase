@@ -986,7 +986,7 @@ function ProcessingTaskCard({
           progress: number;
           partial?: boolean;
           errorCode?: string;
-          options: { operation: string };
+          options: { operation: string; outputCount?: number };
         };
         total: number;
       }>(
@@ -1022,6 +1022,11 @@ function ProcessingTaskCard({
       </p>
       {run?.status === "running" && (
         <p className="text-xs text-muted-foreground">进度 {Math.round(run.progress)}%</p>
+      )}
+      {run && !done && (
+        <p className="text-xs text-muted-foreground">
+          已保存 {task.data!.total} / {run.options.outputCount ?? run.inputCount} 条候选
+        </p>
       )}
       {task.error && (
         <p role="alert" className="text-xs text-destructive">

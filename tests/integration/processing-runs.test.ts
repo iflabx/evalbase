@@ -517,6 +517,15 @@ describe("durable data processing", () => {
         },
       });
       expect(expanded.statusCode, expanded.body).toBe(201);
+      const expansionStatus = await app.inject({
+        method: "GET",
+        url: `${path}/${expanded.json().run.id}/status`,
+        headers,
+      });
+      expect(expansionStatus.json().run).toMatchObject({
+        inputCount: 1,
+        options: { operation: "augment", outputCount: 3 },
+      });
       const expandJob = (
         await db.query(
           "UPDATE job SET status='running',attempt=1,lease_owner='augment-test',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",

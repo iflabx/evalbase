@@ -457,14 +457,14 @@ export async function executeAssistantTurn(
         targetDraftId: string,
         allowedLabels: {
           description:
-            "仅用于用户明确指定的期望输出固定标签。期望输出为逐题回答行为时不填写；Metadata分类与配额用classifications指定对应key。",
+            "仅用于用户明确指定的期望输出固定标签。用户改为逐题回答行为时传空数组清除旧限制，省略会保留旧限制；Metadata分类与配额用classifications指定对应key。",
           type: "array",
           items: { type: "string", maxLength: 500 },
           maxItems: 100,
         },
         classifications: {
           description:
-            "在用户指定的字段核对类别和配额。题库类型、风险编号等Metadata分类必须用field:metadata及真实key，不能替代期望输出中的逐题回答行为。",
+            "在用户指定的字段核对类别和配额。题库类型、风险编号等Metadata分类必须用field:metadata及真实key，不能替代期望输出中的逐题回答行为。用户纠正分类字段时重新传完整规则替换旧规则，省略会保留旧规则。",
           type: "array",
           maxItems: 5,
           items: {
@@ -1062,7 +1062,7 @@ export async function executeAssistantTurn(
     ),
     refine_candidates: businessTool(
       "refine_candidates",
-      "仅按用户明确要求局部重改上一批候选，保留未选记录。此工具不新增记录，不能用于补齐数量；不要因自己的语义评价自动重改候选。resultIds使用read_processing返回的候选序号；勾选范围来自本轮candidateSelection，allSelected:true可重改全部勾选候选；where可按标签、问题内容或Metadata明确条件定位全部范围；resultIds/where二选一，必须遵守勾选范围。allowedFields只包含用户允许修改的字段。",
+      "按用户明确指定范围重改上一批候选，保留未选记录。此工具不新增记录，不能用于补齐数量；不要因自己的语义评价自动重改候选。resultIds使用read_processing返回的候选序号；勾选范围来自本轮candidateSelection，allSelected:true可重改全部勾选候选；where可按标签、问题内容或Metadata条件定位全部范围。用户明确要求全部候选时可用where:{field:question,operator:contains,value:空字符串}，不需翻页枚举ID；resultIds/where二选一，必须遵守勾选范围。allowedFields只包含用户允许修改的字段。",
       {
         runId: string,
         resultIds: ids,

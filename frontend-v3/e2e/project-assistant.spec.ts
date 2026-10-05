@@ -787,24 +787,25 @@ test("shows actual background progress, current draft scope and recoverable tool
             status: stage,
             progress: stage === "succeeded" ? 100 : stage === "running" ? 50 : 0,
             inputCount: 10,
-            options: { operation: "rewrite" },
+            options: { operation: "augment", outputCount: 200 },
             partial: false,
           },
-          total: stage === "succeeded" ? 10 : 0,
+          total: stage === "succeeded" ? 200 : stage === "running" ? 5 : 0,
         },
       });
     return route.fulfill({ status: 404, json: {} });
   });
   await expect(page.getByText("当前草稿：意图识别草稿 · 10 条记录")).toBeVisible();
-  await expect(page.getByText("改写 · 等待中 · 10 条输入")).toBeVisible();
+  await expect(page.getByText("扩充 · 等待中 · 10 条输入")).toBeVisible();
   await page.getByText("操作记录（2）", { exact: true }).click();
   await expect(
     page.getByText("对象引用无效，请重新查询或明确选择目标。", { exact: true }),
   ).toBeVisible();
   stage = "running";
   await expect(page.getByText("进度 50%", { exact: true })).toBeVisible();
+  await expect(page.getByText("已保存 5 / 200 条候选", { exact: true })).toBeVisible();
   stage = "succeeded";
-  await expect(page.getByText("改写 · 已完成 · 10 条有效结果")).toBeVisible();
+  await expect(page.getByText("扩充 · 已完成 · 200 条有效结果")).toBeVisible();
   await expect(page.getByRole("link", { name: "预览结果", exact: true })).toHaveAttribute(
     "href",
     "/projects/assistant_project/processing?run=processing_ten",
