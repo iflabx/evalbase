@@ -46,6 +46,7 @@ type Run = {
   options: { operation: "clean" | "rewrite" | "augment"; instructions: string };
   status: string;
   partial?: boolean;
+  missingCount?: number;
   progress: number;
   inputCount: number;
   createdAt: string;
@@ -600,6 +601,7 @@ function ProcessingResults({
           <p role="status" className="mt-1 text-sm text-muted-foreground">
             {run.partial ? "部分成功，待核对" : statuses[run.status]} · {run.progress}% · 已产生{" "}
             {value.total} 条结果
+            {run.missingCount ? ` · 尚缺 ${run.missingCount} 条` : ""}
             {value.issues.length ? ` · ${value.issues.length} 项需核对` : ""}
           </p>
         </div>
@@ -616,7 +618,7 @@ function ProcessingResults({
               取消任务
             </Button>
           ) : (
-            run.status !== "succeeded" && (
+            (run.status !== "succeeded" || Boolean(run.missingCount)) && (
               <Button variant="outline" disabled={busy} onClick={() => void action("retry")}>
                 重试未完成批次
               </Button>

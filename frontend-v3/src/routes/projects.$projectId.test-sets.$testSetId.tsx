@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { SelectionHistory } from "@/components/selection-history";
 import { toast } from "sonner";
+import { zipSync } from "fflate";
 
 import { Button } from "@/components/ui/button";
 import { useProjectAccess } from "@/hooks/use-project-access";
@@ -44,6 +45,7 @@ import {
   listTestSets,
   listSoloVersionRecords,
   soloVersionDownloadUrl,
+  request,
   tombstoneSoloTestSetVersion,
   trashSoloVersionBranch,
   type ProvenanceChange,
@@ -67,6 +69,41 @@ function TestSetDetailPage() {
   const navigate = Route.useNavigate();
   const [selectedVersionId, setSelectedVersionId] = useState(version);
   const [startingDraft, setStartingDraft] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  async function downloadBoth(version: { id: string; label: string }) {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const files = await Promise.all(
+        (["data.csv", "provenance.csv"] as const).map(async (file) => {
+          const response = await request<Response>(
+            soloVersionDownloadUrl(projectId, testSetId, version.id, file),
+            undefined,
+            "response",
+          );
+          return [file, new Uint8Array(await response.arrayBuffer())] as const;
+        }),
+      );
+      // Store both documents in one download; level 0 avoids compressing large CSVs on the UI thread.
+      const archive = zipSync(Object.fromEntries(files), { level: 0 });
+      const url = URL.createObjectURL(
+        new Blob([archive.buffer as ArrayBuffer], { type: "application/zip" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `evalbase-${version.label}-data-and-provenance.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      toast.error("下载失败", {
+        description: error instanceof Error ? error.message : "请重试",
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }
   const drafts = useQuery({
     queryKey: ["shared-drafts", projectId, testSetId],
     queryFn: () => listSharedDrafts(projectId, testSetId),
@@ -156,9 +193,10 @@ function TestSetDetailPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => downloadBoth(projectId, testSetId, data.version.id)}
+                      disabled={downloading}
+                      onClick={() => void downloadBoth(data.version)}
                     >
-                      下载数据与溯源
+                      {downloading ? "正在准备下载…" : "下载数据与溯源"}
                     </Button>
                   </>
                 }
@@ -223,7 +261,8 @@ function TestSetDetailPage() {
                           </a>
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onSelect={() => downloadBoth(projectId, testSetId, data.version.id)}
+                          disabled={downloading}
+                          onSelect={() => void downloadBoth(data.version)}
                         >
                           下载数据与溯源
                         </DropdownMenuItem>
@@ -334,15 +373,6 @@ function TestSetDetailPage() {
       </StateView>
     </main>
   );
-}
-
-function downloadBoth(projectId: string, testSetId: string, versionId: string) {
-  for (const file of ["data.csv", "provenance.csv"] as const) {
-    const link = document.createElement("a");
-    link.href = soloVersionDownloadUrl(projectId, testSetId, versionId, file);
-    link.download = "";
-    link.click();
-  }
 }
 
 function VersionSummary({ data }: { data: SoloTestSetVersionDetail }) {

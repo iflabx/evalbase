@@ -1772,6 +1772,25 @@ export async function migrate(
       ALTER TABLE assistant_turn DROP CONSTRAINT IF EXISTS assistant_turn_status_check;
       ALTER TABLE assistant_turn ADD CONSTRAINT assistant_turn_status_check CHECK(status IN('queued','running','succeeded','failed','interrupted'));
       ALTER TABLE assistant_proposal ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS assistant_background_document(
+        id text PRIMARY KEY,session_id text NOT NULL REFERENCES assistant_session(id) ON DELETE CASCADE,
+        project_id text NOT NULL REFERENCES project(id),actor_id text NOT NULL REFERENCES app_user(id),
+        file_name text NOT NULL,format text NOT NULL CHECK(format IN('pdf','md','txt')),sha256 text NOT NULL,
+        file_size integer NOT NULL,extractor_version text NOT NULL,units integer NOT NULL,characters integer NOT NULL,
+        fragments jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(session_id,sha256,format)
+      );
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS background_document_ids text[] NOT NULL DEFAULT '{}';
+      CREATE OR REPLACE FUNCTION purge_assistant_background_document() RETURNS trigger AS $$
+      BEGIN
+        UPDATE processing_run SET input_ref=NULL WHERE input_ref IS NOT NULL AND background_document_ids @> ARRAY[OLD.id];
+        UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=OLD.session_id;
+        UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',candidate_selection=NULL,
+          execution_token=NULL,status='interrupted',error_code='assistant_context_deleted' WHERE session_id=OLD.session_id;
+        UPDATE assistant_proposal SET parameters='{}',summary='{}',receipt=NULL,status='invalid' WHERE session_id=OLD.session_id;
+        RETURN OLD;
+      END; $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS assistant_background_cleanup ON assistant_background_document;
+      CREATE TRIGGER assistant_background_cleanup AFTER DELETE ON assistant_background_document FOR EACH ROW EXECUTE FUNCTION purge_assistant_background_document();
 
       CREATE OR REPLACE FUNCTION purge_project_assistant_body() RETURNS trigger AS $$
       DECLARE affected_project text; affected_kind text; affected_sessions text[];
@@ -1783,6 +1802,7 @@ export async function migrate(
           WHERE s.project_id=affected_project AND (t.dependencies @> jsonb_build_array(jsonb_build_object('kind',affected_kind,'id',NEW.id))
             OR (TG_TABLE_NAME='test_set_version' AND EXISTS(SELECT 1 FROM collaborative_draft d WHERE d.published_version_id=NEW.id
               AND t.dependencies @> jsonb_build_array(jsonb_build_object('kind','draft','id',d.id)))));
+          DELETE FROM assistant_background_document WHERE session_id=ANY(affected_sessions);
           UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=ANY(affected_sessions);
           UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',dependencies='[]',candidate_selection=NULL,execution_token=NULL,status='interrupted',error_code='assistant_context_deleted'
           WHERE session_id=ANY(affected_sessions);

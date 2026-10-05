@@ -1,4 +1,5 @@
 import { AssistantCandidates, type CandidateSelection } from "./assistant-candidates";
+import { AssistantBackground, type BackgroundDocument } from "./assistant-background";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -63,21 +64,28 @@ type Proposal = {
 };
 type Conversation = {
   sessionId: string;
+  backgroundDocuments?: BackgroundDocument[];
   title?: string;
   task?: {
     title?: string;
     goal?: string;
     stage: string;
     runId?: string;
+    runIds?: string[];
     checkedStatus?: string;
     error?: string;
     target?: { kind: string; id?: string };
     targetName?: string;
+    requirements?: string[];
     review?: {
       runId: string;
       total: number;
       expectedCount: number;
       countSatisfied: boolean;
+      countKind?: "new" | "final";
+      baseCount?: number;
+      remainingCount?: number;
+      missingCount?: number;
       emptyQuestions: number;
       duplicates: number;
       protectedFieldChanges: number;
@@ -85,6 +93,14 @@ type Conversation = {
       labels: { label: string; count: number }[];
       formatIssues?: unknown[];
       complete?: boolean;
+      classifications?: {
+        field: string;
+        key?: string;
+        satisfied: boolean;
+        missing: number;
+        outsideValues: number;
+        quotaDifferences: { value: string; expected: number; actual: number }[];
+      }[];
     };
   };
   turns: Turn[];
@@ -121,6 +137,7 @@ const toolLabels: Record<string, string> = {
   submit_processing: "提交处理任务",
   read_processing: "读取处理结果",
   plan_task: "整理任务要求",
+  read_background: "读取背景文档",
   refine_candidates: "局部重改候选",
   retry_processing: "重试失败部分",
   request_selection_apply: "准备采用筛选结果",
@@ -128,6 +145,22 @@ const toolLabels: Record<string, string> = {
   request_publish: "准备发布版本",
 };
 const messages: Record<string, string> = {
+  assistant_document_format: "请选择 PDF、Markdown 或 TXT 文档。",
+  assistant_document_capacity:
+    "背景文档超出容量。最多 5 份、合计 10 MB；PDF 最多 200 页，文本最多 10,000 行。",
+  assistant_document_encoding: "文本编码无法读取，请使用 UTF-8 的 Markdown 或 TXT 文件。",
+  assistant_document_name: "文件名无法使用，请更换文件名后重试。",
+  assistant_document_parse: "文档解析失败，请检查 PDF 是否完整或改用文本文件。",
+  assistant_document_no_text: "文档没有可提取文字，请提供文字版 PDF、Markdown 或 TXT。",
+  assistant_document_timeout: "文档提取超时，请减少内容或提供文本文件。",
+  assistant_document_read_failed: "无法读取本地文件，请重新选择。",
+  assistant_document_not_found: "背景文档已不可用，请重新打开会话核对。",
+  assistant_background_not_read: "背景尚未核对，请让助手先读取附件要求。",
+  assistant_background_capacity: "选用的背景过长，请缩小当前任务的依据范围。",
+  assistant_background_changed: "背景已经变化，请重新核对要求。",
+  processing_scope_changed: "资料内容已经变化，请重新确定处理范围。",
+  processing_already_adopted: "这些候选已采用到相同草稿，请核对剩余结果。",
+  processing_results_overlap: "同一记录有两份竞争结果，请先明确保留哪一份或进行局部重改。",
   assistant_stopped: "任务已停止，已有结果仍保留。",
   assistant_task_limit: "任务已达到自动执行上限。已有结果保留，请补充要求后继续。",
   assistant_session_limit: "此会话已达到回合上限。已有结果保留，请在新会话中继续。",
@@ -175,6 +208,7 @@ export function ProjectAssistant({
   const [open, setOpen] = useState(false),
     [selectedSession, setSelectedSession] = useState<string>(),
     [picked, setPicked] = useState<CandidateSelection>(),
+    [candidateRun, setCandidateRun] = useState<string>(),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -233,6 +267,9 @@ export function ProjectAssistant({
         : false,
   });
   const visible = conversation.error ? undefined : conversation.data;
+  const taskRuns = visible?.task?.runIds ?? (visible?.task?.runId ? [visible.task.runId] : []);
+  const reviewRun =
+    candidateRun && taskRuns.includes(candidateRun) ? candidateRun : visible?.task?.runId;
   const pending = pendingSubmissions[sessionId ?? "new"];
   function setPending(submission: Submission) {
     setPendingSubmissions((current) => {
@@ -292,7 +329,7 @@ export function ProjectAssistant({
             key: crypto.randomUUID(),
             sessionId,
             context: pageContext,
-            ...(picked?.runId === visible?.task?.runId && picked?.resultIds.length
+            ...(picked && taskRuns.includes(picked.runId) && picked.resultIds.length
               ? { candidates: picked }
               : {}),
             status: "submitting",
@@ -360,7 +397,7 @@ export function ProjectAssistant({
           <span className="hidden sm:inline">项目助手</span>
         </Button>
       </SheetTrigger>
-      <SheetContent className="flex w-full min-w-0 flex-col gap-0 p-0 sm:max-w-xl">
+      <SheetContent className="flex w-full min-w-0 flex-col gap-0 p-0 sm:max-w-6xl">
         <SheetHeader className="border-b px-5 py-5 pr-12">
           <SheetTitle>项目助手</SheetTitle>
           <SheetDescription>
@@ -420,199 +457,322 @@ export function ProjectAssistant({
         {currentLabel && (
           <p className="border-b px-5 py-3 text-sm text-muted-foreground">{currentLabel}</p>
         )}
-        <div
-          ref={historyRef}
-          role="log"
-          aria-label="助手消息"
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            follow.current = el.scrollHeight - el.clientHeight - el.scrollTop < 80;
-          }}
-        >
-          <div ref={contentRef} className="space-y-5">
-            {(sessions.error || conversation.error) && (
-              <p role="alert" className="text-sm text-destructive">
-                {errorText(conversation.error ?? sessions.error)}
-              </p>
-            )}
-            {conversation.isLoading && sessionId ? (
-              <p className="text-sm text-muted-foreground">正在读取会话…</p>
-            ) : null}
-            {!sessions.isPending &&
-              !(sessionId && conversation.isPending) &&
-              !(pending && (!pending.sessionId || pending.sessionId === sessionId)) &&
-              !visible?.turns.length &&
-              !conversation.error && (
-                <div className="rounded-md border bg-card p-5 text-sm shadow-sm">
-                  <h3 className="font-semibold">从当前项目开始</h3>
-                  <p className="mt-2 leading-6 text-muted-foreground">
-                    例如：“列出项目里的原始文件”“创建一个意图识别测试集草稿”“把这个草稿的问题改写得更自然，保留答案和
-                    Metadata”。
+        <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-1">
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <div
+              ref={historyRef}
+              role="log"
+              aria-label="助手消息"
+              className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                follow.current = el.scrollHeight - el.clientHeight - el.scrollTop < 80;
+              }}
+            >
+              <div ref={contentRef} className="space-y-5">
+                {(sessions.error || conversation.error) && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {errorText(conversation.error ?? sessions.error)}
                   </p>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    范围不清楚时，助手会先询问。处理结果可以先预览，再决定是否采用。
-                  </p>
-                </div>
-              )}
-
-            {visible?.turns.map((turn) => (
-              <section key={turn.id} className="space-y-3">
-                {turn.userText && (!turn.event || turn.event === "user") && (
-                  <div className="ml-8 rounded-md bg-muted p-3 text-sm">
-                    <p className="mb-1 text-xs text-muted-foreground">你</p>
-                    <p className="whitespace-pre-wrap break-words">{turn.userText}</p>
-                  </div>
                 )}
-                <div className="space-y-3 text-sm">
-                  <p className="font-medium">
-                    项目助手
-                    {turn.event && turn.event !== "user" ? (
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        自动继续
-                      </span>
-                    ) : null}
-                  </p>
-                  {turn.assistantText && (
-                    <p className="whitespace-pre-wrap break-words leading-6">
-                      {assistantReply(turn.assistantText)}
-                    </p>
+                {conversation.isLoading && sessionId ? (
+                  <p className="text-sm text-muted-foreground">正在读取会话…</p>
+                ) : null}
+                {!sessions.isPending &&
+                  !(sessionId && conversation.isPending) &&
+                  !(pending && (!pending.sessionId || pending.sessionId === sessionId)) &&
+                  !visible?.turns.length &&
+                  !conversation.error && (
+                    <div className="rounded-md border bg-card p-5 text-sm shadow-sm">
+                      <h3 className="font-semibold">从当前项目开始</h3>
+                      <p className="mt-2 leading-6 text-muted-foreground">
+                        例如：“列出项目里的原始文件”“创建一个意图识别测试集草稿”“把这个草稿的问题改写得更自然，保留答案和
+                        Metadata”。
+                      </p>
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        范围不清楚时，助手会先询问。处理结果可以先预览，再决定是否采用。
+                      </p>
+                    </div>
                   )}
-                  {["queued", "running"].includes(turn.status) && (
-                    <p className="text-muted-foreground">正在处理… 关闭面板后可再回来查看结果。</p>
-                  )}
-                  {turn.errorCode && (
-                    <p role="alert" className="text-destructive">
-                      {messages[turn.errorCode] ?? "本轮未完成，请核对已执行的操作后再试。"}
-                    </p>
-                  )}
-                  {turn.tools.length > 0 && (
-                    <details className="rounded-md border bg-card p-3">
-                      <summary className="cursor-pointer text-xs text-muted-foreground">
-                        操作记录（{turn.tools.length}）
-                      </summary>
-                      <div className="mt-3 space-y-2">
-                        {turn.tools
-                          .filter((t) => !t.result?.requiresUserConfirmation)
-                          .map((item, index) => (
-                            <div
-                              key={`${item.key}:${index}`}
-                              className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
-                            >
-                              <span>
-                                {toolLabels[item.name] ?? "操作"} ·{" "}
-                                {item.status === "succeeded"
-                                  ? "已完成"
-                                  : item.status === "started"
-                                    ? "已发起，待核对"
-                                    : "未完成"}
-                                {item.result?.name ? ` · ${item.result.name}` : ""}
-                                {item.status === "failed" && (
-                                  <span className="block text-xs text-destructive">
-                                    {messages[item.error?.code ?? ""] ??
-                                      "操作未完成，请核对范围后重试。"}
+
+                {visible?.turns.map((turn) => (
+                  <section key={turn.id} className="space-y-3">
+                    {turn.userText && (!turn.event || turn.event === "user") && (
+                      <div className="ml-8 rounded-md bg-muted p-3 text-sm">
+                        <p className="mb-1 text-xs text-muted-foreground">你</p>
+                        <p className="whitespace-pre-wrap break-words">{turn.userText}</p>
+                      </div>
+                    )}
+                    <div className="space-y-3 text-sm">
+                      <p className="font-medium">
+                        项目助手
+                        {turn.event && turn.event !== "user" ? (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            自动继续
+                          </span>
+                        ) : null}
+                      </p>
+                      {turn.assistantText && (
+                        <p className="whitespace-pre-wrap break-words leading-6">
+                          {assistantReply(turn.assistantText)}
+                        </p>
+                      )}
+                      {["queued", "running"].includes(turn.status) && (
+                        <p className="text-muted-foreground">
+                          正在处理… 关闭面板后可再回来查看结果。
+                        </p>
+                      )}
+                      {turn.errorCode && (
+                        <p role="alert" className="text-destructive">
+                          {messages[turn.errorCode] ?? "本轮未完成，请核对已执行的操作后再试。"}
+                        </p>
+                      )}
+                      {turn.tools.length > 0 && (
+                        <details className="rounded-md border bg-card p-3">
+                          <summary className="cursor-pointer text-xs text-muted-foreground">
+                            操作记录（{turn.tools.length}）
+                          </summary>
+                          <div className="mt-3 space-y-2">
+                            {turn.tools
+                              .filter((t) => !t.result?.requiresUserConfirmation)
+                              .map((item, index) => (
+                                <div
+                                  key={`${item.key}:${index}`}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
+                                >
+                                  <span>
+                                    {toolLabels[item.name] ?? "操作"} ·{" "}
+                                    {item.status === "succeeded"
+                                      ? "已完成"
+                                      : item.status === "started"
+                                        ? "已发起，待核对"
+                                        : "未完成"}
+                                    {item.result?.name ? ` · ${item.result.name}` : ""}
+                                    {item.status === "failed" && (
+                                      <span className="block text-xs text-destructive">
+                                        {messages[item.error?.code ?? ""] ??
+                                          "操作未完成，请核对范围后重试。"}
+                                      </span>
+                                    )}
                                   </span>
+                                  {validLink(item.result?.url) && (
+                                    <Link
+                                      to={validLink(item.result?.url)!}
+                                      className="text-primary underline-offset-4 hover:underline"
+                                      onClick={() => setOpen(false)}
+                                    >
+                                      查看结果
+                                    </Link>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        </details>
+                      )}
+                      {visible?.proposals
+                        .filter((p) => p.turn_id === turn.id && p.status !== "invalid")
+                        .map((p) => (
+                          <div
+                            key={p.id}
+                            className="space-y-3 rounded-md border bg-card p-4 shadow-sm"
+                          >
+                            <h4 className="font-semibold">{p.summary.title}</h4>
+                            <p className="break-words text-muted-foreground">
+                              {p.summary.target} · {p.summary.count ?? 0} 条记录
+                              {p.summary.revision !== undefined
+                                ? ` · 草稿修订 ${p.summary.revision}`
+                                : ""}
+                            </p>
+                            {p.status === "pending" ? (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  确认将执行以上操作；范围变化后需要重新核对。
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    disabled={
+                                      busy || new Date(p.expires_at).getTime() <= Date.now()
+                                    }
+                                    onClick={() => void confirm(p.id, "confirm")}
+                                  >
+                                    确认{p.action === "publish" ? "发布" : "采用"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={busy}
+                                    onClick={() => void confirm(p.id, "reject")}
+                                  >
+                                    暂不执行
+                                  </Button>
+                                  {validLink(p.summary.url) && (
+                                    <Button size="sm" variant="ghost" asChild>
+                                      <Link
+                                        to={validLink(p.summary.url)!}
+                                        onClick={() => setOpen(false)}
+                                      >
+                                        查看内容
+                                      </Link>
+                                    </Button>
+                                  )}
+                                </div>
+                                {new Date(p.expires_at).getTime() <= Date.now() && (
+                                  <p className="text-xs text-destructive">
+                                    确认已过期，请重新生成。
+                                  </p>
                                 )}
-                              </span>
-                              {validLink(item.result?.url) && (
+                              </>
+                            ) : (
+                              <p className="text-muted-foreground">
+                                {p.status === "succeeded"
+                                  ? p.action === "publish"
+                                    ? `已发布${p.receipt?.version?.label ? ` · ${p.receipt.version.label}` : ""}`
+                                    : p.action === "processing"
+                                      ? `已采用${p.receipt?.receipt?.adopted !== undefined ? ` · ${p.receipt.receipt.adopted} 条记录` : ""}`
+                                      : `已加入草稿${p.receipt?.receipt?.added !== undefined ? ` · 新增 ${p.receipt.receipt.added} 条记录` : ""}`
+                                  : p.status === "executing"
+                                    ? "正在提交…"
+                                    : "已取消"}
+                              </p>
+                            )}
+                            {p.status === "succeeded" &&
+                              (p.receipt?.testSet && p.receipt.version ? (
                                 <Link
-                                  to={validLink(item.result?.url)!}
-                                  className="text-primary underline-offset-4 hover:underline"
+                                  to="/projects/$projectId/test-sets/$testSetId"
+                                  params={{ projectId, testSetId: p.receipt.testSet.id }}
+                                  search={{ version: p.receipt.version.id }}
+                                  className="inline-block text-primary hover:underline"
+                                  onClick={() => setOpen(false)}
+                                >
+                                  查看已发布版本
+                                </Link>
+                              ) : p.action === "processing" && p.receipt?.receipt?.draftId ? (
+                                <Link
+                                  to="/projects/$projectId/test-sets/drafts/$draftId"
+                                  params={{ projectId, draftId: p.receipt.receipt.draftId }}
+                                  className="inline-block text-primary hover:underline"
+                                  onClick={() => setOpen(false)}
+                                >
+                                  继续编辑草稿
+                                </Link>
+                              ) : validLink(p.summary.url) ? (
+                                <Link
+                                  to={p.summary.url!}
+                                  className="inline-block text-primary hover:underline"
                                   onClick={() => setOpen(false)}
                                 >
                                   查看结果
                                 </Link>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    </details>
+                              ) : null)}
+                          </div>
+                        ))}
+                    </div>
+                  </section>
+                ))}
+                {pending &&
+                  (!pending.sessionId || pending.sessionId === sessionId) &&
+                  !visible?.turns.some((t) => t.id === pending.turnId) && (
+                    <div className="ml-8 space-y-2 rounded-md bg-muted p-3 text-sm">
+                      <p className="text-xs text-muted-foreground">你</p>
+                      <p className="whitespace-pre-wrap break-words">{pending.message}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pending.status === "failed"
+                          ? "提交尚未确认，消息已保留。"
+                          : pending.status === "accepted"
+                            ? "已受理，正在处理…"
+                            : "正在提交…"}
+                      </p>
+                      {pending.status === "failed" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy || running}
+                          onClick={() => void send(pending)}
+                        >
+                          重新提交这条
+                        </Button>
+                      )}
+                    </div>
                   )}
-                  {visible?.proposals
-                    .filter((p) => p.turn_id === turn.id && p.status !== "invalid")
-                    .map((p) => (
-                      <div key={p.id} className="space-y-3 rounded-md border bg-card p-4 shadow-sm">
-                        <h4 className="font-semibold">{p.summary.title}</h4>
-                        <p className="break-words text-muted-foreground">
-                          {p.summary.target} · {p.summary.count ?? 0} 条记录
-                          {p.summary.revision !== undefined
-                            ? ` · 草稿修订 ${p.summary.revision}`
-                            : ""}
-                        </p>
-                        {p.status === "pending" ? (
-                          <>
-                            <p className="text-xs text-muted-foreground">
-                              确认将执行以上操作；范围变化后需要重新核对。
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                size="sm"
-                                disabled={busy || new Date(p.expires_at).getTime() <= Date.now()}
-                                onClick={() => void confirm(p.id, "confirm")}
-                              >
-                                确认{p.action === "publish" ? "发布" : "采用"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={busy}
-                                onClick={() => void confirm(p.id, "reject")}
-                              >
-                                暂不执行
-                              </Button>
-                              {validLink(p.summary.url) && (
-                                <Button size="sm" variant="ghost" asChild>
-                                  <Link
-                                    to={validLink(p.summary.url)!}
-                                    onClick={() => setOpen(false)}
-                                  >
-                                    查看内容
-                                  </Link>
-                                </Button>
-                              )}
-                            </div>
-                            {new Date(p.expires_at).getTime() <= Date.now() && (
-                              <p className="text-xs text-destructive">确认已过期，请重新生成。</p>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-muted-foreground">
-                            {p.status === "succeeded"
-                              ? p.action === "publish"
-                                ? `已发布${p.receipt?.version?.label ? ` · ${p.receipt.version.label}` : ""}`
-                                : p.action === "processing"
-                                  ? `已采用${p.receipt?.receipt?.adopted !== undefined ? ` · ${p.receipt.receipt.adopted} 条记录` : ""}`
-                                  : `已加入草稿${p.receipt?.receipt?.added !== undefined ? ` · 新增 ${p.receipt.receipt.added} 条记录` : ""}`
-                              : p.status === "executing"
-                                ? "正在提交…"
-                                : "已取消"}
-                          </p>
-                        )}
-                        {p.status === "succeeded" &&
-                          (p.receipt?.testSet && p.receipt.version ? (
-                            <Link
-                              to="/projects/$projectId/test-sets/$testSetId"
-                              params={{ projectId, testSetId: p.receipt.testSet.id }}
-                              search={{ version: p.receipt.version.id }}
-                              className="inline-block text-primary hover:underline"
-                              onClick={() => setOpen(false)}
-                            >
-                              查看已发布版本
-                            </Link>
-                          ) : validLink(p.summary.url) ? (
-                            <Link
-                              to={p.summary.url!}
-                              className="inline-block text-primary hover:underline"
-                              onClick={() => setOpen(false)}
-                            >
-                              查看结果
-                            </Link>
-                          ) : null)}
-                      </div>
-                    ))}
-                </div>
-              </section>
-            ))}
+              </div>
+            </div>
+            <form
+              className="space-y-3 border-t bg-background px-5 py-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              {picked && taskRuns.includes(picked.runId) && Boolean(picked.resultIds.length) && (
+                <p className="text-xs text-muted-foreground">
+                  本条要求仅重改选中的 {picked!.resultIds.length} 条候选，其余保留。
+                </p>
+              )}
+              <label className="sr-only" htmlFor="project-assistant-message">
+                向项目助手发送消息
+              </label>
+              <Textarea
+                id="project-assistant-message"
+                value={message}
+                maxLength={4000}
+                placeholder="描述你想处理的数据和要求…"
+                className="min-h-24 resize-none"
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">Ctrl / ⌘ + Enter 发送</span>
+                <Button
+                  type="submit"
+                  disabled={
+                    busy ||
+                    running ||
+                    !message.trim() ||
+                    sessions.isPending ||
+                    Boolean(sessionId && conversation.isPending) ||
+                    Boolean(conversation.error)
+                  }
+                >
+                  <Send className="size-4" />
+                  {busy ? "正在提交…" : "发送"}
+                </Button>
+              </div>
+            </form>
+          </div>
+          <aside
+            aria-label="任务与背景"
+            className="min-h-0 min-w-0 space-y-4 overflow-y-auto border-t bg-muted/30 p-4 md:border-l md:border-t-0"
+          >
+            <AssistantBackground
+              key={sessionId ?? "new"}
+              base={base}
+              projectId={projectId}
+              sessionId={sessionId}
+              documents={visible?.backgroundDocuments ?? []}
+              getSession={async () => sessionId ?? (await createSession())}
+              canWrite={canWrite}
+              disabled={
+                busy ||
+                running ||
+                sessions.isPending ||
+                Boolean(sessionId && conversation.isPending) ||
+                Boolean(conversation.error) ||
+                visible?.task?.stage === "processing"
+              }
+              setBusy={setBusy}
+              onError={(e) => setError(errorText(e))}
+            />
             {visible?.task?.goal && (
               <section
                 aria-label="当前任务"
@@ -645,7 +805,8 @@ export function ProjectAssistant({
                         visible.task.error !== "assistant_session_limit") ||
                         (visible.task.stage === "awaiting_review" &&
                           (visible.task.checkedStatus === "failed" ||
-                            visible.task.checkedStatus === "cancelled"))) && (
+                            visible.task.checkedStatus === "cancelled" ||
+                            Boolean(visible.task.review?.missingCount)))) && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -668,6 +829,21 @@ export function ProjectAssistant({
                     </div>
                   )}
                 </div>
+                <p className="break-words text-sm leading-6">{visible.task.goal}</p>
+                {Boolean(visible.task.requirements?.length) && (
+                  <details className="rounded-md border px-3 py-2 text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      已记录的要求（{visible.task.requirements!.length}）
+                    </summary>
+                    <ul className="mt-2 list-disc space-y-1 pl-4">
+                      {visible.task.requirements!.map((requirement, index) => (
+                        <li key={index} className="break-words leading-5">
+                          {requirement}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 {visible.task.target && (
                   <p className="text-xs text-muted-foreground">
                     任务对象：
@@ -693,9 +869,17 @@ export function ProjectAssistant({
                 {visible.task.review?.runId === visible.task.runId && visible.task.review && (
                   <div className="space-y-2 border-t pt-3 text-xs">
                     <p>
-                      候选 {visible.task.review.total} / 目标 {visible.task.review.expectedCount} 条
-                      · {visible.task.review.countSatisfied ? "数量达标" : "数量未达标"}
+                      {visible.task.review.countKind === "final" ? "最终总数" : "本次候选"}{" "}
+                      {visible.task.review.total} / 目标 {visible.task.review.expectedCount} 条 ·{" "}
+                      {visible.task.review.countSatisfied ? "数量达标" : "数量未达标"}
                     </p>
+                    {visible.task.review.countKind === "final" &&
+                      visible.task.review.baseCount !== undefined && (
+                        <p className="text-muted-foreground">
+                          草稿已有 {visible.task.review.baseCount} 条 · 待采用{" "}
+                          {visible.task.review.remainingCount} 条
+                        </p>
+                      )}
                     <p className="text-muted-foreground">
                       空问题 {visible.task.review.emptyQuestions} · 完全重复{" "}
                       {visible.task.review.duplicates} · 受保护字段变化{" "}
@@ -714,6 +898,21 @@ export function ProjectAssistant({
                     <p className="text-muted-foreground">
                       以上是结构与数量核对，内容是否正确请审核候选。
                     </p>
+                    {visible.task.review.classifications?.map((rule, i) => (
+                      <div key={i} className="text-muted-foreground">
+                        <p>
+                          {rule.key || "期望输出"}：
+                          {rule.satisfied ? "分类与配额符合要求" : "分类或配额未符合要求"}
+                          {rule.missing ? ` · 缺少唯一分类 ${rule.missing} 条` : ""}
+                          {rule.outsideValues ? ` · 范围外 ${rule.outsideValues} 条` : ""}
+                        </p>
+                        {rule.quotaDifferences.map((value) => (
+                          <p key={value.value}>
+                            {value.value}：实际 {value.actual} / 要求 {value.expected} 条
+                          </p>
+                        ))}
+                      </div>
+                    ))}
                   </div>
                 )}
                 {visible.task.error && (
@@ -723,100 +922,44 @@ export function ProjectAssistant({
                 )}
               </section>
             )}
+            {taskRuns.length > 1 && reviewRun && (
+              <Select
+                value={reviewRun}
+                onValueChange={(id) => {
+                  setCandidateRun(id);
+                  setPicked(undefined);
+                }}
+              >
+                <SelectTrigger aria-label="选择候选批次">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {taskRuns.map((runId, index) => (
+                    <SelectItem key={runId} value={runId}>
+                      批次 {index + 1}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {canWrite &&
               sessionId &&
-              visible?.task?.runId &&
+              reviewRun &&
+              visible?.task &&
               ["awaiting_review", "awaiting_confirmation", "failed", "stopped"].includes(
                 visible.task.stage,
               ) && (
                 <AssistantCandidates
-                  key={`${sessionId}:${visible.task.runId}`}
+                  key={`${sessionId}:${reviewRun}`}
                   base={base}
                   sessionId={sessionId}
-                  runId={visible.task.runId}
+                  runId={reviewRun}
                   selected={picked}
                   onSelect={setPicked}
                 />
               )}
-            {pending &&
-              (!pending.sessionId || pending.sessionId === sessionId) &&
-              !visible?.turns.some((t) => t.id === pending.turnId) && (
-                <div className="ml-8 space-y-2 rounded-md bg-muted p-3 text-sm">
-                  <p className="text-xs text-muted-foreground">你</p>
-                  <p className="whitespace-pre-wrap break-words">{pending.message}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {pending.status === "failed"
-                      ? "提交尚未确认，消息已保留。"
-                      : pending.status === "accepted"
-                        ? "已受理，正在处理…"
-                        : "正在提交…"}
-                  </p>
-                  {pending.status === "failed" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy || running}
-                      onClick={() => void send(pending)}
-                    >
-                      重新提交这条
-                    </Button>
-                  )}
-                </div>
-              )}
-          </div>
+          </aside>
         </div>
-        <form
-          className="space-y-3 border-t bg-background px-5 py-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-        >
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          {picked?.runId === visible?.task?.runId && Boolean(picked?.resultIds.length) && (
-            <p className="text-xs text-muted-foreground">
-              本条要求仅重改选中的 {picked!.resultIds.length} 条候选，其余保留。
-            </p>
-          )}
-          <label className="sr-only" htmlFor="project-assistant-message">
-            向项目助手发送消息
-          </label>
-          <Textarea
-            id="project-assistant-message"
-            value={message}
-            maxLength={4000}
-            placeholder="描述你想处理的数据和要求…"
-            className="min-h-24 resize-none"
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">Ctrl / ⌘ + Enter 发送</span>
-            <Button
-              type="submit"
-              disabled={
-                busy ||
-                running ||
-                !message.trim() ||
-                sessions.isPending ||
-                Boolean(sessionId && conversation.isPending) ||
-                Boolean(conversation.error)
-              }
-            >
-              <Send className="size-4" />
-              {busy ? "正在提交…" : "发送"}
-            </Button>
-          </div>
-        </form>
       </SheetContent>
     </Sheet>
   );

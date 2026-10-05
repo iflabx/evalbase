@@ -2088,12 +2088,19 @@ describe("assistant continuous task public contract", () => {
           databaseUrl,
           modelEncryptionKey: Buffer.alloc(32, 5).toString("base64"),
         };
-        const result = await runProcessing(
-          db,
-          new ArtifactRepository(config.minio),
-          config,
-          job,
-        );
+        let result;
+        try {
+          result = await runProcessing(
+            db,
+            new ArtifactRepository(config.minio),
+            config,
+            job,
+          );
+        } catch (error) {
+          if (pattern !== "partial") throw error;
+          expect((error as Error).message).toBe("processing_batch_failed");
+        }
+        // Keep a legacy succeeded row to prove recovery still works for old persisted tasks.
         await db.query(
           "UPDATE job SET status='succeeded',result=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$1",
           [job.id, result],
@@ -2132,16 +2139,46 @@ describe("assistant continuous task public contract", () => {
           ]);
         } else {
           expect(review.complete).toBe(false);
+          const legacySession = (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions`,
+              headers,
+              payload: {},
+            })
+          ).json().sessionId;
+          await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+            legacySession,
+            JSON.stringify({
+              goal: "扩充12条",
+              title: "补齐缺失",
+              runId: id,
+              stage: "awaiting_review",
+              checkedStatus: "succeeded",
+              review,
+            }),
+          ]);
+          const retried = await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${legacySession}/retry`,
+            headers,
+            payload: {},
+          });
+          expect(retried.statusCode, retried.body).toBe(200);
           expect(
             (
               await app.inject({
-                method: "POST",
-                url: `${path}/${id}/retry`,
+                method: "GET",
+                url: `${path}/${id}/status`,
                 headers,
-                payload: {},
               })
             ).json().run.status,
-          ).toBe("succeeded");
+          ).toBe("queued");
+          expect(
+            (
+              await app.inject({ method: "GET", url: `${path}/${id}`, headers })
+            ).json().total,
+          ).toBe(11);
         }
       }
     } finally {

@@ -1,4 +1,5 @@
 import { guardAssistantCommit } from "../assistant/fence.js";
+import { adoptedCandidateKeys } from "./adoption.js";
 import type { Database } from "../db/pool.js";
 import { writeBatches } from "../db/batch.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -9,10 +10,99 @@ import {
   processingAccess,
   processingSourceAvailable,
   ProcessingError,
+  processingCandidateOrigins,
   type ProcessingScope,
   type InputSnapshot,
 } from "./store.js";
 import type { ProcessingOutput, ProcessingResult } from "./protocol.js";
+
+const sortedIds = (ids: string[]) =>
+  ids
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(a.split(":")[0]) - Number(b.split(":")[0]) ||
+        Number(a.split(":")[1]) - Number(b.split(":")[1]),
+    );
+export function processingAcceptanceHash(
+  ids: string[],
+  target: unknown,
+  groups?: { runId: string; resultIds: string[] }[],
+) {
+  return sha256(
+    canonicalJson(
+      groups && groups.length > 1
+        ? {
+            groups: groups.map((group) => ({
+              runId: group.runId,
+              resultIds: sortedIds(group.resultIds),
+            })),
+            target,
+          }
+        : { ids: sortedIds(ids), target },
+    ),
+  );
+}
+
+async function selectedGroup(
+  db: Pick<Database, "query">,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  runId: string,
+  ids: string[],
+) {
+  const run = await getProcessingRun(db, scope, runId);
+  if (!["succeeded", "failed", "cancelled"].includes(run.status))
+    throw new ProcessingError(409, "processing_still_running");
+  const snapshot = JSON.parse(
+    (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
+  ) as InputSnapshot;
+  const original = new Map(snapshot.records.map((row) => [row.id, row]));
+  const origins = await processingCandidateOrigins(
+    db,
+    artifacts,
+    scope,
+    snapshot,
+  );
+  const batches = await db.query(
+    "SELECT ordinal,result_ref,result_indices FROM processing_batch WHERE run_id=$1 AND ordinal=ANY($2::integer[]) AND result_ref IS NOT NULL",
+    [runId, [...new Set(ids.map((id) => Number(id.split(":")[0])))]],
+  );
+  const available = new Map<string, ProcessingOutput>();
+  for (const batch of batches.rows) {
+    const result = JSON.parse(
+      (await artifacts.readBytes(batch.result_ref, 100000000)).toString("utf8"),
+    ) as ProcessingResult;
+    result.records.forEach((row, index) =>
+      available.set(
+        `${batch.ordinal}:${batch.result_indices?.[index] ?? index}`,
+        row,
+      ),
+    );
+  }
+  return {
+    run,
+    selected: ids.map((id) => {
+      const row = available.get(id),
+        input = row && original.get(row.sourceId);
+      if (!row || !input)
+        throw new ProcessingError(422, "processing_result_invalid");
+      return {
+        id,
+        ...row,
+        runId,
+        candidateOrigin: origins.get(row.sourceId) ?? { runId, resultId: id },
+        input,
+        source: run.source,
+        originalId: input.baseline?.id ?? row.sourceId,
+        adoptionFields:
+          snapshot.refinement?.adoptionFields ?? run.options.allowedFields,
+        rootOperation:
+          snapshot.refinement?.rootOperation ?? run.options.operation,
+      };
+    }),
+  };
+}
 
 export async function acceptProcessingResults(
   db: Database,
@@ -70,7 +160,30 @@ export async function acceptProcessingResults(
         Number(a.split(":")[0]) - Number(b.split(":")[0]) ||
         Number(a.split(":")[1]) - Number(b.split(":")[1]),
     );
-  const digest = sha256(canonicalJson({ ids, target }));
+  const groups = scope.acceptanceGroups?.map((group) => ({
+    ...group,
+    resultIds: sortedIds(group.resultIds),
+  })) ?? [{ runId, resultIds: ids }];
+  if (
+    !groups.length ||
+    groups.length > 12 ||
+    new Set(groups.map((group) => group.runId)).size !== groups.length ||
+    groups.some(
+      (group) =>
+        !group.resultIds.length ||
+        new Set(group.resultIds).size !== group.resultIds.length ||
+        group.resultIds.some(
+          (id) => typeof id !== "string" || !/^\d+:\d+$/u.test(id),
+        ),
+    ) ||
+    groups.reduce((count, group) => count + group.resultIds.length, 0) >
+      10000 ||
+    canonicalJson(
+      groups.find((group) => group.runId === runId)?.resultIds ?? [],
+    ) !== canonicalJson(ids)
+  )
+    throw new ProcessingError(422, "processing_accept_invalid");
+  const digest = processingAcceptanceHash(ids, target, groups);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -91,16 +204,92 @@ export async function acceptProcessingResults(
       await client.query("COMMIT");
       return { receipt: prior.receipt, replayed: true };
     }
-    const run = await getProcessingRun(client, scope, runId);
-    if (!["succeeded", "failed", "cancelled"].includes(run.status))
-      throw new ProcessingError(409, "processing_still_running");
-    const snapshot = JSON.parse(
-      (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
-    ) as InputSnapshot;
-    const adoptionFields =
-      snapshot.refinement?.adoptionFields ?? run.options.allowedFields;
-    const rootOperation =
-      snapshot.refinement?.rootOperation ?? run.options.operation;
+    // Different UI entry points have different keys, but must not repeat the same frozen effect.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `processing-accept-effect:${scope.projectId}:${scope.actorId}:${runId}:${digest}`,
+    ]);
+    const adopted = (
+      await client.query(
+        `SELECT * FROM processing_acceptance
+        WHERE project_id=$1 AND actor_id=$2 AND run_id=$3 AND request_hash=$4
+        ORDER BY created_at,id LIMIT 1`,
+        [scope.projectId, scope.actorId, runId, digest],
+      )
+    ).rows[0];
+    if (adopted) {
+      await getProcessingRun(client, scope, runId);
+      await processingAccess(client, scope, true);
+      await guardAssistantCommit(client, scope);
+      await client.query(
+        `INSERT INTO processing_acceptance(id,run_id,project_id,actor_id,idempotency_key,request_hash,result_ids,asset_id,draft_id,receipt)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          opaqueId("adoption"),
+          runId,
+          scope.projectId,
+          scope.actorId,
+          key,
+          digest,
+          JSON.stringify(ids),
+          adopted.asset_id,
+          adopted.draft_id,
+          adopted.receipt,
+        ],
+      );
+      await client.query("COMMIT");
+      return { receipt: adopted.receipt, replayed: true };
+    }
+    const loaded = [];
+    for (const group of groups)
+      loaded.push(
+        await selectedGroup(
+          client,
+          artifacts,
+          scope,
+          group.runId,
+          group.resultIds,
+        ),
+      );
+    const run = loaded.find((item) => item.run.id === runId)!.run;
+    if (groups.length > 1) {
+      await guardAssistantCommit(client, scope);
+      const task = (
+        await client.query("SELECT task FROM assistant_session WHERE id=$1", [
+          scope.assistantGuard?.sessionId,
+        ])
+      ).rows[0]?.task;
+      if (
+        !task ||
+        loaded.some(
+          (item) =>
+            item.run.actor_id !== scope.actorId ||
+            !task.runIds?.includes(item.run.id),
+        )
+      )
+        throw new ProcessingError(409, "assistant_processing_context_changed");
+      const sourceAssets = new Set(
+        loaded.flatMap((item) =>
+          item.run.source.kind === "assets"
+            ? item.run.source.assetIds
+            : item.selected.flatMap((row) => {
+                const source = row.input.baseline?.source ?? row.input.source;
+                return isPlainObject(source) &&
+                  typeof source.assetId === "string"
+                  ? [source.assetId]
+                  : [];
+              }),
+        ),
+      );
+      const size = (
+        await client.query(
+          "SELECT coalesce(sum(size_bytes),0)::bigint AS bytes FROM data_asset WHERE project_id=$1 AND id=ANY($2::text[])",
+          [scope.projectId, [...sourceAssets]],
+        )
+      ).rows[0];
+      if (sourceAssets.size > 5 || Number(size.bytes) > 100000000)
+        throw new ProcessingError(422, "processing_capacity_exceeded");
+    }
+    const selected = loaded.flatMap((item) => item.selected);
     let draftId: string | null =
       target.kind === "draft" ? String(target.id) : null;
     let revision = 0;
@@ -120,78 +309,81 @@ export async function acceptProcessingResults(
       );
       revision = Number(draft.revision);
       if (
-        !(
-          run.source.kind === "draft" &&
-          run.source.id === draftId &&
-          rootOperation !== "augment"
+        !selected.every(
+          (row) =>
+            row.source.kind === "draft" &&
+            row.source.id === draftId &&
+            row.rootOperation !== "augment",
         ) &&
         revision !== target.expectedRevision
       )
         throw new ProcessingError(409, "draft_revision_conflict");
     }
     // Lock the job/run after the draft, matching the source-edit ordering.
-    const locked = await getProcessingRun(client, scope, runId, true);
-    if (!["succeeded", "failed", "cancelled"].includes(locked.status))
-      throw new ProcessingError(409, "processing_still_running");
+    for (const group of groups
+      .slice()
+      .sort((a, b) => a.runId.localeCompare(b.runId))) {
+      const locked = await getProcessingRun(client, scope, group.runId, true);
+      if (!["succeeded", "failed", "cancelled"].includes(locked.status))
+        throw new ProcessingError(409, "processing_still_running");
+    }
     await processingAccess(client, scope, true);
 
-    const original = new Map(snapshot.records.map((row) => [row.id, row]));
-    const batchIds = [...new Set(ids.map((id) => Number(id.split(":")[0])))];
-    const batches = await client.query(
-      "SELECT ordinal,result_ref,result_indices FROM processing_batch WHERE run_id=$1 AND ordinal=ANY($2::integer[]) AND result_ref IS NOT NULL",
-      [runId, batchIds],
+    const replacingRows = selected.filter(
+      (row) =>
+        draftId !== null &&
+        row.source.kind === "draft" &&
+        row.source.id === draftId &&
+        row.rootOperation !== "augment",
     );
-    const available = new Map<string, ProcessingOutput>();
-    for (const batch of batches.rows) {
-      const result = JSON.parse(
-        (await artifacts.readBytes(batch.result_ref, 100000000)).toString(
-          "utf8",
-        ),
-      ) as ProcessingResult;
-      result.records.forEach((row, index) =>
-        available.set(
-          `${batch.ordinal}:${batch.result_indices?.[index] ?? index}`,
-          row,
-        ),
-      );
-    }
-    const selected = ids.map((id) => {
-      const row = available.get(id);
-      if (!row || !original.has(row.sourceId))
-        throw new ProcessingError(422, "processing_result_invalid");
-      return {
-        id,
-        ...row,
-        originalId: original.get(row.sourceId)!.baseline?.id ?? row.sourceId,
-      };
-    });
-    const replacing =
-      draftId !== null &&
-      run.source.kind === "draft" &&
-      run.source.id === draftId &&
-      rootOperation !== "augment";
-    const updates: { id: string; field: string; value: unknown }[] = [];
-    if (replacing) {
+    const replacingIds = replacingRows.map((row) => row.originalId);
+    const replacingSet = new Set(replacingRows);
+    if (new Set(replacingIds).size !== replacingIds.length)
+      throw new ProcessingError(422, "processing_results_overlap");
+    const updates: {
+      id: string;
+      field: string;
+      value: unknown;
+      runId: string;
+    }[] = [];
+    if (replacingRows.length) {
       const current = await client.query(
         "SELECT * FROM collaborative_draft_record WHERE draft_id=$1 AND id=ANY($2::text[]) AND deleted=false ORDER BY id FOR UPDATE",
-        [draftId, selected.map((row) => row.originalId)],
+        [draftId, replacingIds],
       );
       const byId = new Map(current.rows.map((row) => [row.id, row]));
-      for (const row of selected) {
-        const input = original.get(row.sourceId)!;
+      for (const row of replacingRows) {
+        const input = row.input;
         const before = input.baseline ?? input,
           now = byId.get(row.originalId);
         if (!now) throw new ProcessingError(409, "draft_record_removed");
-        for (const field of adoptionFields) {
+        for (const field of row.adoptionFields) {
           if (canonicalJson(before[field]) === canonicalJson(row[field]))
             continue;
           const column = field === "expectedOutput" ? "expected_output" : field;
           if (Number(now[`${column}_revision`]) !== before.revisions?.[field])
             throw new ProcessingError(409, "draft_field_conflict");
-          updates.push({ id: row.originalId, field, value: row[field] });
+          updates.push({
+            id: row.originalId,
+            field,
+            value: row[field],
+            runId: row.runId,
+          });
         }
       }
     }
+    if (target.kind === "draft") {
+      const priorResults = await adoptedCandidateKeys(
+        client,
+        artifacts,
+        scope,
+        loaded.map((item) => ({ run: item.run, records: item.selected })),
+        draftId!,
+      );
+      if (priorResults.size)
+        throw new ProcessingError(409, "processing_already_adopted");
+    }
+
     await guardAssistantCommit(client, scope);
     if (target.kind === "newDraft") {
       draftId = opaqueId("collabdraft");
@@ -226,7 +418,7 @@ export async function acceptProcessingResults(
         await client.query(
           `SELECT count(*) FILTER(WHERE NOT deleted)::int AS count,coalesce(max(position),0)::bigint AS position,
         array_agg(DISTINCT source->>'assetId') FILTER(WHERE NOT deleted AND source IS NOT NULL AND NOT(id=ANY($2::text[]))) AS assets FROM collaborative_draft_record WHERE draft_id=$1`,
-          [draftId, replacing ? selected.map((row) => row.originalId) : []],
+          [draftId, replacingIds],
         )
       ).rows[0];
       const assets = capacity.assets ?? [];
@@ -239,7 +431,8 @@ export async function acceptProcessingResults(
       if (
         assets.length + 1 > 5 ||
         Number(size.bytes) + bytes.byteLength > 100000000 ||
-        Number(capacity.count) + (replacing ? 0 : selected.length) > 10000
+        Number(capacity.count) + (selected.length - replacingRows.length) >
+          10000
       )
         throw new ProcessingError(422, "test_set_capacity_exceeded");
       highWater = Number(capacity.position);
@@ -251,10 +444,13 @@ export async function acceptProcessingResults(
         [scope.projectId],
       )
     ).rows[0];
-    const label = { clean: "清洗", rewrite: "改写", augment: "鎵╁厖" }[
+    const label = { clean: "清洗", rewrite: "改写", augment: "扩充" }[
       run.options.operation
     ];
-    const name = `${label}结果-${runId.slice(-8)}.jsonl`;
+    const name =
+      groups.length > 1
+        ? `任务成果-${acceptanceId.slice(-8)}.jsonl`
+        : `${label}结果-${runId.slice(-8)}.jsonl`;
     await client.query(
       `INSERT INTO data_asset(id,project_id,collection_id,blob_sha256,object_ref,size_bytes,mime_type,file_name,format,status,uploaded_by,processing_run_id)
       VALUES($1,$2,$3,$4,$5,$6,'application/x-ndjson',$7,'jsonl','stored',$8,$9)`,
@@ -311,7 +507,7 @@ export async function acceptProcessingResults(
         locator: {
           kind: "jsonl",
           line: index + 1,
-          processingRunId: runId,
+          processingRunId: selected[index].runId,
           resultId: selected[index].id,
           inputId: selected[index].sourceId,
         },
@@ -319,7 +515,7 @@ export async function acceptProcessingResults(
       })),
     );
     if (draftId) {
-      if (replacing) {
+      if (replacingRows.length) {
         for (const update of updates) {
           const column =
             update.field === "expectedOutput"
@@ -337,31 +533,37 @@ export async function acceptProcessingResults(
                 : update.value,
               [update.field],
               scope.actorId,
-              runId,
+              update.runId,
             ],
           );
         }
         for (const [index, row] of selected.entries())
-          await client.query(
-            "UPDATE collaborative_draft_record SET source=$3 WHERE draft_id=$1 AND id=$2",
-            [draftId, row.originalId, { assetId, ordinal: index + 1 }],
-          );
-      } else
+          if (replacingSet.has(row))
+            await client.query(
+              "UPDATE collaborative_draft_record SET source=$3 WHERE draft_id=$1 AND id=$2",
+              [draftId, row.originalId, { assetId, ordinal: index + 1 }],
+            );
+      }
+      const appending = selected
+        .map((row, index) => ({ row, index }))
+        .filter(({ row }) => !replacingSet.has(row));
+      if (appending.length)
         await writeBatches(
           client,
           `INSERT INTO collaborative_draft_record(draft_id,id,position,question,expected_output,metadata,source,updated_by,field_attribution)
         SELECT $1,x.id,x.position,x.question,x.expected_output,x.metadata,x.source,$2,
-          jsonb_build_object('question',jsonb_build_object('userId',$2::text,'at',now(),'processingRunId',$3::text),
-          'expectedOutput',jsonb_build_object('userId',$2::text,'at',now(),'processingRunId',$3::text),'metadata',jsonb_build_object('userId',$2::text,'at',now(),'processingRunId',$3::text))
-        FROM jsonb_to_recordset($4::jsonb) AS x(id text,position bigint,question text,expected_output text,metadata jsonb,source jsonb)`,
-          [draftId, scope.actorId, runId],
-          selected.map((row, index) => ({
+          jsonb_build_object('question',jsonb_build_object('userId',$2::text,'at',now(),'processingRunId',x.run_id),
+          'expectedOutput',jsonb_build_object('userId',$2::text,'at',now(),'processingRunId',x.run_id),'metadata',jsonb_build_object('userId',$2::text,'at',now(),'processingRunId',x.run_id))
+        FROM jsonb_to_recordset($3::jsonb) AS x(id text,position bigint,question text,expected_output text,metadata jsonb,source jsonb,run_id text)`,
+          [draftId, scope.actorId],
+          appending.map(({ row, index }) => ({
             id: opaqueId("draftrow"),
             position: ++highWater,
             question: row.question,
             expected_output: row.expectedOutput,
             metadata: row.metadata,
             source: { assetId, ordinal: index + 1 },
+            run_id: row.runId,
           })),
         );
       await client.query(
@@ -377,24 +579,29 @@ export async function acceptProcessingResults(
       draftId,
       adopted: selected.length,
       changedFields: updates.length,
+      candidateOrigins: selected.map((row) => row.candidateOrigin),
+      ...(groups.length > 1 ? { resultGroups: groups } : {}),
       ...(draftId ? { revision: revision + 1 } : {}),
     };
-    await client.query(
-      `INSERT INTO processing_acceptance(id,run_id,project_id,actor_id,idempotency_key,request_hash,result_ids,asset_id,draft_id,receipt)
+    for (const group of groups)
+      await client.query(
+        `INSERT INTO processing_acceptance(id,run_id,project_id,actor_id,idempotency_key,request_hash,result_ids,asset_id,draft_id,receipt)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [
-        acceptanceId,
-        runId,
-        scope.projectId,
-        scope.actorId,
-        key,
-        digest,
-        JSON.stringify(ids),
-        assetId,
-        draftId,
-        receipt,
-      ],
-    );
+        [
+          group.runId === runId ? acceptanceId : opaqueId("adoption"),
+          group.runId,
+          scope.projectId,
+          scope.actorId,
+          group.runId === runId
+            ? key
+            : `assistant-group:${sha256(`${key}:${group.runId}`)}`,
+          digest,
+          JSON.stringify(group.resultIds),
+          assetId,
+          draftId,
+          receipt,
+        ],
+      );
     await guardAssistantCommit(client, scope);
     await client.query("COMMIT");
     return { receipt, replayed: false };

@@ -20,6 +20,13 @@ import { acceptProcessingResults } from "../../processing/accept.js";
 import { executeAssistantTurn } from "../../assistant/agent.js";
 import { assistantContext } from "../../assistant/context.js";
 import {
+  uploadBackground,
+  readBackground,
+  removeBackground,
+} from "../../assistant/background.js";
+import { BACKGROUND_LIMITS } from "../../assistant/extract-background.js";
+import { cleanupProcessingObjects } from "../../processing/cleanup.js";
+import {
   assistantAccess,
   AssistantError,
   dependenciesAvailable,
@@ -45,7 +52,12 @@ export function registerAssistant({
 > & { publishDraft: ReturnType<typeof registerDrafts> }) {
   const path = "/api/projects/:projectId/assistant",
     running = new Set<Promise<void>>();
-  type Params = { projectId: string; sessionId: string; proposalId: string };
+  type Params = {
+    projectId: string;
+    sessionId: string;
+    proposalId: string;
+    documentId: string;
+  };
   const scope = (
     request: FastifyRequest<{ Params: Params }>,
   ): AssistantScope => ({
@@ -176,6 +188,78 @@ export function registerAssistant({
           },
         );
       }),
+  );
+  app.post<{ Params: Params; Body: unknown }>(
+    `${path}/sessions/:sessionId/background-documents`,
+    {
+      preHandler: authenticate,
+      bodyLimit: Math.ceil(BACKGROUND_LIMITS.bytes / 3) * 4 + 2048,
+    },
+    async (request, reply) => {
+      if (!write(request, reply)) return;
+      return respond(reply, async () => {
+        const body = request.body;
+        if (
+          !isPlainObject(body) ||
+          Object.keys(body).some(
+            (key) => !["fileName", "contentBase64"].includes(key),
+          ) ||
+          typeof body.fileName !== "string" ||
+          typeof body.contentBase64 !== "string" ||
+          body.contentBase64.length >
+            Math.ceil(BACKGROUND_LIMITS.bytes / 3) * 4 ||
+          !/^[A-Za-z0-9+/]*={0,2}$/u.test(body.contentBase64)
+        )
+          throw new AssistantError(422, "assistant_document_invalid");
+        const bytes = Buffer.from(body.contentBase64, "base64");
+        if (bytes.toString("base64") !== body.contentBase64)
+          throw new AssistantError(422, "assistant_document_invalid");
+        const result = await uploadBackground(
+          db,
+          scope(request),
+          request.params.sessionId,
+          body.fileName,
+          bytes,
+        );
+        return reply.code(result.replayed ? 200 : 201).send(result);
+      });
+    },
+  );
+  app.get<{
+    Params: Params;
+    Querystring: { from?: string; limit?: string; query?: string };
+  }>(
+    `${path}/sessions/:sessionId/background-documents/:documentId`,
+    { preHandler: authenticate },
+    (request, reply) =>
+      respond(reply, () =>
+        readBackground(
+          db,
+          scope(request),
+          request.params.sessionId,
+          request.params.documentId,
+          Number(request.query.from ?? 1),
+          Number(request.query.limit ?? 3),
+          request.query.query,
+        ),
+      ),
+  );
+  app.delete<{ Params: Params }>(
+    `${path}/sessions/:sessionId/background-documents/:documentId`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      if (!write(request, reply)) return;
+      return respond(reply, async () => {
+        const result = await removeBackground(
+          db,
+          scope(request),
+          request.params.sessionId,
+          request.params.documentId,
+        );
+        await cleanupProcessingObjects(db, artifacts, request.params.projectId);
+        return result;
+      });
+    },
   );
   app.post<{ Params: Params; Body: unknown }>(
     `${path}/sessions/:sessionId/turns`,
@@ -325,7 +409,10 @@ export function registerAssistant({
             receipt = await acceptProcessingResults(
               db,
               artifacts,
-              effectScope,
+              {
+                ...effectScope,
+                ...(p.resultGroups ? { acceptanceGroups: p.resultGroups } : {}),
+              },
               p.runId,
               proposal.id,
               { resultIds: p.resultIds, target: p.target },
@@ -438,7 +525,10 @@ export function registerAssistant({
         });
       },
     );
-  app.get<{ Params: Params; Querystring: { offset?: string; limit?: string } }>(
+  app.get<{
+    Params: Params;
+    Querystring: { offset?: string; limit?: string; run?: string };
+  }>(
     `${path}/sessions/:sessionId/candidates`,
     { preHandler: authenticate },
     async (request, reply) =>
@@ -452,13 +542,30 @@ export function registerAssistant({
         await assistantAccess(db, currentScope, true);
         if (!session.task?.runId)
           throw new AssistantError(404, "processing_not_found");
-        return readProcessingRun(
+        const runId = request.query.run ?? session.task.runId;
+        if (!(session.task.runIds ?? [session.task.runId]).includes(runId))
+          throw new AssistantError(
+            409,
+            "assistant_candidate_selection_changed",
+          );
+        const result = await readProcessingRun(
           db,
           artifacts,
           currentScope,
-          session.task.runId,
+          runId,
           request.query,
         );
+        const after = await sessionRow(
+          db,
+          currentScope,
+          request.params.sessionId,
+        );
+        if (after.task_revision !== session.task_revision)
+          throw new AssistantError(
+            409,
+            "assistant_candidate_selection_changed",
+          );
+        return result;
       }),
   );
   app.addHook("onClose", async () => {

@@ -243,7 +243,11 @@ export function resetWorkspaceSession() {
   session = undefined;
 }
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(
+  path: string,
+  init?: RequestInit,
+  format: "json" | "response" = "json",
+): Promise<T> {
   const method = init?.method ?? "GET";
   const headers = new Headers(init?.headers);
   if (method !== "GET") headers.set("x-csrf-token", await csrfToken());
@@ -265,6 +269,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw Object.assign(new Error(body?.error?.code ?? "操作失败"), body?.error);
   }
   if (response.status === 204) return undefined as T;
+  if (format === "response") return response as T;
   return response.json() as Promise<T>;
 }
 

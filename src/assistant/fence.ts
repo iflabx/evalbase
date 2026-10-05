@@ -69,8 +69,31 @@ export async function linkAssistantProcessing(
 ) {
   if (!scope.assistantGuard) return;
   await guardAssistantCommit(db, scope);
+  const state = (
+    await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+      scope.assistantGuard.sessionId,
+    ])
+  ).rows[0].task;
+  const parent = (
+    await db.query("SELECT parent_run_id FROM processing_run WHERE id=$1", [
+      runId,
+    ])
+  ).rows[0]?.parent_run_id;
+  const prior: string[] = state.runIds ?? (state.runId ? [state.runId] : []);
+  const runs = [
+    ...new Set(prior.map((id) => (id === parent ? runId : id)).concat(runId)),
+  ];
+  if (runs.length > 12) throw new AssistantError(422, "assistant_task_limit");
+  const capacity = (
+    await db.query(
+      "SELECT sum(coalesce((options->>'outputCount')::integer,input_count))::integer AS total FROM processing_run WHERE id=ANY($1::text[])",
+      [runs],
+    )
+  ).rows[0];
+  if (capacity.total > 10000)
+    throw new AssistantError(422, "processing_capacity_exceeded");
   await db.query(
-    "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'stage','processing','error',NULL,'review',NULL,'checkedStatus',NULL),updated_at=now() WHERE id=$1",
-    [scope.assistantGuard.sessionId, runId],
+    "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'runIds',$3::jsonb,'stage','processing','error',NULL,'review',NULL,'checkedStatus',NULL),updated_at=now() WHERE id=$1",
+    [scope.assistantGuard.sessionId, runId, JSON.stringify(runs)],
   );
 }

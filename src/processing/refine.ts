@@ -3,7 +3,9 @@ import {
   linkAssistantProcessing,
 } from "../assistant/fence.js";
 import type { Database } from "../db/pool.js";
+import { freezeBackground } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
+import { adoptedCandidateKeys, candidateKey } from "./adoption.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId, isPlainObject } from "../server/support.js";
@@ -80,6 +82,17 @@ export async function createRefinementRun(
       await client.query("COMMIT");
       return { run: result.run, replayed: true };
     }
+    const located = await getProcessingRun(client, scope, parentId);
+    if (
+      located.background_document_ids.length &&
+      (
+        await client.query(
+          "SELECT id FROM assistant_background_document WHERE id=ANY($1::text[]) FOR SHARE",
+          [located.background_document_ids],
+        )
+      ).rowCount !== located.background_document_ids.length
+    )
+      throw new ProcessingError(409, "processing_source_unavailable");
     const parent = await getProcessingRun(client, scope, parentId, true);
     if (!["succeeded", "failed", "cancelled"].includes(parent.status))
       throw new ProcessingError(409, "processing_still_running");
@@ -93,6 +106,15 @@ export async function createRefinementRun(
     );
     if (body.resultIds.some((id) => !data.allIds.includes(id)))
       throw new ProcessingError(422, "processing_result_invalid");
+    const adopted = await adoptedCandidateKeys(client, artifacts, scope, [
+      data,
+    ]);
+    if (
+      body.resultIds.some((id) =>
+        adopted.has(candidateKey({ runId: parentId, resultId: id })),
+      )
+    )
+      throw new ProcessingError(409, "processing_already_adopted");
     const input = JSON.parse(
       (await artifacts.readBytes(parent.input_ref!, 100000000)).toString(
         "utf8",
@@ -117,6 +139,7 @@ export async function createRefinementRun(
       if (!original) throw new ProcessingError(409, "processing_input_corrupt");
       return {
         id: `candidate:${row.id}`,
+        candidateOrigin: row.candidateOrigin,
         question: row.result.question,
         expectedOutput: row.result.expectedOutput,
         metadata: row.result.metadata,
@@ -140,6 +163,9 @@ export async function createRefinementRun(
     if (!model?.enabled)
       throw new ProcessingError(409, "model_connection_unavailable");
     await guardAssistantCommit(client, scope);
+    const background = scope.assistantGuard
+      ? await freezeBackground(client, scope, scope.assistantGuard.sessionId)
+      : input.background;
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     const stored = await artifacts.storeProcessing(
@@ -149,6 +175,7 @@ export async function createRefinementRun(
           ...(input.revision === undefined ? {} : { revision: input.revision }),
           records,
           refinement,
+          ...(background ? { background } : {}),
         }),
       ),
       runId,
@@ -160,8 +187,8 @@ export async function createRefinementRun(
       [jobId, scope.projectId, scope.actorId, { runId }, `processing:${runId}`],
     );
     await client.query(
-      `INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count,model_revision,target_draft_id,execution_config,parent_run_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      `INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count,model_revision,target_draft_id,execution_config,parent_run_id,background_document_ids)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         runId,
         scope.projectId,
@@ -178,6 +205,7 @@ export async function createRefinementRun(
         parent.target_draft_id,
         PROCESSING_EXECUTION,
         parentId,
+        background?.documents.map((document) => document.id) ?? [],
       ],
     );
     await linkAssistantProcessing(client, scope, runId);

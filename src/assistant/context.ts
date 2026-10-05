@@ -1,6 +1,7 @@
 import type { Database } from "../db/pool.js";
 import { sha256 } from "../package/contract.js";
 import { hasProjectCapability } from "../security/project-access.js";
+import { backgroundCatalog } from "./background.js";
 import {
   AssistantError,
   type AssistantScope,
@@ -141,6 +142,7 @@ export async function assistantContext(
           : testSets
     ).rows.find((r) => r.id === page.id);
   const state = encode({
+    backgroundDocuments: await backgroundCatalog(db, scope, sessionId),
     project: project.rows[0]?.name,
     files: assets.rows.map((a) => ({
       ref: a.id,

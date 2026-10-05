@@ -109,3 +109,53 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   expect(accepted).toBe(1);
   await page.screenshot({ path: "test-results/processing-results-narrow.png", fullPage: true });
 });
+
+test("can retry missing records in a legacy succeeded run", async ({ page }) => {
+  const base = "/api/projects/processing_project/processing-runs";
+  let recovered = false;
+  await page.route("**/api/**", async (route) => {
+    if (await mockAccountRoute(route)) return;
+    const path = new URL(route.request().url()).pathname;
+    const run = {
+      id: "legacy_run",
+      source: { kind: "assets" },
+      options: { operation: "rewrite", instructions: "" },
+      status: "succeeded",
+      partial: !recovered,
+      missingCount: recovered ? 0 : 1,
+      progress: 100,
+      inputCount: 2,
+      createdAt: "2026-10-04T08:00:00Z",
+      errorCode: null,
+    };
+    if (path === `${base}/legacy_run/retry`) {
+      recovered = true;
+      return route.fulfill({ json: { run } });
+    }
+    if (path === base) return route.fulfill({ json: { runs: [run] } });
+    if (path === `${base}/legacy_run`)
+      return route.fulfill({
+        json: {
+          run,
+          total: recovered ? 2 : 1,
+          allIds: recovered ? ["0:0", "0:1"] : ["0:0"],
+          records: [
+            {
+              id: "0:0",
+              original: { question: "原问题", expectedOutput: "", metadata: [] },
+              result: { question: "保留的候选", expectedOutput: "", metadata: [] },
+            },
+          ],
+          issues: recovered ? [] : [{ code: "missing_output", count: 1 }],
+        },
+      });
+    return route.fulfill({ status: 404, json: { error: { code: "route_not_found" } } });
+  });
+  await page.goto("/projects/processing_project/processing?run=legacy_run");
+  await expect(page.getByRole("status").filter({ hasText: "尚缺 1 条" })).toBeVisible();
+  await expect(page.getByText("保留的候选", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "重试未完成批次" }).click();
+  await expect.poll(() => recovered).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "已产生 2 条结果" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "重试未完成批次" })).toHaveCount(0);
+});

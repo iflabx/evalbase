@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { strFromU8, unzipSync } from "fflate";
+import { expect, test, type Download } from "@playwright/test";
 
 const version = {
   id: "version_v2",
@@ -77,8 +79,10 @@ const changes = [
 
 test("shows the frozen provenance controls and record detail for the selected version", async ({
   page,
+  context,
 }) => {
-  await page.route("**/api/**", async (route) => {
+  let failProvenanceDownload = false;
+  await context.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") {
       await route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
@@ -204,6 +208,24 @@ test("shows the frozen provenance controls and record detail for the selected ve
       });
       return;
     }
+    if (url.pathname.endsWith("/data.csv") || url.pathname.endsWith("/provenance.csv")) {
+      const provenance = url.pathname.endsWith("/provenance.csv");
+      if (provenance && failProvenanceDownload)
+        return route.fulfill({
+          status: 404,
+          json: { error: { code: "version_content_unavailable" } },
+        });
+      await route.fulfill({
+        contentType: "text/csv; charset=utf-8",
+        headers: {
+          "content-disposition": `attachment; filename="agentbench-v2-${provenance ? "provenance" : "data"}.csv"`,
+        },
+        body: provenance
+          ? "change_type,question,source_file,source_record\r\nmodified,已更新的问题,原始资料.csv,1\r\n"
+          : "question,expected_output,metadata\r\n已更新的问题,新答案,状态：更新\r\n",
+      });
+      return;
+    }
     await route.fulfill({ status: 404, json: { error: { code: "route_not_found" } } });
   });
 
@@ -218,7 +240,19 @@ test("shows the frozen provenance controls and record detail for the selected ve
   await page.getByRole("button", { name: "下载", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "下载 CSV" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "下载数据与溯源" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  const downloads: Download[] = [];
+  page.on("download", (download) => downloads.push(download));
+  await page.getByRole("menuitem", { name: "下载数据与溯源" }).click();
+  await expect.poll(() => downloads.length).toBe(1);
+  expect(downloads[0]!.suggestedFilename()).toBe("evalbase-v2-data-and-provenance.zip");
+  const files = unzipSync(await readFile((await downloads[0]!.path())!));
+  expect(Object.keys(files).sort()).toEqual(["data.csv", "provenance.csv"]);
+  expect(strFromU8(files["data.csv"]!)).toBe(
+    "question,expected_output,metadata\r\n已更新的问题,新答案,状态：更新\r\n",
+  );
+  expect(strFromU8(files["provenance.csv"]!)).toBe(
+    "change_type,question,source_file,source_record\r\nmodified,已更新的问题,原始资料.csv,1\r\n",
+  );
   await expect(page.getByRole("button", { name: /创建新版本|创建分支/ })).toBeVisible();
   await page.getByRole("button", { name: "查看来源与修改" }).click();
   await expect(page.getByRole("heading", { name: "来源与修改" })).toBeVisible();
@@ -250,6 +284,15 @@ test("shows the frozen provenance controls and record detail for the selected ve
   await expect(page.getByRole("button", { name: "新增" })).toBeVisible();
   await expect(page.getByRole("button", { name: "已移除" })).toBeVisible();
   await expect(page.getByRole("button", { name: "下载数据与溯源" })).toBeVisible();
+  await page.getByRole("button", { name: "下载数据与溯源" }).click();
+  await expect.poll(() => downloads.length).toBe(2);
+  const sourceFiles = unzipSync(await readFile((await downloads[1]!.path())!));
+  expect(strFromU8(sourceFiles["provenance.csv"]!)).toBe(strFromU8(files["provenance.csv"]!));
+  failProvenanceDownload = true;
+  await page.getByRole("button", { name: "下载数据与溯源" }).click();
+  await expect(page.getByText("下载失败", { exact: true })).toBeVisible();
+  expect(downloads).toHaveLength(2);
+  await expect(page.getByRole("button", { name: "下载数据与溯源" })).toBeEnabled();
   await expect(page.getByRole("columnheader", { name: "记录" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "状态" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "变更字段 / 修改者" })).toBeVisible();

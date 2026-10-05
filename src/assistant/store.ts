@@ -3,16 +3,28 @@ import { hasProjectCapability } from "../security/project-access.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
+import { processingAcceptanceHash } from "../processing/accept.js";
+import { backgroundCatalog } from "./background.js";
 
 export type AssistantScope = { projectId: string; actorId: string };
 function initialTaskTitle(text: string) {
   const named = text.match(/本会话命名为[“"「]([^”"」\n]{1,40})[”"」]/u)?.[1];
   return named ?? "新任务";
 }
-function taskPresentation(task: Record<string, any> | null) {
+export function taskPresentation(task: Record<string, any> | null) {
   if (!task) return task;
   return {
     ...task,
+    ...(task.processingScope
+      ? {
+          processingScope: {
+            source: task.processingScope.source,
+            configuration: task.processingScope.configuration,
+            count: task.processingScope.recordIds.length,
+            hash: task.processingScope.hash,
+          },
+        }
+      : {}),
     ...(task.goal?.length > 40 &&
     !Object.hasOwn(task, "nextAction") &&
     task.title === task.goal.slice(0, 40)
@@ -152,6 +164,7 @@ export async function readSession(
     )
   ).rows;
   const context = await readContext?.();
+  const backgroundDocuments = await backgroundCatalog(db, scope, id);
   await assistantAccess(
     db,
     scope,
@@ -176,6 +189,7 @@ export async function readSession(
     })),
     proposals,
     context,
+    backgroundDocuments,
   };
 }
 /** Apply the same historical-content boundary as the detail route, without receipt mutations. */
@@ -340,7 +354,10 @@ export async function startTurn(
       throw new AssistantError(409, "assistant_confirmation_running");
     if (
       candidateSelection &&
-      (candidateSelection as { runId: string }).runId !== session.task?.runId
+      !(
+        (session.task?.runIds ??
+          (session.task?.runId ? [session.task.runId] : [])) as string[]
+      ).includes((candidateSelection as { runId: string }).runId)
     )
       throw new AssistantError(409, "assistant_candidate_selection_changed");
     const turns = (
@@ -416,6 +433,12 @@ export async function startTurn(
           requirements: [],
           stage: "inspecting",
           autoCount: 0,
+          ...(session.task?.processingScope
+            ? { processingScope: session.task.processingScope }
+            : {}),
+          ...(session.task?.backgroundEvidence
+            ? { backgroundEvidence: session.task.backgroundEvidence }
+            : {}),
           ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
         };
     await client.query(
@@ -492,8 +515,9 @@ export async function recoverProposalReceipt(
   scope: AssistantScope,
   proposal: Record<string, any>,
 ) {
-  // A proposal that was never confirmed must never claim another action's result.
-  if (!proposal.lease_token) return;
+  // Processing-page confirmation can fulfill the exact same frozen operation.
+  // Selection and publication still require this proposal's own confirmation lease.
+  if (!proposal.lease_token && proposal.action !== "processing") return;
   if (
     !["pending", "executing"].includes(proposal.status) ||
     (proposal.lease_until &&
@@ -514,12 +538,42 @@ export async function recoverProposalReceipt(
   let receipt: Record<string, any> | undefined;
   const refs: Dependency[] = [];
   if (proposal.action === "processing") {
-    const row = (
-      await db.query(
-        "SELECT receipt,asset_id,draft_id FROM processing_acceptance WHERE project_id=$1 AND actor_id=$2 AND idempotency_key=$3 AND run_id=$4",
-        [scope.projectId, scope.actorId, proposal.id, p.runId],
-      )
-    ).rows[0];
+    let row = proposal.lease_token
+      ? (
+          await db.query(
+            "SELECT receipt,asset_id,draft_id FROM processing_acceptance WHERE project_id=$1 AND actor_id=$2 AND idempotency_key=$3 AND run_id=$4",
+            [scope.projectId, scope.actorId, proposal.id, p.runId],
+          )
+        ).rows[0]
+      : undefined;
+    if (!row) {
+      const ids = [...p.resultIds].sort(
+        (a: string, b: string) =>
+          Number(a.split(":")[0]) - Number(b.split(":")[0]) ||
+          Number(a.split(":")[1]) - Number(b.split(":")[1]),
+      );
+      const requestHash = processingAcceptanceHash(
+        ids,
+        p.target,
+        p.resultGroups,
+      );
+      row = (
+        await db.query(
+          `SELECT receipt,asset_id,draft_id FROM processing_acceptance
+          WHERE project_id=$1 AND actor_id=$2 AND run_id=$3 AND request_hash=$4
+          AND EXISTS(SELECT 1 FROM assistant_session WHERE id=$5 AND task_revision=$6)
+          ORDER BY created_at,id LIMIT 1`,
+          [
+            scope.projectId,
+            scope.actorId,
+            p.runId,
+            requestHash,
+            proposal.session_id,
+            proposal.task_revision,
+          ],
+        )
+      ).rows[0];
+    }
     if (row) {
       receipt = { receipt: row.receipt, replayed: true };
       refs.push({ kind: "asset", id: row.asset_id });

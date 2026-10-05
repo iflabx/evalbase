@@ -1,0 +1,110 @@
+import type { Database } from "../db/pool.js";
+import type { ArtifactRepository } from "../storage/artifacts.js";
+import {
+  previewProcessingInput,
+  readProcessingRun,
+} from "../processing/store.js";
+import { reviewCandidates } from "../processing/review.js";
+import { adoptedCandidateKeys } from "../processing/adoption.js";
+import { AssistantError, type AssistantScope } from "./store.js";
+
+/** Reviews the current leaves and, for a final-total goal, the actual draft after pending adoption. */
+export async function reviewTask(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: AssistantScope,
+  task: Record<string, any>,
+  data: Awaited<ReturnType<typeof readProcessingRun>>,
+) {
+  const runIds: string[] = task.runIds?.includes(data.run.id)
+    ? task.runIds
+    : [data.run.id];
+  const runs = [];
+  for (const runId of runIds)
+    runs.push(
+      runId === data.run.id
+        ? data
+        : await readProcessingRun(
+            db,
+            artifacts,
+            scope,
+            runId,
+            { offset: "0", limit: "10000" },
+            true,
+          ),
+    );
+  if (runs.reduce((count, item) => count + item.total, 0) > 10000)
+    throw new AssistantError(422, "processing_capacity_exceeded");
+  let final;
+  if (task.countKind === "final" && task.targetDraftId) {
+    const base = await previewProcessingInput(
+      db,
+      scope,
+      { source: { kind: "draft", id: task.targetDraftId }, limit: 10000 },
+      "write",
+      true,
+    );
+    const adopted = await adoptedCandidateKeys(
+      db,
+      artifacts,
+      scope,
+      runs,
+      task.targetDraftId,
+    );
+    const baseIds = new Set(base.allIds);
+    const replacing = new Set<string>();
+    const pending = [];
+    for (const run of runs)
+      for (const row of run.records) {
+        if (adopted.has(`${run.run.id}:${row.id}`)) continue;
+        if (
+          run.run.source.kind === "draft" &&
+          run.run.source.id === task.targetDraftId &&
+          run.rootOperation !== "augment"
+        ) {
+          const originalId = row.original?.baseline?.id ?? row.original?.id;
+          if (
+            !originalId ||
+            replacing.has(originalId) ||
+            !baseIds.has(originalId)
+          )
+            throw new AssistantError(409, "processing_results_overlap");
+          replacing.add(originalId);
+        }
+        pending.push({ ...row.result, id: `${run.run.id}:${row.id}` });
+      }
+    const revision = Number(
+      (
+        await db.query(
+          "SELECT revision FROM collaborative_draft WHERE id=$1 AND project_id=$2",
+          [task.targetDraftId, scope.projectId],
+        )
+      ).rows[0]?.revision,
+    );
+    if (revision !== base.revision)
+      throw new AssistantError(409, "draft_revision_conflict");
+    const records = [
+      ...base.records.filter((row) => !replacing.has(row.id)),
+      ...pending,
+    ];
+    if (records.length > 10000)
+      throw new AssistantError(422, "processing_capacity_exceeded");
+    final = {
+      records,
+      baseCount: base.total,
+      remainingCount: pending.length,
+      revision,
+    };
+  }
+  return {
+    runIds,
+    runs,
+    review: reviewCandidates(data, task, runs, final),
+    finished: runs.every((item) =>
+      ["succeeded", "failed", "cancelled"].includes(item.run.status),
+    ),
+    checkedStatus: runs.every((item) => item.run.status === "succeeded")
+      ? "succeeded"
+      : "failed",
+  };
+}

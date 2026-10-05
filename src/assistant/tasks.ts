@@ -149,9 +149,10 @@ export async function collectProcessingEvents(db: Database) {
     );
   };
   const sessions = (
-    await db.query(`SELECT s.id,s.task_revision,r.id AS run_id,j.attempt,j.updated_at FROM assistant_session s
-    JOIN processing_run r ON r.id=s.task->>'runId' JOIN job j ON j.id=r.job_id
-    WHERE s.task->>'stage'='processing' AND j.status IN('succeeded','failed','cancelled') AND r.input_ref IS NOT NULL LIMIT 30`)
+    await db.query(`SELECT s.id,s.task_revision,string_agg(r.id||':'||j.status||':'||j.attempt||':'||j.updated_at::text,',' ORDER BY r.id) AS event_key FROM assistant_session s
+    JOIN processing_run r ON r.id IN(SELECT jsonb_array_elements_text(coalesce(s.task->'runIds',jsonb_build_array(s.task->>'runId')))) JOIN job j ON j.id=r.job_id
+    WHERE s.task->>'stage'='processing' AND r.input_ref IS NOT NULL GROUP BY s.id,s.task_revision
+    HAVING bool_or(j.status IN('succeeded','failed','cancelled')) LIMIT 30`)
   ).rows;
   const uncertain = (
     await db.query(
@@ -203,7 +204,7 @@ export async function collectProcessingEvents(db: Database) {
         db,
         session.id,
         "processing_completed",
-        `${session.run_id}:${session.attempt}:${new Date(session.updated_at).toISOString()}`,
+        sha256(session.event_key),
         session.task_revision,
       );
     } catch (error) {
@@ -293,22 +294,30 @@ export async function controlAssistantTask(
     // Lock an existing processing job before the session, matching the worker's order.
     // A concurrently linked new run causes a bounded transaction retry rather than a partial stop.
     const observed = await sessionRow(client, scope, id);
-    const job = observed.task?.runId
+    const observedRunIds: string[] =
+      observed.task?.runIds ??
+      (observed.task?.runId ? [observed.task.runId] : []);
+    const jobs = observedRunIds.length
       ? (
           await client.query(
-            "SELECT j.* FROM job j JOIN processing_run r ON r.job_id=j.id WHERE r.id=$1 AND r.project_id=$2 FOR UPDATE OF j",
-            [observed.task.runId, scope.projectId],
+            "SELECT j.*,r.id AS run_id FROM job j JOIN processing_run r ON r.job_id=j.id WHERE r.id=ANY($1::text[]) AND r.project_id=$2 ORDER BY j.id FOR UPDATE OF j",
+            [observedRunIds, scope.projectId],
           )
-        ).rows[0]
-      : undefined;
+        ).rows
+      : [];
+    const job = jobs.find((item) => item.run_id === observed.task?.runId);
     const session = await sessionRow(client, scope, id, true);
-    if (session.task?.runId !== observed.task?.runId)
+    if (
+      session.task?.runId !== observed.task?.runId ||
+      JSON.stringify(session.task?.runIds ?? []) !==
+        JSON.stringify(observed.task?.runIds ?? [])
+    )
       throw new AssistantError(409, "assistant_task_changed");
     if (action === "stop") {
-      if (job)
+      if (jobs.length)
         await client.query(
-          "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=$1 AND status IN('queued','running','retry_wait')",
-          [job.id],
+          "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=ANY($1::text[]) AND status IN('queued','running','retry_wait')",
+          [jobs.map((item) => item.id)],
         );
       await client.query(
         'UPDATE assistant_session SET task_revision=task_revision+1,task=task||\'{"stage":"stopped"}\'::jsonb WHERE id=$1',
@@ -326,10 +335,23 @@ export async function controlAssistantTask(
       if (
         session.task?.runId &&
         session.task.stage === "awaiting_review" &&
-        ["failed", "cancelled"].includes(session.task.checkedStatus) &&
+        (["failed", "cancelled"].includes(session.task.checkedStatus) ||
+          (session.task.checkedStatus === "succeeded" &&
+            Number(session.task.review?.missingCount) > 0)) &&
         job
       ) {
-        if (!["failed", "cancelled"].includes(job.status))
+        const missingRuns = (
+          await client.query(
+            'SELECT DISTINCT run_id FROM processing_batch WHERE run_id=ANY($1::text[]) AND issues @> \'[{"code":"missing_output"}]\'::jsonb',
+            [observedRunIds],
+          )
+        ).rows.map((row) => row.run_id);
+        const recoverable = jobs.filter(
+          (item) =>
+            ["failed", "cancelled"].includes(item.status) ||
+            (item.status === "succeeded" && missingRuns.includes(item.run_id)),
+        );
+        if (!recoverable.length)
           throw new AssistantError(409, "processing_still_running");
         await dependenciesAvailable(
           client,
@@ -342,8 +364,8 @@ export async function controlAssistantTask(
           ).rows[0]?.dependencies ?? [],
         );
         await client.query(
-          "UPDATE job SET status='queued',stage='queued',attempt=0,next_run_at=now(),error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1",
-          [job.id],
+          "UPDATE job SET status='queued',stage='queued',attempt=0,next_run_at=now(),error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=ANY($1::text[])",
+          [recoverable.map((item) => item.id)],
         );
         await client.query(
           'UPDATE assistant_session SET task=task||\'{"stage":"processing","error":null}\'::jsonb WHERE id=$1',

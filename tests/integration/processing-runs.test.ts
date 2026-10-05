@@ -544,6 +544,9 @@ describe("durable data processing", () => {
         },
       });
       expect(adoptedExpansion.statusCode, adoptedExpansion.body).toBe(201);
+      expect(adoptedExpansion.json().receipt.fileName).toMatch(
+        /^扩充结果-[a-f0-9]+\.jsonl$/u,
+      );
       expect(
         Number(
           (
@@ -949,11 +952,66 @@ describe("durable data processing", () => {
       config = { ...loadConfig(), databaseUrl },
       artifacts = new ArtifactRepository(config.minio);
     try {
-      const previous = (
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: base,
+          headers,
+          payload: { name: "容量测试来源" },
+        })
+      ).json().draft.id;
+      const recordIds: string[] = [];
+      for (let index = 0; index < 5; index++)
+        recordIds.push(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base}/${source}/records`,
+              headers,
+              payload: {
+                question: `不同的容量测试问题 ${index + 1}`,
+                expectedOutput: "",
+                metadata: [],
+              },
+            })
+          ).json().record.id,
+        );
+      const submittedSource = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: { kind: "draft", id: source, recordIds },
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(submittedSource.statusCode, submittedSource.body).toBe(201);
+      const sourceRun = submittedSource.json().run;
+      const sourceJob = (
         await db.query(
-          "SELECT r.id FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.source->>'kind'='assets' AND r.input_ref IS NOT NULL AND EXISTS(SELECT 1 FROM processing_batch b WHERE b.run_id=r.id AND b.result_ref IS NOT NULL) LIMIT 1",
+          "UPDATE job SET status='running',attempt=1,lease_owner='capacity-test',lease_expires_at=now()+interval '30 seconds' WHERE id=$1 RETURNING *",
+          [sourceRun.jobId],
         )
       ).rows[0];
+      const sourceResult = await runProcessing(
+        db,
+        artifacts,
+        config,
+        sourceJob,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [sourceJob.id, sourceResult],
+      );
+      const previous = {
+        id: sourceRun.id,
+        ordinal: 0,
+        result_indices: [] as number[],
+      };
       const d = await app.inject({
           method: "POST",
           url: base,
@@ -971,7 +1029,9 @@ describe("durable data processing", () => {
           url: `${path}/${previous.id}/accept`,
           headers: { ...headers, "idempotency-key": randomUUID() },
           payload: {
-            resultIds: ["0:0"],
+            resultIds: [
+              `${previous.ordinal}:${previous.result_indices?.[revision] ?? revision}`,
+            ],
             target: { kind: "draft", id, expectedRevision: revision },
           },
         });
@@ -1032,4 +1092,233 @@ describe("durable data processing", () => {
       await db.end();
     }
   });
+
+  it.each([
+    [0, false],
+    [1, false],
+    [1, true],
+    [0, false, true],
+  ] as const)(
+    "recovers only missing rewrite outputs without replacing successful candidates (retained %i, legacy %s)",
+    async (retainedIndex, legacy, malformed = false) => {
+      const draft = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: {},
+      });
+      const draftId = draft.json().draft.id,
+        ids: string[] = [];
+      for (const question of ["First source", "Second source"]) {
+        const row = await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts/${draftId}/records`,
+          headers,
+          payload: { question, expectedOutput: "Protected", metadata: [] },
+        });
+        expect(row.statusCode, row.body).toBe(201);
+        ids.push(row.json().record.id);
+      }
+      let recovering = malformed;
+      const calls: string[][] = [];
+      const server = createServer(async (request, response) => {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const instruction = JSON.parse(
+          JSON.parse(body).messages.at(-1).content,
+        );
+        calls.push(instruction.records.map((row: { id: string }) => row.id));
+        // The first response is valid but incomplete; bounded corrections cannot fix it yet.
+        const chosen = recovering
+          ? instruction.records
+          : calls.length === 1
+            ? [instruction.records[retainedIndex]]
+            : [];
+        const records = chosen.map((row: { id: string; question: string }) => ({
+          sourceId: row.id,
+          question: `${recovering ? "Recovered" : "Accepted"} ${row.question}`,
+        }));
+        if (malformed)
+          records.push(
+            { sourceId: "unknown", question: "Invalid source" },
+            records[0],
+            { sourceId: ids[0], question: 42 as unknown as string },
+          );
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            id: "missing-output",
+            object: "chat.completion",
+            created: 1,
+            model: "synthetic",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({ records }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+        );
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const db = createPool(databaseUrl),
+        config = {
+          ...loadConfig(),
+          databaseUrl,
+          modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
+        },
+        artifacts = new ArtifactRepository(config.minio);
+      try {
+        const connection = await app.inject({
+          method: "GET",
+          url: "/api/settings/model-connection",
+          headers,
+        });
+        const configured = await app.inject({
+          method: "PUT",
+          url: "/api/settings/model-connection",
+          headers,
+          payload: {
+            revision: connection.json().connection?.revision ?? 0,
+            name: "缺失恢复测试",
+            endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+            model: "synthetic",
+            apiKey: "synthetic-test-key",
+            enabled: true,
+          },
+        });
+        expect(configured.statusCode, configured.body).toBe(200);
+        const path = `/api/projects/${projectId}/processing-runs`;
+        const submitted = await app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "draft", id: draftId, recordIds: ids },
+            options: {
+              operation: "rewrite",
+              instructions: "Rewrite both questions",
+              allowedFields: ["question"],
+            },
+          },
+        });
+        expect(submitted.statusCode, submitted.body).toBe(201);
+        const run = submitted.json().run;
+        async function execute() {
+          const job = (
+            await db.query(
+              "UPDATE job SET status='running',attempt=attempt+1,lease_owner='missing-test',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",
+              [run.jobId],
+            )
+          ).rows[0];
+          try {
+            const result = await runProcessing(db, artifacts, config, job);
+            await db.query(
+              "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+              [job.id, result],
+            );
+          } catch (error) {
+            expect((error as Error).message).toBe("processing_batch_failed");
+            await db.query(
+              "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=$1",
+              [job.id],
+            );
+          }
+        }
+        await execute();
+        if (malformed) {
+          const malformedRead = await app.inject({
+            method: "GET",
+            url: `${path}/${run.id}`,
+            headers,
+          });
+          expect(malformedRead.statusCode, malformedRead.body).toBe(200);
+          expect(malformedRead.json().total).toBe(2);
+          expect(malformedRead.json().run.partial).toBe(true);
+          expect(malformedRead.json().issues).toContainEqual(
+            expect.objectContaining({ code: "unknown_source" }),
+          );
+          expect(malformedRead.json().issues).toContainEqual(
+            expect.objectContaining({ code: "duplicate_source" }),
+          );
+          return;
+        }
+        if (legacy) {
+          // Fixture for an old binary that persisted incomplete output as succeeded, with compact IDs.
+          await db.query(
+            "UPDATE processing_batch SET error_code=NULL,result_indices=ARRAY[0] WHERE run_id=$1",
+            [run.id],
+          );
+          await db.query(
+            "UPDATE job SET status='succeeded',error_code=NULL WHERE id=$1",
+            [run.jobId],
+          );
+        }
+        const before = await app.inject({
+          method: "GET",
+          url: `${path}/${run.id}`,
+          headers,
+        });
+        expect(before.json().total).toBe(1);
+        expect(before.json().run.partial).toBe(true);
+        expect(before.json().run.missingCount).toBe(1);
+        const status = await app.inject({
+          method: "GET",
+          url: `${path}/${run.id}/status`,
+          headers,
+        });
+        expect(status.statusCode, status.body).toBe(200);
+        expect(status.json().run.missingCount).toBe(1);
+        const retry = await app.inject({
+          method: "POST",
+          url: `${path}/${run.id}/retry`,
+          headers,
+          payload: {},
+        });
+        expect(retry.statusCode, retry.body).toBe(200);
+        expect(retry.json().run.status).toBe("queued");
+        recovering = true;
+        const recoveryStart = calls.length;
+        await execute();
+        const missingIndex = 1 - retainedIndex;
+        expect(calls.slice(recoveryStart)).toEqual([[ids[missingIndex]]]);
+        const after = await app.inject({
+          method: "GET",
+          url: `${path}/${run.id}`,
+          headers,
+        });
+        expect(after.json().run.status).toBe("succeeded");
+        expect(after.json().total).toBe(2);
+        expect(after.json().run.missingCount).toBe(0);
+        expect(
+          after
+            .json()
+            .records.find(
+              (row: { id: string }) => row.id === before.json().records[0].id,
+            ),
+        ).toEqual(before.json().records[0]);
+        expect(after.json().allIds).toEqual(
+          legacy ? ["0:1", "0:0"] : ["0:0", "0:1"],
+        );
+        expect(after.json().records[missingIndex].result).toMatchObject({
+          sourceId: ids[missingIndex],
+          question: `Recovered ${missingIndex ? "Second" : "First"} source`,
+          expectedOutput: "Protected",
+        });
+        expect(after.json().issues).not.toContainEqual(
+          expect.objectContaining({ code: "missing_output" }),
+        );
+      } finally {
+        await db.end();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
 });

@@ -11,6 +11,8 @@ import {
   processingPrompt,
   validateModelRows,
   type ProcessingInput,
+  type ProcessingResult,
+  type ProcessingOptions,
 } from "./protocol.js";
 import {
   processingAccess,
@@ -40,46 +42,89 @@ async function fence(
   if (!claim.rowCount) throw new Error("processing_lease_lost");
 }
 // Bounded batches keep context and retries small; one model consumer is sufficient for the current ten-user ceiling.
+function modelRequest(
+  inputs: ProcessingInput[],
+  options: ProcessingOptions,
+  expected: number,
+  missing: number,
+  background: InputSnapshot["background"],
+  accepted: ProcessingResult["records"] = [],
+) {
+  const base = processingPrompt(inputs, options, missing, background);
+  const correction = {
+    ...JSON.parse(base.prompt),
+    originalOutputCount: expected,
+    acceptedCount: accepted.length,
+    alreadyAccepted: accepted.map((row) => ({
+      question: row.question.slice(0, 300),
+      expectedOutput: row.expectedOutput.slice(0, 300),
+    })),
+    correctionRule:
+      options.operation === "augment"
+        ? "Return only the missing new records. Do not repeat or rewrite accepted candidates. Count alreadyAccepted toward any category quotas in the original instructions."
+        : "Return exactly one record for each supplied remaining input id. Do not regenerate already accepted records.",
+  };
+  let prompt = JSON.stringify(correction);
+  // Correction hints may shrink; confirmed requirements, background and source records never do.
+  while (
+    Buffer.byteLength(base.system + prompt) >
+      PROCESSING_EXECUTION.maxInputBytesPerBatch &&
+    correction.alreadyAccepted.length
+  ) {
+    correction.alreadyAccepted.shift();
+    prompt = JSON.stringify(correction);
+  }
+  return { system: base.system, prompt };
+}
 function batches(
   inputs: ProcessingInput[],
   outputCount: number | undefined,
   modelInput = true,
+  options?: ProcessingOptions,
+  background?: InputSnapshot["background"],
+  legacyRecipe = false,
 ) {
   const result: { inputs: ProcessingInput[]; count: number }[] = [];
+  const fits = (rows: ProcessingInput[]) => {
+    if (legacyRecipe || !modelInput)
+      return (
+        rows.reduce(
+          (bytes, row) => bytes + Buffer.byteLength(JSON.stringify(row)),
+          0,
+        ) <= 40000
+      );
+    const request = modelRequest(rows, options!, 20, 20, background);
+    return (
+      Buffer.byteLength(request.system + request.prompt) <=
+      PROCESSING_EXECUTION.maxInputBytesPerBatch
+    );
+  };
   if (outputCount !== undefined) {
     for (let i = 0; i < outputCount; i += 20) {
       const start = i % inputs.length,
         group: ProcessingInput[] = [];
-      let bytes = 0;
       for (let j = 0; j < Math.min(20, inputs.length); j++) {
-        const row = inputs[(start + j) % inputs.length],
-          size = Buffer.byteLength(JSON.stringify(row));
-        if (modelInput && size > PROCESSING_EXECUTION.maxInputBytesPerBatch)
+        const row = inputs[(start + j) % inputs.length];
+        if (modelInput && !fits([row]))
           throw new ProcessingError(422, "processing_record_too_large");
-        if (bytes + size > 40000) break;
+        if (!fits([...group, row])) break;
         group.push(row);
-        bytes += size;
       }
       result.push({ inputs: group, count: Math.min(20, outputCount - i) });
     }
   } else {
-    let group: ProcessingInput[] = [],
-      bytes = 0;
+    let group: ProcessingInput[] = [];
     for (const row of inputs) {
-      const size = Buffer.byteLength(JSON.stringify(row));
-      if (modelInput && size > PROCESSING_EXECUTION.maxInputBytesPerBatch)
+      if (modelInput && !fits([row]))
         throw new ProcessingError(422, "processing_record_too_large");
       if (
         group.length === PROCESSING_EXECUTION.batchSize ||
-        (group.length > 0 &&
-          bytes + size > PROCESSING_EXECUTION.maxInputBytesPerBatch)
+        (group.length > 0 && !fits([...group, row]))
       ) {
         result.push({ inputs: group, count: group.length });
         group = [];
-        bytes = 0;
       }
       group.push(row);
-      bytes += size;
     }
     if (group.length) result.push({ inputs: group, count: group.length });
   }
@@ -107,14 +152,24 @@ export async function runProcessing(
   if (sha256(bytes) !== run.input_hash)
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
+  const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
   if (
-    canonicalJson(run.execution_config) !== canonicalJson(PROCESSING_EXECUTION)
+    (!legacyRecipe &&
+      run.execution_config.recipeVersion !==
+        PROCESSING_EXECUTION.recipeVersion) ||
+    canonicalJson({
+      ...run.execution_config,
+      recipeVersion: PROCESSING_EXECUTION.recipeVersion,
+    }) !== canonicalJson(PROCESSING_EXECUTION)
   )
     throw new ProcessingError(409, "processing_recipe_unavailable");
   const groups = batches(
     input.records,
     run.options.outputCount,
     run.model_revision !== null,
+    run.options,
+    input.background,
+    legacyRecipe,
   );
   let model: Awaited<ReturnType<typeof configuredModel>> | undefined;
   if (run.model_revision !== null)
@@ -129,11 +184,14 @@ export async function runProcessing(
     await processingSourceAvailable(db, job.project_id, run.source);
     const prior = (
       await db.query(
-        "SELECT result_ref,output_count,issues,error_code FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
+        "SELECT result_ref,output_count,issues,error_code,result_indices FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
         [run.id, index],
       )
     ).rows[0];
-    if (prior?.result_ref && !prior.error_code) {
+    const incomplete = prior?.issues.some(
+      (issue: { code: string }) => issue.code === "missing_output",
+    );
+    if (prior?.result_ref && !prior.error_code && !incomplete) {
       output += Number(prior.output_count);
       warningCount += prior.issues.length;
       continue;
@@ -150,6 +208,7 @@ export async function runProcessing(
     let body: Buffer | undefined;
     let issues: unknown[] = [];
     let resultIndices: number[] = [];
+    let priorResult: ProcessingResult | undefined;
     try {
       let result;
       if (!model) result = cleanRecords(group.inputs, run.options);
@@ -163,33 +222,36 @@ export async function runProcessing(
         const batchSignal = AbortSignal.timeout(
           run.execution_config.batchTimeoutMs,
         );
-        const response = await generateText({
-          model: model.model,
-          ...processingPrompt(
-            modelInputs,
-            run.options,
-            input.refinement ? modelInputs.length : group.count,
-          ),
-          maxOutputTokens: run.execution_config.maxOutputTokens,
-          maxRetries: 0,
-          abortSignal: batchSignal,
-          experimental_telemetry: { isEnabled: false },
-        });
-        const text = response.text
-          .trim()
-          .replace(/^```(?:json)?\s*/u, "")
-          .replace(/\s*```$/u, "");
+        const expected = input.refinement ? modelInputs.length : group.count;
+        const eligible = new Set(modelInputs.map((row) => row.id));
+        priorResult = prior?.result_ref
+          ? (JSON.parse(
+              (await artifacts.readBytes(prior.result_ref, 100000000)).toString(
+                "utf8",
+              ),
+            ) as ProcessingResult)
+          : undefined;
+        const saved =
+          priorResult?.records.filter((row) => eligible.has(row.sourceId)) ??
+          [];
+        const diagnostics = (priorResult?.issues ?? []).filter((issue) =>
+          [
+            "invalid_output",
+            "unknown_source",
+            "duplicate_source",
+            "excess_output",
+          ].includes(issue.code),
+        );
         result = validateModelRows(
-          JSON.parse(text),
+          { records: saved },
           modelInputs,
           run.options,
-          input.refinement ? modelInputs.length : group.count,
+          expected,
         );
-        // Only fill missing augmentation rows. Accepted candidates are never regenerated.
+        // Preserve every valid result, including from a previous attempt. Only request missing output.
         for (
-          let attempt = 1;
-          run.options.operation === "augment" &&
-          result.records.length < group.count &&
+          let attempt = 0;
+          result.records.length < expected &&
           attempt < run.execution_config.maxAttempts;
           attempt++
         ) {
@@ -198,22 +260,32 @@ export async function runProcessing(
           await fence(db, job);
           await processingAccess(db, scope);
           await processingSourceAvailable(db, job.project_id, run.source);
-          const missing = group.count - result.records.length;
-          const prompt = processingPrompt(modelInputs, run.options, missing);
-          const correction = {
-            ...JSON.parse(prompt.prompt),
-            originalOutputCount: group.count,
-            alreadyAccepted: result.records.map((row) => ({
-              question: row.question.slice(0, 300),
-              expectedOutput: row.expectedOutput.slice(0, 300),
-            })),
-            rule: "Return only the missing new records. Do not repeat or rewrite accepted candidates. Count alreadyAccepted toward any category quotas in the original instructions.",
-          };
+          const missing = expected - result.records.length;
+          const acceptedIds = new Set(
+            result.records.map((row) => row.sourceId),
+          );
+          const remaining =
+            run.options.operation === "augment"
+              ? modelInputs
+              : modelInputs.filter((row) => !acceptedIds.has(row.id));
+          const prompt = modelRequest(
+            remaining,
+            run.options,
+            expected,
+            missing,
+            input.background,
+            result.records,
+          );
+          if (
+            Buffer.byteLength(prompt.system + prompt.prompt) >
+            run.execution_config.maxInputBytesPerBatch
+          )
+            throw new ProcessingError(422, "processing_record_too_large");
           try {
             const extra = await generateText({
               model: model.model,
               system: prompt.system,
-              prompt: JSON.stringify(correction),
+              prompt: prompt.prompt,
               maxOutputTokens: run.execution_config.maxOutputTokens,
               maxRetries: 0,
               abortSignal: batchSignal,
@@ -226,9 +298,19 @@ export async function runProcessing(
                   .replace(/^```(?:json)?\s*/u, "")
                   .replace(/\s*```$/u, ""),
               ),
-              modelInputs,
+              remaining,
               run.options,
               missing,
+            );
+            diagnostics.push(
+              ...validated.issues.filter((issue) =>
+                [
+                  "invalid_output",
+                  "unknown_source",
+                  "duplicate_source",
+                  "excess_output",
+                ].includes(issue.code),
+              ),
             );
             const seen = new Set(
               result.records.map((row) =>
@@ -240,6 +322,7 @@ export async function runProcessing(
               ),
             );
             const added = validated.records.filter((row) => {
+              if (run.options.operation !== "augment") return true;
               const key = canonicalJson({
                 question: row.question,
                 expectedOutput: row.expectedOutput,
@@ -253,13 +336,15 @@ export async function runProcessing(
               { records: [...result.records, ...added] },
               modelInputs,
               run.options,
-              group.count,
+              expected,
             );
-          } catch {
-            // A failed correction must not discard valid output from the first response.
+          } catch (error) {
+            if (!result.records.length) throw error;
+            // A failed correction must not discard valid output already persisted or generated.
             break;
           }
         }
+        result.issues.push(...diagnostics);
       }
       if (input.refinement && modelInputs.length) {
         const changed = new Map(
@@ -280,11 +365,34 @@ export async function runProcessing(
           ),
         };
       }
+      if (run.options.operation !== "augment")
+        result.records.sort(
+          (a, b) => positions.get(a.sourceId)! - positions.get(b.sourceId)!,
+        );
       count = result.records.length;
-      resultIndices = result.records.map((row, i) =>
-        input.refinement ? positions.get(row.sourceId)! : i,
+      const groupPositions = new Map(group.inputs.map((row, i) => [row.id, i]));
+      // Old incomplete batches numbered only the returned rows. Preserve those public IDs as well.
+      const savedPositions = new Map(
+        (priorResult?.records ?? []).map(
+          (row, i) => [row.sourceId, prior.result_indices?.[i] ?? i] as const,
+        ),
       );
+      const usedPositions = new Set(savedPositions.values());
+      resultIndices = result.records.map((row, i) => {
+        if (input.refinement) return positions.get(row.sourceId)!;
+        if (run.options.operation === "augment") return i;
+        const saved = savedPositions.get(row.sourceId);
+        if (saved !== undefined) return saved;
+        let position = groupPositions.get(row.sourceId)!;
+        while (usedPositions.has(position)) position++;
+        usedPositions.add(position);
+        return position;
+      });
       issues = result.issues;
+      if (result.issues.some((issue) => issue.code === "missing_output")) {
+        errorCode = "processing_output_incomplete";
+        failed++;
+      }
       body = Buffer.from(canonicalJson(result));
       if (body.byteLength > 100000000)
         throw new Error("processing_output_too_large");
@@ -341,7 +449,8 @@ export async function runProcessing(
         `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes,result_indices)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(run_id,ordinal) DO UPDATE SET result_ref=excluded.result_ref,
         output_count=excluded.output_count,issues=excluded.issues,error_code=excluded.error_code,output_bytes=excluded.output_bytes,result_indices=excluded.result_indices
-        WHERE processing_batch.result_ref IS NULL OR processing_batch.error_code IS NOT NULL`,
+        WHERE processing_batch.result_ref IS NULL OR processing_batch.error_code IS NOT NULL
+        OR processing_batch.issues @> '[{"code":"missing_output"}]'::jsonb`,
         [
           run.id,
           index,

@@ -213,7 +213,10 @@ export async function buildApp(
       /^\/api\/projects\/[^/]+\/pending-uploads(?:\?|$)/u.test(
         request.raw.url ?? "",
       );
-    const limit = CAPACITY_LIMITS.dataAssetBytes;
+    const limit = Math.min(
+      request.routeOptions.bodyLimit ?? CAPACITY_LIMITS.dataAssetBytes,
+      CAPACITY_LIMITS.dataAssetBytes,
+    );
     const contentLength = Number(request.headers["content-length"]);
     const tooLarge = () => {
       const error = new RangeError(

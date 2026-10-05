@@ -4,6 +4,10 @@ import {
   type AssistantGuard,
 } from "../assistant/fence.js";
 import type { PoolClient } from "pg";
+import {
+  freezeBackground,
+  type BackgroundSnapshot,
+} from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -37,12 +41,18 @@ export type ProcessingScope = {
   projectId: string;
   actorId: string;
   assistantGuard?: AssistantGuard;
+  expectedInputHash?: string;
+  /** Frozen by the assistant confirmation; never accepted from a public processing body. */
+  acceptanceGroups?: { runId: string; resultIds: string[] }[];
 };
 export type ProcessingSource =
   | { kind: "assets"; assetIds: string[]; recordIds: string[] }
   | { kind: "draft" | "version"; id: string; recordIds: string[] };
+export type CandidateOrigin = { runId: string; resultId: string };
 export type InputSnapshot = {
+  background?: BackgroundSnapshot;
   records: (ProcessingInput & {
+    candidateOrigin?: CandidateOrigin;
     baseline?: ProcessingInput & {
       source?: unknown;
       revisions?: Record<string, number>;
@@ -65,6 +75,7 @@ export type ProcessingRun = {
   actor_id: string;
   job_id: string;
   parent_run_id?: string | null;
+  background_document_ids: string[];
   request_hash: string;
   source: ProcessingSource;
   options: ProcessingOptions;
@@ -72,7 +83,9 @@ export type ProcessingRun = {
   input_hash: string;
   model_revision: number | null;
   input_count: number;
-  execution_config: typeof PROCESSING_EXECUTION;
+  execution_config: Omit<typeof PROCESSING_EXECUTION, "recipeVersion"> & {
+    recipeVersion: string;
+  };
   output_count?: number;
   issue_count?: number;
   target_draft_id: string | null;
@@ -288,6 +301,14 @@ async function snapshot(
   return result;
 }
 
+function missingCount(row: ProcessingRun) {
+  const expected =
+    row.options.operation === "augment"
+      ? (row.options.outputCount ?? row.input_count)
+      : row.input_count;
+  return Math.max(0, expected - Number(row.output_count ?? 0));
+}
+
 function summary(row: ProcessingRun) {
   return {
     id: row.id,
@@ -299,6 +320,7 @@ function summary(row: ProcessingRun) {
     modelRevision: row.model_revision,
     execution: row.execution_config,
     outputCount: Number(row.output_count ?? 0),
+    missingCount: missingCount(row),
     partial:
       (row.status === "failed" && Number(row.output_count) > 0) ||
       (row.status === "succeeded" && Number(row.issue_count) > 0),
@@ -320,8 +342,8 @@ export async function getProcessingRun(
 ) {
   await processingAccess(db, scope);
   const result = await db.query<ProcessingRun>(
-    `${selectRun} WHERE r.id=$1 AND r.project_id=$2 ${lock ? "FOR UPDATE OF r,j" : ""}`,
-    [runId, scope.projectId],
+    `${selectRun} WHERE r.id=$1 AND r.project_id=$2 AND (cardinality(r.background_document_ids)=0 OR r.actor_id=$3) ${lock ? "FOR UPDATE OF r,j" : ""}`,
+    [runId, scope.projectId, scope.actorId],
   );
   const row = result.rows[0];
   if (!row || !row.input_ref)
@@ -363,7 +385,16 @@ export async function createProcessingRun(
       : source.kind === "draft"
         ? source.id
         : null;
-  const digest = sha256(canonicalJson({ source, options, target }));
+  const digest = sha256(
+    canonicalJson({
+      source,
+      options,
+      target,
+      ...(scope.expectedInputHash
+        ? { expectedInputHash: scope.expectedInputHash }
+        : {}),
+    }),
+  );
   const client = await db.connect();
   let storedInput: string | undefined;
   try {
@@ -384,6 +415,17 @@ export async function createProcessingRun(
       return { run: summary(run), replayed: true };
     }
     const data = await snapshot(client, scope.projectId, source);
+    if (
+      scope.expectedInputHash &&
+      scope.expectedInputHash !==
+        sha256(
+          canonicalJson({
+            records: data.records,
+            revision: data.revision ?? null,
+          }),
+        )
+    )
+      throw new ProcessingError(409, "processing_scope_changed");
     if (target)
       await processingSourceAvailable(
         client,
@@ -412,6 +454,14 @@ export async function createProcessingRun(
     } else if (data.records.some((row) => row.raw !== undefined))
       throw new ProcessingError(422, "processing_mapping_required");
     await guardAssistantCommit(client, scope);
+    if (scope.assistantGuard) {
+      const background = await freezeBackground(
+        client,
+        scope,
+        scope.assistantGuard.sessionId,
+      );
+      if (background) data.background = background;
+    }
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     const stored = await artifacts.storeProcessing(
@@ -426,8 +476,8 @@ export async function createProcessingRun(
       [jobId, scope.projectId, scope.actorId, { runId }, `processing:${runId}`],
     );
     await client.query(
-      `INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count,model_revision,target_draft_id,execution_config)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      `INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count,model_revision,target_draft_id,execution_config,background_document_ids)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         runId,
         scope.projectId,
@@ -443,6 +493,7 @@ export async function createProcessingRun(
         modelRevision,
         target,
         PROCESSING_EXECUTION,
+        data.background?.documents.map((document) => document.id) ?? [],
       ],
     );
     const run = (
@@ -478,6 +529,7 @@ export async function readProcessingStatus(
       status: run.status,
       progress: run.progress,
       inputCount: run.input_count,
+      missingCount: missingCount(run),
       partial:
         (run.status === "failed" && Number(run.output_count) > 0) ||
         Number(run.issue_count) > 0,
@@ -490,8 +542,8 @@ export async function readProcessingStatus(
 export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
   await processingAccess(db, scope);
   const rows = await db.query<ProcessingRun>(
-    `${selectRun} WHERE r.project_id=$1 AND r.input_ref IS NOT NULL ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
-    [scope.projectId],
+    `${selectRun} WHERE r.project_id=$1 AND r.input_ref IS NOT NULL AND (cardinality(r.background_document_ids)=0 OR r.actor_id=$2) ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
+    [scope.projectId, scope.actorId],
   );
   // Do not disclose prompts or snapshots of recycled sources through the index.
   const runs = [];
@@ -506,7 +558,7 @@ export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
   return { runs };
 }
 export async function readProcessingRun(
-  db: Database,
+  db: Pick<Database, "query">,
   artifacts: ArtifactRepository,
   scope: ProcessingScope,
   runId: string,
@@ -528,6 +580,7 @@ export async function readProcessingRun(
     (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
   ) as InputSnapshot;
   const originals = new Map(input.records.map((row) => [row.id, row]));
+  const origins = await processingCandidateOrigins(db, artifacts, scope, input);
   const batches = await db.query(
     "SELECT * FROM processing_batch WHERE run_id=$1 ORDER BY ordinal",
     [runId],
@@ -553,6 +606,10 @@ export async function readProcessingRun(
         if (cursor + i >= offset && cursor + i < offset + limit)
           records.push({
             id: `${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
+            candidateOrigin: origins.get(result.records[i].sourceId) ?? {
+              runId,
+              resultId: `${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
+            },
             original: originals.get(result.records[i].sourceId),
             result: result.records[i],
           });
@@ -560,10 +617,15 @@ export async function readProcessingRun(
     issues.push(...(batch.issues ?? []));
     cursor += count;
   }
-  await processingAccess(db, scope);
-  await processingSourceAvailable(db, scope.projectId, run.source);
+  const current = await getProcessingRun(db, scope, runId);
+  if (
+    current.input_ref !== run.input_ref ||
+    current.input_hash !== run.input_hash
+  )
+    throw new ProcessingError(409, "processing_source_unavailable");
   return {
     run: summary(run),
+    rootOperation: input.refinement?.rootOperation ?? run.options.operation,
     records,
     issues,
     allIds: batches.rows.flatMap((batch) =>
@@ -577,6 +639,38 @@ export async function readProcessingRun(
     offset,
     limit,
   };
+}
+export async function processingCandidateOrigins(
+  db: Pick<Database, "query">,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  input: InputSnapshot,
+): Promise<Map<string, CandidateOrigin>> {
+  const origins = new Map<string, CandidateOrigin>();
+  let parent: Awaited<ReturnType<typeof readProcessingRun>> | undefined;
+  if (input.refinement && input.records.some((row) => !row.candidateOrigin)) {
+    parent = await readProcessingRun(
+      db,
+      artifacts,
+      scope,
+      input.refinement.parentRunId,
+      { limit: "10000" },
+      true,
+    );
+  }
+  const parentOrigins = new Map(
+    parent?.records.map((row) => [
+      `candidate:${row.id}`,
+      row.candidateOrigin,
+    ]) ?? [],
+  );
+  for (const row of input.records) {
+    const origin = row.candidateOrigin ?? parentOrigins.get(row.id);
+    if (origin) origins.set(row.id, origin);
+    else if (input.refinement)
+      throw new ProcessingError(409, "processing_input_corrupt");
+  }
+  return origins;
 }
 export async function controlProcessingRun(
   db: Database,
@@ -599,7 +693,8 @@ export async function controlProcessingRun(
       if (!["failed", "cancelled", "succeeded"].includes(run.status))
         throw new ProcessingError(409, "processing_still_running");
       const incomplete = await client.query(
-        "SELECT 1 FROM processing_batch WHERE run_id=$1 AND (result_ref IS NULL OR error_code IS NOT NULL) LIMIT 1",
+        `SELECT 1 FROM processing_batch WHERE run_id=$1 AND (result_ref IS NULL OR error_code IS NOT NULL
+        OR issues @> '[{"code":"missing_output"}]'::jsonb) LIMIT 1`,
         [runId],
       );
       if (run.status !== "succeeded" || incomplete.rowCount)

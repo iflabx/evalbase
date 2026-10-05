@@ -45,7 +45,7 @@ export function AssistantCandidates({
     queryKey: ["assistant-candidates", base, sessionId, runId, offset],
     queryFn: () =>
       request<{ records: Candidate[]; total: number }>(
-        `${base}/sessions/${encodeURIComponent(sessionId)}/candidates?offset=${offset}&limit=10`,
+        `${base}/sessions/${encodeURIComponent(sessionId)}/candidates?run=${encodeURIComponent(runId)}&offset=${offset}&limit=10`,
       ),
     retry: false,
   });

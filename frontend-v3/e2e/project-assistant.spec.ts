@@ -38,6 +38,15 @@ test("reviews candidates inside the assistant and preserves cross-page selection
               protectedFieldChanges: 0,
               labels: [{ label: "退款", count: 25 }],
               semanticReview: "required",
+              classifications: [
+                {
+                  field: "expectedOutput",
+                  satisfied: false,
+                  missing: 0,
+                  outsideValues: 0,
+                  quotaDifferences: [{ value: "退款", expected: 26, actual: 25 }],
+                },
+              ],
             },
           },
           turns: [
@@ -93,6 +102,8 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   });
   await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("退款问题改写");
   await expect(page.getByText("候选待审核", { exact: true })).toBeVisible();
+  await expect(page.getByText("期望输出：分类或配额未符合要求", { exact: true })).toBeVisible();
+  await expect(page.getByText("退款：实际 25 / 要求 26 条", { exact: true })).toBeVisible();
   await page.getByLabel("选择候选 1", { exact: true }).check();
   await page.getByRole("button", { name: "下一页候选" }).click();
   await page.getByLabel("选择候选 11", { exact: true }).check();
@@ -114,6 +125,146 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test("opens the actual adopted draft from the persisted receipt", async ({ page }) => {
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: { sessions: [{ id: "adopted", title: "采用结果", ordinal: 1 }] },
+      });
+    if (path.endsWith("/sessions/adopted"))
+      return route.fulfill({
+        json: {
+          sessionId: "adopted",
+          turns: [
+            {
+              id: "turn",
+              status: "succeeded",
+              userText: "采用结果",
+              assistantText: "已采用",
+              tools: [],
+            },
+          ],
+          proposals: [
+            {
+              id: "proposal",
+              turn_id: "turn",
+              action: "processing",
+              status: "succeeded",
+              summary: {
+                title: "采用处理结果",
+                count: 2,
+                url: "/projects/assistant_project/processing?run=run",
+              },
+              receipt: { receipt: { adopted: 2, draftId: "actual_draft" } },
+            },
+          ],
+        },
+      });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await expect(page.getByRole("link", { name: "继续编辑草稿", exact: true })).toHaveAttribute(
+    "href",
+    "/projects/assistant_project/test-sets/drafts/actual_draft",
+  );
+});
+
+test("selects task batches without carrying checked rows into another batch and shows the final total", async ({
+  page,
+}) => {
+  let sent: unknown;
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [
+            { id: "multi", title: "补到两条", ordinal: 1, updated_at: "2026-10-06T00:00:00Z" },
+          ],
+        },
+      });
+    if (path.endsWith("/sessions/multi"))
+      return route.fulfill({
+        json: {
+          sessionId: "multi",
+          proposals: [],
+          turns: [],
+          task: {
+            title: "补到两条",
+            goal: "保留已有的一条",
+            stage: "awaiting_review",
+            runId: "second",
+            runIds: ["first", "second"],
+            review: {
+              runId: "second",
+              total: 2,
+              expectedCount: 2,
+              countKind: "final",
+              baseCount: 1,
+              remainingCount: 1,
+              countSatisfied: true,
+              emptyQuestions: 0,
+              duplicates: 0,
+              protectedFieldChanges: 0,
+              labels: [],
+            },
+          },
+        },
+      });
+    if (path.endsWith("/candidates")) {
+      const run = new URL(route.request().url()).searchParams.get("run");
+      return route.fulfill({
+        json: {
+          total: 1,
+          offset: 0,
+          limit: 10,
+          records: [
+            {
+              id: "0:0",
+              original: null,
+              result: {
+                question: run === "first" ? "第一批问题" : "第二批问题",
+                expectedOutput: "正常回答",
+                metadata: [],
+              },
+            },
+          ],
+        },
+      });
+    }
+    if (path.includes("/processing-runs/"))
+      return route.fulfill({
+        json: {
+          run: {
+            status: "succeeded",
+            inputCount: 1,
+            progress: 100,
+            options: { operation: "augment" },
+          },
+          total: 1,
+        },
+      });
+    if (path.endsWith("/turns")) {
+      sent = route.request().postDataJSON();
+      return route.fulfill({ status: 202, json: { turnId: "next", status: "queued" } });
+    }
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await expect(page.getByText(/最终总数 2 \/ 目标 2 条/)).toBeVisible();
+  await expect(page.getByText("草稿已有 1 条 · 待采用 1 条")).toBeVisible();
+  await expect(page.getByText("第二批问题", { exact: true })).toBeVisible();
+  await page.getByLabel("选择候选 1", { exact: true }).check();
+  await page.getByRole("combobox", { name: "选择候选批次" }).click();
+  await page.getByRole("option", { name: "批次 1", exact: true }).click();
+  await expect(page.getByText("第一批问题", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("选择候选 1", { exact: true })).not.toBeChecked();
+  await page.getByLabel("选择候选 1", { exact: true }).check();
+  await page.getByLabel("向项目助手发送消息").fill("只改选中这一条");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  expect(sent).toEqual({
+    message: "只改选中这一条",
+    candidates: { runId: "first", resultIds: ["0:0"] },
+  });
 });
 
 test("keeps the assistant conversation across close/reload and submits only an explicit bound confirmation", async ({
@@ -239,6 +390,116 @@ test("keeps the assistant conversation across close/reload and submits only an e
 });
 
 const assistantBase = "/api/projects/assistant_project/assistant";
+
+test("keeps background and task beside the conversation, with located preview and explicit removal", async ({
+  page,
+}) => {
+  let uploaded = false,
+    removed = false;
+  const document = {
+    id: "background",
+    fileName: "要求.md",
+    format: "md",
+    fileSize: 40,
+    units: 3,
+    characters: 20,
+    fragmentCount: 1,
+  };
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [{ id: "background_session", ordinal: 1, updated_at: "2026-10-06T00:00:00Z" }],
+        },
+      });
+    if (path === `${assistantBase}/sessions/background_session`)
+      return route.fulfill({
+        json: {
+          sessionId: "background_session",
+          backgroundDocuments: uploaded && !removed ? [document] : [],
+          task: {
+            title: "安全测试集",
+            goal: "创建200条",
+            stage: "waiting_input",
+            requirements: ["覆盖31类风险"],
+          },
+          turns: removed
+            ? []
+            : [
+                {
+                  id: "old",
+                  userText: "创建200条",
+                  assistantText: "请上传背景要求。",
+                  status: "succeeded",
+                  errorCode: null,
+                  tools: [],
+                },
+              ],
+          proposals: [],
+        },
+      });
+    if (path.endsWith("/background-documents")) {
+      expect(route.request().postDataJSON()).toEqual({
+        fileName: "要求.md",
+        contentBase64: Buffer.from("# 要求\n覆盖31类风险\n共200条").toString("base64"),
+      });
+      uploaded = true;
+      return route.fulfill({ status: 201, json: { document, replayed: false } });
+    }
+    if (path.endsWith("/background-documents/background")) {
+      if (route.request().method() === "DELETE") {
+        removed = true;
+        return route.fulfill({ json: { removed: true } });
+      }
+      return route.fulfill({
+        json: {
+          ...document,
+          fragments: [
+            { index: 1, startLine: 1, endLine: 3, text: "# 要求\n覆盖31类风险\n共200条" },
+          ],
+        },
+      });
+    }
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.getByLabel("上传背景文档").setInputFiles({
+    name: "要求.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# 要求\n覆盖31类风险\n共200条"),
+  });
+  await expect(page.getByText("要求.md", { exact: true })).toBeVisible();
+  const work = page.getByRole("complementary", { name: "任务与背景" });
+  await expect(work.getByRole("heading", { name: "安全测试集" })).toBeVisible();
+  await page.getByRole("button", { name: "查看背景 要求.md" }).click();
+  await expect(page.getByRole("dialog").getByText("第 1–3 行", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("覆盖31类风险");
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await page.getByRole("button", { name: "打开项目助手" }).click();
+  await expect(page.getByText("要求.md", { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await work.boundingBox();
+      return box!.x + box!.width;
+    })
+    .toBeLessThanOrEqual(1281);
+  const bounds = await work.boundingBox(),
+    log = await page.getByRole("log").boundingBox();
+  expect(bounds!.x).toBeGreaterThan(log!.x + log!.width - 1);
+  await page.screenshot({ path: "test-results/assistant-background-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 420, height: 800 });
+  await expect(page.getByRole("button", { name: "查看背景 要求.md" })).toBeVisible();
+  expect(await page.evaluate(() => window.document.documentElement.scrollWidth <= innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({ path: "test-results/assistant-background-narrow.png", fullPage: true });
+  await page.getByRole("button", { name: "移除背景 要求.md" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("清除本会话正文");
+  expect(removed).toBe(false);
+  await page.getByRole("button", { name: "确认移除" }).click();
+  await expect(page.getByText("要求.md", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("请上传背景要求。", { exact: true })).toHaveCount(0);
+});
 test("preserves a failed submission and retry identity while using another session", async ({
   page,
 }) => {
