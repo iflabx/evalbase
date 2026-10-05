@@ -142,6 +142,7 @@ export async function executeAssistantTurn(
   let toolCalls = 0;
   let plannedAction: string | undefined;
   let yieldToProcessing = false;
+  let processingEventRunId: string | undefined;
   const restoring = Number(turn.execution_attempt) > 1 || turn.resuming;
   const restoringLegacyProcessing =
     restoring &&
@@ -976,6 +977,8 @@ export async function executeAssistantTurn(
       { runId: string, offset: { type: "integer", minimum: 0 } },
       ["runId"],
       async (input) => {
+        if (processingEventRunId && input.runId !== processingEventRunId)
+          throw new AssistantError(409, "assistant_processing_context_changed");
         const data = await readProcessingRun(
           db,
           artifacts,
@@ -1006,6 +1009,7 @@ export async function executeAssistantTurn(
             review: null,
             checkedStatus: null,
           });
+        processingEventRunId = undefined;
         return {
           runId: input.runId,
           status: data.run.status,
@@ -1259,6 +1263,9 @@ export async function executeAssistantTurn(
         typeof task.nextAction === "string" && task.nextAction !== "none"
           ? task.nextAction
           : undefined;
+    // Inspect the completed run first, preserving any unexecuted retry obligation.
+    if (turn.event === "processing_completed" && task.runId)
+      processingEventRunId = task.runId;
     messages.push({
       role: "assistant",
       content:
@@ -1305,6 +1312,10 @@ export async function executeAssistantTurn(
       stopWhen: [stepCountIs(8), () => yieldToProcessing],
       prepareStep: async () => {
         await turnFence(db, scope, turn.id, turn.execution_token);
+        if (processingEventRunId)
+          return {
+            toolChoice: { type: "tool" as const, toolName: "read_processing" },
+          };
         if (
           plannedAction === "read_processing" ||
           plannedAction === "plan_task"

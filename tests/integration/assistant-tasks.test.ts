@@ -33,6 +33,7 @@ describe("assistant continuous task public contract", () => {
   const requests: any[] = [];
   afterEach(() => {
     extraAfterSubmit = false;
+    wrongEventRunId = undefined;
   });
   let mode:
       | "clean"
@@ -51,6 +52,7 @@ describe("assistant continuous task public contract", () => {
   let repairPattern: "recover" | "partial" | null = null;
   let repairCalls = 0;
   let extraAfterSubmit = false;
+  let wrongEventRunId: string | undefined;
   let release = () => {},
     entered = () => {};
   const appConfig = () => ({
@@ -274,6 +276,8 @@ describe("assistant continuous task public contract", () => {
       requestMode === "clean" &&
       body.tool_choice?.function?.name === "read_processing"
     ) {
+      const inspectedRunId = wrongEventRunId ?? runId;
+      wrongEventRunId = undefined;
       message = {
         role: "assistant",
         content: null,
@@ -283,7 +287,7 @@ describe("assistant continuous task public contract", () => {
             type: "function",
             function: {
               name: "read_processing",
-              arguments: JSON.stringify({ runId }),
+              arguments: JSON.stringify({ runId: inspectedRunId }),
             },
           },
         ],
@@ -559,6 +563,10 @@ describe("assistant continuous task public contract", () => {
             "[processing_completed]",
           ),
         );
+        expect(eventRequest.tool_choice).toEqual({
+          type: "function",
+          function: { name: "read_processing" },
+        });
         expect(eventRequest.messages.at(-1).role).toBe("user");
         expect(eventRequest.messages.at(-1).content).toContain(
           "不构成新的用户授权",
@@ -576,6 +584,118 @@ describe("assistant continuous task public contract", () => {
       } finally {
         await competitor.close();
       }
+    } finally {
+      await db.end();
+    }
+  });
+  it("binds automatic inspection to the current run and preserves a retry follow-up", async () => {
+    mode = "clean";
+    const other = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/processing-runs`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        source: {
+          kind: "draft",
+          id: draftId,
+          recordIds: (
+            await app.inject({
+              method: "GET",
+              url: `/api/projects/${projectId}/collaborative-drafts/${draftId}`,
+              headers,
+            })
+          )
+            .json()
+            .records.map((row: any) => row.id),
+        },
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    });
+    expect(other.statusCode, other.body).toBe(201);
+    wrongEventRunId = other.json().run.id;
+    const event = (await read()).turns.find(
+      (turn: any) => turn.event === "processing_completed",
+    );
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed' WHERE id=$1",
+        [event.id],
+      );
+      await db.query(
+        'UPDATE assistant_session SET task=task||\'{"stage":"failed","nextAction":"read_records"}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      const start = requests.length;
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read()).turns.find((turn: any) => turn.id === event.id)
+              .status,
+          { timeout: 15000 },
+        )
+        .toBe("failed");
+      const failed = await read();
+      expect(failed.task).toMatchObject({
+        runId,
+        nextAction: "read_records",
+        review: { runId },
+      });
+      expect(
+        failed.turns.find((turn: any) => turn.id === event.id).errorCode,
+      ).toBe("assistant_task_not_executed");
+      expect(
+        failed.turns.find((turn: any) => turn.id === event.id).tools,
+      ).toContainEqual(
+        expect.objectContaining({
+          name: "read_processing",
+          status: "failed",
+          error: { code: "assistant_processing_context_changed" },
+        }),
+      );
+      expect(requests[start].tool_choice.function.name).toBe("read_processing");
+      wrongEventRunId = undefined;
+      await db.query(
+        "UPDATE assistant_session SET task=task||'{\"nextAction\":null}'::jsonb WHERE id=$1",
+        [sessionId],
+      );
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read()).turns.find((turn: any) => turn.id === event.id)
+              .status,
+          { timeout: 15000 },
+        )
+        .toBe("succeeded");
+      expect((await read()).task).toMatchObject({
+        runId,
+        stage: "awaiting_review",
+        review: { runId },
+      });
     } finally {
       await db.end();
     }
@@ -1201,11 +1321,12 @@ describe("assistant continuous task public contract", () => {
         );
         expect(
           (
-            await db.query(
-              "SELECT status FROM job WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
-              [linked],
-            )
-          ).rows[0].status,
+            await app.inject({
+              method: "GET",
+              url: `/api/projects/${projectId}/processing-runs/${linked}`,
+              headers,
+            })
+          ).json().run.status,
         ).toBe("queued");
         expect(
           (
@@ -1222,11 +1343,12 @@ describe("assistant continuous task public contract", () => {
         expect((await state()).task.stage).toBe("stopped");
         expect(
           (
-            await db.query(
-              "SELECT status FROM job WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
-              [linked],
-            )
-          ).rows[0].status,
+            await app.inject({
+              method: "GET",
+              url: `/api/projects/${projectId}/processing-runs/${linked}`,
+              headers,
+            })
+          ).json().run.status,
         ).toBe("cancel_requested");
       } finally {
         await db.end();
