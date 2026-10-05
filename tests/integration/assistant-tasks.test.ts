@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import * as taskModule from "../../src/assistant/tasks.js";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
 import { createPool } from "../../src/db/pool.js";
@@ -23,6 +31,9 @@ describe("assistant continuous task public contract", () => {
   let runId: string;
   let independentAsset: string;
   const requests: any[] = [];
+  afterEach(() => {
+    extraAfterSubmit = false;
+  });
   let mode:
       | "clean"
       | "retry"
@@ -39,6 +50,7 @@ describe("assistant continuous task public contract", () => {
     failRefinement = false;
   let repairPattern: "recover" | "partial" | null = null;
   let repairCalls = 0;
+  let extraAfterSubmit = false;
   let release = () => {},
     entered = () => {};
   const appConfig = () => ({
@@ -278,6 +290,22 @@ describe("assistant continuous task public contract", () => {
       };
       finish = "tool_calls";
     }
+    if (
+      extraAfterSubmit &&
+      message.tool_calls?.[0]?.function.name === "submit_processing"
+    )
+      message.tool_calls.push({
+        id: `extra_plan_${requests.length}`,
+        type: "function",
+        function: {
+          name: "plan_task",
+          arguments: JSON.stringify({
+            title: "不应覆盖处理状态",
+            requirements: ["错误地继续规划"],
+            nextAction: "read_records",
+          }),
+        },
+      });
     response.writeHead(200, { "content-type": "application/json" });
     response.end(
       JSON.stringify({
@@ -407,6 +435,10 @@ describe("assistant continuous task public contract", () => {
   });
 
   it("continues to check candidates after background processing without another user message", async () => {
+    const initialModelCalls = requests.filter(
+      (request) => request.tools,
+    ).length;
+    extraAfterSubmit = true;
     const submitted = await app.inject({
       method: "POST",
       url: `${base()}/sessions/${sessionId}/turns`,
@@ -427,6 +459,15 @@ describe("assistant continuous task public contract", () => {
         { timeout: 15000 },
       )
       .toBe("succeeded");
+    extraAfterSubmit = false;
+    expect(requests.filter((request) => request.tools).length).toBe(
+      initialModelCalls + 1,
+    );
+    expect((await read()).task.stage).toBe("processing");
+    expect((await read()).task.title).not.toBe("不应覆盖处理状态");
+    expect((await read()).turns[0].tools.map((tool: any) => tool.name)).toEqual(
+      ["submit_processing"],
+    );
     runId = (await read()).turns[0].tools.find(
       (tool: any) => tool.name === "submit_processing",
     ).result.runId;
@@ -1125,6 +1166,39 @@ describe("assistant continuous task public contract", () => {
       expect(linked).toBeTruthy();
       const db = createPool(databaseUrl);
       try {
+        const completedTurn = (await state()).turns.at(-1);
+        await db.query(
+          "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed',assistant_text='' WHERE id=$1",
+          [completedTurn.id],
+        );
+        await db.query(
+          'UPDATE assistant_session SET task=task||\'{"stage":"failed"}\'::jsonb WHERE id=$1',
+          [id],
+        );
+        const resumeCalls = requests.filter((request) => request.tools).length;
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${base()}/sessions/${id}/retry`,
+              headers,
+              payload: {},
+            })
+          ).statusCode,
+        ).toBe(200);
+        await expect
+          .poll(async () => (await state()).turns.at(-1)?.status, {
+            timeout: 15000,
+          })
+          .toBe("succeeded");
+        expect((await state()).turns.at(-1).id).toBe(completedTurn.id);
+        expect((await state()).task).toMatchObject({
+          runId: linked,
+          stage: "processing",
+        });
+        expect(requests.filter((request) => request.tools).length).toBe(
+          resumeCalls + 1,
+        );
         expect(
           (
             await db.query(

@@ -1070,10 +1070,12 @@ describe("project assistant public contract", () => {
       });
       expect(
         (
-          await db.query("SELECT options FROM processing_run WHERE id=$1", [
-            submitted.runId,
-          ])
-        ).rows[0].options.outputCount,
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/processing-runs/${submitted.runId}`,
+            headers,
+          })
+        ).json().run.options.outputCount,
       ).toBeUndefined();
       const job = (
         await db.query(
