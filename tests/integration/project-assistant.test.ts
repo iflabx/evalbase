@@ -1041,13 +1041,40 @@ describe("project assistant public contract", () => {
         (await db.query("SELECT count(*)::int AS count FROM processing_run"))
           .rows[0].count,
       ).toBe(beforeInvalid);
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "version", id: publishedVersionId },
+          allRecords: true,
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+          outputCount: 2,
+        },
+      };
+      expect(
+        (await send("清洗不能增加条数")).json().turns.at(-1).tools[0].error
+          .code,
+      ).toBe("processing_configuration_invalid");
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM processing_run"))
+          .rows[0].count,
+      ).toBe(beforeInvalid);
       const submitted = await invoke("submit_processing", {
         source: { kind: "version", id: publishedVersionId },
         allRecords: true,
         operation: "clean",
         instructions: "",
         allowedFields: ["question"],
+        outputCount: 1,
       });
+      expect(
+        (
+          await db.query("SELECT options FROM processing_run WHERE id=$1", [
+            submitted.runId,
+          ])
+        ).rows[0].options.outputCount,
+      ).toBeUndefined();
       const job = (
         await db.query(
           "UPDATE job SET status='running',attempt=attempt+1,lease_owner='assistant-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
@@ -1502,6 +1529,48 @@ describe("project assistant public contract", () => {
       expect((await read()).json().task.review ?? null).toBeNull();
     } finally {
       await db.end();
+      sessionId = previous;
+    }
+  });
+  it("does not end with false waiting when the planning object is invalid", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "定位失败",
+          requirements: ["按明确目标生成候选"],
+          target: { kind: "version", id: "missing-version" },
+          nextAction: "submit_processing",
+        },
+      };
+      const result = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: "请检查来源并生成候选" },
+      });
+      expect(result.statusCode).toBe(202);
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1).status)
+        .toBe("failed");
+      const state = (await read()).json();
+      expect(state.task.stage).toBe("failed");
+      expect(state.task.nextAction).toBe("plan_task");
+      expect(state.turns.at(-1).errorCode).toBe("assistant_task_not_executed");
+      expect(state.turns.at(-1).tools[0].error.code).toBe(
+        "assistant_context_unavailable",
+      );
+    } finally {
+      requestedTool = undefined;
       sessionId = previous;
     }
   });

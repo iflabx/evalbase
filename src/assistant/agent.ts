@@ -54,6 +54,8 @@ const ids = {
 };
 const sourceSchema = {
   type: "object",
+  description:
+    "原始文件必须用kind:assets和assetIds数组；draft仅草稿；version仅已发布版本。文件引用不能传给version或draft的id。",
   properties: {
     kind: { enum: ["assets", "draft", "version"] },
     assetIds: { ...ids, maxItems: 5 },
@@ -313,6 +315,10 @@ export async function executeAssistantTurn(
             }
             return context.encode(value);
           } catch (e) {
+            if (name === "plan_task") {
+              plannedAction = "plan_task";
+              await updateTask(db, turn, { nextAction: "plan_task" });
+            }
             const error = {
               code:
                 e instanceof AssistantError ||
@@ -335,9 +341,13 @@ export async function executeAssistantTurn(
                   error.code === "assistant_source_invalid" ||
                   error.code === "assistant_reference_invalid"
                     ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
-                    : error.code === "processing_scope_invalid"
-                      ? "整个来源范围需allRecords:true，否则提供明确recordIds。"
-                      : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                    : error.code === "assistant_context_unavailable"
+                      ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
+                      : error.code === "processing_scope_invalid"
+                        ? "整个来源范围需allRecords:true，否则提供明确recordIds。"
+                        : error.code === "processing_configuration_invalid"
+                          ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                          : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
           }
@@ -687,7 +697,7 @@ export async function executeAssistantTurn(
     ),
     submit_processing: businessTool(
       "submit_processing",
-      "用户已明确范围和要求时提交后台清洗/改写/扩充。必须显式列出allowedFields：仅改问题用question；用户允许为新候选设置类别或数量分配时还须包含expectedOutput，否则服务端会从参考记录复制期望输出，忽略模型新标签。Metadata仅在用户明确允许修改时包含。allRecords=true表示已明确整个来源范围；否则传recordIds。不会应用或发布结果。",
+      "用户已明确范围和要求时提交后台清洗/改写/扩充。outputCount仅用于augment；清洗和改写每条输入对应一条候选，不改变记录数量。必须显式列出allowedFields：仅改问题用question；用户允许为新候选设置类别或数量分配时还须包含expectedOutput，否则服务端会从参考记录复制期望输出，忽略模型新标签。Metadata仅在用户明确允许修改时包含。allRecords=true表示已明确整个来源范围；否则传recordIds。不会应用或发布结果。",
       {
         source: sourceSchema,
         recordIds: ids,
@@ -721,6 +731,12 @@ export async function executeAssistantTurn(
           ).allIds;
         if (!Array.isArray(recordIds) || !recordIds.length)
           throw new AssistantError(422, "processing_scope_invalid");
+        if (
+          input.operation !== "augment" &&
+          input.outputCount !== undefined &&
+          input.outputCount !== recordIds.length
+        )
+          throw new AssistantError(422, "processing_configuration_invalid");
         const result = await createProcessingRun(
           db,
           artifacts,
@@ -732,7 +748,8 @@ export async function executeAssistantTurn(
               operation: input.operation,
               instructions: input.instructions,
               allowedFields: input.allowedFields ?? ["question"],
-              ...(input.outputCount !== undefined
+              ...(input.operation === "augment" &&
+              input.outputCount !== undefined
                 ? { outputCount: input.outputCount }
                 : {}),
             },
@@ -1248,9 +1265,12 @@ export async function executeAssistantTurn(
       stopWhen: stepCountIs(8),
       prepareStep: async () => {
         await turnFence(db, scope, turn.id, turn.execution_token);
-        if (plannedAction === "read_processing")
+        if (
+          plannedAction === "read_processing" ||
+          plannedAction === "plan_task"
+        )
           return {
-            toolChoice: { type: "tool" as const, toolName: "read_processing" },
+            toolChoice: { type: "tool" as const, toolName: plannedAction },
           };
         return plannedAction ? { toolChoice: "required" as const } : {};
       },
