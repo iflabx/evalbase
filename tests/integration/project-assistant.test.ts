@@ -1520,6 +1520,22 @@ describe("project assistant public contract", () => {
           (message.tool_calls ?? []).map((call: any) => call.function.name),
         ),
       ).not.toContain("plan_task");
+      const modelTask = JSON.parse(
+        calls[replacementCall].messages
+          .find((message: any) =>
+            String(message.content).startsWith("持久任务（"),
+          )
+          .content.split("：")
+          .slice(1)
+          .join("："),
+      );
+      expect(modelTask.requirements).toBeUndefined();
+      expect(modelTask.previousRequirements).toEqual([
+        "随机抽200条",
+        "保留原题",
+        "暂不采用或发布",
+      ]);
+      expect(modelTask.originalRequest).toContain("先随机抽200条");
       const state = (await read()).json();
       expect(state.task.requirements).toEqual([
         "按风险类别筛选200条",
