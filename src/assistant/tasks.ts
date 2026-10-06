@@ -152,7 +152,7 @@ export async function collectProcessingEvents(db: Database) {
     await db.query(`SELECT s.id,s.task_revision,string_agg(r.id||':'||j.status||':'||j.attempt||':'||j.updated_at::text,',' ORDER BY r.id) AS event_key FROM assistant_session s
     JOIN processing_run r ON r.id IN(SELECT jsonb_array_elements_text(coalesce(s.task->'runIds',jsonb_build_array(s.task->>'runId')))) JOIN job j ON j.id=r.job_id
     WHERE s.task->>'stage'='processing' AND r.input_ref IS NOT NULL GROUP BY s.id,s.task_revision
-    HAVING bool_or(j.status IN('succeeded','failed','cancelled')) LIMIT 30`)
+    HAVING bool_and(j.status IN('succeeded','failed','cancelled')) LIMIT 30`)
   ).rows;
   const uncertain = (
     await db.query(

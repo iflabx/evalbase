@@ -177,11 +177,16 @@ export async function runProcessing(
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
   const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
-  const dataOnly = run.execution_config.recipeVersion === "processing-v3";
+  const dataOnly = ["processing-v3", "processing-v4"].includes(
+    run.execution_config.recipeVersion,
+  );
   if (
-    !["processing-v1", "processing-v2", "processing-v3"].includes(
-      run.execution_config.recipeVersion,
-    ) ||
+    ![
+      "processing-v1",
+      "processing-v2",
+      "processing-v3",
+      "processing-v4",
+    ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
       ...run.execution_config,
       recipeVersion: PROCESSING_EXECUTION.recipeVersion,
@@ -323,6 +328,9 @@ export async function runProcessing(
           try {
             const extra = await generateText({
               model: model.model,
+              ...(run.execution_config.recipeVersion === "processing-v4"
+                ? { temperature: 0.2 }
+                : {}),
               system: prompt.system,
               prompt: prompt.prompt,
               maxOutputTokens: run.execution_config.maxOutputTokens,

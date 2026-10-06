@@ -1035,6 +1035,11 @@ describe("assistant continuous task public contract", () => {
         .filter((body) => !body.tools)
         .flatMap((body) => JSON.parse(body.messages.at(-1).content).records),
     ).toHaveLength(2);
+    expect(
+      requests
+        .filter((body) => !body.tools)
+        .every((body) => body.temperature === 0.2),
+    ).toBe(true);
     const failedRun = await app.inject({
       method: "POST",
       url: `${path}/${child}/refinements`,
@@ -1068,6 +1073,12 @@ describe("assistant continuous task public contract", () => {
             (row: any) => row.baseline,
           ),
         ),
+    ).toBe(true);
+    expect(
+      requests
+        .slice(legacyStart)
+        .filter((body) => !body.tools)
+        .every((body) => body.temperature === undefined),
     ).toBe(true);
     const partial = (
       await app.inject({
@@ -1744,6 +1755,130 @@ describe("assistant continuous task public contract", () => {
       ).toBe(0);
     } finally {
       await db.end();
+    }
+  });
+
+  it("waits for all linked batches before consuming an automatic inspection", async () => {
+    mode = "explain";
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const posted = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions/${id}/turns`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "说明多批处理流程" },
+    });
+    expect(posted.statusCode).toBe(202);
+    await expect
+      .poll(
+        async () =>
+          (
+            await app.inject({
+              method: "GET",
+              url: `${base()}/sessions/${id}`,
+              headers,
+            })
+          )
+            .json()
+            .turns.at(-1).status,
+        { timeout: 15000 },
+      )
+      .toBe("succeeded");
+    const recordIds = (
+      await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${draftId}`,
+        headers,
+      })
+    )
+      .json()
+      .records.map((row: any) => row.id);
+    const runs: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const created = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/processing-runs`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: { kind: "draft", id: draftId, recordIds },
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      runs.push(created.json().run.id);
+    }
+    await app.close();
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE job SET status='succeeded' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [runs[0]],
+      );
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          id,
+          JSON.stringify({
+            stage: "processing",
+            runIds: runs,
+            runId: runs[1],
+            autoCount: 0,
+          }),
+        ],
+      );
+      const automatic = async () =>
+        (
+          await db.query(
+            "SELECT id FROM assistant_turn WHERE session_id=$1 AND event='processing_completed'",
+            [id],
+          )
+        ).rowCount;
+      // An old completed run cannot turn a queued/running new batch into a completion event.
+      await taskModule.collectProcessingEvents(db);
+      expect(await automatic()).toBe(0);
+      await db.query(
+        "UPDATE job SET status='running',updated_at=now() WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [runs[1]],
+      );
+      await taskModule.collectProcessingEvents(db);
+      expect(await automatic()).toBe(0);
+      expect(
+        (
+          await db.query(
+            "SELECT task->>'stage' AS stage,task->>'autoCount' AS count FROM assistant_session WHERE id=$1",
+            [id],
+          )
+        ).rows[0],
+      ).toEqual({ stage: "processing", count: "0" });
+      // Terminal failure still warrants one honest aggregate inspection; repeated polls do not add turns.
+      await db.query(
+        "UPDATE job SET status='failed',updated_at=now() WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [runs[1]],
+      );
+      await taskModule.collectProcessingEvents(db);
+      await taskModule.collectProcessingEvents(db);
+      expect(await automatic()).toBe(1);
+    } finally {
+      await db.query(
+        'UPDATE assistant_session SET task=task||\'{"stage":"stopped"}\'::jsonb WHERE id=$1',
+        [id],
+      );
+      await db.query(
+        "UPDATE assistant_turn SET status='interrupted' WHERE session_id=$1 AND status IN('queued','running')",
+        [id],
+      );
+      await db.end();
+      app = await buildApp(appConfig(), { disableLegacyTestBootstrap: true });
     }
   });
 
