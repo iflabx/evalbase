@@ -452,12 +452,17 @@ export async function executeAssistantTurn(
                           ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
                           : error.code === "processing_scope_invalid"
                             ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
-                            : error.code === "assistant_background_not_read"
-                              ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
-                              : error.code ===
-                                  "processing_configuration_invalid"
-                                ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
-                                : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                            : [
+                                  "test_set_capacity_exceeded",
+                                  "processing_capacity_exceeded",
+                                ].includes(error.code)
+                              ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
+                              : error.code === "assistant_background_not_read"
+                                ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
+                                : error.code ===
+                                    "processing_configuration_invalid"
+                                  ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                                  : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
           }
