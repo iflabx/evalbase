@@ -1286,7 +1286,7 @@ export async function executeAssistantTurn(
     ),
     read_processing: businessTool(
       "read_processing",
-      "查询后台处理状态、全部候选的真实统计和最多10条内容预览。review已核对全部候选，不是当前页统计；无需翻完所有预览页才能报告数量和分布。语义正确性由用户审核，不自行改写。不足据实反馈，refine_candidates不能增加数量。没有完成时提供任务链接，不反复轮询耗尽工具步骤。",
+      "查询后台处理状态、全部候选的真实统计和最多10条内容预览。review已核对全部候选，不是当前页统计；无需翻完所有预览页才能报告数量和分布。语义正确性由用户审核，不自行改写。数量不足且用户已授权补足并让你定方案时，在同一轮plan_task并submit_processing提交剩余任务，不能只说会继续；信息缺失才澄清。refine_candidates不能增加数量。后台仍运行时提供任务链接，不反复轮询耗尽工具步骤。",
       { runId: string, offset: { type: "integer", minimum: 0 } },
       ["runId"],
       async (input) => {
