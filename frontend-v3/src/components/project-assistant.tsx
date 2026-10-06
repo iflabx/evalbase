@@ -830,7 +830,11 @@ export function ProjectAssistant({
                     </div>
                   )}
                 </div>
-                <p className="break-words text-sm leading-6">{visible.task.goal}</p>
+                {visible.task.requirements === undefined && (
+                  <p className="break-words text-sm leading-6">
+                    {visible.task.goal}
+                  </p>
+                )}
                 {Boolean(visible.task.requirements?.length) && (
                   <details className="rounded-md border px-3 py-2 text-xs">
                     <summary className="cursor-pointer text-muted-foreground">
