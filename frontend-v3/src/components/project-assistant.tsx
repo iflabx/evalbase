@@ -80,7 +80,7 @@ type Conversation = {
     review?: {
       runId: string;
       total: number;
-      expectedCount: number;
+      expectedCount: number | null;
       countSatisfied: boolean;
       countKind?: "new" | "final";
       baseCount?: number;
@@ -871,8 +871,17 @@ export function ProjectAssistant({
                   <div className="space-y-2 border-t pt-3 text-xs">
                     <p>
                       {visible.task.review.countKind === "final" ? "最终总数" : "本次候选"}{" "}
-                      {visible.task.review.total} / 目标 {visible.task.review.expectedCount} 条 ·{" "}
-                      {visible.task.review.countSatisfied ? "数量达标" : "数量未达标"}
+                      {visible.task.review.total}
+                      {visible.task.review.expectedCount !== null &&
+                        ` / 目标 ${visible.task.review.expectedCount}`}{" "}
+                      条 ·{" "}
+                      {visible.task.review.expectedCount === null
+                        ? visible.task.review.countSatisfied
+                          ? "运行输出齐全"
+                          : "运行输出不完整"
+                        : visible.task.review.countSatisfied
+                          ? "数量达标"
+                          : "数量未达标"}
                     </p>
                     {visible.task.review.countKind === "final" &&
                       visible.task.review.baseCount !== undefined && (

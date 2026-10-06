@@ -91,7 +91,15 @@ describe("assistant continuous task public contract", () => {
       );
       return;
     }
+    let processingInput;
     if (!body.tools) {
+      try {
+        processingInput = JSON.parse(last.content);
+      } catch {
+        /* A bounded assistant summary is not a processing payload. */
+      }
+    }
+    if (processingInput?.operation && Array.isArray(processingInput.records)) {
       if (failRefinement) {
         failRefinement = false;
         response.writeHead(503, { "content-type": "application/json" });
@@ -102,7 +110,7 @@ describe("assistant continuous task public contract", () => {
         );
         return;
       }
-      const input = JSON.parse(last.content);
+      const input = processingInput;
       const generated = repairPattern
         ? repairCalls++ === 0
           ? Array.from({ length: 11 }, (_, i) => ({
@@ -577,6 +585,7 @@ describe("assistant continuous task public contract", () => {
   });
 
   it("continues to check candidates after background processing without another user message", async () => {
+    mode = "clean";
     const initialModelCalls = requests.filter(
       (request) => request.tools,
     ).length;
@@ -1131,7 +1140,9 @@ describe("assistant continuous task public contract", () => {
     expect(
       requests
         .filter((body) => !body.tools)
-        .flatMap((body) => JSON.parse(body.messages.at(-1).content).records),
+        .flatMap(
+          (body) => JSON.parse(body.messages.at(-1).content).records ?? [],
+        ),
     ).toHaveLength(2);
     expect(
       requests

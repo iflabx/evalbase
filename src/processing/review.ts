@@ -3,7 +3,7 @@ import type { readProcessingRun } from "./store.js";
 import type { ProcessingInput } from "./protocol.js";
 
 export type CandidateGoal = {
-  targetCount?: number;
+  targetCount?: number | null;
   countKind?: "new" | "final";
   allowedLabels?: string[];
   classifications?: {
@@ -64,15 +64,19 @@ export function reviewCandidates(
             canonicalJson(row.original[field])
         )
           protectedFieldChanges++;
+  const expectedRunCount = runs.reduce(
+    (count, item) =>
+      count + (item.run.options.outputCount ?? item.run.inputCount),
+    0,
+  );
   const expectedCount =
-    goal?.targetCount ??
-    runs.reduce(
-      (count, item) =>
-        count + (item.run.options.outputCount ?? item.run.inputCount),
-      0,
-    );
+    goal?.targetCount === null ? null : (goal?.targetCount ?? expectedRunCount);
   const candidateCount = runs.reduce((count, item) => count + item.total, 0);
   const total = final ? records.length : candidateCount;
+  const countSatisfied =
+    expectedCount === null
+      ? candidateCount === expectedRunCount
+      : total === expectedCount;
   const formatIssues = runs
     .flatMap((item) => item.issues)
     .filter((issue) =>
@@ -139,7 +143,7 @@ export function reviewCandidates(
       0,
     ),
     expectedCount,
-    countSatisfied: total === expectedCount,
+    countSatisfied,
     emptyQuestions,
     duplicates,
     protectedFieldChanges,
@@ -152,7 +156,7 @@ export function reviewCandidates(
     formatIssues,
     complete:
       runs.every((item) => item.run.status === "succeeded") &&
-      total === expectedCount &&
+      countSatisfied &&
       !outsideLabels &&
       !emptyQuestions &&
       !duplicates &&

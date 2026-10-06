@@ -28,7 +28,7 @@ describe("project assistant public contract", () => {
     | { name: string; input: Record<string, unknown> }
     | undefined;
   let toolSequence: { name: string; input: Record<string, unknown> }[] = [];
-  let repeatRead: boolean | "progress" = false;
+  let repeatRead: boolean | "progress" | "bounded" = false;
   let hold = false,
     release: () => void = () => undefined,
     entered: () => void = () => undefined;
@@ -95,7 +95,11 @@ describe("project assistant public contract", () => {
     if (
       scriptedTool ||
       inspectRun ||
-      repeatRead ||
+      (repeatRead &&
+        !(
+          repeatRead === "bounded" &&
+          (!body.tools?.length || body.tool_choice === "none")
+        )) ||
       (body.messages.at(-1)?.role !== "tool" && !automatic)
     ) {
       const prompt = body.messages.findLast(
@@ -252,7 +256,11 @@ describe("project assistant public contract", () => {
       url: `${base()}/sessions/${sessionId}`,
       headers,
     });
-  async function send(message: string, context?: { kind: string; id: string }) {
+  async function send(
+    message: string,
+    context?: { kind: string; id: string },
+    expectedStatus: "succeeded" | "failed" = "succeeded",
+  ) {
     await expect
       .poll(
         async () => {
@@ -288,7 +296,7 @@ describe("project assistant public contract", () => {
         },
         { timeout: 15000 },
       )
-      .toBe("succeeded");
+      .toBe(expectedStatus);
     return read();
   }
   it("uses real SDK tool calls and keeps one active turn and an idempotent created draft", async () => {
@@ -1140,8 +1148,9 @@ describe("project assistant public contract", () => {
         },
       };
       expect(
-        (await send("清洗不能增加条数")).json().turns.at(-1).tools[0].error
-          .code,
+        (await send("清洗不能增加条数", undefined, "failed"))
+          .json()
+          .turns.at(-1).tools[0].error.code,
       ).toBe("processing_configuration_invalid");
       expect(
         (await db.query("SELECT count(*)::int AS count FROM processing_run"))
@@ -1467,7 +1476,98 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
-  it.each([true, "progress"] as const)(
+  it("replaces current requirements without losing history or duplicating retained rules", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "按风险选题",
+          requirements: ["随机抽200条", "保留原题", "暂不采用或发布"],
+          targetCount: 200,
+          nextAction: "none",
+        },
+      };
+      await send("先随机抽200条，保留原题，暂不采用或发布");
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "按风险选题",
+          requirements: [
+            "按风险类别筛选200条",
+            " 保留原题 ",
+            "保留原题",
+            "暂不采用或发布",
+            "",
+          ],
+          nextAction: "none",
+        },
+      };
+      await send("改为按风险类别筛选，其他要求保持");
+      const state = (await read()).json();
+      expect(state.task.requirements).toEqual([
+        "按风险类别筛选200条",
+        "保留原题",
+        "暂不采用或发布",
+      ]);
+      expect(state.task.targetCount).toBe(200);
+      expect(state.turns[0].userText).toContain("随机抽200条");
+      expect(state.turns.at(-1).userText).toContain("按风险类别筛选");
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "按风险选题",
+          requirements: ["按风险类别筛选", "保留原题", "暂不采用或发布"],
+          targetCount: null,
+          nextAction: "none",
+        },
+      };
+      const cleared = (await send("不再限定200条，其他要求保持")).json();
+      expect(cleared.task.targetCount).toBeNull();
+      expect(cleared.task.requirements).toEqual([
+        "按风险类别筛选",
+        "保留原题",
+        "暂不采用或发布",
+      ]);
+    } finally {
+      sessionId = previous;
+    }
+  });
+  it("reserves a final reply after repeated successful queries", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    repeatRead = "bounded";
+    const start = calls.length;
+    try {
+      const state = (await send("查询各个分类并汇总已经读取的结果")).json();
+      const turn = state.turns.at(-1);
+      expect(turn.status, JSON.stringify(turn)).toBe("succeeded");
+      expect(turn.assistantText).toBe("操作结果请查看下方真实回执。");
+      expect(turn.tools.every((t: any) => t.status === "succeeded")).toBe(true);
+      expect(state.task.stage).toBe("waiting_input");
+      expect(calls.length - start).toBeLessThanOrEqual(8);
+      expect(calls.at(-1)!.tools ?? []).toHaveLength(0);
+    } finally {
+      repeatRead = false;
+      sessionId = previous;
+    }
+  });
+  it.each([true, "progress", "pending"] as const)(
     "reports exhausted model steps without pretending a result was delivered (%s)",
     async (repeatMode) => {
       const previous = sessionId;
@@ -1479,7 +1579,26 @@ describe("project assistant public contract", () => {
           payload: {},
         })
       ).json().sessionId;
-      repeatRead = repeatMode;
+      if (repeatMode === "pending") {
+        const draft = (
+          await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/collaborative-drafts`,
+            headers,
+            payload: { name: "汇总边界测试" },
+          })
+        ).json().draft;
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts/${draft.id}/records`,
+          headers,
+          payload: { question: "合成问题", expectedOutput: "", metadata: [] },
+        });
+        toolSequence = [
+          { name: "request_publish", input: { draftId: draft.id } },
+        ];
+      }
+      repeatRead = repeatMode === "pending" ? true : repeatMode;
       try {
         const submitted = await app.inject({
           method: "POST",
@@ -2710,7 +2829,9 @@ describe("project assistant public contract", () => {
             allowedFields: ["question"],
           },
         };
-        const rejected = (await send("重改已采用的第一条")).json();
+        const rejected = (
+          await send("重改已采用的第一条", undefined, "failed")
+        ).json();
         expect(rejected.turns.at(-1).tools[0].error.code).toBe(
           "processing_already_adopted",
         );
@@ -2842,6 +2963,25 @@ describe("project assistant public contract", () => {
         candidateCount: 1,
         remainingCount: 1,
         expectedCount: 2,
+        countSatisfied: true,
+      });
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "核对当前内容",
+          requirements: ["保留已有内容，不再限定最终条数"],
+          targetCount: null,
+          nextAction: "none",
+        },
+      };
+      await send("不再限定最终条数，仍保留已有内容");
+      requestedTool = { name: "read_processing", input: { runId } };
+      expect((await send("核对当前候选")).json().task.review).toMatchObject({
+        total: 2,
+        countKind: "final",
+        baseCount: 1,
+        candidateCount: 1,
+        expectedCount: null,
         countSatisfied: true,
       });
       requestedTool = {
@@ -3382,7 +3522,9 @@ describe("project assistant public contract", () => {
           allowedFields: ["question"],
         },
       };
-      const different = (await send("清洗另一个草稿")).json();
+      const different = (
+        await send("清洗另一个草稿", undefined, "failed")
+      ).json();
       expect(different.turns.at(-1).tools[0].error.code).toBe(
         "processing_scope_invalid",
       );
@@ -3412,7 +3554,9 @@ describe("project assistant public contract", () => {
           allowedFields: ["question"],
         },
       };
-      const changed = (await send("继续刚才选中的那一条")).json();
+      const changed = (
+        await send("继续刚才选中的那一条", undefined, "failed")
+      ).json();
       expect(changed.turns.at(-1).tools[0].error.code).toBe(
         "processing_scope_changed",
       );

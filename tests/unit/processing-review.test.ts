@@ -29,6 +29,31 @@ const candidates = () =>
   }) as unknown as Page;
 
 describe("full candidate review", () => {
+  it("clears a final count goal while still checking actual run completeness", () => {
+    const page = candidates();
+    const base = {
+      id: "base",
+      question: "已有问题",
+      expectedOutput: "正常回答",
+      metadata: [],
+    };
+    const final = {
+      records: [base, ...page.records.map((row) => row.result)],
+      baseCount: 1,
+      remainingCount: 3,
+      revision: 1,
+    };
+    const goal = { targetCount: null, countKind: "final" as const };
+    const review = reviewCandidates(page, goal, [page], final);
+    expect(review.expectedCount).toBeNull();
+    expect(review.total).toBe(4);
+    expect(review.countSatisfied).toBe(true);
+    expect(review.complete).toBe(true);
+    page.total = 2;
+    page.records.pop();
+    final.records.pop();
+    expect(reviewCandidates(page, goal, [page], final).complete).toBe(false);
+  });
   it("reports real metadata categories and failed quotas despite a satisfied total", () => {
     const review = reviewCandidates(candidates(), {
       targetCount: 3,
