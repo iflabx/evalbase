@@ -530,9 +530,7 @@ export async function readProcessingStatus(
       progress: run.progress,
       inputCount: run.input_count,
       missingCount: missingCount(run),
-      partial:
-        (run.status === "failed" && Number(run.output_count) > 0) ||
-        Number(run.issue_count) > 0,
+      partial: summary(run).partial,
       errorCode: run.error_code,
       options: {
         operation: run.options.operation,

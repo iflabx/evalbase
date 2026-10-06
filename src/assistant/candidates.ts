@@ -15,6 +15,7 @@ export type CandidateScope = {
   targetCount: number;
   sourceCount: number;
   seed: string;
+  conditions?: SelectionCondition[][];
   groups: {
     label: string;
     requested: number;
@@ -87,6 +88,10 @@ export function selectCandidateRun(
     targetCount,
     sourceCount: data.total,
     seed,
+    conditions: configurations.map(
+      (configuration) =>
+        (configuration as { conditions: SelectionCondition[] }).conditions,
+    ),
     groups,
   };
 }
@@ -98,13 +103,60 @@ export function carryCandidateScope(
   parentRunId?: string,
 ): CandidateScope | null {
   if (scope?.runId === runId) return scope;
-  if (!scope || scope.runId !== parentRunId) return null;
+  if (!scope) return null;
+  if (scope.runId !== parentRunId) return scope;
   return {
     ...scope,
     runId,
     parentRunId,
     hash: sha256(canonicalJson({ parentHash: scope.hash, runId })),
   };
+}
+
+/** A supplement is a separate leaf; only the selected source leaf is narrowed. */
+export function candidateScopeForRun(
+  task: { candidateScope?: CandidateScope; runIds?: string[] } | undefined,
+  runId: string,
+): CandidateScope | undefined {
+  const scope = task?.candidateScope;
+  if (!scope || scope.runId === runId) return scope;
+  if (!task?.runIds?.includes(runId))
+    throw new AssistantError(409, "assistant_candidate_selection_changed");
+  return undefined;
+}
+
+/** Allocate real supplements to missing groups once, without reopening source selection. */
+export function candidateSelectionShortfalls(
+  scope: CandidateScope | undefined,
+  runs: Run[],
+) {
+  if (!scope) return [];
+  const supplements = runs
+    .filter((run) => run.run.id !== scope.runId)
+    .flatMap((run) =>
+      run.records.map((row, ordinal) => ({
+        ...row.result,
+        id: `${run.run.id}:${row.id}`,
+        assetId: run.run.id,
+        ordinal,
+      })),
+    );
+  const assigned = new Set<string>();
+  return scope.groups.flatMap((group, index) => {
+    if (group.selected >= group.requested) return [];
+    const conditions = scope.conditions?.[index];
+    if (!conditions) return [group]; // Legacy scopes cannot infer rules from display labels.
+    const eligible = selectRecords(
+      supplements.filter((row) => !assigned.has(row.id)),
+      { method: "all", conditions },
+    ).selected;
+    const additions = eligible.slice(0, group.requested - group.selected);
+    additions.forEach((row) => assigned.add(row.id));
+    const selected = group.selected + additions.length;
+    return selected < group.requested
+      ? [{ ...group, selected, available: group.available + eligible.length }]
+      : [];
+  });
 }
 
 /** Recheck fixed candidate identity before preview, review and adoption. */

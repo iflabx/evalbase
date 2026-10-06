@@ -7,7 +7,11 @@ import {
 import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { AssistantError, type AssistantScope } from "./store.js";
-import { scopeCandidateRun } from "./candidates.js";
+import {
+  scopeCandidateRun,
+  candidateScopeForRun,
+  candidateSelectionShortfalls,
+} from "./candidates.js";
 
 /** Reviews the current leaves and, for a final-total goal, the actual draft after pending adoption. */
 export async function reviewTask(
@@ -17,11 +21,9 @@ export async function reviewTask(
   task: Record<string, any>,
   data: Awaited<ReturnType<typeof readProcessingRun>>,
 ) {
-  const runIds: string[] = task.candidateScope
-    ? [task.candidateScope.runId]
-    : task.runIds?.includes(data.run.id)
-      ? task.runIds
-      : [data.run.id];
+  const runIds: string[] = task.runIds?.includes(data.run.id)
+    ? task.runIds
+    : [data.run.id];
   const runs = [];
   for (const runId of runIds)
     runs.push(
@@ -36,7 +38,7 @@ export async function reviewTask(
               { offset: "0", limit: "10000" },
               true,
             ),
-        task.candidateScope,
+        candidateScopeForRun(task, runId),
       ),
     );
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
@@ -114,11 +116,10 @@ export async function reviewTask(
     final,
     Boolean(task.candidateScope),
   );
-  const selectionShortfalls =
-    task.candidateScope?.groups.filter(
-      (group: { requested: number; selected: number }) =>
-        group.requested > group.selected,
-    ) ?? [];
+  const selectionShortfalls = candidateSelectionShortfalls(
+    task.candidateScope,
+    runs,
+  );
   return {
     runIds,
     runs,
@@ -127,7 +128,10 @@ export async function reviewTask(
       ...(task.candidateScope
         ? {
             selectionShortfalls,
-            complete: review.complete && !selectionShortfalls.length,
+            complete:
+              review.complete &&
+              runs.some((item) => item.total > 0) &&
+              !selectionShortfalls.length,
           }
         : {}),
     },

@@ -46,7 +46,7 @@ describe("fixed classified candidate selection", () => {
     };
     expect(scopeCandidateRun(child, carried).allIds).toEqual(["1:4", "1:5"]);
     expect(carryCandidateScope(carried, "child")).toEqual(carried);
-    expect(carryCandidateScope(scope, "unrelated", "other")).toBeNull();
+    expect(carryCandidateScope(scope, "supplement", "other")).toEqual(scope);
     expect(() =>
       scopeCandidateRun(
         { ...child, run: { ...child.run, parentRunId: "other" } },

@@ -31,7 +31,7 @@ export function taskPresentation(task: Record<string, any> | null) {
             sourceCount: task.candidateScope.sourceCount,
             groups: task.candidateScope.groups,
           },
-          runIds: [task.candidateScope.runId],
+          runIds: task.runIds ?? [task.candidateScope.runId],
         }
       : {}),
     ...(task.processingScope

@@ -7,7 +7,10 @@ import {
   queueContinuation,
 } from "../../assistant/tasks.js";
 import { readProcessingRun } from "../../processing/store.js";
-import { scopeCandidateRun } from "../../assistant/candidates.js";
+import {
+  scopeCandidateRun,
+  candidateScopeForRun,
+} from "../../assistant/candidates.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { ServerContext } from "../context.js";
 import {
@@ -619,7 +622,7 @@ export function registerAssistant({
           limit > 100
         )
           throw new AssistantError(422, "query_parameter_invalid");
-        const fixedScope = session.task.candidateScope;
+        const fixedScope = candidateScopeForRun(session.task, runId);
         let result = await readProcessingRun(
           db,
           artifacts,
@@ -644,7 +647,7 @@ export function registerAssistant({
         );
         if (
           after.task_revision !== session.task_revision ||
-          after.task.candidateScope?.hash !== fixedScope?.hash
+          after.task.candidateScope?.hash !== session.task.candidateScope?.hash
         )
           throw new AssistantError(
             409,

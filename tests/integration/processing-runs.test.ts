@@ -290,6 +290,104 @@ describe("durable data processing", () => {
       await db.end();
     }
   });
+  it("keeps active runs in progress despite validation issues and marks terminal partial outcomes", async () => {
+    const base = `/api/projects/${projectId}/collaborative-drafts`;
+    const draft = await app.inject({
+      method: "POST",
+      url: base,
+      headers,
+      payload: {},
+    });
+    expect(draft.statusCode, draft.body).toBe(201);
+    const row = await app.inject({
+      method: "POST",
+      url: `${base}/${draft.json().draft.id}/records`,
+      headers,
+      payload: { question: "", expectedOutput: "保留原标签", metadata: [] },
+    });
+    expect(row.statusCode, row.body).toBe(201);
+    const path = `/api/projects/${projectId}/processing-runs`;
+    const submitted = await app.inject({
+      method: "POST",
+      url: path,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        source: {
+          kind: "draft",
+          id: draft.json().draft.id,
+          recordIds: [row.json().record.id],
+        },
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    });
+    expect(submitted.statusCode, submitted.body).toBe(201);
+    const run = submitted.json().run;
+    const db = createPool(databaseUrl),
+      config = { ...loadConfig(), databaseUrl };
+    const artifacts = new ArtifactRepository(config.minio);
+    try {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=attempt+1,lease_owner='active-status-test',lease_expires_at=now()+interval '30 seconds' WHERE id=$1 RETURNING *",
+          [run.jobId],
+        )
+      ).rows[0];
+      const result = await runProcessing(db, artifacts, config, job);
+      const detail = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}`,
+        headers,
+      });
+      expect(detail.statusCode, detail.body).toBe(200);
+      expect(detail.json().issues).toContainEqual(
+        expect.objectContaining({ code: "empty_question" }),
+      );
+      expect(detail.json().run).toMatchObject({
+        status: "running",
+        partial: false,
+      });
+      const active = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}/status`,
+        headers,
+      });
+      expect(active.statusCode, active.body).toBe(200);
+      expect(active.json()).toMatchObject({
+        run: { status: "running", partial: false, errorCode: null },
+        total: 1,
+      });
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      const terminal = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}/status`,
+        headers,
+      });
+      expect(terminal.statusCode, terminal.body).toBe(200);
+      expect(terminal.json()).toMatchObject({
+        run: { status: "succeeded", partial: true, missingCount: 0 },
+        total: 1,
+      });
+      const finished = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}`,
+        headers,
+      });
+      expect(finished.json().run).toMatchObject({
+        status: "succeeded",
+        partial: true,
+      });
+    } finally {
+      await db.end();
+    }
+  });
+
   it("uses the configured model, preserves protected fields, retries only failed batches, and rejects stale-field adoption", async () => {
     const draft = await app.inject({
       method: "POST",

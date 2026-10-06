@@ -92,7 +92,12 @@ describe("project assistant public contract", () => {
                                   : "A.2.a",
                               })),
                             ]
-                          : row.metadata,
+                          : processing.instructions === "补足缺少的丙类问题"
+                            ? [
+                                ...row.metadata,
+                                { key: "riskCode", value: "A.3.a" },
+                              ]
+                            : row.metadata,
                       })),
                   }),
                 },
@@ -6523,6 +6528,305 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it.each([
+    {
+      selectedCount: 0,
+      total: 1,
+      maximumAddition: 9999,
+      overflowAddition: 10000,
+    },
+    {
+      selectedCount: 1,
+      total: 2,
+      maximumAddition: 9998,
+      overflowAddition: 9999,
+    },
+  ])(
+    "keeps selected classification results when supplementing and adopting a shortage: $selectedCount selected",
+    async ({ selectedCount, total, maximumAddition, overflowAddition }) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      const drafts = `/api/projects/${projectId}/collaborative-drafts`;
+      const config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      async function finish(runId: string) {
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=1,lease_owner='shortage-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [runId],
+          )
+        ).rows[0];
+        const result = await runProcessing(
+          db,
+          new ArtifactRepository(config.minio),
+          config,
+          job,
+        );
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, result],
+        );
+        await expect
+          .poll(async () => (await read()).json().task.stage, {
+            timeout: 15000,
+          })
+          .toBe("awaiting_review");
+      }
+      try {
+        const source = (
+          await app.inject({
+            method: "POST",
+            url: drafts,
+            headers,
+            payload: { name: "缺额补足来源" },
+          })
+        ).json().draft.id;
+        for (let i = 0; i < 3; i++) {
+          const added = await app.inject({
+            method: "POST",
+            url: `${drafts}/${source}/records`,
+            headers,
+            payload: {
+              question: `${i < 2 ? "甲" : "乙"}类问题${i}`,
+              expectedOutput: `原标签${i}`,
+              metadata: [{ key: "subject", value: `旧类别${i}` }],
+            },
+          });
+          expect(added.statusCode, added.body).toBe(201);
+        }
+        sessionId = (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions`,
+            headers,
+            payload: {},
+          })
+        ).json().sessionId;
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: {
+              title: "分类选取并补足",
+              requirements: ["保留原题和原标签，选甲类1条并补足丙类1条"],
+              targetCount: total,
+              classifications: [
+                {
+                  field: "metadata",
+                  key: "riskCode",
+                  allowedValues: ["A.1.a", "A.2.a", "A.3.a"],
+                  quotas: [
+                    ...(selectedCount ? [{ value: "A.1.a", count: 1 }] : []),
+                    { value: "A.3.a", count: 1 },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            name: "submit_processing",
+            input: {
+              source: { kind: "draft", id: source },
+              allRecords: true,
+              selection: null,
+              operation: "rewrite",
+              instructions: "新增风险分类",
+              allowedFields: ["metadata"],
+              metadataKeys: ["riskCode"],
+            },
+          },
+        ];
+        const classified = (await send("分类后按配额选取并补足")).json().task
+          .runId;
+        await finish(classified);
+        const classifiedPreview = (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/processing-runs/${classified}?limit=1`,
+            headers,
+          })
+        ).json();
+        const sourceRecordId = classifiedPreview.records[0].original.id;
+        const supplementInput = {
+          source: { kind: "draft", id: source },
+          selection: null,
+          recordIds: [sourceRecordId],
+          operation: "augment",
+          outputCount: 1,
+          instructions: "补足缺少的丙类问题",
+          allowedFields: ["question", "expectedOutput", "metadata"],
+        };
+        requestedTool = { name: "submit_processing", input: supplementInput };
+        const earlier = (await send("先前独立批次")).json().task.runId;
+        await finish(earlier);
+        requestedTool = {
+          name: "select_candidates",
+          input: {
+            runId: classified,
+            seed: "shortage-proof",
+            groups: [
+              ...(selectedCount
+                ? [
+                    {
+                      count: 1,
+                      conditions: [
+                        {
+                          field: "metadata",
+                          key: "riskCode",
+                          operator: "equals",
+                          value: "A.1.a",
+                        },
+                      ],
+                    },
+                  ]
+                : []),
+              {
+                count: 1,
+                conditions: [
+                  {
+                    field: "metadata",
+                    key: "riskCode",
+                    operator: "equals",
+                    value: "A.3.a",
+                  },
+                ],
+              },
+            ],
+          },
+        };
+        const selected = (await send("按方案选取")).json();
+        expect(selected.task.review).toMatchObject({
+          total: selectedCount,
+          complete: false,
+        });
+        expect(selected.task.runIds).toEqual([classified]);
+        const fixed = (
+          await app.inject({
+            method: "GET",
+            url: `${base()}/sessions/${sessionId}/candidates?run=${classified}`,
+            headers,
+          })
+        ).json();
+        expect(fixed.total).toBe(selectedCount);
+        requestedTool = {
+          name: "submit_processing",
+          input: supplementInput,
+        };
+        const supplement = (await send("补足缺少的丙类问题")).json().task.runId;
+        await finish(supplement);
+        const retained = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?run=${classified}`,
+          headers,
+        });
+        expect(retained.statusCode, retained.body).toBe(200);
+        expect(retained.json().total).toBe(selectedCount);
+        expect(retained.json().records).toEqual(fixed.records);
+        expect((await read()).json().task.review).toMatchObject({
+          total,
+          complete: true,
+        });
+        for (const allTask of [undefined, false]) {
+          requestedTool = {
+            name: "request_processing_apply",
+            input: {
+              runId: supplement,
+              allValid: true,
+              ...(allTask === undefined ? {} : { allTask }),
+              target: { kind: "newDraft", name: "仅采用补足批次" },
+            },
+          };
+          const single = (await send("仅采用补足这一批")).json();
+          const card = single.proposals.find(
+            (item: any) => item.status === "pending",
+          );
+          expect(card, JSON.stringify(single.task)).toBeTruthy();
+          expect(card.summary.count).toBe(1);
+          const rejected = await app.inject({
+            method: "POST",
+            url: `${base()}/proposals/${card.id}/reject`,
+            headers,
+            payload: {},
+          });
+          expect(rejected.statusCode, rejected.body).toBe(200);
+        }
+        requestedTool = {
+          name: "request_processing_apply",
+          input: {
+            runId: supplement,
+            allTask: true,
+            target: { kind: "newDraft", name: "选取与补足成果" },
+          },
+        };
+        const ready = (await send("采用全部任务成果")).json();
+        const proposal = ready.proposals.find(
+          (item: any) => item.status === "pending",
+        );
+        expect(proposal, JSON.stringify(ready.task)).toBeTruthy();
+        expect(proposal.summary.count).toBe(total);
+        requestedTool = undefined;
+        const confirmed = await app.inject({
+          method: "POST",
+          url: `${base()}/proposals/${proposal.id}/confirm`,
+          headers,
+          payload: {},
+        });
+        expect(confirmed.statusCode, confirmed.body).toBe(200);
+        const adopted = await app.inject({
+          method: "GET",
+          url: `${drafts}/${confirmed.json().receipt.receipt.draftId}?limit=10`,
+          headers,
+        });
+        expect(adopted.statusCode, adopted.body).toBe(200);
+        expect(adopted.json().total).toBe(total);
+        const extra = {
+          source: { kind: "draft", id: source },
+          selection: null,
+          recordIds: [sourceRecordId],
+          operation: "augment",
+          outputCount: overflowAddition,
+          instructions: "检查选取后任务容量，不执行生成",
+          allowedFields: ["question"],
+        };
+        requestedTool = { name: "submit_processing", input: extra };
+        const overflow = (
+          await send("检查超过一万条容量", undefined, "failed")
+        ).json();
+        expect(
+          overflow.turns
+            .at(-1)
+            .tools.find((item: any) => item.status === "failed")?.error?.code,
+          JSON.stringify(overflow.turns.at(-1).tools),
+        ).toBe("processing_capacity_exceeded");
+        requestedTool = {
+          name: "submit_processing",
+          input: { ...extra, outputCount: maximumAddition },
+        };
+        const boundary = (await send("检查恰好一万条容量")).json();
+        expect(boundary.task.runId).not.toBe(supplement);
+        const stopped = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        expect(stopped.statusCode, stopped.body).toBe(200);
+        const status = await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/processing-runs/${boundary.task.runId}/status`,
+          headers,
+        });
+        expect(status.json().run.status).toBe("cancel_requested");
+      } finally {
+        toolSequence = [];
+        requestedTool = undefined;
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
   it("classifies in the worker then selects and reviews candidates without another execution prompt", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl),
@@ -7124,6 +7428,53 @@ describe("project assistant public contract", () => {
       const partial = (await send("只采用我明确选择的第一条")).json();
       expect(partial.proposals).toHaveLength(1);
       expect(partial.proposals[0].summary.count).toBe(1);
+      const rejected = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${partial.proposals[0].id}/reject`,
+        headers,
+        payload: {},
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      requestedTool = {
+        name: "select_candidates",
+        input: {
+          runId,
+          selection: {
+            method: "all",
+            conditions: [
+              {
+                field: "question",
+                operator: "equals",
+                value: "从未生成的候选",
+              },
+            ],
+          },
+        },
+      };
+      const empty = (await send("只选取不存在的候选")).json();
+      expect(empty.task.review.total).toBe(0);
+      requestedTool = {
+        name: "request_processing_apply",
+        input: {
+          runId,
+          allTask: true,
+          allValid: true,
+          target: { kind: "newDraft", name: "禁止空成果确认" },
+        },
+      };
+      const emptyApply = (await send("采用全部选取结果")).json();
+      expect(
+        emptyApply.proposals.filter((p: any) => p.status === "pending"),
+      ).toHaveLength(0);
+      expect(
+        emptyApply.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "request_processing_apply"),
+      ).toMatchObject({
+        status: "failed",
+        error: { code: "assistant_candidate_review_incomplete" },
+      });
+      expect(emptyApply.task.review.complete).toBe(false);
     } finally {
       requestedTool = undefined;
       toolSequence = [];

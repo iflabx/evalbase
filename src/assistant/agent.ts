@@ -11,7 +11,11 @@ import {
 import { readBackground } from "./background.js";
 import { reviewTask } from "./review.js";
 import type { CandidateGoal } from "../processing/review.js";
-import { selectCandidateRun, scopeCandidateRun } from "./candidates.js";
+import {
+  selectCandidateRun,
+  scopeCandidateRun,
+  candidateScopeForRun,
+} from "./candidates.js";
 import {
   ToolLoopAgent,
   tool,
@@ -1552,7 +1556,6 @@ export async function executeAssistantTurn(
           target: input.source,
           targetName: await sourceName(input.source),
           stage: "processing",
-          candidateScope: null,
           error: null,
         });
         yieldToProcessing = true;
@@ -1606,10 +1609,16 @@ export async function executeAssistantTurn(
         );
         await depend(references(data.run.source));
         const candidateScope = selectCandidateRun(data, input);
-        const nextTask = { ...task, runId: input.runId, candidateScope };
+        const nextTask = {
+          ...task,
+          runId: input.runId,
+          runIds: [input.runId],
+          candidateScope,
+        };
         const checked = await reviewTask(db, artifacts, scope, nextTask, data);
         await updateTask(db, turn, {
           runId: input.runId,
+          runIds: [input.runId],
           candidateScope,
           review: checked.review,
           checkedStatus: checked.checkedStatus,
@@ -1684,7 +1693,7 @@ export async function executeAssistantTurn(
               { limit: "10000" },
               true,
             ),
-            task?.candidateScope,
+            candidateScopeForRun(task, input.runId),
           );
           if (input.resultIds?.some((id: string) => !data.allIds.includes(id)))
             throw new AssistantError(
@@ -1959,11 +1968,7 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
-        if (task.candidateScope && task.candidateScope.runId !== input.runId)
-          throw new AssistantError(
-            409,
-            "assistant_candidate_selection_changed",
-          );
+        candidateScopeForRun(task, input.runId);
         const allValid =
           input.allValid === true ||
           (input.allTask === true &&
@@ -1999,10 +2004,9 @@ export async function executeAssistantTurn(
               "assistant_candidate_review_incomplete",
             );
         }
-        const runIds: string[] = task.candidateScope
-          ? [input.runId]
-          : input.allTask
-            ? task.runIds
+        const runIds: string[] =
+          input.allTask && allValid && input.resultIds === undefined
+            ? (task.runIds ?? [input.runId])
             : [input.runId];
         const available = [];
         for (const runId of runIds) {
@@ -2020,7 +2024,9 @@ export async function executeAssistantTurn(
           await depend(references(item.run.source));
           if (!["succeeded", "failed", "cancelled"].includes(item.run.status))
             throw new AssistantError(409, "processing_still_running");
-          available.push(scopeCandidateRun(item, task.candidateScope));
+          available.push(
+            scopeCandidateRun(item, candidateScopeForRun(task, runId)),
+          );
         }
         const target: Record<string, any> = { kind: input.target.kind };
         let targetName: string | undefined;
@@ -2051,6 +2057,13 @@ export async function executeAssistantTurn(
             allValid && input.resultIds === undefined
               ? item.allIds
               : input.resultIds;
+          if (
+            input.allTask &&
+            allValid &&
+            input.resultIds === undefined &&
+            !item.allIds.length
+          )
+            continue;
           if (
             !Array.isArray(ids) ||
             !ids.length ||

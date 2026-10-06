@@ -84,11 +84,20 @@ export async function linkAssistantProcessing(
   const runs = [
     ...new Set(prior.map((id) => (id === parent ? runId : id)).concat(runId)),
   ];
+  const candidateScope = carryCandidateScope(
+    state.candidateScope,
+    runId,
+    parent,
+  );
   if (runs.length > 12) throw new AssistantError(422, "assistant_task_limit");
   const capacity = (
     await db.query(
-      "SELECT sum(coalesce((options->>'outputCount')::integer,input_count))::integer AS total FROM processing_run WHERE id=ANY($1::text[])",
-      [runs],
+      "SELECT sum(CASE WHEN id=$2 THEN $3::integer ELSE coalesce((options->>'outputCount')::integer,input_count) END)::integer AS total FROM processing_run WHERE id=ANY($1::text[])",
+      [
+        runs,
+        candidateScope?.runId ?? null,
+        candidateScope?.resultIds.length ?? 0,
+      ],
     )
   ).rows[0];
   if (capacity.total > 10000)
@@ -99,7 +108,7 @@ export async function linkAssistantProcessing(
       scope.assistantGuard.sessionId,
       runId,
       JSON.stringify(runs),
-      JSON.stringify(carryCandidateScope(state.candidateScope, runId, parent)),
+      JSON.stringify(candidateScope),
     ],
   );
 }
