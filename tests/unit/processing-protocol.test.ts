@@ -21,6 +21,42 @@ const inputs = [
   },
 ];
 describe("model processing output boundary", () => {
+  it("sends only mapped record data and exact candidate ids in the new wire recipe", () => {
+    const row = {
+      ...inputs[0]!,
+      id: "candidate:0:0",
+      raw: { question: "raw data" },
+      baseline: { id: "original-row", question: "old question" },
+      candidateOrigin: { runId: "old-run", resultId: "0:0" },
+      source: { assetId: "old-asset" },
+      revisions: { question: 3 },
+    };
+    const options = processingOptions({
+      operation: "rewrite",
+      instructions: "修正题目",
+      allowedFields: ["question"],
+    });
+    const current = processingPrompt(
+      [row],
+      options,
+      1,
+      undefined,
+      undefined,
+      true,
+    );
+    expect(JSON.parse(current.prompt).records).toEqual([
+      {
+        id: row.id,
+        question: row.question,
+        expectedOutput: row.expectedOutput,
+        metadata: row.metadata,
+        raw: row.raw,
+      },
+    ]);
+    expect(current.system).toContain("records[*].id");
+    const legacy = processingPrompt([row], options, 1);
+    expect(JSON.parse(legacy.prompt).records).toEqual([row]);
+  });
   it("scopes confirmed quotas to each batch and subtracts accepted corrections", () => {
     const background = {
       requirements: [],

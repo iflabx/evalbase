@@ -33,6 +33,7 @@ describe("assistant continuous task public contract", () => {
   const requests: any[] = [];
   afterEach(() => {
     extraAfterSubmit = false;
+    preferBaseline = false;
     wrongEventRunId = undefined;
     repeatWrongEventRun = false;
     finishRetryRead = false;
@@ -54,6 +55,7 @@ describe("assistant continuous task public contract", () => {
     failRefinement = false;
   let repairPattern: "recover" | "partial" | null = null;
   let repairCalls = 0;
+  let preferBaseline = false;
   let extraAfterSubmit = false;
   let wrongEventRunId: string | undefined;
   let repeatWrongEventRun = false;
@@ -119,7 +121,7 @@ describe("assistant continuous task public contract", () => {
               ]
             : []
         : input.records.map((row: any) => ({
-            sourceId: row.id,
+            sourceId: preferBaseline ? (row.baseline?.id ?? row.id) : row.id,
             question: row.question + "（自然表达）",
             expectedOutput: "不应采用的模型答案",
             metadata: row.metadata,
@@ -1005,7 +1007,9 @@ describe("assistant continuous task public contract", () => {
         })
       ).json().run.id,
     ).toBe(child);
+    preferBaseline = true;
     await execute(child);
+    preferBaseline = false;
     const after = (
       await app.inject({
         method: "GET",
@@ -1043,8 +1047,28 @@ describe("assistant continuous task public contract", () => {
     });
     expect(failedRun.statusCode, failedRun.body).toBe(201);
     const failedId = failedRun.json().run.id;
+    const legacyDb = createPool(databaseUrl);
+    try {
+      await legacyDb.query(
+        "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}',$2::jsonb) WHERE id=$1",
+        [failedId, JSON.stringify("processing-v2")],
+      );
+    } finally {
+      await legacyDb.end();
+    }
+    const legacyStart = requests.length;
     failRefinement = true;
     await expect(execute(failedId)).rejects.toThrow("processing_batch_failed");
+    expect(
+      requests
+        .slice(legacyStart)
+        .filter((body) => !body.tools)
+        .some((body) =>
+          JSON.parse(body.messages.at(-1).content).records.some(
+            (row: any) => row.baseline,
+          ),
+        ),
+    ).toBe(true);
     const partial = (
       await app.inject({
         method: "GET",

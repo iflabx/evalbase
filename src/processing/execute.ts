@@ -50,6 +50,7 @@ function modelRequest(
   background: InputSnapshot["background"],
   accepted: ProcessingResult["records"] = [],
   batch?: { offset: number; total: number },
+  dataOnly = false,
 ) {
   const base = processingPrompt(
     inputs,
@@ -57,6 +58,7 @@ function modelRequest(
     missing,
     background,
     batch ? { ...batch, originalCount: expected, accepted } : undefined,
+    dataOnly,
   );
   const correction = {
     ...JSON.parse(base.prompt),
@@ -91,6 +93,7 @@ function batches(
   background?: InputSnapshot["background"],
   legacyRecipe = false,
   quotaInput = true,
+  dataOnly = false,
 ) {
   const result: { inputs: ProcessingInput[]; count: number }[] = [];
   const fits = (rows: ProcessingInput[], offset: number, count: number) => {
@@ -110,6 +113,7 @@ function batches(
       background,
       [],
       quotaInput ? { offset, total: outputCount ?? inputs.length } : undefined,
+      dataOnly,
     );
     return (
       Buffer.byteLength(request.system + request.prompt) <=
@@ -173,10 +177,11 @@ export async function runProcessing(
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
   const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
+  const dataOnly = run.execution_config.recipeVersion === "processing-v3";
   if (
-    (!legacyRecipe &&
-      run.execution_config.recipeVersion !==
-        PROCESSING_EXECUTION.recipeVersion) ||
+    !["processing-v1", "processing-v2", "processing-v3"].includes(
+      run.execution_config.recipeVersion,
+    ) ||
     canonicalJson({
       ...run.execution_config,
       recipeVersion: PROCESSING_EXECUTION.recipeVersion,
@@ -194,6 +199,7 @@ export async function runProcessing(
     input.background,
     legacyRecipe,
     quotaInput,
+    dataOnly,
   );
   let model: Awaited<ReturnType<typeof configuredModel>> | undefined;
   if (run.model_revision !== null)
@@ -307,6 +313,7 @@ export async function runProcessing(
                   total: run.options.outputCount ?? input.records.length,
                 }
               : undefined,
+            dataOnly,
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >
