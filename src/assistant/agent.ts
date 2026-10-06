@@ -984,7 +984,11 @@ export async function executeAssistantTurn(
         source: sourceSchema,
         recordIds: ids,
         allRecords: { type: "boolean" },
-        selection: selectionSchema,
+        selection: {
+          ...selectionSchema,
+          description:
+            '首次处理或切换来源时必须明确选取范围。随机固定100条的格式为{"method":"random","conditions":[],"mode":"count","value":100}；按实际任务数量调整value。不要把outputCount当选取范围。仅处理同一已固定来源范围时可省略。',
+        },
         operation: { enum: ["clean", "rewrite", "augment"] },
         instructions: { type: "string", maxLength: 8000 },
         allowedFields: {
@@ -994,7 +998,13 @@ export async function executeAssistantTurn(
           maxItems: 3,
           uniqueItems: true,
         },
-        outputCount: { type: "integer", minimum: 1, maximum: 10000 },
+        outputCount: {
+          type: "integer",
+          minimum: 1,
+          maximum: 10000,
+          description:
+            "仅operation=augment时填写新生成数量。clean/rewrite不填写；其处理条数由selection或真实recordIds确定。",
+        },
       },
       [
         "source",
