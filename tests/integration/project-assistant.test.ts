@@ -38,6 +38,7 @@ describe("project assistant public contract", () => {
   let repeatRead: boolean | "progress" | "bounded" = false;
   let textualToolCall: string | undefined;
   let textualReplies: string[] = [];
+  let finalReply: string | undefined;
   let textualToolCallAfterScopeError = false;
   let hold = false,
     release: () => void = () => undefined,
@@ -143,7 +144,7 @@ describe("project assistant public contract", () => {
     }
     let message: Record<string, unknown> = {
         role: "assistant",
-        content: "操作结果请查看下方真实回执。",
+        content: finalReply ?? "操作结果请查看下方真实回执。",
       },
       finish = "stop";
     const automatic =
@@ -1208,7 +1209,14 @@ describe("project assistant public contract", () => {
       const duplicateFields = (await send("重复字段应拒绝"))
         .json()
         .turns.at(-1);
-      expect(duplicateFields.tools).toEqual([]);
+      expect(duplicateFields.tools).toMatchObject([
+        {
+          name: "submit_processing",
+          input: {},
+          status: "failed",
+          error: { code: "assistant_tool_input_invalid" },
+        },
+      ]);
       expect(
         (await db.query("SELECT count(*)::int AS count FROM processing_run"))
           .rows[0].count,
@@ -1782,6 +1790,292 @@ describe("project assistant public contract", () => {
       }
     },
   );
+  it.each([
+    "",
+    "<tool_call><function=submit_processing></function></tool_call>",
+  ])(
+    "returns the persisted planning checkpoint when the model ends with unusable prose: %s",
+    async (reply) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const uploaded = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/background-documents`,
+          headers,
+          payload: {
+            fileName: "选题要求.md",
+            contentBase64:
+              Buffer.from("合成风险类别一与正常题。").toString("base64"),
+          },
+        });
+        expect(uploaded.statusCode, uploaded.body).toBe(201);
+        toolSequence = Array.from({ length: 9 }, () => ({
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id, query: "类别" },
+        }));
+        backgroundCheckpoint = {
+          title: "背景选题方案",
+          requirements: ["保留原题和原标签", "按背景分类后选取200条"],
+          targetCount: 200,
+          countKind: "new",
+          executionMode: "plan",
+          steps: [
+            {
+              title: "后台按背景分类，保留原题和原标签",
+              action: "submit_processing",
+            },
+            { title: "按分类固定选取200条", action: "select_candidates" },
+            { title: "核对数量与类别覆盖", action: "read_processing" },
+          ],
+          nextAction: "none",
+        };
+        finalReply = reply;
+        const state = (await send("按附件设计200条题，先不执行")).json();
+        const turn = state.turns.at(-1);
+        expect(turn.status).toBe("succeeded");
+        expect(state.task.stage).toBe("planning");
+        expect(turn.assistantText).toContain("尚未执行");
+        expect(turn.assistantText).toContain("保留原题和原标签");
+        expect(turn.assistantText).toContain("按分类固定选取200条");
+        expect(turn.assistantText).not.toContain("submit_processing");
+        expect(turn.assistantText).not.toContain("<tool_call");
+        expect(state.proposals).toEqual([]);
+        expect(
+          turn.tools.some((item: any) => item.name === "submit_processing"),
+        ).toBe(false);
+      } finally {
+        finalReply = undefined;
+        backgroundCheckpoint = undefined;
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
+  it.each([
+    ["native schema", { query: "类别" }],
+    ["business", { documentId: "missing-background" }],
+  ])(
+    "does not conceal a later %s tool failure after saving a plan",
+    async (_, input) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: {
+              title: "待核对分类方案",
+              requirements: ["先核对背景分类，不执行"],
+              executionMode: "plan",
+              steps: [{ title: "核对背景定义", action: "read_background" }],
+              nextAction: "none",
+            },
+          },
+          { name: "read_background", input: input as Record<string, unknown> },
+        ];
+        finalReply = "";
+        const state = (
+          await send("先核对背景设计方案，不执行", undefined, "failed")
+        ).json();
+        expect(state.turns.at(-1).status).toBe("failed");
+        expect(state.turns.at(-1).assistantText).toBe("");
+        expect(state.task.stage).toBe("failed");
+        expect(
+          state.turns
+            .at(-1)
+            .tools.findLast((item: any) => item.name === "read_background")
+            .status,
+        ).toBe("failed");
+        expect(state.proposals).toEqual([]);
+      } finally {
+        finalReply = undefined;
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
+  it.each(["retry", "reclaim"])(
+    "allows corrected write parameters after SDK rejection on %s",
+    async (recovery) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        toolSequence = [{ name: "create_draft", input: { name: 42 } }];
+        finalReply = "";
+        const failed = (await send("创建一个草稿", undefined, "failed"))
+          .json()
+          .turns.at(-1);
+        expect(failed.tools).toMatchObject([
+          {
+            name: "create_draft",
+            status: "failed",
+            error: { code: "assistant_tool_input_invalid" },
+          },
+        ]);
+        finalReply = undefined;
+        toolSequence = [
+          { name: "create_draft", input: { name: "参数纠正后的草稿" } },
+        ];
+        if (recovery === "retry") {
+          const resumed = await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          });
+          expect(resumed.statusCode, resumed.body).toBe(200);
+        } else {
+          const db = createPool(databaseUrl);
+          try {
+            await db.query(
+              "UPDATE assistant_turn SET status='running',execution_attempt=1,expires_at=now()-interval '1 second' WHERE id=$1",
+              [failed.id],
+            );
+          } finally {
+            await db.end();
+          }
+        }
+        await expect
+          .poll(async () => (await read()).json().turns.at(-1).status, {
+            timeout: 15000,
+          })
+          .toBe("succeeded");
+        const restored = (await read()).json().turns.at(-1);
+        expect(restored.id).toBe(failed.id);
+        expect(
+          restored.tools.filter(
+            (item: any) =>
+              item.name === "create_draft" && item.status === "succeeded",
+          ),
+        ).toMatchObject([{ result: { name: "参数纠正后的草稿" } }]);
+      } finally {
+        finalReply = undefined;
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
+  it("does not hide a rejected change to a committed write behind planning feedback", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      toolSequence = [
+        { name: "create_draft", input: { name: "已创建的原草稿" } },
+      ];
+      const original = (await send("创建一个草稿")).json().turns.at(-1);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "只规划后续",
+            requirements: ["先设计后续方案，不执行"],
+            executionMode: "plan",
+            steps: [{ title: "后台处理", action: "submit_processing" }],
+            nextAction: "none",
+          },
+        },
+        { name: "create_draft", input: { name: "不允许替换原写入" } },
+      ];
+      finalReply = "";
+      const db = createPool(databaseUrl);
+      try {
+        await db.query(
+          "UPDATE assistant_turn SET status='running',execution_attempt=1,assistant_text='',expires_at=now()-interval '1 second' WHERE id=$1",
+          [original.id],
+        );
+      } finally {
+        await db.end();
+      }
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1).status, {
+          timeout: 15000,
+        })
+        .toBe("failed");
+      const restored = (await read()).json().turns.at(-1);
+      expect(restored.assistantText).toBe("");
+      expect(
+        restored.tools.findLast((item: any) => item.name === "create_draft")
+          .status,
+      ).toBe("failed");
+      expect(
+        restored.tools.filter(
+          (item: any) =>
+            item.name === "create_draft" && item.status === "succeeded",
+        ),
+      ).toMatchObject([{ result: { name: "已创建的原草稿" } }]);
+    } finally {
+      finalReply = undefined;
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+  it("does not conceal an incomplete new turn using a plan saved in an older turn", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "旧方案",
+            requirements: ["只设计，不执行"],
+            executionMode: "plan",
+            steps: [
+              { title: "按指定来源生成题目", action: "submit_processing" },
+            ],
+            nextAction: "none",
+          },
+        },
+      ];
+      expect((await send("先设计方案")).json().task.stage).toBe("planning");
+      toolSequence = [{ name: "query_project", input: { kind: "project" } }];
+      finalReply = "";
+      const state = (await send("检查当前项目", undefined, "failed")).json();
+      expect(state.turns.at(-1).errorCode).toBe("assistant_result_incomplete");
+      expect(state.turns.at(-1).assistantText).toBe("");
+      expect(state.proposals).toEqual([]);
+    } finally {
+      finalReply = undefined;
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
   it.each([
     ["steps", false],
     ["executionMode", false],
