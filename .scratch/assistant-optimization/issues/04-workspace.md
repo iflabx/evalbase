@@ -1,7 +1,7 @@
 # OPT-04：助手工作区与单会话实用闭环
 
-Status: ready-for-agent
-Implementation: in-progress
+Status: ready-for-human
+Implementation: completed
 Blocked: none
 
 ## 合同与范围
@@ -23,3 +23,7 @@ Blocked: none
 ## 公开反馈循环
 
 浏览器上传真实 MD 字节，打开引用预览，刷新核对；确认删除后列表及正文同步。核对桌面侧区在对话滚动时保持可见，窄屏无页面横向溢出。其后真实模型、GB PDF、ChineseSafe 原资料以一个会话创建新的 200 条版本，完整核对和导出。自动化数据不得作为最终实用闭环的替代。
+
+## 实施收尾
+
+2026-10-06：本项实现与受影响回归完成，代码固定于 `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`。Standards/Spec 复审无未关闭 P0/P1；真实同会话新 200 条已采用、发布及下载核对。证据、24 条内容修正和限制见 [闭环证明](../verification.md)。等待 Owner 人工验收，本记录不代签验收。

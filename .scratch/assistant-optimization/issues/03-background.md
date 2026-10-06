@@ -1,7 +1,7 @@
 # OPT-03 背景文档与持久依据
 
-Status: ready-for-agent
-Implementation: in-progress
+Status: ready-for-human
+Implementation: completed
 
 Owner 已授权完整优化目标。以 [优化合同](../../../docs/assistant-optimization.md) 为准；复用现有个人会话、任务修订和处理 Worker，不引入检索平台。
 
@@ -34,3 +34,7 @@ Owner 已授权完整优化目标。以 [优化合同](../../../docs/assistant-o
 ## 当前证据
 
 `background-text-green.log`、`background-pdf-green.log` 验证公开提取；`background-http-green.log` 验证刷新、重复和移除；`background-worker-green.log` 验证 SDK 读取引用→持久用户补充→真实 Worker 模型请求携带依据，并在移除后处理正文不可读。`background-gb-complete-risk-refs.log` 验证真实 GB PDF 中文、31 物理页、附录 A 五类及全部 31 项；`background-private-run-green.log` 验证其他成员不能通过处理页读取个人背景运行。整合中发现无附件任务的空背景字段不能参与 canonical JSON，修复后助手 43 项回归通过（`background-no-document-compatibility.log`）。前端附件上传、刷新、定位、移除及桌面/窄窗口已通过浏览器回归；最终真实模型 200 条仍待验证。
+
+## 实施收尾
+
+2026-10-06：本项实现与受影响回归完成，代码固定于 `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`。Standards/Spec 复审无未关闭 P0/P1；真实同会话新 200 条已采用、发布及下载核对。证据、24 条内容修正和限制见 [闭环证明](../verification.md)。等待 Owner 人工验收，本记录不代签验收。

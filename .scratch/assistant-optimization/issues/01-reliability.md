@@ -1,7 +1,7 @@
 # OPT-01 可靠结果与可恢复执行
 
-Status: ready-for-agent
-Implementation: in-progress
+Status: ready-for-human
+Implementation: completed
 Blocked by: none
 
 [Spec](../spec.md)、[合同](../../../docs/assistant-optimization.md#1-可靠结果与失败恢复)。Owner 已授权整体目标；既有基础依赖已实现。
@@ -30,3 +30,7 @@ Blocked by: none
 ## 验证
 
 REL-1/2/3 公共正常与关键缺失边界、后端类型、受影响 lint；最终整轮完整检查和独立 Standards/Spec 再统一完成。
+
+## 实施收尾
+
+2026-10-06：本项实现与受影响回归完成，代码固定于 `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`。Standards/Spec 复审无未关闭 P0/P1；真实同会话新 200 条已采用、发布及下载核对。证据、24 条内容修正和限制见 [闭环证明](../verification.md)。等待 Owner 人工验收，本记录不代签验收。

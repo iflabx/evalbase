@@ -1,7 +1,7 @@
 # OPT-02：成果采用、连续批次与导出
 
-Status: ready-for-agent
-Implementation: in-progress
+Status: ready-for-human
+Implementation: completed
 Blocked: none
 
 ## 范围与依赖
@@ -51,3 +51,7 @@ Owner 已授权整个优化目标；沿用 [Spec](../spec.md)、[优化合同](.
 - 不混合对同一草稿行的两份竞争结果；应使用局部重改替代旧分支，或重新明确选择。已采用到相同草稿的候选从“全部有效”确认中排除，剩余数量据实反馈。
 - 数量目标支持 new/final；已有草稿基数从真实持久记录读取，最终组成扣除待替换行并排除已采用候选。`assistant-final-count-green.log` 验证已有一条加一条到两条、采用后仍两条、切回新增计数一条。整任务汇总由 `assistant/review.ts` 统一处理恢复、重试、完成事件及主动读取。
 - `assistant-preview-scope-contract-green.log` 验证先预览随机选取、后省略内部范围参数清洗同一范围；固定快照和权限约束保持。`processing-capacity-fixture-fixed.log` 验证五文件替换容量和缺失恢复等九项；重复候选不会用新修订再次追加。
+
+## 实施收尾
+
+2026-10-06：本项实现与受影响回归完成，代码固定于 `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`。Standards/Spec 复审无未关闭 P0/P1；真实同会话新 200 条已采用、发布及下载核对。证据、24 条内容修正和限制见 [闭环证明](../verification.md)。等待 Owner 人工验收，本记录不代签验收。
