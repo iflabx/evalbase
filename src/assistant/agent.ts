@@ -624,7 +624,10 @@ export async function executeAssistantTurn(
         });
         // Legacy plans require one real follow-up tool; explicit plans keep their intended action pending through preparatory reads.
         plannedAction = nextAction ?? undefined;
-        return { task: taskPresentation(task) };
+        const presented = taskPresentation(task);
+        return {
+          task: { ...presented, review: smallReview(presented?.review) },
+        };
       },
     ),
     read_background: businessTool(
@@ -1734,7 +1737,20 @@ export async function executeAssistantTurn(
                             review: smallReview(record.result?.review),
                           },
                         }
-                      : record,
+                      : record.name === "plan_task"
+                        ? {
+                            ...record,
+                            result: {
+                              ...record.result,
+                              task: {
+                                ...record.result?.task,
+                                review: smallReview(
+                                  record.result?.task?.review,
+                                ),
+                              },
+                            },
+                          }
+                        : record,
                   )
                 : [],
           }),

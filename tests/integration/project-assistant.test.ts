@@ -5057,6 +5057,21 @@ describe("project assistant public contract", () => {
       expect(snapshot.review.labels).toHaveLength(10);
       expect(snapshot.review.labelKinds).toBe(13);
       expect((await read()).json().task.review.labels).toHaveLength(13);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "继续核对行为",
+          requirements: ["保留逐题验收行为"],
+          nextAction: "none",
+        },
+      };
+      const planned = (await send("整理当前要求")).json();
+      const plan = planned.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "plan_task").result;
+      expect(plan.task.review.labels).toHaveLength(10);
+      expect(plan.task.review.labelKinds).toBe(13);
+      expect(planned.task.review.labels).toHaveLength(13);
     } finally {
       requestedTool = undefined;
       sessionId = previous;
