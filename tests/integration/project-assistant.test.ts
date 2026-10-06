@@ -3485,7 +3485,9 @@ describe("project assistant public contract", () => {
           nextAction: "none",
         },
       };
-      await send("再补充：不要出现真实个人信息");
+      await send(
+        "再补充：不要出现真实个人信息。期望输出写完整验收标准，不是类别。",
+      );
       requestedTool = {
         name: "submit_processing",
         input: {
@@ -3535,6 +3537,14 @@ describe("project assistant public contract", () => {
       );
       expect(modelRequest).toBeTruthy();
       const prompt = JSON.parse(modelRequest!.messages.at(-1).content);
+      expect(prompt.background.userRequests).toEqual([
+        "先看规范",
+        "再补充：不要出现真实个人信息。期望输出写完整验收标准，不是类别。",
+        "按刚才的规范改写",
+      ]);
+      expect(prompt.backgroundRule).toContain(
+        "later user corrections override",
+      );
       expect(prompt.background.requirements).toEqual([
         "按背景规范生成具体场景",
         "修正：不得包含真实个人信息",

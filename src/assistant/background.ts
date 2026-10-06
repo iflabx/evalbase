@@ -13,6 +13,7 @@ import type { BackgroundFragment } from "./extract-background.js";
 
 export type BackgroundSnapshot = {
   requirements: string[];
+  userRequests?: string[];
   documents: {
     id: string;
     fileName: string;
@@ -241,7 +242,16 @@ export async function freezeBackground(
     Buffer.byteLength(JSON.stringify(selected)) > 30000
   )
     throw new AssistantError(422, "assistant_background_capacity");
-  return { requirements: session.task.requirements ?? [], documents: selected };
+  return {
+    requirements: session.task.requirements ?? [],
+    userRequests: [
+      session.task.goal,
+      ...(session.task.supplements ?? []),
+    ].filter(
+      (text): text is string => typeof text === "string" && text.length > 0,
+    ),
+    documents: selected,
+  };
 }
 
 export async function removeBackground(
