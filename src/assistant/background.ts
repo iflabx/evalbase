@@ -190,6 +190,13 @@ export async function readBackground(
     ...row,
     ...(query === undefined ? {} : { matchCount: fragments.length }),
     fragments: fragments.slice(from - 1, from - 1 + limit),
+    nextFrom: from - 1 + limit < fragments.length ? from + limit : null,
+    ...(query !== undefined && fragments.length === 0
+      ? {
+          navigationHint:
+            "没有匹配文本。不要继续猜章节编号；可省略query，用已读片段的index定位原文，再读取相邻片段。原文片段范围为1到fragmentCount，分类层级和子项以原文为准。",
+        }
+      : {}),
   };
 }
 

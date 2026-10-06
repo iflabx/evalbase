@@ -3474,6 +3474,36 @@ describe("project assistant public contract", () => {
       endLine: 100,
     });
     expect(found.json().matchCount).toBe(1);
+    expect(found.json().nextFrom).toBeNull();
+    const first = await app.inject({
+      method: "GET",
+      url: `${path}?from=1&limit=2`,
+      headers,
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    expect(first.json().nextFrom).toBe(3);
+    const last = await app.inject({
+      method: "GET",
+      url: `${path}?from=${first.json().nextFrom}&limit=3`,
+      headers,
+    });
+    expect(last.statusCode, last.body).toBe(200);
+    expect(last.json().fragments[0].index).toBe(3);
+    expect(last.json().nextFrom).toBeNull();
+    const filtered = await app.inject({
+      method: "GET",
+      url: `${path}?query=${encodeURIComponent("背景")}&from=1&limit=1`,
+      headers,
+    });
+    expect(filtered.statusCode, filtered.body).toBe(200);
+    expect(filtered.json().nextFrom).toBe(2);
+    const continued = await app.inject({
+      method: "GET",
+      url: `${path}?query=${encodeURIComponent("背景")}&from=${filtered.json().nextFrom}&limit=1`,
+      headers,
+    });
+    expect(continued.statusCode, continued.body).toBe(200);
+    expect(continued.json().fragments[0].index).toBe(2);
     const absent = await app.inject({
       method: "GET",
       url: `${path}?query=${encodeURIComponent("不存在的要求")}&from=1&limit=3`,
@@ -3482,6 +3512,9 @@ describe("project assistant public contract", () => {
     expect(absent.statusCode).toBe(200);
     expect(absent.json().fragments).toEqual([]);
     expect(absent.json().matchCount).toBe(0);
+    expect(absent.json().nextFrom).toBeNull();
+    expect(absent.json().navigationHint).toContain("没有匹配文本");
+    expect(absent.json().navigationHint).toContain("省略query");
   });
   it("uses a short task title without losing the full original goal", async () => {
     const previous = sessionId;
