@@ -709,7 +709,7 @@ export async function executeAssistantTurn(
                                   ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
                                   : error.code ===
                                       "assistant_plan_count_conflict"
-                                    ? "方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。重新计算你建议的配额并用plan_task完整纠正，不降低用户目标；用户明确指定的矛盾配额应说明并澄清。"
+                                    ? `${e instanceof AssistantError && e.hint ? e.hint + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。重新计算你建议的配额并用plan_task完整纠正，不降低用户目标；用户明确指定的矛盾配额应说明并澄清。`
                                     : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
@@ -910,7 +910,11 @@ export async function executeAssistantTurn(
             targetCount != null &&
             (total > targetCount || (complete && total !== targetCount))
           )
-            throw new AssistantError(422, "assistant_plan_count_conflict");
+            throw new AssistantError(
+              422,
+              "assistant_plan_count_conflict",
+              `当前目标${targetCount}条，配额合计${total}条，${total < targetCount ? "还差" : "超出"}${Math.abs(targetCount - total)}条`,
+            );
         }
         if (
           current.executionPlan?.mode === "plan" &&

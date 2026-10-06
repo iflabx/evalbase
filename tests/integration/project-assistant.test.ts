@@ -1572,6 +1572,7 @@ describe("project assistant public contract", () => {
       })
     ).json().sessionId;
     try {
+      const firstCall = calls.length;
       const plan = {
         title: "200条选题方案",
         requirements: ["风险与正常题合计200条", "先给方案，不执行"],
@@ -1604,6 +1605,17 @@ describe("project assistant public contract", () => {
         "succeeded",
       ]);
       expect(receipts[0].error.code).toBe("assistant_plan_count_conflict");
+      const feedback = calls
+        .slice(firstCall)
+        .flatMap((call) => call.messages)
+        .find(
+          (message: any) =>
+            message.role === "tool" &&
+            message.content.includes("assistant_plan_count_conflict"),
+        );
+      expect(JSON.parse(feedback.content).error.hint).toContain(
+        "当前目标200条，配额合计165条，还差35条",
+      );
       expect(state.task.classifications[0].quotas).toEqual([
         { value: "风险", count: 155 },
         { value: "正常", count: 45 },

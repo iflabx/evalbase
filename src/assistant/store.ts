@@ -62,6 +62,7 @@ export class AssistantError extends Error {
   constructor(
     public status: number,
     public code: string,
+    public hint?: string,
   ) {
     super(code);
   }
