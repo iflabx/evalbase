@@ -1570,6 +1570,59 @@ describe("project assistant public contract", () => {
           await app.inject({ method: "GET", url: `${path}/${id}`, headers })
         ).json().run.status,
       ).toBe("succeeded");
+      for (const replan of [null, "any", "none"]) {
+        toolSequence = [
+          {
+            name: "refine_candidates",
+            input: {
+              runId: id,
+              allSelected: true,
+              instructions: "修正全部候选",
+              allowedFields: ["question"],
+            },
+          },
+          ...(replan
+            ? [
+                {
+                  name: "plan_task",
+                  input: {
+                    title: "修正候选",
+                    requirements: ["保留200条"],
+                    ...(replan === "none" ? { nextAction: "none" } : {}),
+                  },
+                },
+              ]
+            : []),
+          { name: "read_processing", input: { runId: id } },
+        ];
+        const failedSubmit = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/turns`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: { message: "修正这批全部候选" },
+        });
+        expect(failedSubmit.statusCode, failedSubmit.body).toBe(202);
+        await expect
+          .poll(
+            async () =>
+              (await read())
+                .json()
+                .turns.find(
+                  (turn: any) => turn.id === failedSubmit.json().turnId,
+                )?.status,
+            { timeout: 15000 },
+          )
+          .toBe("failed");
+        const notSubmitted = (await read()).json();
+        expect(notSubmitted.turns.at(-1).tools[0].error.code).toBe(
+          "assistant_candidate_selection_invalid",
+        );
+        expect(notSubmitted.turns.at(-1).status).toBe("failed");
+        expect(notSubmitted.turns.at(-1).errorCode).toBe(
+          "assistant_task_not_executed",
+        );
+        expect(notSubmitted.task.runId).toBe(id);
+      }
       requestedTool = {
         name: "submit_processing",
         input: {

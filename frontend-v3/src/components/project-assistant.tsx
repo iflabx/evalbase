@@ -91,6 +91,7 @@ type Conversation = {
       protectedFieldChanges: number;
       outsideLabels?: number;
       labels: { label: string; count: number }[];
+      additionalLabels?: number;
       formatIssues?: unknown[];
       complete?: boolean;
       classifications?: {
@@ -888,13 +889,24 @@ export function ProjectAssistant({
                         ? ` · 范围外标签 ${visible.task.review.outsideLabels}`
                         : ""}
                     </p>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      {visible.task.review.labels?.map((label) => (
-                        <span key={label.label}>
-                          {label.label || "空期望输出"}：{label.count}
-                        </span>
-                      ))}
-                    </div>
+                    <details
+                      className="rounded-md border px-3 py-2 text-xs"
+                      open={visible.task.review.labels.length <= 10}
+                    >
+                      <summary className="cursor-pointer text-muted-foreground">
+                        期望输出统计（
+                        {visible.task.review.labels.length +
+                          (visible.task.review.additionalLabels ?? 0)}{" "}
+                        种）
+                      </summary>
+                      <div className="mt-2 max-h-48 overflow-y-auto flex flex-wrap gap-x-3 gap-y-1">
+                        {visible.task.review.labels?.map((label) => (
+                          <span key={label.label}>
+                            {label.label || "空期望输出"}：{label.count}
+                          </span>
+                        ))}
+                      </div>
+                    </details>
                     <p className="text-muted-foreground">
                       以上是结构与数量核对，内容是否正确请审核候选。
                     </p>
