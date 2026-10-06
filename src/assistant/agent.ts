@@ -613,7 +613,8 @@ export async function executeAssistantTurn(
               ])
             ).rows[0].task;
             if (
-              currentTask.executionPlan?.mode === "plan" &&
+              (currentTask.planValidationRequired ||
+                currentTask.executionPlan?.mode === "plan") &&
               ![
                 "plan_task",
                 "query_project",
@@ -622,7 +623,12 @@ export async function executeAssistantTurn(
                 "read_processing",
               ].includes(name)
             )
-              throw new AssistantError(422, "assistant_plan_only");
+              throw new AssistantError(
+                422,
+                currentTask.planValidationRequired
+                  ? "assistant_plan_count_conflict"
+                  : "assistant_plan_only",
+              );
             const value = await action(input, key);
             await turnFence(db, scope, turn.id, turn.execution_token);
             const body = canonicalJson(value);
@@ -843,12 +849,21 @@ export async function executeAssistantTurn(
             "none",
           ],
         },
-        question: { type: "string", minLength: 1, maxLength: 1000 },
+        question: {
+          type: "string",
+          minLength: 1,
+          maxLength: 1000,
+          description:
+            "确需用户补充时填写，并用nextAction:none暂停。配额冲突时只保存标题、要求和问题，不保存未确认的执行参数；回答后须另存完整有效方案。其他有效规划仍可保存步骤，等待回答前不执行。",
+        },
       },
       ["title", "requirements"],
       async (input) => {
+        if (input.question && input.nextAction !== "none")
+          throw new AssistantError(422, "assistant_tool_input_invalid");
         if (
           planningCheckpointRequired &&
+          !input.question &&
           (!input.executionMode || !input.steps?.length)
         )
           throw new AssistantError(422, "assistant_tool_input_invalid");
@@ -863,58 +878,76 @@ export async function executeAssistantTurn(
             : input.targetCount;
         const classifications: NonNullable<CandidateGoal["classifications"]> =
           input.classifications ?? current.classifications ?? [];
-        const constraintsByField = new Map<
-          string,
-          {
-            quotas: Map<string, number>;
-            allowedValues?: string[];
+        let quotaConflict = false;
+        try {
+          const constraintsByField = new Map<
+            string,
+            {
+              quotas: Map<string, number>;
+              allowedValues?: string[];
+            }
+          >();
+          for (const rule of classifications) {
+            const field = canonicalJson([
+              rule.field,
+              rule.field === "metadata" ? rule.key : null,
+            ]);
+            const values = constraintsByField.get(field) ?? {
+              quotas: new Map<string, number>(),
+            };
+            if (rule.allowedValues?.length)
+              values.allowedValues = values.allowedValues
+                ? values.allowedValues.filter((value) =>
+                    rule.allowedValues!.includes(value),
+                  )
+                : rule.allowedValues;
+            for (const quota of rule.quotas ?? []) {
+              const previous = values.quotas.get(quota.value);
+              if (previous !== undefined && previous !== quota.count)
+                throw new AssistantError(422, "assistant_plan_count_conflict");
+              values.quotas.set(quota.value, quota.count);
+            }
+            constraintsByField.set(field, values);
           }
-        >();
-        for (const rule of classifications) {
-          const field = canonicalJson([
-            rule.field,
-            rule.field === "metadata" ? rule.key : null,
-          ]);
-          const values = constraintsByField.get(field) ?? {
-            quotas: new Map<string, number>(),
-          };
-          if (rule.allowedValues?.length)
-            values.allowedValues = values.allowedValues
-              ? values.allowedValues.filter((value) =>
-                  rule.allowedValues!.includes(value),
-                )
-              : rule.allowedValues;
-          for (const quota of rule.quotas ?? []) {
-            const previous = values.quotas.get(quota.value);
-            if (previous !== undefined && previous !== quota.count)
+          for (const { quotas, allowedValues } of constraintsByField.values()) {
+            if (
+              allowedValues &&
+              (!allowedValues.length ||
+                [...quotas].some(
+                  ([value, count]) =>
+                    count > 0 && !allowedValues.includes(value),
+                ))
+            )
               throw new AssistantError(422, "assistant_plan_count_conflict");
-            values.quotas.set(quota.value, quota.count);
-          }
-          constraintsByField.set(field, values);
-        }
-        for (const { quotas, allowedValues } of constraintsByField.values()) {
-          if (
-            allowedValues &&
-            (!allowedValues.length ||
-              [...quotas].some(
-                ([value, count]) => count > 0 && !allowedValues.includes(value),
-              ))
-          )
-            throw new AssistantError(422, "assistant_plan_count_conflict");
-          const total = [...quotas.values()].reduce(
-            (sum, count) => sum + count,
-            0,
-          );
-          const complete = allowedValues?.every((value) => quotas.has(value));
-          if (
-            targetCount != null &&
-            (total > targetCount || (complete && total !== targetCount))
-          )
-            throw new AssistantError(
-              422,
-              "assistant_plan_count_conflict",
-              `当前目标${targetCount}条，配额合计${total}条，${total < targetCount ? "还差" : "超出"}${Math.abs(targetCount - total)}条`,
+            const total = [...quotas.values()].reduce(
+              (sum, count) => sum + count,
+              0,
             );
+            const complete = allowedValues?.every((value) => quotas.has(value));
+            if (
+              targetCount != null &&
+              (total > targetCount || (complete && total !== targetCount))
+            )
+              throw new AssistantError(
+                422,
+                "assistant_plan_count_conflict",
+                `当前目标${targetCount}条，配额合计${total}条，${total < targetCount ? "还差" : "超出"}${Math.abs(targetCount - total)}条`,
+              );
+          }
+        } catch (error) {
+          if (
+            !input.question ||
+            !(error instanceof AssistantError) ||
+            error.code !== "assistant_plan_count_conflict"
+          )
+            throw error;
+          quotaConflict = true;
+          input = {
+            title: input.title,
+            requirements: input.requirements,
+            question: input.question,
+            nextAction: "none",
+          };
         }
         if (
           current.executionPlan?.mode === "plan" &&
@@ -932,8 +965,6 @@ export async function executeAssistantTurn(
           input.nextAction === "submit_processing"
         )
           input = { ...input, nextAction: "refine_candidates" };
-        if (input.question && input.nextAction !== "none")
-          throw new AssistantError(422, "assistant_tool_input_invalid");
         if (input.target) await depend(references(input.target));
         if (input.targetDraftId) {
           if (input.countKind !== "final")
@@ -957,7 +988,12 @@ export async function executeAssistantTurn(
                 : (input.nextAction ?? "any");
         const task = await updateTask(db, turn, {
           ...fields,
-          planningCheckpointTurnId: null,
+          ...(quotaConflict
+            ? { planValidationRequired: true }
+            : !input.question
+              ? { planValidationRequired: null }
+              : {}),
+          ...(!input.question ? { planningCheckpointTurnId: null } : {}),
           ...(plan ? { executionPlan: plan } : {}),
           requirements: [
             ...new Set(
@@ -981,7 +1017,7 @@ export async function executeAssistantTurn(
         // Legacy plans require one real follow-up tool; explicit plans keep their intended action pending through preparatory reads.
         plannedAction = nextAction ?? undefined;
         waitingForInput = Boolean(input.question);
-        planningCheckpointRequired = false;
+        if (!input.question) planningCheckpointRequired = false;
         const presented = taskPresentation(task);
         return {
           task: {

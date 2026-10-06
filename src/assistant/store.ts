@@ -18,6 +18,7 @@ export function taskPresentation(task: Record<string, any> | null) {
   delete presented.observations;
   delete presented.budgetCheckpoint;
   delete presented.planningCheckpointTurnId;
+  delete presented.planValidationRequired;
   return {
     ...presented,
     ...(task.candidateScope

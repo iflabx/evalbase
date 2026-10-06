@@ -1849,6 +1849,182 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it.each(["plan", "execute"])(
+    "pauses a legacy conflicting quota plan without accepting or executing unconfirmed parameters (%s)",
+    async (executionMode) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const plan = {
+          title: "200条方案",
+          requirements: ["合计200条，先给方案不执行"],
+          targetCount: 200,
+          executionMode: "plan",
+          steps: [{ title: "分类后选题", action: "submit_processing" }],
+          nextAction: "none",
+        };
+        const rule = {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["风险", "正常"],
+          quotas: [
+            { value: "风险", count: 155 },
+            { value: "正常", count: 45 },
+          ],
+        };
+        requestedTool = {
+          name: "plan_task",
+          input: { ...plan, classifications: [rule] },
+        };
+        const initial = (await send("先设计200条方案")).json();
+        const legacyRule = {
+          ...rule,
+          quotas: [
+            { value: "风险", count: 155 },
+            { value: "正常", count: 10 },
+          ],
+        };
+        const legacyPlan = {
+          ...initial.task.executionPlan,
+          mode: executionMode,
+        };
+        // This persisted fixture represents a plan accepted before quota validation.
+        const db = createPool(databaseUrl);
+        try {
+          await db.query(
+            "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+            [
+              sessionId,
+              JSON.stringify({
+                classifications: [legacyRule],
+                executionPlan: legacyPlan,
+              }),
+            ],
+          );
+        } finally {
+          await db.end();
+        }
+        const question =
+          "原配额合计165条，是否保留风险155条并将正常题改为45条？";
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            title: plan.title,
+            requirements: plan.requirements,
+            question,
+            nextAction: "none",
+            targetCount: 100,
+            executionMode: "execute",
+            steps: [{ title: "尚未确认的发布步骤", action: "request_publish" }],
+          },
+        };
+        const paused = (await send("核对配额，先向我确认调整方式")).json();
+        expect(paused.task.stage).toBe("waiting_input");
+        expect(paused.task.question).toBe(question);
+        expect(paused.task.targetCount).toBe(200);
+        expect(paused.task.classifications).toEqual([legacyRule]);
+        expect(paused.task.executionPlan).toEqual(legacyPlan);
+        expect(paused.task.nextAction).toBeNull();
+        expect(paused.task).not.toHaveProperty("planValidationRequired");
+        expect(paused.task.runId).toBeUndefined();
+        expect(paused.proposals).toEqual([]);
+        const draftsPath = `/api/projects/${projectId}/collaborative-drafts`;
+        const sourceResponse = await app.inject({
+          method: "POST",
+          url: draftsPath,
+          headers,
+          payload: { name: "澄清后分类来源" },
+        });
+        expect(sourceResponse.statusCode).toBe(201);
+        const source = sourceResponse.json().draft.id;
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${draftsPath}/${source}/records`,
+              headers,
+              payload: {
+                question: "原题",
+                expectedOutput: "原标签",
+                metadata: [],
+              },
+            })
+          ).statusCode,
+        ).toBe(201);
+        const submission = {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: source },
+            allRecords: true,
+            operation: "rewrite",
+            instructions: "保留原题，新增类别",
+            allowedFields: ["metadata"],
+            metadataKeys: ["类别"],
+          },
+        };
+        if (executionMode === "execute") {
+          requestedTool = submission;
+          const bypass = (
+            await send("正常题调整到45条，开始执行", undefined, "failed")
+          ).json();
+          expect(
+            bypass.turns
+              .at(-1)
+              .tools.find((tool: any) => tool.name === "submit_processing"),
+          ).toMatchObject({
+            status: "failed",
+            error: { code: "assistant_plan_count_conflict" },
+          });
+          expect(
+            bypass.turns
+              .at(-1)
+              .tools.every((tool: any) => tool.status === "failed"),
+          ).toBe(true);
+          expect(bypass.task.runId).toBeUndefined();
+          expect(bypass.proposals).toEqual([]);
+        }
+        requestedTool = {
+          name: "plan_task",
+          input: { ...plan, classifications: [rule] },
+        };
+        const corrected = (await send("可以，仍保持200条，先不执行")).json();
+        expect(corrected.task.stage).toBe("planning");
+        expect(corrected.task.question).toBeNull();
+        expect(corrected.task.targetCount).toBe(200);
+        expect(corrected.task.classifications).toEqual([rule]);
+        expect(corrected.task.runId).toBeUndefined();
+        if (executionMode === "execute") {
+          toolSequence = [
+            {
+              name: "plan_task",
+              input: {
+                ...plan,
+                classifications: [rule],
+                executionMode: "execute",
+              },
+            },
+            submission,
+          ];
+          const executed = (await send("执行已校验方案")).json();
+          expect(
+            executed.turns
+              .at(-1)
+              .tools.find((tool: any) => tool.name === "submit_processing"),
+          ).toMatchObject({ status: "succeeded" });
+          expect(executed.task.runId).toEqual(expect.any(String));
+        }
+      } finally {
+        sessionId = previous;
+      }
+    },
+  );
   it("replaces current requirements without losing history or duplicating retained rules", async () => {
     const previous = sessionId;
     sessionId = (
