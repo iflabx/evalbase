@@ -715,7 +715,7 @@ export async function executeAssistantTurn(
                                   ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
                                   : error.code ===
                                       "assistant_plan_count_conflict"
-                                    ? `${e instanceof AssistantError && e.hint ? e.hint + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标；用户明确指定的矛盾配额应说明并澄清。`
+                                    ? `${e instanceof AssistantError && e.hint ? e.hint + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
                                     : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
@@ -927,12 +927,22 @@ export async function executeAssistantTurn(
             if (
               targetCount != null &&
               (total > targetCount || (complete && total !== targetCount))
-            )
+            ) {
+              const adjustment = [...quotas].findLast(
+                ([value, count]) =>
+                  (!allowedValues || allowedValues.includes(value)) &&
+                  count + targetCount - total > 0 &&
+                  count + targetCount - total <= 10000,
+              );
+              const example = adjustment
+                ? `。仅当配额由你自行拟定且用户未固定该类别时，纠正示例：将${JSON.stringify(adjustment[0])}从${adjustment[1]}改为${adjustment[1] + targetCount - total}条，其余配额不变，合计${targetCount}条；示例不自动变更方案，须重新提交完整classifications`
+                : "";
               throw new AssistantError(
                 422,
                 "assistant_plan_count_conflict",
-                `当前目标${targetCount}条，配额合计${total}条，${total < targetCount ? "还差" : "超出"}${Math.abs(targetCount - total)}条`,
+                `当前目标${targetCount}条，配额合计${total}条，${total < targetCount ? "还差" : "超出"}${Math.abs(targetCount - total)}条${example}`,
               );
+            }
           }
         } catch (error) {
           if (

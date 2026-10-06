@@ -1561,73 +1561,84 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
-  it("rejects impossible complete quotas before saving and corrects them in the same turn", async () => {
-    const previous = sessionId;
-    sessionId = (
-      await app.inject({
-        method: "POST",
-        url: `${base()}/sessions`,
-        headers,
-        payload: {},
-      })
-    ).json().sessionId;
-    try {
-      const firstCall = calls.length;
-      const plan = {
-        title: "200条选题方案",
-        requirements: ["风险与正常题合计200条", "先给方案，不执行"],
-        targetCount: 200,
-        executionMode: "plan",
-        steps: [{ title: "分类后选取200条", action: "submit_processing" }],
-        nextAction: "none",
-      };
-      toolSequence = [10, 45].map((normalCount) => ({
-        name: "plan_task",
-        input: {
-          ...plan,
-          classifications: [
-            {
-              field: "metadata",
-              key: "类别",
-              allowedValues: ["风险", "正常"],
-              quotas: [
-                { value: "风险", count: 155 },
-                { value: "正常", count: normalCount },
-              ],
-            },
-          ],
-        },
-      }));
-      const state = (await send("请设计合计200条的方案，先不执行")).json();
-      const receipts = state.turns.at(-1).tools;
-      expect(receipts.map((receipt: any) => receipt.status)).toEqual([
-        "failed",
-        "succeeded",
-      ]);
-      expect(receipts[0].error.code).toBe("assistant_plan_count_conflict");
-      const feedback = calls
-        .slice(firstCall)
-        .flatMap((call) => call.messages)
-        .find(
-          (message: any) =>
-            message.role === "tool" &&
-            message.content.includes("assistant_plan_count_conflict"),
+  it.each([false, true])(
+    "rejects impossible complete quotas before saving and corrects them in the same turn (outside zero quota: %s)",
+    async (outsideZeroQuota) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const firstCall = calls.length;
+        const plan = {
+          title: "200条选题方案",
+          requirements: ["风险与正常题合计200条", "先给方案，不执行"],
+          targetCount: 200,
+          executionMode: "plan",
+          steps: [{ title: "分类后选取200条", action: "submit_processing" }],
+          nextAction: "none",
+        };
+        toolSequence = [10, 45].map((normalCount) => ({
+          name: "plan_task",
+          input: {
+            ...plan,
+            classifications: [
+              {
+                field: "metadata",
+                key: "类别",
+                allowedValues: ["风险", "正常"],
+                quotas: [
+                  { value: "风险", count: 155 },
+                  { value: "正常", count: normalCount },
+                  ...(outsideZeroQuota ? [{ value: "范围外", count: 0 }] : []),
+                ],
+              },
+            ],
+          },
+        }));
+        const state = (await send("请设计合计200条的方案，先不执行")).json();
+        const receipts = state.turns.at(-1).tools;
+        expect(receipts.map((receipt: any) => receipt.status)).toEqual([
+          "failed",
+          "succeeded",
+        ]);
+        expect(receipts[0].error.code).toBe("assistant_plan_count_conflict");
+        const feedback = calls
+          .slice(firstCall)
+          .flatMap((call) => call.messages)
+          .find(
+            (message: any) =>
+              message.role === "tool" &&
+              message.content.includes("assistant_plan_count_conflict"),
+          );
+        expect(JSON.parse(feedback.content).error.hint).toContain(
+          "当前目标200条，配额合计165条，还差35条",
         );
-      expect(JSON.parse(feedback.content).error.hint).toContain(
-        "当前目标200条，配额合计165条，还差35条",
-      );
-      expect(state.task.classifications[0].quotas).toEqual([
-        { value: "风险", count: 155 },
-        { value: "正常", count: 45 },
-      ]);
-      expect(state.task.stage).toBe("planning");
-      expect(state.task.runId).toBeUndefined();
-      expect(state.proposals).toEqual([]);
-    } finally {
-      toolSequence = [];
-      sessionId = previous;
-    }
-  });
+        expect(JSON.parse(feedback.content).error.hint).toContain(
+          '"正常"从10改为45条，其余配额不变，合计200条',
+        );
+        expect(JSON.parse(feedback.content).error.hint).toContain(
+          "用户未固定该类别",
+        );
+        expect(state.task.classifications[0].quotas).toEqual([
+          { value: "风险", count: 155 },
+          { value: "正常", count: 45 },
+          ...(outsideZeroQuota ? [{ value: "范围外", count: 0 }] : []),
+        ]);
+        expect(state.task.stage).toBe("planning");
+        expect(state.task.runId).toBeUndefined();
+        expect(state.proposals).toEqual([]);
+      } finally {
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
   it.each([
     [
       "split field",
@@ -1676,6 +1687,20 @@ describe("project assistant public contract", () => {
         },
       ],
     ],
+    [
+      "no positive single-category repair",
+      [
+        {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["风险", "正常"],
+          quotas: [
+            { value: "风险", count: 220 },
+            { value: "正常", count: 230 },
+          ],
+        },
+      ],
+    ],
   ])(
     "rejects impossible unique field quotas: %s",
     async (_label, classifications) => {
@@ -1689,6 +1714,7 @@ describe("project assistant public contract", () => {
         })
       ).json().sessionId;
       try {
+        const firstCall = calls.length;
         const plan = {
           title: "选题方案",
           requirements: ["合计200条，先不执行"],
@@ -1736,6 +1762,22 @@ describe("project assistant public contract", () => {
         expect(state.turns.at(-1).tools[0].error.code).toBe(
           "assistant_plan_count_conflict",
         );
+        if (_label === "no positive single-category repair") {
+          const feedback = calls
+            .slice(firstCall)
+            .flatMap((call) => call.messages)
+            .find(
+              (message: any) =>
+                message.role === "tool" &&
+                message.content.includes("assistant_plan_count_conflict"),
+            );
+          expect(JSON.parse(feedback.content).error.hint).toContain(
+            "当前目标200条，配额合计450条，超出250条",
+          );
+          expect(JSON.parse(feedback.content).error.hint).not.toContain(
+            "纠正示例",
+          );
+        }
         expect(state.task.classifications).toEqual(corrected);
         expect(state.task.runId).toBeUndefined();
       } finally {
