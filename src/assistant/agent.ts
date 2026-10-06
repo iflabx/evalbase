@@ -26,6 +26,7 @@ import { configuredModel } from "../model/connection.js";
 import { assistantContext } from "./context.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject } from "../server/support.js";
+import { hasProjectCapability } from "../security/project-access.js";
 import {
   createSelectionPreview,
   readSelectionPreview,
@@ -203,6 +204,7 @@ export async function executeAssistantTurn(
   let noProgress = false;
   let modelSteps = 0;
   let protocolRepair = false;
+  let planningCheckpointRequired = false;
   let stepMessages: ModelMessage[] = [];
   let recoveredProcessingKey: string | undefined;
   let processingEventRunId: string | undefined;
@@ -635,7 +637,7 @@ export async function executeAssistantTurn(
                     ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
                     : error.code === "assistant_tool_input_invalid" &&
                         name === "plan_task"
-                      ? "修正计划参数：question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
+                      ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
                       : error.code === "assistant_context_unavailable"
                         ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
                         : error.code === "assistant_candidate_selection_invalid"
@@ -789,6 +791,11 @@ export async function executeAssistantTurn(
       },
       ["title", "requirements"],
       async (input) => {
+        if (
+          planningCheckpointRequired &&
+          (!input.executionMode || !input.steps?.length)
+        )
+          throw new AssistantError(422, "assistant_tool_input_invalid");
         const current = (
           await db.query("SELECT task FROM assistant_session WHERE id=$1", [
             turn.session_id,
@@ -835,6 +842,7 @@ export async function executeAssistantTurn(
                 : (input.nextAction ?? "any");
         const task = await updateTask(db, turn, {
           ...fields,
+          planningCheckpointTurnId: null,
           ...(plan ? { executionPlan: plan } : {}),
           requirements: [
             ...new Set(
@@ -858,6 +866,7 @@ export async function executeAssistantTurn(
         // Legacy plans require one real follow-up tool; explicit plans keep their intended action pending through preparatory reads.
         plannedAction = nextAction ?? undefined;
         waitingForInput = Boolean(input.question);
+        planningCheckpointRequired = false;
         const presented = taskPresentation(task);
         return {
           task: {
@@ -2057,6 +2066,7 @@ export async function executeAssistantTurn(
         turn.session_id,
       ])
     ).rows[0]?.task;
+    planningCheckpointRequired = task?.planningCheckpointTurnId === turn.id;
     if (turn.event === "confirmed" && task.executionPlan?.mode === "execute") {
       const step = task.executionPlan.steps[task.executionPlan.current];
       if (step?.receipt?.proposalId) {
@@ -2224,6 +2234,35 @@ export async function executeAssistantTurn(
           return {
             toolChoice: { type: "tool" as const, toolName: plannedAction },
           };
+        if (
+          (modelSteps >= 7 || planningCheckpointRequired) &&
+          (!plannedAction || plannedAction === "plan_task") &&
+          (await hasProjectCapability(
+            db,
+            scope.projectId,
+            scope.actorId,
+            "write",
+          ))
+        ) {
+          const planningTask = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              turn.session_id,
+            ])
+          ).rows[0].task;
+          if (
+            planningTask.backgroundEvidence?.length &&
+            !planningTask.executionPlan
+          ) {
+            if (!planningCheckpointRequired)
+              await updateTask(db, turn, { planningCheckpointTurnId: turn.id });
+            planningCheckpointRequired = true;
+            return {
+              toolChoice: { type: "tool" as const, toolName: "plan_task" },
+              activeTools: ["plan_task"],
+              instructions: `${instructions}\n继续查询前先保存当前方案：调用plan_task，必须填写executionMode和有序steps，保存已经确认的要求。只设计方案时使用plan，不执行数据处理；尚未核对的定义保留为待核对步骤，不猜造分类。计划保存不增加用户授权。`,
+            };
+          }
+        }
         return plannedAction ? { toolChoice: "required" as const } : {};
       },
       maxOutputTokens: 2048,

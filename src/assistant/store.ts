@@ -17,6 +17,7 @@ export function taskPresentation(task: Record<string, any> | null) {
   const presented = { ...task };
   delete presented.observations;
   delete presented.budgetCheckpoint;
+  delete presented.planningCheckpointTurnId;
   return {
     ...presented,
     ...(task.candidateScope

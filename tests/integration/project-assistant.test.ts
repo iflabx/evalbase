@@ -31,6 +31,10 @@ describe("project assistant public contract", () => {
     | { name: string; input: Record<string, unknown> }
     | undefined;
   let toolSequence: { name: string; input: Record<string, unknown> }[] = [];
+  let backgroundCheckpoint:
+    | Record<string, unknown>
+    | Record<string, unknown>[]
+    | undefined;
   let repeatRead: boolean | "progress" | "bounded" = false;
   let textualToolCall: string | undefined;
   let textualReplies: string[] = [];
@@ -148,8 +152,23 @@ describe("project assistant public contract", () => {
       ) ||
       String(body.messages.at(-1)?.content ?? "").startsWith("[confirmed]");
     const inspectRun = body.tool_choice?.function?.name === "read_processing";
-    const scriptedTool =
-      body.tool_choice === "none" ? undefined : toolSequence.shift();
+    const checkpointRequested =
+      backgroundCheckpoint && body.tool_choice?.function?.name === "plan_task";
+    const scriptedTool = checkpointRequested
+      ? {
+          name: "plan_task",
+          input: Array.isArray(backgroundCheckpoint)
+            ? backgroundCheckpoint.shift()!
+            : backgroundCheckpoint!,
+        }
+      : body.tool_choice === "none"
+        ? undefined
+        : toolSequence.shift();
+    if (checkpointRequested) {
+      if (!Array.isArray(backgroundCheckpoint) || !backgroundCheckpoint.length)
+        backgroundCheckpoint = undefined;
+      toolSequence = [];
+    }
     if (
       scriptedTool ||
       inspectRun ||
@@ -1649,6 +1668,220 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it.each([true, false])(
+    "saves a background plan before repeated queries exhaust the turn only with write access: %s",
+    async (writable) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/background-documents`,
+        headers,
+        payload: {
+          fileName: "分类要求.md",
+          contentBase64: Buffer.from(
+            "风险类别一：合成风险。另保留正常对照题。",
+          ).toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode, uploaded.body).toBe(201);
+      toolSequence = Array.from({ length: 9 }, (_, index) => ({
+        name: "read_background",
+        input: {
+          documentId: uploaded.json().document.id,
+          query: index === 0 ? "类别" : `不存在章节${index}`,
+        },
+      }));
+      backgroundCheckpoint = {
+        title: "背景选题方案",
+        requirements: [
+          "生成200条题目，包含风险和正常对照",
+          "只给方案，尚不处理数据",
+        ],
+        targetCount: 200,
+        countKind: "new",
+        executionMode: "plan",
+        steps: [
+          { title: "依据背景分类", action: "submit_processing" },
+          { title: "选取200条", action: "select_candidates" },
+          { title: "核对完整结果", action: "read_processing" },
+        ],
+        nextAction: "none",
+      };
+      const db = createPool(databaseUrl);
+      const actor = (
+        await db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].actor_id;
+      try {
+        if (!writable) {
+          await db.query("UPDATE app_user SET role='user' WHERE id=$1", [
+            actor,
+          ]);
+          await db.query(
+            "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'viewer') ON CONFLICT(project_id,user_id) DO UPDATE SET role='viewer'",
+            [projectId, actor],
+          );
+        }
+        const state = (
+          await send("按附件设计200条测试题的方案，先不要执行")
+        ).json();
+        if (writable) {
+          expect(state.task.stage).toBe("planning");
+          expect(state.task.targetCount).toBe(200);
+          expect(state.task.executionPlan).toMatchObject({
+            mode: "plan",
+            current: 0,
+          });
+          expect(
+            state.task.executionPlan.steps.every(
+              (step: any) => step.status === "pending",
+            ),
+          ).toBe(true);
+        } else {
+          expect(state.task.stage).toBe("waiting_input");
+          expect(state.task.executionPlan).toBeUndefined();
+        }
+        expect(state.turns.at(-1).assistantText).toBeTruthy();
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some(
+              (item: any) =>
+                item.name === "plan_task" && item.status === "succeeded",
+            ),
+        ).toBe(writable);
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some((item: any) => item.name === "submit_processing"),
+        ).toBe(false);
+        expect(state.proposals).toEqual([]);
+      } finally {
+        backgroundCheckpoint = undefined;
+        toolSequence = [];
+        sessionId = previous;
+        if (!writable) {
+          await db.query("UPDATE app_user SET role='admin' WHERE id=$1", [
+            actor,
+          ]);
+          await db.query(
+            "UPDATE project_member SET role='owner' WHERE project_id=$1 AND user_id=$2",
+            [projectId, actor],
+          );
+        }
+        await db.end();
+      }
+    },
+  );
+  it.each([
+    ["steps", false],
+    ["executionMode", false],
+    ["steps", true],
+  ] as const)(
+    "does not accept a forced background checkpoint missing %s (recovery: %s)",
+    async (missing, recover) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const uploaded = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/background-documents`,
+          headers,
+          payload: {
+            fileName: "方案要求.md",
+            contentBase64:
+              Buffer.from("风险分类和正常对照题。").toString("base64"),
+          },
+        });
+        expect(uploaded.statusCode, uploaded.body).toBe(201);
+        toolSequence = Array.from({ length: 9 }, () => ({
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id, query: "风险" },
+        }));
+        const complete = {
+          title: "背景选题方案",
+          requirements: ["依据背景设计200条题目，只给方案"],
+          executionMode: "plan",
+          steps: [{ title: "后台分类", action: "submit_processing" }],
+          nextAction: "none",
+        };
+        const incomplete: Record<string, unknown> = { ...complete };
+        delete incomplete[missing];
+        backgroundCheckpoint = recover ? incomplete : [incomplete, complete];
+        let state = (
+          await send(
+            "按附件设计200条测试题，先不要执行",
+            undefined,
+            recover ? "failed" : "succeeded",
+          )
+        ).json();
+        expect(state.task).not.toHaveProperty("planningCheckpointTurnId");
+        if (recover) {
+          backgroundCheckpoint = [incomplete, complete];
+          const db = createPool(databaseUrl);
+          try {
+            await db.query(
+              "UPDATE assistant_turn SET status='running',execution_attempt=1,assistant_text='',expires_at=now()-interval '1 second' WHERE id=$1",
+              [state.turns.at(-1).id],
+            );
+            await expect
+              .poll(async () => (await read()).json().turns.at(-1).status, {
+                timeout: 15000,
+              })
+              .toBe("succeeded");
+            state = (await read()).json();
+          } finally {
+            await db.end();
+          }
+        }
+        const plans = state.turns
+          .at(-1)
+          .tools.filter((item: any) => item.name === "plan_task");
+        expect(plans.map((item: any) => item.status)).toEqual([
+          "failed",
+          "succeeded",
+        ]);
+        expect(state.task.stage).toBe("planning");
+        expect(state.task.executionPlan).toMatchObject({
+          mode: "plan",
+          current: 0,
+          steps: [
+            {
+              title: "后台分类",
+              action: "submit_processing",
+              status: "pending",
+            },
+          ],
+        });
+        expect(state.proposals).toEqual([]);
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some((item: any) => item.name === "submit_processing"),
+        ).toBe(false);
+      } finally {
+        backgroundCheckpoint = undefined;
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
   it("continues an authorized pending step after the query budget without recreating its draft", async () => {
     const previous = sessionId;
     const source = await app.inject({
