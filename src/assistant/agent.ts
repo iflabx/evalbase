@@ -709,7 +709,7 @@ export async function executeAssistantTurn(
                                   ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
                                   : error.code ===
                                       "assistant_plan_count_conflict"
-                                    ? `${e instanceof AssistantError && e.hint ? e.hint + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。重新计算你建议的配额并用plan_task完整纠正，不降低用户目标；用户明确指定的矛盾配额应说明并澄清。`
+                                    ? `${e instanceof AssistantError && e.hint ? e.hint + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标；用户明确指定的矛盾配额应说明并澄清。`
                                     : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
@@ -780,7 +780,7 @@ export async function executeAssistantTurn(
         },
         classifications: {
           description:
-            "在用户指定的字段核对类别和配额。题库类型、风险编号等Metadata分类必须用field:metadata及真实key，不能替代期望输出中的逐题回答行为。用户纠正分类字段时重新传完整规则替换旧规则，省略会保留旧规则。",
+            "在用户指定的字段核对类别和配额。题库类型、风险编号等Metadata分类必须用field:metadata及真实key，不能替代期望输出中的逐题回答行为。类别或配额变化时重新传完整规则及quotas替换旧规则，省略会保留旧规则；修改requirements不修改配额。",
           type: "array",
           maxItems: 5,
           items: {

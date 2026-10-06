@@ -1776,6 +1776,7 @@ describe("project assistant public contract", () => {
         input: { ...common, targetCount: 200, classifications: [rule] },
       };
       await send("先设计200条方案");
+      const firstCorrectionCall = calls.length;
       requestedTool = {
         name: "plan_task",
         input: { ...common, targetCount: 100 },
@@ -1785,6 +1786,20 @@ describe("project assistant public contract", () => {
       ).json();
       expect(rejected.turns.at(-1).tools[0].error.code).toBe(
         "assistant_plan_count_conflict",
+      );
+      const correctionFeedback = calls
+        .slice(firstCorrectionCall)
+        .flatMap((call) => call.messages)
+        .find(
+          (message: any) =>
+            message.role === "tool" &&
+            message.content.includes("assistant_plan_count_conflict"),
+        );
+      expect(JSON.parse(correctionFeedback.content).error.hint).toContain(
+        "省略classifications会沿用旧配额",
+      );
+      expect(JSON.parse(correctionFeedback.content).error.hint).toContain(
+        "重新提交classifications及修正后的quotas",
       );
       expect(rejected.task.targetCount).toBe(200);
       expect(rejected.task.classifications).toEqual([rule]);
