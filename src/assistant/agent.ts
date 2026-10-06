@@ -319,7 +319,14 @@ export async function executeAssistantTurn(
               "plan_task",
             ].includes(name)
           ) {
-            if (plannedAction === name || plannedAction === "any") {
+            if (
+              plannedAction === name ||
+              plannedAction === "any" ||
+              (["submit_processing", "refine_candidates"].includes(name) &&
+                ["submit_processing", "refine_candidates"].includes(
+                  plannedAction ?? "",
+                ))
+            ) {
               await updateTask(db, turn, { nextAction: null, question: null });
               plannedAction = undefined;
             }
@@ -386,7 +393,12 @@ export async function executeAssistantTurn(
             );
             if (
               name !== "plan_task" &&
-              (plannedAction === name || plannedAction === "any")
+              (plannedAction === name ||
+                plannedAction === "any" ||
+                (["submit_processing", "refine_candidates"].includes(name) &&
+                  ["submit_processing", "refine_candidates"].includes(
+                    plannedAction ?? "",
+                  )))
             ) {
               await updateTask(db, turn, { nextAction: null, question: null });
               plannedAction = undefined;

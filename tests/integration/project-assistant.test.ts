@@ -1623,6 +1623,33 @@ describe("project assistant public contract", () => {
         );
         expect(notSubmitted.task.runId).toBe(id);
       }
+      toolSequence = [
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: "missing-draft" },
+            allRecords: true,
+            operation: "clean",
+            instructions: "修正题目",
+            allowedFields: ["question"],
+          },
+        },
+        {
+          name: "refine_candidates",
+          input: {
+            runId: id,
+            where: { field: "question", operator: "contains", value: "" },
+            instructions: "修正题目",
+            allowedFields: ["question"],
+          },
+        },
+      ];
+      const actualCorrection = (await send("继续修正候选题目")).json();
+      expect(actualCorrection.turns.at(-1).tools[0].status).toBe("failed");
+      expect(actualCorrection.turns.at(-1).tools[1].result.runId).toBe(
+        actualCorrection.task.runId,
+      );
+      expect(actualCorrection.task.runId).not.toBe(id);
       requestedTool = {
         name: "submit_processing",
         input: {
@@ -1633,6 +1660,18 @@ describe("project assistant public contract", () => {
           allowedFields: ["question"],
         },
       };
+      toolSequence = [
+        {
+          name: "refine_candidates",
+          input: {
+            runId: actualCorrection.task.runId,
+            allSelected: true,
+            instructions: "修正题目",
+            allowedFields: ["question"],
+          },
+        },
+        requestedTool,
+      ];
       const started = (await send("开始新的清洗任务")).json();
       expect(started.task.runId).not.toBe(id);
       expect(started.task.stage).toBe("processing");
