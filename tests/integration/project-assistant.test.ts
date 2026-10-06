@@ -4961,6 +4961,108 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("bounds behavior-label previews without losing the complete task review", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl),
+      draftsPath = `/api/projects/${projectId}/collaborative-drafts`;
+    try {
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: draftsPath,
+          headers,
+          payload: { name: "逐题行为核对" },
+        })
+      ).json().draft.id;
+      const recordIds: string[] = [];
+      for (let i = 0; i < 13; i++) {
+        const row = await app.inject({
+          method: "POST",
+          url: `${draftsPath}/${source}/records`,
+          headers,
+          payload: {
+            question: `问题${i}`,
+            expectedOutput: `行为${i}：` + "具体验收条件".repeat(50),
+            metadata: [],
+          },
+        });
+        expect(row.statusCode, row.body).toBe(201);
+        recordIds.push(row.json().record.id);
+      }
+      const submitted = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/processing-runs`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: { kind: "draft", id: source, recordIds },
+          options: {
+            operation: "clean",
+            instructions: "保留问题与期望行为",
+            allowedFields: ["metadata"],
+          },
+        },
+      });
+      expect(submitted.statusCode, submitted.body).toBe(201);
+      const run = submitted.json().run;
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=1,lease_owner='bounded-review',lease_expires_at=now()+interval '30 seconds' WHERE id=$1 RETURNING *",
+          [run.jobId],
+        )
+      ).rows[0];
+      const config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      const completed = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, completed],
+      );
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      requestedTool = { name: "read_processing", input: { runId: run.id } };
+      const state = (await send("核对逐题验收行为")).json();
+      const result = state.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "read_processing").result;
+      expect(result.review.total).toBe(13);
+      expect(result.review.labels).toHaveLength(10);
+      expect(result.review.labelKinds).toBe(13);
+      expect(result.review.labelsTruncated).toBe(true);
+      expect(state.task.review.labels).toHaveLength(13);
+      expect(state.task.review.total).toBe(13);
+      expect(result.records).toHaveLength(10);
+      const nextCall = calls.length;
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      await send("继续查看项目");
+      const taskMessage = calls[nextCall].messages.find((m: any) =>
+        String(m.content).startsWith("持久任务（"),
+      );
+      const snapshot = JSON.parse(
+        taskMessage.content.split("：").slice(1).join("："),
+      );
+      expect(snapshot.review.labels).toHaveLength(10);
+      expect(snapshot.review.labelKinds).toBe(13);
+      expect((await read()).json().task.review.labels).toHaveLength(13);
+    } finally {
+      requestedTool = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
   it("submits a real operation after seven bounded source reads", async () => {
     const previous = sessionId;
     const startCalls = calls.length;

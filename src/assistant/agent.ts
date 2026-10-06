@@ -148,6 +148,17 @@ function smallRecords(records: Record<string, any>[]) {
     ...(r.raw !== undefined ? { raw: clip(JSON.stringify(r.raw), 1000) } : {}),
   }));
 }
+function smallReview(review: Record<string, any> | null | undefined) {
+  if (!review || !Array.isArray(review.labels)) return review;
+  const labelKinds =
+    review.labelKinds ?? review.labels.length + (review.additionalLabels ?? 0);
+  return {
+    ...review,
+    labels: review.labels.slice(0, 10),
+    labelKinds,
+    labelsTruncated: labelKinds > 10,
+  };
+}
 
 export async function executeAssistantTurn(
   db: Database,
@@ -1296,7 +1307,7 @@ export async function executeAssistantTurn(
     ),
     read_processing: businessTool(
       "read_processing",
-      "查询后台处理状态、全部候选的真实统计和最多10条内容预览。review已核对全部候选，不是当前页统计；无需翻完所有预览页才能报告数量和分布。语义正确性由用户审核，不自行改写。数量不足且用户已授权补足并让你定方案时，在同一轮plan_task并submit_processing提交剩余任务，不能只说会继续；信息缺失才澄清。refine_candidates不能增加数量。后台仍运行时提供任务链接，不反复轮询耗尽工具步骤。",
+      "查询后台处理状态、全部候选的真实统计和最多10条内容预览。review已核对全部候选，不是当前页统计；labels仅预览前10种期望输出，labelKinds为完整种数，labelsTruncated说明还有未展示种类，不能把预览当全部类别。无需翻完所有预览页才能报告数量和分类核对。语义正确性由用户审核，不自行改写。数量不足且用户已授权补足并让你定方案时，在同一轮plan_task并submit_processing提交剩余任务，不能只说会继续；信息缺失才澄清。refine_candidates不能增加数量。后台仍运行时提供任务链接，不反复轮询耗尽工具步骤。",
       { runId: string, offset: { type: "integer", minimum: 0 } },
       ["runId"],
       async (input) => {
@@ -1348,7 +1359,7 @@ export async function executeAssistantTurn(
             status: item.run.status,
             total: item.total,
           })),
-          review,
+          review: smallReview(review),
           records: data.records
             .slice(input.offset ?? 0, (input.offset ?? 0) + 10)
             .map((r) => smallRecords([{ ...r.result, id: r.id }])[0]),
@@ -1628,7 +1639,9 @@ export async function executeAssistantTurn(
         if (!["succeeded", "failed"].includes(record.status)) continue;
         const value =
           record.status === "succeeded"
-            ? record.result
+            ? record.name === "read_processing"
+              ? { ...record.result, review: smallReview(record.result?.review) }
+              : record.result
             : { error: record.error };
         const size = Buffer.byteLength(
           JSON.stringify({ input: record.input, value }),
@@ -1698,6 +1711,7 @@ export async function executeAssistantTurn(
         JSON.stringify(
           context.encode({
             ...taskState,
+            review: smallReview(taskState.review),
             originalRequest: goal,
             previousRequirements: requirements ?? [],
             candidateSelection: turn.candidate_selection
@@ -1711,7 +1725,17 @@ export async function executeAssistantTurn(
             recentCorrections: (supplements ?? []).slice(-6),
             retryOperations:
               Number(turn.execution_attempt) > 1 || turn.resuming
-                ? turn.tool_results
+                ? turn.tool_results.map((record: Record<string, any>) =>
+                    record.name === "read_processing"
+                      ? {
+                          ...record,
+                          result: {
+                            ...record.result,
+                            review: smallReview(record.result?.review),
+                          },
+                        }
+                      : record,
+                  )
                 : [],
           }),
         ),
