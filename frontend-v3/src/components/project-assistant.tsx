@@ -74,10 +74,16 @@ type Conversation = {
     runId?: string;
     runIds?: string[];
     checkedStatus?: string;
+    candidateScope?: { hash: string; count: number; sourceCount: number; targetCount: number };
     error?: string;
     target?: { kind: string; id?: string };
     targetName?: string;
     requirements?: string[];
+    executionPlan?: {
+      mode: "plan" | "execute";
+      current: number;
+      steps: { title: string; action: string; status: "pending" | "waiting" | "executed" }[];
+    };
     review?: {
       runId: string;
       total: number;
@@ -91,6 +97,12 @@ type Conversation = {
       duplicates: number;
       protectedFieldChanges: number;
       outsideLabels?: number;
+      selectionShortfalls?: {
+        label: string;
+        requested: number;
+        available: number;
+        selected: number;
+      }[];
       labels: { label: string; count: number }[];
       additionalLabels?: number;
       formatIssues?: unknown[];
@@ -102,6 +114,7 @@ type Conversation = {
         missing: number;
         outsideValues: number;
         quotaDifferences: { value: string; expected: number; actual: number }[];
+        missingCategories?: string[];
       }[];
     };
   };
@@ -138,6 +151,7 @@ const toolLabels: Record<string, string> = {
   preview_selection: "筛选预览",
   submit_processing: "提交处理任务",
   read_processing: "读取处理结果",
+  select_candidates: "按规则选取候选",
   plan_task: "整理任务要求",
   read_background: "读取背景文档",
   refine_candidates: "局部重改候选",
@@ -177,6 +191,11 @@ const messages: Record<string, string> = {
   assistant_model_failed: "模型未完成本轮回复。已完成操作仍保留在下方，可核对后重试。",
   assistant_task_not_executed: "计划中的操作尚未执行。已有结果保留，请重试继续。",
   assistant_result_incomplete: "本轮未给出完整结果。已完成操作保留在下方，请补充要求或重试。",
+  assistant_no_progress:
+    "连续检查没有取得新进展，任务已暂停。已完成结果保留，请重试未完成步骤或调整要求。",
+  assistant_plan_only: "当前只设计方案，尚未授权执行。发送“开始执行”后再处理数据。",
+  assistant_candidate_review_incomplete:
+    "候选尚未满足数量、分类或字段要求，暂未建立采用确认；请查看核对结果。",
   assistant_confirmation_expired: "确认已过期，请让助手重新准备操作。",
   assistant_confirmation_running: "这项操作正在提交，请稍后查看结果。",
   draft_revision_conflict: "草稿已经变化，请重新核对并生成确认卡片。",
@@ -262,13 +281,16 @@ export function ProjectAssistant({
           (t) => t.id === pendingSubmissions[sessionId ?? "new"]?.turnId,
         )) ||
       q.state.data?.turns.some((t) => ["queued", "running"].includes(t.status)) ||
-      ["inspecting", "processing", "checking", "awaiting_confirmation"].includes(
+      ["inspecting", "yielding", "processing", "checking", "awaiting_confirmation"].includes(
         q.state.data?.task?.stage ?? "",
       )
         ? 1500
         : false,
   });
   const visible = conversation.error ? undefined : conversation.data;
+  useLayoutEffect(() => {
+    setPicked(undefined);
+  }, [sessionId, visible?.task?.candidateScope?.hash]);
   const taskRuns = visible?.task?.runIds ?? (visible?.task?.runId ? [visible.task.runId] : []);
   const reviewRun =
     candidateRun && taskRuns.includes(candidateRun) ? candidateRun : visible?.task?.runId;
@@ -832,8 +854,10 @@ export function ProjectAssistant({
                       {(
                         {
                           inspecting: "检查资料与要求",
+                          planning: "方案已保存，等待执行",
                           processing: "处理中",
                           checking: "核对结果",
+                          yielding: "阶段结果已保存，准备继续",
                           awaiting_review: "候选待审核",
                           awaiting_confirmation: "等待确认",
                           waiting_input: "等待补充",
@@ -874,6 +898,37 @@ export function ProjectAssistant({
                     </div>
                   )}
                 </div>
+                {Boolean(visible.task.executionPlan?.steps.length) && (
+                  <ol aria-label="执行步骤" className="space-y-2 text-sm">
+                    {visible.task.executionPlan!.steps.map((step, index) => (
+                      <li
+                        key={`${index}:${step.action}`}
+                        className="flex items-start justify-between gap-3"
+                      >
+                        <span
+                          className={
+                            index === visible.task?.executionPlan?.current
+                              ? "font-medium"
+                              : "text-muted-foreground"
+                          }
+                        >
+                          {index + 1}. {step.title}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {step.status === "executed"
+                            ? "已执行"
+                            : step.status === "waiting"
+                              ? step.action.startsWith("request_")
+                                ? "等待确认"
+                                : visible.task?.checkedStatus === "failed"
+                                  ? "需要重试"
+                                  : "等待结果"
+                              : "待执行"}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
                 {visible.task.requirements === undefined && (
                   <p className="break-words text-sm leading-6">{visible.task.goal}</p>
                 )}
@@ -929,6 +984,18 @@ export function ProjectAssistant({
                           ? "数量达标"
                           : "数量未达标"}
                     </p>
+                    {visible.task.candidateScope && (
+                      <p className="text-muted-foreground">
+                        已从 {visible.task.candidateScope.sourceCount} 条处理结果中选出{" "}
+                        {visible.task.candidateScope.count} 条。
+                      </p>
+                    )}
+                    {visible.task.review.selectionShortfalls?.map((group, index) => (
+                      <p key={index} className="text-destructive">
+                        {group.label}：可选 {group.available} 条，已选 {group.selected} / 要求{" "}
+                        {group.requested} 条。
+                      </p>
+                    ))}
                     {visible.task.review.countKind === "final" &&
                       visible.task.review.baseCount !== undefined && (
                         <p className="text-muted-foreground">
@@ -978,6 +1045,9 @@ export function ProjectAssistant({
                             {value.value}：实际 {value.actual} / 要求 {value.expected} 条
                           </p>
                         ))}
+                        {Boolean(rule.missingCategories?.length) && (
+                          <p>尚未覆盖：{rule.missingCategories!.join("、")}</p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1017,10 +1087,11 @@ export function ProjectAssistant({
                 visible.task.stage,
               ) && (
                 <AssistantCandidates
-                  key={`${sessionId}:${reviewRun}`}
+                  key={`${sessionId}:${reviewRun}:${visible.task.candidateScope?.hash ?? "all"}`}
                   base={base}
                   sessionId={sessionId}
                   runId={reviewRun}
+                  scopeHash={visible.task.candidateScope?.hash}
                   selected={picked}
                   onSelect={setPicked}
                 />

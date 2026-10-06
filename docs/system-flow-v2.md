@@ -28,7 +28,10 @@ flowchart LR
     Version -->|派生| Draft
     Version --> Trash["回收 / 恢复 / 永久删除"]
     Space --> Assistant["项目助手  自然语言"]
-    Assistant --> Tools["当前用户权限内的业务工具"]
+    Assistant --> Plan["方案与当前步骤"]
+    Plan -->|开始执行| Tools["当前用户权限内的业务工具"]
+    Tools --> Yield["保存阶段结果"]
+    Yield -->|授权内有界续做| Plan
     Tools --> Filter
     Tools --> Draft
     Tools --> Process["清洗 / 改写 / 扩充"]
@@ -38,6 +41,9 @@ flowchart LR
     Draft --> Process
     Process --> Worker["后台分批处理  校验"]
     Worker --> Result["进度与结果预览"]
+    Worker -->|分类完成| Classified["固定分类结果"]
+    Classified --> ClassifiedSelect["按类别选取与全量核对"]
+    ClassifiedSelect --> Result
     Result -->|接受  校验修订| Draft
     Result -->|保存派生文件| Mapped
     Tools --> Result
@@ -54,6 +60,7 @@ flowchart LR
 - 选取依次经过来源范围、条件/抽样、固定预览、人工调整和确认；翻页不重抽，确认前不改变草稿。
 - 草稿共享、字段离焦自动保存，同字段冲突保留输入；所有正式版本不可变，一份草稿只发布一次。
 - 模型处理与助手共用业务服务；耗时任务后台分批执行，结果经明确接受才改变资料或草稿。用户关闭聊天面板不会丢失已入队任务。
+- 方案模式只读取和规划；开始执行后按实际步骤推进，预算结束保存进度并在原授权内有界续做。语义分类先形成完整固定结果，再按类别选取与核对；缺额不误报完成。具体合同见 [长任务恢复](assistant-long-task-execution.md)。
 - 来源与修改保留真实来源、选取规则和模型处理；下载仍绑定选定正式版本，CSV 合同保持。
 - 回收、恢复、墓碑和永久删除继续保护有效后代，同时覆盖新增处理副本及会话中的受影响内容。
 - 图中的后台表示执行位置；界面使用处理进度和可恢复反馈，不展示数据库租约等内部机制。

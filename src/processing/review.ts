@@ -10,6 +10,7 @@ export type CandidateGoal = {
     field: "expectedOutput" | "metadata";
     key?: string;
     allowedValues?: string[];
+    requiredValues?: string[];
     quotas?: { value: string; count: number }[];
   }[];
 };
@@ -25,6 +26,7 @@ export function reviewCandidates(
     remainingCount: number;
     revision: number;
   },
+  selected = false,
 ) {
   const seen = new Set<string>(),
     labels = new Map<string, number>();
@@ -55,7 +57,19 @@ export function reviewCandidates(
       outsideLabels++;
   }
   for (const batch of runs)
-    for (const row of batch.records)
+    for (const row of batch.records) {
+      if (batch.run.options.metadataKeys && row.original) {
+        const editable = new Set(
+          batch.run.options.metadataKeys.map((key) => key.toLowerCase()),
+        );
+        const protectedEntries = (entries: ProcessingInput["metadata"]) =>
+          entries.filter((entry) => !editable.has(entry.key.toLowerCase()));
+        if (
+          canonicalJson(protectedEntries(row.original.metadata)) !==
+          canonicalJson(protectedEntries(row.result.metadata))
+        )
+          protectedFieldChanges++;
+      }
       for (const field of ["question", "expectedOutput", "metadata"] as const)
         if (
           !batch.run.options.allowedFields.includes(field) &&
@@ -64,9 +78,13 @@ export function reviewCandidates(
             canonicalJson(row.original[field])
         )
           protectedFieldChanges++;
+    }
   const expectedRunCount = runs.reduce(
     (count, item) =>
-      count + (item.run.options.outputCount ?? item.run.inputCount),
+      count +
+      (selected
+        ? item.total
+        : (item.run.options.outputCount ?? item.run.inputCount)),
     0,
   );
   const expectedCount =
@@ -113,6 +131,9 @@ export function reviewCandidates(
       const actual = counts.get(value) ?? 0;
       return actual === count ? [] : [{ value, expected: count, actual }];
     });
+    const missingCategories = (rule.requiredValues ?? []).filter(
+      (value) => !counts.get(value),
+    );
     return {
       field: rule.field,
       ...(rule.key === undefined ? {} : { key: rule.key }),
@@ -123,7 +144,12 @@ export function reviewCandidates(
         .map(([value, count]) => ({ value, count })),
       additionalValues: Math.max(0, counts.size - 100),
       quotaDifferences,
-      satisfied: !missing && !outsideValues && !quotaDifferences.length,
+      ...(rule.requiredValues ? { missingCategories } : {}),
+      satisfied:
+        !missing &&
+        !outsideValues &&
+        !quotaDifferences.length &&
+        !missingCategories.length,
     };
   });
   return {

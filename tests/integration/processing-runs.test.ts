@@ -1109,7 +1109,7 @@ describe("durable data processing", () => {
     [0, false, true],
   ] as const)(
     "recovers only missing rewrite outputs without replacing successful candidates (retained %i, legacy %s)",
-    async (retainedIndex, legacy, malformed = false) => {
+    async (retainedIndex, legacy, malformed: boolean = false) => {
       const draft = await app.inject({
         method: "POST",
         url: `/api/projects/${projectId}/collaborative-drafts`,

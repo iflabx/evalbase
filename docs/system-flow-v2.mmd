@@ -19,7 +19,10 @@ flowchart LR
     Version -->|派生| Draft
     Version --> Trash["回收 / 恢复 / 永久删除"]
     Space --> Assistant["项目助手  自然语言"]
-    Assistant --> Tools["当前用户权限内的业务工具"]
+    Assistant --> Plan["方案与当前步骤"]
+    Plan -->|开始执行| Tools["当前用户权限内的业务工具"]
+    Tools --> Yield["保存阶段结果"]
+    Yield -->|授权内有界续做| Plan
     Tools --> Filter
     Tools --> Draft
     Tools --> Process["清洗 / 改写 / 扩充"]
@@ -29,6 +32,9 @@ flowchart LR
     Draft --> Process
     Process --> Worker["后台分批处理  校验"]
     Worker --> Result["进度与结果预览"]
+    Worker -->|分类完成| Classified["固定分类结果"]
+    Classified --> ClassifiedSelect["按类别选取与全量核对"]
+    ClassifiedSelect --> Result
     Result -->|接受  校验修订| Draft
     Result -->|保存派生文件| Mapped
     Tools --> Result

@@ -5,6 +5,7 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   page,
 }) => {
   let sent: unknown;
+  let scopeHash = "initial-classified-selection";
   await assistantPage(page, async (route, path) => {
     if (path === `${assistantBase}/sessions`)
       return route.fulfill({
@@ -28,6 +29,15 @@ test("reviews candidates inside the assistant and preserves cross-page selection
             goal: "改写25条，保留答案",
             stage: "awaiting_review",
             runId: "candidate_run",
+            candidateScope: { hash: scopeHash, count: 25, sourceCount: 30, targetCount: 25 },
+            executionPlan: {
+              mode: "execute",
+              current: 1,
+              steps: [
+                { title: "后台逐条分类", action: "submit_processing", status: "executed" },
+                { title: "按类别选取", action: "select_candidates", status: "pending" },
+              ],
+            },
             review: {
               runId: "candidate_run",
               total: 25,
@@ -104,6 +114,8 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   await expect(page.getByText("候选待审核", { exact: true })).toBeVisible();
   await expect(page.getByText("期望输出：分类或配额未符合要求", { exact: true })).toBeVisible();
   await expect(page.getByText("退款：实际 25 / 要求 26 条", { exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("后台逐条分类");
+  await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("已执行");
   await page.getByLabel("选择候选 1", { exact: true }).check();
   await page.getByRole("button", { name: "下一页候选" }).click();
   await page.getByLabel("选择候选 11", { exact: true }).check();
@@ -118,6 +130,10 @@ test("reviews candidates inside the assistant and preserves cross-page selection
     message: "只把选中的问题写得更口语",
     candidates: { runId: "candidate_run", resultIds: ["0:0", "0:10"] },
   });
+  scopeHash = "changed-classified-selection";
+  await expect(page.getByText("已选 0 条候选", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("选择候选 1", { exact: true })).not.toBeChecked();
+  await expect(page.getByText("共 25 条 · 第 1 页", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("log").getByText("[processing_completed]", { exact: true }),
   ).toHaveCount(0);

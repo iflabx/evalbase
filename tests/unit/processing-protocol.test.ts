@@ -21,6 +21,121 @@ const inputs = [
   },
 ];
 describe("model processing output boundary", () => {
+  it("adds only authorized classification keys without relabeling sources to satisfy quotas", () => {
+    const options = processingOptions({
+      operation: "rewrite",
+      instructions: "按问题真实含义分类",
+      allowedFields: ["metadata"],
+      metadataKeys: ["riskCode"],
+    });
+    const original = {
+      ...inputs[0]!,
+      metadata: [{ key: "subject", value: "原标签" }],
+    };
+    const result = validateModelRows(
+      {
+        records: [
+          {
+            sourceId: original.id,
+            question: "伪造题目",
+            expectedOutput: "伪造标签",
+            metadata: [
+              { key: "subject", value: "改坏的原标签" },
+              { key: "riskCode", value: "A.2.a" },
+              { key: "extra", value: "非授权字段" },
+            ],
+          },
+        ],
+      },
+      [original],
+      options,
+      1,
+    );
+    expect(result.records[0]).toEqual({
+      sourceId: original.id,
+      question: original.question,
+      expectedOutput: original.expectedOutput,
+      metadata: [...original.metadata, { key: "riskCode", value: "A.2.a" }],
+    });
+    const prompt = JSON.parse(
+      processingPrompt(
+        [original],
+        options,
+        1,
+        {
+          requirements: [],
+          documents: [],
+          classifications: [
+            {
+              field: "metadata",
+              key: "riskCode",
+              quotas: [{ value: "A.1.a", count: 1 }],
+            },
+          ],
+        },
+        { offset: 0, total: 1 },
+      ).prompt,
+    );
+    expect(prompt.metadataKeys).toEqual(["riskCode"]);
+    expect(prompt.batchQuotas).toBeUndefined();
+    expect(prompt.background.classifications[0].quotas).toBeUndefined();
+    const compact = processingPrompt(
+      [original],
+      options,
+      1,
+      undefined,
+      undefined,
+      true,
+    );
+    expect(compact.system).toContain("Each record has sourceId and metadata");
+    expect(
+      validateModelRows(
+        {
+          records: [
+            {
+              sourceId: original.id,
+              metadata: [{ key: "riskCode", value: "A.2.a" }],
+            },
+          ],
+        },
+        [original],
+        options,
+        1,
+      ).records,
+    ).toEqual(result.records);
+    expect(processingPrompt([original], options, 1).system).toContain(
+      "question (string)",
+    );
+    const oldOptions = processingOptions({
+      operation: "rewrite",
+      instructions: "按已确认配额整理",
+      allowedFields: ["metadata"],
+    });
+    expect(
+      JSON.parse(
+        processingPrompt(
+          [original],
+          oldOptions,
+          1,
+          {
+            requirements: [],
+            documents: [],
+            classifications: [
+              {
+                field: "metadata",
+                key: "riskCode",
+                quotas: [{ value: "A.1.a", count: 1 }],
+              },
+            ],
+          },
+          { offset: 0, total: 1 },
+        ).prompt,
+      ).batchQuotas,
+    ).toHaveLength(1);
+    expect(() =>
+      processingOptions({ ...options, allowedFields: ["question"] }),
+    ).toThrow("processing_configuration_invalid");
+  });
   it("sends only mapped record data and exact candidate ids in the new wire recipe", () => {
     const row = {
       ...inputs[0]!,

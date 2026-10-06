@@ -7,6 +7,7 @@ import {
   queueContinuation,
 } from "../../assistant/tasks.js";
 import { readProcessingRun } from "../../processing/store.js";
+import { scopeCandidateRun } from "../../assistant/candidates.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { ServerContext } from "../context.js";
 import {
@@ -608,19 +609,43 @@ export function registerAssistant({
             409,
             "assistant_candidate_selection_changed",
           );
-        const result = await readProcessingRun(
+        const offset = Number(request.query.offset ?? 0),
+          limit = Number(request.query.limit ?? 20);
+        if (
+          !Number.isSafeInteger(offset) ||
+          offset < 0 ||
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 100
+        )
+          throw new AssistantError(422, "query_parameter_invalid");
+        const fixedScope = session.task.candidateScope;
+        let result = await readProcessingRun(
           db,
           artifacts,
           currentScope,
           runId,
-          request.query,
+          fixedScope ? { offset: "0", limit: "10000" } : request.query,
+          Boolean(fixedScope),
         );
+        if (fixedScope) {
+          result = scopeCandidateRun(result, fixedScope);
+          result = {
+            ...result,
+            records: result.records.slice(offset, offset + limit),
+            offset,
+            limit,
+          };
+        }
         const after = await sessionRow(
           db,
           currentScope,
           request.params.sessionId,
         );
-        if (after.task_revision !== session.task_revision)
+        if (
+          after.task_revision !== session.task_revision ||
+          after.task.candidateScope?.hash !== fixedScope?.hash
+        )
           throw new AssistantError(
             409,
             "assistant_candidate_selection_changed",

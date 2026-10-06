@@ -14,8 +14,24 @@ function initialTaskTitle(text: string) {
 }
 export function taskPresentation(task: Record<string, any> | null) {
   if (!task) return task;
+  const presented = { ...task };
+  delete presented.observations;
+  delete presented.budgetCheckpoint;
   return {
-    ...task,
+    ...presented,
+    ...(task.candidateScope
+      ? {
+          candidateScope: {
+            runId: task.candidateScope.runId,
+            count: task.candidateScope.resultIds.length,
+            hash: task.candidateScope.hash,
+            targetCount: task.candidateScope.targetCount,
+            sourceCount: task.candidateScope.sourceCount,
+            groups: task.candidateScope.groups,
+          },
+          runIds: [task.candidateScope.runId],
+        }
+      : {}),
     ...(task.processingScope
       ? {
           processingScope: {
@@ -203,6 +219,9 @@ export async function readSession(
       assistantText: t.assistant_text,
       status: t.status,
       errorCode: t.error_code,
+      diagnostics: current.task?.observations?.find(
+        (observation: { turnId: string }) => observation.turnId === t.id,
+      ),
       tools: t.tool_results,
       createdAt: t.created_at,
     })),
@@ -464,6 +483,29 @@ export async function startTurn(
           supplements: [...(session.task.supplements ?? []), text.trim()],
           stage: "inspecting",
           error: null,
+          budgetCheckpoint: null,
+          ...(session.task.executionPlan
+            ? {
+                executionPlan: {
+                  ...session.task.executionPlan,
+                  steps: session.task.executionPlan.steps.map(
+                    (step: {
+                      action: string;
+                      title: string;
+                      status: string;
+                    }) =>
+                      step.status === "waiting" &&
+                      step.action.startsWith("request_")
+                        ? {
+                            title: step.title,
+                            action: step.action,
+                            status: "pending",
+                          }
+                        : step,
+                  ),
+                },
+              }
+            : {}),
           autoCount:
             session.task.error === "assistant_task_limit"
               ? 0
@@ -476,6 +518,7 @@ export async function startTurn(
           requirements: [],
           stage: "inspecting",
           autoCount: 0,
+          observations: session.task?.observations ?? [],
           ...(session.task?.processingScope
             ? { processingScope: session.task.processingScope }
             : {}),

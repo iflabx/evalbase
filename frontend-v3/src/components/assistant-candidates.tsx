@@ -30,19 +30,21 @@ export function AssistantCandidates({
   base,
   sessionId,
   runId,
+  scopeHash,
   selected,
   onSelect,
 }: {
   base: string;
   sessionId: string;
   runId: string;
+  scopeHash?: string | undefined;
   selected?: CandidateSelection | undefined;
   onSelect: (value: CandidateSelection) => void;
 }) {
   const [offset, setOffset] = useState(0),
     [detail, setDetail] = useState<Candidate>();
   const data = useQuery({
-    queryKey: ["assistant-candidates", base, sessionId, runId, offset],
+    queryKey: ["assistant-candidates", base, sessionId, runId, scopeHash, offset],
     queryFn: () =>
       request<{ records: Candidate[]; total: number }>(
         `${base}/sessions/${encodeURIComponent(sessionId)}/candidates?run=${encodeURIComponent(runId)}&offset=${offset}&limit=10`,

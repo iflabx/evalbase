@@ -7,6 +7,7 @@ import {
 import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { AssistantError, type AssistantScope } from "./store.js";
+import { scopeCandidateRun } from "./candidates.js";
 
 /** Reviews the current leaves and, for a final-total goal, the actual draft after pending adoption. */
 export async function reviewTask(
@@ -16,22 +17,27 @@ export async function reviewTask(
   task: Record<string, any>,
   data: Awaited<ReturnType<typeof readProcessingRun>>,
 ) {
-  const runIds: string[] = task.runIds?.includes(data.run.id)
-    ? task.runIds
-    : [data.run.id];
+  const runIds: string[] = task.candidateScope
+    ? [task.candidateScope.runId]
+    : task.runIds?.includes(data.run.id)
+      ? task.runIds
+      : [data.run.id];
   const runs = [];
   for (const runId of runIds)
     runs.push(
-      runId === data.run.id
-        ? data
-        : await readProcessingRun(
-            db,
-            artifacts,
-            scope,
-            runId,
-            { offset: "0", limit: "10000" },
-            true,
-          ),
+      scopeCandidateRun(
+        runId === data.run.id
+          ? data
+          : await readProcessingRun(
+              db,
+              artifacts,
+              scope,
+              runId,
+              { offset: "0", limit: "10000" },
+              true,
+            ),
+        task.candidateScope,
+      ),
     );
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
@@ -96,10 +102,35 @@ export async function reviewTask(
       revision,
     };
   }
+  const review = reviewCandidates(
+    data,
+    task.candidateScope
+      ? {
+          ...task,
+          targetCount: task.targetCount ?? task.candidateScope.targetCount,
+        }
+      : task,
+    runs,
+    final,
+    Boolean(task.candidateScope),
+  );
+  const selectionShortfalls =
+    task.candidateScope?.groups.filter(
+      (group: { requested: number; selected: number }) =>
+        group.requested > group.selected,
+    ) ?? [];
   return {
     runIds,
     runs,
-    review: reviewCandidates(data, task, runs, final),
+    review: {
+      ...review,
+      ...(task.candidateScope
+        ? {
+            selectionShortfalls,
+            complete: review.complete && !selectionShortfalls.length,
+          }
+        : {}),
+    },
     finished: runs.every((item) =>
       ["succeeded", "failed", "cancelled"].includes(item.run.status),
     ),

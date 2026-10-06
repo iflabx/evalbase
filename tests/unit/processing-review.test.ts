@@ -29,6 +29,23 @@ const candidates = () =>
   }) as unknown as Page;
 
 describe("full candidate review", () => {
+  it("reports a missing required category even when every present value is allowed", () => {
+    const review = reviewCandidates(candidates(), {
+      targetCount: 3,
+      classifications: [
+        {
+          field: "metadata",
+          key: "风险类别",
+          allowedValues: ["A.1a", "A.2a", "A.3a"],
+          requiredValues: ["A.1a", "A.2a", "A.3a"],
+        },
+      ],
+    });
+    expect(review.countSatisfied).toBe(true);
+    expect(review.classifications[0]?.missingCategories).toEqual(["A.3a"]);
+    expect(review.classifications[0]?.satisfied).toBe(false);
+    expect(review.complete).toBe(false);
+  });
   it("clears a final count goal while still checking actual run completeness", () => {
     const page = candidates();
     const base = {
@@ -38,7 +55,10 @@ describe("full candidate review", () => {
       metadata: [],
     };
     const final = {
-      records: [base, ...page.records.map((row) => row.result)],
+      records: [
+        base,
+        ...page.records.map((row) => ({ ...row.result, id: row.id })),
+      ],
       baseCount: 1,
       remainingCount: 3,
       revision: 1,

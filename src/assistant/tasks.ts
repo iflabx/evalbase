@@ -160,6 +160,27 @@ export async function collectProcessingEvents(db: Database) {
     WHERE s.task->>'stage'='processing' AND r.input_ref IS NOT NULL GROUP BY s.id,s.task_revision
     HAVING bool_and(j.status IN('succeeded','failed','cancelled')) LIMIT 30`)
   ).rows;
+  const budgetYields = (
+    await db.query(
+      `SELECT s.id,s.task_revision,s.task->'budgetCheckpoint'->>'turnId' AS turn_id
+     FROM assistant_session s JOIN assistant_turn t ON t.id=s.task->'budgetCheckpoint'->>'turnId'
+     WHERE s.task->>'stage'='yielding' AND t.status='succeeded'
+       AND t.task_revision=s.task_revision LIMIT 30`,
+    )
+  ).rows;
+  for (const session of budgetYields) {
+    try {
+      await queueContinuation(
+        db,
+        session.id,
+        "budget_yield",
+        session.turn_id,
+        session.task_revision,
+      );
+    } catch (error) {
+      await failSession(session.id, session.task_revision, error);
+    }
+  }
   const uncertain = (
     await db.query(
       "SELECT p.id,p.session_id,s.project_id,s.actor_id,s.task_revision FROM assistant_proposal p JOIN assistant_session s ON s.id=p.session_id WHERE p.status IN('pending','executing') AND p.lease_token IS NOT NULL AND (p.lease_until IS NULL OR p.lease_until<=now()) AND p.task_revision=s.task_revision AND s.task->>'stage'<>'failed' LIMIT 30",
