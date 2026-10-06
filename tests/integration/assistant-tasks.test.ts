@@ -55,6 +55,7 @@ describe("assistant continuous task public contract", () => {
     failRefinement = false;
   let repairPattern: "recover" | "partial" | null = null;
   let repairCalls = 0;
+  let augmentationPattern = false;
   let preferBaseline = false;
   let extraAfterSubmit = false;
   let wrongEventRunId: string | undefined;
@@ -120,12 +121,19 @@ describe("assistant continuous task public contract", () => {
                 },
               ]
             : []
-        : input.records.map((row: any) => ({
-            sourceId: preferBaseline ? (row.baseline?.id ?? row.id) : row.id,
-            question: row.question + "（自然表达）",
-            expectedOutput: "不应采用的模型答案",
-            metadata: row.metadata,
-          }));
+        : augmentationPattern
+          ? Array.from({ length: input.outputCount }, (_, i) => ({
+              sourceId: input.records[i % input.records.length].id,
+              question: `新场景 ${(input.augmentationBatch?.offset ?? 0) + i + 1}`,
+              expectedOutput: "应针对该场景安全作答",
+              metadata: [],
+            }))
+          : input.records.map((row: any) => ({
+              sourceId: preferBaseline ? (row.baseline?.id ?? row.id) : row.id,
+              question: row.question + "（自然表达）",
+              expectedOutput: "不应采用的模型答案",
+              metadata: row.metadata,
+            }));
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
@@ -2191,6 +2199,107 @@ describe("assistant continuous task public contract", () => {
         })
       ).statusCode,
     ).toBe(200);
+  });
+  it("uses small distinct ranges for large new augmentations and preserves v4 retries", async () => {
+    mode = "explain";
+    augmentationPattern = true;
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "分批扩充" },
+      })
+    ).json().draft.id;
+    const record = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+        headers,
+        payload: {
+          question: "给社区志愿者写一段招募介绍",
+          expectedOutput: "安全且完整",
+          metadata: [],
+        },
+      })
+    ).json().record.id;
+    const path = `/api/projects/${projectId}/processing-runs`;
+    const db = createPool(databaseUrl);
+    try {
+      for (const legacy of [false, true]) {
+        const created = await app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "draft", id: draft, recordIds: [record] },
+            options: {
+              operation: "augment",
+              instructions: "新增21个不同场景",
+              outputCount: 21,
+              allowedFields: ["question", "expectedOutput"],
+            },
+          },
+        });
+        expect(created.statusCode, created.body).toBe(201);
+        const id = created.json().run.id;
+        if (legacy)
+          await db.query(
+            "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}', $2::jsonb) WHERE id=$1",
+            [id, JSON.stringify("processing-v4")],
+          );
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=attempt+1,lease_owner='range-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [id],
+          )
+        ).rows[0];
+        const start = requests.length;
+        const config = { ...loadConfig(), ...appConfig() };
+        const result = await runProcessing(
+          db,
+          new ArtifactRepository(config.minio),
+          config,
+          job,
+        );
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$1",
+          [job.id, result],
+        );
+        const sent = requests.slice(start).filter((body) => !body.tools);
+        const prompts = sent.map((body) =>
+          JSON.parse(body.messages.at(-1).content),
+        );
+        expect(prompts.map((p) => p.outputCount)).toEqual(
+          legacy ? [20, 1] : [10, 10, 1],
+        );
+        expect(prompts.map((p) => p.augmentationBatch)).toEqual(
+          legacy
+            ? [undefined, undefined]
+            : [
+                { offset: 0, count: 10, total: 21 },
+                { offset: 10, count: 10, total: 21 },
+                { offset: 20, count: 1, total: 21 },
+              ],
+        );
+        expect(sent.every((body) => body.temperature === 0.2)).toBe(true);
+        const data = (
+          await app.inject({
+            method: "GET",
+            url: `${path}/${id}?limit=100`,
+            headers,
+          })
+        ).json();
+        expect(data.total).toBe(21);
+        if (!legacy)
+          expect(
+            new Set(data.records.map((r: any) => r.result.question)).size,
+          ).toBe(21);
+      }
+    } finally {
+      augmentationPattern = false;
+      await db.end();
+    }
   });
   it("fills only missing augmentation rows within a bounded batch and keeps honest partial results", async () => {
     mode = "explain";

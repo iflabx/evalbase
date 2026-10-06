@@ -51,6 +51,7 @@ function modelRequest(
   accepted: ProcessingResult["records"] = [],
   batch?: { offset: number; total: number },
   dataOnly = false,
+  distinctBatches = false,
 ) {
   const base = processingPrompt(
     inputs,
@@ -62,6 +63,13 @@ function modelRequest(
   );
   const correction = {
     ...JSON.parse(base.prompt),
+    ...(distinctBatches && options.operation === "augment" && batch
+      ? {
+          augmentationBatch: { ...batch, count: expected },
+          augmentationRule:
+            "This is the given global output range, not a new task. Allocate requested topics and taxonomy across the full total using this range. Vary scenarios and questions meaningfully across ranges; do not restart the first topics for every batch.",
+        }
+      : {}),
     originalOutputCount: expected,
     acceptedCount: accepted.length,
     alreadyAccepted: accepted.map((row) => ({
@@ -94,6 +102,7 @@ function batches(
   legacyRecipe = false,
   quotaInput = true,
   dataOnly = false,
+  distinctBatches = false,
 ) {
   const result: { inputs: ProcessingInput[]; count: number }[] = [];
   const fits = (rows: ProcessingInput[], offset: number, count: number) => {
@@ -114,6 +123,7 @@ function batches(
       [],
       quotaInput ? { offset, total: outputCount ?? inputs.length } : undefined,
       dataOnly,
+      distinctBatches,
     );
     return (
       Buffer.byteLength(request.system + request.prompt) <=
@@ -121,11 +131,12 @@ function batches(
     );
   };
   if (outputCount !== undefined) {
-    for (let i = 0; i < outputCount; i += 20) {
+    const batchSize = distinctBatches && outputCount > 20 ? 10 : 20;
+    for (let i = 0; i < outputCount; i += batchSize) {
       const start = i % inputs.length,
-        count = Math.min(20, outputCount - i),
+        count = Math.min(batchSize, outputCount - i),
         group: ProcessingInput[] = [];
-      for (let j = 0; j < Math.min(20, inputs.length); j++) {
+      for (let j = 0; j < Math.min(batchSize, inputs.length); j++) {
         const row = inputs[(start + j) % inputs.length];
         if (modelInput && !fits([row], i, count))
           throw new ProcessingError(422, "processing_record_too_large");
@@ -177,7 +188,9 @@ export async function runProcessing(
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
   const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
-  const dataOnly = ["processing-v3", "processing-v4"].includes(
+  const distinctBatches =
+    run.execution_config.recipeVersion === "processing-v5";
+  const dataOnly = ["processing-v3", "processing-v4", "processing-v5"].includes(
     run.execution_config.recipeVersion,
   );
   if (
@@ -186,6 +199,7 @@ export async function runProcessing(
       "processing-v2",
       "processing-v3",
       "processing-v4",
+      "processing-v5",
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
       ...run.execution_config,
@@ -205,6 +219,7 @@ export async function runProcessing(
     legacyRecipe,
     quotaInput,
     dataOnly,
+    distinctBatches,
   );
   let model: Awaited<ReturnType<typeof configuredModel>> | undefined;
   if (run.model_revision !== null)
@@ -319,6 +334,7 @@ export async function runProcessing(
                 }
               : undefined,
             dataOnly,
+            distinctBatches,
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >
@@ -328,7 +344,9 @@ export async function runProcessing(
           try {
             const extra = await generateText({
               model: model.model,
-              ...(run.execution_config.recipeVersion === "processing-v4"
+              ...(["processing-v4", "processing-v5"].includes(
+                run.execution_config.recipeVersion,
+              )
                 ? { temperature: 0.2 }
                 : {}),
               system: prompt.system,

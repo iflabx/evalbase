@@ -6,7 +6,7 @@ import {
 } from "../server/support.js";
 
 export const PROCESSING_EXECUTION = {
-  recipeVersion: "processing-v4",
+  recipeVersion: "processing-v5",
   batchSize: 20,
   maxInputBytesPerBatch: 40000,
   maxOutputTokens: 8192,
