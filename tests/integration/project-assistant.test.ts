@@ -4834,6 +4834,7 @@ describe("project assistant public contract", () => {
   );
   it("repairs a missing processing scope and submits 200 candidates without another user message", async () => {
     const previous = sessionId;
+    const firstScopeCall = calls.length;
     const draftsPath = `/api/projects/${projectId}/collaborative-drafts`;
     const source = (
       await app.inject({
@@ -4921,6 +4922,26 @@ describe("project assistant public contract", () => {
       ).json();
       expect(run.run.options.outputCount).toBe(200);
       expect(run.run.inputCount).toBe(2);
+      const tool = calls[firstScopeCall].tools.find(
+        (t: any) => t.function.name === "submit_processing",
+      ).function;
+      expect(tool.parameters.required).toContain("selection");
+      expect(tool.parameters.properties.selection.anyOf).toContainEqual({
+        type: "null",
+      });
+      requestedTool = {
+        name: "submit_processing",
+        input: { ...input, selection: null },
+      };
+      const reused = (await send("沿用相同的固定范围继续处理")).json();
+      const sameScope = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/processing-runs/${reused.task.runId}`,
+          headers,
+        })
+      ).json();
+      expect(sameScope.run.inputCount).toBe(2);
     } finally {
       toolSequence = [];
       textualToolCall = undefined;
@@ -5114,6 +5135,10 @@ describe("project assistant public contract", () => {
             (t: any) => t.name === "create_draft" && t.status === "succeeded",
           ),
       ).toBe(true);
+      expect(
+        state.turns.at(-1).tools.find((t: any) => t.name === "plan_task")
+          .status,
+      ).toBe("succeeded");
       expect(calls.length - startCalls).toBeLessThanOrEqual(10);
       const drafts = (
         await app.inject({

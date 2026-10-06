@@ -94,7 +94,11 @@ const sourceSchema = {
   additionalProperties: false,
 };
 const ajv = new Ajv({ strict: false });
-function schema(properties: Record<string, unknown>, required: string[]) {
+function schema(
+  properties: Record<string, unknown>,
+  required: string[],
+  name: string,
+) {
   const definition = {
     type: "object",
     properties,
@@ -109,6 +113,10 @@ function schema(properties: Record<string, unknown>, required: string[]) {
       key === "uniqueItems" ? undefined : value,
     ),
   );
+  // Compatible decoders may omit optional scope fields. Require an explicit
+  // selection decision on the wire; legacy callers may still omit it.
+  if (name === "submit_processing")
+    modelDefinition.required = [...modelDefinition.required, "selection"];
   return jsonSchema<Record<string, any>>(
     modelDefinition as Parameters<typeof jsonSchema>[0],
     {
@@ -248,8 +256,13 @@ export async function executeAssistantTurn(
   ) {
     return tool({
       description,
-      inputSchema: schema(properties, required),
+      inputSchema: schema(properties, required, name),
       execute: (input) => {
+        // Explicit reuse has the same receipt identity as the legacy omission.
+        if (name === "submit_processing" && input.selection === null) {
+          input = { ...input };
+          delete input.selection;
+        }
         const result = queue.then(async () => {
           let referenceError: unknown;
           try {
@@ -626,7 +639,12 @@ export async function executeAssistantTurn(
         plannedAction = nextAction ?? undefined;
         const presented = taskPresentation(task);
         return {
-          task: { ...presented, review: smallReview(presented?.review) },
+          task: {
+            ...presented,
+            ...(presented?.review
+              ? { review: smallReview(presented.review) }
+              : {}),
+          },
         };
       },
     ),
@@ -999,9 +1017,9 @@ export async function executeAssistantTurn(
         recordIds: ids,
         allRecords: { type: "boolean" },
         selection: {
-          ...selectionSchema,
+          anyOf: [selectionSchema, { type: "null" }],
           description:
-            '首次处理或切换来源时必须明确选取范围。随机固定100条的格式为{"method":"random","conditions":[],"mode":"count","value":100}；按实际任务数量调整value。不要把outputCount当选取范围。仅处理同一已固定来源范围时可省略。',
+            '必须填写选取决定。首次处理或切换来源时用具体选取规则；随机固定100条格式为{"method":"random","conditions":[],"mode":"count","value":100}，按任务调整value。只有复用相同来源的已固定范围，或已传真实recordIds/明确全范围allRecords时才填null。新来源填null仍会失败，不默认读取全量。outputCount不是输入范围。',
         },
         operation: { enum: ["clean", "rewrite", "augment"] },
         instructions: { type: "string", maxLength: 8000 },
