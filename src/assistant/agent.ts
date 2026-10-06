@@ -10,6 +10,7 @@ import {
 } from "./plan.js";
 import { readBackground } from "./background.js";
 import { reviewTask } from "./review.js";
+import type { CandidateGoal } from "../processing/review.js";
 import { selectCandidateRun, scopeCandidateRun } from "./candidates.js";
 import {
   ToolLoopAgent,
@@ -706,7 +707,10 @@ export async function executeAssistantTurn(
                                 : error.code ===
                                     "processing_configuration_invalid"
                                   ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
-                                  : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                                  : error.code ===
+                                      "assistant_plan_count_conflict"
+                                    ? "方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。重新计算你建议的配额并用plan_task完整纠正，不降低用户目标；用户明确指定的矛盾配额应说明并澄清。"
+                                    : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
           }
@@ -853,6 +857,61 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        const targetCount =
+          input.targetCount === undefined
+            ? current.targetCount
+            : input.targetCount;
+        const classifications: NonNullable<CandidateGoal["classifications"]> =
+          input.classifications ?? current.classifications ?? [];
+        const constraintsByField = new Map<
+          string,
+          {
+            quotas: Map<string, number>;
+            allowedValues?: string[];
+          }
+        >();
+        for (const rule of classifications) {
+          const field = canonicalJson([
+            rule.field,
+            rule.field === "metadata" ? rule.key : null,
+          ]);
+          const values = constraintsByField.get(field) ?? {
+            quotas: new Map<string, number>(),
+          };
+          if (rule.allowedValues?.length)
+            values.allowedValues = values.allowedValues
+              ? values.allowedValues.filter((value) =>
+                  rule.allowedValues!.includes(value),
+                )
+              : rule.allowedValues;
+          for (const quota of rule.quotas ?? []) {
+            const previous = values.quotas.get(quota.value);
+            if (previous !== undefined && previous !== quota.count)
+              throw new AssistantError(422, "assistant_plan_count_conflict");
+            values.quotas.set(quota.value, quota.count);
+          }
+          constraintsByField.set(field, values);
+        }
+        for (const { quotas, allowedValues } of constraintsByField.values()) {
+          if (
+            allowedValues &&
+            (!allowedValues.length ||
+              [...quotas].some(
+                ([value, count]) => count > 0 && !allowedValues.includes(value),
+              ))
+          )
+            throw new AssistantError(422, "assistant_plan_count_conflict");
+          const total = [...quotas.values()].reduce(
+            (sum, count) => sum + count,
+            0,
+          );
+          const complete = allowedValues?.every((value) => quotas.has(value));
+          if (
+            targetCount != null &&
+            (total > targetCount || (complete && total !== targetCount))
+          )
+            throw new AssistantError(422, "assistant_plan_count_conflict");
+        }
         if (
           current.executionPlan?.mode === "plan" &&
           input.executionMode === "execute" &&

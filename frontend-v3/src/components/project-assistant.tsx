@@ -194,6 +194,7 @@ const messages: Record<string, string> = {
   assistant_no_progress:
     "连续检查没有取得新进展，任务已暂停。已完成结果保留，请重试未完成步骤或调整要求。",
   assistant_plan_only: "当前只设计方案，尚未授权执行。发送“开始执行”后再处理数据。",
+  assistant_plan_count_conflict: "方案配额与目标条数不一致，尚未保存。请核对各类数量后重新规划。",
   assistant_candidate_review_incomplete:
     "候选尚未满足数量、分类或字段要求，暂未建立采用确认；请查看核对结果。",
   assistant_confirmation_expired: "确认已过期，请让助手重新准备操作。",

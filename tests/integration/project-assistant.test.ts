@@ -1561,6 +1561,267 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("rejects impossible complete quotas before saving and corrects them in the same turn", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      const plan = {
+        title: "200条选题方案",
+        requirements: ["风险与正常题合计200条", "先给方案，不执行"],
+        targetCount: 200,
+        executionMode: "plan",
+        steps: [{ title: "分类后选取200条", action: "submit_processing" }],
+        nextAction: "none",
+      };
+      toolSequence = [10, 45].map((normalCount) => ({
+        name: "plan_task",
+        input: {
+          ...plan,
+          classifications: [
+            {
+              field: "metadata",
+              key: "类别",
+              allowedValues: ["风险", "正常"],
+              quotas: [
+                { value: "风险", count: 155 },
+                { value: "正常", count: normalCount },
+              ],
+            },
+          ],
+        },
+      }));
+      const state = (await send("请设计合计200条的方案，先不执行")).json();
+      const receipts = state.turns.at(-1).tools;
+      expect(receipts.map((receipt: any) => receipt.status)).toEqual([
+        "failed",
+        "succeeded",
+      ]);
+      expect(receipts[0].error.code).toBe("assistant_plan_count_conflict");
+      expect(state.task.classifications[0].quotas).toEqual([
+        { value: "风险", count: 155 },
+        { value: "正常", count: 45 },
+      ]);
+      expect(state.task.stage).toBe("planning");
+      expect(state.task.runId).toBeUndefined();
+      expect(state.proposals).toEqual([]);
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+  it.each([
+    [
+      "split field",
+      [
+        {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["风险", "正常"],
+          quotas: [{ value: "风险", count: 155 }],
+        },
+        {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["风险", "正常"],
+          quotas: [{ value: "正常", count: 10 }],
+        },
+      ],
+    ],
+    [
+      "duplicate category",
+      [
+        {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["风险", "正常"],
+          quotas: [
+            { value: "风险", count: 100 },
+            { value: "风险", count: 100 },
+            { value: "正常", count: 0 },
+          ],
+        },
+      ],
+    ],
+    [
+      "conflicting category",
+      [
+        {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["风险", "正常"],
+          quotas: [
+            { value: "风险", count: 155 },
+            { value: "风险", count: 45 },
+            { value: "正常", count: 0 },
+          ],
+        },
+      ],
+    ],
+  ])(
+    "rejects impossible unique field quotas: %s",
+    async (_label, classifications) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const plan = {
+          title: "选题方案",
+          requirements: ["合计200条，先不执行"],
+          targetCount: 200,
+          executionMode: "plan",
+          steps: [{ title: "分类后选题", action: "submit_processing" }],
+          nextAction: "none",
+        };
+        const corrected = [
+          {
+            field: "metadata",
+            key: "类别",
+            allowedValues: ["风险", "正常"],
+            quotas: [{ value: "风险", count: 155 }],
+          },
+          {
+            field: "metadata",
+            key: "类别",
+            allowedValues: ["风险", "正常"],
+            quotas: [{ value: "正常", count: 45 }],
+          },
+          {
+            field: "metadata",
+            key: "类别",
+            quotas: [{ value: "风险", count: 155 }],
+          },
+          {
+            field: "metadata",
+            key: "难度",
+            allowedValues: ["简单", "困难"],
+            quotas: [
+              { value: "简单", count: 200 },
+              { value: "困难", count: 0 },
+            ],
+          },
+        ];
+        toolSequence = [
+          { name: "plan_task", input: { ...plan, classifications } },
+          { name: "plan_task", input: { ...plan, classifications: corrected } },
+        ];
+        const state = (await send("设计合计200条的方案，先不执行")).json();
+        expect(
+          state.turns.at(-1).tools.map((receipt: any) => receipt.status),
+        ).toEqual(["failed", "succeeded"]);
+        expect(state.turns.at(-1).tools[0].error.code).toBe(
+          "assistant_plan_count_conflict",
+        );
+        expect(state.task.classifications).toEqual(corrected);
+        expect(state.task.runId).toBeUndefined();
+      } finally {
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
+  it("validates inherited quotas while allowing partial quotas and an explicitly unbounded count", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      const common = {
+        title: "选题方案",
+        requirements: ["先给方案，不执行"],
+        executionMode: "plan",
+        steps: [{ title: "分类后选题", action: "submit_processing" }],
+        nextAction: "none",
+      };
+      const rule = {
+        field: "metadata",
+        key: "类别",
+        allowedValues: ["风险", "正常"],
+        quotas: [
+          { value: "风险", count: 155 },
+          { value: "正常", count: 45 },
+        ],
+      };
+      requestedTool = {
+        name: "plan_task",
+        input: { ...common, targetCount: 200, classifications: [rule] },
+      };
+      await send("先设计200条方案");
+      requestedTool = {
+        name: "plan_task",
+        input: { ...common, targetCount: 100 },
+      };
+      const rejected = (
+        await send("改成100条，尚未调整配额", undefined, "failed")
+      ).json();
+      expect(rejected.turns.at(-1).tools[0].error.code).toBe(
+        "assistant_plan_count_conflict",
+      );
+      expect(rejected.task.targetCount).toBe(200);
+      expect(rejected.task.classifications).toEqual([rule]);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          ...common,
+          classifications: [
+            { ...rule, quotas: [{ value: "风险", count: 155 }] },
+          ],
+        },
+      };
+      const partial = (
+        await send("保持200条，只固定风险155条，其余不限")
+      ).json();
+      expect(partial.task.targetCount).toBe(200);
+      expect(partial.task.classifications[0].quotas).toEqual([
+        { value: "风险", count: 155 },
+      ]);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          ...common,
+          targetCount: null,
+          classifications: [
+            {
+              ...rule,
+              quotas: [
+                { value: "风险", count: 155 },
+                { value: "正常", count: 10 },
+              ],
+            },
+          ],
+        },
+      };
+      const unbounded = (
+        await send("取消总数要求，改为风险155条、正常10条")
+      ).json();
+      expect(unbounded.task.targetCount).toBeNull();
+      expect(unbounded.task.classifications[0].quotas).toEqual([
+        { value: "风险", count: 155 },
+        { value: "正常", count: 10 },
+      ]);
+      expect(unbounded.task.stage).toBe("planning");
+      expect(unbounded.task.runId).toBeUndefined();
+    } finally {
+      sessionId = previous;
+    }
+  });
   it("replaces current requirements without losing history or duplicating retained rules", async () => {
     const previous = sessionId;
     sessionId = (
