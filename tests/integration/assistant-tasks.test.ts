@@ -2301,6 +2301,98 @@ describe("assistant continuous task public contract", () => {
       await db.end();
     }
   });
+  it("allows a near-budget final augmentation batch using its actual count", async () => {
+    mode = "explain";
+    augmentationPattern = true;
+    const draftPath = `/api/projects/${projectId}/collaborative-drafts`;
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: draftPath,
+        headers,
+        payload: { name: "末批预算" },
+      })
+    ).json().draft.id;
+    const ids: string[] = [];
+    for (let i = 0; i < 21; i++) {
+      const row = await app.inject({
+        method: "POST",
+        url: `${draftPath}/${draft}/records`,
+        headers,
+        payload: { question: `Q${i}`, expectedOutput: "safe", metadata: [] },
+      });
+      expect(row.statusCode, row.body).toBe(201);
+      ids.push(row.json().record.id);
+    }
+    const db = createPool(databaseUrl);
+    try {
+      const execute = async () => {
+        const run = await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/processing-runs`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "draft", id: draft, recordIds: ids },
+            options: {
+              operation: "augment",
+              instructions: "21个不同场景",
+              outputCount: 21,
+              allowedFields: ["question"],
+            },
+          },
+        });
+        expect(run.statusCode, run.body).toBe(201);
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=attempt+1,lease_owner='last-range-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [run.json().run.id],
+          )
+        ).rows[0];
+        const config = { ...loadConfig(), ...appConfig() };
+        const start = requests.length;
+        const result = await runProcessing(
+          db,
+          new ArtifactRepository(config.minio),
+          config,
+          job,
+        );
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$1",
+          [job.id, result],
+        );
+        return requests.slice(start).filter((body) => !body.tools);
+      };
+      const probe = (await execute()).at(-1);
+      const prompt = JSON.parse(probe.messages.at(-1).content);
+      prompt.records = [prompt.records[0]];
+      expect(prompt.records[0].id).toBe(ids[20]);
+      prompt.records[0].question = "";
+      const size = Buffer.byteLength(
+        probe.messages[0].content + JSON.stringify(prompt),
+      );
+      const patched = await app.inject({
+        method: "PATCH",
+        url: `${draftPath}/${draft}/records/${ids[20]}`,
+        headers,
+        payload: {
+          field: "question",
+          expectedFieldRevision: 0,
+          value: "Q".repeat(39999 - size),
+        },
+      });
+      expect(patched.statusCode, patched.body).toBe(200);
+      const actual = (await execute()).at(-1);
+      expect(
+        Buffer.byteLength(actual.messages.map((m: any) => m.content).join("")),
+      ).toBe(39999);
+      expect(
+        JSON.parse(actual.messages.at(-1).content).augmentationBatch,
+      ).toEqual({ offset: 20, count: 1, total: 21 });
+    } finally {
+      augmentationPattern = false;
+      await db.end();
+    }
+  });
   it("fills only missing augmentation rows within a bounded batch and keeps honest partial results", async () => {
     mode = "explain";
     const draft = (

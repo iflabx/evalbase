@@ -113,7 +113,8 @@ function batches(
           0,
         ) <= 40000
       );
-    const budgetCount = background?.classifications?.length ? count : 20;
+    const budgetCount =
+      distinctBatches || background?.classifications?.length ? count : 20;
     const request = modelRequest(
       rows,
       options!,
