@@ -1623,6 +1623,42 @@ describe("project assistant public contract", () => {
         );
         expect(notSubmitted.task.runId).toBe(id);
       }
+      async function recoverProcessingReceipt(state: any, pending: string) {
+        const db = createPool(databaseUrl);
+        try {
+          await db.query(
+            "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed',assistant_text='' WHERE id=$1",
+            [state.turns.at(-1).id],
+          );
+          await db.query(
+            "UPDATE assistant_session SET task=task || $2::jsonb WHERE id=$1",
+            [
+              sessionId,
+              JSON.stringify({ stage: "failed", nextAction: pending }),
+            ],
+          );
+          const beforeRecovery = calls.length;
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: `${base()}/sessions/${sessionId}/retry`,
+                headers,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+          await expect
+            .poll(async () => (await read()).json().turns.at(-1).status, {
+              timeout: 15000,
+            })
+            .toBe("succeeded");
+          expect((await read()).json().task.runId).toBe(state.task.runId);
+          expect(calls.length).toBe(beforeRecovery);
+        } finally {
+          await db.end();
+        }
+      }
       toolSequence = [
         {
           name: "submit_processing",
@@ -1650,6 +1686,7 @@ describe("project assistant public contract", () => {
         actualCorrection.task.runId,
       );
       expect(actualCorrection.task.runId).not.toBe(id);
+      await recoverProcessingReceipt(actualCorrection, "submit_processing");
       requestedTool = {
         name: "submit_processing",
         input: {
@@ -1674,6 +1711,7 @@ describe("project assistant public contract", () => {
       ];
       const started = (await send("开始新的清洗任务")).json();
       expect(started.task.runId).not.toBe(id);
+      await recoverProcessingReceipt(started, "refine_candidates");
       expect(started.task.stage).toBe("processing");
       expect(started.task.review ?? null).toBeNull();
       expect(started.task.checkedStatus ?? null).toBeNull();

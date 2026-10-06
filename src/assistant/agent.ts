@@ -1711,7 +1711,10 @@ export async function executeAssistantTurn(
               (!plannedAction ||
                 plannedAction === "plan_task" ||
                 plannedAction === "any" ||
-                plannedAction === r.name),
+                plannedAction === r.name ||
+                ["submit_processing", "refine_candidates"].includes(
+                  plannedAction,
+                )),
           )
         : undefined;
     if (savedProcessing) {
