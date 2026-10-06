@@ -368,6 +368,8 @@ export async function executeAssistantTurn(
     const task = saved.task;
     if (
       latest?.status !== "succeeded" ||
+      latest.input?.executionMode !== "plan" ||
+      !latest.input?.steps?.length ||
       task.executionPlan?.mode !== "plan" ||
       !task.executionPlan.steps.length ||
       task.question ||
@@ -2345,14 +2347,22 @@ export async function executeAssistantTurn(
             "write",
           ))
         ) {
-          const planningTask = (
-            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
-              turn.session_id,
-            ])
-          ).rows[0].task;
+          const planningState = (
+            await db.query(
+              "SELECT s.task,t.tool_results FROM assistant_session s JOIN assistant_turn t ON t.session_id=s.id WHERE s.id=$1 AND t.id=$2",
+              [turn.session_id, turn.id],
+            )
+          ).rows[0];
+          const latestPlan = planningState.tool_results.findLast(
+            (receipt: Record<string, any>) => receipt.name === "plan_task",
+          );
           if (
-            planningTask.backgroundEvidence?.length &&
-            !planningTask.executionPlan
+            planningState.task.backgroundEvidence?.length &&
+            !(
+              latestPlan?.status === "succeeded" &&
+              latestPlan.input?.executionMode &&
+              latestPlan.input?.steps?.length
+            )
           ) {
             if (!planningCheckpointRequired)
               await updateTask(db, turn, { planningCheckpointTurnId: turn.id });

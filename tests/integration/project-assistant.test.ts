@@ -1790,12 +1790,24 @@ describe("project assistant public contract", () => {
       }
     },
   );
-  it.each([
-    "",
-    "<tool_call><function=submit_processing></function></tool_call>",
+  it.each<[string, boolean, boolean, boolean?]>([
+    ["", false, false],
+    ["", true, false],
+    ["", true, true],
+    [
+      "方案已保存，尚未执行。保留原题和原标签，按分类固定选取200条。",
+      false,
+      true,
+      true,
+    ],
+    [
+      "<tool_call><function=submit_processing></function></tool_call>",
+      false,
+      false,
+    ],
   ])(
-    "returns the persisted planning checkpoint when the model ends with unusable prose: %s",
-    async (reply) => {
+    "returns the current complete planning checkpoint: %s (previous plan: %s, partial update: %s, earlier current plan: %s)",
+    async (reply, previousPlan, partialUpdate, earlierPlan) => {
       const previous = sessionId;
       sessionId = (
         await app.inject({
@@ -1817,10 +1829,41 @@ describe("project assistant public contract", () => {
           },
         });
         expect(uploaded.statusCode, uploaded.body).toBe(201);
-        toolSequence = Array.from({ length: 9 }, () => ({
-          name: "read_background",
-          input: { documentId: uploaded.json().document.id, query: "类别" },
-        }));
+        const oldPlanTool = {
+          name: "plan_task",
+          input: {
+            title: "旧选题方案",
+            targetCount: 17,
+            requirements: ["旧方案仅选17条"],
+            executionMode: "plan",
+            steps: [{ title: "读取旧分类", action: "read_background" }],
+            nextAction: "none",
+          },
+        };
+        if (previousPlan) {
+          toolSequence = [oldPlanTool];
+          const oldPlan = (await send("先设计选17条的方案，不执行")).json();
+          expect(oldPlan.task.stage).toBe("planning");
+        }
+        toolSequence = [
+          ...(earlierPlan ? [oldPlanTool] : []),
+          ...(partialUpdate
+            ? [
+                {
+                  name: "plan_task",
+                  input: {
+                    title: "待重新设计",
+                    requirements: ["先核对背景，再设计新方案"],
+                    nextAction: "none",
+                  },
+                },
+              ]
+            : []),
+          ...Array.from({ length: earlierPlan ? 5 : 9 }, () => ({
+            name: "read_background",
+            input: { documentId: uploaded.json().document.id, query: "类别" },
+          })),
+        ];
         backgroundCheckpoint = {
           title: "背景选题方案",
           requirements: ["保留原题和原标签", "按背景分类后选取200条"],
@@ -1842,6 +1885,8 @@ describe("project assistant public contract", () => {
         const turn = state.turns.at(-1);
         expect(turn.status).toBe("succeeded");
         expect(state.task.stage).toBe("planning");
+        expect(state.task.targetCount).toBe(200);
+        expect(state.task.requirements).not.toContain("旧方案仅选17条");
         expect(turn.assistantText).toContain("尚未执行");
         expect(turn.assistantText).toContain("保留原题和原标签");
         expect(turn.assistantText).toContain("按分类固定选取200条");
