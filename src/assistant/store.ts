@@ -171,6 +171,21 @@ export async function readSession(
     scope,
     turns.some((t) => t.requires_write),
   );
+  // The confirmed publication is the completion fact, even when the model only rereads candidates.
+  // A later request has a new task revision and cannot inherit this completion.
+  await db.query(
+    `UPDATE assistant_session s SET task=task||'{"stage":"complete"}'::jsonb
+     WHERE s.id=$1 AND s.content_revision=$2
+       AND s.task->>'stage' IN ('awaiting_review','waiting_input')
+       AND EXISTS(SELECT 1 FROM assistant_proposal p WHERE p.session_id=s.id
+         AND p.task_revision=s.task_revision AND p.action='publish' AND p.status='succeeded'
+         AND p.receipt->'version'->>'id' IS NOT NULL)
+       AND NOT EXISTS(SELECT 1 FROM assistant_turn t WHERE t.session_id=s.id
+         AND t.task_revision=s.task_revision AND t.status IN ('queued','running'))
+       AND NOT EXISTS(SELECT 1 FROM assistant_proposal p WHERE p.session_id=s.id
+         AND p.task_revision=s.task_revision AND p.status IN ('pending','executing'))`,
+    [id, session.content_revision],
+  );
   const current = await sessionRow(db, scope, id);
   if (current.content_revision !== session.content_revision)
     throw new AssistantError(409, "assistant_context_deleted");

@@ -403,6 +403,24 @@ describe("project assistant public contract", () => {
     });
     expect(repeated.statusCode, repeated.body).toBe(200);
     expect(repeated.json().receipt).toEqual(confirmed.json().receipt);
+    await expect
+      .poll(
+        async () => {
+          const current = (await read()).json();
+          return (
+            current.turns.some(
+              (turn: any) =>
+                turn.event === "confirmed" && turn.status === "succeeded",
+            ) &&
+            !current.turns.some((turn: any) =>
+              ["queued", "running"].includes(turn.status),
+            )
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    expect((await read()).json().task.stage).toBe("complete");
     const check = createPool(databaseUrl);
     try {
       expect(
@@ -424,6 +442,7 @@ describe("project assistant public contract", () => {
         .json()
         .proposals.find((p: any) => p.id === proposal.id);
       expect(restored.status).toBe("succeeded");
+      expect((await read()).json().task.stage).toBe("complete");
       expect(restored.receipt.version.id).toBe(publishedVersionId);
       expect(
         (await app.inject({ method: "POST", url, headers, payload: {} })).json()
@@ -485,6 +504,7 @@ describe("project assistant public contract", () => {
     ).toEqual([]);
     requestedTool = { name: "request_publish", input: { draftId: derivedId } };
     const state = (await send("请求发布关联草稿")).json();
+    expect(state.task.stage).toBe("awaiting_confirmation");
     expect(state.proposals).toContainEqual(
       expect.objectContaining({
         action: "publish",
