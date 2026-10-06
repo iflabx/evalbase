@@ -1372,7 +1372,7 @@ export async function executeAssistantTurn(
     ),
     request_processing_apply: businessTool(
       "request_processing_apply",
-      "为已完成处理结果建立采用确认卡片。多批任务采用全部成果时allTask:true与allValid:true，服务端固定全部有效批次，生成单一来源文件并保留真实溯源。仅采用一批时省略allTask。asset仅保存派生文件，newDraft建立草稿，draft写入指定草稿；resultIds和allValid二选一。同一草稿已经采用的候选自动排除。",
+      "为已完成处理结果建立采用确认卡片。多批任务采用全部成果时allTask:true，默认采用全部有效候选，服务端固定全部有效批次，生成单一来源文件并保留真实溯源。仅采用一批时省略allTask。asset仅保存派生文件，newDraft建立草稿，draft写入指定草稿；resultIds和allValid二选一。同一草稿已经采用的候选自动排除。",
       {
         runId: string,
         resultIds: ids,
@@ -1408,9 +1408,14 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        const allValid =
+          input.allValid === true ||
+          (input.allTask === true &&
+            input.allValid === undefined &&
+            input.resultIds === undefined);
         if (
           input.allTask &&
-          (input.allValid !== true ||
+          (!allValid ||
             input.resultIds !== undefined ||
             !task.runIds?.includes(input.runId))
         )
@@ -1460,7 +1465,7 @@ export async function executeAssistantTurn(
         const resultGroups = [];
         for (const item of available) {
           const ids =
-            input.allValid === true && input.resultIds === undefined
+            allValid && input.resultIds === undefined
               ? item.allIds
               : input.resultIds;
           if (

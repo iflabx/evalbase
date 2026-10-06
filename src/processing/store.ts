@@ -778,9 +778,13 @@ export async function previewProcessingInput(
     if (allIds.length > 10000)
       throw new ProcessingError(422, "processing_capacity_exceeded");
     const page = allIds.slice(offset, offset + limit);
-    const data = page.length
-      ? await snapshot(client, scope.projectId, { ...source, recordIds: page })
-      : { records: [], revision: undefined };
+    const data =
+      page.length || source.kind === "draft"
+        ? await snapshot(client, scope.projectId, {
+            ...source,
+            recordIds: page,
+          })
+        : { records: [], revision: undefined };
     await processingAccess(client, scope, true, requiredCapability);
     await client.query("COMMIT");
     return {

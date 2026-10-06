@@ -2049,12 +2049,22 @@ describe("project assistant public contract", () => {
           payload: {},
         })
       ).json().sessionId;
+      const emptyTarget = (
+        await app.inject({
+          method: "POST",
+          url: draftsPath,
+          headers,
+          payload: { name: "空的连续任务目标" },
+        })
+      ).json().draft.id;
       requestedTool = {
         name: "plan_task",
         input: {
           title: "连续扩充两条",
           requirements: ["分两次共新增两条"],
           targetCount: 2,
+          countKind: "final",
+          targetDraftId: emptyTarget,
           nextAction: "none",
         },
       };
@@ -2125,16 +2135,32 @@ describe("project assistant public contract", () => {
       await finish(refined);
       expect((await read()).json().task.runIds).toEqual([runIds[0], refined]);
       expect((await read()).json().task.review.total).toBe(2);
+      for (const selection of [{ allValid: false }, { resultIds: ["0:0"] }]) {
+        requestedTool = {
+          name: "request_processing_apply",
+          input: {
+            runId: refined,
+            allTask: true,
+            ...selection,
+            target: { kind: "draft", id: emptyTarget },
+          },
+        };
+        const invalid = (await send("不要扩大这个不一致的选择")).json();
+        expect(invalid.turns.at(-1).tools[0].error.code).toBe(
+          "processing_result_invalid",
+        );
+        expect(invalid.proposals.some((p: any) => p.status === "pending")).toBe(
+          false,
+        );
+      }
       requestedTool = {
         name: "request_processing_apply",
         input: {
           runId: refined,
           allTask: true,
-          allValid: true,
           target: {
-            kind: "newDraft",
-            name: "连续任务结果",
-            purpose: "同一任务两批",
+            kind: "draft",
+            id: emptyTarget,
           },
         },
       };
