@@ -1511,7 +1511,15 @@ describe("project assistant public contract", () => {
           nextAction: "none",
         },
       };
+      const replacementCall = calls.length;
       await send("改为按风险类别筛选，其他要求保持");
+      // Old plans stay in the user-visible history, but must not become examples
+      // for the next replacement snapshot sent to the model.
+      expect(
+        calls[replacementCall].messages.flatMap((message: any) =>
+          (message.tool_calls ?? []).map((call: any) => call.function.name),
+        ),
+      ).not.toContain("plan_task");
       const state = (await read()).json();
       expect(state.task.requirements).toEqual([
         "按风险类别筛选200条",

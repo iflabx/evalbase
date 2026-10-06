@@ -473,7 +473,7 @@ export async function executeAssistantTurn(
         title: { type: "string", minLength: 1, maxLength: 40 },
         requirements: {
           description:
-            "根据最新用户要求整理的当前生效要求完整列表，替换旧列表而非追加历史。用户修改或撤销要求时移除对应旧条目，未变要求保留；不记录查询进度和重复条目。",
+            '根据最新用户要求整理的当前生效要求完整列表，替换旧列表而非追加历史。用户修改或撤销要求时移除对应旧条目，未变要求保留；不记录查询进度和重复条目。例如旧列表为["随机抽200条","保留原题"]，用户说"改为按风险类别筛选，不随机抽取"，新列表必须是["按风险类别筛选200条","保留原题"]，不能保留"随机抽200条"或追加"用户补充"。',
           type: "array",
           items: { type: "string", maxLength: 1000 },
           maxItems: 20,
@@ -1605,6 +1605,9 @@ export async function executeAssistantTurn(
       ];
       let bytes = 0;
       for (const record of row.tool_results) {
+        // Historical plans are superseded by the current task snapshot below.
+        // Replaying them teaches the model to copy obsolete requirements.
+        if (record.name === "plan_task") continue;
         if (!["succeeded", "failed"].includes(record.status)) continue;
         const value =
           record.status === "succeeded"
