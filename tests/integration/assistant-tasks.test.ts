@@ -486,6 +486,96 @@ describe("assistant continuous task public contract", () => {
     }
   });
 
+  it("continues beyond 50 turns and preserves history while rejecting turn 101", async () => {
+    mode = "explain";
+    const longSession = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const db = createPool(databaseUrl);
+    const readLong = async () =>
+      (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${longSession}`,
+          headers,
+        })
+      ).json();
+    const seed = async (start: number, end: number) =>
+      db.query(
+        `INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,expires_at,created_at)
+       SELECT 'history_'||$1||'_'||n,$1,'history_'||n,'fixture','历史输入 '||n,'succeeded',now()+interval '1 day',now()-interval '1 day'+n*interval '1 second'
+       FROM generate_series($2::int,$3::int) n`,
+        [longSession, start, end],
+      );
+    try {
+      await seed(1, 50);
+      const submitted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${longSession}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: "继续同一任务" },
+      });
+      expect(submitted.statusCode, submitted.body).toBe(202);
+      await expect
+        .poll(async () => (await readLong()).turns.at(-1)?.status, {
+          timeout: 15000,
+        })
+        .toBe("succeeded");
+      expect((await readLong()).turns).toHaveLength(51);
+      expect((await readLong()).turns[0].userText).toBe("历史输入 1");
+      await taskModule.queueContinuation(
+        db,
+        longSession,
+        "confirmed",
+        "fixture-51",
+      );
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_turn WHERE session_id=$1",
+            [longSession],
+          )
+        ).rows[0].n,
+      ).toBe(52);
+      // Settle this arranged automatic turn before checking the public upper bound.
+      await db.query(
+        "UPDATE assistant_turn SET status='succeeded',execution_token=NULL WHERE session_id=$1 AND status IN('queued','running')",
+        [longSession],
+      );
+      await seed(53, 100);
+      expect((await readLong()).turns).toHaveLength(100);
+      const full = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${longSession}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: "不能再增加" },
+      });
+      expect(full.statusCode).toBe(422);
+      expect(full.json().error.code).toBe("assistant_session_full");
+      await taskModule.queueContinuation(
+        db,
+        longSession,
+        "confirmed",
+        "fixture-101",
+      );
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_turn WHERE session_id=$1",
+            [longSession],
+          )
+        ).rows[0].n,
+      ).toBe(100);
+    } finally {
+      await db.end();
+    }
+  });
+
   it("continues to check candidates after background processing without another user message", async () => {
     const initialModelCalls = requests.filter(
       (request) => request.tools,

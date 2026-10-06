@@ -2,6 +2,7 @@ import type { Database } from "../db/pool.js";
 import { opaqueId } from "../server/support.js";
 import { sha256 } from "../package/contract.js";
 import {
+  ASSISTANT_SESSION_TURN_LIMIT,
   assistantAccess,
   AssistantError,
   dependenciesAvailable,
@@ -96,12 +97,17 @@ export async function queueContinuation(
         sessionId,
       ])
     ).rowCount!;
-    if (Number(session.task.autoCount ?? 0) >= 12 || turnCount >= 50) {
+    if (
+      Number(session.task.autoCount ?? 0) >= 12 ||
+      turnCount >= ASSISTANT_SESSION_TURN_LIMIT
+    ) {
       await client.query(
         "UPDATE assistant_session SET task=task||jsonb_build_object('stage','failed','error',$2::text) WHERE id=$1",
         [
           sessionId,
-          turnCount >= 50 ? "assistant_session_limit" : "assistant_task_limit",
+          turnCount >= ASSISTANT_SESSION_TURN_LIMIT
+            ? "assistant_session_limit"
+            : "assistant_task_limit",
         ],
       );
       await client.query("COMMIT");

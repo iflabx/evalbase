@@ -6,6 +6,7 @@ import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import { backgroundCatalog } from "./background.js";
 
+export const ASSISTANT_SESSION_TURN_LIMIT = 100;
 export type AssistantScope = { projectId: string; actorId: string };
 function initialTaskTitle(text: string) {
   const named = text.match(/本会话命名为[“"「]([^”"」\n]{1,40})[”"」]/u)?.[1];
@@ -122,8 +123,8 @@ export async function readSession(
   );
   const turns = (
     await db.query(
-      "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT 50",
-      [id],
+      "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT $2",
+      [id, ASSISTANT_SESSION_TURN_LIMIT],
     )
   ).rows;
   for (const turn of turns) {
@@ -368,7 +369,7 @@ export async function startTurn(
     ).rows;
     if (turns.some((t) => ["queued", "running"].includes(t.status)))
       throw new AssistantError(409, "assistant_turn_running");
-    if (turns.length >= 50)
+    if (turns.length >= ASSISTANT_SESSION_TURN_LIMIT)
       throw new AssistantError(422, "assistant_session_full");
     for (const t of turns) {
       if (t.requires_write) await assistantAccess(client, scope, true);
