@@ -454,7 +454,11 @@ export async function executeAssistantTurn(
           description:
             "new指本任务新增候选数量，final指目标草稿最终总数；已有草稿必须指定targetDraftId以读取真实基数，不能把已有数量当成新增数量。",
         },
-        targetDraftId: string,
+        targetDraftId: {
+          ...string,
+          description:
+            "仅countKind为final时填写，用于读取目标草稿现有条数；countKind为new时省略。采用候选的目标在采用工具中指定。",
+        },
         allowedLabels: {
           description:
             "仅用于用户明确指定的期望输出固定标签。用户改为逐题回答行为时传空数组清除旧限制，省略会保留旧限制；Metadata分类与配额用classifications指定对应key。",
@@ -1677,6 +1681,7 @@ export async function executeAssistantTurn(
               r.status === "succeeded" &&
               ["submit_processing", "refine_candidates"].includes(r.name) &&
               (!plannedAction ||
+                plannedAction === "plan_task" ||
                 plannedAction === "any" ||
                 plannedAction === r.name),
           )
@@ -1703,6 +1708,10 @@ export async function executeAssistantTurn(
         });
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
+    if (yieldToProcessing && plannedAction === "plan_task") {
+      await updateTask(db, turn, { nextAction: null, question: null });
+      plannedAction = undefined;
+    }
     if (plannedAction || processingEventRunId)
       throw new AssistantError(422, "assistant_task_not_executed");
     const pending = (

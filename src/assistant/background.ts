@@ -10,10 +10,12 @@ import {
   type AssistantScope,
 } from "./store.js";
 import type { BackgroundFragment } from "./extract-background.js";
+import type { CandidateGoal } from "../processing/review.js";
 
 export type BackgroundSnapshot = {
   requirements: string[];
   userRequests?: string[];
+  classifications?: CandidateGoal["classifications"];
   documents: {
     id: string;
     fileName: string;
@@ -204,10 +206,10 @@ export async function freezeBackground(
       [sessionId],
     )
   ).rows;
-  if (!documents.length) return;
+  if (!documents.length && !session.task.classifications?.length) return;
   const evidence: { documentId: string; fragmentIndex: number }[] =
     session.task.backgroundEvidence ?? [];
-  if (!evidence.length)
+  if (documents.length && !evidence.length)
     throw new AssistantError(422, "assistant_background_not_read");
   const selected: BackgroundSnapshot["documents"] = [];
   for (const document of documents) {
@@ -231,7 +233,7 @@ export async function freezeBackground(
     });
   }
   if (
-    !selected.length ||
+    (documents.length > 0 && !selected.length) ||
     evidence.some(
       (ref) => !documents.some((document) => document.id === ref.documentId),
     )
@@ -244,6 +246,9 @@ export async function freezeBackground(
     throw new AssistantError(422, "assistant_background_capacity");
   return {
     requirements: session.task.requirements ?? [],
+    ...(session.task.classifications?.length
+      ? { classifications: session.task.classifications }
+      : {}),
     userRequests: [
       session.task.goal,
       ...(session.task.supplements ?? []),

@@ -49,3 +49,5 @@ Implementation: in-progress
 - 真实短请求恢复补修：无效计划后仍允许查询来源/读取背景，保留未执行义务；公开 SDK redgreen（2 项）、类型和 lint 通过，双向窄复核无新问题。日志 `real-flow-plan-recovery-red.log` / `real-flow-plan-recovery-green.log`。
 
 - 同会话真实模型首轮完成 200 条，实际配额 105/37/58，Metadata 键与编号不统一，尚未采用或发布。继续按实际结果修正；不能把候选数量达标视为内容通过。补充运行中已保存数量及扩充目标，扩充状态 HTTP redgreen、浏览器回归、类型/lint 均通过；分类纠正说明明确清旧标签与替换规则，省略会保留旧值。
+
+- 后续真实 200 条逐题期望输出已改善，但配额为 133/23/44，风险编号仍不合格。追踪到各批重复接收全量配额；新增冻结分类与本批数量提示，扣除已接受输出，保护部分调整和不可修改字段。`actual-batch-quotas-red.log` / `actual-batch-quotas-green.log`（6 个定向检查）及类型/lint 通过。真实回执与失败计划残留的正常结束、中断恢复已 REDGREEN；恢复不再调用模型，也不重复提交。最终结果仍待真实核对。

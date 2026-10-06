@@ -49,8 +49,15 @@ function modelRequest(
   missing: number,
   background: InputSnapshot["background"],
   accepted: ProcessingResult["records"] = [],
+  batch?: { offset: number; total: number },
 ) {
-  const base = processingPrompt(inputs, options, missing, background);
+  const base = processingPrompt(
+    inputs,
+    options,
+    missing,
+    background,
+    batch ? { ...batch, originalCount: expected, accepted } : undefined,
+  );
   const correction = {
     ...JSON.parse(base.prompt),
     originalOutputCount: expected,
@@ -83,9 +90,10 @@ function batches(
   options?: ProcessingOptions,
   background?: InputSnapshot["background"],
   legacyRecipe = false,
+  quotaInput = true,
 ) {
   const result: { inputs: ProcessingInput[]; count: number }[] = [];
-  const fits = (rows: ProcessingInput[]) => {
+  const fits = (rows: ProcessingInput[], offset: number, count: number) => {
     if (legacyRecipe || !modelInput)
       return (
         rows.reduce(
@@ -93,7 +101,16 @@ function batches(
           0,
         ) <= 40000
       );
-    const request = modelRequest(rows, options!, 20, 20, background);
+    const budgetCount = background?.classifications?.length ? count : 20;
+    const request = modelRequest(
+      rows,
+      options!,
+      budgetCount,
+      budgetCount,
+      background,
+      [],
+      quotaInput ? { offset, total: outputCount ?? inputs.length } : undefined,
+    );
     return (
       Buffer.byteLength(request.system + request.prompt) <=
       PROCESSING_EXECUTION.maxInputBytesPerBatch
@@ -102,26 +119,29 @@ function batches(
   if (outputCount !== undefined) {
     for (let i = 0; i < outputCount; i += 20) {
       const start = i % inputs.length,
+        count = Math.min(20, outputCount - i),
         group: ProcessingInput[] = [];
       for (let j = 0; j < Math.min(20, inputs.length); j++) {
         const row = inputs[(start + j) % inputs.length];
-        if (modelInput && !fits([row]))
+        if (modelInput && !fits([row], i, count))
           throw new ProcessingError(422, "processing_record_too_large");
-        if (!fits([...group, row])) break;
+        if (!fits([...group, row], i, count)) break;
         group.push(row);
       }
-      result.push({ inputs: group, count: Math.min(20, outputCount - i) });
+      result.push({ inputs: group, count });
     }
   } else {
-    let group: ProcessingInput[] = [];
+    let group: ProcessingInput[] = [],
+      offset = 0;
     for (const row of inputs) {
-      if (modelInput && !fits([row]))
+      if (modelInput && !fits([row], offset + group.length, 1))
         throw new ProcessingError(422, "processing_record_too_large");
       if (
         group.length === PROCESSING_EXECUTION.batchSize ||
-        (group.length > 0 && !fits([...group, row]))
+        (group.length > 0 && !fits([...group, row], offset, group.length + 1))
       ) {
         result.push({ inputs: group, count: group.length });
+        offset += group.length;
         group = [];
       }
       group.push(row);
@@ -163,6 +183,9 @@ export async function runProcessing(
     }) !== canonicalJson(PROCESSING_EXECUTION)
   )
     throw new ProcessingError(409, "processing_recipe_unavailable");
+  const quotaInput =
+    !input.refinement ||
+    input.refinement.selectedIds.length === input.records.length;
   const groups = batches(
     input.records,
     run.options.outputCount,
@@ -170,6 +193,7 @@ export async function runProcessing(
     run.options,
     input.background,
     legacyRecipe,
+    quotaInput,
   );
   let model: Awaited<ReturnType<typeof configuredModel>> | undefined;
   if (run.model_revision !== null)
@@ -275,6 +299,14 @@ export async function runProcessing(
             missing,
             input.background,
             result.records,
+            quotaInput
+              ? {
+                  offset: groups
+                    .slice(0, index)
+                    .reduce((n, g) => n + g.count, 0),
+                  total: run.options.outputCount ?? input.records.length,
+                }
+              : undefined,
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >

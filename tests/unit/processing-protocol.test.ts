@@ -3,6 +3,7 @@ import {
   cleanRecords,
   validateModelRows,
   processingOptions,
+  processingPrompt,
 } from "../../src/processing/protocol.js";
 
 const inputs = [
@@ -20,6 +21,115 @@ const inputs = [
   },
 ];
 describe("model processing output boundary", () => {
+  it("scopes confirmed quotas to each batch and subtracts accepted corrections", () => {
+    const background = {
+      requirements: [],
+      documents: [],
+      classifications: [
+        {
+          field: "metadata" as const,
+          key: "类别",
+          quotas: [
+            { value: "生成内容", count: 100 },
+            { value: "应拒答", count: 50 },
+            { value: "非拒答", count: 50 },
+          ],
+        },
+      ],
+    };
+    const options = processingOptions({
+      operation: "rewrite",
+      instructions: "改写为对应类别的完整题目",
+      allowedFields: ["question", "expectedOutput", "metadata"],
+    });
+    const totals = new Map<string, number>();
+    for (let offset = 0; offset < 200; offset += 20) {
+      const prompt = JSON.parse(
+        processingPrompt(inputs, options, 20, background, {
+          offset,
+          total: 200,
+        }).prompt,
+      );
+      for (const quota of prompt.batchQuotas[0].quotas)
+        totals.set(quota.value, (totals.get(quota.value) ?? 0) + quota.count);
+    }
+    expect(Object.fromEntries(totals)).toEqual({
+      生成内容: 100,
+      应拒答: 50,
+      非拒答: 50,
+    });
+    const retry = JSON.parse(
+      processingPrompt(inputs, options, 19, background, {
+        offset: 0,
+        total: 200,
+        originalCount: 20,
+        accepted: [
+          {
+            sourceId: "row-a",
+            question: "已保留",
+            expectedOutput: "标准",
+            metadata: [{ key: "类别", value: "生成内容" }],
+          },
+        ],
+      }).prompt,
+    );
+    expect(
+      retry.batchQuotas[0].quotas.reduce((n: number, q: any) => n + q.count, 0),
+    ).toBe(19);
+    const accepted = {
+      sourceId: "row-a",
+      question: "已保留",
+      expectedOutput: "标准",
+      metadata: [{ key: "类别", value: "范围外" }],
+    };
+    expect(
+      JSON.parse(
+        processingPrompt(inputs, options, 19, background, {
+          offset: 0,
+          total: 200,
+          originalCount: 20,
+          accepted: [accepted],
+        }).prompt,
+      ).batchQuotas,
+    ).toBeUndefined();
+    expect(
+      JSON.parse(
+        processingPrompt(inputs, options, 12, background, {
+          offset: 0,
+          total: 200,
+          originalCount: 20,
+          accepted: Array.from({ length: 8 }, (_, i) => ({
+            ...accepted,
+            sourceId: `row-${i}`,
+            metadata: [{ key: "类别", value: "生成内容" }],
+          })),
+        }).prompt,
+      ).batchQuotas,
+    ).toBeUndefined();
+    expect(
+      JSON.parse(
+        processingPrompt(
+          inputs,
+          { ...options, allowedFields: ["question"] },
+          20,
+          background,
+          { offset: 0, total: 200 },
+        ).prompt,
+      ).batchQuotas,
+    ).toBeUndefined();
+    expect(
+      JSON.parse(
+        processingPrompt(inputs, options, 20, background, {
+          offset: 0,
+          total: 100,
+        }).prompt,
+      ).batchQuotas,
+    ).toBeUndefined();
+    expect(
+      JSON.parse(processingPrompt(inputs, options, 20, background).prompt)
+        .batchQuotas,
+    ).toBeUndefined();
+  });
   it("preserves protected fields and reports missing, duplicate, foreign and excess output", () => {
     const options = processingOptions({
       operation: "rewrite",

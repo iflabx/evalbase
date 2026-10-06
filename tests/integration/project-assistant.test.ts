@@ -1601,80 +1601,125 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
-  it("recovers an invalid plan by reading real sources before replanning", async () => {
-    const previous = sessionId;
-    sessionId = (
+  it.each([true, false])(
+    "recovers an invalid plan without losing an actual processing receipt (replan %s)",
+    async (replan) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const ownDraft = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "定位恢复草稿" },
+        })
+      ).json().draft.id;
       await app.inject({
         method: "POST",
-        url: `${base()}/sessions`,
+        url: `/api/projects/${projectId}/collaborative-drafts/${ownDraft}/records`,
         headers,
-        payload: {},
-      })
-    ).json().sessionId;
-    const ownDraft = (
-      await app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/collaborative-drafts`,
-        headers,
-        payload: { name: "定位恢复草稿" },
-      })
-    ).json().draft.id;
-    await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/collaborative-drafts/${ownDraft}/records`,
-      headers,
-      payload: {
-        question: "真实来源问题",
-        expectedOutput: "正常回答",
-        metadata: [],
-      },
-    });
-    try {
-      toolSequence = [
-        {
-          name: "plan_task",
-          input: {
-            title: "定位恢复",
-            requirements: ["清洗当前草稿"],
-            target: { kind: "assets" },
-            nextAction: "submit_processing",
-          },
+        payload: {
+          question: "真实来源问题",
+          expectedOutput: "正常回答",
+          metadata: [],
         },
-        { name: "query_project", input: { kind: "drafts" } },
-        {
-          name: "plan_task",
-          input: {
-            title: "定位恢复",
-            requirements: ["清洗当前草稿"],
-            target: { kind: "draft", id: ownDraft },
-            nextAction: "submit_processing",
+      });
+      try {
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: {
+              title: "定位恢复",
+              requirements: ["清洗当前草稿"],
+              target: { kind: "assets" },
+              nextAction: "submit_processing",
+            },
           },
-        },
-        {
-          name: "submit_processing",
-          input: {
-            source: { kind: "draft", id: ownDraft },
-            allRecords: true,
-            operation: "clean",
-            instructions: "清洗",
-            allowedFields: ["question"],
+          ...(replan
+            ? [
+                { name: "query_project", input: { kind: "drafts" } },
+                {
+                  name: "plan_task",
+                  input: {
+                    title: "定位恢复",
+                    requirements: ["清洗当前草稿"],
+                    target: { kind: "draft", id: ownDraft },
+                    nextAction: "submit_processing",
+                  },
+                },
+              ]
+            : []),
+          {
+            name: "submit_processing",
+            input: {
+              source: { kind: "draft", id: ownDraft },
+              allRecords: true,
+              operation: "clean",
+              instructions: "清洗",
+              allowedFields: ["question"],
+            },
           },
-        },
-      ];
-      const state = (await send("先检查来源，再清洗当前草稿")).json();
-      const turn = state.turns.at(-1);
-      expect(turn.tools[0].error.code).toBe("assistant_source_invalid");
-      expect(
-        turn.tools.find((entry: any) => entry.name === "query_project")?.status,
-      ).toBe("succeeded");
-      expect(turn.status, JSON.stringify(state)).toBe("succeeded");
-      expect(state.task.stage).toBe("processing");
-      expect(state.task.runId).toBeTruthy();
-    } finally {
-      toolSequence = [];
-      sessionId = previous;
-    }
-  });
+        ];
+        const state = (await send("先检查来源，再清洗当前草稿")).json();
+        const turn = state.turns.at(-1);
+        expect(turn.tools[0].error.code).toBe("assistant_source_invalid");
+        if (replan)
+          expect(
+            turn.tools.find((entry: any) => entry.name === "query_project")
+              ?.status,
+          ).toBe("succeeded");
+        expect(turn.status, JSON.stringify(state)).toBe("succeeded");
+        expect(state.task.stage).toBe("processing");
+        expect(state.task.runId).toBeTruthy();
+        if (!replan) {
+          const db = createPool(databaseUrl);
+          try {
+            await db.query(
+              "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed',assistant_text='' WHERE id=$1",
+              [turn.id],
+            );
+            await db.query(
+              "UPDATE assistant_session SET task=task || $2::jsonb WHERE id=$1",
+              [
+                sessionId,
+                JSON.stringify({ stage: "failed", nextAction: "plan_task" }),
+              ],
+            );
+            const beforeRecovery = calls.length;
+            expect(
+              (
+                await app.inject({
+                  method: "POST",
+                  url: `${base()}/sessions/${sessionId}/retry`,
+                  headers,
+                  payload: {},
+                })
+              ).statusCode,
+            ).toBe(200);
+            await expect
+              .poll(async () => (await read()).json().turns.at(-1).status)
+              .toBe("succeeded");
+            const recovered = (await read()).json();
+            expect(recovered.task.runId).toBe(state.task.runId);
+            expect(recovered.task.stage).toBe("processing");
+            expect(calls.length).toBe(beforeRecovery);
+          } finally {
+            await db.end();
+          }
+        }
+      } finally {
+        toolSequence = [];
+        sessionId = previous;
+      }
+    },
+  );
   it("does not end with false waiting when the planning object is invalid", async () => {
     const previous = sessionId;
     sessionId = (
@@ -3478,6 +3523,14 @@ describe("project assistant public contract", () => {
         name: "plan_task",
         input: {
           title: "按规范改写",
+          classifications: [
+            {
+              field: "metadata",
+              key: "类别",
+              allowedValues: ["试用"],
+              quotas: [{ value: "试用", count: 1 }],
+            },
+          ],
           requirements: [
             "按背景规范生成具体场景",
             "修正：不得包含真实个人信息",
@@ -3495,7 +3548,7 @@ describe("project assistant public contract", () => {
           allRecords: true,
           operation: "rewrite",
           instructions: "按照本会话规范和补充改写",
-          allowedFields: ["question"],
+          allowedFields: ["question", "metadata"],
         },
       };
       const state = (await send("按刚才的规范改写")).json();
@@ -3541,6 +3594,21 @@ describe("project assistant public contract", () => {
         "先看规范",
         "再补充：不要出现真实个人信息。期望输出写完整验收标准，不是类别。",
         "按刚才的规范改写",
+      ]);
+      expect(prompt.background.classifications).toEqual([
+        {
+          field: "metadata",
+          key: "类别",
+          allowedValues: ["试用"],
+          quotas: [{ value: "试用", count: 1 }],
+        },
+      ]);
+      expect(prompt.batchQuotas).toEqual([
+        {
+          field: "metadata",
+          key: "类别",
+          quotas: [{ value: "试用", count: 1 }],
+        },
       ]);
       expect(prompt.backgroundRule).toContain(
         "later user corrections override",
