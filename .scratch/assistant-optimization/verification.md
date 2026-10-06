@@ -96,3 +96,28 @@ Standards / Spec 双向审阅及定向修复已经覆盖本轮受影响的权限
 没有运行新的 5/10 人压测、两小时稳定性测试或生产重启。保留隔离验收环境供 Owner 使用；不触碰其他服务器项目，不合并 main、不推送 GitHub、不正式部署。
 
 最后窄复审：Standards 与 Spec 均无明确 P0/P1/P2，发布状态的 3 项公开回归、类型与 lint 通过。Ticket Closure Review P0/P1 cleared at `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`；证据范围为本 Spec 的上述受影响矩阵，未扩展为全仓库审计。后续进度文档提交不改变运行代码。
+
+## 6. 查询与要求同步修复（2026-10-06）
+
+本节是后续缺陷修复记录，不改写上节验收历史。代码固定于 `dc1f0a33d65b1c266b00686552d957e26fff08b0`，4217 隔离验收环境仅更新 web；健康检查返回该 SHA，PostgreSQL 与 MinIO 均正常。处理 worker、验收库与用户数据保持原状。
+
+- 查询接近既有 8 步／12 工具上限时，预留最后一步只做真实结果汇总；未完成的执行义务、无回复或继续请求工具仍报告失败，不以查询回执冒充处理成功。
+- 要求保存为完整替换快照，并去空白、重复。数量可明确撤销为 null；最终总数核对仍检查全部实际输出，不把新候选数量错当草稿总数。
+- 真实 Qwen 最初仍照抄历史计划和旧清单；追加修复将上轮要求、原请求、最近更正分别呈现给模型，保留实际业务回执及重试依据。任务卡不再把旧原始请求当作当前要求显示，显式空要求也不回退旧目标。
+
+Computer Use 在原会话 `conversation_a9556bf9b06a41f9b1ed9e1774e576f2` 验证：
+
+- 原报错历史保留；继续风险核对后正常汇总。最终回合 `turn_8e212792b1734ce9a938161122099e71` 成功，8 个工具回执均成功，仅含计划和读取记录，无扩写、采用、发布或待确认操作。
+- 用户短请求把随机抽取改为按风险类别选题；旧会话的累积清单经整理从 13 条缩为 5 条当前要求。回合 `turn_065a5af0bcb74b52b35eb439abb61271` 成功，后续继续查询仍维持这 5 条，保留 200 条、100/50/50、期望输出、Metadata 与优先保留原题的约束。
+- 未另建项目、账号或测试集，既有已发布 200 条成果未重新生成或采用。
+
+自动与审阅证据位于执行机 `D:/AgentBench_v2/.scratch/assistant-optimization/`：
+
+- `assistant-findings-green.log`、`assistant-count-withdrawal-green.log`、`assistant-focused-final.log`：查询汇总、失败义务、要求替换及撤销数量的公开回归。
+- `assistant-requirements-history-red.log` / `assistant-requirements-history-green.log`、`assistant-requirements-snapshot-red.log` / `assistant-requirements-snapshot-green.log`：历史计划不再重放，上轮要求与当前更正分开；最后 7 项相关回归通过。
+- `assistant-history-confirmation.log`：包含创建候选的前置测试后，要求更正使旧确认失效及真实确认续做均通过；单独选择依赖共享候选的用例不能作为完整运行。
+- `assistant-requirements-snapshot-type-green.log`、`assistant-requirements-checked-style.log`、`assistant-current-requirements-ui-type.log`、`assistant-current-requirements-ui-lint-green.log`、`assistant-requirements-current-ui-image-build.log`：前后端类型、lint、格式及正式镜像构建通过。
+- `assistant-bugfix-real-green.json`：真实模型会话及当前要求的只读回验记录。Standards / Spec 窄复审均无未关闭 P0/P1/P2，包括显式空要求不回退原目标的修正。
+- `assistant-bugfix-browser.png`：最终 4217 页面刷新后展开的 5 项当前要求，旧原始请求不再混入任务卡。
+
+验证限制：较广回归中的既有故障注入用例“links a processing receipt before post-commit reporting, and durably stops its queued job”仍失败；在修复前 `89c79b15bad33215eb8ba76ee77439e91fbe868d` 上也复现，见 `assistant-postcommit-baseline.log`。本节不宣称全量回归全绿。未合并 main、推送 GitHub 或正式部署。
