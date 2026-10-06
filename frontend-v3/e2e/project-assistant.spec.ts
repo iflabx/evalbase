@@ -391,6 +391,91 @@ test("keeps the assistant conversation across close/reload and submits only an e
 
 const assistantBase = "/api/projects/assistant_project/assistant";
 
+test("renames sessions, retains input on failure, and confirms deletion before returning to the empty state", async ({
+  page,
+}) => {
+  let title = "安全题库",
+    deleted = false,
+    renameAttempts = 0,
+    deleteAttempts = 0;
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`) {
+      expect(route.request().method()).toBe("GET");
+      return route.fulfill({
+        json: {
+          sessions: deleted
+            ? []
+            : [{ id: "manage", title, ordinal: 1, updated_at: "2026-10-06T08:00:00Z" }],
+        },
+      });
+    }
+    if (path === `${assistantBase}/sessions/manage/status`)
+      return route.fulfill({ json: { exists: !deleted } });
+    if (path === `${assistantBase}/sessions/manage`) {
+      if (route.request().method() === "PATCH") {
+        renameAttempts++;
+        if (renameAttempts === 1)
+          return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
+        title = route.request().postDataJSON().title;
+        return route.fulfill({ json: { sessionId: "manage", title } });
+      }
+      if (route.request().method() === "DELETE") {
+        deleteAttempts++;
+        if (deleteAttempts === 1)
+          return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
+        deleted = true;
+        // The server committed, but its response was lost. Exact status proves removal.
+        return route.fulfill({ status: 503, json: { error: { code: "response_lost" } } });
+      }
+      return route.fulfill({
+        json: {
+          sessionId: "manage",
+          title,
+          task: { title: "自动生成标题" },
+          turns: [],
+          proposals: [],
+        },
+      });
+    }
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.getByLabel("向项目助手发送消息").fill("尚未发送的要求");
+  await page.getByRole("button", { name: "会话操作" }).click();
+  await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
+  const rename = page.getByRole("dialog", { name: "重命名会话", exact: true });
+  await expect(rename.getByLabel("会话名称")).toHaveValue("安全题库");
+  await rename.getByLabel("会话名称").fill("  我的安全测试  ");
+  await rename.getByRole("button", { name: "保存名称" }).click();
+  await expect(rename.getByRole("alert")).toContainText("名称已保留");
+  await expect(rename.getByLabel("会话名称")).toHaveValue("  我的安全测试  ");
+  await rename.getByRole("button", { name: "保存名称" }).click();
+  await expect(rename).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("我的安全测试");
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("尚未发送的要求");
+  await page.reload();
+  await page.getByRole("button", { name: "打开项目助手" }).click();
+  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("我的安全测试");
+  await page.getByRole("button", { name: "会话操作" }).click();
+  await page.getByRole("menuitem", { name: "删除会话", exact: true }).click();
+  const confirm = page.getByRole("alertdialog", { name: "删除会话？", exact: true });
+  await expect(confirm).toContainText("已创建的资料、草稿和正式版本保留");
+  await confirm.getByRole("button", { name: "取消", exact: true }).click();
+  expect(deleteAttempts).toBe(0);
+  await page.getByRole("button", { name: "会话操作" }).click();
+  await page.getByRole("menuitem", { name: "删除会话", exact: true }).click();
+  await confirm.getByRole("button", { name: "确认删除会话" }).click();
+  await expect(confirm.getByRole("alert")).toContainText("删除未完成");
+  await confirm.getByRole("button", { name: "确认删除会话" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("新会话");
+  await expect(page.getByRole("button", { name: "会话操作" })).toBeDisabled();
+  await expect(page.getByText("从当前项目开始", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 420, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
 test("keeps background and task beside the conversation, with located preview and explicit removal", async ({
   page,
 }) => {
@@ -647,6 +732,64 @@ async function assistantPage(
   await page.goto(url);
   await page.getByRole("button", { name: "打开项目助手" }).click();
 }
+
+test("keeps the renamed title when an older in-flight conversation response arrives", async ({
+  page,
+}) => {
+  let title = "旧名称",
+    reads = 0,
+    release = () => {},
+    entered = () => {},
+    released = false;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [{ id: "title-race", title, ordinal: 1, updated_at: "2026-10-06T08:00:00Z" }],
+        },
+      });
+    if (path === `${assistantBase}/sessions/title-race`) {
+      if (route.request().method() === "PATCH") {
+        title = route.request().postDataJSON().title;
+        return route.fulfill({ json: { sessionId: "title-race", title } });
+      }
+      const snapshot = title;
+      reads++;
+      if (reads === 2) {
+        entered();
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      await route.fulfill({
+        json: {
+          sessionId: "title-race",
+          title: snapshot,
+          turns: [
+            { id: "active", userText: "查询", assistantText: "", status: "running", tools: [] },
+          ],
+          proposals: [],
+        },
+      });
+      if (snapshot === "旧名称" && reads > 1) released = true;
+      return;
+    }
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await waiting;
+  await page.getByRole("button", { name: "会话操作" }).click();
+  await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
+  const rename = page.getByRole("dialog", { name: "重命名会话", exact: true });
+  await rename.getByLabel("会话名称").fill("持久的新名称");
+  await rename.getByRole("button", { name: "保存名称" }).click();
+  await expect(rename).toHaveCount(0);
+  release();
+  await expect.poll(() => released).toBe(true);
+  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("持久的新名称");
+});
 
 test("shows loading rather than an empty conversation and preserves the creation-order number", async ({
   page,

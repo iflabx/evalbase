@@ -192,7 +192,10 @@ export async function readSession(
   return {
     sessionId: id,
     task: taskPresentation(current.task),
-    title: taskPresentation(current.task)?.title ?? current.title,
+    title:
+      current.custom_title ??
+      taskPresentation(current.task)?.title ??
+      current.title,
     turns: turns.map((t) => ({
       id: t.id,
       event: t.event,
@@ -213,7 +216,7 @@ export async function listSessions(db: Database, scope: AssistantScope) {
   await assistantAccess(db, scope);
   const sessions = (
     await db.query(
-      `SELECT s.id,s.title,s.task,s.content_revision,s.created_at,s.updated_at,
+      `SELECT s.id,s.title,s.custom_title,s.task,s.content_revision,s.created_at,s.updated_at,
     (row_number() OVER(ORDER BY s.created_at,s.id))::int AS ordinal,
     coalesce((SELECT bool_or(t.requires_write) FROM assistant_turn t WHERE t.session_id=s.id),false) AS requires_write,
     coalesce((SELECT jsonb_agg(t.dependencies) FROM assistant_turn t WHERE t.session_id=s.id),'[]'::jsonb) AS dependencies
@@ -258,10 +261,34 @@ export async function listSessions(db: Database, scope: AssistantScope) {
     .map((row) => {
       const session = { ...row };
       session.task = taskPresentation(row.task);
-      session.title = session.task?.title ?? session.title;
+      session.title =
+        session.custom_title ?? session.task?.title ?? session.title;
+      delete session.custom_title;
       delete session.content_revision;
       return session;
     });
+}
+export async function renameSession(
+  db: Database,
+  scope: AssistantScope,
+  id: string,
+  body: unknown,
+) {
+  if (
+    !isPlainObject(body) ||
+    Object.keys(body).some((key) => key !== "title") ||
+    typeof body.title !== "string" ||
+    !body.title.trim() ||
+    body.title.trim().length > 80
+  )
+    throw new AssistantError(422, "assistant_title_invalid");
+  await sessionRow(db, scope, id);
+  const result = await db.query(
+    "UPDATE assistant_session SET custom_title=$4,updated_at=now() WHERE id=$1 AND project_id=$2 AND actor_id=$3 RETURNING id,title,custom_title",
+    [id, scope.projectId, scope.actorId, body.title.trim()],
+  );
+  if (!result.rowCount) throw new AssistantError(404, "assistant_not_found");
+  return { sessionId: id, title: result.rows[0].custom_title };
 }
 export async function startTurn(
   db: Database,

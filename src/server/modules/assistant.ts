@@ -32,6 +32,7 @@ import {
   dependenciesAvailable,
   readSession,
   listSessions,
+  renameSession,
   recoverProposalReceipt,
   sessionRow,
   startTurn,
@@ -137,6 +138,65 @@ export function registerAssistant({
       throw e;
     }
   }
+  app.patch<{ Params: Params; Body: unknown }>(
+    `${path}/sessions/:sessionId`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      if (!write(request, reply)) return;
+      return respond(reply, () =>
+        renameSession(
+          db,
+          scope(request),
+          request.params.sessionId,
+          request.body,
+        ),
+      );
+    },
+  );
+  app.get<{ Params: Params }>(
+    `${path}/sessions/:sessionId/status`,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, async () => {
+        const context = scope(request);
+        await assistantAccess(db, context);
+        const result = await db.query(
+          "SELECT id FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
+          [request.params.sessionId, context.projectId, context.actorId],
+        );
+        return { exists: Boolean(result.rowCount) };
+      }),
+  );
+  app.delete<{ Params: Params }>(
+    `${path}/sessions/:sessionId`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      if (!write(request, reply)) return;
+      return respond(reply, async () => {
+        const context = scope(request);
+        await controlAssistantTask(
+          db,
+          context,
+          request.params.sessionId,
+          "delete",
+        );
+        try {
+          await cleanupProcessingObjects(db, artifacts, context.projectId);
+        } catch {
+          // The committed deletion revoked access. Worker retries the durable cleanup queue.
+          app.log.warn(
+            {
+              sessionId: request.params.sessionId,
+              projectId: context.projectId,
+            },
+            "Assistant session cleanup pending",
+          );
+          return { deleted: true, cleanupPending: true };
+        }
+        return { deleted: true };
+      });
+    },
+  );
   app.get<{ Params: Params }>(
     `${path}/sessions`,
     { preHandler: authenticate },

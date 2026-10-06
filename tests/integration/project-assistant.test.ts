@@ -4254,4 +4254,501 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("renames only the actor's own session and preserves that name across later task planning", async () => {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const url = `${base()}/sessions/${id}`;
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url,
+          headers: { origin, cookie: headers.cookie },
+          payload: { title: "我的测试" },
+        })
+      ).statusCode,
+    ).toBe(403);
+    for (const title of ["   ", "a".repeat(81), 1])
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url,
+            headers,
+            payload: { title },
+          })
+        ).statusCode,
+      ).toBe(422);
+    const renamed = await app.inject({
+      method: "PATCH",
+      url,
+      headers,
+      payload: { title: "  我的安全测试  " },
+    });
+    expect(renamed.statusCode, renamed.body).toBe(200);
+    expect(renamed.json().title).toBe("我的安全测试");
+    toolSequence = [
+      {
+        name: "plan_task",
+        input: {
+          title: "模型生成的任务名",
+          requirements: [],
+          nextAction: "none",
+        },
+      },
+    ];
+    const turn = await app.inject({
+      method: "POST",
+      url: `${url}/turns`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "仅说明测试流程" },
+    });
+    expect(turn.statusCode, turn.body).toBe(202);
+    await expect
+      .poll(
+        async () =>
+          (await app.inject({ method: "GET", url, headers })).json().turns?.[0]
+            ?.status,
+        { timeout: 15000 },
+      )
+      .toBe("succeeded");
+    expect(
+      (await app.inject({ method: "GET", url, headers })).json().title,
+    ).toBe("我的安全测试");
+    const list = (
+      await app.inject({ method: "GET", url: `${base()}/sessions`, headers })
+    ).json().sessions;
+    expect(list.find((s: any) => s.id === id).title).toBe("我的安全测试");
+    const another = await app.inject({
+      method: "POST",
+      url: "/api/accounts",
+      headers: { origin },
+      payload: {
+        email: "session-other@example.test",
+        password: "Assistant123",
+        confirmPassword: "Assistant123",
+      },
+    });
+    expect(another.statusCode, another.body).toBe(201);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/session",
+      headers: { origin },
+      payload: {
+        email: "session-other@example.test",
+        password: "Assistant123",
+      },
+    });
+    const otherHeaders = {
+      origin,
+      cookie: `${login.cookies[0].name}=${login.cookies[0].value}`,
+      "x-csrf-token": login.json().csrfToken,
+    };
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) SELECT $1,id,'viewer' FROM app_user WHERE email=$2",
+        [projectId, "session-other@example.test"],
+      );
+    } finally {
+      await db.end();
+    }
+    for (const method of ["PATCH", "DELETE"] as const)
+      expect(
+        (
+          await app.inject({
+            method,
+            url,
+            headers: otherHeaders,
+            ...(method === "PATCH" ? { payload: { title: "他人的名称" } } : {}),
+          })
+        ).statusCode,
+      ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: url.replace(projectId, "wrong-project"),
+          headers,
+          payload: { title: "跨项目" },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const own = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers: otherHeaders,
+        payload: {},
+      })
+    ).json().sessionId;
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `${base()}/sessions/${own}`,
+          headers: otherHeaders,
+          payload: { title: "查看账号的会话" },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `${base()}/sessions/${own}`,
+          headers: otherHeaders,
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+  it("deletes a session's background and pending task while preserving created drafts", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const url = `${base()}/sessions/${sessionId}`;
+    try {
+      requestedTool = {
+        name: "create_draft",
+        input: { name: "删除会话保留的草稿", purpose: "合成测试" },
+      };
+      const created = (await send("创建测试草稿"))
+        .json()
+        .turns[0].tools.find(
+          (t: any) => t.name === "create_draft" && t.status === "succeeded",
+        ).result.draftId;
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `${url}/background-documents`,
+        headers,
+        payload: {
+          fileName: "删除测试.md",
+          contentBase64: Buffer.from("只用于测试会话删除").toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode, uploaded.body).toBe(201);
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "draft", id: created },
+          operation: "augment",
+          outputCount: 1,
+          allRecords: true,
+          instructions: "合成扩写",
+          allowedFields: ["question"],
+        },
+      };
+      // Use one source row, and cite the background before submitting the durable task.
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${created}/records`,
+        headers,
+        payload: {
+          question: "删除前保留的问题",
+          expectedOutput: "保留答案",
+          metadata: [],
+        },
+      });
+      toolSequence = [
+        {
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id },
+        },
+        requestedTool,
+      ];
+      const task = (await send("提交合成扩写")).json();
+      const runId = task.task.runId;
+      expect(runId, JSON.stringify(task)).toBeTruthy();
+      const beforePublish = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts/${created}`,
+          headers,
+        })
+      ).json();
+      const published = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${created}/publish`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { revision: beforePublish.draft.revision },
+      });
+      expect(published.statusCode, published.body).toBe(201);
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url,
+            headers: { origin, cookie: headers.cookie },
+          })
+        ).statusCode,
+      ).toBe(403);
+      const fixtureDb = createPool(databaseUrl);
+      await fixtureDb.query(`
+        CREATE SEQUENCE session_delete_retry;
+        CREATE FUNCTION inject_session_delete_deadlock() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF nextval('session_delete_retry')=1 THEN
+            RAISE EXCEPTION 'synthetic deletion lock conflict' USING ERRCODE='40P01';
+          END IF;
+          RETURN OLD;
+        END; $$;
+        CREATE TRIGGER inject_session_delete_deadlock BEFORE DELETE ON assistant_session
+          FOR EACH ROW EXECUTE FUNCTION inject_session_delete_deadlock();
+      `);
+      const cleanupFailure = vi
+        .spyOn(ArtifactRepository.prototype, "remove")
+        .mockRejectedValueOnce(new Error("synthetic storage unavailable"));
+      let removed;
+      try {
+        removed = await app.inject({ method: "DELETE", url, headers });
+      } finally {
+        cleanupFailure.mockRestore();
+        await fixtureDb.query(
+          "DROP TRIGGER inject_session_delete_deadlock ON assistant_session; DROP FUNCTION inject_session_delete_deadlock(); DROP SEQUENCE session_delete_retry",
+        );
+        await fixtureDb.end();
+      }
+      expect(removed.statusCode, removed.body).toBe(200);
+      expect(removed.json()).toEqual({ deleted: true, cleanupPending: true });
+      expect(
+        (
+          await app.inject({ method: "GET", url: `${url}/status`, headers })
+        ).json(),
+      ).toEqual({ exists: false });
+      expect(
+        (await app.inject({ method: "GET", url, headers })).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `${url}/background-documents/${uploaded.json().document.id}`,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${url}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: { message: "继续" },
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `${base()}/sessions`,
+            headers,
+          })
+        )
+          .json()
+          .sessions.some((s: any) => s.id === sessionId),
+      ).toBe(false);
+      const draft = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${created}`,
+        headers,
+      });
+      expect(draft.statusCode, draft.body).toBe(200);
+      expect(draft.json().records[0].question).toBe("删除前保留的问题");
+      const version = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/solo-test-sets/${published.json().testSet.id}/versions/${published.json().version.id}/records`,
+        headers,
+      });
+      expect(version.statusCode, version.body).toBe(200);
+      expect(version.json().records[0].question).toBe("删除前保留的问题");
+      // Background-dependent runs lose their private copies and cannot resume.
+      const run = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/processing-runs/${runId}`,
+        headers,
+      });
+      expect(run.statusCode, run.body).toBe(404);
+      expect(run.json().error.code).toBe("processing_not_found");
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+  it("does not stop another member's processing run when deleting a session that only queried it", async () => {
+    const email = "session-shared@example.test",
+      password = "Assistant123";
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/accounts",
+          headers: { origin },
+          payload: { email, password, confirmPassword: password },
+        })
+      ).statusCode,
+    ).toBe(201);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/session",
+      headers: { origin },
+      payload: { email, password },
+    });
+    const memberHeaders = {
+      origin,
+      cookie: `${login.cookies[0].name}=${login.cookies[0].value}`,
+      "x-csrf-token": login.json().csrfToken,
+    };
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) SELECT $1,id,'editor' FROM app_user WHERE email=$2",
+        [projectId, email],
+      );
+    } finally {
+      await db.end();
+    }
+    const drafts = `/api/projects/${projectId}/collaborative-drafts`;
+    const source = (
+      await app.inject({
+        method: "POST",
+        url: drafts,
+        headers,
+        payload: { name: "其他成员仍在处理的资料" },
+      })
+    ).json().draft.id;
+    const row = (
+      await app.inject({
+        method: "POST",
+        url: `${drafts}/${source}/records`,
+        headers,
+        payload: { question: "合成问题", expectedOutput: "", metadata: [] },
+      })
+    ).json().record;
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/processing-runs`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        source: { kind: "draft", id: source, recordIds: [row.id] },
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const runId = created.json().run.id;
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers: memberHeaders,
+        payload: {},
+      })
+    ).json().sessionId;
+    const url = `${base()}/sessions/${id}`;
+    requestedTool = { name: "read_processing", input: { runId } };
+    try {
+      const turn = await app.inject({
+        method: "POST",
+        url: `${url}/turns`,
+        headers: { ...memberHeaders, "idempotency-key": randomUUID() },
+        payload: { message: "只查询其他成员的处理进度" },
+      });
+      expect(turn.statusCode, turn.body).toBe(202);
+      await expect
+        .poll(
+          async () =>
+            (
+              await app.inject({ method: "GET", url, headers: memberHeaders })
+            ).json().turns?.[0]?.status,
+          { timeout: 15000 },
+        )
+        .toBe("succeeded");
+      expect(
+        (
+          await app.inject({ method: "GET", url, headers: memberHeaders })
+        ).json().task.runId,
+      ).toBe(runId);
+      expect(
+        (await app.inject({ method: "DELETE", url, headers: memberHeaders }))
+          .statusCode,
+      ).toBe(200);
+      const remaining = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/processing-runs/${runId}`,
+        headers,
+      });
+      expect(remaining.statusCode, remaining.body).toBe(200);
+      expect(remaining.json().run.status).toBe("queued");
+    } finally {
+      requestedTool = undefined;
+    }
+  });
+  it("fences a late model reply after the running session has been deleted", async () => {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const url = `${base()}/sessions/${id}`;
+    hold = true;
+    requestedTool = {
+      name: "create_draft",
+      input: { name: "删除后的迟到草稿" },
+    };
+    const waiting = new Promise<void>((r) => (entered = r));
+    try {
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${url}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: { message: "创建迟到草稿" },
+          })
+        ).statusCode,
+      ).toBe(202);
+      await waiting;
+      const removed = await app.inject({ method: "DELETE", url, headers });
+      expect(removed.statusCode, removed.body).toBe(200);
+      release();
+      await new Promise((r) => setTimeout(r, 150));
+      const drafts = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+        })
+      ).json().drafts;
+      expect(drafts.some((d: any) => d.name === "删除后的迟到草稿")).toBe(
+        false,
+      );
+      expect(
+        (await app.inject({ method: "GET", url, headers })).statusCode,
+      ).toBe(404);
+    } finally {
+      release();
+      hold = false;
+      requestedTool = undefined;
+    }
+  });
 });

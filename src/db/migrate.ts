@@ -1763,6 +1763,7 @@ export async function migrate(
       ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS task jsonb NOT NULL DEFAULT '{}';
       ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
       ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT '';
+      ALTER TABLE assistant_session ADD COLUMN IF NOT EXISTS custom_title text;
       ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS event text NOT NULL DEFAULT 'user';
       ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
       ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS execution_token text;

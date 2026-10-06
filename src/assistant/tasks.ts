@@ -287,7 +287,7 @@ export async function controlAssistantTask(
   db: Database,
   scope: AssistantScope,
   id: string,
-  action: "stop" | "retry",
+  action: "stop" | "retry" | "delete",
   attempt = 0,
 ): Promise<{ runId: string | undefined }> {
   const client = await db.connect();
@@ -296,21 +296,31 @@ export async function controlAssistantTask(
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext('assistant-concurrency'))",
     );
-    await assistantAccess(client, scope, true);
+    await assistantAccess(client, scope, action !== "delete");
     // Lock an existing processing job before the session, matching the worker's order.
     // A concurrently linked new run causes a bounded transaction retry rather than a partial stop.
     const observed = await sessionRow(client, scope, id);
     const observedRunIds: string[] =
       observed.task?.runIds ??
       (observed.task?.runId ? [observed.task.runId] : []);
-    const jobs = observedRunIds.length
-      ? (
-          await client.query(
-            "SELECT j.*,r.id AS run_id FROM job j JOIN processing_run r ON r.job_id=j.id WHERE r.id=ANY($1::text[]) AND r.project_id=$2 ORDER BY j.id FOR UPDATE OF j",
-            [observedRunIds, scope.projectId],
-          )
-        ).rows
-      : [];
+    const jobs =
+      observedRunIds.length || action === "delete"
+        ? (
+            await client.query(
+              `SELECT j.*,r.id AS run_id FROM job j JOIN processing_run r ON r.job_id=j.id
+             WHERE r.project_id=$2 AND ($3::text IS NULL OR r.actor_id=$4)
+             AND (r.id=ANY($1::text[]) OR ($3::text IS NOT NULL AND EXISTS(
+               SELECT 1 FROM assistant_background_document b WHERE b.session_id=$3 AND b.id=ANY(r.background_document_ids))))
+             ORDER BY j.id FOR UPDATE OF j${action === "delete" ? ",r" : ""}`,
+              [
+                observedRunIds,
+                scope.projectId,
+                action === "delete" ? id : null,
+                scope.actorId,
+              ],
+            )
+          ).rows
+        : [];
     const job = jobs.find((item) => item.run_id === observed.task?.runId);
     const session = await sessionRow(client, scope, id, true);
     if (
@@ -319,7 +329,7 @@ export async function controlAssistantTask(
         JSON.stringify(observed.task?.runIds ?? [])
     )
       throw new AssistantError(409, "assistant_task_changed");
-    if (action === "stop") {
+    if (action === "stop" || action === "delete") {
       if (jobs.length)
         await client.query(
           "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=ANY($1::text[]) AND status IN('queued','running','retry_wait')",
@@ -337,6 +347,21 @@ export async function controlAssistantTask(
         "UPDATE assistant_proposal SET status='invalid' WHERE session_id=$1 AND status='pending'",
         [id],
       );
+      if (action === "delete") {
+        await client.query(
+          "DELETE FROM assistant_proposal WHERE session_id=$1",
+          [id],
+        );
+        await client.query("DELETE FROM assistant_turn WHERE session_id=$1", [
+          id,
+        ]);
+        // Existing background cleanup removes dependent processing copies, preserving adopted data.
+        await client.query(
+          "DELETE FROM assistant_background_document WHERE session_id=$1",
+          [id],
+        );
+        await client.query("DELETE FROM assistant_session WHERE id=$1", [id]);
+      }
     } else {
       if (
         session.task?.runId &&
@@ -414,8 +439,12 @@ export async function controlAssistantTask(
   } catch (error) {
     await client.query("ROLLBACK");
     if (
-      error instanceof AssistantError &&
-      error.code === "assistant_task_changed" &&
+      ((error instanceof AssistantError &&
+        error.code === "assistant_task_changed") ||
+        (action === "delete" &&
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "40P01")) &&
       attempt < 2
     ) {
       return controlAssistantTask(db, scope, id, action, attempt + 1);

@@ -1,5 +1,6 @@
 import { AssistantCandidates, type CandidateSelection } from "./assistant-candidates";
 import { AssistantBackground, type BackgroundDocument } from "./assistant-background";
+import { AssistantSessionActions } from "./assistant-session-actions";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -421,7 +422,7 @@ export function ProjectAssistant({
             <SelectContent>
               {sessions.data?.sessions.map((s) => (
                 <SelectItem value={s.id} key={s.id}>
-                  {(s.id === visible?.sessionId && (visible.task?.title || visible.title)) ||
+                  {(s.id === visible?.sessionId && (visible.title || visible.task?.title)) ||
                     s.title ||
                     `会话 ${s.ordinal}`}{" "}
                   ·{" "}
@@ -435,6 +436,49 @@ export function ProjectAssistant({
               ))}
             </SelectContent>
           </Select>
+          <AssistantSessionActions
+            base={base}
+            sessionId={sessionId}
+            title={
+              visible?.title ||
+              visible?.task?.title ||
+              sessions.data?.sessions.find((s) => s.id === sessionId)?.title ||
+              "新会话"
+            }
+            disabled={busy || sessions.isPending || Boolean(sessionId && conversation.isPending)}
+            setBusy={setBusy}
+            onRenamed={async (title) => {
+              await queryClient.cancelQueries({
+                queryKey: ["assistant-conversation", projectId, sessionId],
+              });
+              queryClient.setQueryData<Conversation>(
+                ["assistant-conversation", projectId, sessionId, canWrite],
+                (current) => current && { ...current, title },
+              );
+              void sessions.refetch();
+            }}
+            onDeleted={async (id) => {
+              await queryClient.cancelQueries({
+                queryKey: ["assistant-conversation", projectId, id],
+              });
+              queryClient.removeQueries({ queryKey: ["assistant-conversation", projectId, id] });
+              queryClient.setQueryData<typeof sessions.data>(
+                ["assistant-sessions", projectId],
+                (current) => current && { sessions: current.sessions.filter((s) => s.id !== id) },
+              );
+              setSelectedSession(undefined);
+              setPicked(undefined);
+              setCandidateRun(undefined);
+              setMessage("");
+              setError("");
+              setPendingSubmissions((current) => {
+                const next = { ...current };
+                delete next[id];
+                return next;
+              });
+              await sessions.refetch();
+            }}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -831,9 +875,7 @@ export function ProjectAssistant({
                   )}
                 </div>
                 {visible.task.requirements === undefined && (
-                  <p className="break-words text-sm leading-6">
-                    {visible.task.goal}
-                  </p>
+                  <p className="break-words text-sm leading-6">{visible.task.goal}</p>
                 )}
                 {Boolean(visible.task.requirements?.length) && (
                   <details className="rounded-md border px-3 py-2 text-xs">
