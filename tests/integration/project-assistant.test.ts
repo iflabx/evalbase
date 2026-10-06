@@ -29,6 +29,9 @@ describe("project assistant public contract", () => {
     | undefined;
   let toolSequence: { name: string; input: Record<string, unknown> }[] = [];
   let repeatRead: boolean | "progress" | "bounded" = false;
+  let textualToolCall: string | undefined;
+  let textualReplies: string[] = [];
+  let textualToolCallAfterScopeError = false;
   let hold = false,
     release: () => void = () => undefined,
     entered: () => void = () => undefined;
@@ -79,6 +82,38 @@ describe("project assistant public contract", () => {
       entered();
       await new Promise<void>((r) => (release = r));
       hold = false;
+    }
+    if (
+      textualToolCallAfterScopeError &&
+      body.messages.at(-1)?.role === "tool" &&
+      String(body.messages.at(-1)?.content).includes("processing_scope_invalid")
+    ) {
+      textualToolCallAfterScopeError = false;
+      textualToolCall =
+        '<tool_call><function=submit_processing><parameter=selection>{"method":"random","conditions":[],"mode":"count","value":2}</parameter></function></tool_call>';
+    }
+    if (textualReplies.length) textualToolCall = textualReplies.shift();
+    if (textualToolCall !== undefined) {
+      const content = textualToolCall;
+      textualToolCall = undefined;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "textual-tool-call",
+          object: "chat.completion",
+          created: 1,
+          model: "synthetic",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
+        }),
+      );
+      return;
     }
     let message: Record<string, unknown> = {
         role: "assistant",
@@ -1584,7 +1619,7 @@ describe("project assistant public contract", () => {
       expect(turn.assistantText).toBe("操作结果请查看下方真实回执。");
       expect(turn.tools.every((t: any) => t.status === "succeeded")).toBe(true);
       expect(state.task.stage).toBe("waiting_input");
-      expect(calls.length - start).toBeLessThanOrEqual(8);
+      expect(calls.length - start).toBeLessThanOrEqual(10);
       expect(calls.at(-1)!.tools ?? []).toHaveLength(0);
     } finally {
       repeatRead = false;
@@ -4749,6 +4784,233 @@ describe("project assistant public contract", () => {
       release();
       hold = false;
       requestedTool = undefined;
+    }
+  });
+  it.each(["直接文本", "带前言", "代码围栏"])(
+    "recovers a textual tool call through the native protocol without exposing it as a reply: %s",
+    async (format) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const draftName = `短请求协议恢复${format}`;
+      requestedTool = { name: "create_draft", input: { name: draftName } };
+      const template = `<tool_call><function=create_draft><parameter=name>${draftName}</parameter></function></tool_call>`;
+      textualToolCall =
+        format === "带前言"
+          ? `好的，现在提交：\n${template}`
+          : format === "代码围栏"
+            ? `\u0060\u0060\u0060xml\n${template}\n\u0060\u0060\u0060`
+            : template;
+      try {
+        const state = (await send(`创建${draftName}草稿，方案你定`)).json();
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some(
+              (t: any) => t.name === "create_draft" && t.status === "succeeded",
+            ),
+        ).toBe(true);
+        expect(state.turns.at(-1).assistantText).not.toContain("<tool_call>");
+        const drafts = (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/collaborative-drafts`,
+            headers,
+          })
+        ).json().drafts;
+        expect(drafts.filter((d: any) => d.name === draftName)).toHaveLength(1);
+      } finally {
+        textualToolCall = undefined;
+        requestedTool = undefined;
+        sessionId = previous;
+      }
+    },
+  );
+  it("repairs a missing processing scope and submits 200 candidates without another user message", async () => {
+    const previous = sessionId;
+    const draftsPath = `/api/projects/${projectId}/collaborative-drafts`;
+    const source = (
+      await app.inject({
+        method: "POST",
+        url: draftsPath,
+        headers,
+        payload: { name: "自主范围来源" },
+      })
+    ).json().draft.id;
+    for (const question of ["第一条", "第二条", "第三条"])
+      await app.inject({
+        method: "POST",
+        url: `${draftsPath}/${source}/records`,
+        headers,
+        payload: { question, expectedOutput: "逐题验收条件", metadata: [] },
+      });
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const input = {
+      source: { kind: "draft", id: source },
+      operation: "augment",
+      outputCount: 200,
+      instructions: "创建200条具体可用试用题",
+      allowedFields: ["question", "expectedOutput", "metadata"],
+    };
+    toolSequence = [
+      {
+        name: "plan_task",
+        input: {
+          title: "自主生成200条",
+          requirements: ["创建200条具体试用题"],
+          countKind: "new",
+          targetCount: 200,
+          nextAction: "submit_processing",
+        },
+      },
+      { name: "submit_processing", input },
+      {
+        name: "submit_processing",
+        input: {
+          ...input,
+          selection: {
+            method: "random",
+            conditions: [],
+            mode: "count",
+            value: 2,
+            seed: "short-scope",
+          },
+        },
+      },
+    ];
+    textualToolCallAfterScopeError = true;
+    try {
+      const submitted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "根据当前草稿做200条试用题，方案你定",
+          context: { kind: "draft", id: source },
+        },
+      });
+      expect(submitted.statusCode).toBe(202);
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1)?.status, {
+          timeout: 15000,
+        })
+        .not.toMatch(/queued|running/);
+      const state = (await read()).json();
+      expect(state.turns.at(-1).status).toBe("succeeded");
+      expect(state.task.stage).toBe("processing");
+      expect(state.turns.at(-1).assistantText).not.toContain("<tool_call>");
+      const run = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/processing-runs/${state.task.runId}`,
+          headers,
+        })
+      ).json();
+      expect(run.run.options.outputCount).toBe(200);
+      expect(run.run.inputCount).toBe(2);
+    } finally {
+      toolSequence = [];
+      textualToolCall = undefined;
+      textualToolCallAfterScopeError = false;
+      sessionId = previous;
+    }
+  });
+  it("rejects a prose-only repair instead of claiming that a draft was created", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    textualReplies = [
+      "<tool_call><function=create_draft><parameter=name>未真正创建</parameter></function></tool_call>",
+      "未真正创建草稿已创建。",
+    ];
+    try {
+      const state = (
+        await send("创建未真正创建草稿，方案你定", undefined, "failed")
+      ).json();
+      expect(state.turns.at(-1).assistantText).not.toContain("已创建");
+      const drafts = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+        })
+      ).json().drafts;
+      expect(drafts.some((d: any) => d.name === "未真正创建")).toBe(false);
+    } finally {
+      textualReplies = [];
+      textualToolCall = undefined;
+      sessionId = previous;
+    }
+  });
+  it("submits a real operation after seven bounded source reads", async () => {
+    const previous = sessionId;
+    const startCalls = calls.length;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    toolSequence = [
+      ...Array.from({ length: 7 }, () => ({
+        name: "query_project",
+        input: { kind: "project" },
+      })),
+      {
+        name: "plan_task",
+        input: {
+          title: "读取后创建草稿",
+          requirements: ["完成读取后创建一个草稿"],
+          nextAction: "create_draft",
+        },
+      },
+      { name: "create_draft", input: { name: "附件读取后草稿" } },
+    ];
+    try {
+      const state = (await send("看完项目资料后创建草稿，方案你定")).json();
+      expect(state.turns.at(-1).status).toBe("succeeded");
+      expect(
+        state.turns
+          .at(-1)
+          .tools.some(
+            (t: any) => t.name === "create_draft" && t.status === "succeeded",
+          ),
+      ).toBe(true);
+      expect(calls.length - startCalls).toBeLessThanOrEqual(10);
+      const drafts = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+        })
+      ).json().drafts;
+      expect(
+        drafts.filter((d: any) => d.name === "附件读取后草稿"),
+      ).toHaveLength(1);
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
     }
   });
 });
