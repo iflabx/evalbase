@@ -77,6 +77,20 @@ describe("OPT-10 document definitions", () => {
       ]),
     ).not.toThrow();
   });
+  it("accepts a verbatim user fallback quote with its sentence punctuation", () => {
+    const rules: any = task("A.1.a", "表示甲类问题。");
+    rules.goal = "按附件分类，无法归类时用其他。";
+    rules.requirements = ["无法归类时用其他"];
+    rules.classifications[0].allowedValues.push("其他");
+    rules.classifications[0].definitions.push({
+      value: "其他",
+      text: "无法归类时用其他。",
+      basis: "user",
+    });
+    expect(() => validateBackgroundRules(rules, documents)).not.toThrow();
+    rules.supplements = ["不要使用其他。"];
+    expect(() => validateBackgroundRules(rules, documents)).toThrow();
+  });
   it.each([
     "甲类\n甲定义。\n## 乙类\n乙定义。",
     "甲类：甲定义。乙类：乙定义。",

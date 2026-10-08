@@ -386,12 +386,16 @@ export function validateBackgroundRules(
     const declaration = request
       ?.split(/[。；;\n，,]/u)
       .findLast((text: string) => text.includes(value));
+    const quoted = quote
+      .trim()
+      .replace(/[。；;，,]+$/u, "")
+      .trim();
     return (
       !documentLabel &&
       declaration &&
       !negative.test(declaration) &&
-      quote.includes(value) &&
-      declaration.includes(quote) &&
+      quoted.includes(value) &&
+      declaration.includes(quoted) &&
       task.requirements?.some(
         (text: string) => text.includes(value) && !negative.test(text),
       )
