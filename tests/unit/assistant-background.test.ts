@@ -1,6 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { extractBackground } from "../../src/assistant/extract-background.js";
+import { validateBackgroundRules } from "../../src/assistant/background.js";
+
+describe("OPT-10 document definitions", () => {
+  const documents = [
+    {
+      id: "doc",
+      fragments: [
+        { index: 1, text: "A.1.a 表示甲类问题。\nA.2.a 表示乙类问题。" },
+      ],
+    },
+  ];
+  const task = (value: string, text: string) => ({
+    backgroundEvidence: [{ documentId: "doc", fragmentIndex: 1 }],
+    classifications: [
+      {
+        field: "metadata",
+        key: "risk",
+        basis: "background",
+        allowedValues: [value],
+        definitions: [{ value, text }],
+      },
+    ],
+  });
+  it("rejects an invented number even when its definition is quoted from the document", () => {
+    expect(() =>
+      validateBackgroundRules(task("A.9.a", "表示甲类问题。"), documents),
+    ).toThrow();
+  });
+  it("rejects a definition borrowed from a different numbered entry", () => {
+    expect(() =>
+      validateBackgroundRules(task("A.1.a", "A.1.a"), documents),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(task("A.1.a", "表示乙类问题。"), documents),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(task("A.1.a", "表示甲类问题。"), documents),
+    ).not.toThrow();
+  });
+});
 
 describe("background document extraction", () => {
   it("preserves UTF-8 text and original line positions without executing document instructions", async () => {

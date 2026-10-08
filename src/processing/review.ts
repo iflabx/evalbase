@@ -11,6 +11,8 @@ export type CandidateGoal = {
   metadataKeys?: string[];
   classifications?: {
     field: "expectedOutput" | "metadata";
+    basis?: "background" | "user";
+    definitions?: { value: string; text: string }[];
     key?: string;
     allowedValues?: string[];
     requiredValues?: string[];

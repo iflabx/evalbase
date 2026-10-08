@@ -107,7 +107,7 @@ describe("restored execution plan boundaries", () => {
       }),
     ).toBe("draftId");
   });
-  it("invalidates completed work when the selected background basis changes", () => {
+  it("preserves committed processing facts when the selected background basis changes", () => {
     const task = {
       requirements: ["依据附件分类"],
       backgroundEvidence: [
@@ -139,7 +139,7 @@ describe("restored execution plan boundaries", () => {
     expect(
       revisePlan(before, { executionMode: "execute" }, 2, undefined, changed)
         ?.current,
-    ).toBe(0);
+    ).toBe(1);
     expect(before.steps[0]?.receipt?.runId).toBe("old");
   });
   it("finishes a full background read only after every page in the declared range", () => {

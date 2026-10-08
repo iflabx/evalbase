@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-09 最新状态：Owner 在 `abc9863` 原会话继续执行时再次失败，已只读定位固定输入、候选汇总、背景规则和方案恢复的连锁问题，创建 [OPT-10](issues/10-fixed-input-and-recovery.md)。本次仅授权写 Ticket，OPT-10 尚未实施；OPT-09 按验收退回规则记 in-progress，既有证据保留。当前修复与验收状态以本段和下表为准，以下原交付记录不作为最新故障已关闭的证明。
+2026-10-09 最新状态：Owner 已授权 [OPT-10](issues/10-fixed-input-and-recovery.md) 开发，正在修复原会话的固定输入、候选汇总、背景规则和方案恢复问题。实际验证见 [OPT-10 记录](opt10-verification.md)。OPT-09 按验收退回规则记 in-progress，既有证据保留。当前修复与验收状态以本段和下表为准，以下原交付记录不作为最新故障已关闭的证明。
 
 2026-10-09：Owner 授权的 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md) 已实施、验证并复审完成。最终应用提交 `abc98639b391c958db8e48c67ce4c34f4272e69a` 已统一切入 4217 的三项应用服务；证据见 [OPT-09 验证记录](opt09-verification.md)。沿用当前分支及隔离环境，保留用户资料、失败会话和历史版本；OPT-06–08 历史记录不改写。整个规格仍因 OPT-05 内容交付及最终 Owner 验收未完成而保持 in-progress，不包含合并、推送或正式部署。
 
@@ -37,7 +37,7 @@ Implementation: in-progress
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
 | [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 最终收口待 OPT-10 | in-progress | 三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
-| [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | not-started | 本次仅建 Ticket；R10-1–7 待实施验证 |
+| [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | in-progress | [实施与验证](opt10-verification.md)，Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

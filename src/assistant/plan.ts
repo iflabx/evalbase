@@ -136,8 +136,14 @@ export function revisePlan(
       const committed =
         prior?.action === step.action &&
         prior.status === "executed" &&
-        prior.action.startsWith("request_") &&
-        prior.receipt?.proposalId &&
+        ((prior.action.startsWith("request_") && prior.receipt?.proposalId) ||
+          (prior.action === "create_draft" && prior.receipt?.draftId) ||
+          ([
+            "submit_processing",
+            "refine_candidates",
+            "retry_processing",
+          ].includes(prior.action) &&
+            prior.receipt?.runId)) &&
         canonicalJson(prior.input ?? null) ===
           canonicalJson(parameters ?? null);
       return prefix || committed
@@ -243,7 +249,9 @@ export function advancePlan(
       value.readCount !== value.matchingTotal ||
       canonicalJson(step.input?.conditions ?? []) !==
         canonicalJson(input?.conditions ?? []) ||
-      (!step.input?.conditions?.length && value.readCount !== value.total))
+      (!step.input?.conditions?.length &&
+        !step.input?.selection &&
+        value.readCount !== value.total))
   )
     return plan;
   if (["read_records", "submit_processing"].includes(action)) {

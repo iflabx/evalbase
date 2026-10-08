@@ -1,10 +1,10 @@
 # OPT-10 固定输入、候选汇总与方案恢复修复
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 Blocked by: none
 
-优先级：P1。2026-10-09 本次授权为编写修复 Ticket，尚未开始实施。沿用 `codex/assistant-optimization` 与 `/home/bistu/EvalBase/.worktrees/agent-data-processing`；以现有 OPT-09 实现为基础，不等待 OPT-09 或 OPT-05 最终验收，避免循环依赖。开发后共用现有最终 Owner checkpoint。
+优先级：P1。2026-10-09 Owner 已授权完成 OPT-10 开发。沿用 `codex/assistant-optimization` 与 `/home/bistu/EvalBase/.worktrees/agent-data-processing`；以现有 OPT-09 实现为基础，不等待 OPT-09 或 OPT-05 最终验收，避免循环依赖。开发后共用现有最终 Owner checkpoint。
 
 ## 目标与依据
 
@@ -65,6 +65,15 @@ Blocked by: none
 
 ## 验收与证据
 
+### 前端对齐范围
+
+| 页面/位置 | 本张变更 | 样式依据与边界 |
+| --- | --- | --- |
+| 项目助手既有操作记录 | 显示服务端具体失败原因和纠正提示 | 复用现有文字、颜色和间距；不新增卡片或页面。 |
+| 既有任务提示区 | 区分参数、动作不匹配及附件分类错误 | 沿用当前 donor 提示布局与恢复按钮，不展示内部参数作为用户操作要求。 |
+
+仅修复反馈文字和服务端提示透传；冻结原型、`frontend-v1` 保持只读。真实验证状态集中记录于实施验证文档，不用计划表代替测试通过证据。
+
 先通过公开入口复现，再修复；真实函数单测用于定位，不能替代持久任务、后台续做和确认入口。复用现有测试，仅增加下列直接缺口。
 
 | 编号 | 场景 | 通过条件 |
@@ -87,8 +96,9 @@ Blocked by: none
 - 冻结原型及 `frontend-v1` 保持只读。自动测试使用隔离数据；保留一个长期验收项目、管理员与编辑两账号及用户原有资料。
 - 实施后记录真实代码提交、测试与 Standards/Spec 复审，按既有流程更新同一 4217 checkpoint 的固定版本及健康证据；P0/P1 和原会话未解决错误阻止收口。
 - OPT-09 的历史实施与测试证据保留，但当前 Owner 退回状态为 in-progress；OPT-05 与整个批次最终验收须包含本张证据。只有修复及实际验收成立后才更新完成状态。
-- 本次仅建 Ticket 及同步任务/测试索引，不执行上述修复或复验，不改用户会话、运行和服务；不合并 main、不推送、不打 tag、不正式部署。
+- 当前 Owner 已授权本张实施及隔离复验。真实进度、检查和限制见 [实施验证](../opt10-verification.md)；不合并 main、不推送、不打 tag、不正式部署。
 
 ## Comments
 
 - 2026-10-09：根据 Owner 原会话只读审查创建；已确认固定输入、依据变化、候选汇总和恢复参数之间的连锁问题。Implementation 为 not-started，验收矩阵尚未执行。
+- 2026-10-09：Owner 授权实施。公开 SDK/HTTP 固定输入回归先红后绿，开始补齐旧候选恢复、附件规则及采用/发布检查；仍在开发和验证中。

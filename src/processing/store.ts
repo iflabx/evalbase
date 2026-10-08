@@ -649,6 +649,14 @@ export async function readProcessingRun(
   return {
     run: summary(run),
     rootOperation: input.refinement?.rootOperation ?? run.options.operation,
+    ...(all
+      ? {
+          backgroundGoal: {
+            requirements: input.background?.requirements ?? [],
+            classifications: input.background?.classifications ?? [],
+          },
+        }
+      : {}),
     backgroundEvidence: (input.background?.documents ?? []).flatMap(
       (document) =>
         document.fragments.map((fragment) => ({

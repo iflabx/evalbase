@@ -115,6 +115,8 @@ export function validateRules(goal: CandidateGoal): Rule[] {
       );
     fields.set(fieldId(rule), {
       field: rule.field,
+      ...(rule.basis ? { basis: rule.basis } : {}),
+      ...(rule.definitions ? { definitions: rule.definitions } : {}),
       ...(rule.field === "metadata" ? { key: rule.key!.trim() } : {}),
       ...(allowedValues ? { allowedValues } : {}),
       ...(requiredValues.length ? { requiredValues } : {}),

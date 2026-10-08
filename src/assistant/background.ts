@@ -290,6 +290,7 @@ export async function freezeBackground(
       [sessionId],
     )
   ).rows;
+  validateBackgroundRules(session.task, documents);
   if (!documents.length && !requirementSummary(session.task).length) return;
   const evidence: { documentId: string; fragmentIndex: number }[] =
     session.task.backgroundEvidence ?? [];
@@ -340,6 +341,74 @@ export async function freezeBackground(
     ),
     documents: selected,
   };
+}
+
+/** This checks cited vocabulary, not whether each candidate is semantically classified correctly. */
+export function validateBackgroundRules(
+  task: Record<string, any>,
+  documents: { id: string; fragments: BackgroundFragment[] }[],
+) {
+  if (!task.backgroundEvidence?.length) return;
+  const normalize = (value: string) =>
+    value.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
+  const excerpts = documents.flatMap((doc) =>
+    doc.fragments
+      .filter((fragment) =>
+        task.backgroundEvidence.some(
+          (ref: any) =>
+            ref.documentId === doc.id && ref.fragmentIndex === fragment.index,
+        ),
+      )
+      .map((fragment) => fragment.text),
+  );
+  for (const rule of validateRules(task)) {
+    // Labels explicitly supplied by the user need not be verbatim document terminology.
+    if (rule.basis === "user") continue;
+    if (rule.basis !== "background")
+      throw new AssistantError(
+        422,
+        "assistant_background_rule_mismatch",
+        "已有分类未记录依据。请按已读附件核对并保存真实定义，或明确记录用户自定义标签；不能直接沿用未核对的旧分类。",
+      );
+    for (const value of new Set([
+      ...(rule.allowedValues ?? []),
+      ...(rule.requiredValues ?? []),
+      ...(rule.quotas ?? []).map((q) => q.value),
+    ]))
+      if (
+        !rule.definitions?.some(
+          (definition) =>
+            definition.value === value &&
+            excerpts.some((excerpt) => {
+              const text = normalize(excerpt);
+              const label = normalize(value);
+              const start = text.indexOf(label);
+              if (start < 0) return false;
+              const rest = text.slice(start + label.length);
+              // Stop at the next numbered entry or declared category, rather than
+              // accepting a real definition quoted from a different entry.
+              const numbered = rest.search(
+                /[a-z](?:\.[0-9]+)+(?:\.[a-z])?|[0-9]+(?:\.[0-9]+)+/u,
+              );
+              let end = numbered < 0 ? rest.length : numbered;
+              for (const other of rule.allowedValues ?? []) {
+                if (other === value) continue;
+                const boundary = rest.indexOf(normalize(other));
+                if (boundary >= 0) end = Math.min(end, boundary);
+              }
+              const quoted = normalize(definition.text);
+              if (/^[a-z]?(?:\.[0-9a-z]+)+$/u.test(label) && quoted === label)
+                return false;
+              return (label + rest.slice(0, end)).includes(quoted);
+            }),
+        )
+      )
+        throw new AssistantError(
+          422,
+          "assistant_background_rule_mismatch",
+          `分类「${value}」的名称或对应定义与当前附件不符。请读取该条目的原文并保存 definitions，使用原文实际编号或名称，不拼造编号、不引用其他条目的定义。若是用户自行定义的标签，明确记录其用户依据。`,
+        );
+  }
 }
 
 export async function removeBackground(

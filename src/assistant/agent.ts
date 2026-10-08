@@ -17,11 +17,12 @@ import {
   resolvedStepInput,
   missingStepDependency,
 } from "./plan.js";
-import { readBackground } from "./background.js";
+import { readBackground, validateBackgroundRules } from "./background.js";
 import {
   reviewTask,
   taskCompatibilityProblem,
   scopeRunToTask,
+  effectiveTaskRuns,
 } from "./review.js";
 import { reviewCandidates } from "../processing/review.js";
 import {
@@ -85,6 +86,7 @@ const validationWithoutEffect = new Set([
   "processing_capacity_exceeded",
   "test_set_capacity_exceeded",
   "assistant_background_not_read",
+  "assistant_background_rule_mismatch",
   "assistant_requirement_conflict",
   "assistant_candidate_selection_invalid",
   "assistant_plan_count_conflict",
@@ -185,6 +187,7 @@ function schema(
   properties: Record<string, unknown>,
   required: string[],
   name: string,
+  invalid?: (hint: string) => void,
 ) {
   const definition = {
     type: "object",
@@ -208,13 +211,22 @@ function schema(
   return jsonSchema<Record<string, any>>(
     modelDefinition as Parameters<typeof jsonSchema>[0],
     {
-      validate: (value) =>
-        validate(value)
-          ? { success: true, value: value as Record<string, any> }
-          : {
-              success: false,
-              error: new Error("assistant_tool_input_invalid"),
-            },
+      validate: (value) => {
+        if (validate(value))
+          return { success: true, value: value as Record<string, any> };
+        const hint = (validate.errors ?? [])
+          .slice(0, 3)
+          .map(
+            (e) =>
+              `${e.instancePath || "参数"} ${e.message ?? "不合法"}${e.params.missingProperty ? `：${e.params.missingProperty}` : ""}`,
+          )
+          .join("；");
+        invalid?.(hint);
+        return {
+          success: false,
+          error: new AssistantError(422, "assistant_tool_input_invalid", hint),
+        };
+      },
     },
   );
 }
@@ -293,6 +305,15 @@ export async function executeAssistantTurn(
   let summarizing = false;
   let budgetBoundary = false;
   let noProgress = false;
+  let lastFailure: { name: string; code: string } | undefined;
+  const schemaHints = new Map<string, string>();
+  function recordFailure(name: string, code: string) {
+    if (lastFailure?.name === name && lastFailure.code === code) {
+      noProgress = true;
+      budgetBoundary = true;
+    }
+    lastFailure = { name, code };
+  }
   let modelSteps = 0;
   let protocolRepair = false;
   let planningCheckpointRequired = false;
@@ -309,6 +330,62 @@ export async function executeAssistantTurn(
         record.name === "submit_processing" &&
         record.input?.allowedFields === undefined,
     );
+  async function fixedSelection(
+    source: Record<string, any>,
+    configuration: Record<string, any>,
+    reselect = false,
+  ) {
+    const saved = (
+      await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+        turn.session_id,
+      ])
+    ).rows[0]?.task?.processingScope;
+    const seed = configuration.seed?.trim() || saved?.configuration?.seed;
+    if (
+      saved &&
+      !reselect &&
+      canonicalJson(saved.source) === canonicalJson(source) &&
+      (!configuration.seed?.trim() ||
+        configuration.seed.trim() === saved.configuration?.seed) &&
+      canonicalJson({ ...saved.configuration, seed }) ===
+        canonicalJson({ ...configuration, seed })
+    )
+      return {
+        recordIds: saved.recordIds,
+        hash: saved.hash,
+        configuration: saved.configuration,
+      };
+    const data = await previewProcessingInput(
+      db,
+      scope,
+      { source, limit: 10000 },
+      "write",
+      true,
+    );
+    const selection = selectRecords(
+      data.records.map((row) => ({
+        ...row,
+        assetId:
+          source.kind === "assets" && isPlainObject(row.source)
+            ? String(row.source.assetId)
+            : row.id,
+        ordinal:
+          source.kind === "assets" && isPlainObject(row.source)
+            ? Number(row.source.ordinal)
+            : 0,
+      })),
+      configuration,
+    );
+    const selected = new Set(selection.selected.map((row) => row.id));
+    const records = data.records.filter((row) => selected.has(row.id));
+    if (!records.length || records.length !== selection.targetCount)
+      throw new AssistantError(422, "processing_scope_invalid");
+    return {
+      recordIds: records.map((row) => row.id),
+      hash: sha256(canonicalJson({ records, revision: data.revision ?? null })),
+      configuration: { ...configuration, seed: selection.seed },
+    };
+  }
   async function sourceName(source: Record<string, any>) {
     if (source.kind === "assets")
       return (
@@ -551,7 +628,10 @@ export async function executeAssistantTurn(
     fixedInputValidators.set(name, validateInput);
     return tool({
       description,
-      inputSchema: schema(properties, required, name),
+      inputSchema: schema(properties, required, name, (hint) => {
+        schemaHints.set(name, hint);
+        recordFailure(name, "assistant_tool_input_invalid");
+      }),
       execute: (input) => {
         // Explicit reuse has the same receipt identity as the legacy omission.
         if (name === "submit_processing" && input.selection === null) {
@@ -571,6 +651,12 @@ export async function executeAssistantTurn(
               "assistant_tool_input_invalid",
             );
           await turnFence(db, scope, turn.id, turn.execution_token);
+          if (noProgress || budgetBoundary)
+            return {
+              status: "deferred",
+              message:
+                "连续失败且没有进展，已停止本轮操作；已有成果保留，请按具体原因修正。",
+            };
           if (waitingForInput)
             return {
               status: "deferred",
@@ -697,7 +783,11 @@ export async function executeAssistantTurn(
                 "assistant_plan_revalidation_required",
               );
             if (writing && plan?.mode === "execute" && step?.action !== name)
-              throw new AssistantError(409, "assistant_step_context_changed");
+              throw new AssistantError(
+                409,
+                "assistant_step_context_changed",
+                `当前步骤「${step?.title ?? "已完成方案"}」与请求动作不一致。请先修正未执行的方案步骤，再继续；已有成果保留。`,
+              );
             if (
               step?.action === name &&
               plan.mode === "execute" &&
@@ -772,6 +862,7 @@ export async function executeAssistantTurn(
                 "plan_task",
               ].includes(name)
             ) {
+              lastFailure = undefined;
               if (
                 plannedAction === name ||
                 plannedAction === "any" ||
@@ -846,6 +937,7 @@ export async function executeAssistantTurn(
             );
             actionStarted = true;
             const value = await action(input, key);
+            lastFailure = undefined;
             await turnFence(db, scope, turn.id, turn.execution_token);
             const body = canonicalJson(value);
             if (Buffer.byteLength(body) > 30000)
@@ -879,6 +971,7 @@ export async function executeAssistantTurn(
               ? await recoverAssistantReceipt(db, scope, { key, name, input })
               : undefined;
             if (recovered) {
+              lastFailure = undefined;
               await turnFence(db, scope, turn.id, turn.execution_token);
               await depend(recovered.references);
               const value = recovered.result as Record<string, any>;
@@ -927,7 +1020,10 @@ export async function executeAssistantTurn(
                   ? String((e as { code: string }).code)
                   : "assistant_operation_failed",
             };
-            if (e instanceof RequirementError) {
+            if (
+              (e instanceof RequirementError || e instanceof AssistantError) &&
+              e.hint
+            ) {
               Object.assign(error, { hint: e.hint });
               await updateTask(db, turn, { requirementProblem: e.hint });
             }
@@ -945,6 +1041,7 @@ export async function executeAssistantTurn(
             const failureKey = actionStarted
               ? key
               : `assistant:${turn.id}:validation:${sha256(canonicalJson({ name, input }))}`;
+            recordFailure(name, error.code);
             await updateTurn(
               "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(x),'[]') FROM jsonb_array_elements(tool_results) x WHERE x->>'key'<>$2)||$3::jsonb WHERE id=$1 AND status='running'",
               [
@@ -966,45 +1063,50 @@ export async function executeAssistantTurn(
               error: {
                 ...error,
                 hint:
-                  error.code === "assistant_requirement_conflict" &&
-                  e instanceof RequirementError
+                  (e instanceof AssistantError ||
+                    e instanceof RequirementError) &&
+                  e.hint &&
+                  error.code !== "assistant_plan_count_conflict"
                     ? e.hint
-                    : error.code === "assistant_retry_parameters_changed"
-                      ? "已有操作可能已经提交，不能换参数重复执行。先按原操作核对真实回执，确认尚未写入后再修正；已保存成果保留。"
-                      : [
-                            "assistant_plan_revalidation_required",
-                            "assistant_step_context_changed",
-                            "assistant_plan_prerequisite_missing",
-                          ].includes(error.code)
-                        ? "当前步骤的来源、范围或要求已改变，旧成果仍保留。读取真实对象/成果后用plan_task重新核对要求及步骤参数，再继续未完成部分；不要重跑已成功的全部数据。"
-                        : error.code === "assistant_source_invalid" ||
-                            error.code === "assistant_reference_invalid"
-                          ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
-                          : error.code === "assistant_tool_input_invalid" &&
-                              name === "plan_task"
-                            ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
-                            : error.code === "assistant_context_unavailable"
-                              ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
-                              : error.code ===
-                                  "assistant_candidate_selection_invalid"
-                                ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
-                                : error.code === "processing_scope_invalid"
-                                  ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
-                                  : [
-                                        "test_set_capacity_exceeded",
-                                        "processing_capacity_exceeded",
-                                      ].includes(error.code)
-                                    ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
-                                    : error.code ===
-                                        "assistant_background_not_read"
-                                      ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
+                    : error.code === "assistant_requirement_conflict" &&
+                        e instanceof RequirementError
+                      ? e.hint
+                      : error.code === "assistant_retry_parameters_changed"
+                        ? "已有操作可能已经提交，不能换参数重复执行。先按原操作核对真实回执，确认尚未写入后再修正；已保存成果保留。"
+                        : [
+                              "assistant_plan_revalidation_required",
+                              "assistant_step_context_changed",
+                              "assistant_plan_prerequisite_missing",
+                            ].includes(error.code)
+                          ? "当前步骤的来源、范围或要求已改变，旧成果仍保留。读取真实对象/成果后用plan_task重新核对要求及步骤参数，再继续未完成部分；不要重跑已成功的全部数据。"
+                          : error.code === "assistant_source_invalid" ||
+                              error.code === "assistant_reference_invalid"
+                            ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
+                            : error.code === "assistant_tool_input_invalid" &&
+                                name === "plan_task"
+                              ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
+                              : error.code === "assistant_context_unavailable"
+                                ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
+                                : error.code ===
+                                    "assistant_candidate_selection_invalid"
+                                  ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
+                                  : error.code === "processing_scope_invalid"
+                                    ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
+                                    : [
+                                          "test_set_capacity_exceeded",
+                                          "processing_capacity_exceeded",
+                                        ].includes(error.code)
+                                      ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
                                       : error.code ===
-                                          "processing_configuration_invalid"
-                                        ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                                          "assistant_background_not_read"
+                                        ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
                                         : error.code ===
-                                            "assistant_plan_count_conflict"
-                                          ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
-                                          : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                                            "processing_configuration_invalid"
+                                          ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                                          : error.code ===
+                                              "assistant_plan_count_conflict"
+                                            ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
+                                            : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
             await updateTurn(
@@ -1098,6 +1200,26 @@ export async function executeAssistantTurn(
             additionalProperties: false,
             properties: {
               field: { enum: ["expectedOutput", "metadata"] },
+              basis: {
+                enum: ["background", "user"],
+                description:
+                  "采用附件的分类必须用background，并从已读原文复制真实编号或名称；用户自行指定的标签用user，不把模型自行编造的类别冒充用户要求。",
+              },
+              definitions: {
+                type: "array",
+                maxItems: 100,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    value: { type: "string", minLength: 1, maxLength: 500 },
+                    text: { type: "string", minLength: 1, maxLength: 2000 },
+                  },
+                  required: ["value", "text"],
+                },
+                description:
+                  "附件分类必须为每个允许值保存真实原文定义；编号不能代替定义。",
+              },
               clear: {
                 type: "boolean",
                 description:
@@ -1185,7 +1307,11 @@ export async function executeAssistantTurn(
       ["title", "requirements"],
       async (input) => {
         if (input.question && input.nextAction !== "none")
-          throw new AssistantError(422, "assistant_tool_input_invalid");
+          throw new AssistantError(
+            422,
+            "assistant_tool_input_invalid",
+            "question 与执行动作互斥：需要用户澄清时 nextAction 必须为 none；可以继续执行时省略 question，保存正确的后续 steps。不要把参数纠正问题交给用户。",
+          );
         if (
           planningCheckpointRequired &&
           !input.question &&
@@ -1226,6 +1352,15 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(422, "assistant_plan_only");
         const { steps, executionMode, ...fields } = input;
+        validateBackgroundRules(
+          { ...current, ...fields },
+          (
+            await db.query(
+              "SELECT id,fragments FROM assistant_background_document WHERE session_id=$1",
+              [turn.session_id],
+            )
+          ).rows,
+        );
         const requirementsKey = planRequirementsKey({ ...current, ...fields });
         const replacingSimplePlan =
           current.executionPlan &&
@@ -1428,13 +1563,38 @@ export async function executeAssistantTurn(
           ];
           if (evidence.length > 12)
             throw new AssistantError(422, "assistant_background_capacity");
+          const changed =
+            canonicalJson(task.backgroundEvidence ?? []) !==
+            canonicalJson(evidence);
+          const preparing =
+            !task.runId &&
+            task.executionPlan?.steps[task.executionPlan.current]?.action ===
+              "read_background";
           await updateTask(db, turn, {
             backgroundEvidence: evidence,
             ...(canonicalJson(task.backgroundEvidence ?? []) !==
             canonicalJson(evidence)
-              ? { review: null }
+              ? {
+                  review: null,
+                  ...(task.executionPlan
+                    ? {
+                        executionPlan: preparing
+                          ? {
+                              ...task.executionPlan,
+                              requirementsKey: planRequirementsKey({
+                                ...task,
+                                backgroundEvidence: evidence,
+                              }),
+                            }
+                          : { ...task.executionPlan, needsReview: true },
+                        ...(!preparing ? { nextAction: "plan_task" } : {}),
+                      }
+                    : {}),
+                }
               : {}),
           });
+          if (task.executionPlan && changed && !preparing)
+            plannedAction = "plan_task";
         }
         return document;
       },
@@ -1521,6 +1681,12 @@ export async function executeAssistantTurn(
         offset: { type: "integer", minimum: 0 },
         limit: { type: "integer", minimum: 1, maximum: 20 },
         groupBy: { enum: ["expectedOutput"] },
+        selection: selectionSchema,
+        reselect: {
+          type: "boolean",
+          description:
+            "仅在用户明确要求重新选取时设true；默认复用相同选取条件的固定输入。",
+        },
         conditions: {
           type: "array",
           maxItems: 20,
@@ -1547,6 +1713,7 @@ export async function executeAssistantTurn(
         ).rows[0]?.task?.executionPlan;
         const step = plan?.steps[plan.current];
         const aggregate =
+          input.selection !== undefined ||
           input.groupBy !== undefined ||
           input.conditions !== undefined ||
           (!plan?.needsReview &&
@@ -1565,16 +1732,39 @@ export async function executeAssistantTurn(
           "read",
           aggregate,
         );
-        const matching = aggregate
-          ? selectRecords(
-              result.records.map((row, ordinal) => ({
-                ...row,
-                assetId: "query",
-                ordinal,
-              })),
-              { method: "all", conditions: input.conditions ?? [] },
-            ).candidates
-          : result.records;
+        const source = {
+          ...input.source,
+          ...(input.source.kind === "assets"
+            ? { assetIds: [...input.source.assetIds].sort() }
+            : {}),
+        };
+        const fixed = input.selection
+          ? await fixedSelection(
+              source,
+              input.selection,
+              input.reselect === true,
+            )
+          : undefined;
+        if (fixed)
+          await updateTask(db, turn, {
+            processingScope: {
+              source,
+              ...fixed,
+              ...(step?.action === "read_records" ? { stepId: step.id } : {}),
+            },
+          });
+        const matching = fixed
+          ? result.records.filter((row) => fixed.recordIds.includes(row.id))
+          : aggregate
+            ? selectRecords(
+                result.records.map((row, ordinal) => ({
+                  ...row,
+                  assetId: "query",
+                  ordinal,
+                })),
+                { method: "all", conditions: input.conditions ?? [] },
+              ).candidates
+            : result.records;
         const matchingTotal = aggregate ? matching.length : result.total;
         const distribution = new Map<string, number>();
         if (input.groupBy)
@@ -1776,6 +1966,11 @@ export async function executeAssistantTurn(
           description:
             '必须填写选取决定。首次处理或切换来源时用具体选取规则；随机固定100条格式为{"method":"random","conditions":[],"mode":"count","value":100}，按任务调整value。只有复用相同来源的已固定范围，或已传真实recordIds/明确全范围allRecords时才填null。新来源填null仍会失败，不默认读取全量。outputCount不是输入范围。',
         },
+        reselect: {
+          type: "boolean",
+          description:
+            "只有用户明确要求重新抽一批时设true；相同选取规则默认继续已固定输入，不重复抽样。",
+        },
         operation: { enum: ["clean", "rewrite", "augment"] },
         instructions: { type: "string", maxLength: 8000 },
         allowedFields: {
@@ -1825,36 +2020,14 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(422, "processing_scope_invalid");
         if (input.selection) {
-          const data = await previewProcessingInput(
-            db,
-            scope,
-            { source, limit: 10000 },
-            "write",
-            true,
-          );
-          const selection = selectRecords(
-            data.records.map((row) => ({
-              ...row,
-              assetId:
-                source.kind === "assets" && isPlainObject(row.source)
-                  ? String(row.source.assetId)
-                  : row.id,
-              ordinal:
-                source.kind === "assets" && isPlainObject(row.source)
-                  ? Number(row.source.ordinal)
-                  : 0,
-            })),
+          const fixed = await fixedSelection(
+            source,
             input.selection,
+            input.reselect === true,
           );
-          const selected = new Set(selection.selected.map((row) => row.id));
-          const records = data.records.filter((row) => selected.has(row.id));
-          if (!records.length || records.length !== selection.targetCount)
-            throw new AssistantError(422, "processing_scope_invalid");
-          recordIds = records.map((row) => row.id);
-          expectedInputHash = sha256(
-            canonicalJson({ records, revision: data.revision ?? null }),
-          );
-          selectedConfiguration = { ...input.selection, seed: selection.seed };
+          recordIds = fixed.recordIds;
+          expectedInputHash = fixed.hash;
+          selectedConfiguration = fixed.configuration;
         } else if (recordIds === undefined && input.allRecords !== true) {
           const saved = (
             await db.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -2404,7 +2577,7 @@ export async function executeAssistantTurn(
           input.allTask && allValid && input.resultIds === undefined
             ? (task.runIds ?? [input.runId])
             : [input.runId];
-        const available: ReturnType<typeof scopeCandidateRun>[] = [];
+        let available: ReturnType<typeof scopeCandidateRun>[] = [];
         for (const runId of runIds) {
           const item =
             runId === input.runId
@@ -2427,6 +2600,7 @@ export async function executeAssistantTurn(
             ),
           );
         }
+        available = effectiveTaskRuns(available);
         const target: Record<string, any> = { kind: input.target.kind };
         let targetName: string | undefined;
         if (target.kind === "draft") {
@@ -2618,7 +2792,12 @@ export async function executeAssistantTurn(
   async function continueFixedSteps(messages: ModelMessage[]) {
     for (
       let count = 0;
-      count < 12 && !yieldToProcessing && !waitingForInput && toolCalls < 10;
+      count < 12 &&
+      !yieldToProcessing &&
+      !waitingForInput &&
+      !noProgress &&
+      !budgetBoundary &&
+      toolCalls < 10;
       count++
     ) {
       const current = (
@@ -2907,6 +3086,7 @@ export async function executeAssistantTurn(
       model: model.model,
       temperature: 0.2,
       instructions:
+        "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。只给方案设plan并仅查询；用户明确要求执行时设execute，不重复开工确认。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +
@@ -2954,10 +3134,20 @@ export async function executeAssistantTurn(
                     : "unknown_tool",
                   input: {},
                   status: "failed",
+                  ...(invalidInput || !Object.hasOwn(tools, failure.toolName)
+                    ? { effect: "none" }
+                    : {}),
                   error: {
                     code: invalidInput
                       ? "assistant_tool_input_invalid"
                       : "assistant_operation_failed",
+                    ...(invalidInput
+                      ? {
+                          hint:
+                            schemaHints.get(failure.toolName) ??
+                            "工具参数格式不合法，请核对必填字段和允许取值后纠正。",
+                        }
+                      : {}),
                   },
                 },
               ]),

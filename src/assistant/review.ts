@@ -8,6 +8,7 @@ import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys, candidateKey } from "../processing/adoption.js";
 import { canonicalJson } from "../package/contract.js";
 import { planRequirementsKey } from "./plan.js";
+import { requirementSummary, validateRules } from "./requirements.js";
 import { AssistantError, type AssistantScope } from "./store.js";
 import {
   scopeCandidateRun,
@@ -27,7 +28,7 @@ export async function reviewTask(
   const runIds: string[] = task.runIds?.includes(data.run.id)
     ? task.runIds
     : [data.run.id];
-  const runs = [];
+  let runs = [];
   for (const runId of runIds)
     runs.push(
       scopeRunToTask(
@@ -47,6 +48,7 @@ export async function reviewTask(
         ),
       ),
     );
+  runs = effectiveTaskRuns(runs);
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
   let final;
@@ -294,6 +296,53 @@ export async function reviewTask(
   };
 }
 
+/** A newer transformation replaces the same source row; independent generated rows stay distinct. */
+export function effectiveTaskRuns(
+  runs: Awaited<ReturnType<typeof readProcessingRun>>[],
+) {
+  const seen = new Set<string>();
+  return [...runs]
+    .reverse()
+    .flatMap((data) => {
+      const records = data.records.filter((row) => {
+        if (
+          data.rootOperation === "augment" ||
+          data.run.options?.operation === "augment"
+        )
+          return true;
+        const original = row.original?.baseline ?? row.original;
+        const id = original?.id ?? row.result.sourceId;
+        const source = data.run.source;
+        const key = canonicalJson({
+          source:
+            source.kind === "assets"
+              ? { kind: source.kind, assetId: rowAssetId(row, source) }
+              : { kind: source.kind, id: source.id },
+          id,
+        });
+        if (!id) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (
+        data.records.length > 0 &&
+        records.length === 0 &&
+        ["succeeded", "failed", "cancelled"].includes(data.run.status)
+      )
+        return [];
+      return [
+        {
+          ...data,
+          records,
+          allIds: records.map((row) => row.id),
+          total: records.length,
+        },
+      ];
+    })
+    .reverse();
+}
+
 /** Partial adoption relaxes totals, never the current source or plan revision. */
 export function taskCompatibilityProblem(
   task: Record<string, any>,
@@ -301,7 +350,7 @@ export function taskCompatibilityProblem(
     Partial<
       Pick<
         Awaited<ReturnType<typeof readProcessingRun>>,
-        "records" | "backgroundEvidence"
+        "records" | "backgroundEvidence" | "backgroundGoal"
       >
     >)[],
   adoptedDestinationId?: string,
@@ -376,16 +425,41 @@ export function taskCompatibilityProblem(
         fragmentIndex: number;
         sha256?: string;
       }[];
+      if (item.backgroundGoal) {
+        if (
+          canonicalJson(item.backgroundGoal.requirements ?? []) !==
+            canonicalJson(requirementSummary(task)) ||
+          canonicalJson(item.backgroundGoal.classifications ?? []) !==
+            canonicalJson(validateRules(task))
+        )
+          return true;
+      } else if (validateRules(task).some((rule) => rule.basis !== "user")) {
+        // Legacy evidence alone cannot prove which document definitions were applied.
+        return true;
+      }
       return (
-        actual.length !== expected.length ||
-        expected.some(
-          (ref) =>
-            !actual.some(
-              (frozen) =>
-                frozen.documentId === ref.documentId &&
-                frozen.fragmentIndex === ref.fragmentIndex &&
-                (!ref.sha256 || frozen.sha256 === ref.sha256),
-            ),
+        // Additional compatible citations can reuse outputs only after replanning and
+        // checking that their frozen semantic requirements and definitions are unchanged.
+        !(
+          (item.backgroundGoal &&
+            actual.every((frozen) =>
+              expected.some(
+                (ref) =>
+                  ref.documentId === frozen.documentId &&
+                  ref.fragmentIndex === frozen.fragmentIndex &&
+                  (!ref.sha256 || frozen.sha256 === ref.sha256),
+              ),
+            )) ||
+          (actual.length === expected.length &&
+            !expected.some(
+              (ref) =>
+                !actual.some(
+                  (frozen) =>
+                    frozen.documentId === ref.documentId &&
+                    frozen.fragmentIndex === ref.fragmentIndex &&
+                    (!ref.sha256 || frozen.sha256 === ref.sha256),
+                ),
+            ))
         )
       );
     });
@@ -434,6 +508,34 @@ function currentRecordScope(
   // A live multi-step plan authorizes each committed batch's own frozen range.
   // A later standalone selection has no stepId and immediately replaces that authority.
   const plan = task.executionPlan;
+  const processingSteps = (plan?.steps ?? []).filter(
+    (step: any) =>
+      step.action === "submit_processing" &&
+      step.input?.operation !== "augment" &&
+      same(step.input?.source),
+  );
+  const repeatsFixedSelection = processingSteps.some(
+    (step: any, index: number) =>
+      step.input?.selection &&
+      processingSteps
+        .slice(index + 1)
+        .some(
+          (later: any) =>
+            later.input?.selection &&
+            later.input.reselect !== true &&
+            (!later.input.selection.seed ||
+              later.input.selection.seed === step.input.selection.seed) &&
+            canonicalJson({ ...step.input.selection, seed: null }) ===
+              canonicalJson({ ...later.input.selection, seed: null }),
+        ),
+  );
+  // Legacy repeated random steps were meant to transform the fixed batch, not authorize another batch.
+  if (
+    repeatsFixedSelection &&
+    !task.candidateScope &&
+    same(task.processingScope?.source)
+  )
+    return new Set<string>(task.processingScope.recordIds);
   if (
     runId &&
     task.processingScope?.stepId &&

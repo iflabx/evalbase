@@ -39,7 +39,7 @@ type ToolResult = {
     total?: number;
     requiresUserConfirmation?: boolean;
   };
-  error?: { code: string };
+  error?: { code: string; hint?: string };
 };
 type Turn = {
   id: string;
@@ -184,6 +184,8 @@ const messages: Record<string, string> = {
   assistant_background_not_read: "背景尚未核对，请让助手先读取附件要求。",
   assistant_background_capacity: "选用的背景过长，请缩小当前任务的依据范围。",
   assistant_background_changed: "背景已经变化，请重新核对要求。",
+  assistant_background_rule_mismatch: "分类规则与选用的文档定义不一致，请先纠正规则。",
+  assistant_tool_input_invalid: "操作参数不符合要求，助手需要纠正参数后继续。已有成果保留。",
   processing_scope_changed: "资料内容已经变化，请重新确定处理范围。",
   processing_already_adopted: "这些候选已采用到相同草稿，请核对剩余结果。",
   processing_results_overlap: "同一记录有两份竞争结果，请先明确保留哪一份或进行局部重改。",
@@ -192,7 +194,8 @@ const messages: Record<string, string> = {
   assistant_session_limit: "此会话已达到回合上限。已有结果保留，请在新会话中继续。",
   assistant_retry_parameters_changed: "重试参数与原操作不同，已阻止重复操作。请核对原任务要求。",
   assistant_plan_revalidation_required: "要求已变化，请重新核对当前步骤和已有成果。",
-  assistant_step_context_changed: "当前步骤的对象或范围已变化，请核对后继续。",
+  assistant_step_context_changed:
+    "请求的动作与当前步骤不一致，需要修正未执行步骤后继续。已有成果保留。",
   assistant_candidate_selection_changed: "候选批次已经变化，请重新选择。",
   assistant_turn_running: "本会话还有一条消息正在处理，请稍候。",
   assistant_busy: "当前已有任务正在使用助手，请稍后再试。",
@@ -631,7 +634,8 @@ export function ProjectAssistant({
                                     {item.result?.name ? ` · ${item.result.name}` : ""}
                                     {item.status === "failed" && (
                                       <span className="block text-xs text-destructive">
-                                        {messages[item.error?.code ?? ""] ??
+                                        {item.error?.hint ??
+                                          messages[item.error?.code ?? ""] ??
                                           "操作未完成，请核对范围后重试。"}
                                       </span>
                                     )}
@@ -951,9 +955,7 @@ export function ProjectAssistant({
                 {Boolean(visible.task.executionPlan?.steps.length) && (
                   <div className="space-y-2">
                     {visible.task.executionPlan?.mode === "plan" && (
-                      <p className="text-xs text-muted-foreground">
-                        已保存方案（尚未执行）
-                      </p>
+                      <p className="text-xs text-muted-foreground">已保存方案（尚未执行）</p>
                     )}
                     <ol
                       aria-label={
