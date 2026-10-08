@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Ajv } from "ajv";
 import { parse as parseCsv } from "csv-parse/sync";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -10732,11 +10733,33 @@ describe("project assistant public contract", () => {
         "A.1.a",
         "A.2.a",
       ]);
-      const wirePlan = calls.at(-1)!.tools.find((t: any) => t.function.name === "plan_task");
-      expect(wirePlan.function.parameters.allOf).toContainEqual({
-        if: { required: ["question"] },
-        then: { properties: { nextAction: { const: "none" } }, required: ["nextAction"] },
-      });
+      const wirePlan = calls
+        .at(-1)!
+        .tools.find((t: any) => t.function.name === "plan_task");
+      expect(wirePlan.function.parameters.allOf).toBeUndefined();
+      expect(wirePlan.function.parameters.anyOf).toHaveLength(2);
+      const acceptsPlan = new Ajv({ strict: false }).compile(
+        wirePlan.function.parameters,
+      );
+      const validPlan = { title: "继续处理", requirements: [] };
+      expect(acceptsPlan({ ...validPlan, nextAction: "read_processing" })).toBe(
+        true,
+      );
+      expect(
+        acceptsPlan({
+          ...validPlan,
+          question: "选取方式？",
+          nextAction: "none",
+        }),
+      ).toBe(true);
+      expect(
+        acceptsPlan({
+          ...validPlan,
+          question: "选取方式？",
+          nextAction: "read_processing",
+        }),
+      ).toBe(false);
+      expect(acceptsPlan({ ...validPlan, question: "选取方式？" })).toBe(false);
     } finally {
       requestedTool = undefined;
       toolSequence = [];

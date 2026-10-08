@@ -1119,7 +1119,9 @@ export function ProjectAssistant({
                       <div key={i} className="text-muted-foreground">
                         <p>
                           {rule.key || "期望输出"}：
-                          {rule.satisfied ? "分类与配额符合要求" : "分类或配额未符合要求"}
+                          {rule.satisfied
+                            ? "分类取值与配额核对通过，内容待审核"
+                            : "分类取值或配额未符合要求"}
                           {rule.missing ? ` · 缺少唯一分类 ${rule.missing} 条` : ""}
                           {rule.outsideValues ? ` · 范围外 ${rule.outsideValues} 条` : ""}
                         </p>

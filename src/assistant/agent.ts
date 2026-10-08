@@ -209,14 +209,24 @@ function schema(
     modelDefinition.required = [...modelDefinition.required, "selection"];
   if (name === "plan_task") {
     delete modelDefinition.properties.allowedLabels;
-    // Match the existing business guard in constrained tool generation too.
-    modelDefinition.allOf = [
+    // Use object alternatives: compatible decoders do not all support if/then.
+    const { question, ...executionProperties } = modelDefinition.properties;
+    modelDefinition.anyOf = [
       {
-        if: { required: ["question"] },
-        then: {
-          properties: { nextAction: { const: "none" } },
-          required: ["nextAction"],
+        type: "object",
+        properties: executionProperties,
+        required: modelDefinition.required,
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          ...executionProperties,
+          question,
+          nextAction: { const: "none" },
         },
+        required: [...modelDefinition.required, "question", "nextAction"],
+        additionalProperties: false,
       },
     ];
   }
