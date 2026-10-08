@@ -7,6 +7,8 @@ export type CandidateGoal = {
   targetCount?: number | null;
   countKind?: "new" | "final";
   allowedLabels?: string[];
+  allowedFields?: string[];
+  metadataKeys?: string[];
   classifications?: {
     field: "expectedOutput" | "metadata";
     key?: string;
@@ -59,9 +61,18 @@ export function reviewCandidates(
   }
   for (const batch of runs)
     for (const row of batch.records) {
-      if (batch.run.options.metadataKeys && row.original) {
+      const keys = goal?.metadataKeys ?? batch.run.options.metadataKeys;
+      if (keys && row.original) {
         const editable = new Set(
-          batch.run.options.metadataKeys.map((key) => key.toLowerCase()),
+          keys
+            .map((key) => key.toLowerCase())
+            .filter(
+              (key) =>
+                !batch.run.options.metadataKeys ||
+                batch.run.options.metadataKeys.some(
+                  (allowed) => allowed.toLowerCase() === key,
+                ),
+            ),
         );
         const protectedEntries = (entries: ProcessingInput["metadata"]) =>
           entries.filter((entry) => !editable.has(entry.key.toLowerCase()));
@@ -73,7 +84,8 @@ export function reviewCandidates(
       }
       for (const field of ["question", "expectedOutput", "metadata"] as const)
         if (
-          !batch.run.options.allowedFields.includes(field) &&
+          (!batch.run.options.allowedFields.includes(field) ||
+            (goal?.allowedFields && !goal.allowedFields.includes(field))) &&
           row.original &&
           canonicalJson(row.result[field]) !==
             canonicalJson(row.original[field])

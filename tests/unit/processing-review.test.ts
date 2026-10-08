@@ -29,6 +29,45 @@ const candidates = () =>
   }) as unknown as Page;
 
 describe("full candidate review", () => {
+  it("accepts equivalent Metadata permission keys with different casing", () => {
+    const data = candidates();
+    data.run.options.metadataKeys = ["CATEGORY"];
+    data.records.forEach((row) => {
+      row.original = {
+        ...row.result,
+        id: row.id,
+        metadata: [{ key: "Category", value: "old" }],
+      };
+      row.result.metadata = [{ key: "Category", value: "new" }];
+    });
+    const review = reviewCandidates(data, { metadataKeys: ["category"] });
+    expect(review.protectedFieldChanges).toBe(0);
+    expect(review.complete).toBe(true);
+  });
+  it("rechecks retained results against the newly protected fields and metadata keys", () => {
+    const data = candidates();
+    data.run.options.operation = "rewrite";
+    data.records.forEach((row) => {
+      row.original = {
+        ...row.result,
+        id: row.id,
+        question: "原始问题",
+        metadata: [],
+      };
+    });
+    expect(reviewCandidates(data).protectedFieldChanges).toBe(0);
+    const protectedQuestion = reviewCandidates(data, {
+      allowedFields: ["metadata"],
+    });
+    expect(protectedQuestion.protectedFieldChanges).toBe(3);
+    expect(protectedQuestion.complete).toBe(false);
+    const protectedKeys = reviewCandidates(data, {
+      allowedFields: ["question", "metadata"],
+      metadataKeys: [],
+    });
+    expect(protectedKeys.protectedFieldChanges).toBe(3);
+    expect(protectedKeys.complete).toBe(false);
+  });
   it("reports a missing required category even when every present value is allowed", () => {
     const review = reviewCandidates(candidates(), {
       targetCount: 3,

@@ -6,6 +6,7 @@ import {
 } from "../processing/store.js";
 import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
+import { canonicalJson } from "../package/contract.js";
 import { AssistantError, type AssistantScope } from "./store.js";
 import {
   scopeCandidateRun,
@@ -120,16 +121,20 @@ export async function reviewTask(
     task.candidateScope,
     runs,
   );
+  const compatibilityProblem = taskCompatibilityProblem(task, runs);
   return {
     runIds,
     runs,
     review: {
       ...review,
+      compatibilityProblem,
+      complete: review.complete && !compatibilityProblem,
       ...(task.candidateScope
         ? {
             selectionShortfalls,
             complete:
               review.complete &&
+              !compatibilityProblem &&
               runs.some((item) => item.total > 0) &&
               !selectionShortfalls.length,
           }
@@ -142,4 +147,49 @@ export async function reviewTask(
       ? "succeeded"
       : "failed",
   };
+}
+
+/** Partial adoption relaxes totals, never the current source or plan revision. */
+export function taskCompatibilityProblem(
+  task: Record<string, any>,
+  runs: Pick<Awaited<ReturnType<typeof readProcessingRun>>, "run">[],
+) {
+  const identity = (source: Record<string, any>) =>
+    source.kind === "asset"
+      ? { kind: "assets", assetIds: [source.id] }
+      : source.kind === "assets"
+        ? { kind: "assets", assetIds: [...source.assetIds].sort() }
+        : { kind: source.kind, id: source.id };
+  // A changed destination is independent of the input; targetDraftId names it explicitly.
+  const sources = (task.executionPlan?.steps ?? []).flatMap((step: any) =>
+    step.input?.source ? [step.input.source] : [],
+  );
+  if (
+    task.target &&
+    !(
+      task.target.kind === "draft" &&
+      task.targetDraftId &&
+      task.target.id === task.targetDraftId
+    )
+  )
+    sources.push(task.target);
+  const sourceMismatch =
+    sources.length > 0 &&
+    runs.some(
+      (item) =>
+        !sources.some((source: any) => {
+          const actual = identity(item.run.source);
+          const allowed = identity(source);
+          return actual.kind === "assets" && allowed.kind === "assets"
+            ? actual.assetIds!.every((id: string) =>
+                allowed.assetIds!.includes(id),
+              )
+            : canonicalJson(actual) === canonicalJson(allowed);
+        }),
+    );
+  return task.executionPlan?.needsReview
+    ? "要求已变化，请先核对步骤和已有成果。"
+    : sourceMismatch
+      ? "已有成果的来源与当前任务对象不同，不能按当前要求采用。"
+      : null;
 }

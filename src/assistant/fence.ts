@@ -1,6 +1,7 @@
 import type { Database } from "../db/pool.js";
 import { AssistantError, assistantAccess } from "./store.js";
 import { carryCandidateScope } from "./candidates.js";
+import { advancePlan, pendingPlanAction } from "./plan.js";
 
 /** Supplied only by server-side assistant callers, after locking domain sources. */
 export type AssistantGuard = {
@@ -102,13 +103,29 @@ export async function linkAssistantProcessing(
   ).rows[0];
   if (capacity.total > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
+  const step = state.executionPlan?.steps[state.executionPlan.current];
+  const plan = step?.operation
+    ? advancePlan(
+        state.executionPlan,
+        step.action,
+        { runId, status: "queued", source: step.operation.input.source },
+        step.operation.key,
+        scope.assistantGuard.revision,
+        step.operation.input,
+      )
+    : state.executionPlan;
   await db.query(
-    "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'runIds',$3::jsonb,'stage','processing','error',NULL,'review',NULL,'checkedStatus',NULL,'candidateScope',$4::jsonb),updated_at=now() WHERE id=$1",
+    "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'runIds',$3::jsonb,'stage','processing','error',NULL,'review',NULL,'checkedStatus',NULL,'candidateScope',$4::jsonb)||$5::jsonb,updated_at=now() WHERE id=$1",
     [
       scope.assistantGuard.sessionId,
       runId,
       JSON.stringify(runs),
       JSON.stringify(candidateScope),
+      JSON.stringify(
+        plan
+          ? { executionPlan: plan, nextAction: pendingPlanAction(plan) ?? null }
+          : {},
+      ),
     ],
   );
 }

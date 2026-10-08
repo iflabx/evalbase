@@ -72,6 +72,82 @@ test("shows only the current effective requirements and retains a field conflict
   );
 });
 
+test("distinguishes a failed model reply from retained processing and keeps the next input", async ({
+  page,
+}) => {
+  let failed = false;
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [
+            { id: "recover", title: "可靠执行", ordinal: 1, updated_at: "2026-10-08T09:00:00Z" },
+          ],
+        },
+      });
+    if (path.endsWith("/sessions/recover"))
+      return route.fulfill({
+        json: {
+          sessionId: "recover",
+          task: {
+            title: "可靠执行",
+            goal: "清洗两条问题",
+            stage: failed ? "failed" : "processing",
+            runId: "kept",
+            error: failed ? "assistant_model_failed" : null,
+            recovery: failed
+              ? {
+                  kind: "model_reply",
+                  message: "模型回复未完成。已提交的任务和已保存的成果保留；重试会先核对真实回执。",
+                }
+              : null,
+            executionPlan: {
+              mode: "execute",
+              current: 0,
+              steps: [
+                {
+                  id: "fixed",
+                  title: "处理完整资料",
+                  action: "submit_processing",
+                  status: "waiting",
+                },
+              ],
+            },
+          },
+          turns: [],
+          proposals: [],
+        },
+      });
+    if (path.endsWith("/processing-runs/kept/status"))
+      return route.fulfill({
+        json: {
+          run: { status: "queued", inputCount: 2, options: { operation: "clean" }, partial: false },
+          total: 0,
+        },
+      });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  const task = page.getByRole("region", { name: "当前任务" });
+  await expect(task.getByText("等待结果", { exact: true })).toBeVisible();
+  await expect(page.getByText("清洗 · 等待中 · 2 条输入", { exact: true })).toBeVisible();
+  await page.getByLabel("向项目助手发送消息").fill("接下来保留原答案");
+  failed = true;
+  await expect(task.getByRole("status")).toContainText("模型回复未完成");
+  await expect(task.getByRole("status")).toContainText("已保留的处理任务与候选");
+  const retry = task.getByRole("button", { name: "重试未完成步骤" });
+  await expect(retry).toBeEnabled();
+  await retry.focus();
+  await expect(retry).toBeFocused();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("接下来保留原答案");
+  await page.screenshot({ path: "test-results/opt07-recovery-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 420, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await task.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/opt07-recovery-narrow.png", fullPage: true });
+});
+
 test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
   page,
 }) => {

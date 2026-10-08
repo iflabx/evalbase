@@ -76,6 +76,7 @@ type Conversation = {
     checkedStatus?: string;
     candidateScope?: { hash: string; count: number; sourceCount: number; targetCount: number };
     error?: string;
+    recovery?: { kind: string; message: string };
     target?: { kind: string; id?: string };
     targetName?: string;
     requirements?: string[];
@@ -84,7 +85,13 @@ type Conversation = {
     executionPlan?: {
       mode: "plan" | "execute";
       current: number;
-      steps: { title: string; action: string; status: "pending" | "waiting" | "executed" }[];
+      needsReview?: boolean;
+      steps: {
+        id?: string;
+        title: string;
+        action: string;
+        status: "pending" | "waiting" | "executed";
+      }[];
     };
     review?: {
       runId: string;
@@ -109,6 +116,7 @@ type Conversation = {
       additionalLabels?: number;
       formatIssues?: unknown[];
       complete?: boolean;
+      compatibilityProblem?: string | null;
       classifications?: {
         field: string;
         key?: string;
@@ -183,6 +191,8 @@ const messages: Record<string, string> = {
   assistant_task_limit: "任务已达到自动执行上限。已有结果保留，请补充要求后继续。",
   assistant_session_limit: "此会话已达到回合上限。已有结果保留，请在新会话中继续。",
   assistant_retry_parameters_changed: "重试参数与原操作不同，已阻止重复操作。请核对原任务要求。",
+  assistant_plan_revalidation_required: "要求已变化，请重新核对当前步骤和已有成果。",
+  assistant_step_context_changed: "当前步骤的对象或范围已变化，请核对后继续。",
   assistant_candidate_selection_changed: "候选批次已经变化，请重新选择。",
   assistant_turn_running: "本会话还有一条消息正在处理，请稍候。",
   assistant_busy: "当前已有任务正在使用助手，请稍后再试。",
@@ -874,7 +884,14 @@ export function ProjectAssistant({
                   {canWrite && sessionId && (
                     <div className="flex gap-1">
                       {((visible.task.stage === "failed" &&
-                        visible.task.error !== "assistant_session_limit") ||
+                        visible.task.error !== "assistant_session_limit" &&
+                        !visible.task.requirementProblem &&
+                        ![
+                          "assistant_requirement_conflict",
+                          "assistant_plan_count_conflict",
+                          "assistant_plan_revalidation_required",
+                          "assistant_step_context_changed",
+                        ].includes(visible.task.error ?? "")) ||
                         (visible.task.stage === "awaiting_review" &&
                           (visible.task.checkedStatus === "failed" ||
                             visible.task.checkedStatus === "cancelled" ||
@@ -905,7 +922,7 @@ export function ProjectAssistant({
                   <ol aria-label="执行步骤" className="space-y-2 text-sm">
                     {visible.task.executionPlan!.steps.map((step, index) => (
                       <li
-                        key={`${index}:${step.action}`}
+                        key={step.id ?? `${index}:${step.action}`}
                         className="flex items-start justify-between gap-3"
                       >
                         <span
@@ -918,15 +935,17 @@ export function ProjectAssistant({
                           {index + 1}. {step.title}
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          {step.status === "executed"
-                            ? "已执行"
-                            : step.status === "waiting"
-                              ? step.action.startsWith("request_")
-                                ? "等待确认"
-                                : visible.task?.checkedStatus === "failed"
-                                  ? "需要重试"
-                                  : "等待结果"
-                              : "待执行"}
+                          {visible.task?.executionPlan?.needsReview
+                            ? "待重新核对"
+                            : step.status === "executed"
+                              ? "已执行"
+                              : step.status === "waiting"
+                                ? step.action.startsWith("request_")
+                                  ? "等待确认"
+                                  : visible.task?.checkedStatus === "failed"
+                                    ? "需要重试"
+                                    : "等待结果"
+                                : "待执行"}
                         </span>
                       </li>
                     ))}
@@ -1068,6 +1087,20 @@ export function ProjectAssistant({
                 {visible.task.error && (
                   <p role="alert" className="text-sm text-destructive">
                     {messages[visible.task.error] ?? "任务未完成，已有输入与候选仍保留。"}
+                  </p>
+                )}
+                {visible.task.recovery && (
+                  <p
+                    role="status"
+                    className="rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6"
+                  >
+                    {visible.task.recovery.message}
+                    {visible.task.runId && " 可在下方查看已保留的处理任务与候选。"}
+                  </p>
+                )}
+                {visible.task.review?.compatibilityProblem && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {visible.task.review.compatibilityProblem}
                   </p>
                 )}
               </section>

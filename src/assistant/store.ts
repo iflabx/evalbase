@@ -28,6 +28,15 @@ export function taskPresentation(
   delete presented.budgetCheckpoint;
   delete presented.planningCheckpointTurnId;
   delete presented.planValidationRequired;
+  if (presented.executionPlan) {
+    presented.executionPlan = {
+      ...presented.executionPlan,
+      steps: presented.executionPlan.steps.map(
+        ({ operation: _operation, ...step }: Record<string, any>) => step,
+      ),
+    };
+    delete presented.executionPlan.requirementsKey;
+  }
   let requirementProblem = task.requirementProblem ?? null;
   try {
     presented.classifications = validateRules(task);
@@ -528,8 +537,12 @@ export async function startTurn(
           budgetCheckpoint: null,
           ...(session.task.executionPlan
             ? {
+                nextAction: null,
+                review: null,
+                checkedStatus: null,
                 executionPlan: {
                   ...session.task.executionPlan,
+                  needsReview: true,
                   steps: session.task.executionPlan.steps.map(
                     (step: {
                       action: string;
@@ -768,6 +781,66 @@ export async function recoverProposalReceipt(
   return receipt;
 }
 
+export async function recoverAssistantReceipt(
+  db: Pick<Database, "query">,
+  scope: AssistantScope,
+  item: Record<string, any>,
+) {
+  let result: unknown;
+  let references: Dependency[] = [];
+  if (item.name === "create_draft") {
+    await assistantAccess(db, scope, true);
+    const row = (
+      await db.query(
+        "SELECT d.id,d.name,d.revision FROM draft_creation_receipt receipt JOIN collaborative_draft d ON d.id=receipt.draft_id WHERE receipt.project_id=$1 AND receipt.actor_id=$2 AND receipt.operation_key=$3",
+        [scope.projectId, scope.actorId, item.key],
+      )
+    ).rows[0];
+    if (row) {
+      references = [{ kind: "draft", id: row.id }];
+      await processingSourceAvailable(
+        db,
+        scope.projectId,
+        { kind: "draft", id: row.id, recordIds: [] },
+        true,
+      );
+      result = {
+        draftId: row.id,
+        name: row.name,
+        revision: Number(row.revision),
+        recovered: true,
+        url: `/projects/${scope.projectId}/test-sets/drafts/${row.id}`,
+      };
+    }
+  } else if (["submit_processing", "refine_candidates"].includes(item.name)) {
+    await assistantAccess(db, scope, true);
+    const row = (
+      await db.query(
+        "SELECT r.id,r.source,r.input_ref,r.input_count,j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.idempotency_key=$3",
+        [scope.projectId, scope.actorId, item.key],
+      )
+    ).rows[0];
+    if (row?.input_ref) {
+      await processingSourceAvailable(db, scope.projectId, row.source, true);
+      references =
+        row.source.kind === "assets"
+          ? row.source.assetIds.map((id: string) => ({
+              kind: "asset",
+              id,
+            }))
+          : [{ kind: row.source.kind, id: row.source.id }];
+      result = {
+        runId: row.id,
+        status: row.status,
+        inputCount: row.input_count,
+        recovered: true,
+        url: `/projects/${scope.projectId}/processing?run=${row.id}`,
+      };
+    }
+  }
+  return result ? { result, references } : undefined;
+}
+
 async function reconcileReceipts(
   pool: Database,
   scope: AssistantScope,
@@ -780,63 +853,9 @@ async function reconcileReceipts(
       if (turn.status === "running") continue;
       for (const item of turn.tool_results as Record<string, any>[]) {
         if (!["started", "failed"].includes(item.status)) continue;
-        let result: unknown;
-        let references: Dependency[] = [];
-        if (item.name === "create_draft") {
-          await assistantAccess(db, scope, true);
-          const row = (
-            await db.query(
-              "SELECT d.id,d.name,d.revision FROM draft_creation_receipt receipt JOIN collaborative_draft d ON d.id=receipt.draft_id WHERE receipt.project_id=$1 AND receipt.actor_id=$2 AND receipt.operation_key=$3",
-              [scope.projectId, scope.actorId, item.key],
-            )
-          ).rows[0];
-          if (row) {
-            references = [{ kind: "draft", id: row.id }];
-            await processingSourceAvailable(
-              db,
-              scope.projectId,
-              { kind: "draft", id: row.id, recordIds: [] },
-              true,
-            );
-            result = {
-              draftId: row.id,
-              name: row.name,
-              revision: Number(row.revision),
-              recovered: true,
-              url: `/projects/${scope.projectId}/test-sets/drafts/${row.id}`,
-            };
-          }
-        } else if (item.name === "submit_processing") {
-          await assistantAccess(db, scope, true);
-          const row = (
-            await db.query(
-              "SELECT r.id,r.source,r.input_ref,r.input_count,j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.idempotency_key=$3",
-              [scope.projectId, scope.actorId, item.key],
-            )
-          ).rows[0];
-          if (row?.input_ref) {
-            await processingSourceAvailable(
-              db,
-              scope.projectId,
-              row.source,
-              true,
-            );
-            references =
-              row.source.kind === "assets"
-                ? row.source.assetIds.map((id: string) => ({
-                    kind: "asset",
-                    id,
-                  }))
-                : [{ kind: row.source.kind, id: row.source.id }];
-            result = {
-              runId: row.id,
-              status: row.status,
-              inputCount: row.input_count,
-              recovered: true,
-              url: `/projects/${scope.projectId}/processing?run=${row.id}`,
-            };
-          }
-        }
+        const recovered = await recoverAssistantReceipt(db, scope, item);
+        const result = recovered?.result;
+        const references = recovered?.references ?? [];
         if (result) {
           const restored = { ...item, status: "succeeded", result };
           const saved = await db.query(
