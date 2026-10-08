@@ -949,37 +949,56 @@ export function ProjectAssistant({
                         )[visible.task.stage] ?? "查看当前结果后继续提出要求。")}
                 </p>
                 {Boolean(visible.task.executionPlan?.steps.length) && (
-                  <ol aria-label="执行步骤" className="space-y-2 text-sm">
-                    {visible.task.executionPlan!.steps.map((step, index) => (
-                      <li
-                        key={step.id ?? `${index}:${step.action}`}
-                        className="flex items-start justify-between gap-3"
-                      >
-                        <span
-                          className={
-                            index === visible.task?.executionPlan?.current
-                              ? "font-medium"
-                              : "text-muted-foreground"
-                          }
+                  <div className="space-y-2">
+                    {visible.task.executionPlan?.mode === "plan" && (
+                      <p className="text-xs text-muted-foreground">
+                        已保存方案（尚未执行）
+                      </p>
+                    )}
+                    <ol
+                      aria-label={
+                        visible.task.executionPlan?.mode === "plan" ? "方案步骤" : "执行步骤"
+                      }
+                      className="space-y-2 text-sm"
+                    >
+                      {visible.task.executionPlan!.steps.map((step, index) => (
+                        <li
+                          key={step.id ?? `${index}:${step.action}`}
+                          className="flex items-start justify-between gap-3"
                         >
-                          {index + 1}. {step.title}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {visible.task?.executionPlan?.needsReview
-                            ? "待重新核对"
-                            : step.status === "executed"
-                              ? "已执行"
-                              : step.status === "waiting"
-                                ? step.action.startsWith("request_")
-                                  ? "等待确认"
-                                  : visible.task?.checkedStatus === "failed"
-                                    ? "需要重试"
-                                    : "等待结果"
-                                : "待执行"}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
+                          <span
+                            className={
+                              index === visible.task?.executionPlan?.current
+                                ? "font-medium"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {index + 1}. {step.title}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {visible.task?.executionPlan?.needsReview
+                              ? "待重新核对"
+                              : step.status === "executed"
+                                ? "已执行"
+                                : step.status === "waiting"
+                                  ? step.action.startsWith("request_")
+                                    ? "等待确认"
+                                    : visible.task?.checkedStatus === "failed"
+                                      ? "需要重试"
+                                      : "等待结果"
+                                  : visible.task?.executionPlan?.mode === "plan"
+                                    ? "方案待执行"
+                                    : "待执行"}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    {visible.task.executionPlan?.mode === "plan" && visible.task.review && (
+                      <p className="text-xs text-muted-foreground">
+                        候选核对结果来自实际读取；上述方案仍未切换为执行。
+                      </p>
+                    )}
+                  </div>
                 )}
                 {visible.task.requirements === undefined && (
                   <p className="break-words text-sm leading-6">{visible.task.goal}</p>
