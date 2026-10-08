@@ -207,7 +207,19 @@ function schema(
   // selection decision on the wire; legacy callers may still omit it.
   if (name === "submit_processing")
     modelDefinition.required = [...modelDefinition.required, "selection"];
-  if (name === "plan_task") delete modelDefinition.properties.allowedLabels;
+  if (name === "plan_task") {
+    delete modelDefinition.properties.allowedLabels;
+    // Match the existing business guard in constrained tool generation too.
+    modelDefinition.allOf = [
+      {
+        if: { required: ["question"] },
+        then: {
+          properties: { nextAction: { const: "none" } },
+          required: ["nextAction"],
+        },
+      },
+    ];
+  }
   return jsonSchema<Record<string, any>>(
     modelDefinition as Parameters<typeof jsonSchema>[0],
     {

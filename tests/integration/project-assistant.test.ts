@@ -10732,6 +10732,11 @@ describe("project assistant public contract", () => {
         "A.1.a",
         "A.2.a",
       ]);
+      const wirePlan = calls.at(-1)!.tools.find((t: any) => t.function.name === "plan_task");
+      expect(wirePlan.function.parameters.allOf).toContainEqual({
+        if: { required: ["question"] },
+        then: { properties: { nextAction: { const: "none" } }, required: ["nextAction"] },
+      });
     } finally {
       requestedTool = undefined;
       toolSequence = [];
