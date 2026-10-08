@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-08：OPT-06/07 已实施验证完成；OPT-08 已获 Owner 单独开发授权，正在完成通用实测、固定版本复审及既有隔离验收环境切换。人工验收仍 pending。依据 [实施台账](../.scratch/assistant-optimization/spec.md) 和 [OPT-08 记录](../.scratch/assistant-optimization/opt08-verification.md) 核对实际进度。
+2026-10-08：OPT-06/07/08 已完成实施验证及既有隔离验收环境交付；原 200 条内容任务仍未完成，模型保存方案未转执行的限制已如实记录。人工验收仍 pending。依据 [实施台账](../.scratch/assistant-optimization/spec.md) 和 [OPT-08 记录](../.scratch/assistant-optimization/opt08-verification.md) 核对实际进度。
 
 整改目标是让用户在一个会话中，用简短要求完成通用测试数据任务：助手理解目标和背景、查看资料、选择方法、执行处理、根据中间结果调整，最后交付可审核的候选及真实成果入口。范围覆盖这条完整流程中的能力和体验缺口，已发现故障用于验证，不作为范围上限。
 

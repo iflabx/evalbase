@@ -1,7 +1,7 @@
 # OPT-08 结果审核体验与通用任务交付
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 Blocked by: none
 
 [OPT-07](07-execution-and-recovery.md) 已实施验证完成，证据见 [验证记录](../opt07-verification.md)。2026-10-08 Owner 已单独授权本张开发；基线 `4135e5245a80d820abf50c9b9acfa3931bda8e9e`，沿用 `codex/assistant-optimization`。Owner 的 4217 环境和原资料保留，最终切换由本张完成；人工验收仍 pending。
@@ -23,7 +23,7 @@ Blocked by: none
 
 ## 验收标准
 
-以下均为 pending，具体数据规模和通过口径统一引用测试计划，不复制另一份阈值。
+实施结果集中见 [验证与覆盖矩阵](../opt08-verification.md#固定版本审阅与覆盖矩阵)：小样本、公开回归和固定环境交付已完成；R08-6 的原 200 条内容任务如实保留未完成，保存方案仍未转实际执行。Owner 人工验收 pending。具体数据规模和通过口径统一引用测试计划，不复制另一份阈值。
 
 | 编号  | 可观察的完成条件                                                                                                                     | 对应证据                              |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
@@ -62,3 +62,4 @@ Blocked by: none
 ## Comments
 
 - 2026-10-08：编写本批次最终交付 Ticket，实施与各项证据均未开始；承接 OPT-05 的最终流程验收，不复用旧局部绿测代签。
+- 2026-10-08：实施完成。业务提交 `7ed8a3a830cfdb810532e626f4545b0a41c37d88`，展示收尾提交 `1aa37072737b7d02d9e0afdfae752b6c6de81b33`；公共路由均 reused。相关回归、真实通用小样本逐条审核、6 条唯一发布与导出一致性完成；最终 Web 固定 UI SHA，两个 Worker 保持业务 SHA，健康/就绪与实际前端请求通过。Standards/Spec 命名发现已关闭，限定矩阵 Closure P0/P1 cleared。具体命令、覆盖、原 200 条剩余内容问题、模型模式切换限制及省略的广测见 [验证记录](../opt08-verification.md)。整改批次唯一 Owner checkpoint 为 pending，OPT-05 历史未完成状态保留，不解锁未经授权的新 Ticket；不合并、推送或正式部署。

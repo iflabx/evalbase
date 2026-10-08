@@ -1,0 +1,188 @@
+{
+  "date": "2026-10-08",
+  "baseline": "4135e5245a80d820abf50c9b9acfa3931bda8e9e",
+  "web": {
+    "head": "1aa37072737b7d02d9e0afdfae752b6c6de81b33",
+    "image": "evalbase-agent-checkpoint:1aa37072737b",
+    "status": "running",
+    "health": "healthy"
+  },
+  "worker": {
+    "head": "7ed8a3a830cfdb810532e626f4545b0a41c37d88",
+    "image": "evalbase-agent-checkpoint:7ed8a3a830cf",
+    "status": "running",
+    "healthcheckDefined": false
+  },
+  "modelWorker": {
+    "head": "7ed8a3a830cfdb810532e626f4545b0a41c37d88",
+    "image": "evalbase-agent-checkpoint:7ed8a3a830cf",
+    "status": "running",
+    "healthcheckDefined": false
+  },
+  "serviceIdentityVerifiedBy": [
+    "docker inspect image/status/health",
+    "docker inspect GIT_SHA only",
+    "public /health and /health/ready",
+    "real Chromium UI API responses"
+  ],
+  "health": {
+    "status": "ok",
+    "git_sha": "1aa37072737b7d02d9e0afdfae752b6c6de81b33"
+  },
+  "readiness": {
+    "status": "ok",
+    "httpStatus": 200,
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "1aa37072737b7d02d9e0afdfae752b6c6de81b33"
+  },
+  "browser": {
+    "health": {
+      "status": "ok",
+      "git_sha": "1aa37072737b7d02d9e0afdfae752b6c6de81b33"
+    },
+    "ready": 200,
+    "project": "模型与选取验收项目",
+    "url": "http://127.0.0.1:4217/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/datasets",
+    "requests": [
+      {
+        "path": "/api/installation",
+        "status": 200
+      },
+      {
+        "path": "/api/session",
+        "status": 401
+      },
+      {
+        "path": "/api/session",
+        "status": 200
+      },
+      {
+        "path": "/api/session",
+        "status": 200
+      },
+      {
+        "path": "/api/projects",
+        "status": 200
+      },
+      {
+        "path": "/api/me",
+        "status": 200
+      },
+      {
+        "path": "/api/session",
+        "status": 200
+      },
+      {
+        "path": "/api/projects",
+        "status": 200
+      },
+      {
+        "path": "/api/installation",
+        "status": 200
+      },
+      {
+        "path": "/api/session",
+        "status": 200
+      },
+      {
+        "path": "/api/session",
+        "status": 200
+      },
+      {
+        "path": "/api/projects",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/access",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/collections",
+        "status": 200
+      },
+      {
+        "path": "/api/session",
+        "status": 200
+      },
+      {
+        "path": "/api/me",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/presence",
+        "status": 204
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/presence",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/collections",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/presence",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing-runs/processing_6b776b558e5f4bff930170c8a85f6815/status",
+        "status": 200
+      },
+      {
+        "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18/candidates",
+        "status": 200
+      }
+    ]
+  },
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "width": 480,
+      "height": 900
+    }
+  ],
+  "assertions": [
+    "login/project retained",
+    "plan mode heading",
+    "plan steps accessible label",
+    "actual review explanation",
+    "narrow root has no horizontal overflow"
+  ],
+  "screenshots": [
+    {
+      "path": ".scratch/agent-data-processing/evidence/opt08-owner-desktop.png",
+      "sha256": "6468f60d5f66c0d35d325d98cb1026568489518c2b7177eb4743403ad692c8ec",
+      "visuallyReviewed": true
+    },
+    {
+      "path": ".scratch/agent-data-processing/evidence/opt08-owner-narrow.png",
+      "sha256": "0e3ac2651e9a1267bf5d9a28d70c99df9462f0a0ec7add9269d29352b8aff9ec",
+      "visuallyReviewed": true
+    }
+  ],
+  "ownerCounts": {
+    "projects": 1,
+    "accounts": 2,
+    "sessions": 28,
+    "versions": 6,
+    "activeJobs": 0
+  },
+  "ownerAcceptance": "pending",
+  "mainMerged": false,
+  "githubPushed": false,
+  "productionDeployed": false
+}

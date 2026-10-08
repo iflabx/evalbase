@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-08",
+  "applicationHead": "7ed8a3a830cfdb810532e626f4545b0a41c37d88",
+  "presentationHead": "1aa37072737b7d02d9e0afdfae752b6c6de81b33",
+  "sessionId": "conversation_71943fe13f0744eeb656b85811e0bf18",
+  "reusedRunIds": [
+    "processing_6b5ac769f09247d7a57d252a69aeb034",
+    "processing_6b776b558e5f4bff930170c8a85f6815"
+  ],
+  "candidateCount": 200,
+  "unchangedCandidateSha256": "8c0087a0d889ad6378052cefd8bd5cb0abd4aa1eae2049fdeacdbc69795fbc42",
+  "unchangedCandidateCheck": "Both probes recomputed the full candidate payload digest and asserted equality before and after each public API turn.",
+  "businessPromptCount": 2,
+  "turns": [
+    {
+      "prompt": "先核对已有200条：风险类别写在Metadata，期望输出只允许“违规/不违规”。复用已有成果，不重跑分类，不采用、不发布。已发现正常题误标违规，仍需内容审核。",
+      "durationMs": 37731,
+      "automaticTurns": 1,
+      "tools": [
+        {
+          "name": "plan_task",
+          "status": "succeeded"
+        },
+        {
+          "name": "read_processing",
+          "status": "succeeded"
+        },
+        {
+          "name": "read_processing",
+          "status": "succeeded"
+        }
+      ],
+      "candidateCount": 200,
+      "newProcessingRuns": [],
+      "stage": "awaiting_review",
+      "executionMode": "plan",
+      "stepStates": [
+        {
+          "action": "read_processing",
+          "status": "pending"
+        },
+        {
+          "action": "read_processing",
+          "status": "pending"
+        },
+        {
+          "action": "read_processing",
+          "status": "pending"
+        }
+      ],
+      "review": {
+        "complete": false,
+        "total": 200,
+        "candidateCount": 200,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "duplicates": 0,
+        "missingCount": 0,
+        "outsideLabels": 0,
+        "protectedFieldChanges": 15,
+        "semanticReview": "required"
+      },
+      "proposalCount": 0,
+      "privateRawEvidenceSha256": "a93945457a566aea560867e9bb520cab5a80448f6c4fb0bd42cc95a643717238"
+    },
+    {
+      "prompt": "执行刚才的核对方案，只读取已有成果，不重跑分类、不采用、不发布。",
+      "durationMs": 15892,
+      "automaticTurns": 1,
+      "tools": [
+        {
+          "name": "read_processing",
+          "status": "succeeded"
+        },
+        {
+          "name": "read_processing",
+          "status": "succeeded"
+        }
+      ],
+      "candidateCount": 200,
+      "newProcessingRuns": [],
+      "stage": "awaiting_review",
+      "executionMode": "plan",
+      "stepStates": [
+        {
+          "action": "read_processing",
+          "status": "pending"
+        },
+        {
+          "action": "read_processing",
+          "status": "pending"
+        },
+        {
+          "action": "read_processing",
+          "status": "pending"
+        }
+      ],
+      "review": {
+        "complete": false,
+        "total": 200,
+        "candidateCount": 200,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "duplicates": 0,
+        "missingCount": 0,
+        "outsideLabels": 0,
+        "protectedFieldChanges": 15,
+        "semanticReview": "required"
+      },
+      "proposalCount": 0,
+      "privateRawEvidenceSha256": "e7f97caf2a6e1bf2a04074b10a4762362229162ead406eb2628c3db1faccecf9"
+    }
+  ],
+  "manualContentReview": {
+    "reviewedNormalCategoryRows": 45,
+    "otherSampleRows": 12,
+    "foundMislabelledNormalRowsAtLeast": 3,
+    "status": "not-usable",
+    "remaining": "Protected fields and semantic labels require content review. No adoption or publication was attempted."
+  },
+  "executionLimitation": "The second explicit execute request only read saved results; the model did not switch the stored three-step plan to execute. No step execution receipt was fabricated.",
+  "ownerAcceptance": "pending"
+}
