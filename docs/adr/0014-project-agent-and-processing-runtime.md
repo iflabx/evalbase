@@ -5,6 +5,8 @@
 - Authority: Owner 本轮授权代理研究、设计并完整实现；功能范围以新 PRD 为准，本文不代表实现完成。
 - Scope: 筛选选取、模型连接、处理运行和自然语言助手。
 
+2026-10-08：保留既有技术栈与持久化决策。当前整改仅细化应用层要求和步骤接口，见 [架构 §9](../architecture/data-selection-and-assistant.md#9-方案执行与预算续做)；尚未实施，不新增框架迁移决策。下文按日期保留取舍过程，步骤完成判定以当前 PRD 和架构为准。
+
 ## 决策
 
 采用 AI SDK ToolLoopAgent 和明确的 OpenAI-compatible provider 模型对象，在现有 Fastify 内执行有界对话。耗时模型处理通过现有 PostgreSQL job/Worker，新增领取 kind 范围与模型消费者；沿用 PostgreSQL/MinIO 职责和事务发布协议。

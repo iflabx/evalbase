@@ -1,5 +1,7 @@
 # 项目助手：200 条实测后的优化合同
 
+> 2026-10-08 文档整理：本文保留此前设计和实施历史。当前助手产品行为统一见 [PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)，执行设计见 [架构 §9](architecture/data-selection-and-assistant.md#9-方案执行与预算续做)，整改顺序见 [整改方案](assistant-remediation-plan.md)。本文中冲突的步骤推进、模型参数联动和完成判定不再作为新实现依据；未冲突的容量、来源、附件及事务保护继续沿用。历史已通过记录不代表整改已实施或已验收。
+
 2026-10-06。Owner 已授权先修复实测问题，再完成短提示词、同会话连续任务、背景文档和友好工作区，并最终使用助手创建一个 200 条测试集。本文补充 [助手 PRD](PRD-data-selection-and-assistant.md) 和 [持续任务](assistant-task-experience.md)，经确认的变化以本文为准；其余权限、原件不可变、正式版本不可变及确认规则保持。
 
 2026-10-06 最新“方案后执行”会话的追加范围以 [方案执行与长任务合同](assistant-long-task-execution.md) 为准。四项历史完成记录保留；OPT-05 的独立实现及验证状态见其实施记录，不能用历史 200 条闭环代替本轮证据。

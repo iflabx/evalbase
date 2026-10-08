@@ -1,5 +1,7 @@
 # 项目助手：持续任务与候选审核
 
+> 2026-10-08 文档整理：本文保留此前设计和实施历史。当前助手产品行为统一见 [PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)，执行设计见 [架构 §9](architecture/data-selection-and-assistant.md#9-方案执行与预算续做)，整改顺序见 [整改方案](assistant-remediation-plan.md)。本文中冲突的步骤推进、模型参数联动和完成判定不再作为新实现依据；未冲突的容量、来源、附件及事务保护继续沿用。历史已通过记录不代表整改已实施或已验收。
+
 2026-10-05。Owner 已授权根据助手体验审查完成方案、文档、审查、开发和测试；选择“自动做到候选结果”。本文件补充 [模型助手 PRD](PRD-data-selection-and-assistant.md) §7，覆盖旧版逐轮推动、首步强制工具调用和不自动继续已授权任务的约定。基线 `519d94256026`，沿用 `codex/agent-data-processing` 与当前隔离验收库。
 
 ## 1. 用户体验

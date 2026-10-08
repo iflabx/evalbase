@@ -3,9 +3,11 @@
 Status: ready-for-agent
 Implementation: in-progress
 
+2026-10-08：Owner 当前只授权 [整改方案与文档](../../docs/assistant-remediation-plan.md)。OPT-01–04 的历史实施结果保留；OPT-05 的真实闭环仍未完成。整改设计已记录、实现未启动，不因历史连续开发授权自动继续修改代码或切换环境。暂不新增 Ticket；取得后续开发授权后按同一整改批次执行。
+
 - Owner 已在持续目标中授权调研、文档、审查、开发、测试及最终 200 条实用测试集；四项工作连续执行，不重复请求开工。
 - 基线 `4c71572d79187a0c834f6ef990187c60257ca3de`，工作分支 `codex/assistant-optimization`，工作区 `/home/bistu/EvalBase/.worktrees/agent-data-processing`。基线干净，原隔离环境和历史 200 条版本保留。
-- [优化合同](../../docs/assistant-optimization.md) > [助手 PRD](../../docs/PRD-data-selection-and-assistant.md) > [CONTEXT](../../CONTEXT.md) > [架构](../../docs/architecture/data-selection-and-assistant.md) > 本规格。
+- 当前产品行为以 [助手 PRD §7](../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手) 为准；领域含义见 [CONTEXT](../../CONTEXT.md)，执行设计见 [架构 §9](../../docs/architecture/data-selection-and-assistant.md#9-方案执行与预算续做)。[整改方案](../../docs/assistant-remediation-plan.md) 组织实施顺序，测试计划定义验证；早期优化/长任务合同保留未冲突约束和历史证据，本规格只记实际进度。
 - 复用 implement + ponytail full 和既有公共 seams。用户授权自行确定测试；首个 red 为 HTTP 处理运行漏一条后重试跳过缺失输出，green 为保留已成功记录并补回缺失记录。
 
 ## 功能与完成台账
@@ -18,7 +20,7 @@ Implementation: in-progress
 | [OPT-04](issues/04-workspace.md)           | 宽工作区、状态与结果整理、最终 200 条闭环   | OPT-01/02/03                                     | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                        |
 | [OPT-05](issues/05-long-task-execution.md) | 方案执行、预算恢复、后台分类与固定结果选取  | OPT-01/02/03/04 已交付；最新失败会话只读审查完成 | in-progress    | 57 项助手 HTTP、10 项 Worker、159 项单元与 15 项浏览器通过；最终 6 项窄回归及 Standards/Spec 通过，真实模型闭环 pending |
 
-追加范围的权威合同为 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。最新历史完成记录指原四项；本规格当前状态包含 OPT-05，尚未交付，不改写历史结论。
+长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。最新历史完成记录指原四项；OPT-05 与本次整改尚未交付，不改写历史结论。
 
 ## 验证矩阵
 

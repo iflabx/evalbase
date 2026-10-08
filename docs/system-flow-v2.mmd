@@ -19,10 +19,12 @@ flowchart LR
     Version -->|派生| Draft
     Version --> Trash["回收 / 恢复 / 永久删除"]
     Space --> Assistant["项目助手  自然语言"]
-    Assistant --> Plan["方案与当前步骤"]
-    Plan -->|开始执行| Tools["当前用户权限内的业务工具"]
-    Tools --> Yield["保存阶段结果"]
-    Yield -->|授权内有界续做| Plan
+    Assistant --> Requirements["当前生效要求  校验对象与字段"]
+    Requirements --> Plan["简单操作或复杂任务步骤"]
+    Plan -->|已有执行授权| Tools["固定输入与参数  当前用户业务权限"]
+    Tools --> Yield["保存结果  匹配回执与完成条件"]
+    Yield -->|确定步骤有界续做| Plan
+    Yield -->|需要语义决策| Assistant
     Tools --> Filter
     Tools --> Draft
     Tools --> Process["清洗 / 改写 / 扩充"]
@@ -35,8 +37,11 @@ flowchart LR
     Worker -->|分类完成| Classified["固定分类结果"]
     Classified --> ClassifiedSelect["按类别选取与全量核对"]
     ClassifiedSelect --> Result
-    Result -->|接受  校验修订| Draft
-    Result -->|保存派生文件| Mapped
+    Result --> Review["结构核对与内容审核分别呈现"]
+    Review -->|用户确认采用  校验修订| Draft
+    Review -->|用户确认保存派生文件| Mapped
+    Review -->|规则或执行失败| Recovery["显示原因与已有成果  恢复未完成步骤"]
+    Recovery --> Requirements
     Tools --> Result
     Space --> Settings["设置  信息 / 成员 / 个人资料"]
     Settings --> Connection["管理员模型连接"]
