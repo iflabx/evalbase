@@ -1,8 +1,12 @@
 # OPT-09 项目助手执行与恢复一致性修复
 
 Status: ready-for-agent
-Implementation: completed
-Blocked by: none
+Implementation: in-progress
+Blocked by: [OPT-10](10-fixed-input-and-recovery.md)
+
+## 2026-10-09 Owner 验收退回
+
+在应用 `abc9863` 的原会话继续执行后，发现重复随机选取、背景与计划状态不一致、候选汇总及恢复参数错误，另有分类定义偏离附件的问题。集中由 [OPT-10](10-fixed-input-and-recovery.md) 承接补修；本 Ticket 按 Owner 退回规则恢复为 in-progress，依赖仅用于最终收口，OPT-10 不等待本张通过。以下授权、实施及测试记录作为历史证据保留；小样本单批成功不覆盖这次连续流程，不代表最新故障已关闭。
 
 优先级：P1。2026-10-09 Owner 已授权完成本张开发。沿用 `codex/assistant-optimization` 及 `/home/bistu/EvalBase/.worktrees/agent-data-processing`，以现有 OPT-06–08 实现为起点，不等待 OPT-05 最终验收，不形成依赖循环。
 

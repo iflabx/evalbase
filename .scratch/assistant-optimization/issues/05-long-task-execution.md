@@ -2,7 +2,11 @@
 
 Status: ready-for-agent
 Implementation: in-progress
-Blocked by: [OPT-09](09-execution-recovery-consistency.md)
+Blocked by: [OPT-10](10-fixed-input-and-recovery.md)
+
+## 2026-10-09 后续补修承接
+
+OPT-09 Owner 验收期间原会话再次失败，新增 [OPT-10](10-fixed-input-and-recovery.md) 修复固定输入、候选汇总、背景规则及方案恢复。本 Ticket 继续保留未完成状态，不另排开发；最终收口须包含 OPT-10 实际证据与同一最终 Owner checkpoint。OPT-10 以已有代码为基础，不以本 Ticket 或 OPT-09 验收通过为前提。下面保留原承接关系和历史记录。
 
 ## 2026-10-08 整改承接
 
