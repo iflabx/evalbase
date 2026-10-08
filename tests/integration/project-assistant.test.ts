@@ -4199,6 +4199,50 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("clears a stale model-reply recovery notice after successful replanning", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      requestedTool = { name: "query_project", input: { kind: "files" } };
+      finalReply = "";
+      const failed = (await send("只读取资料", undefined, "failed")).json();
+      expect(failed.task.recovery.kind).toBe("model_reply");
+      finalReply = undefined;
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "重新核对前置条件",
+          requirements: ["先只核对资料，不处理"],
+          executionMode: "plan",
+          steps: [
+            {
+              title: "核对资料",
+              action: "query_project",
+              input: { kind: "files" },
+            },
+          ],
+        },
+      };
+      const repaired = (
+        await send("修正方案，先只读核对，不生成、不采用、不发布")
+      ).json();
+      expect(repaired.task.stage).toBe("planning");
+      expect(repaired.task.recovery).toBeNull();
+      expect(repaired.turns[0].status).toBe("failed");
+      expect(repaired.proposals).toHaveLength(0);
+    } finally {
+      finalReply = undefined;
+      requestedTool = undefined;
+      sessionId = previous;
+    }
+  });
   it("repairs missing prerequisites and a no-effect scope failure in one turn without duplicate runs", async () => {
     const previous = sessionId;
     const source = (

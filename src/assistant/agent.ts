@@ -1343,6 +1343,9 @@ export async function executeAssistantTurn(
         const task = await updateTask(db, turn, {
           ...fields,
           requirementProblem,
+          ...(current.recovery?.kind === "model_reply"
+            ? { recovery: null }
+            : {}),
           ...(quotaConflict
             ? { planValidationRequired: true }
             : !input.question
