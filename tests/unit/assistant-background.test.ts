@@ -97,6 +97,28 @@ describe("OPT-10 document definitions", () => {
       validateBackgroundRules(task("A.9.a", "表示甲类问题。"), documents),
     ).toThrow();
   });
+  it("gives an exact usable name when a hierarchy prefix was invented", () => {
+    const doc = [
+      {
+        id: "doc",
+        fragments: [{ index: 1, text: "A.1 风险\na) 甲类问题;\nb) 乙类问题;" }],
+      },
+    ];
+    let failure: unknown;
+    try {
+      validateBackgroundRules(task("A.1a 甲类问题", "甲类问题"), doc);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({
+      hint: expect.stringContaining(
+        "allowedValues 和 definitions.value 均直接填写「甲类问题」",
+      ),
+    });
+    expect(() =>
+      validateBackgroundRules(task("甲类问题", "甲类问题"), doc),
+    ).not.toThrow();
+  });
   it("does not relabel a semantic document heading as a user fallback", () => {
     const rules: any = task("甲类", "把甲类定义为乙类");
     rules.goal = "把甲类定义为乙类";

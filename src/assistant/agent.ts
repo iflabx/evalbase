@@ -1232,7 +1232,7 @@ export async function executeAssistantTurn(
                   required: ["value", "text"],
                 },
                 description:
-                  "附件分类必须为每个允许值逐字复制简短原文定义（包括标点，不总结）；编号不能代替定义。语义完整的条目名称可直接作为短定义，不复制整段。用户要求具体子项时，不用大类代替；用户指定大类时保留其层级。用户另指定的兜底标签可在该definitions条目注明basis:user，不能因此把所有附件类别改为user。",
+                  "附件分类的 allowedValues 与 definitions.value 优先使用原文完整条目名称，不拼接层级编号。每个允许值的 text 逐字复制短定义；语义完整的原文名称可直接同时用作 value 和 text，不复制整段。用户要求具体子项时不用大类代替，用户指定大类时保留其层级。用户另指定的兜底标签在该 definitions 条目注明 basis:user，text 逐字引用用户含该标签的短句，不自行编写定义；不把附件类别改为 user。",
               },
               clear: {
                 type: "boolean",
