@@ -1,0 +1,92 @@
+OPT-07 validation / 2026-10-08
+Application: 9027332f3b1db8610479e14e3aad6cb64efcb5ef
+Branch: codex/assistant-optimization
+Baseline: 2e9081e
+Review: Standards and Spec findings closed at patch 1666895317994872b2fc7a2cea57c315f70ee100c7ac18d171868ea64e79f46f; final delta only an explicit array type, type/lint/server compile green.
+Owner Web remains 65a5055e22267f1e29f54923f4e1bf9f488bb42d on 4217; health/ready ok; original data retained.
+Public full file: 102 passed before final partial-adoption guard; final affected subset: 8 passed / 94 skipped.
+Recovery: 21 task + 9 review + 3 plan = 33 passed. Browser: original 16 passed; final relevant 4 passed; screenshot recheck 1 passed.
+Real model: one conversation, 2 user prompts, 6 rows; preserved protected fields, actual full review, one run / no versions. An adoption guard rejection was self-corrected, not first-call success.
+Type/lint/frontend and server builds/docs/link/table/fence checks passed; broader suites not claimed.
+Archive SHA256: 9a6ac20f22ef3f58bb185070d1f1ca08e2f2b4c6331c0074c467c88c96078873  opt07-evidence.tar.gz
+Archive contains the unmodified raw logs below, including product RED, intermediate failures and fixture errors. See opt07-verification.md for their interpretation and exact commands.
+
+a9eddcf77e13205f90f8d2984543983528c4ebfa1aee0619ac9883339310bbab  evalbase-opt07-asset-public.log
+bd09a59ee341f2868973871e18620b24ba28bc9d8f206d481e4eae33b7657c73  evalbase-opt07-browser-final.log
+23f11789bc6801a5a3abfbd741582e34d6c28ffef4f97c242714510958b5a4ef  evalbase-opt07-browser.log
+2393bffdcfb8e58c80746ebcb2f5482c2604a258dc1656e6b14f5b5b31ab3a8a  evalbase-opt07-continuation.log
+22a026f89b70190ac2ca6f20c4e5f052c56c7515c489990e848dfd09cd6d7868  evalbase-opt07-contracts-final.log
+f350f5e0c900783b3a939728959febc223ebfb9fba7b3c80bb743c7ec34e0bf9  evalbase-opt07-contracts.log
+f930b132913fd44827824ac56ff564193704d2b6dd906644a1f54744616df601  evalbase-opt07-docs-final.log
+f930b132913fd44827824ac56ff564193704d2b6dd906644a1f54744616df601  evalbase-opt07-docs-initial.log
+98f4c80a02da4e2ae291c44914f3e5267f9e48df60f4cca355a5ff85fd20a898  evalbase-opt07-final-boundary-green.log
+dda7442b7a188cdd7b18c84e9a55bb2824ee3bd9313b81b9fd793da563598356  evalbase-opt07-final-partial-green.log
+100468920015b36405b31a2c87a1e922596ce921b750ae55abe4f586ef359626  evalbase-opt07-final-partial-static.log
+fcbbaac85228ca7aa1b536eae3d7f759f0384cbaba2373eb57f2f941e8dba2bf  evalbase-opt07-final-recovery.log
+bcb5a5ecd0c9ea289d29d09d5cad5694fdd6123af17f6db7249ac37b038794f4  evalbase-opt07-final-repair.log
+cf16b3ef13064f8ff4cbfdea1ee4d2087e414e0298b915fcfa29a4e2e5faae1c  evalbase-opt07-final-source-feedback.log
+ffde90b1165d9aac67644dcfd467ac2234232adc5a38668f7bd3cd33a073b507  evalbase-opt07-final-static-green.log
+ffde90b1165d9aac67644dcfd467ac2234232adc5a38668f7bd3cd33a073b507  evalbase-opt07-final-static.log
+b5210547abdbeca4199d0b5ba76a6c344a83ba8fedcd634c7a117906ff6a5c3e  evalbase-opt07-flow-repair.log
+64a556246d8d13247aa721ca14614bd0560e7f252501dff0ee00a50397d5bff6  evalbase-opt07-journal-green.log
+ce63e01302f192104a0db3c901df5fd60d9d8286b9dd79abf33ff741ffb9903c  evalbase-opt07-journal-tests.log
+aee8bafc9d3965d7cc81774cc5fe7bef427feebdf6cbac173e3cdb0c233d8a3c  evalbase-opt07-last-boundaries.log
+ccac90c871864074e9931790f32c647c129ee74e72c98bdefffe09c873567c9c  evalbase-opt07-markdown-final.log
+3aea884e12975facec398025a03f66703661b2c81222c3b19532f8ebd4ff745d  evalbase-opt07-partial-source-red-contract.log
+29fa10bb7d20909845ec41949f07c02a7afc7635306ec4a616721fe2d1ae028a  evalbase-opt07-partial-source-red.log
+89cc51b5d3d86a6ff1f1c629c8dc04cfd80314cab78cae026328d573f0e8788c  evalbase-opt07-public-final.log
+ac6b3482cceebc85d66fbb5cdcb7953034001289f97895128d3f709870575b5a  evalbase-opt07-quality-final.log
+66f63b97a68bd61a8803e1a753986b781c3a53e8afe2b1274efb718648b95599  evalbase-opt07-quality-proof.log
+4d754b2cc2f44e8ff2afb5b1a1cd526716aec4937472eae668a313cb3ea02d38  evalbase-opt07-quality.log
+8fbf33be61ae5a2ffd7198a6d003cd687cc985d828e7177b26faf3c3a887ba91  evalbase-opt07-real-complete.log
+7b63370dec19d40158ac0a6ae1c99d1725b075535572333f69ff958e97b4f494  evalbase-opt07-real-final.log
+c60c2177565e653e94ada3a7c6b6e8711f1ebc896837c72740c44fe6e1a13ec4  evalbase-opt07-real-proof.log
+7e1cb98868f633be2fd1f7cebd1574cb27c4902e3d1475a8aedb5546d1e5860d  evalbase-opt07-real.log
+f244c552a07c35d9a2b0fd51da604861a5d5c75b8f7682406bc1b0106c5ef7f4  evalbase-opt07-review-green.log
+e412280fc419a794f1809f0cc1caf7252ef2d0182d425b55f92d15c0e727a4dd  evalbase-opt07-review-red.log
+c9b74fd64d8db9c17694b1e1b44a4bd5c351d8c05722bb5152230185a31098a7  evalbase-opt07-review-repair.log
+cc8cebde55831bd0869d0af85b9284065fc489fa1dc67229d981df399a51b48d  evalbase-opt07-revision-green.log
+03f6ae1f49825e480370d22e800fc8f2680dbe0787f3350fd7951208ac4ffd27  evalbase-opt07-revision-red.log
+2bce0b291982de7e8a065cb9c46e5bc43d5d31ec4e53b7b435afdd3a9df49b7a  evalbase-opt07-screenshots-final.log
+3cfe0d9adf46d5682964e260cb9d6d56e3c46d8fd5abb12b99d40710ba8aecc8  evalbase-opt07-source-and-feedback.log
+84c03b9e90bb746743ff952cedc385432c904630b64985e32edf9917c1b1b513  evalbase-opt07-source-debug.log
+17a34a96a0c9d547690702e7fc33a2c5107bbcd2d48765014db3cca4335f7f46  evalbase-opt07-source-feedback-green.log
+80f5ad480c8ec4ec1ef82e93969d3ef30f3846de0cd54415a677de23e1f3db8e  evalbase-opt07-source-green.log
+fae99f744eded32a66e2f09a2709450359e0ce1fb271a145b6ad0127aad7e3c5  evalbase-opt07-source-red.log
+56643481d4bd5dd19ebabc29837cee6717a1a7f5fd388a281efb5967a8ca2e8c  evalbase-opt07-source-settled.log
+6cee539863f9995933a1c99f0bb7762b1a534e44276af8795910c45a92308f88  evalbase-opt07-static-final.log
+ffde90b1165d9aac67644dcfd467ac2234232adc5a38668f7bd3cd33a073b507  evalbase-opt07-static-recheck.log
+2bbf5f9e28357d7df4525d37a5a1d1fc48e714d6f252ed704368849e16afea54  evalbase-opt07-targeted.log
+69ecf583e5c6d8f3fd9259eb7319ab46b2e2efbaa2482cb0e9491dbab036ba1b  evalbase-opt07-tasks-final.log
+e8ff06ea60aafceb4ffce03a4d126302cf5e25633fa9bfe95c644ebc83871ad6  evalbase-opt07-tasks-first.log
+f8ae56559c181a31217376592f2d638932e0facdc195a3c1d3a5085b643baefe  evalbase-opt07-tasks-repair.log
+d41a649ef30105abf8e728bc5c720a10f7090f8b439abd7d75bcf30b168031c5  evalbase-opt07-tasks-verified.log
+
+Final log summaries (ANSI stripped):
+evalbase-opt07-public-final.log
+ Test Files  1 passed (1)
+      Tests  102 passed (102)
+RESULT=0
+evalbase-opt07-final-recovery.log
+ Test Files  3 passed (3)
+      Tests  33 passed (33)
+evalbase-opt07-final-partial-green.log
+ Test Files  1 passed (1)
+      Tests  8 passed | 94 skipped (102)
+RESULT=0
+evalbase-opt07-browser-final.log
+
+evalbase-opt07-screenshots-final.log
+
+evalbase-opt07-final-static-green.log
+RESULT=0
+evalbase-opt07-docs-final.log
+docs:check passed: 38 Ticket lifecycle rows, commit references, Gate state, and stale-status phrases
+RESULT=0
+evalbase-opt07-markdown-final.log
+OPT-07 links, tables, fences and JSON examples passed; no Mermaid changed
+RESULT=0
+
+Browser final summaries:
+evalbase-opt07-browser-final.log: 4 passed (41.3s)
+evalbase-opt07-screenshots-final.log: 1 passed (32.8s)
