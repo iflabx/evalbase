@@ -2,6 +2,22 @@
 
 Status: ready-for-agent
 Implementation: in-progress
+Blocked by: [OPT-08](08-review-and-delivery.md)
+
+## 2026-10-08 整改承接
+
+本 Ticket 保留历史实施和未完成状态，不再单独安排开发。当前范围以 [助手 PRD](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)、[整改方案](../../../docs/assistant-remediation-plan.md) 和 [Spec](../spec.md#整改批次执行约定) 为准；下面按原文保留的 Scope 授权、验收和 Progress 仅为历史记录，不能越过当前授权与批次规则。
+
+| 原要求 | 承接 Ticket | 收口依据 |
+| --- | --- | --- |
+| LONG-1 预算与续做 | [OPT-07](07-execution-and-recovery.md) | R07-2–3 的有界恢复与去重证据 |
+| LONG-2 方案及执行模式 | [OPT-06](06-active-requirements.md)、[OPT-07](07-execution-and-recovery.md) | R06-1–3 的有效方案；R07-1 的真实步骤完成 |
+| LONG-3 分类、选取及保护 | [OPT-07](07-execution-and-recovery.md)、[OPT-08](08-review-and-delivery.md) | R07-5 的固定范围；R08-1/4 的通用内容核对 |
+| LONG-4 类别与完整核对 | [OPT-06](06-active-requirements.md)、[OPT-08](08-review-and-delivery.md) | R06-2 的字段归属；R08-4/6 的结构及内容证据 |
+| LONG-5 进度及诊断 | [OPT-07](07-execution-and-recovery.md)、[OPT-08](08-review-and-delivery.md) | R07-7 的真实状态；R08-3/7 的工作区验收 |
+| LONG-6 同会话二百条及复审 | [OPT-08](08-review-and-delivery.md) | R08-2/5/6/7；按当前测试计划验证已有成果恢复及完整交付 |
+
+该依赖只用于最终补记收口结论；OPT-06 以现有实现为起点，不依赖本 Ticket 完成。新任务达标后逐项引用实际证据，才可更新本 Ticket，不能因转交而标为 completed；Owner 验收仍在同一最终 checkpoint 记录。
 
 ## Scope
 
@@ -77,3 +93,7 @@ Owner 于 2026-10-06 授权逐项调研、文档、审查、开发和测试；�
 | 恢复     | 原消息、实际操作记录、停止/重试入口                  | 预算续做明确标为自动事件；停止和权限失效阻止旧执行                         | 不新增任意代码/网络工具，不改冻结原型或 frontend-v1 |
 
 首次范围保护 red：局部改写后候选从选中的三条扩大为整批六条。分类紧凑输出 red：新配方仍要求重复输出受保护原题/答案。修复后分别验证固定采用身份和服务端字段恢复。
+
+## Comments
+
+- 2026-10-08：未完成范围映射至 OPT-06–08，历史正文与结果保留。当前仅编写任务，未补签 LONG 验收，也未恢复代码开发。

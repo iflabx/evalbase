@@ -3,12 +3,22 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-08：Owner 当前只授权 [整改方案与文档](../../docs/assistant-remediation-plan.md)。OPT-01–04 的历史实施结果保留；OPT-05 的真实闭环仍未完成。整改设计已记录、实现未启动，不因历史连续开发授权自动继续修改代码或切换环境。暂不新增 Ticket；取得后续开发授权后按同一整改批次执行。方案复审保留通用任务的理解、规划、执行、调整和交付全流程，按现有有序步骤和业务能力实施；不建设通用规则/依赖引擎，不以修复已知故障作为完整验收的替代。具体取舍统一见整改方案。
+2026-10-08：Owner 当前授权编写整改方案及 Tickets。新增 OPT-06–08，承接已审查方案的三个功能部分，共一个整改批次、一个最终人工 checkpoint。新 Ticket 实施均未开始；OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。编写 Ticket 不授权修改代码、调用模型或切换环境。
 
 - 历史授权：Owner 曾在持续目标中授权调研、文档、审查、开发、测试及最终 200 条实用测试集；原四项工作连续执行。本次以开头的文档授权与实施状态为准。
-- 基线 `4c71572d79187a0c834f6ef990187c60257ca3de`，工作分支 `codex/assistant-optimization`，工作区 `/home/bistu/EvalBase/.worktrees/agent-data-processing`。基线干净，原隔离环境和历史 200 条版本保留。
+- 历史优化基线 `4c71572d79187a0c834f6ef990187c60257ca3de`，工作分支 `codex/assistant-optimization`，工作区 `/home/bistu/EvalBase/.worktrees/agent-data-processing`。基线干净，原隔离环境和历史 200 条版本保留。
 - 当前产品行为以 [助手 PRD §7](../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手) 为准；领域含义见 [CONTEXT](../../CONTEXT.md)，执行设计见 [架构 §9](../../docs/architecture/data-selection-and-assistant.md#9-方案执行与预算续做)。[整改方案](../../docs/assistant-remediation-plan.md) 组织实施顺序，测试计划定义验证；早期优化/长任务合同保留未冲突约束和历史证据，本规格只记实际进度。
-- 复用 implement + ponytail full 和既有公共 seams。用户授权自行确定测试；首个 red 为 HTTP 处理运行漏一条后重试跳过缺失输出，green 为保留已成功记录并补回缺失记录。
+- 实施时沿用 implement + ponytail full、TDD 和现有公共测试入口；新 Ticket 分别定义首个 red/green，历史缺失恢复验证继续保留。
+
+## 整改批次执行约定
+
+- 文档起点为 `24a7434d3dfb6e03a2c2a1fe0befbca67d948d6f`，应用代码仍为 `65a5055`；沿用 `codex/assistant-optimization` 和现有工作区，不从 main 重建或改写已有开发提交。实施前核对最新 HEAD、工作区和调用方。
+- 顺序为 OPT-06 → OPT-07 → OPT-08。OPT-06 依赖的是现有实现，不能把 OPT-05 的最终验收设为前置条件而形成循环；OPT-05 不再单独排期，其未完成要求映射见原 Ticket 开头。
+- `ready-for-agent` 表示任务已写清；仍须有开发授权并满足 `Blocked by`。Owner 授权整个整改批次后，前一张满足本张验收及必要审阅即可继续下一张，不逐张要求人工 checkpoint。只授权单张时仅执行该张。
+- 每张记录实际提交、直接相关测试、路由处置及剩余限制；历史证据不能代替新验收。前两张通过自动验证和必要审阅可记实施完成并解锁依赖，整个批次的 Owner 验收仍为 pending。OPT-08 负责固定版本的完整流程和最终 checkpoint。
+- 所有 Ticket 复用现有权限、数据保护、三字段合同、后台任务及 donor UI。必要的类型/lint/构建、公开正常/关键失败路径和 Standards/Spec 审阅按实际改动选择；P0/P1 阻止本张完成。兼容、并发和权限用可控模型与隔离持久化验证；语义任务使用有限真实样本。
+- 只保留一个长期验收项目、管理员与编辑两账号；自动测试另用隔离库/桶。受影响服务切到最终固定版本并核对健康、就绪及前端请求，记录未重建服务的原 SHA/镜像。保留用户资料、失败会话和历史版本；资源回收只处理已确认可处置的本批次资源。
+- 冻结原型和 frontend-v1 只读；正式 UI 在 frontend-v3，具体变化按各 Ticket 对齐表及当前助手 PRD。检查通过不授权合并、GitHub 推送、tag 或正式部署。
 
 ## 功能与完成台账
 
@@ -18,11 +28,16 @@ Implementation: in-progress
 | [OPT-02](issues/02-integration.md)         | 多批任务成果、采用同步、溯源下载与中文名称  | 缺失恢复已验证；独立修复不等待 OPT-01 其他项     | completed      | 七批合为一个资产采用，保留七个真实来源；发布、CSV/ZIP 全量比对通过                               |
 | [OPT-03](issues/03-background.md)          | 背景附件、持久要求、短提示与同会话连续任务  | OPT-01/02；文档提取独立进行                      | completed      | PDF/MD/TXT 提取、权限与冻结回归通过；同会话真实 GB PDF 已使用                                    |
 | [OPT-04](issues/04-workspace.md)           | 宽工作区、状态与结果整理、最终 200 条闭环   | OPT-01/02/03                                     | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                        |
-| [OPT-05](issues/05-long-task-execution.md) | 方案执行、预算恢复、后台分类与固定结果选取  | OPT-01/02/03/04 已交付；最新失败会话只读审查完成 | in-progress    | 57 项助手 HTTP、10 项 Worker、159 项单元与 15 项浏览器通过；最终 6 项窄回归及 Standards/Spec 通过，真实模型闭环 pending |
+| [OPT-05](issues/05-long-task-execution.md) | 历史长任务执行与未完成验收 | 原功能基础保留；待 OPT-06–08 对应证据收口 | in-progress | 历史局部证据保留；不作为新增整改通过证明 |
+| [OPT-06](issues/06-active-requirements.md) | 目标理解、生效要求、规则反馈及摘要 | 现有 OPT-01–05 代码基础 | not-started | R06-1–5 pending |
+| [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复 | OPT-06 | not-started | R07-1–7 pending |
+| [OPT-08](issues/08-review-and-delivery.md) | 候选审核、通用任务闭环、唯一 checkpoint | OPT-07 | not-started | R08-1–7 pending；Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。最新历史完成记录指原四项；OPT-05 与本次整改尚未交付，不改写历史结论。
 
 ## 验证矩阵
+
+下表保留原 OPT-01–04 的验证编号；本轮 R06/R07/R08 验收分别记录于各 Ticket，详细用例统一引用 [测试计划 §5](../../docs/test-plan-data-selection-and-assistant.md#5-整改验收计划)。
 
 | 编号    | 要求                                                         | 权威证据                                          |
 | ------- | ------------------------------------------------------------ | ------------------------------------------------- |
@@ -72,3 +87,5 @@ Implementation: in-progress
 ## 最新完成记录
 
 2026-10-06：四项实施完成，最终代码 `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`，之前 Comments 为按时间追加的历史进展。真实新 v1 共 200 条，分类 100/50/50，24 条操作人员内容修正；CSV/ZIP 和全部来源已核对。Standards/Spec 最后窄复审无 P0/P1/P2，发布完成/回执恢复/下一任务共 3 项公开回归、类型/lint 通过。详见 [闭环证明](verification.md)。Owner 人工验收尚未代签；不合并、不推送、不正式部署。
+
+- 2026-10-08：按 Owner 要求拆为 OPT-06–08 三张功能 Ticket，依次实施、同批验收。当前仅完成任务文档与依赖整理，所有新增验收项 pending；未修改应用或切换环境。
