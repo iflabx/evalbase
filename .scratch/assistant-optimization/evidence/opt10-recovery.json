@@ -1,0 +1,274 @@
+{
+  "applicationSha": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+  "recoveryApplicationSha": "a0940e953ce56a462ac9845418d6fe90e86314f3",
+  "sameSession": "conversation_f8efac20a1d84fe999174a475ad5d821",
+  "shortRequest": "按附件31个子项名称给这200条分类，无法归类时用其他。原字段不变，继续执行到候选审核。",
+  "priorFailedTrials": [
+    {
+      "turnId": "turn_2a705e0e05734c158735d34273decf9b",
+      "prompt": "纠正刚才的错误，按附件真实定义继续处理已选的200条，保留原文和已有成果，做到候选审核为止。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_b200941a20c04d7588884862131c91bd",
+      "prompt": "继续纠正附件分类，保留这200条，做到候选审核为止。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_fee773e03c3f499f90bb638f9d6a75ca",
+      "prompt": "不用再确认，按附件的具体风险修正这200条，完成候选审核。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_a0e59db37d8543dd89341318501b730b",
+      "prompt": "按附件31项具体风险修正这200条；无法归类时用其他。保留原字段，完成候选审核。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_d03148d84ccf45318fcd13a0a442d743",
+      "prompt": "继续完成这200条的分类修正与审核。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_4c2e1387b0c8496cb3a356272f2f11a0",
+      "prompt": "按附件原文的具体风险名称，继续修正这200条并审核。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_9167ea65f76448e4b686e30bf73dd401",
+      "prompt": "按附件31个子项名称给这200条分类，无法归类时用其他。原字段不变，继续执行到候选审核。",
+      "status": "failed"
+    },
+    {
+      "turnId": "turn_a628705483ea46848517027a2751f4ec",
+      "prompt": "按附件31个子项名称给这200条分类，无法归类时用其他。原字段不变，继续执行到候选审核。",
+      "status": "failed"
+    }
+  ],
+  "observations": [
+    {
+      "turnId": "turn_2a705e0e05734c158735d34273decf9b",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 7,
+      "durationMs": 56980,
+      "modelSteps": 7,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_b200941a20c04d7588884862131c91bd",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 6,
+      "durationMs": 35271,
+      "modelSteps": 5,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_fee773e03c3f499f90bb638f9d6a75ca",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 3,
+      "durationMs": 25010,
+      "modelSteps": 3,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_a0e59db37d8543dd89341318501b730b",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 3,
+      "durationMs": 38163,
+      "modelSteps": 3,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_d03148d84ccf45318fcd13a0a442d743",
+      "errorCode": "assistant_background_rule_mismatch",
+      "toolCalls": 7,
+      "durationMs": 67018,
+      "modelSteps": 6,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_4c2e1387b0c8496cb3a356272f2f11a0",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 3,
+      "durationMs": 27896,
+      "modelSteps": 3,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_9167ea65f76448e4b686e30bf73dd401",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 9,
+      "durationMs": 80389,
+      "modelSteps": 8,
+      "finishReason": "not_returned"
+    },
+    {
+      "turnId": "turn_a628705483ea46848517027a2751f4ec",
+      "errorCode": "assistant_tool_input_invalid",
+      "toolCalls": 3,
+      "durationMs": 35876,
+      "modelSteps": 2,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_59a06d33702143ccbb58e5c9a200b9ef",
+      "toolCalls": 4,
+      "durationMs": 48684,
+      "modelSteps": 3,
+      "finishReason": "tool-calls"
+    },
+    {
+      "turnId": "turn_4f0ae9b8cc3b44a9a76dd19e44732fb5",
+      "toolCalls": 3,
+      "durationMs": 12585,
+      "modelSteps": 2,
+      "finishReason": "stop"
+    }
+  ],
+  "effectiveCandidates": {
+    "rows": 200,
+    "protectedChanged": 0,
+    "invalidLabels": 0,
+    "sourceChanged": 0,
+    "sameFixedInputs": true
+  },
+  "review": {
+    "runId": "processing_ab31aa47a7884bd4a859adcf08f07930",
+    "total": 200,
+    "labels": [
+      {
+        "count": 89,
+        "label": "违规"
+      },
+      {
+        "count": 111,
+        "label": "不违规"
+      }
+    ],
+    "complete": true,
+    "countKind": "new",
+    "duplicates": 0,
+    "formatIssues": [],
+    "missingCount": 0,
+    "expectedCount": 200,
+    "outsideLabels": 0,
+    "candidateCount": 200,
+    "countSatisfied": true,
+    "emptyQuestions": 0,
+    "semanticReview": "required",
+    "classifications": [
+      {
+        "key": "gbRisk",
+        "field": "metadata",
+        "values": [
+          {
+            "count": 4,
+            "value": "其他法律、行政法规禁止的内容"
+          },
+          {
+            "count": 14,
+            "value": "危害他人身心健康"
+          },
+          {
+            "count": 7,
+            "value": "国别歧视内容"
+          },
+          {
+            "count": 143,
+            "value": "其他"
+          },
+          {
+            "count": 10,
+            "value": "宣扬暴力、淫秽色情"
+          },
+          {
+            "count": 1,
+            "value": "危害国家安全和利益、损害国家形象"
+          },
+          {
+            "count": 1,
+            "value": "内容不准确,严重不符合科学常识或主流认知"
+          },
+          {
+            "count": 2,
+            "value": "侵害他人个人信息权益"
+          },
+          {
+            "count": 1,
+            "value": "性别歧视内容"
+          },
+          {
+            "count": 4,
+            "value": "侵害他人隐私权"
+          },
+          {
+            "count": 5,
+            "value": "煽动颠覆国家政权、推翻社会主义制度"
+          },
+          {
+            "count": 2,
+            "value": "民族歧视内容"
+          },
+          {
+            "count": 2,
+            "value": "侵害他人名誉权"
+          },
+          {
+            "count": 1,
+            "value": "地域歧视内容"
+          },
+          {
+            "count": 1,
+            "value": "其他方面歧视内容"
+          },
+          {
+            "count": 1,
+            "value": "职业歧视内容"
+          },
+          {
+            "count": 1,
+            "value": "健康歧视内容"
+          }
+        ],
+        "missing": 0,
+        "satisfied": true,
+        "outsideValues": 0,
+        "additionalValues": 0,
+        "quotaDifferences": []
+      }
+    ],
+    "additionalLabels": 0,
+    "compatibilityProblem": null,
+    "protectedFieldChanges": 0
+  },
+  "processingRun": {
+    "id": "processing_ab31aa47a7884bd4a859adcf08f07930",
+    "inputCount": 200,
+    "outputCount": 200,
+    "savedBatches": 10,
+    "recordsSha256": "a785b243e678b4a5fae125a8d9d6f6c96b1e4926fdc501db28538179d9e806b0"
+  },
+  "originalRuns": [
+    {
+      "id": "processing_712ed714444f453cb292c75006be987c",
+      "recordsSha256": "49e02b1ffe2ddbd4e096cc9b3a03e56e105cb5141d675b009c58fa27a947ceb1",
+      "unchanged": true
+    },
+    {
+      "id": "processing_380e733122004beab6a64366a120da84",
+      "recordsSha256": "f63bc9a816d7d196e6a6f4b7599f10e67d041446d7fc80357641250158c98eed",
+      "unchanged": true
+    }
+  ],
+  "originalTurnsUnchanged": true,
+  "taskStage": "awaiting_confirmation",
+  "taskError": null,
+  "proposalStatus": "pending",
+  "proposalCount": 200,
+  "draftRecordCount": 0,
+  "adoptedByAgent": false,
+  "publishedByAgent": false,
+  "semanticReview": "required",
+  "full31CoverageClaimed": false,
+  "newSamplingRunCreated": false
+}

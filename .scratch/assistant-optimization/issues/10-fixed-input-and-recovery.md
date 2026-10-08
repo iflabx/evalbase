@@ -1,7 +1,7 @@
 # OPT-10 固定输入、候选汇总与方案恢复修复
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 Blocked by: none
 
 优先级：P1。2026-10-09 Owner 已授权完成 OPT-10 开发。沿用 `codex/assistant-optimization` 与 `/home/bistu/EvalBase/.worktrees/agent-data-processing`；以现有 OPT-09 实现为基础，不等待 OPT-09 或 OPT-05 最终验收，避免循环依赖。开发后共用现有最终 Owner checkpoint。
@@ -102,3 +102,5 @@ Blocked by: none
 
 - 2026-10-09：根据 Owner 原会话只读审查创建；已确认固定输入、依据变化、候选汇总和恢复参数之间的连锁问题。Implementation 为 not-started，验收矩阵尚未执行。
 - 2026-10-09：Owner 授权实施。公开 SDK/HTTP 固定输入回归先红后绿，开始补齐旧候选恢复、附件规则及采用/发布检查；仍在开发和验证中。
+
+- 2026-10-09：实施完成，最终应用提交 `4ee577c0d0f3e4d8def90fb12153d78740fdcd98`。R10-1–5/7 的公开正常及失败边界定向回归通过；原失败会话用短请求修正规则、沿用固定 200 条、自动进入待确认，历史和保护字段保留。R10-6 桌面/窄窗口及刷新检查完成，三项服务镜像与健康 SHA 一致。Standards/Spec 无剩余 P0/P1。全部路由 reused，无新增表或 API；实际失败、检查命令、剩余内容审核和环境证据见 [实施验证](../opt10-verification.md)。Owner 最终验收 pending，OPT-05/09 历史及退回状态未代签；不解锁自动执行下一张 Ticket。

@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-09 最新状态：Owner 已授权 [OPT-10](issues/10-fixed-input-and-recovery.md) 开发，正在修复原会话的固定输入、候选汇总、背景规则和方案恢复问题。实际验证见 [OPT-10 记录](opt10-verification.md)。OPT-09 按验收退回规则记 in-progress，既有证据保留。当前修复与验收状态以本段和下表为准，以下原交付记录不作为最新故障已关闭的证明。
+2026-10-09 最新状态：[OPT-10](issues/10-fixed-input-and-recovery.md) 已完成实施和复审，应用固定 `4ee577c` 已切入同一 4217 环境；原失败会话沿用固定 200 条恢复至待确认，内容及最终 Owner 验收 pending。实际验证见 [OPT-10 记录](opt10-verification.md)。OPT-09 按验收退回规则记 in-progress，既有证据保留。当前修复与验收状态以本段和下表为准，以下原交付记录不作为最新故障已关闭的证明。
 
 2026-10-09：Owner 授权的 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md) 已实施、验证并复审完成。最终应用提交 `abc98639b391c958db8e48c67ce4c34f4272e69a` 已统一切入 4217 的三项应用服务；证据见 [OPT-09 验证记录](opt09-verification.md)。沿用当前分支及隔离环境，保留用户资料、失败会话和历史版本；OPT-06–08 历史记录不改写。整个规格仍因 OPT-05 内容交付及最终 Owner 验收未完成而保持 in-progress，不包含合并、推送或正式部署。
 
@@ -32,12 +32,12 @@ Implementation: in-progress
 | [OPT-02](issues/02-integration.md)            | 多批任务成果、采用同步、溯源下载与中文名称  | 缺失恢复已验证；独立修复不等待 OPT-01 其他项 | completed      | 七批合为一个资产采用，保留七个真实来源；发布、CSV/ZIP 全量比对通过                                 |
 | [OPT-03](issues/03-background.md)             | 背景附件、持久要求、短提示与同会话连续任务  | OPT-01/02；文档提取独立进行                  | completed      | PDF/MD/TXT 提取、权限与冻结回归通过；同会话真实 GB PDF 已使用                                      |
 | [OPT-04](issues/04-workspace.md)              | 宽工作区、状态与结果整理、最终 200 条闭环   | OPT-01/02/03                                 | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                          |
-| [OPT-05](issues/05-long-task-execution.md) | 历史长任务执行与未完成验收 | 原功能基础保留；待 OPT-10 补修及对应证据收口 | in-progress | 历史局部证据保留；不作为新增整改通过证明 |
+| [OPT-05](issues/05-long-task-execution.md) | 历史长任务执行与未完成验收 | 原功能基础保留；待含 OPT-10 证据的最终 Owner 内容验收 | in-progress | 历史局部证据保留；不作为新增整改通过证明 |
 | [OPT-06](issues/06-active-requirements.md)    | 目标理解、生效要求、规则反馈及摘要          | 现有 OPT-01–05 代码基础                      | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                  |
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
-| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 最终收口待 OPT-10 | in-progress | 三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
-| [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | in-progress | [实施与验证](opt10-verification.md)，Owner pending |
+| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 待最终 Owner 验收（含 OPT-10 证据） | in-progress | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
+| [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | completed | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
@@ -102,3 +102,5 @@ Implementation: in-progress
 
 - 2026-10-08 OPT-08 实施与最终交付完成：通用小样本、目标式请求、来源对照与唯一发布闭环见 [验证记录](opt08-verification.md)。4217 沿用 1 项目、2 账号；Web `1aa3707`、Worker/Model Worker `7ed8a3a`，健康与实际浏览器请求通过。原 200 条复用后核对未通过、保存方案尚未实际执行；不把旧内容未完成改签为成功。整改批次 Owner checkpoint pending，OPT-05 保留原未完成状态，无合并或推送。
 - 2026-10-09 OPT-09 实施与验证完成：当前依赖、无副作用纠错/未知写保护、有效范围/背景、最初字段基线及实际发布核对已补修，三项服务固定 `abc9863`。同会话三条短提示的通用 6 条任务完成唯一发布；既有失败会话完成只读恢复并清除过期提示，原 200 条候选哈希不变。详细证据和范围见 [OPT-09 验证](opt09-verification.md)，最终 Owner checkpoint 及 OPT-05 内容交付仍未收口。
+
+- 2026-10-09 OPT-10 实施收口：固定输入、有效候选与确认范围一致，文档依据及用户兜底受校验，参数错误可有界纠正；原会话必要重做同一 200 条分类并自动到采用卡，未采用/发布用户数据。最终应用 `4ee577c`、16 项定向 green、三服务及浏览器证据见 [验证记录](opt10-verification.md)。OPT-10 Implementation completed；整个批次、OPT-05 内容交付及 OPT-09 Owner 退回验收仍 pending，历史记录保留。

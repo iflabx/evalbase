@@ -1,0 +1,114 @@
+{
+  "applicationSha": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+  "affectedRuns": [
+    {
+      "name": "opt10-regression",
+      "exitCode": 1,
+      "summary": [
+        "Test Files  3 failed | 3 passed (6)",
+        "Tests  5 failed | 151 passed | 1 skipped (157)",
+        "Duration  248.61s (transform 1.96s, setup 68ms, import 3.59s, tests 243.93s, environment 1ms)"
+      ]
+    },
+    {
+      "name": "opt10-regression-final",
+      "exitCode": 1,
+      "summary": [
+        "Test Files  1 failed | 5 passed (6)",
+        "Tests  2 failed | 156 passed | 1 skipped (159)",
+        "Duration  247.20s (transform 2.04s, setup 74ms, import 3.71s, tests 242.41s, environment 1ms)"
+      ]
+    },
+    {
+      "name": "opt10-verified-closure",
+      "exitCode": 0,
+      "summary": [
+        "Test Files  3 passed | 1 skipped (4)",
+        "Tests  12 passed | 124 skipped (136)",
+        "Duration  22.93s (transform 1.61s, setup 65ms, import 2.60s, tests 19.59s, environment 1ms)"
+      ]
+    },
+    {
+      "name": "opt10-distinct-error-green",
+      "exitCode": 0,
+      "summary": [
+        "Test Files  2 passed (2)",
+        "Tests  14 passed | 114 skipped (128)",
+        "Duration  19.39s (transform 1.68s, setup 37ms, import 2.57s, tests 16.43s, environment 0ms)"
+      ]
+    },
+    {
+      "name": "opt10-exact-name-green",
+      "exitCode": 0,
+      "summary": [
+        "Test Files  2 passed (2)",
+        "Tests  15 passed | 114 skipped (129)",
+        "Duration  19.41s (transform 1.56s, setup 35ms, import 2.44s, tests 16.60s, environment 0ms)"
+      ]
+    },
+    {
+      "name": "opt10-union-red",
+      "exitCode": 1,
+      "summary": [
+        "Test Files  1 failed (1)",
+        "Tests  1 failed | 115 skipped (116)",
+        "Duration  5.30s (transform 1.66s, setup 36ms, import 2.55s, tests 2.49s, environment 0ms)"
+      ]
+    },
+    {
+      "name": "opt10-union-green",
+      "exitCode": 1,
+      "summary": [
+        "Test Files  1 failed | 1 passed (2)",
+        "Tests  1 failed | 20 passed | 109 skipped (130)",
+        "Duration  24.64s (transform 1.70s, setup 47ms, import 2.59s, tests 21.63s, environment 0ms)"
+      ]
+    },
+    {
+      "name": "opt10-union-verified",
+      "exitCode": 0,
+      "summary": [
+        "Test Files  2 passed (2)",
+        "Tests  16 passed | 114 skipped (130)",
+        "Duration  19.37s (transform 1.66s, setup 32ms, import 2.55s, tests 16.41s, environment 0ms)"
+      ]
+    }
+  ],
+  "typecheck": 0,
+  "affectedLint": 0,
+  "formalBuild": 0,
+  "fullRepositorySuiteRun": false,
+  "loadTestRun": false,
+  "reviews": {
+    "Standards": "no remaining code blocker",
+    "Spec": "no remaining code blocker",
+    "realRecovery": "same original session awaiting_confirmation; content Owner pending"
+  },
+  "providerBranchChecks": [
+    {
+      "case": "execute",
+      "finishReason": "tool-calls",
+      "input": {
+        "nextAction": "read_processing"
+      },
+      "passed": true
+    },
+    {
+      "case": "clarify",
+      "finishReason": "tool-calls",
+      "input": {
+        "nextAction": "none",
+        "question": "你希望随机选取还是均匀覆盖？"
+      },
+      "passed": true
+    }
+  ],
+  "filterFailure": "opt10-union-green selected an old dependent test while skipping its prior session fixture; exact OPT-10 selection passed without business change",
+  "documentation": {
+    "docsCheckExit": 0,
+    "lifecycleRows": 38,
+    "changedMarkdownAndJsonExit": 0,
+    "jsonEvidenceParsed": 3,
+    "mermaidChanged": false
+  }
+}

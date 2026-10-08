@@ -1,0 +1,73 @@
+{
+  "applicationSha": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+  "composeProject": "evalbase-agent-owner-checkpoint",
+  "services": [
+    {
+      "name": "/evalbase-agent-owner-checkpoint-model-worker-1",
+      "image": "evalbase-agent-checkpoint:4ee577c0d0f3",
+      "revision": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+      "status": "running",
+      "health": null
+    },
+    {
+      "name": "/evalbase-agent-owner-checkpoint-web-1",
+      "image": "evalbase-agent-checkpoint:4ee577c0d0f3",
+      "revision": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+      "status": "running",
+      "health": "healthy"
+    },
+    {
+      "name": "/evalbase-agent-owner-checkpoint-worker-1",
+      "image": "evalbase-agent-checkpoint:4ee577c0d0f3",
+      "revision": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+      "status": "running",
+      "health": null
+    }
+  ],
+  "ready": [
+    200,
+    {
+      "status": "ok",
+      "dependencies": {
+        "postgresql": "ok",
+        "minio": "ok"
+      },
+      "git_sha": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98"
+    }
+  ],
+  "countsBefore": {
+    "runs": 75,
+    "accounts": 2,
+    "projects": 1,
+    "sessions": 29
+  },
+  "countsAfter": {
+    "runs": 76,
+    "accounts": 2,
+    "projects": 1,
+    "sessions": 29
+  },
+  "backup": {
+    "gzipChecked": true,
+    "mode": "600"
+  },
+  "browser": {
+    "desktop": [
+      1440,
+      1000
+    ],
+    "narrow": [
+      480,
+      900
+    ],
+    "narrowDocumentClientWidth": 480,
+    "narrowDocumentScrollWidth": 480,
+    "narrowDialogClientWidth": 479,
+    "narrowDialogScrollWidth": 479,
+    "unsentInputPreserved": true,
+    "temporaryInputCleared": true,
+    "viewportOverrideReset": true,
+    "refreshedCandidateCount": 200
+  },
+  "ownerAcceptance": "pending"
+}
