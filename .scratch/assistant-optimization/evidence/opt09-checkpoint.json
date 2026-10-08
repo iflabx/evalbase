@@ -1,0 +1,90 @@
+{
+  "applicationSha": "abc98639b391c958db8e48c67ce4c34f4272e69a",
+  "services": [
+    {
+      "service": "model-worker",
+      "image": "evalbase-agent-checkpoint:abc98639b391",
+      "imageId": "sha256:3b301ce4f6e3555bea221751d540435a8fa7eacf8c070decda921f1742a7fa88",
+      "gitSha": "abc98639b391c958db8e48c67ce4c34f4272e69a",
+      "status": "running",
+      "health": null
+    },
+    {
+      "service": "web",
+      "image": "evalbase-agent-checkpoint:abc98639b391",
+      "imageId": "sha256:3b301ce4f6e3555bea221751d540435a8fa7eacf8c070decda921f1742a7fa88",
+      "gitSha": "abc98639b391c958db8e48c67ce4c34f4272e69a",
+      "status": "running",
+      "health": "healthy"
+    },
+    {
+      "service": "worker",
+      "image": "evalbase-agent-checkpoint:abc98639b391",
+      "imageId": "sha256:3b301ce4f6e3555bea221751d540435a8fa7eacf8c070decda921f1742a7fa88",
+      "gitSha": "abc98639b391c958db8e48c67ce4c34f4272e69a",
+      "status": "running",
+      "health": null
+    }
+  ],
+  "health": {
+    "/health": {
+      "status": "ok",
+      "git_sha": "abc98639b391c958db8e48c67ce4c34f4272e69a"
+    },
+    "/health/ready": {
+      "status": "ok",
+      "dependencies": {
+        "postgresql": "ok",
+        "minio": "ok"
+      },
+      "git_sha": "abc98639b391c958db8e48c67ce4c34f4272e69a"
+    }
+  },
+  "beforeCounts": {
+    "projects": 1,
+    "accounts": 2,
+    "sessions": 29,
+    "versions": 6,
+    "assets": 16,
+    "runs": 73,
+    "activeRuns": 0,
+    "drafts": 13
+  },
+  "afterCounts": {
+    "projects": 1,
+    "accounts": 2,
+    "sessions": 29,
+    "versions": 6,
+    "assets": 16,
+    "runs": 73,
+    "activeRuns": 0,
+    "drafts": 13
+  },
+  "databaseBackup": {
+    "path": "/home/bistu/EvalBase/.worktrees/agent-data-processing/local-acceptance-evidence/opt09-owner-before-e1cd89489a39.sql.gz",
+    "gzipChecked": true,
+    "mode": "0600"
+  },
+  "privateEnvironmentBackup": {
+    "path": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/agent-data-processing/checkpoint.env.pre-opt09-e1cd89489a39",
+    "mode": "0600"
+  },
+  "browser": {
+    "url": "http://127.0.0.1:4217/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/datasets",
+    "desktop": {
+      "width": 1440,
+      "height": 1000,
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "narrow": {
+      "width": 480,
+      "height": 900,
+      "scrollWidth": 480,
+      "clientWidth": 480
+    },
+    "inputPreservedAcrossResize": true,
+    "viewportReset": true
+  },
+  "ownerAcceptance": "pending"
+}

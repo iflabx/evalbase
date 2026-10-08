@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-09",
+  "model": "qwen3.8-27b-un",
+  "environment": "disposable PostgreSQL/MinIO, Owner model settings read only",
+  "sessionId": "conversation_dacd4da1cc9546339231363c58aab507",
+  "userPrompts": [
+    "根据这批资料和附件，帮我准备6条测试数据，覆盖附件中的类别。你安排方法，直接整理成候选给我审核。",
+    "改成费用4条、进度和账号各1条，仍保留原问题和答案。",
+    "结果可以，采用全部结果新建“六条审核样例”测试集，准备发布。"
+  ],
+  "processingRuns": [
+    "processing_31a5bbb116994950aadd447cb079b4bd"
+  ],
+  "goal": {
+    "stage": "complete",
+    "targetCount": 6,
+    "countKind": "new",
+    "review": {
+      "runId": "processing_31a5bbb116994950aadd447cb079b4bd",
+      "total": 6,
+      "labels": [
+        {
+          "count": 6,
+          "label": "原答案"
+        }
+      ],
+      "complete": true,
+      "countKind": "new",
+      "duplicates": 0,
+      "formatIssues": [],
+      "missingCount": 0,
+      "expectedCount": 6,
+      "outsideLabels": 0,
+      "candidateCount": 6,
+      "countSatisfied": true,
+      "emptyQuestions": 0,
+      "semanticReview": "required",
+      "classifications": [
+        {
+          "key": "类别",
+          "field": "metadata",
+          "values": [
+            {
+              "count": 4,
+              "value": "费用"
+            },
+            {
+              "count": 1,
+              "value": "进度"
+            },
+            {
+              "count": 1,
+              "value": "账号"
+            }
+          ],
+          "missing": 0,
+          "satisfied": true,
+          "outsideValues": 0,
+          "additionalValues": 0,
+          "quotaDifferences": []
+        }
+      ],
+      "additionalLabels": 0,
+      "selectionShortfalls": [],
+      "compatibilityProblem": null,
+      "protectedFieldChanges": 0
+    }
+  },
+  "semanticAudit": {
+    "count": 6,
+    "counts": {
+      "费用": 4,
+      "进度": 1,
+      "账号": 1
+    },
+    "sourceAndAnswerPreserved": true
+  },
+  "receipt": {
+    "testSet": {
+      "id": "testset_69c2807814c943f79498ca9d60703f71",
+      "name": "六条审核样例",
+      "purpose": "按附件类别要求准备6条测试数据，费用4条、进度1条、账号1条，供审核并发布。"
+    },
+    "version": {
+      "id": "version_3a12bc714683419188facb7868e56ae5",
+      "label": "v1",
+      "recordCount": 6
+    },
+    "dataCheck": {
+      "missingQuestionCount": 0,
+      "exactDuplicateCount": 0,
+      "traceableRecordCount": 6
+    }
+  },
+  "downloads": [
+    {
+      "file": "data.csv",
+      "body": "question,expected_output,metadata\r\n多少钱？,原答案,类别：费用\r\n为什么收服务费？,原答案,类别：费用\r\n年费可以优惠吗？,原答案,类别：费用\r\n总价格怎么算？,原答案,类别：费用\r\n多久到账？,原答案,类别：进度\r\n怎么注销账号？,原答案,类别：账号\r\n"
+    },
+    {
+      "file": "provenance.csv",
+      "body": "change_type,question,expected_output,metadata,previous_question,previous_expected_output,previous_metadata,source_file,source_record\r\nadded,多少钱？,原答案,类别：费用,,,,改写结果-b079b4bd.jsonl,1\r\nadded,为什么收服务费？,原答案,类别：费用,,,,改写结果-b079b4bd.jsonl,2\r\nadded,年费可以优惠吗？,原答案,类别：费用,,,,改写结果-b079b4bd.jsonl,3\r\nadded,总价格怎么算？,原答案,类别：费用,,,,改写结果-b079b4bd.jsonl,4\r\nadded,多久到账？,原答案,类别：进度,,,,改写结果-b079b4bd.jsonl,5\r\nadded,怎么注销账号？,原答案,类别：账号,,,,改写结果-b079b4bd.jsonl,6\r\n"
+    }
+  ],
+  "uniqueVersionAndReceiptReplay": true,
+  "disposableResourcesCleaned": true
+}

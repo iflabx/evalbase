@@ -1,0 +1,33 @@
+{
+  "markdownFiles": [
+    {
+      "path": ".scratch/assistant-optimization/issues/09-execution-recovery-consistency.md",
+      "links": 28,
+      "fencesAndTables": "pass"
+    },
+    {
+      "path": ".scratch/assistant-optimization/spec.md",
+      "links": 27,
+      "fencesAndTables": "pass"
+    },
+    {
+      "path": ".scratch/assistant-optimization/opt09-verification.md",
+      "links": 8,
+      "fencesAndTables": "pass"
+    },
+    {
+      "path": "docs/agents/phase1a-progress.md",
+      "links": 4,
+      "fencesAndTables": "pass"
+    }
+  ],
+  "jsonFiles": [
+    ".scratch/assistant-optimization/evidence/opt09-checkpoint.json",
+    ".scratch/assistant-optimization/evidence/opt09-owner-recovery.json",
+    ".scratch/assistant-optimization/evidence/opt09-real-model.json"
+  ],
+  "screenshots": {
+    "opt09-owner-desktop.jpg": "4d09e52770afa5b5faf3ffe7e861235e7195b8c5cf609190150e5551981f0e05",
+    "opt09-owner-narrow.jpg": "55de6d762c8c6cd87e06dbb030531adf640a155418df82f3b9c90a28532ef4fb"
+  }
+}

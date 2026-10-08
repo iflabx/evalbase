@@ -1,0 +1,68 @@
+{
+  "applicationSha": "abc98639b391c958db8e48c67ce4c34f4272e69a",
+  "sessionId": "conversation_f8efac20a1d84fe999174a475ad5d821",
+  "historicalFailedTurn": "turn_364aff84b40a42eba95a68f05720e885",
+  "historicalFailurePreserved": true,
+  "prompts": [
+    {
+      "message": "修正刚才失败的方案，先只读核对资料和前置条件；不生成、不采用、不发布，告诉我具体失败原因和下一步。",
+      "status": "succeeded",
+      "diagnostics": {
+        "turnId": "turn_5808ac2e51cb4852bdbb1337878e7c72",
+        "toolCalls": 4,
+        "durationMs": 14649,
+        "modelSteps": 3,
+        "finishReason": "stop"
+      },
+      "tools": [
+        {
+          "key": "assistant:turn_5808ac2e51cb4852bdbb1337878e7c72:4012c78a962dbca6052455fbd31fc28cebd007fc4fd1be7eb47025d06ba7879e",
+          "name": "plan_task",
+          "status": "succeeded"
+        },
+        {
+          "key": "assistant:turn_5808ac2e51cb4852bdbb1337878e7c72:4ba47120fdad1742ba8feea432d4555ddac98fc58e2ce5039344e06c786c4dfc",
+          "name": "query_project",
+          "status": "succeeded"
+        },
+        {
+          "key": "assistant:turn_5808ac2e51cb4852bdbb1337878e7c72:fdd223143000d98fa8ab7198bcf6cc4a47c69a4b7103154886e95c12b402d7bc",
+          "name": "read_records",
+          "status": "succeeded"
+        },
+        {
+          "key": "assistant:turn_5808ac2e51cb4852bdbb1337878e7c72:a2821a9eafb10a320a7f3fd8027d93c5a7af239b013217da26616f360d269419",
+          "name": "read_background",
+          "status": "succeeded"
+        }
+      ]
+    },
+    {
+      "message": "重新保存刚才的只读核对方案，不生成、不采用、不发布。",
+      "status": "succeeded",
+      "diagnostics": {
+        "turnId": "turn_75845b6f6d654a07adfdffdf1552c0d8",
+        "toolCalls": 1,
+        "durationMs": 9665,
+        "modelSteps": 2,
+        "finishReason": "stop"
+      },
+      "tools": [
+        {
+          "key": "assistant:turn_75845b6f6d654a07adfdffdf1552c0d8:0c1349f71d451a2de8be2bbf204f6c1a2b36f5795034f120c57adda703a52f7f",
+          "name": "plan_task",
+          "status": "succeeded"
+        }
+      ]
+    }
+  ],
+  "stage": "planning",
+  "error": null,
+  "recovery": null,
+  "processingRunCount": 0,
+  "proposalCount": 0,
+  "old200CandidateCount": 200,
+  "old200ContentHashBefore": "8c0087a0d889ad6378052cefd8bd5cb0abd4aa1eae2049fdeacdbc69795fbc42",
+  "old200ContentHashAfter": "8c0087a0d889ad6378052cefd8bd5cb0abd4aa1eae2049fdeacdbc69795fbc42",
+  "old200ContentAccepted": false
+}

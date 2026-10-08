@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-09：Owner 已授权完成 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md)，当前实施与验证进行中。沿用当前分支及 4217 隔离环境，保留用户资料、失败会话和历史版本；OPT-06–08 历史记录不改写。整改批次 Owner 验收仍 pending，不包含合并、推送或正式部署。
+2026-10-09：Owner 授权的 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md) 已实施、验证并复审完成。最终应用提交 `abc98639b391c958db8e48c67ce4c34f4272e69a` 已统一切入 4217 的三项应用服务；证据见 [OPT-09 验证记录](opt09-verification.md)。沿用当前分支及隔离环境，保留用户资料、失败会话和历史版本；OPT-06–08 历史记录不改写。整个规格仍因 OPT-05 内容交付及最终 Owner 验收未完成而保持 in-progress，不包含合并、推送或正式部署。
 
 2026-10-08：Owner 先后单独授权 OPT-06 和 OPT-07，两张现已实施验证完成；应用提交分别为 `08356cb` 和 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`，详情见 [OPT-06 证据](opt06-verification.md) 与 [OPT-07 证据](opt07-verification.md)。OPT-08 已于 2026-10-08 单独授权并完成实施、通用小样本验证及既有隔离交付；原 200 条内容任务仍未完成，结果见其验证记录；整改批次只有一个最终人工 checkpoint。OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。本次 OPT-08 授权包含既有 Owner 隔离环境的最终切换；不包含合并或推送。
 
@@ -15,9 +15,9 @@ Implementation: in-progress
 ## 整改批次执行约定
 
 - 文档起点为 `24a7434d3dfb6e03a2c2a1fe0befbca67d948d6f`，应用代码仍为 `65a5055`；沿用 `codex/assistant-optimization` 和现有工作区，不从 main 重建或改写已有开发提交。实施前核对最新 HEAD、工作区和调用方。
-- 原整改实施顺序为 OPT-06 → OPT-07 → OPT-08；后续审查缺陷集中于 OPT-09，待获授权后接续修复。OPT-06/09 依赖的是现有实现，不能把 OPT-05 的最终验收设为前置条件而形成循环；OPT-05 不再单独排期，其未完成要求映射见原 Ticket 开头，最终收口须含 OPT-09 修复证据。
+- 原整改实施顺序为 OPT-06 → OPT-07 → OPT-08；后续审查缺陷集中于 OPT-09，已单独授权并完成修复。OPT-06/09 依赖的是现有实现，不能把 OPT-05 的最终验收设为前置条件而形成循环；OPT-05 不再单独排期，其未完成要求映射见原 Ticket 开头，最终收口须含 OPT-09 修复证据。
 - `ready-for-agent` 表示任务已写清；仍须有开发授权并满足 `Blocked by`。Owner 授权整个整改批次后，前一张满足本张验收及必要审阅即可继续下一张，不逐张要求人工 checkpoint。只授权单张时仅执行该张。
-- 每张记录实际提交、直接相关测试、路由处置及剩余限制；历史证据不能代替新验收。前两张通过自动验证和必要审阅可记实施完成并解锁依赖，整个批次的 Owner 验收仍为 pending。OPT-08 负责固定版本的完整流程和最终 checkpoint。
+- 每张记录实际提交、直接相关测试、路由处置及剩余限制；历史证据不能代替新验收。前两张通过自动验证和必要审阅可记实施完成并解锁依赖，整个批次的 Owner 验收仍为 pending。OPT-08 建立最终 checkpoint；OPT-09 修复后更新其固定版本与证据，共用同一次最终人工验收。
 - 所有 Ticket 复用现有权限、数据保护、三字段合同、后台任务及 donor UI。必要的类型/lint/构建、公开正常/关键失败路径和 Standards/Spec 审阅按实际改动选择；P0/P1 阻止本张完成。兼容、并发和权限用可控模型与隔离持久化验证；语义任务使用有限真实样本。
 - 只保留一个长期验收项目、管理员与编辑两账号；自动测试另用隔离库/桶。受影响服务切到最终固定版本并核对健康、就绪及前端请求，记录未重建服务的原 SHA/镜像。保留用户资料、失败会话和历史版本；资源回收只处理已确认可处置的本批次资源。
 - 冻结原型和 frontend-v1 只读；正式 UI 在 frontend-v3，具体变化按各 Ticket 对齐表及当前助手 PRD。检查通过不授权合并、GitHub 推送、tag 或正式部署。
@@ -34,7 +34,7 @@ Implementation: in-progress
 | [OPT-06](issues/06-active-requirements.md)    | 目标理解、生效要求、规则反馈及摘要          | 现有 OPT-01–05 代码基础                      | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                  |
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
-| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 现有 OPT-06–08 实现；不等待 OPT-05 收口 | in-progress | Owner 已授权，当前公开回归与复审进行中；R09 结果待验证记录 |
+| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 现有 OPT-06–08 实现；不等待 OPT-05 收口 | completed | 三项服务固定 `abc9863`；公开回归、真实模型及浏览器恢复见 [OPT-09 记录](opt09-verification.md)；Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；新增 OPT-09 修复后仍复用同一最终 checkpoint，不改写历史结论。
 
@@ -98,3 +98,4 @@ Implementation: in-progress
 - 2026-10-08 OPT-08：候选来源/差异和真实下一动作已实现；实测补修固定步骤衔接、简单要求替换旧待执行方案、采用后的来源核对。实际验证和剩余限制集中记录于 [OPT-08 验证](opt08-verification.md)，Owner 人工验收 pending。
 
 - 2026-10-08 OPT-08 实施与最终交付完成：通用小样本、目标式请求、来源对照与唯一发布闭环见 [验证记录](opt08-verification.md)。4217 沿用 1 项目、2 账号；Web `1aa3707`、Worker/Model Worker `7ed8a3a`，健康与实际浏览器请求通过。原 200 条复用后核对未通过、保存方案尚未实际执行；不把旧内容未完成改签为成功。整改批次 Owner checkpoint pending，OPT-05 保留原未完成状态，无合并或推送。
+- 2026-10-09 OPT-09 实施与验证完成：当前依赖、无副作用纠错/未知写保护、有效范围/背景、最初字段基线及实际发布核对已补修，三项服务固定 `abc9863`。同会话三条短提示的通用 6 条任务完成唯一发布；既有失败会话完成只读恢复并清除过期提示，原 200 条候选哈希不变。详细证据和范围见 [OPT-09 验证](opt09-verification.md)，最终 Owner checkpoint 及 OPT-05 内容交付仍未收口。
