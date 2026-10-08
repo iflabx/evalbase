@@ -188,6 +188,15 @@ function smallReview(review: Record<string, any> | null | undefined) {
     labels: review.labels.slice(0, 10),
     labelKinds,
     labelsTruncated: labelKinds > 10,
+    ...(Array.isArray(review.formatIssues)
+      ? {
+          formatIssues: review.formatIssues.slice(0, 5),
+          formatIssueCount:
+            review.formatIssueCount ?? review.formatIssues.length,
+          formatIssuesTruncated:
+            (review.formatIssueCount ?? review.formatIssues.length) > 5,
+        }
+      : {}),
   };
 }
 
@@ -210,6 +219,8 @@ export async function executeAssistantTurn(
   };
   let context: Awaited<ReturnType<typeof assistantContext>>;
   let queue: Promise<unknown> = Promise.resolve();
+  const fixedInputValidators = new Map<string, (value: unknown) => boolean>();
+  const fixedReceipts: ModelMessage[] = [];
   let toolCalls = 0;
   let plannedAction: string | undefined;
   let yieldToProcessing = false;
@@ -472,6 +483,7 @@ export async function executeAssistantTurn(
       required,
       additionalProperties: false,
     });
+    fixedInputValidators.set(name, validateInput);
     return tool({
       description,
       inputSchema: schema(properties, required, name),
@@ -929,7 +941,7 @@ export async function executeAssistantTurn(
                 type: "object",
                 maxProperties: 20,
                 description:
-                  "当前步骤已知的业务工具参数；后续未知参数留空，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
+                  "当前步骤已知的业务工具参数；后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
               },
               scope: {
                 enum: ["preview", "all"],
@@ -1104,23 +1116,31 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(422, "assistant_plan_only");
         const { steps, executionMode, ...fields } = input;
-        const replacingCompletedPlan =
+        const requirementsKey = planRequirementsKey({ ...current, ...fields });
+        const replacingSimplePlan =
           current.executionPlan &&
+          turn.event === "user" &&
           !steps &&
-          !executionMode &&
+          (!executionMode || executionMode === "execute") &&
           !input.question &&
           input.nextAction &&
-          current.executionPlan?.current ===
-            current.executionPlan?.steps.length;
+          input.nextAction !== "none" &&
+          (current.executionPlan.current ===
+            current.executionPlan.steps.length ||
+            (current.executionPlan.mode === "execute" &&
+              (input.nextAction !==
+                current.executionPlan.steps[current.executionPlan.current]
+                  ?.action ||
+                requirementsKey !== planRequirementsKey(current))));
         const plan = revisePlan(
-          replacingCompletedPlan ? undefined : current.executionPlan,
+          replacingSimplePlan ? undefined : current.executionPlan,
           {
             steps,
             executionMode,
           },
           turn.task_revision,
           input.target ?? current.target,
-          planRequirementsKey({ ...current, ...fields }),
+          requirementsKey,
         );
         if (
           turn.candidate_selection &&
@@ -1141,7 +1161,8 @@ export async function executeAssistantTurn(
           ? null
           : plan
             ? (pendingPlanAction(plan) ?? null)
-            : ["submit_processing", "refine_candidates"].includes(
+            : !replacingSimplePlan &&
+                ["submit_processing", "refine_candidates"].includes(
                   plannedAction ?? "",
                 )
               ? plannedAction
@@ -1157,7 +1178,7 @@ export async function executeAssistantTurn(
               ? { planValidationRequired: null }
               : {}),
           ...(!input.question ? { planningCheckpointTurnId: null } : {}),
-          ...(plan || replacingCompletedPlan
+          ...(plan || replacingSimplePlan
             ? { executionPlan: plan ?? null }
             : {}),
           ...(input.countKind === "new" ? { targetDraftId: null } : {}),
@@ -2093,7 +2114,7 @@ export async function executeAssistantTurn(
     ),
     request_processing_apply: businessTool(
       "request_processing_apply",
-      "为已完成处理结果建立采用确认卡片。多批任务采用全部成果时allTask:true，默认采用全部有效候选，服务端固定全部有效批次，生成单一来源文件并保留真实溯源。仅采用一批时省略allTask。asset仅保存派生文件，newDraft建立草稿，draft写入指定草稿；resultIds和allValid二选一。同一草稿已经采用的候选自动排除。",
+      "为已完成处理结果建立采用确认卡片。多批任务采用全部成果时allTask:true，默认采用全部有效候选，服务端固定全部有效批次，生成单一来源文件并保留真实溯源。仅采用一批时省略allTask。asset仅保存派生文件，newDraft建立草稿，draft写入指定草稿；采用范围必须显式填写：指定部分传resultIds，采用全部有效候选传allValid:true；不可两者都省略。同一草稿已经采用的候选自动排除。",
       {
         runId: string,
         resultIds: ids,
@@ -2329,7 +2350,7 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
-        if (task.runId && task.executionPlan) {
+        if (task.runId) {
           const data = await readProcessingRun(
             db,
             artifacts,
@@ -2345,7 +2366,10 @@ export async function executeAssistantTurn(
             { ...task, countKind: "final", targetDraftId: row.id },
             data,
           );
-          await updateTask(db, turn, { review: checked.review });
+          await updateTask(db, turn, {
+            review: checked.review,
+            ...(checked.review.complete ? { error: null, recovery: null } : {}),
+          });
           if (!checked.review.complete)
             throw new AssistantError(
               422,
@@ -2370,6 +2394,100 @@ export async function executeAssistantTurn(
       },
     ),
   };
+  // Consume already fixed parameters through the same guarded tools; the model
+  // supplies only missing parameters or genuine business choices. Confirmation stays manual.
+  async function continueFixedSteps(messages: ModelMessage[]) {
+    for (
+      let count = 0;
+      count < 12 && !yieldToProcessing && !waitingForInput && toolCalls < 10;
+      count++
+    ) {
+      const current = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          turn.session_id,
+        ])
+      ).rows[0].task;
+      const step = current.executionPlan?.steps[current.executionPlan.current];
+      if (
+        current.executionPlan?.mode !== "execute" ||
+        current.executionPlan.needsReview ||
+        step?.status !== "pending" ||
+        (turn.event === "user" &&
+          ![
+            "submit_processing",
+            "refine_candidates",
+            "read_processing",
+          ].includes(step.action)) ||
+        step.action.startsWith("request_")
+      )
+        break;
+      const command = tools[step.action as keyof typeof tools];
+      if (!command) break;
+      const prior =
+        current.executionPlan.steps[current.executionPlan.current - 1];
+      if (
+        !step.input &&
+        !(
+          [
+            "select_candidates",
+            "read_processing",
+            "retry_processing",
+            "refine_candidates",
+          ].includes(step.action) && prior?.receipt?.runId
+        )
+      )
+        break;
+      const input = {
+        ...(step.input ?? {}),
+        ...([
+          "select_candidates",
+          "read_processing",
+          "retry_processing",
+          "refine_candidates",
+        ].includes(step.action) &&
+        !step.input?.runId &&
+        prior?.receipt?.runId
+          ? { runId: prior.receipt.runId }
+          : {}),
+      };
+      if (
+        (step.action === "select_candidates" &&
+          !input.groups &&
+          !input.selection) ||
+        (step.action === "refine_candidates" &&
+          !input.resultIds &&
+          !input.where &&
+          !input.allSelected) ||
+        !fixedInputValidators.get(step.action)?.(input)
+      )
+        break;
+      const result = await command.execute!(input, {
+        toolCallId: step.id ?? `step:${count}`,
+        messages,
+        context: {},
+        abortSignal: AbortSignal.timeout(80000),
+      });
+      fixedReceipts.push({
+        role: "assistant",
+        content:
+          "服务端固定步骤的真实回执：" + JSON.stringify(context.encode(result)),
+      });
+      if ((result as Record<string, any>)?.error) break;
+      const after = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          turn.session_id,
+        ])
+      ).rows[0].task;
+      if (
+        !pendingPlanAction(after.executionPlan) &&
+        (turn.event !== "user" ||
+          ["processing", "awaiting_review"].includes(after.stage)) &&
+        (!after.review || after.review.complete)
+      )
+        yieldToProcessing = true;
+      if (after.executionPlan?.current === current.executionPlan.current) break;
+    }
+  }
   try {
     await turnFence(db, scope, turn.id, turn.execution_token);
     const model = await configuredModel(db, config);
@@ -2590,7 +2708,6 @@ export async function executeAssistantTurn(
         // Keep failures before business intent, including SDK validation and retry guards.
         // tool-error renders errors as strings; the invalid call retains their typed cause.
         const failures = content.filter((part) => part.type === "tool-error");
-        if (!failures.length) return;
         await turnFence(db, scope, turn.id, turn.execution_token);
         for (const failure of failures.slice(0, 12)) {
           const call = stepToolCalls.find(
@@ -2636,6 +2753,7 @@ export async function executeAssistantTurn(
             ],
           );
         }
+        await continueFixedSteps(messages);
       },
       stopWhen: [
         () =>
@@ -2646,12 +2764,16 @@ export async function executeAssistantTurn(
       ],
       prepareStep: async ({ instructions, responseMessages }) => {
         await turnFence(db, scope, turn.id, turn.execution_token);
-        stepMessages = [...responseMessages];
+        stepMessages = [...responseMessages, ...fixedReceipts];
+        const fixedState = fixedReceipts.length
+          ? { messages: [...messages, ...stepMessages] }
+          : {};
         modelSteps++;
         // Reserve the last bounded step for a reply, rather than another query.
         if (modelSteps >= 10 || toolCalls >= 10) {
           summarizing = true;
           return {
+            ...fixedState,
             toolChoice: "none" as const,
             activeTools: [],
             instructions: `${instructions}\n本轮工具查询预算已到汇总边界。停止调用工具，根据已成功操作返回实际发现、尚未核对的范围和下一步。未完成的分类或数量不能宣称已完成，不要求用户重复完整提示词。`,
@@ -2661,11 +2783,13 @@ export async function executeAssistantTurn(
           return { toolChoice: "required" as const };
         if (processingEventRunId)
           return {
+            ...fixedState,
             toolChoice: { type: "tool" as const, toolName: "read_processing" },
           };
         // An invalid plan may need source/background reads before it can be repaired.
         if (plannedAction === "read_processing")
           return {
+            ...fixedState,
             toolChoice: { type: "tool" as const, toolName: plannedAction },
           };
         if (
@@ -2699,13 +2823,17 @@ export async function executeAssistantTurn(
               await updateTask(db, turn, { planningCheckpointTurnId: turn.id });
             planningCheckpointRequired = true;
             return {
+              ...fixedState,
               toolChoice: { type: "tool" as const, toolName: "plan_task" },
               activeTools: ["plan_task"],
               instructions: `${instructions}\n继续查询前先保存当前方案：调用plan_task，必须填写executionMode和有序steps，保存已经确认的要求。只设计方案时使用plan，不执行数据处理；尚未核对的定义保留为待核对步骤，不猜造分类。计划保存不增加用户授权。`,
             };
           }
         }
-        return plannedAction ? { toolChoice: "required" as const } : {};
+        return {
+          ...fixedState,
+          ...(plannedAction ? { toolChoice: "required" as const } : {}),
+        };
       },
       maxOutputTokens: 2048,
       maxRetries: 0,
@@ -2777,62 +2905,8 @@ export async function executeAssistantTurn(
       ["processing_completed", "budget_yield"].includes(turn.event) ||
       restoring
     ) {
-      for (let count = 0; count < 12 && !yieldToProcessing; count++) {
-        const current = (
-          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
-            turn.session_id,
-          ])
-        ).rows[0].task;
-        const step =
-          current.executionPlan?.steps[current.executionPlan.current];
-        if (
-          current.executionPlan?.needsReview ||
-          step?.status !== "pending" ||
-          !step.input ||
-          step.action.startsWith("request_")
-        )
-          break;
-        const command = tools[step.action as keyof typeof tools];
-        if (!command) break;
-        const prior =
-          current.executionPlan.steps[current.executionPlan.current - 1];
-        const input = {
-          ...step.input,
-          ...([
-            "select_candidates",
-            "read_processing",
-            "retry_processing",
-            "refine_candidates",
-          ].includes(step.action) &&
-          !step.input.runId &&
-          prior?.receipt?.runId
-            ? { runId: prior.receipt.runId }
-            : {}),
-        };
-        const result = await command.execute!(input, {
-          toolCallId: step.id ?? `step:${count}`,
-          messages,
-          context: {},
-          abortSignal: AbortSignal.timeout(80000),
-        });
-        messages.push({
-          role: "assistant",
-          content: "服务端固定步骤的真实回执：" + JSON.stringify(result),
-        });
-        if ((result as Record<string, any>)?.error) break;
-        const after = (
-          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
-            turn.session_id,
-          ])
-        ).rows[0].task;
-        if (
-          !pendingPlanAction(after.executionPlan) &&
-          (!after.review || after.review.complete)
-        )
-          yieldToProcessing = true;
-        if (after.executionPlan?.current === current.executionPlan.current)
-          break;
-      }
+      await continueFixedSteps(messages);
+      messages.push(...fixedReceipts.splice(0));
     }
     const abortSignal = AbortSignal.timeout(80000);
     // A provider may emit its tool template as text. Request native calls once;

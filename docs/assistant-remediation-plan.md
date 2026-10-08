@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-08（Asia/Shanghai）。状态：整改设计已记录，Owner 分别授权的 OPT-06/07 已实施验证完成；实际进度见 [实施台账](../.scratch/assistant-optimization/spec.md)。OPT-08 尚未开始，最终 checkpoint 尚未完成，本次单张授权不切换 Owner 验收环境。方案的代码审查基线为 `65a5055e22267f1e29f54923f4e1bf9f488bb42d`，复审方案时的文档提交为 `544c9e5`；工作区仍为 `codex/assistant-optimization` 分支。
+2026-10-08：OPT-06/07 已实施验证完成；OPT-08 已获 Owner 单独开发授权，正在完成通用实测、固定版本复审及既有隔离验收环境切换。人工验收仍 pending。依据 [实施台账](../.scratch/assistant-optimization/spec.md) 和 [OPT-08 记录](../.scratch/assistant-optimization/opt08-verification.md) 核对实际进度。
 
 整改目标是让用户在一个会话中，用简短要求完成通用测试数据任务：助手理解目标和背景、查看资料、选择方法、执行处理、根据中间结果调整，最后交付可审核的候选及真实成果入口。范围覆盖这条完整流程中的能力和体验缺口，已发现故障用于验证，不作为范围上限。
 
@@ -94,7 +94,7 @@
 | [OPT-07 可靠执行与成果恢复](../.scratch/assistant-optimization/issues/07-execution-and-recovery.md)      | 正确推进、后台衔接、失败后继续且不重复 | OPT-06       |
 | [OPT-08 结果审核体验与通用任务交付](../.scratch/assistant-optimization/issues/08-review-and-delivery.md) | 审核调整、真实结果与完整功能验收       | OPT-07       |
 
-OPT-05 保留历史记录，其未完成要求映射到三张新 Ticket，不重复排期。OPT-06/07 已实施验证，OPT-08 已解除依赖但尚待单独授权；按 [Spec 批次约定](../.scratch/assistant-optimization/spec.md#整改批次执行约定) 推进，中间完成项不单独增加人工验收，最后交付一个固定提交的隔离环境。
+OPT-05 保留历史记录，其未完成要求映射到三张新 Ticket，不重复排期。OPT-06/07 已实施验证，OPT-08 已获单独授权并正在交付；按 [Spec 批次约定](../.scratch/assistant-optimization/spec.md#整改批次执行约定) 推进，中间完成项不单独增加人工验收，最后交付一个固定提交的隔离环境。
 
 ## 6. 交付判定
 
@@ -118,3 +118,7 @@ OPT-05 保留历史记录，其未完成要求映射到三张新 Ticket，不重
 当通用任务、关键恢复及工作区验收成立，且新路径已替换对应旧路径，本轮即可交付。后续发现明确容量、并行执行或复用需求时，再单独评估是否扩展；不把未来可配置性或文件拆分数量设为完成条件。
 
 本文记录设计及当前进度，具体实现以各张验证记录为准。未实施的类型、内部步骤字段和兼容处理由架构定义目标，不能当成已经存在的 API。无新增公开接口、数据表或数据库迁移承诺；如实施需要改变这些边界，先把具体必要变更写入设计。现有分支、验收库、一个长期项目及两个账号继续保留；不合并、推送或正式部署。
+
+## 当前实施证据
+
+OPT-08 的界面、同会话调整、真实模型矩阵、恢复与隔离交付状态见 [验证记录](../.scratch/assistant-optimization/opt08-verification.md)。历史失败会话和正式版本保留；小样本结构通过不能替代原 200 条内容审核，Owner 验收仍 pending。

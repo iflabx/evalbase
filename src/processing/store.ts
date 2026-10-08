@@ -582,6 +582,9 @@ export async function readProcessingRun(
     (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
   ) as InputSnapshot;
   const originals = new Map(input.records.map((row) => [row.id, row]));
+  const inputOrdinals = new Map(
+    input.records.map((row, index) => [row.id, index + 1]),
+  );
   const origins = await processingCandidateOrigins(db, artifacts, scope, input);
   const batches = await db.query(
     "SELECT * FROM processing_batch WHERE run_id=$1 ORDER BY ordinal",
@@ -616,7 +619,25 @@ export async function readProcessingRun(
             result: result.records[i],
           });
     }
-    issues.push(...(batch.issues ?? []));
+    issues.push(
+      ...(batch.issues ?? []).map(
+        (issue: { code: string; sourceId?: string; count?: number }) => {
+          const original = issue.sourceId
+            ? originals.get(issue.sourceId)
+            : undefined;
+          return {
+            ...issue,
+            batch: batch.ordinal,
+            ...(original
+              ? {
+                  inputOrdinal: inputOrdinals.get(original.id),
+                  sourceQuestion: original.question.slice(0, 160),
+                }
+              : {}),
+          };
+        },
+      ),
+    );
     cursor += count;
   }
   const current = await getProcessingRun(db, scope, runId);

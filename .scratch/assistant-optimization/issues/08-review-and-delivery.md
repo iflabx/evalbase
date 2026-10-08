@@ -1,10 +1,10 @@
 # OPT-08 结果审核体验与通用任务交付
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 Blocked by: none
 
-[OPT-07](07-execution-and-recovery.md) 已实施验证完成，证据见 [验证记录](../opt07-verification.md)。本张仅解除依赖，尚未获开发授权；Owner 的 4217 环境和原资料保留，最终切换由本张完成。
+[OPT-07](07-execution-and-recovery.md) 已实施验证完成，证据见 [验证记录](../opt07-verification.md)。2026-10-08 Owner 已单独授权本张开发；基线 `4135e5245a80d820abf50c9b9acfa3931bda8e9e`，沿用 `codex/assistant-optimization`。Owner 的 4217 环境和原资料保留，最终切换由本张完成；人工验收仍 pending。
 
 ## 目标与范围
 
@@ -42,6 +42,8 @@ Blocked by: none
 - 查找起点：[项目助手](../../../frontend-v3/src/components/project-assistant.tsx)、[候选区](../../../frontend-v3/src/components/assistant-candidates.tsx)、[候选汇总](../../../src/assistant/candidates.ts)、[内容核对](../../../src/assistant/review.ts)、[处理接受](../../../src/processing/accept.ts)。
 
 ## 前端对齐
+
+实施前对照：冻结原型没有助手页，本区域按当前 PRD §7 授权，直接复用 donor 的 Card、Table、Button、Dialog、Select、Textarea、字体、颜色与密度。任务标题 → 生效要求 → 真实阶段/下一动作 → 成果/结构核对 → 候选对照；确认保持固定操作卡。等待禁重复执行，失败保留输入与产物；空候选不冒充无历史成果；无来源仅显示“未记录”，不伪造文件或原文。历史诊断折叠，新增业务入口仅为原候选审核/局部选择/同会话调整；不新增工作流、自动语义通过或自动采用发布。
 
 | 区域   | 信息与操作顺序                                      | 空态/错误及边界                                                |
 | ------ | --------------------------------------------------- | -------------------------------------------------------------- |

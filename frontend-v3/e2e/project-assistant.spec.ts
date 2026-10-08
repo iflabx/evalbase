@@ -94,6 +94,7 @@ test("distinguishes a failed model reply from retained processing and keeps the 
             goal: "清洗两条问题",
             stage: failed ? "failed" : "processing",
             runId: "kept",
+            checkedStatus: failed ? "succeeded" : "queued",
             error: failed ? "assistant_model_failed" : null,
             recovery: failed
               ? {
@@ -121,8 +122,26 @@ test("distinguishes a failed model reply from retained processing and keeps the 
     if (path.endsWith("/processing-runs/kept/status"))
       return route.fulfill({
         json: {
-          run: { status: "queued", inputCount: 2, options: { operation: "clean" }, partial: false },
-          total: 0,
+          run: {
+            status: failed ? "succeeded" : "queued",
+            inputCount: 2,
+            options: { operation: "clean" },
+            partial: false,
+          },
+          total: failed ? 2 : 0,
+        },
+      });
+    if (path.endsWith("/candidates"))
+      return route.fulfill({
+        json: {
+          total: 2,
+          records: [
+            {
+              id: "0:0",
+              original: { question: " 原问题 ", expectedOutput: "答复", metadata: [] },
+              result: { question: "原问题", expectedOutput: "答复", metadata: [] },
+            },
+          ],
         },
       });
     return route.fulfill({ status: 404, json: {} });
@@ -134,18 +153,24 @@ test("distinguishes a failed model reply from retained processing and keeps the 
   failed = true;
   await expect(task.getByRole("status")).toContainText("模型回复未完成");
   await expect(task.getByRole("status")).toContainText("已保留的处理任务与候选");
+  await expect(
+    task.getByText("下一步：核对已保留的候选，回复失败不会重新生成数据。", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "候选结果" }).getByText("内容待你审核", { exact: true }),
+  ).toBeVisible();
   const retry = task.getByRole("button", { name: "重试未完成步骤" });
   await expect(retry).toBeEnabled();
   await retry.focus();
   await expect(retry).toBeFocused();
   await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("接下来保留原答案");
-  await page.screenshot({ path: "test-results/opt07-recovery-desktop.png", fullPage: true });
+  await page.screenshot({ path: "test-results/opt08-recovery-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 420, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
   await task.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "test-results/opt07-recovery-narrow.png", fullPage: true });
+  await page.screenshot({ path: "test-results/opt08-recovery-narrow.png", fullPage: true });
 });
 
 test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
@@ -227,8 +252,17 @@ test("reviews candidates inside the assistant and preserves cross-page selection
           total: 25,
           offset,
           limit: 10,
+          issues: [
+            {
+              code: "protected_field_changed",
+              batch: 0,
+              inputOrdinal: 11,
+              sourceQuestion: "原问题 11",
+            },
+          ],
           records: Array.from({ length: Math.min(10, 25 - offset) }, (_, i) => ({
             id: `0:${offset + i}`,
+            sourceLabel: `合成退款资料.csv · 第 ${offset + i + 1} 条`,
             original: {
               question: `原问题 ${offset + i + 1}`,
               expectedOutput: "退款",
@@ -263,6 +297,10 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   await expect(page.getByText("退款：实际 25 / 要求 26 条", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("后台逐条分类");
   await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("已执行");
+  await page.getByText("处理问题（1）", { exact: true }).click();
+  await expect(
+    page.getByText("受保护字段变化 · 第 1 批 · 输入第 11 条：原问题 11", { exact: true }),
+  ).toBeVisible();
   await page.getByLabel("选择候选 1", { exact: true }).check();
   await page.getByRole("button", { name: "下一页候选" }).click();
   await page.getByLabel("选择候选 11", { exact: true }).check();
@@ -270,6 +308,12 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   await page.getByRole("button", { name: "查看候选 11" }).click();
   await expect(page.getByRole("dialog")).toContainText("原问题 11");
   await expect(page.getByRole("dialog")).toContainText("新问题 11");
+  await expect(page.getByRole("dialog")).toContainText("合成退款资料.csv · 第 11 条");
+  await expect(page.getByRole("dialog")).toContainText("本次变化：问题");
+  await page.screenshot({ path: "test-results/opt08-candidate-desktop.png" });
+  await page.setViewportSize({ width: 420, height: 800 });
+  await page.screenshot({ path: "test-results/opt08-candidate-narrow.png" });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.keyboard.press("Escape");
   await page.getByLabel("向项目助手发送消息").fill("只把选中的问题写得更口语");
   await page.getByRole("button", { name: "发送", exact: true }).click();

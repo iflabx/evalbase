@@ -1,0 +1,3676 @@
+{
+  "date": "2026-10-08",
+  "cases": [
+    {
+      "log": "opt08-matrix-fixed.log",
+      "name": "清洗",
+      "prompt": "清理这份资料的首尾空白，其他内容不变，给我检查结果。",
+      "rows": [
+        {
+          "question": "  合成问题1  ",
+          "expectedOutput": "答案0",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "0"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题2  ",
+          "expectedOutput": "答案1",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "1"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题3  ",
+          "expectedOutput": "答案2",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "2"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题4  ",
+          "expectedOutput": "答案3",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "3"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题5  ",
+          "expectedOutput": "答案4",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "4"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题6  ",
+          "expectedOutput": "答案5",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "5"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题7  ",
+          "expectedOutput": "答案6",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "6"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题8  ",
+          "expectedOutput": "答案7",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "7"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题9  ",
+          "expectedOutput": "答案8",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "8"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题10  ",
+          "expectedOutput": "答案9",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "9"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "",
+          "expectedOutput": "答案10",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "10"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "  合成问题1  ",
+          "expectedOutput": "答案11",
+          "metadata": [
+            {
+              "key": "编号",
+              "value": "11"
+            },
+            {
+              "key": "空值",
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "run": {
+            "id": "processing_814234cc58bc414085b56159d2513117",
+            "parentRunId": null,
+            "jobId": "job_5a9f2ee86cbd47a7bd6501678c1663ee",
+            "source": {
+              "id": "collabdraft_3c59e9b33b51cb66c0f7006ce30dd32c93b0b923bc75223ae719a89458ac85e8",
+              "kind": "draft",
+              "recordIds": [
+                "draftrow_046f2d2bc47e4a43b4c0dba45ee54db5",
+                "draftrow_2b9068c69dd544528c5342f5ed604a5e",
+                "draftrow_531999e832da4ebeaae35ad5154f7b58",
+                "draftrow_64788e82b89d4cbdac10a3d3d535dbdd",
+                "draftrow_7811c35c833e4844a39c167d22e63797",
+                "draftrow_7c4b631c0ee649f59eaa24454c17238c",
+                "draftrow_85a72f658d844534bb1f155d4faeafd8",
+                "draftrow_8e5a70458d7943188fc3d0cd4177e0f9",
+                "draftrow_9320ccc6e0014abf80b521485944653a",
+                "draftrow_95961fe937914cc2ab1784a0edfdc44b",
+                "draftrow_b3498fa8ac654e02be20e10712ab47e4",
+                "draftrow_bca6ee50f5eb49dea68b034f1c3077e3"
+              ]
+            },
+            "options": {
+              "operation": "clean",
+              "instructions": "仅删除每条问题文本开头和结尾的空白字符，保留中间内容、标点、大小写及原有顺序不变；期望输出和Metadata保持原值。",
+              "allowedFields": ["question"]
+            },
+            "inputCount": 12,
+            "modelRevision": 1,
+            "execution": {
+              "batchSize": 20,
+              "maxAttempts": 3,
+              "recipeVersion": "processing-v5",
+              "batchTimeoutMs": 60000,
+              "maxOutputBytes": 100000000,
+              "maxOutputTokens": 8192,
+              "maxInputBytesPerBatch": 40000
+            },
+            "outputCount": 12,
+            "missingCount": 0,
+            "partial": true,
+            "targetDraftId": "collabdraft_3c59e9b33b51cb66c0f7006ce30dd32c93b0b923bc75223ae719a89458ac85e8",
+            "status": "succeeded",
+            "progress": 100,
+            "errorCode": null,
+            "createdAt": "2026-10-08T11:30:52.560Z",
+            "result": {
+              "runId": "processing_814234cc58bc414085b56159d2513117",
+              "counts": {
+                "input": 12,
+                "output": 12,
+                "batches": 1,
+                "warnings": 1
+              },
+              "partial": true
+            }
+          },
+          "rootOperation": "clean",
+          "records": [
+            {
+              "id": "0:0",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:0"
+              },
+              "original": {
+                "expectedOutput": "答案0",
+                "id": "draftrow_8e5a70458d7943188fc3d0cd4177e0f9",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "0"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题1  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案0",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "0"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题1",
+                "sourceId": "draftrow_8e5a70458d7943188fc3d0cd4177e0f9"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:1",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:1"
+              },
+              "original": {
+                "expectedOutput": "答案1",
+                "id": "draftrow_b3498fa8ac654e02be20e10712ab47e4",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "1"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题2  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案1",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "1"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题2",
+                "sourceId": "draftrow_b3498fa8ac654e02be20e10712ab47e4"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:2",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:2"
+              },
+              "original": {
+                "expectedOutput": "答案2",
+                "id": "draftrow_95961fe937914cc2ab1784a0edfdc44b",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "2"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题3  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案2",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "2"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题3",
+                "sourceId": "draftrow_95961fe937914cc2ab1784a0edfdc44b"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:3",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:3"
+              },
+              "original": {
+                "expectedOutput": "答案3",
+                "id": "draftrow_85a72f658d844534bb1f155d4faeafd8",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "3"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题4  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案3",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "3"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题4",
+                "sourceId": "draftrow_85a72f658d844534bb1f155d4faeafd8"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:4",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:4"
+              },
+              "original": {
+                "expectedOutput": "答案4",
+                "id": "draftrow_2b9068c69dd544528c5342f5ed604a5e",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "4"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题5  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案4",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "4"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题5",
+                "sourceId": "draftrow_2b9068c69dd544528c5342f5ed604a5e"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:5",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:5"
+              },
+              "original": {
+                "expectedOutput": "答案5",
+                "id": "draftrow_64788e82b89d4cbdac10a3d3d535dbdd",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "5"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题6  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案5",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "5"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题6",
+                "sourceId": "draftrow_64788e82b89d4cbdac10a3d3d535dbdd"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:6",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:6"
+              },
+              "original": {
+                "expectedOutput": "答案6",
+                "id": "draftrow_046f2d2bc47e4a43b4c0dba45ee54db5",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "6"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题7  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案6",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "6"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题7",
+                "sourceId": "draftrow_046f2d2bc47e4a43b4c0dba45ee54db5"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:7",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:7"
+              },
+              "original": {
+                "expectedOutput": "答案7",
+                "id": "draftrow_7811c35c833e4844a39c167d22e63797",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "7"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题8  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案7",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "7"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题8",
+                "sourceId": "draftrow_7811c35c833e4844a39c167d22e63797"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:8",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:8"
+              },
+              "original": {
+                "expectedOutput": "答案8",
+                "id": "draftrow_531999e832da4ebeaae35ad5154f7b58",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "8"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题9  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案8",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "8"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题9",
+                "sourceId": "draftrow_531999e832da4ebeaae35ad5154f7b58"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:9",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:9"
+              },
+              "original": {
+                "expectedOutput": "答案9",
+                "id": "draftrow_9320ccc6e0014abf80b521485944653a",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "9"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题10  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案9",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "9"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题10",
+                "sourceId": "draftrow_9320ccc6e0014abf80b521485944653a"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:10",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:10"
+              },
+              "original": {
+                "expectedOutput": "答案10",
+                "id": "draftrow_bca6ee50f5eb49dea68b034f1c3077e3",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "10"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案10",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "10"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "",
+                "sourceId": "draftrow_bca6ee50f5eb49dea68b034f1c3077e3"
+              },
+              "sourceLabel": "合成清洗资料"
+            },
+            {
+              "id": "0:11",
+              "candidateOrigin": {
+                "runId": "processing_814234cc58bc414085b56159d2513117",
+                "resultId": "0:11"
+              },
+              "original": {
+                "expectedOutput": "答案11",
+                "id": "draftrow_7c4b631c0ee649f59eaa24454c17238c",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "11"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "  合成问题1  ",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "答案11",
+                "metadata": [
+                  {
+                    "key": "编号",
+                    "value": "11"
+                  },
+                  {
+                    "key": "空值",
+                    "value": ""
+                  }
+                ],
+                "question": "合成问题1",
+                "sourceId": "draftrow_7c4b631c0ee649f59eaa24454c17238c"
+              },
+              "sourceLabel": "合成清洗资料"
+            }
+          ],
+          "issues": [
+            {
+              "code": "empty_question",
+              "sourceId": "draftrow_bca6ee50f5eb49dea68b034f1c3077e3"
+            }
+          ],
+          "allIds": [
+            "0:0",
+            "0:1",
+            "0:2",
+            "0:3",
+            "0:4",
+            "0:5",
+            "0:6",
+            "0:7",
+            "0:8",
+            "0:9",
+            "0:10",
+            "0:11"
+          ],
+          "total": 12,
+          "offset": 0,
+          "limit": 100
+        }
+      ],
+      "ms": 50785,
+      "userPrompts": 1,
+      "review": {
+        "runId": "processing_814234cc58bc414085b56159d2513117",
+        "total": 12,
+        "labels": [
+          {
+            "count": 1,
+            "label": "答案0"
+          },
+          {
+            "count": 1,
+            "label": "答案1"
+          },
+          {
+            "count": 1,
+            "label": "答案2"
+          },
+          {
+            "count": 1,
+            "label": "答案3"
+          },
+          {
+            "count": 1,
+            "label": "答案4"
+          },
+          {
+            "count": 1,
+            "label": "答案5"
+          },
+          {
+            "count": 1,
+            "label": "答案6"
+          },
+          {
+            "count": 1,
+            "label": "答案7"
+          },
+          {
+            "count": 1,
+            "label": "答案8"
+          },
+          {
+            "count": 1,
+            "label": "答案9"
+          },
+          {
+            "count": 1,
+            "label": "答案10"
+          },
+          {
+            "count": 1,
+            "label": "答案11"
+          }
+        ],
+        "complete": false,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "expectedCount": 12,
+        "outsideLabels": 0,
+        "candidateCount": 12,
+        "countSatisfied": true,
+        "emptyQuestions": 1,
+        "semanticReview": "required",
+        "classifications": [],
+        "additionalLabels": 0,
+        "compatibilityProblem": null,
+        "protectedFieldChanges": 0
+      },
+      "stage": "failed",
+      "turnDiagnostics": [
+        {
+          "event": "user",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_e15eed9ea7564e3ab3d05cfb4bb29161",
+            "toolCalls": 4,
+            "durationMs": 11439,
+            "modelSteps": 3,
+            "finishReason": "tool-calls"
+          }
+        },
+        {
+          "event": "processing_completed",
+          "status": "failed",
+          "diagnostics": {
+            "turnId": "turn_e45e4556d2144633a15b4d680b2fb8f0",
+            "errorCode": "assistant_task_not_executed",
+            "toolCalls": 10,
+            "durationMs": 19130,
+            "modelSteps": 9,
+            "finishReason": "stop"
+          }
+        }
+      ]
+    },
+    {
+      "log": "opt08-matrix-fixed.log",
+      "name": "改写",
+      "prompt": "把这组问法改得自然一些，原意和答案保持不变。",
+      "rows": [
+        {
+          "question": "退款能在3天内到账吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "我只要退1件，不是整单。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "周五18点后还可以取消吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "订单未发货时怎么改地址？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "满100元但不含运费，有优惠吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "已经使用过的优惠券能退吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "购买2年服务可以按月退款吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "我不想自动续费，该怎么关？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "没有发票可以报销吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "海外订单只有在签收后才能退货吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        }
+      ],
+      "outputs": [
+        {
+          "run": {
+            "id": "processing_96f237592c7e44af80b625ff9dc4fc71",
+            "parentRunId": null,
+            "jobId": "job_4c836bb436e8436f9ecff7d1b7370875",
+            "source": {
+              "id": "collabdraft_7903e1338c689f1715111387dfebef6b9e3daefea34b13969444b3999ead925e",
+              "kind": "draft",
+              "recordIds": [
+                "draftrow_1da7bff9aaae47d884dc14d957cbaabc",
+                "draftrow_33865361146845419073443185792401",
+                "draftrow_3a3b65899b6e47feaf10243630af28e4",
+                "draftrow_859619cc08d94d18b8364c326318590f",
+                "draftrow_8c5f83b294044d03addef0284e795d1c",
+                "draftrow_90b0214a36de402caf68625eef84aa82",
+                "draftrow_a28d426d48624dbb88fe53f3f1542bed",
+                "draftrow_bb83994255d14f6b9bb40b729fd0b5e9",
+                "draftrow_c1bc577aa588445ab6fcee8f970a1759",
+                "draftrow_e0a23b87daca450fa14863ddab8516a2"
+              ]
+            },
+            "options": {
+              "operation": "rewrite",
+              "instructions": "将每条问题改写得更自然、口语化，保持原意、关键条件、时间、金额、数量和业务对象不变；不改变答案，不新增或删减记录。",
+              "allowedFields": ["question"]
+            },
+            "inputCount": 10,
+            "modelRevision": 1,
+            "execution": {
+              "batchSize": 20,
+              "maxAttempts": 3,
+              "recipeVersion": "processing-v5",
+              "batchTimeoutMs": 60000,
+              "maxOutputBytes": 100000000,
+              "maxOutputTokens": 8192,
+              "maxInputBytesPerBatch": 40000
+            },
+            "outputCount": 10,
+            "missingCount": 0,
+            "partial": false,
+            "targetDraftId": "collabdraft_7903e1338c689f1715111387dfebef6b9e3daefea34b13969444b3999ead925e",
+            "status": "succeeded",
+            "progress": 100,
+            "errorCode": null,
+            "createdAt": "2026-10-08T11:31:41.974Z",
+            "result": {
+              "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+              "counts": {
+                "input": 10,
+                "output": 10,
+                "batches": 1,
+                "warnings": 0
+              },
+              "partial": false
+            }
+          },
+          "rootOperation": "rewrite",
+          "records": [
+            {
+              "id": "0:0",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:0"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_e0a23b87daca450fa14863ddab8516a2",
+                "metadata": [],
+                "question": "退款能在3天内到账吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "退款一般多久能到账？3天内能收到吗？",
+                "sourceId": "draftrow_e0a23b87daca450fa14863ddab8516a2"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:1",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:1"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_8c5f83b294044d03addef0284e795d1c",
+                "metadata": [],
+                "question": "我只要退1件，不是整单。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "我只退其中1件商品，不是整单退，可以吗？",
+                "sourceId": "draftrow_8c5f83b294044d03addef0284e795d1c"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:2",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:2"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_33865361146845419073443185792401",
+                "metadata": [],
+                "question": "周五18点后还可以取消吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "周五晚上6点以后还能取消订单吗？",
+                "sourceId": "draftrow_33865361146845419073443185792401"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:3",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:3"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_1da7bff9aaae47d884dc14d957cbaabc",
+                "metadata": [],
+                "question": "订单未发货时怎么改地址？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "订单还没发货，我想改一下收货地址，怎么操作？",
+                "sourceId": "draftrow_1da7bff9aaae47d884dc14d957cbaabc"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:4",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:4"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_859619cc08d94d18b8364c326318590f",
+                "metadata": [],
+                "question": "满100元但不含运费，有优惠吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "订单金额满100元（不含运费），有优惠吗？",
+                "sourceId": "draftrow_859619cc08d94d18b8364c326318590f"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:5",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:5"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_a28d426d48624dbb88fe53f3f1542bed",
+                "metadata": [],
+                "question": "已经使用过的优惠券能退吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "已经用过的优惠券，退款后能退回来吗？",
+                "sourceId": "draftrow_a28d426d48624dbb88fe53f3f1542bed"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:6",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:6"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_90b0214a36de402caf68625eef84aa82",
+                "metadata": [],
+                "question": "购买2年服务可以按月退款吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "我买了2年的服务，可以按月退款吗？",
+                "sourceId": "draftrow_90b0214a36de402caf68625eef84aa82"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:7",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:7"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_bb83994255d14f6b9bb40b729fd0b5e9",
+                "metadata": [],
+                "question": "我不想自动续费，该怎么关？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "我不想自动续费了，怎么关闭这个功能？",
+                "sourceId": "draftrow_bb83994255d14f6b9bb40b729fd0b5e9"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:8",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:8"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_3a3b65899b6e47feaf10243630af28e4",
+                "metadata": [],
+                "question": "没有发票可以报销吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "没有发票的话，还能报销吗？",
+                "sourceId": "draftrow_3a3b65899b6e47feaf10243630af28e4"
+              },
+              "sourceLabel": "合成改写资料"
+            },
+            {
+              "id": "0:9",
+              "candidateOrigin": {
+                "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+                "resultId": "0:9"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_c1bc577aa588445ab6fcee8f970a1759",
+                "metadata": [],
+                "question": "海外订单只有在签收后才能退货吗？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [],
+                "question": "海外订单是不是必须签收之后才能退货？",
+                "sourceId": "draftrow_c1bc577aa588445ab6fcee8f970a1759"
+              },
+              "sourceLabel": "合成改写资料"
+            }
+          ],
+          "issues": [],
+          "allIds": [
+            "0:0",
+            "0:1",
+            "0:2",
+            "0:3",
+            "0:4",
+            "0:5",
+            "0:6",
+            "0:7",
+            "0:8",
+            "0:9"
+          ],
+          "total": 10,
+          "offset": 0,
+          "limit": 100
+        }
+      ],
+      "ms": 23129,
+      "userPrompts": 1,
+      "review": {
+        "runId": "processing_96f237592c7e44af80b625ff9dc4fc71",
+        "total": 10,
+        "labels": [
+          {
+            "count": 10,
+            "label": "原答案"
+          }
+        ],
+        "complete": true,
+        "baseCount": 10,
+        "countKind": "final",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "draftRevision": 10,
+        "expectedCount": 10,
+        "outsideLabels": 0,
+        "candidateCount": 10,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "remainingCount": 10,
+        "semanticReview": "required",
+        "classifications": [],
+        "additionalLabels": 0,
+        "compatibilityProblem": null,
+        "protectedFieldChanges": 0
+      },
+      "stage": "awaiting_review",
+      "turnDiagnostics": [
+        {
+          "event": "user",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_82accb8d499d405f9327bc3de6b2e6cb",
+            "toolCalls": 4,
+            "durationMs": 9923,
+            "modelSteps": 3,
+            "finishReason": "tool-calls"
+          }
+        },
+        {
+          "event": "processing_completed",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_8f54e1b6c4a44aa8b24e0ac26a4529a8",
+            "toolCalls": 2,
+            "durationMs": 305,
+            "modelSteps": 0,
+            "finishReason": "not_returned"
+          }
+        }
+      ]
+    },
+    {
+      "log": "opt08-matrix-fixed.log",
+      "name": "意图扩写",
+      "prompt": "参考这些客服问题扩写12条，保持已有意图分类，表达多样一些。",
+      "rows": [
+        {
+          "question": "订单什么时候发货？",
+          "expectedOutput": "物流",
+          "metadata": [
+            {
+              "key": "意图",
+              "value": "物流"
+            }
+          ]
+        },
+        {
+          "question": "包裹到哪里了？",
+          "expectedOutput": "物流",
+          "metadata": [
+            {
+              "key": "意图",
+              "value": "物流"
+            }
+          ]
+        },
+        {
+          "question": "我要申请退款。",
+          "expectedOutput": "退款",
+          "metadata": [
+            {
+              "key": "意图",
+              "value": "退款"
+            }
+          ]
+        },
+        {
+          "question": "退货多久能到账？",
+          "expectedOutput": "退款",
+          "metadata": [
+            {
+              "key": "意图",
+              "value": "退款"
+            }
+          ]
+        },
+        {
+          "question": "如何修改密码？",
+          "expectedOutput": "账号",
+          "metadata": [
+            {
+              "key": "意图",
+              "value": "账号"
+            }
+          ]
+        },
+        {
+          "question": "账号无法登录怎么办？",
+          "expectedOutput": "账号",
+          "metadata": [
+            {
+              "key": "意图",
+              "value": "账号"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "run": {
+            "id": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+            "parentRunId": null,
+            "jobId": "job_39092fbc38154a9b88c65e52a6b793c9",
+            "source": {
+              "id": "collabdraft_3adeb869bcac512b510f19e1589d8175ba644f6f712540b6eedef8970e065796",
+              "kind": "draft",
+              "recordIds": [
+                "draftrow_1ba5ca21f1544610bb0c88d55d9546de",
+                "draftrow_31c1525b7621490ab2d9ddb60d971507",
+                "draftrow_3b730ba8e8684733a5d0e58fa570eab0",
+                "draftrow_4fa7d57470b242a5bd868f4d2cb3518c",
+                "draftrow_d69e56d1891b49ab8d48fc5d20f8544a",
+                "draftrow_d6b2d31af8284dbfa465c74a12ba110e"
+              ]
+            },
+            "options": {
+              "operation": "augment",
+              "outputCount": 12,
+              "instructions": "参考草稿中6条客服问题，扩写12条新的客服问题。保持已有意图分类：物流、退款、账号；每条新问题都要自然多样，避免与原句高度重复。期望输出和Metadata中的意图必须与问题语义一致，且只能使用已有意图分类：物流、退款、账号。",
+              "metadataKeys": ["意图"],
+              "allowedFields": ["question", "expectedOutput", "metadata"]
+            },
+            "inputCount": 6,
+            "modelRevision": 1,
+            "execution": {
+              "batchSize": 20,
+              "maxAttempts": 3,
+              "recipeVersion": "processing-v5",
+              "batchTimeoutMs": 60000,
+              "maxOutputBytes": 100000000,
+              "maxOutputTokens": 8192,
+              "maxInputBytesPerBatch": 40000
+            },
+            "outputCount": 12,
+            "missingCount": 0,
+            "partial": false,
+            "targetDraftId": "collabdraft_3adeb869bcac512b510f19e1589d8175ba644f6f712540b6eedef8970e065796",
+            "status": "succeeded",
+            "progress": 100,
+            "errorCode": null,
+            "createdAt": "2026-10-08T11:32:21.125Z",
+            "result": {
+              "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+              "counts": {
+                "input": 6,
+                "output": 12,
+                "batches": 1,
+                "warnings": 0
+              },
+              "partial": false
+            }
+          },
+          "rootOperation": "augment",
+          "records": [
+            {
+              "id": "0:0",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:0"
+              },
+              "original": {
+                "expectedOutput": "物流",
+                "id": "draftrow_d6b2d31af8284dbfa465c74a12ba110e",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "订单什么时候发货？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "物流",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "为什么我的订单显示待发货，但已经超过48小时了？",
+                "sourceId": "draftrow_d6b2d31af8284dbfa465c74a12ba110e"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:1",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:1"
+              },
+              "original": {
+                "expectedOutput": "物流",
+                "id": "draftrow_1ba5ca21f1544610bb0c88d55d9546de",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "包裹到哪里了？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "物流",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "物流信息三天没更新了，包裹是不是丢了？",
+                "sourceId": "draftrow_1ba5ca21f1544610bb0c88d55d9546de"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:2",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:2"
+              },
+              "original": {
+                "expectedOutput": "退款",
+                "id": "draftrow_3b730ba8e8684733a5d0e58fa570eab0",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "我要申请退款。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "退款",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "商品有质量问题，我想全额退款，怎么操作？",
+                "sourceId": "draftrow_3b730ba8e8684733a5d0e58fa570eab0"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:3",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:3"
+              },
+              "original": {
+                "expectedOutput": "退款",
+                "id": "draftrow_31c1525b7621490ab2d9ddb60d971507",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "退货多久能到账？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "退款",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "退货快递已经签收了，退款什么时候能原路返回？",
+                "sourceId": "draftrow_31c1525b7621490ab2d9ddb60d971507"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:4",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:4"
+              },
+              "original": {
+                "expectedOutput": "账号",
+                "id": "draftrow_d69e56d1891b49ab8d48fc5d20f8544a",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "如何修改密码？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "账号",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "忘记旧密码了，可以通过手机号重置吗？",
+                "sourceId": "draftrow_d69e56d1891b49ab8d48fc5d20f8544a"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:5",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:5"
+              },
+              "original": {
+                "expectedOutput": "账号",
+                "id": "draftrow_4fa7d57470b242a5bd868f4d2cb3518c",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "账号无法登录怎么办？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "账号",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "登录时提示账号或密码错误，但确认输入无误，怎么解决？",
+                "sourceId": "draftrow_4fa7d57470b242a5bd868f4d2cb3518c"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:6",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:6"
+              },
+              "original": {
+                "expectedOutput": "物流",
+                "id": "draftrow_d6b2d31af8284dbfa465c74a12ba110e",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "订单什么时候发货？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "物流",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "可以指定顺丰快递发货吗？",
+                "sourceId": "draftrow_d6b2d31af8284dbfa465c74a12ba110e"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:7",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:7"
+              },
+              "original": {
+                "expectedOutput": "物流",
+                "id": "draftrow_1ba5ca21f1544610bb0c88d55d9546de",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "包裹到哪里了？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "物流",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "物流"
+                  }
+                ],
+                "question": "包裹显示已签收，但我没收到，怎么办？",
+                "sourceId": "draftrow_1ba5ca21f1544610bb0c88d55d9546de"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:8",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:8"
+              },
+              "original": {
+                "expectedOutput": "退款",
+                "id": "draftrow_3b730ba8e8684733a5d0e58fa570eab0",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "我要申请退款。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "退款",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "买错了，还没发货，能直接退款吗？",
+                "sourceId": "draftrow_3b730ba8e8684733a5d0e58fa570eab0"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:9",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:9"
+              },
+              "original": {
+                "expectedOutput": "退款",
+                "id": "draftrow_31c1525b7621490ab2d9ddb60d971507",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "退货多久能到账？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "退款",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "退款"
+                  }
+                ],
+                "question": "退款金额和实付金额不一致，少退了运费，怎么处理？",
+                "sourceId": "draftrow_31c1525b7621490ab2d9ddb60d971507"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:10",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:10"
+              },
+              "original": {
+                "expectedOutput": "账号",
+                "id": "draftrow_d69e56d1891b49ab8d48fc5d20f8544a",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "如何修改密码？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "账号",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "如何绑定新的银行卡用于支付？",
+                "sourceId": "draftrow_d69e56d1891b49ab8d48fc5d20f8544a"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            },
+            {
+              "id": "0:11",
+              "candidateOrigin": {
+                "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+                "resultId": "0:11"
+              },
+              "original": {
+                "expectedOutput": "账号",
+                "id": "draftrow_4fa7d57470b242a5bd868f4d2cb3518c",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "账号无法登录怎么办？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "账号",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "账号"
+                  }
+                ],
+                "question": "账号被冻结了，需要提交什么材料才能解冻？",
+                "sourceId": "draftrow_4fa7d57470b242a5bd868f4d2cb3518c"
+              },
+              "sourceLabel": "合成意图扩写资料"
+            }
+          ],
+          "issues": [],
+          "allIds": [
+            "0:0",
+            "0:1",
+            "0:2",
+            "0:3",
+            "0:4",
+            "0:5",
+            "0:6",
+            "0:7",
+            "0:8",
+            "0:9",
+            "0:10",
+            "0:11"
+          ],
+          "total": 12,
+          "offset": 0,
+          "limit": 100
+        }
+      ],
+      "ms": 33586,
+      "userPrompts": 1,
+      "review": {
+        "runId": "processing_ba9038ca99a94357b7089dfcb08e3f2f",
+        "total": 12,
+        "labels": [
+          {
+            "count": 4,
+            "label": "物流"
+          },
+          {
+            "count": 4,
+            "label": "退款"
+          },
+          {
+            "count": 4,
+            "label": "账号"
+          }
+        ],
+        "complete": true,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "expectedCount": 12,
+        "outsideLabels": 0,
+        "candidateCount": 12,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "semanticReview": "required",
+        "classifications": [
+          {
+            "field": "expectedOutput",
+            "values": [
+              {
+                "count": 4,
+                "value": "物流"
+              },
+              {
+                "count": 4,
+                "value": "退款"
+              },
+              {
+                "count": 4,
+                "value": "账号"
+              }
+            ],
+            "missing": 0,
+            "satisfied": true,
+            "outsideValues": 0,
+            "additionalValues": 0,
+            "quotaDifferences": []
+          },
+          {
+            "key": "意图",
+            "field": "metadata",
+            "values": [
+              {
+                "count": 4,
+                "value": "物流"
+              },
+              {
+                "count": 4,
+                "value": "退款"
+              },
+              {
+                "count": 4,
+                "value": "账号"
+              }
+            ],
+            "missing": 0,
+            "satisfied": true,
+            "outsideValues": 0,
+            "additionalValues": 0,
+            "quotaDifferences": []
+          }
+        ],
+        "additionalLabels": 0,
+        "compatibilityProblem": null,
+        "protectedFieldChanges": 0
+      },
+      "stage": "awaiting_review",
+      "turnDiagnostics": [
+        {
+          "event": "user",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_17303764b7eb4a49b57a682a4f0a9f50",
+            "toolCalls": 5,
+            "durationMs": 15209,
+            "modelSteps": 5,
+            "finishReason": "tool-calls"
+          }
+        },
+        {
+          "event": "processing_completed",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_064a16b7f09642b7911df4087d36da29",
+            "toolCalls": 2,
+            "durationMs": 336,
+            "modelSteps": 0,
+            "finishReason": "not_returned"
+          }
+        }
+      ]
+    },
+    {
+      "log": "opt08-matrix-fixed.log",
+      "name": "实体提取",
+      "prompt": "从这10条句子提取城市和日期，放到Metadata，缺失留空，原句和答案不变。",
+      "rows": [
+        {
+          "question": "2026年10月8日去北京。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "明天到上海。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "我想去广州。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "2026-10-09没有行程。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "从北京经天津到上海，2026年10月10日出发。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "南京和南昌各停一天。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "2026年10月11日和2026年10月12日去深圳。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "没有城市和日期。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "2026年10月13日返回杭州。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "想去苏州，日期待定。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        }
+      ],
+      "outputs": [
+        {
+          "run": {
+            "id": "processing_4374a831d09c4703ae6171b96369a239",
+            "parentRunId": null,
+            "jobId": "job_8dcb8c8a00b24571af48cfb51bddf2c5",
+            "source": {
+              "id": "collabdraft_8c733fb45ad25d849b8434f95e4ad510bb5a59e2d1bd4e6a270e3cd9be200479",
+              "kind": "draft",
+              "recordIds": [
+                "draftrow_1254cf079ef543a5ac0e5bf4d1913c9e",
+                "draftrow_21ac93c4545a4ead89f898a4f6cfc1bb",
+                "draftrow_31ffea8d69c040a4a9cdb70b1f296581",
+                "draftrow_9144e297faba4f6d89fc02422531bcee",
+                "draftrow_a0a30613850a418490db6e0223b43af7",
+                "draftrow_c1143a62fff141558663e0b4d2a7f638",
+                "draftrow_d1ba472b1ed9483ba9cf09159c95d456",
+                "draftrow_d86c23e96ac941269cb643de0b5ec14f",
+                "draftrow_e9578390cba4496f86d7b0375fa037e4",
+                "draftrow_eec16b46a1884510bea864f9f29d9680"
+              ]
+            },
+            "options": {
+              "operation": "rewrite",
+              "instructions": "逐条从句子中提取城市名称和日期，分别写入Metadata的city和date；无法确定或句子未提供时对应值留空。不得修改原句和答案。",
+              "metadataKeys": ["city", "date"],
+              "allowedFields": ["metadata"]
+            },
+            "inputCount": 10,
+            "modelRevision": 1,
+            "execution": {
+              "batchSize": 20,
+              "maxAttempts": 3,
+              "recipeVersion": "processing-v5",
+              "batchTimeoutMs": 60000,
+              "maxOutputBytes": 100000000,
+              "maxOutputTokens": 8192,
+              "maxInputBytesPerBatch": 40000
+            },
+            "outputCount": 10,
+            "missingCount": 0,
+            "partial": false,
+            "targetDraftId": "collabdraft_8c733fb45ad25d849b8434f95e4ad510bb5a59e2d1bd4e6a270e3cd9be200479",
+            "status": "succeeded",
+            "progress": 100,
+            "errorCode": null,
+            "createdAt": "2026-10-08T11:32:44.001Z",
+            "result": {
+              "runId": "processing_4374a831d09c4703ae6171b96369a239",
+              "counts": {
+                "input": 10,
+                "output": 10,
+                "batches": 1,
+                "warnings": 0
+              },
+              "partial": false
+            }
+          },
+          "rootOperation": "rewrite",
+          "records": [
+            {
+              "id": "0:0",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:0"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_d86c23e96ac941269cb643de0b5ec14f",
+                "metadata": [],
+                "question": "2026年10月8日去北京。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "北京"
+                  },
+                  {
+                    "key": "date",
+                    "value": "2026年10月8日"
+                  }
+                ],
+                "question": "2026年10月8日去北京。",
+                "sourceId": "draftrow_d86c23e96ac941269cb643de0b5ec14f"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:1",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:1"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_31ffea8d69c040a4a9cdb70b1f296581",
+                "metadata": [],
+                "question": "明天到上海。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "上海"
+                  },
+                  {
+                    "key": "date",
+                    "value": ""
+                  }
+                ],
+                "question": "明天到上海。",
+                "sourceId": "draftrow_31ffea8d69c040a4a9cdb70b1f296581"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:2",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:2"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_21ac93c4545a4ead89f898a4f6cfc1bb",
+                "metadata": [],
+                "question": "我想去广州。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "广州"
+                  },
+                  {
+                    "key": "date",
+                    "value": ""
+                  }
+                ],
+                "question": "我想去广州。",
+                "sourceId": "draftrow_21ac93c4545a4ead89f898a4f6cfc1bb"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:3",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:3"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_a0a30613850a418490db6e0223b43af7",
+                "metadata": [],
+                "question": "2026-10-09没有行程。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": ""
+                  },
+                  {
+                    "key": "date",
+                    "value": "2026-10-09"
+                  }
+                ],
+                "question": "2026-10-09没有行程。",
+                "sourceId": "draftrow_a0a30613850a418490db6e0223b43af7"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:4",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:4"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_1254cf079ef543a5ac0e5bf4d1913c9e",
+                "metadata": [],
+                "question": "从北京经天津到上海，2026年10月10日出发。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "北京,天津,上海"
+                  },
+                  {
+                    "key": "date",
+                    "value": "2026年10月10日"
+                  }
+                ],
+                "question": "从北京经天津到上海，2026年10月10日出发。",
+                "sourceId": "draftrow_1254cf079ef543a5ac0e5bf4d1913c9e"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:5",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:5"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_c1143a62fff141558663e0b4d2a7f638",
+                "metadata": [],
+                "question": "南京和南昌各停一天。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "南京,南昌"
+                  },
+                  {
+                    "key": "date",
+                    "value": ""
+                  }
+                ],
+                "question": "南京和南昌各停一天。",
+                "sourceId": "draftrow_c1143a62fff141558663e0b4d2a7f638"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:6",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:6"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_d1ba472b1ed9483ba9cf09159c95d456",
+                "metadata": [],
+                "question": "2026年10月11日和2026年10月12日去深圳。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "深圳"
+                  },
+                  {
+                    "key": "date",
+                    "value": "2026年10月11日,2026年10月12日"
+                  }
+                ],
+                "question": "2026年10月11日和2026年10月12日去深圳。",
+                "sourceId": "draftrow_d1ba472b1ed9483ba9cf09159c95d456"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:7",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:7"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_e9578390cba4496f86d7b0375fa037e4",
+                "metadata": [],
+                "question": "没有城市和日期。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": ""
+                  },
+                  {
+                    "key": "date",
+                    "value": ""
+                  }
+                ],
+                "question": "没有城市和日期。",
+                "sourceId": "draftrow_e9578390cba4496f86d7b0375fa037e4"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:8",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:8"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_9144e297faba4f6d89fc02422531bcee",
+                "metadata": [],
+                "question": "2026年10月13日返回杭州。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "杭州"
+                  },
+                  {
+                    "key": "date",
+                    "value": "2026年10月13日"
+                  }
+                ],
+                "question": "2026年10月13日返回杭州。",
+                "sourceId": "draftrow_9144e297faba4f6d89fc02422531bcee"
+              },
+              "sourceLabel": "合成实体提取资料"
+            },
+            {
+              "id": "0:9",
+              "candidateOrigin": {
+                "runId": "processing_4374a831d09c4703ae6171b96369a239",
+                "resultId": "0:9"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_eec16b46a1884510bea864f9f29d9680",
+                "metadata": [],
+                "question": "想去苏州，日期待定。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "city",
+                    "value": "苏州"
+                  },
+                  {
+                    "key": "date",
+                    "value": ""
+                  }
+                ],
+                "question": "想去苏州，日期待定。",
+                "sourceId": "draftrow_eec16b46a1884510bea864f9f29d9680"
+              },
+              "sourceLabel": "合成实体提取资料"
+            }
+          ],
+          "issues": [],
+          "allIds": [
+            "0:0",
+            "0:1",
+            "0:2",
+            "0:3",
+            "0:4",
+            "0:5",
+            "0:6",
+            "0:7",
+            "0:8",
+            "0:9"
+          ],
+          "total": 10,
+          "offset": 0,
+          "limit": 100
+        }
+      ],
+      "ms": 20664,
+      "userPrompts": 1,
+      "review": {
+        "runId": "processing_4374a831d09c4703ae6171b96369a239",
+        "total": 10,
+        "labels": [
+          {
+            "count": 10,
+            "label": "原答案"
+          }
+        ],
+        "complete": true,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "expectedCount": 10,
+        "outsideLabels": 0,
+        "candidateCount": 10,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "semanticReview": "required",
+        "classifications": [],
+        "additionalLabels": 0,
+        "compatibilityProblem": null,
+        "protectedFieldChanges": 0
+      },
+      "stage": "awaiting_review",
+      "turnDiagnostics": [
+        {
+          "event": "user",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_4f11e96cdbc549d6accfbbdcb67a201d",
+            "toolCalls": 2,
+            "durationMs": 4355,
+            "modelSteps": 1,
+            "finishReason": "tool-calls"
+          }
+        },
+        {
+          "event": "processing_completed",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_e53f54c0f2bc4475a64927898b1e1ea8",
+            "toolCalls": 1,
+            "durationMs": 291,
+            "modelSteps": 0,
+            "finishReason": "not_returned"
+          }
+        }
+      ]
+    },
+    {
+      "log": "opt08-matrix-fixed.log",
+      "name": "背景分类",
+      "prompt": "按附件的类别整理这批记录，保留原文，然后每类选2条给我审核。",
+      "rows": [
+        {
+          "question": "多少钱？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "为什么收服务费？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "年费可以优惠吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "总价格怎么算？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "退款到哪了？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "多久到账？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "订单什么时候发货？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "处理进度在哪里？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "密码忘了。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "无法登录。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "修改手机号。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "怎么注销账号？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        }
+      ],
+      "outputs": [
+        {
+          "run": {
+            "id": "processing_5428808f5b5642698de05deefb244a24",
+            "parentRunId": null,
+            "jobId": "job_f62c908fa4ac4fd38f1c74691bf2ac83",
+            "source": {
+              "id": "collabdraft_94a19a7197e52277fea4fb0d3190d072d5897b0471dca0cde7a2e9af40666262",
+              "kind": "draft",
+              "recordIds": [
+                "draftrow_02449b462d9e4fae8f44e749263d016c",
+                "draftrow_030b58a931eb4bf4949bfdce7622efe3",
+                "draftrow_34a1ad2e68e14011af0ff774a5fb5f6a",
+                "draftrow_874cd6d962e7462fb3b14d061285cfa3",
+                "draftrow_8c326ae709e34a7791936a4841cef059",
+                "draftrow_a026027872b84dbf9b2e898173798cee",
+                "draftrow_a7acc6c11d924834934a7ef4e232779b",
+                "draftrow_b4dcfcc0f26940f789be9c126300602a",
+                "draftrow_c905dc8bed994497a515338648213bfc",
+                "draftrow_cfff6472d95e46f383a57c07378397d2",
+                "draftrow_e7d45ae13aed4b618cc1c0d3640747ad",
+                "draftrow_f33e10ac5d4f4179b0fcb8ce76d616cc"
+              ]
+            },
+            "options": {
+              "operation": "rewrite",
+              "instructions": "按附件类别将每条记录分类：费用（价格、收费、优惠）；进度（退款到账、发货、处理进度）；账号（密码、登录、手机号、注销）。将类别写入Metadata键「类别」，取值只能是费用、进度、账号。保留原问题、期望输出及其他Metadata不变。",
+              "metadataKeys": ["类别"],
+              "allowedFields": ["metadata"]
+            },
+            "inputCount": 12,
+            "modelRevision": 1,
+            "execution": {
+              "batchSize": 20,
+              "maxAttempts": 3,
+              "recipeVersion": "processing-v5",
+              "batchTimeoutMs": 60000,
+              "maxOutputBytes": 100000000,
+              "maxOutputTokens": 8192,
+              "maxInputBytesPerBatch": 40000
+            },
+            "outputCount": 12,
+            "missingCount": 0,
+            "partial": false,
+            "targetDraftId": "collabdraft_94a19a7197e52277fea4fb0d3190d072d5897b0471dca0cde7a2e9af40666262",
+            "status": "succeeded",
+            "progress": 100,
+            "errorCode": null,
+            "createdAt": "2026-10-08T11:33:08.934Z",
+            "result": {
+              "runId": "processing_5428808f5b5642698de05deefb244a24",
+              "counts": {
+                "input": 12,
+                "output": 12,
+                "batches": 1,
+                "warnings": 0
+              },
+              "partial": false
+            }
+          },
+          "rootOperation": "rewrite",
+          "records": [
+            {
+              "id": "0:0",
+              "candidateOrigin": {
+                "runId": "processing_5428808f5b5642698de05deefb244a24",
+                "resultId": "0:0"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_e7d45ae13aed4b618cc1c0d3640747ad",
+                "metadata": [],
+                "question": "多少钱？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "费用"
+                  }
+                ],
+                "question": "多少钱？",
+                "sourceId": "draftrow_e7d45ae13aed4b618cc1c0d3640747ad"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:3",
+              "candidateOrigin": {
+                "runId": "processing_5428808f5b5642698de05deefb244a24",
+                "resultId": "0:3"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_a7acc6c11d924834934a7ef4e232779b",
+                "metadata": [],
+                "question": "总价格怎么算？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "费用"
+                  }
+                ],
+                "question": "总价格怎么算？",
+                "sourceId": "draftrow_a7acc6c11d924834934a7ef4e232779b"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:6",
+              "candidateOrigin": {
+                "runId": "processing_5428808f5b5642698de05deefb244a24",
+                "resultId": "0:6"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_8c326ae709e34a7791936a4841cef059",
+                "metadata": [],
+                "question": "订单什么时候发货？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "进度"
+                  }
+                ],
+                "question": "订单什么时候发货？",
+                "sourceId": "draftrow_8c326ae709e34a7791936a4841cef059"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:7",
+              "candidateOrigin": {
+                "runId": "processing_5428808f5b5642698de05deefb244a24",
+                "resultId": "0:7"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_f33e10ac5d4f4179b0fcb8ce76d616cc",
+                "metadata": [],
+                "question": "处理进度在哪里？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "进度"
+                  }
+                ],
+                "question": "处理进度在哪里？",
+                "sourceId": "draftrow_f33e10ac5d4f4179b0fcb8ce76d616cc"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:8",
+              "candidateOrigin": {
+                "runId": "processing_5428808f5b5642698de05deefb244a24",
+                "resultId": "0:8"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_02449b462d9e4fae8f44e749263d016c",
+                "metadata": [],
+                "question": "密码忘了。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "账号"
+                  }
+                ],
+                "question": "密码忘了。",
+                "sourceId": "draftrow_02449b462d9e4fae8f44e749263d016c"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:11",
+              "candidateOrigin": {
+                "runId": "processing_5428808f5b5642698de05deefb244a24",
+                "resultId": "0:11"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_a026027872b84dbf9b2e898173798cee",
+                "metadata": [],
+                "question": "怎么注销账号？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "账号"
+                  }
+                ],
+                "question": "怎么注销账号？",
+                "sourceId": "draftrow_a026027872b84dbf9b2e898173798cee"
+              },
+              "sourceLabel": "合成背景分类资料"
+            }
+          ],
+          "issues": [],
+          "allIds": ["0:0", "0:3", "0:6", "0:7", "0:8", "0:11"],
+          "total": 6,
+          "offset": 0,
+          "limit": 100
+        }
+      ],
+      "ms": 23006,
+      "userPrompts": 1,
+      "review": {
+        "runId": "processing_5428808f5b5642698de05deefb244a24",
+        "total": 6,
+        "labels": [
+          {
+            "count": 6,
+            "label": "原答案"
+          }
+        ],
+        "complete": true,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "expectedCount": 6,
+        "outsideLabels": 0,
+        "candidateCount": 6,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "semanticReview": "required",
+        "classifications": [
+          {
+            "key": "类别",
+            "field": "metadata",
+            "values": [
+              {
+                "count": 2,
+                "value": "费用"
+              },
+              {
+                "count": 2,
+                "value": "进度"
+              },
+              {
+                "count": 2,
+                "value": "账号"
+              }
+            ],
+            "missing": 0,
+            "satisfied": true,
+            "outsideValues": 0,
+            "additionalValues": 0,
+            "quotaDifferences": []
+          }
+        ],
+        "additionalLabels": 0,
+        "selectionShortfalls": [],
+        "compatibilityProblem": null,
+        "protectedFieldChanges": 0
+      },
+      "stage": "awaiting_review",
+      "turnDiagnostics": [
+        {
+          "event": "user",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_1ced11239b6946fa98b5d9b51bc7bbb1",
+            "toolCalls": 3,
+            "durationMs": 8492,
+            "modelSteps": 2,
+            "finishReason": "tool-calls"
+          }
+        },
+        {
+          "event": "processing_completed",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_40098ad6cc014a19b68fcc6cb1f74b8f",
+            "toolCalls": 3,
+            "durationMs": 375,
+            "modelSteps": 0,
+            "finishReason": "not_returned"
+          }
+        }
+      ]
+    },
+    {
+      "log": "opt08-matrix-export.log",
+      "name": "背景分类",
+      "prompt": "按附件的类别整理这批记录，保留原文，然后每类选2条给我审核。",
+      "rows": [
+        {
+          "question": "多少钱？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "为什么收服务费？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "年费可以优惠吗？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "总价格怎么算？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "退款到哪了？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "多久到账？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "订单什么时候发货？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "处理进度在哪里？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "密码忘了。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "无法登录。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "修改手机号。",
+          "expectedOutput": "原答案",
+          "metadata": []
+        },
+        {
+          "question": "怎么注销账号？",
+          "expectedOutput": "原答案",
+          "metadata": []
+        }
+      ],
+      "outputs": [
+        {
+          "run": {
+            "id": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+            "parentRunId": null,
+            "jobId": "job_1f63b6b2858f42fca521f21f51314ae0",
+            "source": {
+              "id": "collabdraft_4caf82716e7a908b601aafb68f4eb2dde76fd9ca118793d39cfdff1b9abddd97",
+              "kind": "draft",
+              "recordIds": [
+                "draftrow_34fb78444bb34df095e9750ee96088a8",
+                "draftrow_3f596a9233494c40a47dfc0238c79e68",
+                "draftrow_4546f8deef7846ad87235b2c6dc64d23",
+                "draftrow_7f6b15c4f05c46549ed25fca06bbee0c",
+                "draftrow_8a123733831c4721a2e2041727f61117",
+                "draftrow_991876fd28ad49ba863d45ca5e4df50a",
+                "draftrow_9ece675b392844fb8b0428928fb8f67d",
+                "draftrow_afe50ae7ee0c40b39c2c695e1c7ea2fc",
+                "draftrow_b24fb34d68694fd397a0f5a2fe9840a4",
+                "draftrow_d2c131ef8c15476eba061b4d9f478da5",
+                "draftrow_d955d657e40843c3a4e62702721f13b4",
+                "draftrow_f5cc623357f9435aa331f2e31a21b355"
+              ]
+            },
+            "options": {
+              "operation": "rewrite",
+              "instructions": "按附件类别将每条记录分类：费用（价格、收费、优惠）；进度（退款到账、发货、处理进度）；账号（密码、登录、手机号、注销）。将类别写入Metadata键「类别」，取值只能是费用、进度、账号。保留原问题、期望输出及其他Metadata不变。",
+              "metadataKeys": ["类别"],
+              "allowedFields": ["metadata"]
+            },
+            "inputCount": 12,
+            "modelRevision": 1,
+            "execution": {
+              "batchSize": 20,
+              "maxAttempts": 3,
+              "recipeVersion": "processing-v5",
+              "batchTimeoutMs": 60000,
+              "maxOutputBytes": 100000000,
+              "maxOutputTokens": 8192,
+              "maxInputBytesPerBatch": 40000
+            },
+            "outputCount": 12,
+            "missingCount": 0,
+            "partial": false,
+            "targetDraftId": "collabdraft_4caf82716e7a908b601aafb68f4eb2dde76fd9ca118793d39cfdff1b9abddd97",
+            "status": "succeeded",
+            "progress": 100,
+            "errorCode": null,
+            "createdAt": "2026-10-08T11:39:16.554Z",
+            "result": {
+              "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+              "counts": {
+                "input": 12,
+                "output": 12,
+                "batches": 1,
+                "warnings": 0
+              },
+              "partial": false
+            }
+          },
+          "rootOperation": "rewrite",
+          "records": [
+            {
+              "id": "0:1",
+              "candidateOrigin": {
+                "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+                "resultId": "0:1"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_8a123733831c4721a2e2041727f61117",
+                "metadata": [],
+                "question": "为什么收服务费？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "费用"
+                  }
+                ],
+                "question": "为什么收服务费？",
+                "sourceId": "draftrow_8a123733831c4721a2e2041727f61117"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:3",
+              "candidateOrigin": {
+                "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+                "resultId": "0:3"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_d955d657e40843c3a4e62702721f13b4",
+                "metadata": [],
+                "question": "总价格怎么算？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "费用"
+                  }
+                ],
+                "question": "总价格怎么算？",
+                "sourceId": "draftrow_d955d657e40843c3a4e62702721f13b4"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:4",
+              "candidateOrigin": {
+                "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+                "resultId": "0:4"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_34fb78444bb34df095e9750ee96088a8",
+                "metadata": [],
+                "question": "退款到哪了？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "进度"
+                  }
+                ],
+                "question": "退款到哪了？",
+                "sourceId": "draftrow_34fb78444bb34df095e9750ee96088a8"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:7",
+              "candidateOrigin": {
+                "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+                "resultId": "0:7"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_4546f8deef7846ad87235b2c6dc64d23",
+                "metadata": [],
+                "question": "处理进度在哪里？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "进度"
+                  }
+                ],
+                "question": "处理进度在哪里？",
+                "sourceId": "draftrow_4546f8deef7846ad87235b2c6dc64d23"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:8",
+              "candidateOrigin": {
+                "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+                "resultId": "0:8"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_991876fd28ad49ba863d45ca5e4df50a",
+                "metadata": [],
+                "question": "密码忘了。",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "账号"
+                  }
+                ],
+                "question": "密码忘了。",
+                "sourceId": "draftrow_991876fd28ad49ba863d45ca5e4df50a"
+              },
+              "sourceLabel": "合成背景分类资料"
+            },
+            {
+              "id": "0:11",
+              "candidateOrigin": {
+                "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+                "resultId": "0:11"
+              },
+              "original": {
+                "expectedOutput": "原答案",
+                "id": "draftrow_3f596a9233494c40a47dfc0238c79e68",
+                "metadata": [],
+                "question": "怎么注销账号？",
+                "revisions": {
+                  "expectedOutput": 0,
+                  "metadata": 0,
+                  "question": 0
+                },
+                "source": null
+              },
+              "result": {
+                "expectedOutput": "原答案",
+                "metadata": [
+                  {
+                    "key": "类别",
+                    "value": "账号"
+                  }
+                ],
+                "question": "怎么注销账号？",
+                "sourceId": "draftrow_3f596a9233494c40a47dfc0238c79e68"
+              },
+              "sourceLabel": "合成背景分类资料"
+            }
+          ],
+          "issues": [],
+          "allIds": ["0:1", "0:3", "0:4", "0:7", "0:8", "0:11"],
+          "total": 6,
+          "offset": 0,
+          "limit": 100
+        }
+      ],
+      "ms": 24899,
+      "userPrompts": 1,
+      "review": {
+        "runId": "processing_5e578ac9c2264d4ba6068ca5ab66a678",
+        "total": 6,
+        "labels": [
+          {
+            "count": 6,
+            "label": "原答案"
+          }
+        ],
+        "complete": true,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "expectedCount": 6,
+        "outsideLabels": 0,
+        "candidateCount": 6,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "semanticReview": "required",
+        "classifications": [
+          {
+            "key": "类别",
+            "field": "metadata",
+            "values": [
+              {
+                "count": 2,
+                "value": "费用"
+              },
+              {
+                "count": 2,
+                "value": "进度"
+              },
+              {
+                "count": 2,
+                "value": "账号"
+              }
+            ],
+            "missing": 0,
+            "satisfied": true,
+            "outsideValues": 0,
+            "additionalValues": 0,
+            "quotaDifferences": []
+          }
+        ],
+        "additionalLabels": 0,
+        "selectionShortfalls": [],
+        "compatibilityProblem": null,
+        "protectedFieldChanges": 0
+      },
+      "stage": "awaiting_review",
+      "turnDiagnostics": [
+        {
+          "event": "user",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_98aca32c8a59440c953b58c581398441",
+            "toolCalls": 3,
+            "durationMs": 9957,
+            "modelSteps": 2,
+            "finishReason": "tool-calls"
+          }
+        },
+        {
+          "event": "processing_completed",
+          "status": "succeeded",
+          "diagnostics": {
+            "turnId": "turn_5a9437cac93344debcc780ecf45f8b53",
+            "toolCalls": 2,
+            "durationMs": 385,
+            "modelSteps": 0,
+            "finishReason": "not_returned"
+          }
+        }
+      ]
+    }
+  ],
+  "delivery": {
+    "correctedTask": {
+      "task": {
+        "goal": "根据这批资料和附件，帮我准备6条测试数据，覆盖附件中的类别。你安排方法，直接整理成候选给我审核。",
+        "error": null,
+        "runId": "processing_5aa41f0aca944f6abcf94e215f70e922",
+        "stage": "awaiting_confirmation",
+        "title": "调整6条类别配额",
+        "review": {
+          "runId": "processing_5aa41f0aca944f6abcf94e215f70e922",
+          "total": 6,
+          "labels": [
+            {
+              "count": 6,
+              "label": "原答案"
+            }
+          ],
+          "complete": true,
+          "countKind": "new",
+          "duplicates": 0,
+          "formatIssues": [],
+          "missingCount": 0,
+          "expectedCount": 6,
+          "outsideLabels": 0,
+          "candidateCount": 6,
+          "countSatisfied": true,
+          "emptyQuestions": 0,
+          "semanticReview": "required",
+          "classifications": [
+            {
+              "key": "类别",
+              "field": "metadata",
+              "values": [
+                {
+                  "count": 4,
+                  "value": "费用"
+                },
+                {
+                  "count": 1,
+                  "value": "进度"
+                },
+                {
+                  "count": 1,
+                  "value": "账号"
+                }
+              ],
+              "missing": 0,
+              "satisfied": true,
+              "outsideValues": 0,
+              "additionalValues": 0,
+              "quotaDifferences": [],
+              "missingCategories": []
+            }
+          ],
+          "additionalLabels": 0,
+          "selectionShortfalls": [],
+          "compatibilityProblem": null,
+          "protectedFieldChanges": 0
+        },
+        "runIds": ["processing_5aa41f0aca944f6abcf94e215f70e922"],
+        "target": {
+          "id": "collabdraft_1a373e3827e799999e7b080b2c081486c0543c22782fb70b78b4fa7cc08b606d",
+          "kind": "draft"
+        },
+        "question": null,
+        "recovery": {
+          "kind": "execution",
+          "message": "当前步骤未完成，已有成果保留。请检查具体原因后继续未完成部分。"
+        },
+        "autoCount": 1,
+        "countKind": "new",
+        "nextAction": null,
+        "targetName": "目标式请求资料",
+        "diagnostics": {
+          "turnId": "turn_321b6f42e3c34490a868741180bdd6a9",
+          "toolCalls": 3,
+          "durationMs": 14034,
+          "modelSteps": 4,
+          "finishReason": "stop"
+        },
+        "supplements": ["改成费用4条、进度和账号各1条，仍保留原问题和答案。"],
+        "targetCount": 6,
+        "metadataKeys": ["类别"],
+        "requirements": [
+          "从当前草稿准备6条测试数据",
+          "覆盖附件类别：费用、进度、账号",
+          "将类别写入Metadata「类别」",
+          "保留原问题、期望输出及其他Metadata",
+          "费用4条、进度1条、账号1条",
+          "整理成候选供用户审核"
+        ],
+        "allowedFields": ["metadata"],
+        "checkedStatus": "succeeded",
+        "executionPlan": {
+          "mode": "execute",
+          "steps": [
+            {
+              "id": "step_bae9615b7dab4e3aa492f35ed47f2851",
+              "input": {
+                "runId": "processing_5aa41f0aca944f6abcf94e215f70e922",
+                "groups": [
+                  {
+                    "count": 4,
+                    "conditions": [
+                      {
+                        "key": "类别",
+                        "field": "metadata",
+                        "value": "费用",
+                        "operator": "equals"
+                      }
+                    ]
+                  },
+                  {
+                    "count": 1,
+                    "conditions": [
+                      {
+                        "key": "类别",
+                        "field": "metadata",
+                        "value": "进度",
+                        "operator": "equals"
+                      }
+                    ]
+                  },
+                  {
+                    "count": 1,
+                    "conditions": [
+                      {
+                        "key": "类别",
+                        "field": "metadata",
+                        "value": "账号",
+                        "operator": "equals"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "title": "按费用4条、进度1条、账号1条固定候选并核对",
+              "action": "select_candidates",
+              "status": "executed",
+              "receipt": {
+                "key": "assistant:turn_321b6f42e3c34490a868741180bdd6a9:5473fcdf8579b6ca0e85a78834b016c44ec05ec787fbe0143e10a9dd6ba4f119",
+                "runId": "processing_5aa41f0aca944f6abcf94e215f70e922"
+              },
+              "revision": 3
+            },
+            {
+              "id": "step_8b0d7b3a1968426199d05b82f14001bd",
+              "input": {
+                "runId": "processing_5aa41f0aca944f6abcf94e215f70e922",
+                "target": {
+                  "kind": "newDraft",
+                  "name": "6条类别覆盖测试数据",
+                  "purpose": "覆盖费用4条、进度1条、账号1条，供用户审核"
+                },
+                "allValid": true
+              },
+              "title": "建立候选采用确认卡",
+              "action": "request_processing_apply",
+              "status": "waiting",
+              "receipt": {
+                "key": "assistant:turn_321b6f42e3c34490a868741180bdd6a9:c486475f3f43e7edbfb360f74a628d826f353381b9499e7a116b0ce29fe312bb",
+                "proposalId": "proposal_550d9853c7bf45d4a4a180a801abfaf1"
+              },
+              "revision": 3
+            }
+          ],
+          "target": {
+            "id": "collabdraft_1a373e3827e799999e7b080b2c081486c0543c22782fb70b78b4fa7cc08b606d",
+            "kind": "draft"
+          },
+          "current": 1,
+          "needsReview": false
+        },
+        "targetDraftId": null,
+        "candidateScope": {
+          "runId": "processing_5aa41f0aca944f6abcf94e215f70e922",
+          "count": 6,
+          "hash": "b626f1a2051bfc0eafe1af8009038f66146e1ae96036ae066e270d6a305fc8d2",
+          "targetCount": 6,
+          "sourceCount": 12,
+          "groups": [
+            {
+              "label": "费用",
+              "selected": 4,
+              "available": 4,
+              "requested": 4
+            },
+            {
+              "label": "进度",
+              "selected": 1,
+              "available": 4,
+              "requested": 1
+            },
+            {
+              "label": "账号",
+              "selected": 1,
+              "available": 4,
+              "requested": 1
+            }
+          ]
+        },
+        "classifications": [
+          {
+            "field": "metadata",
+            "key": "类别",
+            "allowedValues": ["费用", "进度", "账号"],
+            "requiredValues": ["费用", "进度", "账号"],
+            "quotas": [
+              {
+                "value": "费用",
+                "count": 4
+              },
+              {
+                "value": "进度",
+                "count": 1
+              },
+              {
+                "value": "账号",
+                "count": 1
+              }
+            ]
+          }
+        ],
+        "backgroundEvidence": [
+          {
+            "documentId": "background_98df35af6cfe4d3e8139de3f365db0c5",
+            "fragmentIndex": 1
+          }
+        ],
+        "requirementProblem": null,
+        "requirementSummary": [
+          "新增候选：6 条",
+          "允许修改：Metadata",
+          "可修改的 Metadata 字段：类别",
+          "Metadata「类别」：允许 费用、进度、账号",
+          "Metadata「类别」：须覆盖 费用、进度、账号",
+          "Metadata「类别」：费用 4 条、进度 1 条、账号 1 条；合计 6 条",
+          "从当前草稿准备6条测试数据",
+          "覆盖附件类别：费用、进度、账号",
+          "将类别写入Metadata「类别」",
+          "保留原问题、期望输出及其他Metadata",
+          "费用4条、进度1条、账号1条",
+          "整理成候选供用户审核"
+        ]
+      },
+      "proposals": [
+        {
+          "id": "proposal_550d9853c7bf45d4a4a180a801abfaf1",
+          "turn_id": "turn_321b6f42e3c34490a868741180bdd6a9",
+          "action": "processing",
+          "summary": {
+            "url": "/projects/project_1c2ab7c6576d4063bb0f632b12606a23/processing?run=processing_5aa41f0aca944f6abcf94e215f70e922",
+            "count": 6,
+            "title": "采用处理结果",
+            "target": "6条类别覆盖测试数据"
+          },
+          "status": "pending",
+          "receipt": null,
+          "expires_at": "2026-10-08T12:00:21.407Z"
+        }
+      ],
+      "ms": 17346,
+      "userTexts": [
+        "根据这批资料和附件，帮我准备6条测试数据，覆盖附件中的类别。你安排方法，直接整理成候选给我审核。",
+        "改成费用4条、进度和账号各1条，仍保留原问题和答案。"
+      ],
+      "diagnostics": [
+        {
+          "turnId": "turn_705feecbf3734ce5adabfeb03d58cbf7",
+          "toolCalls": 4,
+          "durationMs": 10553,
+          "modelSteps": 3,
+          "finishReason": "tool-calls"
+        },
+        {
+          "turnId": "turn_fa43dfc046734d319c0bfdf9220c07ac",
+          "errorCode": "assistant_task_not_executed",
+          "toolCalls": 10,
+          "durationMs": 12561,
+          "modelSteps": 5,
+          "finishReason": "stop"
+        },
+        {
+          "turnId": "turn_321b6f42e3c34490a868741180bdd6a9",
+          "toolCalls": 3,
+          "durationMs": 14034,
+          "modelSteps": 4,
+          "finishReason": "stop"
+        }
+      ]
+    },
+    "published": {
+      "task": null,
+      "proposals": null,
+      "ms": null,
+      "userTexts": [],
+      "diagnostics": []
+    },
+    "downloads": [
+      {
+        "file": "data.csv",
+        "body": "question,expected_output,metadata\r\n多少钱？,原答案,类别：费用\r\n为什么收服务费？,原答案,类别：费用\r\n年费可以优惠吗？,原答案,类别：费用\r\n总价格怎么算？,原答案,类别：费用\r\n处理进度在哪里？,原答案,类别：进度\r\n怎么注销账号？,原答案,类别：账号\r\n"
+      },
+      {
+        "file": "provenance.csv",
+        "body": "change_type,question,expected_output,metadata,previous_question,previous_expected_output,previous_metadata,source_file,source_record\r\nadded,多少钱？,原答案,类别：费用,,,,改写结果-5f70e922.jsonl,1\r\nadded,为什么收服务费？,原答案,类别：费用,,,,改写结果-5f70e922.jsonl,2\r\nadded,年费可以优惠吗？,原答案,类别：费用,,,,改写结果-5f70e922.jsonl,3\r\nadded,总价格怎么算？,原答案,类别：费用,,,,改写结果-5f70e922.jsonl,4\r\nadded,处理进度在哪里？,原答案,类别：进度,,,,改写结果-5f70e922.jsonl,5\r\nadded,怎么注销账号？,原答案,类别：账号,,,,改写结果-5f70e922.jsonl,6\r\n"
+      }
+    ]
+  },
+  "logSha256": {
+    "opt08-matrix-fixed.log": "73b97c4bf97840eba2072dbfcf07d95e119a5ea44a0d19ff904da4e81b7b6406",
+    "opt08-matrix-export.log": "f7dcc62d469620545b31312d850d8afd277e7014df37ca34053742db55dec302"
+  }
+}

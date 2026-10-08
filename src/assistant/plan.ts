@@ -88,6 +88,7 @@ export function revisePlan(
   requirementsKey?: string,
 ): ExecutionPlan | undefined {
   if (!input.executionMode && !input.steps) return previous;
+  if (!previous && !input.steps && input.executionMode === "execute") return;
   let prefix = previous?.requirementsKey === requirementsKey;
   const steps =
     (input.steps ?? previous?.steps)?.map((step, index) => {
@@ -101,13 +102,26 @@ export function revisePlan(
         target
           ? { ...step.input, source: planSource(target) }
           : step.input;
-      const parameters =
+      let parameters =
         (inherited?.source
           ? { ...inherited, source: planSource(inherited.source) }
           : inherited) ??
         (target && ["read_records", "submit_processing"].includes(step.action)
           ? { source: planSource(target) }
           : undefined);
+      // A future result reference is not known until its processing receipt exists.
+      if (
+        parameters?.runId === "" &&
+        [
+          "read_processing",
+          "select_candidates",
+          "refine_candidates",
+          "retry_processing",
+        ].includes(step.action)
+      ) {
+        parameters = { ...parameters };
+        delete parameters.runId;
+      }
       prefix =
         prefix &&
         prior?.action === step.action &&

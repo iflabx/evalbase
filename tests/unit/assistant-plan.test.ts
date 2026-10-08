@@ -6,6 +6,26 @@ import {
 } from "../../src/assistant/plan.js";
 
 describe("restored execution plan boundaries", () => {
+  it("treats an unknown future processing reference as missing, never as a fixed empty ID", () => {
+    const plan = revisePlan(
+      undefined,
+      {
+        executionMode: "execute",
+        steps: [
+          {
+            title: "按分类选取",
+            action: "select_candidates",
+            input: { runId: "", groups: [{ count: 2, conditions: [] }] },
+          },
+        ],
+      },
+      1,
+    );
+    expect(plan?.steps[0]?.input).toEqual({
+      groups: [{ count: 2, conditions: [] }],
+    });
+    expect(revisePlan(undefined, { executionMode: "execute" })).toBeUndefined();
+  });
   it("restores an asset-page source while still rejecting another real asset", () => {
     const plan: ExecutionPlan = {
       mode: "execute",

@@ -4101,7 +4101,9 @@ describe("project assistant public contract", () => {
         .poll(async () => (await read()).json().task.stage, { timeout: 15000 })
         .toBe("failed");
       const stopped = (await read()).json();
-      expect(stopped.task.error).toBe("assistant_no_progress");
+      expect(stopped.task.error, JSON.stringify(stopped)).toBe(
+        "assistant_no_progress",
+      );
       expect(stopped.turns).toHaveLength(2);
       expect(stopped.turns.at(-1).event).toBe("budget_yield");
       expect(
@@ -7703,7 +7705,7 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
-  it("bounds behavior-label previews without losing the complete task review", async () => {
+  it("bounds review previews without losing complete task diagnostics", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl),
       draftsPath = `/api/projects/${projectId}/collaborative-drafts`;
@@ -7723,7 +7725,7 @@ describe("project assistant public contract", () => {
           url: `${draftsPath}/${source}/records`,
           headers,
           payload: {
-            question: `问题${i}`,
+            question: `问题${i}` + (i === 0 ? "合法长题目".repeat(50) : ""),
             expectedOutput: `行为${i}：` + "具体验收条件".repeat(50),
             metadata: [],
           },
@@ -7767,6 +7769,18 @@ describe("project assistant public contract", () => {
         "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
         [job.id, completed],
       );
+      await db.query(
+        "UPDATE processing_batch SET issues=$2 WHERE run_id=$1 AND ordinal=0",
+        [
+          run.id,
+          JSON.stringify(
+            Array.from({ length: 60 }, () => ({
+              code: "duplicate_source",
+              sourceId: recordIds[0],
+            })),
+          ),
+        ],
+      );
       sessionId = (
         await app.inject({
           method: "POST",
@@ -7777,10 +7791,16 @@ describe("project assistant public contract", () => {
       ).json().sessionId;
       requestedTool = { name: "read_processing", input: { runId: run.id } };
       const state = (await send("核对逐题验收行为")).json();
-      const result = state.turns
+      const receipt = state.turns
         .at(-1)
-        .tools.find((t: any) => t.name === "read_processing").result;
+        .tools.find((t: any) => t.name === "read_processing");
+      expect(receipt.status, JSON.stringify(receipt.error)).toBe("succeeded");
+      const result = receipt.result;
       expect(result.review.total).toBe(13);
+      expect(result.review.formatIssues).toHaveLength(5);
+      expect(result.review.formatIssueCount).toBe(60);
+      expect(result.review.formatIssuesTruncated).toBe(true);
+      expect(state.task.review.formatIssues).toHaveLength(60);
       expect(result.review.labels).toHaveLength(10);
       expect(result.review.labelKinds).toBe(13);
       expect(result.review.labelsTruncated).toBe(true);
@@ -7797,6 +7817,8 @@ describe("project assistant public contract", () => {
         taskMessage.content.split("：").slice(1).join("："),
       );
       expect(snapshot.review.labels).toHaveLength(10);
+      expect(snapshot.review.formatIssues).toHaveLength(5);
+      expect(snapshot.review.formatIssueCount).toBe(60);
       expect(snapshot.review.labelKinds).toBe(13);
       expect((await read()).json().task.review.labels).toHaveLength(13);
       requestedTool = {
@@ -7813,6 +7835,7 @@ describe("project assistant public contract", () => {
         .tools.find((t: any) => t.name === "plan_task").result;
       expect(plan.task.review.labels).toHaveLength(10);
       expect(plan.task.review.labelKinds).toBe(13);
+      expect(plan.task.review.formatIssueCount).toBe(60);
       expect(planned.task.review.labels).toHaveLength(13);
     } finally {
       requestedTool = undefined;
@@ -8176,6 +8199,354 @@ describe("project assistant public contract", () => {
       }
     },
   );
+  it("replaces a completed plan with the user's next simple action when execute mode is explicit", async () => {
+    const previous = sessionId;
+    try {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "独立的完整方案资料" },
+        })
+      ).json().draft.id;
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
+        headers,
+        payload: {
+          question: "合成问题",
+          expectedOutput: "原答案",
+          metadata: [],
+        },
+      });
+      const target = { kind: "draft", id: source };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "读取当前草稿",
+            requirements: ["读取当前草稿"],
+            target,
+            executionMode: "execute",
+            steps: [
+              {
+                title: "读取",
+                action: "read_records",
+                input: { source: target, limit: 1 },
+              },
+            ],
+          },
+        },
+        { name: "read_records", input: { source: target, limit: 1 } },
+      ];
+      const first = (await send("读取当前草稿")).json();
+      expect(first.task.executionPlan.current).toBe(1);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "创建下一份草稿",
+            requirements: ["创建下一份草稿"],
+            nextAction: "create_draft",
+            executionMode: "execute",
+          },
+        },
+        { name: "create_draft", input: { name: "完成方案后的新草稿" } },
+      ];
+      const next = (await send("再创建一份新草稿")).json();
+      expect(
+        next.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "create_draft").status,
+      ).toBe("succeeded");
+      expect(next.task.executionPlan).toBeNull();
+      const created = next.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "create_draft").result;
+      expect(created.draftId).toBeTruthy();
+      expect(created.draftId).not.toBe(source);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+  it("continues a fully parameterized processing plan to its review and confirmation without replanning", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "参数完整的改写资料" },
+        })
+      ).json().draft.id;
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
+        headers,
+        payload: {
+          question: "退款需要多久？",
+          expectedOutput: "原答案",
+          metadata: [],
+        },
+      });
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const processing = {
+        source: { kind: "draft", id: source },
+        operation: "rewrite",
+        selection: null,
+        allRecords: true,
+        instructions: "只改写问题",
+        allowedFields: ["question"],
+      };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "改写后供审核",
+            requirements: ["只改写问题，答案不变"],
+            target: processing.source,
+            allowedFields: ["question"],
+            executionMode: "execute",
+            steps: [
+              { title: "改写", action: "submit_processing", input: processing },
+              { title: "核对", action: "read_processing" },
+              { title: "准备确认", action: "request_processing_apply" },
+            ],
+          },
+        },
+      ];
+      const started = (await send("改写这份资料，核对后给我采用确认")).json(),
+        runId = started.task.runId;
+      expect(started.task.stage).toBe("processing");
+      expect(started.task.executionPlan.current).toBe(0);
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=1,lease_owner='parameter-plan-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [runId],
+        )
+      ).rows[0];
+      toolSequence = [
+        { name: "read_processing", input: { runId } },
+        {
+          name: "request_processing_apply",
+          input: {
+            runId,
+            allValid: true,
+            target: { kind: "newDraft", name: "参数计划审核结果" },
+          },
+        },
+      ];
+      const config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      const completed = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, completed],
+      );
+      await expect
+        .poll(
+          async () => {
+            const state = (await read()).json();
+            return (
+              state.turns.at(-1)?.status !== "queued" &&
+              state.turns.at(-1)?.status !== "running" &&
+              state.task.stage
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe("awaiting_confirmation");
+      const ready = (await read()).json();
+      expect(
+        ready.task.executionPlan.steps.map((step: any) => step.status),
+      ).toEqual(["executed", "executed", "waiting"]);
+      expect(ready.task.review).toMatchObject({
+        total: 1,
+        complete: true,
+        protectedFieldChanges: 0,
+      });
+      expect(
+        ready.turns.filter((turn: any) => turn.event === "user"),
+      ).toHaveLength(1);
+      expect(ready.proposals).toHaveLength(1);
+      toolSequence = [];
+      const adopted = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${ready.proposals[0].id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(adopted.statusCode, adopted.body).toBe(200);
+      const adoptedDraft = adopted.json().receipt.receipt.draftId;
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 15000 },
+        )
+        .toBe(false);
+      const unrelated = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "未采用这些候选的另一个草稿" },
+        })
+      ).json().draft.id;
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${unrelated}/records`,
+        headers,
+        payload: {
+          question: "退款需要多久？",
+          expectedOutput: "原答案",
+          metadata: [],
+        },
+      });
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "核对另一草稿",
+            requirements: ["核对另一草稿是否包含当前候选"],
+            target: { kind: "draft", id: unrelated },
+            countKind: "new",
+            executionMode: "execute",
+            nextAction: "request_publish",
+          },
+        },
+        { name: "request_publish", input: { draftId: unrelated } },
+      ];
+      const blocked = (await send("发布另一草稿", undefined, "failed")).json();
+      expect(
+        blocked.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "request_publish").error
+          .code,
+      ).toBe("assistant_candidate_review_incomplete");
+      expect(blocked.task.review).toMatchObject({
+        complete: false,
+        total: 2,
+        baseCount: 1,
+        remainingCount: 1,
+      });
+      expect(
+        blocked.proposals.some(
+          (p: any) => p.status === "pending" && p.action === "publish",
+        ),
+      ).toBe(false);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "发布已采用结果",
+            countKind: "new",
+            requirements: ["发布已采用的一条结果"],
+            target: { kind: "draft", id: adoptedDraft },
+            executionMode: "execute",
+            steps: [
+              {
+                title: "核对草稿",
+                action: "read_records",
+                input: {
+                  source: { kind: "draft", id: adoptedDraft },
+                  limit: 10,
+                },
+              },
+              {
+                title: "准备发布",
+                action: "request_publish",
+                input: { draftId: adoptedDraft },
+              },
+            ],
+          },
+        },
+        {
+          name: "read_records",
+          input: { source: { kind: "draft", id: adoptedDraft }, limit: 10 },
+        },
+        { name: "request_publish", input: { draftId: adoptedDraft } },
+      ];
+      const publication = (await send("发布刚才采用的草稿")).json();
+      const publish = publication.proposals.find(
+        (p: any) => p.action === "publish" && p.status === "pending",
+      );
+      expect(publish, JSON.stringify(publication.task)).toBeTruthy();
+      expect(publication.task.review).toMatchObject({
+        total: 1,
+        remainingCount: 0,
+        complete: true,
+      });
+      requestedTool = { name: "read_processing", input: { runId } };
+      toolSequence = [];
+      const committed = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${publish.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(committed.statusCode, committed.body).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((turn: any) =>
+                ["queued", "running"].includes(turn.status),
+              ),
+          { timeout: 15000 },
+        )
+        .toBe(false);
+      const delivered = (await read()).json();
+      expect(delivered.task.stage).toBe("complete");
+      expect(delivered.task.review.complete).toBe(true);
+      expect(delivered.task.recovery).toBeNull();
+
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int FROM processing_run WHERE id=$1",
+            [runId],
+          )
+        ).rows[0].count,
+      ).toBe(1);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
   it("classifies in the worker then selects and reviews candidates without another execution prompt", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl),
@@ -8218,7 +8589,11 @@ describe("project assistant public contract", () => {
       ];
       const steps = [
         { title: "后台逐条分类", action: "submit_processing" },
-        { title: "按类别选取", action: "select_candidates" },
+        {
+          title: "按类别选取",
+          action: "select_candidates",
+          input: { runId: "" },
+        },
         { title: "建立采用确认", action: "request_processing_apply" },
       ];
       requestedTool = {
@@ -8360,6 +8735,7 @@ describe("project assistant public contract", () => {
       expect(candidates.statusCode, candidates.body).toBe(200);
       expect(candidates.json().total).toBe(3);
       for (const row of candidates.json().records) {
+        expect(row.sourceLabel).toBe("待分类的原题");
         const original = originals.find(
           (item) => item.question === row.result.question,
         )!;
@@ -8368,6 +8744,81 @@ describe("project assistant public contract", () => {
         expect(row.result.metadata[0]).toEqual(original.metadata[0]);
       }
       expect(ready.proposals[0].summary.count).toBe(3);
+
+      // A revised user goal replaces a waiting old plan, without rerunning classification.
+      const groups = [
+        {
+          count: 1,
+          conditions: [
+            {
+              field: "metadata",
+              key: "riskCode",
+              operator: "equals",
+              value: "A.1.a",
+            },
+          ],
+        },
+        {
+          count: 2,
+          conditions: [
+            {
+              field: "metadata",
+              key: "riskCode",
+              operator: "equals",
+              value: "A.2.a",
+            },
+          ],
+        },
+      ];
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "修改类别配额",
+            requirements: ["保留原题和答案，甲类1条、乙类2条"],
+            executionMode: "execute",
+            nextAction: "select_candidates",
+            targetCount: 3,
+            classifications: [
+              {
+                field: "metadata",
+                key: "riskCode",
+                requiredValues: ["A.1.a", "A.2.a"],
+                quotas: [
+                  { value: "A.1.a", count: 1 },
+                  { value: "A.2.a", count: 2 },
+                ],
+              },
+            ],
+          },
+        },
+        { name: "select_candidates", input: { runId, groups } },
+      ];
+      const adjusted = (
+        await send("改为甲类1条、乙类2条，原问题和答案不变")
+      ).json();
+      expect(adjusted.task.executionPlan).toBeNull();
+      expect(adjusted.task.runIds).toEqual([runId]);
+      expect(
+        adjusted.task.candidateScope.groups.map((group: any) => group.selected),
+      ).toEqual([1, 2]);
+      expect(adjusted.task.review.complete).toBe(true);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM processing_run WHERE id=$1",
+            [runId],
+          )
+        ).rows[0].count,
+      ).toBe(1);
+      const expired = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${ready.proposals[0].id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(expired.statusCode).toBe(409);
+      toolSequence = [];
 
       requestedTool = {
         name: "select_candidates",
@@ -8406,6 +8857,17 @@ describe("project assistant public contract", () => {
           input: {
             title: "核对缺额",
             requirements,
+            classifications: [
+              {
+                field: "metadata",
+                key: "riskCode",
+                requiredValues: ["A.1.a", "A.2.a"],
+                quotas: [
+                  { value: "A.1.a", count: 2 },
+                  { value: "A.2.a", count: 1 },
+                ],
+              },
+            ],
             executionMode: "execute",
             steps: [
               {

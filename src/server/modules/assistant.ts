@@ -640,6 +640,52 @@ export function registerAssistant({
             limit,
           };
         }
+        const sources = result.records.map((row) => {
+          const source = row.original?.baseline?.source ?? row.original?.source;
+          return isPlainObject(source) ? source : {};
+        });
+        const assetIds = [
+          ...new Set(
+            sources.flatMap((source) =>
+              typeof source.assetId === "string" ? [source.assetId] : [],
+            ),
+          ),
+        ];
+        const assets = assetIds.length
+          ? await db.query(
+              "SELECT id,file_name FROM data_asset WHERE project_id=$1 AND status='stored' AND id=ANY($2::text[])",
+              [currentScope.projectId, assetIds],
+            )
+          : { rows: [] };
+        const assetNames = new Map(
+          assets.rows.map((asset) => [asset.id, asset.file_name]),
+        );
+        const sourceName =
+          result.run.source.kind === "draft"
+            ? (
+                await db.query(
+                  "SELECT name FROM collaborative_draft WHERE project_id=$1 AND id=$2",
+                  [currentScope.projectId, result.run.source.id],
+                )
+              ).rows[0]?.name
+            : result.run.source.kind === "version"
+              ? (
+                  await db.query(
+                    "SELECT concat(t.name,' · ',v.version_label) AS name FROM test_set_version v JOIN test_set t ON t.id=v.test_set_id WHERE t.project_id=$1 AND v.id=$2",
+                    [currentScope.projectId, result.run.source.id],
+                  )
+                ).rows[0]?.name
+              : undefined;
+        const records = result.records.map((row, index) => {
+          const source = sources[index]!,
+            name = assetNames.get(source.assetId);
+          return {
+            ...row,
+            sourceLabel: name
+              ? `${name}${Number.isSafeInteger(source.ordinal) ? ` · 第 ${source.ordinal} 条` : ""}`
+              : (sourceName ?? "来源未记录"),
+          };
+        });
         const after = await sessionRow(
           db,
           currentScope,
@@ -653,7 +699,7 @@ export function registerAssistant({
             409,
             "assistant_candidate_selection_changed",
           );
-        return result;
+        return { ...result, records };
       }),
   );
   app.addHook("onClose", async () => {

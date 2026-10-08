@@ -45,6 +45,18 @@ export async function reviewTask(
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
   let final;
+  const destinationId =
+    task.targetDraftId ??
+    (task.target?.kind === "draft" ? task.target.id : undefined);
+  const adopted = destinationId
+    ? await adoptedCandidateKeys(db, artifacts, scope, runs, destinationId)
+    : new Set<string>();
+  // Actual destination receipts account for adopted candidates; unadopted results still check their input source.
+  const pendingRuns = runs.filter(
+    (run) =>
+      !run.records.length ||
+      run.records.some((row) => !adopted.has(`${run.run.id}:${row.id}`)),
+  );
   if (task.countKind === "final" && task.targetDraftId) {
     const base = await previewProcessingInput(
       db,
@@ -52,13 +64,6 @@ export async function reviewTask(
       { source: { kind: "draft", id: task.targetDraftId }, limit: 10000 },
       "write",
       true,
-    );
-    const adopted = await adoptedCandidateKeys(
-      db,
-      artifacts,
-      scope,
-      runs,
-      task.targetDraftId,
     );
     const baseIds = new Set(base.allIds);
     const replacing = new Set<string>();
@@ -121,7 +126,7 @@ export async function reviewTask(
     task.candidateScope,
     runs,
   );
-  const compatibilityProblem = taskCompatibilityProblem(task, runs);
+  const compatibilityProblem = taskCompatibilityProblem(task, pendingRuns);
   return {
     runIds,
     runs,

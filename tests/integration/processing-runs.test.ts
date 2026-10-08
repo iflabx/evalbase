@@ -1216,7 +1216,10 @@ describe("durable data processing", () => {
       });
       const draftId = draft.json().draft.id,
         ids: string[] = [];
-      for (const question of ["First source", "Second source"]) {
+      const firstQuestion = malformed
+        ? "First source " + "长题目".repeat(1000)
+        : "First source";
+      for (const question of [firstQuestion, "Second source"]) {
         const row = await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/collaborative-drafts/${draftId}/records`,
@@ -1353,7 +1356,15 @@ describe("durable data processing", () => {
             expect.objectContaining({ code: "unknown_source" }),
           );
           expect(malformedRead.json().issues).toContainEqual(
-            expect.objectContaining({ code: "duplicate_source" }),
+            expect.objectContaining({
+              code: "duplicate_source",
+              batch: 0,
+              inputOrdinal: 1,
+              sourceQuestion: firstQuestion.slice(0, 160),
+            }),
+          );
+          expect(malformedRead.json().records[0].original.question).toBe(
+            firstQuestion,
           );
           return;
         }

@@ -401,6 +401,7 @@ export function ProjectAssistant({
     setError("");
     try {
       await post(`${base}/proposals/${id}/${action}`, {});
+      if (action === "confirm") setPicked(undefined);
       await conversation.refetch();
       await queryClient.invalidateQueries({
         predicate: (q) =>
@@ -650,7 +651,7 @@ export function ProjectAssistant({
                         </details>
                       )}
                       {visible?.proposals
-                        .filter((p) => p.turn_id === turn.id && p.status !== "invalid")
+                        .filter((p) => p.turn_id === turn.id)
                         .map((p) => (
                           <div
                             key={p.id}
@@ -713,7 +714,9 @@ export function ProjectAssistant({
                                       : `已加入草稿${p.receipt?.receipt?.added !== undefined ? ` · 新增 ${p.receipt.receipt.added} 条记录` : ""}`
                                   : p.status === "executing"
                                     ? "正在提交…"
-                                    : "已取消"}
+                                    : p.status === "invalid"
+                                      ? "要求或范围已变化，此确认已失效；请在本会话重新核对。"
+                                      : "已取消"}
                               </p>
                             )}
                             {p.status === "succeeded" &&
@@ -918,6 +921,33 @@ export function ProjectAssistant({
                     </div>
                   )}
                 </div>
+                <p className="rounded-md bg-muted/40 px-3 py-2 text-sm leading-6">
+                  下一步：
+                  {visible.task.requirementProblem ||
+                  visible.task.executionPlan?.needsReview ||
+                  visible.task.review?.compatibilityProblem
+                    ? "在对话中更正要求，保留的成果会重新核对。"
+                    : visible.task.stage === "failed" &&
+                        visible.task.recovery?.kind === "model_reply" &&
+                        visible.task.checkedStatus === "succeeded"
+                      ? "核对已保留的候选，回复失败不会重新生成数据。"
+                      : ((
+                          {
+                            planning: "发送“开始执行”后按当前方案处理。",
+                            processing: "后台正在处理，完成后会自动继续；你可以稍后回来查看。",
+                            inspecting: "正在查看资料与要求，请稍候。",
+                            yielding: "正在从已保存的进度继续，请稍候。",
+                            checking: "正在核对实际结果，请稍候。",
+                            awaiting_review:
+                              "对照原文审核候选；勾选后可在对话中提出局部调整或采用要求。",
+                            awaiting_confirmation: "核对对话中的确认卡，点击后才会采用或发布。",
+                            waiting_input: "在对话中补充助手询问的业务选择。",
+                            failed: "查看下面的具体原因，修正要求或重试未完成步骤。",
+                            stopped: "已保留成果，可核对后在本会话继续提出要求。",
+                            complete: "本次目标已完成，可查看成果或提出新的要求。",
+                          } as Record<string, string>
+                        )[visible.task.stage] ?? "查看当前结果后继续提出要求。")}
+                </p>
                 {Boolean(visible.task.executionPlan?.steps.length) && (
                   <ol aria-label="执行步骤" className="space-y-2 text-sm">
                     {visible.task.executionPlan!.steps.map((step, index) => (

@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-08：Owner 先后单独授权 OPT-06 和 OPT-07，两张现已实施验证完成；应用提交分别为 `08356cb` 和 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`，详情见 [OPT-06 证据](opt06-verification.md) 与 [OPT-07 证据](opt07-verification.md)。OPT-08 已解除依赖但尚未开始，仍需单独开发授权；整改批次只有一个最终人工 checkpoint。OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。本次授权不包含 OPT-08、切换 Owner 环境、合并或推送。
+2026-10-08：Owner 先后单独授权 OPT-06 和 OPT-07，两张现已实施验证完成；应用提交分别为 `08356cb` 和 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`，详情见 [OPT-06 证据](opt06-verification.md) 与 [OPT-07 证据](opt07-verification.md)。OPT-08 已于 2026-10-08 获得单独开发授权，现正在完成通用实测与最终隔离交付；整改批次只有一个最终人工 checkpoint。OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。本次 OPT-08 授权包含既有 Owner 隔离环境的最终切换；不包含合并或推送。
 
 - 历史授权：Owner 曾在持续目标中授权调研、文档、审查、开发、测试及最终 200 条实用测试集；原四项工作连续执行。本次以开头的文档授权与实施状态为准。
 - 历史优化基线 `4c71572d79187a0c834f6ef990187c60257ca3de`，工作分支 `codex/assistant-optimization`，工作区 `/home/bistu/EvalBase/.worktrees/agent-data-processing`。基线干净，原隔离环境和历史 200 条版本保留。
@@ -31,7 +31,7 @@ Implementation: in-progress
 | [OPT-05](issues/05-long-task-execution.md)    | 历史长任务执行与未完成验收                  | 原功能基础保留；待 OPT-06–08 对应证据收口    | in-progress    | 历史局部证据保留；不作为新增整改通过证明                                                           |
 | [OPT-06](issues/06-active-requirements.md)    | 目标理解、生效要求、规则反馈及摘要          | 现有 OPT-01–05 代码基础                      | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                  |
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
-| [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | not-started    | 依赖解除、待授权；R08-1–7 pending；Owner pending                                                   |
+| [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | in-progress    | 已授权实施；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口，不改写历史结论。
 
@@ -89,3 +89,5 @@ Implementation: in-progress
 2026-10-06：四项实施完成，最终代码 `65c10e9b683928765a9a8d7f3a3d3da6213b26fe`，之前 Comments 为按时间追加的历史进展。真实新 v1 共 200 条，分类 100/50/50，24 条操作人员内容修正；CSV/ZIP 和全部来源已核对。Standards/Spec 最后窄复审无 P0/P1/P2，发布完成/回执恢复/下一任务共 3 项公开回归、类型/lint 通过。详见 [闭环证明](verification.md)。Owner 人工验收尚未代签；不合并、不推送、不正式部署。
 
 - 2026-10-08：按 Owner 要求拆为 OPT-06–08 三张功能 Ticket，依次实施、同批验收。当前仅完成任务文档与依赖整理，所有新增验收项 pending；未修改应用或切换环境。
+
+- 2026-10-08 OPT-08：候选来源/差异和真实下一动作已实现；实测补修固定步骤衔接、简单要求替换旧待执行方案、采用后的来源核对。实际验证和剩余限制集中记录于 [OPT-08 验证](opt08-verification.md)，Owner 人工验收 pending。

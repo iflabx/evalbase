@@ -25,7 +25,12 @@ type RecordValue = {
   expectedOutput: string;
   metadata: { key: string; value: string }[];
 };
-type Candidate = { id: string; original?: RecordValue; result: RecordValue };
+type Candidate = {
+  id: string;
+  sourceLabel?: string;
+  original?: RecordValue & { baseline?: RecordValue; raw?: unknown };
+  result: RecordValue;
+};
 export function AssistantCandidates({
   base,
   sessionId,
@@ -46,7 +51,18 @@ export function AssistantCandidates({
   const data = useQuery({
     queryKey: ["assistant-candidates", base, sessionId, runId, scopeHash, offset],
     queryFn: () =>
-      request<{ records: Candidate[]; total: number }>(
+      request<{
+        records: Candidate[];
+        total: number;
+        rootOperation?: string;
+        issues?: {
+          code: string;
+          count?: number;
+          batch?: number;
+          inputOrdinal?: number;
+          sourceQuestion?: string;
+        }[];
+      }>(
         `${base}/sessions/${encodeURIComponent(sessionId)}/candidates?run=${encodeURIComponent(runId)}&offset=${offset}&limit=10`,
       ),
     retry: false,
@@ -60,6 +76,18 @@ export function AssistantCandidates({
     onSelect({ runId, resultIds: [...next] });
   };
   const rows = data.error ? [] : (data.data?.records ?? []);
+  const changes = (row: Candidate) =>
+    data.data?.rootOperation === "augment" || !row.original
+      ? "新增记录"
+      : (["question", "expectedOutput", "metadata"] as const)
+          .filter(
+            (field) => JSON.stringify(row.original![field]) !== JSON.stringify(row.result[field]),
+          )
+          .map(
+            (field) =>
+              ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[field],
+          )
+          .join("、") || "未改变";
   const value = (record: RecordValue | undefined) =>
     record ? (
       <div className="space-y-4 text-sm">
@@ -94,6 +122,15 @@ export function AssistantCandidates({
         <span className="text-muted-foreground">已选 {chosen.size} 条候选</span>
       </div>
       <div className="flex flex-wrap gap-2 p-3">
+        <p className="w-full text-xs text-muted-foreground">
+          {data.isSuccess
+            ? `当前批次共 ${data.data.total} 条候选；翻页不改变范围。`
+            : "候选数量读取后显示；已有成果保留。"}
+        </p>
+        <p className="w-full text-xs text-muted-foreground">内容待你审核</p>
+        <p className="w-full text-xs text-muted-foreground">
+          勾选需要调整的记录，在对话中说明修改要求。部分采用只提交所选记录。
+        </p>
         <Button
           size="sm"
           variant="outline"
@@ -119,9 +156,16 @@ export function AssistantCandidates({
       {data.isPending ? (
         <p className="p-3 text-muted-foreground">正在读取候选…</p>
       ) : data.error ? (
-        <p role="alert" className="p-3 text-destructive">
-          候选暂不可用。请检查权限或来源后重试。
-        </p>
+        <div className="space-y-2 p-3">
+          <p role="alert" className="text-destructive">
+            {data.error.message === "assistant_candidate_selection_changed"
+              ? "候选范围已变化，请核对当前任务后重新选择。"
+              : "候选暂不可用。请检查权限或来源后重试；已有结果保留。"}
+          </p>
+          <Button size="sm" variant="outline" onClick={() => void data.refetch()}>
+            重试读取候选
+          </Button>
+        </div>
       ) : (
         <Table>
           <TableHeader>
@@ -148,6 +192,17 @@ export function AssistantCandidates({
                   <p className="truncate" title={row.result.question}>
                     {row.result.question || "（空问题）"}
                   </p>
+                  <p
+                    className="mt-1 truncate text-xs text-muted-foreground"
+                    title={row.sourceLabel}
+                  >
+                    {row.sourceLabel ?? "来源未记录"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {changes(row) === "新增记录" || changes(row) === "未改变"
+                      ? changes(row)
+                      : `本次变化：${changes(row)}`}
+                  </p>
                 </TableCell>
                 <TableCell className="max-w-24">
                   <p className="truncate" title={row.result.expectedOutput}>
@@ -169,6 +224,35 @@ export function AssistantCandidates({
           </TableBody>
         </Table>
       )}
+      {Boolean(data.data?.issues?.length) && (
+        <details className="border-t p-3 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            处理问题（{data.data!.issues!.length}）
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {data.data!.issues!.slice(0, 20).map((issue, index) => (
+              <li key={index}>
+                {(
+                  {
+                    missing_output: "缺少输出",
+                    empty_question: "问题为空",
+                    duplicate_content: "内容重复",
+                    excess_output: "输出数量超出要求",
+                    unknown_source: "来源不匹配",
+                    duplicate_source: "同一来源重复返回",
+                    invalid_output: "输出格式不完整",
+                    protected_field_changed: "受保护字段变化",
+                  } as Record<string, string>
+                )[issue.code] ?? "此批结果需要核对"}
+                {issue.count ? `：${issue.count} 条` : ""}
+                {issue.batch !== undefined ? ` · 第 ${issue.batch + 1} 批` : ""}
+                {issue.inputOrdinal ? ` · 输入第 ${issue.inputOrdinal} 条` : ""}
+                {issue.sourceQuestion ? `：${issue.sourceQuestion.slice(0, 80)}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {!data.isPending && !data.error && !rows.length && (
         <p className="p-3 text-muted-foreground">
           暂无有效候选。之前的处理结果仍保留在任务记录中。
@@ -176,14 +260,16 @@ export function AssistantCandidates({
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
         <span className="text-xs text-muted-foreground">
-          共 {data.data?.total ?? 0} 条 · 第 {Math.floor(offset / 10) + 1} 页
+          {data.isSuccess
+            ? `共 ${data.data.total} 条 · 第 ${Math.floor(offset / 10) + 1} 页`
+            : "候选数量尚未读取"}
         </span>
         <div className="flex gap-1">
           <Button
             size="sm"
             variant="outline"
             aria-label="上一页候选"
-            disabled={offset === 0 || data.isPending}
+            disabled={offset === 0 || !data.isSuccess}
             onClick={() => setOffset(Math.max(0, offset - 10))}
           >
             上一页
@@ -192,7 +278,7 @@ export function AssistantCandidates({
             size="sm"
             variant="outline"
             aria-label="下一页候选"
-            disabled={offset + 10 >= (data.data?.total ?? 0) || data.isPending}
+            disabled={offset + 10 >= (data.data?.total ?? 0) || !data.isSuccess}
             onClick={() => setOffset(offset + 10)}
           >
             下一页
@@ -210,16 +296,42 @@ export function AssistantCandidates({
             <DialogTitle>候选修改对照</DialogTitle>
             <DialogDescription>核对完整内容后再决定是否采用。</DialogDescription>
           </DialogHeader>
+          <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+            <p className="break-words">来源：{detail?.sourceLabel ?? "未记录"}</p>
+            {detail && (
+              <p className="mt-1 text-muted-foreground">
+                {data.data?.rootOperation === "augment"
+                  ? "由参考资料扩写新增；下方原文仅供参考。"
+                  : `本次变化：${changes(detail)}`}
+              </p>
+            )}
+          </div>
           <div className="grid min-w-0 gap-5 sm:grid-cols-2">
             <section className="min-w-0 rounded-md border p-4">
               <h4 className="mb-4 font-semibold">修改前</h4>
-              {value(detail?.original)}
+              {value(detail?.original?.baseline ?? detail?.original)}
+              {detail?.original?.raw !== undefined && (
+                <details className="mt-3 text-xs">
+                  <summary className="cursor-pointer text-primary">原始字段</summary>
+                  <pre className="mt-2 whitespace-pre-wrap break-words">
+                    {JSON.stringify(detail.original.raw, null, 2)}
+                  </pre>
+                </details>
+              )}
             </section>
             <section className="min-w-0 rounded-md border p-4">
               <h4 className="mb-4 font-semibold">候选结果</h4>
               {value(detail?.result)}
             </section>
           </div>
+          {detail?.original?.baseline && (
+            <details className="rounded-md border p-3">
+              <summary className="cursor-pointer text-sm text-muted-foreground">
+                本次调整前的候选
+              </summary>
+              <div className="mt-3">{value(detail.original)}</div>
+            </details>
+          )}
         </DialogContent>
       </Dialog>
     </section>
