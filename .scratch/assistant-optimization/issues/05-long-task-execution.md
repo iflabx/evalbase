@@ -2,9 +2,11 @@
 
 Status: ready-for-agent
 Implementation: in-progress
-Blocked by: [OPT-08](08-review-and-delivery.md)
+Blocked by: [OPT-09](09-execution-recovery-consistency.md)
 
 ## 2026-10-08 整改承接
+
+后续审查发现执行与成果核对缺陷，已集中建立 [OPT-09](09-execution-recovery-consistency.md)。下表保留 OPT-06–08 原承接关系；本 Ticket 的最终收口另须包含 OPT-09 修复及补验收证据，现仍未完成。OPT-09 以已有代码为基础，不以本 Ticket 验收通过为前提。
 
 本 Ticket 保留历史实施和未完成状态，不再单独安排开发。当前范围以 [助手 PRD](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)、[整改方案](../../../docs/assistant-remediation-plan.md) 和 [Spec](../spec.md#整改批次执行约定) 为准；下面按原文保留的 Scope 授权、验收和 Progress 仅为历史记录，不能越过当前授权与批次规则。
 
@@ -97,3 +99,4 @@ Owner 于 2026-10-06 授权逐项调研、文档、审查、开发和测试；�
 ## Comments
 
 - 2026-10-08：未完成范围映射至 OPT-06–08，历史正文与结果保留。当前仅编写任务，未补签 LONG 验收，也未恢复代码开发。
+- 2026-10-08 后续审查：新增 OPT-09 汇总前置条件、有效范围/背景、参数纠正与发布核对问题；本 Ticket 最终收口依赖更新为 OPT-09。仅更新文档，不改签历史验证与 Owner checkpoint，不授权实施。

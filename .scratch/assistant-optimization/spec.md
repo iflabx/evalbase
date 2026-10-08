@@ -3,6 +3,8 @@
 Status: ready-for-agent
 Implementation: in-progress
 
+2026-10-08 最新审查补充：Owner 要求继续审查类似问题并创建修复 Ticket，已建立 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md)，当前 `not-started`，本轮尚无实施授权。当前存在未关闭 P1/P2，整改批次不能据历史通过记录收口；OPT-06–08 的既有实施和证据保留，新增问题与补验收统一由 OPT-09 跟踪。
+
 2026-10-08：Owner 先后单独授权 OPT-06 和 OPT-07，两张现已实施验证完成；应用提交分别为 `08356cb` 和 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`，详情见 [OPT-06 证据](opt06-verification.md) 与 [OPT-07 证据](opt07-verification.md)。OPT-08 已于 2026-10-08 单独授权并完成实施、通用小样本验证及既有隔离交付；原 200 条内容任务仍未完成，结果见其验证记录；整改批次只有一个最终人工 checkpoint。OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。本次 OPT-08 授权包含既有 Owner 隔离环境的最终切换；不包含合并或推送。
 
 - 历史授权：Owner 曾在持续目标中授权调研、文档、审查、开发、测试及最终 200 条实用测试集；原四项工作连续执行。本次以开头的文档授权与实施状态为准。
@@ -13,7 +15,7 @@ Implementation: in-progress
 ## 整改批次执行约定
 
 - 文档起点为 `24a7434d3dfb6e03a2c2a1fe0befbca67d948d6f`，应用代码仍为 `65a5055`；沿用 `codex/assistant-optimization` 和现有工作区，不从 main 重建或改写已有开发提交。实施前核对最新 HEAD、工作区和调用方。
-- 顺序为 OPT-06 → OPT-07 → OPT-08。OPT-06 依赖的是现有实现，不能把 OPT-05 的最终验收设为前置条件而形成循环；OPT-05 不再单独排期，其未完成要求映射见原 Ticket 开头。
+- 原整改实施顺序为 OPT-06 → OPT-07 → OPT-08；后续审查缺陷集中于 OPT-09，待获授权后接续修复。OPT-06/09 依赖的是现有实现，不能把 OPT-05 的最终验收设为前置条件而形成循环；OPT-05 不再单独排期，其未完成要求映射见原 Ticket 开头，最终收口须含 OPT-09 修复证据。
 - `ready-for-agent` 表示任务已写清；仍须有开发授权并满足 `Blocked by`。Owner 授权整个整改批次后，前一张满足本张验收及必要审阅即可继续下一张，不逐张要求人工 checkpoint。只授权单张时仅执行该张。
 - 每张记录实际提交、直接相关测试、路由处置及剩余限制；历史证据不能代替新验收。前两张通过自动验证和必要审阅可记实施完成并解锁依赖，整个批次的 Owner 验收仍为 pending。OPT-08 负责固定版本的完整流程和最终 checkpoint。
 - 所有 Ticket 复用现有权限、数据保护、三字段合同、后台任务及 donor UI。必要的类型/lint/构建、公开正常/关键失败路径和 Standards/Spec 审阅按实际改动选择；P0/P1 阻止本张完成。兼容、并发和权限用可控模型与隔离持久化验证；语义任务使用有限真实样本。
@@ -28,16 +30,17 @@ Implementation: in-progress
 | [OPT-02](issues/02-integration.md)            | 多批任务成果、采用同步、溯源下载与中文名称  | 缺失恢复已验证；独立修复不等待 OPT-01 其他项 | completed      | 七批合为一个资产采用，保留七个真实来源；发布、CSV/ZIP 全量比对通过                                 |
 | [OPT-03](issues/03-background.md)             | 背景附件、持久要求、短提示与同会话连续任务  | OPT-01/02；文档提取独立进行                  | completed      | PDF/MD/TXT 提取、权限与冻结回归通过；同会话真实 GB PDF 已使用                                      |
 | [OPT-04](issues/04-workspace.md)              | 宽工作区、状态与结果整理、最终 200 条闭环   | OPT-01/02/03                                 | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                          |
-| [OPT-05](issues/05-long-task-execution.md)    | 历史长任务执行与未完成验收                  | 原功能基础保留；待 OPT-06–08 对应证据收口    | in-progress    | 历史局部证据保留；不作为新增整改通过证明                                                           |
+| [OPT-05](issues/05-long-task-execution.md)    | 历史长任务执行与未完成验收                  | 原功能基础保留；待 OPT-09 补修及对应证据收口 | in-progress    | 历史局部证据保留；不作为新增整改通过证明                                                           |
 | [OPT-06](issues/06-active-requirements.md)    | 目标理解、生效要求、规则反馈及摘要          | 现有 OPT-01–05 代码基础                      | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                  |
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
+| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 现有 OPT-06–08 实现；不等待 OPT-05 收口 | not-started | 只读审查与复现见 Ticket；实施及 R09 验收 pending |
 
-长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口，不改写历史结论。
+长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；新增 OPT-09 修复后仍复用同一最终 checkpoint，不改写历史结论。
 
 ## 验证矩阵
 
-下表保留原 OPT-01–04 的验证编号；本轮 R06/R07/R08 验收分别记录于各 Ticket，详细用例统一引用 [测试计划 §5](../../docs/test-plan-data-selection-and-assistant.md#5-整改验收计划)。
+下表保留原 OPT-01–04 的验证编号；R06/R07/R08 及后续补修 R09 验收分别记录于各 Ticket，详细用例统一引用 [测试计划 §5](../../docs/test-plan-data-selection-and-assistant.md#5-整改验收计划)。
 
 | 编号    | 要求                                                         | 权威证据                                          |
 | ------- | ------------------------------------------------------------ | ------------------------------------------------- |
@@ -83,6 +86,8 @@ Implementation: in-progress
 - 真实 200 条扩写出现连续批次超时，已停止且未采用。新增 processing-v5：超过 20 条的扩写按每批 10 条输出，并发送整体位置 offset/count/total；v1v4 的既有请求、分批和修订身份保持原状。公开 Worker 回归先红后绿，验证 21 条按 10/10/1 分批、结果唯一，v4 仍按 20/1；缺失补齐及分类配额的 4 项窄检查通过。真实新 200 条仍待重新生成和审核。
 
 - v5 末批预算复审 P2 已定位并补公开回归：新配方按本批真实数量预算，v1v4 保留原估算。39,999 字节的最后单条扩写请求先因错误估算被拒（RED），修正后可以发送且仍不超 40,000 字节。真实候选尚未采用，最终闭环继续。
+
+- 2026-10-08 后续审查：在固定 `a5e7815` 核查最新失败回合和相似代码路径，新建 OPT-09，统一跟踪执行依赖、有效依据/范围、失败恢复、字段保护和实际发布核对。当前只完成审查和任务文档，实施未开始；OPT-05 收口依赖同步更新，历史完成记录保留。
 
 ## 最新完成记录
 
