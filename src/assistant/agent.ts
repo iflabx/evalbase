@@ -1218,7 +1218,7 @@ export async function executeAssistantTurn(
                   required: ["value", "text"],
                 },
                 description:
-                  "附件分类必须为每个允许值保存真实原文定义；编号不能代替定义。",
+                  "附件分类必须为每个允许值逐字复制简短原文定义（包括标点，不总结）；编号不能代替定义。用户要求具体子项时，不用大类代替；用户指定大类时保留其层级。",
               },
               clear: {
                 type: "boolean",

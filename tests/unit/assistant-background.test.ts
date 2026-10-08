@@ -29,6 +29,20 @@ describe("OPT-10 document definitions", () => {
       validateBackgroundRules(task("A.9.a", "表示甲类问题。"), documents),
     ).toThrow();
   });
+  it("returns a short verbatim excerpt so a paraphrased definition can be corrected", () => {
+    let failure: unknown;
+    try {
+      validateBackgroundRules(task("A.1.a", "这是甲类风险的概括。"), documents);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({
+      hint: expect.stringMatching(/可引用原文.*A\.1\.a 表示甲类问题/),
+    });
+    expect(() =>
+      validateBackgroundRules(task("A.1.a", "表示甲类问题。"), documents),
+    ).not.toThrow();
+  });
   it("rejects a definition borrowed from a different numbered entry", () => {
     expect(() =>
       validateBackgroundRules(task("A.1.a", "A.1.a"), documents),
