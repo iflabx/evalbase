@@ -361,6 +361,42 @@ export function validateBackgroundRules(
       )
       .map((fragment) => fragment.text),
   );
+  const userDefinition = (value: string, quote: string) => {
+    const negative = /不要|不得|禁止|撤销|取消|不再|不允许/u;
+    const label = normalize(value);
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const documentLabel = excerpts.some(
+      (excerpt) =>
+        (/^[a-z]?(?:\.[0-9a-z]+)+$/u.test(label) &&
+          normalize(excerpt).includes(label)) ||
+        excerpt.split(/\r?\n/u).some((line) => {
+          const heading = normalize(line)
+            .replace(/^(?:#{1,6}|[-*+]|[0-9]+[.)、]|[a-z][)])/u, "")
+            .replace(/[。;；]$/u, "");
+          return (
+            heading === label ||
+            heading.replace(/^[a-z](?:\.[0-9a-z]+)+/u, "") === label ||
+            new RegExp(`(?:^|[。;；])${escaped}[:：]`, "u").test(heading)
+          );
+        }),
+    );
+    const request = [task.goal, ...(task.supplements ?? [])].findLast(
+      (text) => typeof text === "string" && text.includes(value),
+    );
+    const declaration = request
+      ?.split(/[。；;\n，,]/u)
+      .findLast((text: string) => text.includes(value));
+    return (
+      !documentLabel &&
+      declaration &&
+      !negative.test(declaration) &&
+      quote.includes(value) &&
+      declaration.includes(quote) &&
+      task.requirements?.some(
+        (text: string) => text.includes(value) && !negative.test(text),
+      )
+    );
+  };
   for (const rule of validateRules(task)) {
     // Labels explicitly supplied by the user need not be verbatim document terminology.
     if (rule.basis === "user") continue;
@@ -379,28 +415,49 @@ export function validateBackgroundRules(
         !rule.definitions?.some(
           (definition) =>
             definition.value === value &&
-            excerpts.some((excerpt) => {
-              const text = normalize(excerpt);
-              const label = normalize(value);
-              const start = text.indexOf(label);
-              if (start < 0) return false;
-              const rest = text.slice(start + label.length);
-              // Stop at the next numbered entry or declared category, rather than
-              // accepting a real definition quoted from a different entry.
-              const numbered = rest.search(
-                /[a-z](?:\.[0-9]+)+(?:\.[a-z])?|[0-9]+(?:\.[0-9]+)+/u,
-              );
-              let end = numbered < 0 ? rest.length : numbered;
-              for (const other of rule.allowedValues ?? []) {
-                if (other === value) continue;
-                const boundary = rest.indexOf(normalize(other));
-                if (boundary >= 0) end = Math.min(end, boundary);
-              }
-              const quoted = normalize(definition.text);
-              if (/^[a-z]?(?:\.[0-9a-z]+)+$/u.test(label) && quoted === label)
-                return false;
-              return (label + rest.slice(0, end)).includes(quoted);
-            }),
+            ((definition.basis === "user" &&
+              userDefinition(value, definition.text)) ||
+              excerpts.some((excerpt) => {
+                const text = normalize(excerpt);
+                const label = normalize(value);
+                const start = text.indexOf(label);
+                if (start < 0) return false;
+                const rest = text.slice(start + label.length);
+                // Stop at the next numbered entry or declared category, rather than
+                // accepting a real definition quoted from a different entry.
+                const numbered = rest.search(
+                  /[a-z](?:\.[0-9]+)+(?:\.[a-z])?|[0-9]+(?:\.[0-9]+)+/u,
+                );
+                let end = numbered < 0 ? rest.length : numbered;
+                for (const other of rule.allowedValues ?? []) {
+                  if (other === value) continue;
+                  const otherLabel = normalize(other);
+                  const escaped = otherLabel.replace(
+                    /[.*+?^${}()|[\]\\]/gu,
+                    "\\$&",
+                  );
+                  const inline = rest.search(
+                    new RegExp(`[。;；]${escaped}[:：]`, "u"),
+                  );
+                  if (inline >= 0) end = Math.min(end, inline + 1);
+                  let position = 0;
+                  for (const line of excerpt.split(/\r?\n/u)) {
+                    const normalized = normalize(line);
+                    const boundary = position - start - label.length;
+                    const heading = normalized.replace(
+                      /^(?:#{1,6}|[-*+]|[0-9]+[.)、])/u,
+                      "",
+                    );
+                    if (boundary >= 0 && heading.startsWith(otherLabel))
+                      end = Math.min(end, boundary);
+                    position += normalized.length;
+                  }
+                }
+                const quoted = normalize(definition.text);
+                if (/^[a-z]?(?:\.[0-9a-z]+)+$/u.test(label) && quoted === label)
+                  return false;
+                return (label + rest.slice(0, end)).includes(quoted);
+              })),
         )
       ) {
         const quoted = excerpts.find((excerpt) =>

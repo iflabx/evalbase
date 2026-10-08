@@ -1214,11 +1214,16 @@ export async function executeAssistantTurn(
                   properties: {
                     value: { type: "string", minLength: 1, maxLength: 500 },
                     text: { type: "string", minLength: 1, maxLength: 2000 },
+                    basis: {
+                      enum: ["background", "user"],
+                      description:
+                        "仅当前用户明确指定的附件外额外标签可标user，text逐字引用用户指定该标签的短句并在requirements保留当前要求；已撤销或否定的标签不可用。附件已有类别保持background或省略。",
+                    },
                   },
                   required: ["value", "text"],
                 },
                 description:
-                  "附件分类必须为每个允许值逐字复制简短原文定义（包括标点，不总结）；编号不能代替定义。用户要求具体子项时，不用大类代替；用户指定大类时保留其层级。",
+                  "附件分类必须为每个允许值逐字复制简短原文定义（包括标点，不总结）；编号不能代替定义。语义完整的条目名称可直接作为短定义，不复制整段。用户要求具体子项时，不用大类代替；用户指定大类时保留其层级。用户另指定的兜底标签可在该definitions条目注明basis:user，不能因此把所有附件类别改为user。",
               },
               clear: {
                 type: "boolean",
@@ -3236,7 +3241,7 @@ export async function executeAssistantTurn(
           ...(plannedAction ? { toolChoice: "required" as const } : {}),
         };
       },
-      maxOutputTokens: 2048,
+      maxOutputTokens: 4096,
       maxRetries: 0,
       experimental_telemetry: { isEnabled: false },
     });

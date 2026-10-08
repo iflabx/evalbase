@@ -12,7 +12,11 @@ export type CandidateGoal = {
   classifications?: {
     field: "expectedOutput" | "metadata";
     basis?: "background" | "user";
-    definitions?: { value: string; text: string }[];
+    definitions?: {
+      value: string;
+      text: string;
+      basis?: "background" | "user";
+    }[];
     key?: string;
     allowedValues?: string[];
     requiredValues?: string[];
