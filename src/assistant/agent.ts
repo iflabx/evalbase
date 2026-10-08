@@ -14,9 +14,15 @@ import {
   pendingPlanAction,
   planRequirementsKey,
   planSource,
+  resolvedStepInput,
+  missingStepDependency,
 } from "./plan.js";
 import { readBackground } from "./background.js";
-import { reviewTask, taskCompatibilityProblem } from "./review.js";
+import {
+  reviewTask,
+  taskCompatibilityProblem,
+  scopeRunToTask,
+} from "./review.js";
 import { reviewCandidates } from "../processing/review.js";
 import {
   selectCandidateRun,
@@ -70,6 +76,65 @@ export type DraftCommand = (
 ) => Promise<Record<string, any>>;
 const string = { type: "string", minLength: 1, maxLength: 250 },
   shortText = { type: "string", maxLength: 2000 };
+// These failures occur before a domain commit (or roll its transaction back).
+// Unknown failures keep the operation binding until a real receipt is reconciled.
+const validationWithoutEffect = new Set([
+  "assistant_tool_input_invalid",
+  "processing_scope_invalid",
+  "processing_configuration_invalid",
+  "processing_capacity_exceeded",
+  "test_set_capacity_exceeded",
+  "assistant_background_not_read",
+  "assistant_requirement_conflict",
+  "assistant_candidate_selection_invalid",
+  "assistant_plan_count_conflict",
+  "model_connection_unavailable",
+]);
+function hasNoEffect(record: Record<string, any>) {
+  return (
+    record.effect === "none" ||
+    (record.status === "failed" &&
+      validationWithoutEffect.has(record.error?.code))
+  );
+}
+function unresolvedFailure(records: Record<string, any>[]) {
+  return records.findLast(
+    (record, index) =>
+      record.status === "failed" &&
+      !records
+        .slice(index + 1)
+        .some(
+          (later) =>
+            later.name === record.name &&
+            later.status === "succeeded" &&
+            (hasNoEffect(record) || later.key === record.key),
+        ),
+  );
+}
+function receiptMessages(
+  name: string,
+  key: string,
+  input: any,
+  result: any,
+): ModelMessage[] {
+  return [
+    {
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId: key, toolName: name, input }],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: key,
+          toolName: name,
+          output: { type: "json", value: result },
+        },
+      ],
+    },
+  ];
+}
 const ids = {
   type: "array",
   items: string,
@@ -306,7 +371,7 @@ export async function executeAssistantTurn(
     ).rows[0];
     const tools = saved.tool_results as Record<string, any>[];
     if (
-      tools.some((item) => item.status === "failed") ||
+      unresolvedFailure(tools) ||
       saved.task.question ||
       saved.task.executionPlan?.mode === "plan"
     )
@@ -552,6 +617,7 @@ export async function executeAssistantTurn(
           ).rows[0].task;
           const plan = currentTask.executionPlan;
           const step = plan?.steps[plan.current];
+          if (step?.action === name) input = resolvedStepInput(plan, input);
           // Before fields became explicit, omitted allowedFields meant question only.
           // A resumed model may spell out that same default; keep the saved operation key.
           const legacy =
@@ -575,25 +641,30 @@ export async function executeAssistantTurn(
             (step?.action === name ? step.operation?.key : undefined) ??
             legacy?.key ??
             `assistant:${turn.id}:${sha256(canonicalJson({ name, input }))}`;
-          if (
-            (Number(turn.execution_attempt) > 1 || turn.resuming) &&
-            ![
-              "query_project",
-              "read_records",
-              "read_background",
-              "read_processing",
-              "plan_task",
-            ].includes(name) &&
-            saved.some(
-              (r) =>
-                r.name === name &&
-                !r.key.startsWith(`assistant:${turn.id}:sdk:`),
-            ) &&
-            !saved.some((r) => r.key === key)
-          )
-            throw new AssistantError(409, "assistant_retry_parameters_changed");
           let actionStarted = false;
+          let boundStep = false;
           try {
+            if (
+              ![
+                "query_project",
+                "read_records",
+                "read_background",
+                "read_processing",
+                "plan_task",
+              ].includes(name) &&
+              saved.some(
+                (r) =>
+                  r.name === name &&
+                  !hasNoEffect(r) &&
+                  (restoring || ["started", "failed"].includes(r.status)) &&
+                  !r.key.startsWith(`assistant:${turn.id}:sdk:`),
+              ) &&
+              !saved.some((r) => r.key === key)
+            )
+              throw new AssistantError(
+                409,
+                "assistant_retry_parameters_changed",
+              );
             if (referenceError) throw referenceError;
             const frozen = saved.find(
               (item) =>
@@ -644,16 +715,21 @@ export async function executeAssistantTurn(
                 step.input &&
                 Object.entries(step.input).some(
                   ([field, expected]) =>
+                    !(
+                      name === "read_background" &&
+                      step.scope === "all" &&
+                      ["from", "limit"].includes(field)
+                    ) &&
                     canonicalJson(
                       field === "source"
                         ? planSource(expected as Record<string, any>)
                         : expected,
                     ) !==
-                    canonicalJson(
-                      (field === "source"
-                        ? planSource(input[field])
-                        : input[field]) ?? null,
-                    ),
+                      canonicalJson(
+                        (field === "source"
+                          ? planSource(input[field])
+                          : input[field]) ?? null,
+                      ),
                 )
               )
                 throw new AssistantError(409, "assistant_step_context_changed");
@@ -666,6 +742,7 @@ export async function executeAssistantTurn(
                   "assistant_retry_parameters_changed",
                 );
               if (writing && !step.operation) {
+                boundStep = true;
                 const bound = {
                   ...step,
                   revision: turn.task_revision,
@@ -854,6 +931,17 @@ export async function executeAssistantTurn(
               Object.assign(error, { hint: e.hint });
               await updateTask(db, turn, { requirementProblem: e.hint });
             }
+            const noEffect =
+              !actionStarted || validationWithoutEffect.has(error.code);
+            if (boundStep && noEffect)
+              await updateTask(db, turn, {
+                executionPlan: {
+                  ...plan,
+                  steps: plan.steps.map((item: any, index: number) =>
+                    index === plan.current ? step : item,
+                  ),
+                },
+              });
             const failureKey = actionStarted
               ? key
               : `assistant:${turn.id}:validation:${sha256(canonicalJson({ name, input }))}`;
@@ -863,52 +951,67 @@ export async function executeAssistantTurn(
                 turn.id,
                 failureKey,
                 JSON.stringify([
-                  { key: failureKey, name, status: "failed", input, error },
+                  {
+                    key: failureKey,
+                    name,
+                    status: "failed",
+                    input,
+                    error,
+                    ...(noEffect ? { effect: "none" } : {}),
+                  },
                 ]),
               ],
             );
-            return {
+            const reply = {
               error: {
                 ...error,
                 hint:
                   error.code === "assistant_requirement_conflict" &&
                   e instanceof RequirementError
                     ? e.hint
-                    : [
-                          "assistant_plan_revalidation_required",
-                          "assistant_step_context_changed",
-                        ].includes(error.code)
-                      ? "当前步骤的来源、范围或要求已改变，旧成果仍保留。读取真实对象/成果后用plan_task重新核对要求及步骤参数，再继续未完成部分；不要重跑已成功的全部数据。"
-                      : error.code === "assistant_source_invalid" ||
-                          error.code === "assistant_reference_invalid"
-                        ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
-                        : error.code === "assistant_tool_input_invalid" &&
-                            name === "plan_task"
-                          ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
-                          : error.code === "assistant_context_unavailable"
-                            ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
-                            : error.code ===
-                                "assistant_candidate_selection_invalid"
-                              ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
-                              : error.code === "processing_scope_invalid"
-                                ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
-                                : [
-                                      "test_set_capacity_exceeded",
-                                      "processing_capacity_exceeded",
-                                    ].includes(error.code)
-                                  ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
-                                  : error.code ===
-                                      "assistant_background_not_read"
-                                    ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
+                    : error.code === "assistant_retry_parameters_changed"
+                      ? "已有操作可能已经提交，不能换参数重复执行。先按原操作核对真实回执，确认尚未写入后再修正；已保存成果保留。"
+                      : [
+                            "assistant_plan_revalidation_required",
+                            "assistant_step_context_changed",
+                            "assistant_plan_prerequisite_missing",
+                          ].includes(error.code)
+                        ? "当前步骤的来源、范围或要求已改变，旧成果仍保留。读取真实对象/成果后用plan_task重新核对要求及步骤参数，再继续未完成部分；不要重跑已成功的全部数据。"
+                        : error.code === "assistant_source_invalid" ||
+                            error.code === "assistant_reference_invalid"
+                          ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
+                          : error.code === "assistant_tool_input_invalid" &&
+                              name === "plan_task"
+                            ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
+                            : error.code === "assistant_context_unavailable"
+                              ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
+                              : error.code ===
+                                  "assistant_candidate_selection_invalid"
+                                ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
+                                : error.code === "processing_scope_invalid"
+                                  ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
+                                  : [
+                                        "test_set_capacity_exceeded",
+                                        "processing_capacity_exceeded",
+                                      ].includes(error.code)
+                                    ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
                                     : error.code ===
-                                        "processing_configuration_invalid"
-                                      ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                                        "assistant_background_not_read"
+                                      ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
                                       : error.code ===
-                                          "assistant_plan_count_conflict"
-                                        ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
-                                        : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                                          "processing_configuration_invalid"
+                                        ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                                        : error.code ===
+                                            "assistant_plan_count_conflict"
+                                          ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
+                                          : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
+            await updateTurn(
+              "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(CASE WHEN x->>'key'=$2 THEN jsonb_set(x,'{error}',$3::jsonb) ELSE x END),'[]') FROM jsonb_array_elements(tool_results) x) WHERE id=$1 AND status='running'",
+              [turn.id, failureKey, JSON.stringify(reply.error)],
+            );
+            return reply;
           }
         });
         queue = result.catch(() => undefined);
@@ -1094,6 +1197,13 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        if (
+          current.executionPlan?.mode === "plan" &&
+          turn.event === "user" &&
+          !input.question &&
+          !input.executionMode
+        )
+          throw new AssistantError(422, "assistant_tool_input_invalid");
         let quotaConflict = false;
         let requirementProblem: string | null = null;
         try {
@@ -1132,7 +1242,7 @@ export async function executeAssistantTurn(
                 current.executionPlan.steps[current.executionPlan.current]
                   ?.action ||
                 requirementsKey !== planRequirementsKey(current))));
-        const plan = revisePlan(
+        let plan = revisePlan(
           replacingSimplePlan ? undefined : current.executionPlan,
           {
             steps,
@@ -1142,6 +1252,67 @@ export async function executeAssistantTurn(
           input.target ?? current.target,
           requirementsKey,
         );
+        for (const bound of current.executionPlan?.steps ?? []) {
+          if (
+            !bound.operation ||
+            bound.status !== "pending" ||
+            plan?.steps.some(
+              (step) => step.operation?.key === bound.operation.key,
+            )
+          )
+            continue;
+          const records = (
+            await db.query(
+              "SELECT x FROM assistant_turn t, jsonb_array_elements(t.tool_results) x WHERE t.session_id=$1 AND x->>'key'=$2",
+              [turn.session_id, bound.operation.key],
+            )
+          ).rows.map((row) => row.x);
+          if (
+            !records.length ||
+            records.some(
+              (record) => !hasNoEffect(record) && record.status !== "succeeded",
+            )
+          )
+            throw new AssistantError(409, "assistant_retry_parameters_changed");
+        }
+        if (plan && missingStepDependency(plan) === "runId" && current.runId) {
+          // The current task's own durable tool receipt is an explicit dependency, not a project-wide latest run.
+          const receipt = (
+            await db.query(
+              "SELECT 1 FROM assistant_turn WHERE session_id=$1 AND EXISTS(SELECT 1 FROM jsonb_array_elements(tool_results) x WHERE x->>'status'='succeeded' AND x->'result'->>'runId'=$2)",
+              [turn.session_id, current.runId],
+            )
+          ).rowCount;
+          if (receipt) {
+            const data = await readProcessingRun(
+              db,
+              artifacts,
+              scope,
+              current.runId,
+              { limit: "1" },
+              true,
+            );
+            if (
+              !taskCompatibilityProblem(
+                { ...current, ...fields, executionPlan: plan },
+                [{ ...data, records: undefined }],
+              )
+            )
+              plan = {
+                ...plan,
+                steps: plan.steps.map((step, index) =>
+                  index === plan!.current
+                    ? {
+                        ...step,
+                        input: { ...step.input, runId: current.runId },
+                      }
+                    : step,
+                ),
+              };
+          }
+        }
+        if (plan && !input.question && missingStepDependency(plan))
+          throw new AssistantError(422, "assistant_plan_prerequisite_missing");
         if (
           turn.candidate_selection &&
           input.nextAction === "submit_processing"
@@ -1240,6 +1411,7 @@ export async function executeAssistantTurn(
             ...(input.replaceEvidence ? [] : (task.backgroundEvidence ?? [])),
             ...document.fragments.map((fragment: { index: number }) => ({
               documentId: document.id,
+              sha256: document.sha256,
               fragmentIndex: fragment.index,
             })),
           ];
@@ -1253,7 +1425,13 @@ export async function executeAssistantTurn(
           ];
           if (evidence.length > 12)
             throw new AssistantError(422, "assistant_background_capacity");
-          await updateTask(db, turn, { backgroundEvidence: evidence });
+          await updateTask(db, turn, {
+            backgroundEvidence: evidence,
+            ...(canonicalJson(task.backgroundEvidence ?? []) !==
+            canonicalJson(evidence)
+              ? { review: null }
+              : {}),
+          });
         }
         return document;
       },
@@ -1631,6 +1809,7 @@ export async function executeAssistantTurn(
         await depend(references(input.source));
         let recordIds = input.recordIds;
         let expectedInputHash: string | undefined;
+        let selectedConfiguration: Record<string, any> | undefined;
         const source = {
           ...input.source,
           ...(input.source.kind === "assets"
@@ -1672,14 +1851,7 @@ export async function executeAssistantTurn(
           expectedInputHash = sha256(
             canonicalJson({ records, revision: data.revision ?? null }),
           );
-          await updateTask(db, turn, {
-            processingScope: {
-              source,
-              recordIds,
-              hash: expectedInputHash,
-              configuration: { ...input.selection, seed: selection.seed },
-            },
-          });
+          selectedConfiguration = { ...input.selection, seed: selection.seed };
         } else if (recordIds === undefined && input.allRecords !== true) {
           const saved = (
             await db.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -1689,6 +1861,7 @@ export async function executeAssistantTurn(
           if (saved && canonicalJson(saved.source) === canonicalJson(source)) {
             recordIds = saved.recordIds;
             expectedInputHash = saved.hash;
+            selectedConfiguration = saved.configuration;
           }
         }
         if (input.allRecords === true && recordIds === undefined)
@@ -1700,6 +1873,22 @@ export async function executeAssistantTurn(
           ).allIds;
         if (!Array.isArray(recordIds) || !recordIds.length)
           throw new AssistantError(422, "processing_scope_invalid");
+        if (!expectedInputHash) {
+          const data = await previewProcessingInput(
+            db,
+            scope,
+            { source, limit: 10000 },
+            "write",
+            true,
+          );
+          const selected = new Set<string>(recordIds);
+          const records = data.records.filter((row) => selected.has(row.id));
+          if (records.length !== selected.size)
+            throw new AssistantError(422, "processing_scope_invalid");
+          expectedInputHash = sha256(
+            canonicalJson({ records, revision: data.revision ?? null }),
+          );
+        }
         if (
           input.operation !== "augment" &&
           input.outputCount !== undefined &&
@@ -1730,8 +1919,25 @@ export async function executeAssistantTurn(
             },
           },
         );
+        const plan = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            turn.session_id,
+          ])
+        ).rows[0].task.executionPlan;
+        const submittedStep = plan?.steps[plan.current];
         await updateTask(db, turn, {
           runId: result.run.id,
+          processingScope: {
+            source,
+            recordIds,
+            hash: expectedInputHash,
+            ...(selectedConfiguration
+              ? { configuration: selectedConfiguration }
+              : {}),
+            ...(submittedStep?.action === "submit_processing"
+              ? { stepId: submittedStep.id }
+              : {}),
+          },
           target: input.source,
           targetName: await sourceName(input.source),
           stage: "processing",
@@ -2156,6 +2362,11 @@ export async function executeAssistantTurn(
           (input.allTask === true &&
             input.allValid === undefined &&
             input.resultIds === undefined);
+        if (input.allTask && !task.runIds?.includes(input.runId))
+          throw new AssistantError(
+            422,
+            "assistant_candidate_review_incomplete",
+          );
         if (
           input.allTask &&
           (!allValid ||
@@ -2207,7 +2418,10 @@ export async function executeAssistantTurn(
           if (!["succeeded", "failed", "cancelled"].includes(item.run.status))
             throw new AssistantError(409, "processing_still_running");
           available.push(
-            scopeCandidateRun(item, candidateScopeForRun(task, runId)),
+            scopeRunToTask(
+              task,
+              scopeCandidateRun(item, candidateScopeForRun(task, runId)),
+            ),
           );
         }
         const target: Record<string, any> = { kind: input.target.kind };
@@ -2363,11 +2577,13 @@ export async function executeAssistantTurn(
             db,
             artifacts,
             scope,
-            { ...task, countKind: "final", targetDraftId: row.id },
+            { ...task, targetDraftId: row.id },
             data,
+            true,
           );
           await updateTask(db, turn, {
             review: checked.review,
+            stage: "awaiting_review",
             ...(checked.review.complete ? { error: null, recovery: null } : {}),
           });
           if (!checked.review.complete)
@@ -2437,19 +2653,7 @@ export async function executeAssistantTurn(
         )
       )
         break;
-      const input = {
-        ...(step.input ?? {}),
-        ...([
-          "select_candidates",
-          "read_processing",
-          "retry_processing",
-          "refine_candidates",
-        ].includes(step.action) &&
-        !step.input?.runId &&
-        prior?.receipt?.runId
-          ? { runId: prior.receipt.runId }
-          : {}),
-      };
+      const input = resolvedStepInput(current.executionPlan);
       if (
         (step.action === "select_candidates" &&
           !input.groups &&
@@ -2467,11 +2671,15 @@ export async function executeAssistantTurn(
         context: {},
         abortSignal: AbortSignal.timeout(80000),
       });
-      fixedReceipts.push({
-        role: "assistant",
-        content:
-          "服务端固定步骤的真实回执：" + JSON.stringify(context.encode(result)),
-      });
+      if (Buffer.byteLength(JSON.stringify({ input, result })) <= 12000)
+        fixedReceipts.push(
+          ...receiptMessages(
+            step.action,
+            step.id ?? `step:${count}`,
+            context.encode(input),
+            context.encode(result),
+          ),
+        );
       if ((result as Record<string, any>)?.error) break;
       const after = (
         await db.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -2869,7 +3077,7 @@ export async function executeAssistantTurn(
     // Continue fixed work through the same validated business tools and fences.
     // The model is needed again only when parameters or a semantic decision are missing.
     if (processingEventRunId) {
-      await tools.read_processing.execute!(
+      const receipt = await tools.read_processing.execute!(
         { runId: processingEventRunId },
         {
           toolCallId: `event:${turn.id}`,
@@ -2883,18 +3091,14 @@ export async function executeAssistantTurn(
           turn.session_id,
         ])
       ).rows[0].task;
-      messages.push({
-        role: "assistant",
-        content:
-          "服务端已读取当前处理回执并核对全部候选：" +
-          JSON.stringify(
-            context.encode({
-              runId: current.runId,
-              review: smallReview(current.review),
-              nextAction: current.nextAction,
-            }),
-          ),
-      });
+      messages.push(
+        ...receiptMessages(
+          "read_processing",
+          `event:${turn.id}`,
+          context.encode({ runId: processingEventRunId }),
+          context.encode({ ...receipt, review: smallReview(current.review) }),
+        ),
+      );
       if (
         !plannedAction &&
         (current.review?.complete || current.checkedStatus === "failed")
@@ -3063,26 +3267,37 @@ export async function executeAssistantTurn(
       if (await yieldPendingStep()) return;
       if (await finishSavedPlanningTurn()) return;
     }
-    const errorCode = noProgress
-      ? "assistant_no_progress"
-      : e instanceof AssistantError
-        ? e.code
-        : (plannedAction || processingEventRunId) &&
-            ToolChoiceViolationError.isInstance(e)
-          ? "assistant_task_not_executed"
-          : "assistant_model_failed";
+    const state = (
+      await db.query(
+        "SELECT t.tool_results,s.task FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1",
+        [turn.id],
+      )
+    ).rows[0];
+    const failure = unresolvedFailure(state?.tool_results ?? []);
+    const errorCode =
+      failure?.error?.code ??
+      (noProgress
+        ? "assistant_no_progress"
+        : e instanceof AssistantError
+          ? e.code
+          : (plannedAction || processingEventRunId) &&
+              ToolChoiceViolationError.isInstance(e)
+            ? "assistant_task_not_executed"
+            : "assistant_model_failed");
     await updateTask(db, turn, {
       stage: "failed",
       error: errorCode,
       recovery: {
-        kind:
-          errorCode === "assistant_model_failed" ||
-          errorCode === "assistant_result_incomplete"
+        kind: failure
+          ? "execution"
+          : errorCode === "assistant_model_failed" ||
+              errorCode === "assistant_result_incomplete"
             ? "model_reply"
             : "execution",
-        message:
-          errorCode === "assistant_model_failed" ||
-          errorCode === "assistant_result_incomplete"
+        message: failure
+          ? `${state?.task?.executionPlan?.steps?.[state.task.executionPlan.current]?.title ?? "当前操作"}${state?.task?.targetName ? `（${state.task.targetName}）` : ""}未完成（${errorCode}）。${failure.error?.hint ?? "请读取真实对象并修正当前步骤参数后继续；已有成果保留。"}`
+          : errorCode === "assistant_model_failed" ||
+              errorCode === "assistant_result_incomplete"
             ? "模型回复未完成。已提交的任务和已保存的成果保留；重试会先核对真实回执。"
             : errorCode === "assistant_no_progress"
               ? "连续执行没有取得新进展，已暂停。请检查当前步骤和要求；已有成果保留。"

@@ -649,6 +649,14 @@ export async function readProcessingRun(
   return {
     run: summary(run),
     rootOperation: input.refinement?.rootOperation ?? run.options.operation,
+    backgroundEvidence: (input.background?.documents ?? []).flatMap(
+      (document) =>
+        document.fragments.map((fragment) => ({
+          documentId: document.id,
+          sha256: document.sha256,
+          fragmentIndex: fragment.index,
+        })),
+    ),
     records,
     issues,
     allIds: batches.rows.flatMap((batch) =>

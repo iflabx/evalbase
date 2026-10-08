@@ -25,12 +25,14 @@ type Step = {
   input?: Record<string, any>;
   scope?: "preview" | "all";
   operation?: { key: string; input: Record<string, any> };
+  backgroundRead?: { identity: string; indices: number[] };
   status: "pending" | "waiting" | "executed";
   receipt?: {
     key: string;
     runId?: string;
     draftId?: string;
     proposalId?: string;
+    previewId?: string;
   };
 };
 export type ExecutionPlan = {
@@ -63,6 +65,7 @@ export function planRequirementsKey(task: Record<string, any>) {
           "classifications",
           "allowedLabels",
           "requirements",
+          "backgroundEvidence",
         ]
           .filter((field) => task[field] !== undefined)
           .map((field) => [field, task[field]]),
@@ -183,14 +186,56 @@ export function advancePlan(
     input &&
     Object.entries(step.input).some(
       ([field, expected]) =>
+        !(
+          action === "read_background" &&
+          step.scope === "all" &&
+          ["from", "limit"].includes(field)
+        ) &&
         canonicalJson(field === "source" ? planSource(expected) : expected) !==
-        canonicalJson(
-          (field === "source" ? planSource(input[field]) : input[field]) ??
-            null,
-        ),
+          canonicalJson(
+            (field === "source" ? planSource(input[field]) : input[field]) ??
+              null,
+          ),
     )
   )
     return plan;
+  if (
+    action === step.action &&
+    action === "read_background" &&
+    step.scope === "all"
+  ) {
+    if ((step.input?.query ?? null) !== (input?.query ?? null)) return plan;
+    const identity = canonicalJson({
+      documentId: value.id,
+      sha256: value.sha256 ?? null,
+      query: input?.query ?? null,
+    });
+    const indices = [
+      ...new Set([
+        ...(step.backgroundRead?.identity === identity
+          ? step.backgroundRead.indices
+          : []),
+        ...(value.fragments ?? []).map(
+          (fragment: { index: number }) => fragment.index,
+        ),
+      ]),
+    ];
+    const total = value.matchCount ?? value.fragmentCount;
+    if (
+      !Number.isInteger(total) ||
+      total < 1 ||
+      indices.length !== total ||
+      value.nextFrom !== null
+    )
+      return {
+        ...plan,
+        steps: plan.steps.map((item, index) =>
+          index === plan.current
+            ? { ...item, backgroundRead: { identity, indices } }
+            : item,
+        ),
+      };
+  }
   if (
     action === "read_records" &&
     step.scope === "all" &&
@@ -248,11 +293,22 @@ export function advancePlan(
             status: waiting ? "waiting" : "executed",
             receipt:
               completedRun || confirmed
-                ? item.receipt!
+                ? {
+                    ...item.receipt!,
+                    ...(confirmed &&
+                    (value.receipt.receipt?.draftId ?? value.receipt.draftId)
+                      ? {
+                          draftId:
+                            value.receipt.receipt?.draftId ??
+                            value.receipt.draftId,
+                        }
+                      : {}),
+                  }
                 : {
                     key,
                     ...(value.runId ? { runId: value.runId } : {}),
                     ...(value.draftId ? { draftId: value.draftId } : {}),
+                    ...(value.previewId ? { previewId: value.previewId } : {}),
                     ...(confirmation && value.id
                       ? { proposalId: value.id }
                       : {}),
@@ -270,4 +326,85 @@ export function pendingPlanAction(
   if (plan.needsReview) return;
   const step = plan.steps[plan.current];
   return step?.status === "pending" ? step.action : undefined;
+}
+
+/** Bind dependencies only to committed receipts in this plan, never to a session's latest object. */
+export function resolvedStepInput(
+  plan: ExecutionPlan | undefined,
+  supplied?: Record<string, any>,
+) {
+  const step = plan?.steps[plan.current];
+  const input = { ...(step?.input ?? {}), ...(supplied ?? {}) };
+  if (!plan || !step) return input;
+  if (step.action === "request_selection_apply") {
+    // A preview belongs to exactly one draft; do not combine independent latest receipts.
+    const preview = plan.steps
+      .slice(0, plan.current)
+      .reverse()
+      .find(
+        (prior) =>
+          prior.status === "executed" &&
+          prior.receipt?.previewId &&
+          prior.receipt.draftId &&
+          (!input.previewId || input.previewId === prior.receipt.previewId) &&
+          (!input.draftId || input.draftId === prior.receipt.draftId),
+      )?.receipt;
+    if (preview) {
+      input.draftId ??= preview.draftId;
+      input.previewId ??= preview.previewId;
+    }
+    return input;
+  }
+  const fields =
+    step.action === "preview_selection" || step.action === "request_publish"
+      ? ["draftId"]
+      : step.action === "request_selection_apply"
+        ? ["draftId", "previewId"]
+        : [
+              "read_processing",
+              "select_candidates",
+              "refine_candidates",
+              "retry_processing",
+              "request_processing_apply",
+            ].includes(step.action)
+          ? ["runId"]
+          : [];
+  for (const field of fields) {
+    if (input[field]) continue;
+    const receipt = plan.steps
+      .slice(0, plan.current)
+      .reverse()
+      .find(
+        (prior) =>
+          prior.status !== "pending" &&
+          prior.receipt?.[field as keyof NonNullable<Step["receipt"]>],
+      );
+    const value =
+      receipt?.receipt?.[field as keyof NonNullable<Step["receipt"]>];
+    if (value) input[field] = value;
+    else if (field === "draftId" && plan.target?.kind === "draft")
+      input[field] = plan.target.id;
+  }
+  return input;
+}
+
+export function missingStepDependency(plan: ExecutionPlan) {
+  const step = plan.steps[plan.current];
+  if (!step || plan.mode !== "execute") return;
+  const input = resolvedStepInput(plan);
+  const fields =
+    step.action === "preview_selection" || step.action === "request_publish"
+      ? ["draftId"]
+      : step.action === "request_selection_apply"
+        ? ["draftId", "previewId"]
+        : [
+              "read_processing",
+              "select_candidates",
+              "refine_candidates",
+              "retry_processing",
+              "request_processing_apply",
+            ].includes(step.action)
+          ? ["runId"]
+          : [];
+  return fields.find((field) => !input[field]);
 }

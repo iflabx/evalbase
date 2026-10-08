@@ -383,7 +383,18 @@ describe("project assistant public contract", () => {
         },
         { timeout: 15000 },
       )
-      .toBe(expectedStatus);
+      .toBe(expectedStatus)
+      .catch(async (error) => {
+        const state = (await read()).json();
+        throw new Error(
+          JSON.stringify({
+            message,
+            task: state.task,
+            turn: state.turns?.at(-1),
+          }),
+          { cause: error },
+        );
+      });
     return read();
   }
   it("uses real SDK tool calls and keeps one active turn and an idempotent created draft", async () => {
@@ -3971,6 +3982,15 @@ describe("project assistant public contract", () => {
       {
         name: "plan_task",
         input: {
+          title: "待纠正方案",
+          requirements: [],
+          question: "错误的澄清",
+          nextAction: "create_draft",
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
           title: "跨轮执行方案",
           requirements: ["建立一个草稿后检查资料，不采用或发布"],
           nextAction: "create_draft",
@@ -3986,7 +4006,7 @@ describe("project assistant public contract", () => {
         },
       },
       { name: "create_draft", input: { name: "跨轮唯一草稿" } },
-      ...Array.from({ length: 10 }, (_, index) => ({
+      ...Array.from({ length: 9 }, (_, index) => ({
         name: "query_project",
         input: { kind: "files", search: `分类资料${index + 1}` },
       })),
@@ -4177,6 +4197,753 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
       toolSequence = [];
       sessionId = previous;
+    }
+  });
+  it("repairs missing prerequisites and a no-effect scope failure in one turn without duplicate runs", async () => {
+    const previous = sessionId;
+    const source = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "执行纠错合成来源" },
+      })
+    ).json().draft.id;
+    await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
+      headers,
+      payload: { question: "待清洗问题", expectedOutput: "保留", metadata: [] },
+    });
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const plan = {
+      title: "执行清洗",
+      requirements: ["清洗一条，不采用或发布"],
+      executionMode: "execute",
+      target: { kind: "draft", id: source },
+      steps: [
+        {
+          title: "清洗来源",
+          action: "submit_processing",
+          input: { source: { kind: "draft", id: source } },
+        },
+      ],
+      nextAction: "submit_processing",
+    };
+    const processing = {
+      source: { kind: "draft", id: source },
+      operation: "clean",
+      instructions: "清洗问题",
+      allowedFields: ["question"],
+    };
+    toolSequence = [
+      {
+        name: "plan_task",
+        input: {
+          title: "错误预览首步",
+          requirements: [],
+          executionMode: "execute",
+          steps: [
+            { title: "预览未建立草稿", action: "preview_selection", input: {} },
+          ],
+          nextAction: "preview_selection",
+        },
+      },
+      { name: "plan_task", input: plan },
+      { name: "submit_processing", input: processing },
+      { name: "plan_task", input: plan },
+      {
+        name: "submit_processing",
+        input: {
+          ...processing,
+          selection: {
+            method: "random",
+            conditions: [],
+            mode: "count",
+            value: 1,
+          },
+        },
+      },
+    ];
+    try {
+      const result = (
+        await send("开始执行；参数错误请在同一目标内纠正")
+      ).json();
+      const tools = result.turns.at(-1).tools;
+      expect(
+        tools.some(
+          (item: any) =>
+            item.error?.code === "assistant_plan_prerequisite_missing",
+        ),
+      ).toBe(true);
+      expect(
+        tools.some(
+          (item: any) =>
+            item.error?.code === "processing_scope_invalid" &&
+            item.effect === "none",
+        ),
+      ).toBe(true);
+      expect(
+        tools.filter(
+          (item: any) =>
+            item.name === "submit_processing" && item.status === "succeeded",
+        ),
+      ).toHaveLength(1);
+      expect(result.task.runId).toBeTruthy();
+      expect(result.task.executionPlan.steps[0].status).toBe("waiting");
+      const runs = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/processing-runs/${result.task.runId}`,
+        headers,
+      });
+      expect(runs.json().run.inputCount).toBe(1);
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+  it.each(["recordIds", "allRecords"])(
+    "updates the current fixed scope after selection changes to %s",
+    async (mode) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      const drafts = `/api/projects/${projectId}/collaborative-drafts`;
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: drafts,
+          headers,
+          payload: { name: "范围切换来源" },
+        })
+      ).json().draft.id;
+      for (const question of ["甲问题", "乙问题"])
+        await app.inject({
+          method: "POST",
+          url: `${drafts}/${source}/records`,
+          headers,
+          payload: { question, expectedOutput: "保留", metadata: [] },
+        });
+      const rows = (
+        await app.inject({ method: "GET", url: `${drafts}/${source}`, headers })
+      ).json().records;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      async function finish(runId: string) {
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=1,lease_owner='scope-update',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [runId],
+          )
+        ).rows[0];
+        const config = {
+          ...loadConfig(),
+          databaseUrl,
+          modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+        };
+        const result = await runProcessing(
+          db,
+          new ArtifactRepository(config.minio),
+          config,
+          job,
+        );
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, result],
+        );
+        requestedTool = { name: "read_processing", input: { runId } };
+        await expect
+          .poll(
+            async () =>
+              (await read())
+                .json()
+                .turns.some((t: any) =>
+                  ["queued", "running"].includes(t.status),
+                ) || (await read()).json().task.checkedStatus !== "succeeded",
+            { timeout: 15000 },
+          )
+          .toBe(false);
+      }
+      const processing = {
+        source: { kind: "draft", id: source },
+        operation: "clean",
+        instructions: "",
+        allowedFields: ["question"],
+      };
+      try {
+        requestedTool = {
+          name: "submit_processing",
+          input: {
+            ...processing,
+            selection: {
+              method: "all",
+              conditions: [
+                { field: "question", operator: "equals", value: "甲问题" },
+              ],
+            },
+          },
+        };
+        const first = (await send("只清洗甲问题")).json().task.runId;
+        await finish(first);
+        const expected =
+          mode === "recordIds" ? [rows[1].id] : rows.map((row: any) => row.id);
+        requestedTool = {
+          name: "submit_processing",
+          input: {
+            ...processing,
+            ...(mode === "recordIds"
+              ? { recordIds: expected }
+              : { allRecords: true }),
+          },
+        };
+        const second = (await send("改用明确的新范围")).json().task.runId;
+        await finish(second);
+        expect((await read()).json().task.processingScope.count).toBe(
+          expected.length,
+        );
+        expect(
+          (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task.processingScope.recordIds,
+        ).toEqual(expected);
+        requestedTool = {
+          name: "request_processing_apply",
+          input: {
+            runId: second,
+            allValid: true,
+            target: { kind: "newDraft", name: "范围切换采用" },
+          },
+        };
+        const state = (await send("只采用这次处理结果")).json();
+        const proposal = state.proposals.find(
+          (p: any) => p.status === "pending",
+        );
+        expect(proposal, JSON.stringify(state.task)).toBeTruthy();
+        expect(proposal.summary.count).toBe(expected.length);
+        requestedTool = { name: "read_processing", input: { runId: second } };
+        const accepted = await app.inject({
+          method: "POST",
+          url: `${base()}/proposals/${proposal.id}/confirm`,
+          headers,
+          payload: {},
+        });
+        expect(accepted.statusCode, accepted.body).toBe(200);
+        const actual = (
+          await app.inject({
+            method: "GET",
+            url: `${drafts}/${accepted.json().receipt.receipt.draftId}`,
+            headers,
+          })
+        ).json().records;
+        expect(actual.map((row: any) => row.question)).toEqual(
+          mode === "recordIds" ? ["乙问题"] : ["甲问题", "乙问题"],
+        );
+      } finally {
+        requestedTool = undefined;
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+  it("keeps an unknown write bound when replanning in the same turn", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    const source = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "未知结果恢复来源" },
+      })
+    ).json().draft.id;
+    await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
+      headers,
+      payload: { question: "原问题", expectedOutput: "原输出", metadata: [] },
+    });
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const processing = {
+      source: { kind: "draft", id: source },
+      allRecords: true,
+      operation: "clean",
+      instructions: "清洗问题",
+      allowedFields: ["question"],
+    };
+    const plan = {
+      title: "清洗一条",
+      requirements: [],
+      target: processing.source,
+      executionMode: "execute",
+      steps: [
+        { title: "清洗来源", action: "submit_processing", input: processing },
+      ],
+      nextAction: "submit_processing",
+    };
+    const changed = { ...processing, instructions: "换参数重新清洗" };
+    const failure = vi
+      .spyOn(ArtifactRepository.prototype, "storeProcessing")
+      .mockRejectedValue(new Error("synthetic unknown write result"));
+    toolSequence = [
+      { name: "plan_task", input: plan },
+      { name: "submit_processing", input: processing },
+      {
+        name: "plan_task",
+        input: {
+          ...plan,
+          steps: [
+            {
+              title: "换参数清洗",
+              action: "submit_processing",
+              input: changed,
+            },
+          ],
+        },
+      },
+      { name: "submit_processing", input: changed },
+    ];
+    try {
+      const state = (
+        await send("开始执行，未知结果应先对账", undefined, "failed")
+      ).json();
+      const tools = state.turns.at(-1).tools;
+      expect(
+        tools.some(
+          (tool: any) =>
+            tool.name === "plan_task" &&
+            tool.error?.code === "assistant_retry_parameters_changed",
+        ),
+        JSON.stringify(tools),
+      ).toBe(true);
+      expect(
+        tools.some(
+          (tool: any) =>
+            tool.name === "submit_processing" && tool.status === "succeeded",
+        ),
+      ).toBe(false);
+      expect(
+        (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task.executionPlan.steps[0].operation.input.instructions,
+      ).toBe(processing.instructions);
+      expect(
+        Number(
+          (
+            await db.query(
+              "SELECT count(*) FROM processing_run WHERE source->>'id'=$1",
+              [source],
+            )
+          ).rows[0].count,
+        ),
+      ).toBe(0);
+      expect(failure).toHaveBeenCalled();
+    } finally {
+      failure.mockRestore();
+      toolSequence = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
+  it("repairs a legacy validation failure without effect metadata on the same recovered turn", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    const source = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "旧校验恢复来源" },
+      })
+    ).json().draft.id;
+    await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
+      headers,
+      payload: { question: "待清洗", expectedOutput: "保留", metadata: [] },
+    });
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const processing = {
+      source: { kind: "draft", id: source },
+      operation: "clean",
+      instructions: "清洗",
+      allowedFields: ["question"],
+    };
+    try {
+      requestedTool = { name: "submit_processing", input: processing };
+      const failed = (await send("清洗当前来源", undefined, "failed"))
+        .json()
+        .turns.at(-1);
+      expect(
+        failed.tools.some(
+          (tool: any) => tool.error?.code === "processing_scope_invalid",
+        ),
+      ).toBe(true);
+      await db.query(
+        "UPDATE assistant_turn SET tool_results=(SELECT jsonb_agg(x-'effect') FROM jsonb_array_elements(tool_results) x) WHERE id=$1",
+        [failed.id],
+      );
+      requestedTool = {
+        name: "submit_processing",
+        input: { ...processing, allRecords: true },
+      };
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1).status, {
+          timeout: 15000,
+        })
+        .toBe("succeeded");
+      const recovered = (await read()).json();
+      expect(recovered.turns.at(-1).id).toBe(failed.id);
+      expect(
+        recovered.turns
+          .at(-1)
+          .tools.filter(
+            (tool: any) =>
+              tool.name === "submit_processing" && tool.status === "succeeded",
+          ),
+      ).toHaveLength(1);
+      expect(recovered.task.runId).toBeTruthy();
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+    } finally {
+      requestedTool = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
+  it("rechecks full background, baseline protection and narrowed record scope at adoption", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    const drafts = `/api/projects/${projectId}/collaborative-drafts`;
+    const source = (
+      await app.inject({
+        method: "POST",
+        url: drafts,
+        headers,
+        payload: { name: "依据与范围合成来源" },
+      })
+    ).json().draft.id;
+    for (const label of ["甲", "乙"])
+      await app.inject({
+        method: "POST",
+        url: `${drafts}/${source}/records`,
+        headers,
+        payload: {
+          question: `${label}原问题`,
+          expectedOutput: label,
+          metadata: [],
+        },
+      });
+    const original = (
+      await app.inject({ method: "GET", url: `${drafts}/${source}`, headers })
+    ).json().records;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    async function finish(runId: string) {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=1,lease_owner='opt09-integrity',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [runId],
+        )
+      ).rows[0];
+      const config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2,updated_at=now() WHERE id=$1",
+        [job.id, result],
+      );
+      await expect
+        .poll(async () => (await read()).json().task.checkedStatus, {
+          timeout: 15000,
+        })
+        .toBe("succeeded");
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 15000 },
+        )
+        .toBe(false);
+    }
+    try {
+      const documents = [];
+      for (const [name, content] of [
+        ["原依据.txt", "原依据\n" + "A".repeat(3000)],
+        ["新依据.txt", "新依据，要求不同"],
+      ]) {
+        const uploaded = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/background-documents`,
+          headers,
+          payload: {
+            fileName: name,
+            contentBase64: Buffer.from(content!).toString("base64"),
+          },
+        });
+        expect(uploaded.statusCode, uploaded.body).toBe(201);
+        documents.push(uploaded.json().document);
+      }
+      expect(documents[0].fragmentCount).toBeGreaterThan(1);
+      const processing = {
+        source: { kind: "draft", id: source },
+        allRecords: true,
+        operation: "rewrite",
+        allowedFields: ["question"],
+        instructions: "先改写问题",
+      };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "全范围读取后改写",
+            requirements: ["按原依据改写两条"],
+            targetCount: 2,
+            allowedFields: ["question"],
+            target: processing.source,
+            executionMode: "execute",
+            steps: [
+              {
+                title: "完整读原依据",
+                action: "read_background",
+                scope: "all",
+                input: { documentId: documents[0].id, from: 1, limit: 1 },
+              },
+              {
+                title: "改写问题",
+                action: "submit_processing",
+                input: processing,
+              },
+              {
+                title: "稍后再次读背景",
+                action: "read_background",
+                scope: "all",
+                input: { documentId: documents[0].id },
+              },
+            ],
+          },
+        },
+        {
+          name: "read_background",
+          input: { documentId: documents[0].id, from: 1, limit: 1 },
+        },
+        {
+          name: "read_background",
+          input: { documentId: documents[0].id, from: 2, limit: 3 },
+        },
+        { name: "submit_processing", input: processing },
+      ];
+      const started = (await send("完整读取原依据，执行两条改写")).json();
+      const first = started.task.runId;
+      expect(first, JSON.stringify(started)).toBeTruthy();
+      expect(started.task.executionPlan.steps[0].status).toBe("executed");
+      expect(started.task.executionPlan.steps[2].status).toBe("pending");
+      toolSequence = [];
+      requestedTool = { name: "read_processing", input: { runId: first } };
+      await finish(first);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: documents[1].id, replaceEvidence: true },
+      };
+      await send("改用新依据核对旧成果");
+      requestedTool = {
+        name: "request_processing_apply",
+        input: {
+          runId: first,
+          allValid: true,
+          allTask: true,
+          target: { kind: "draft", id: source },
+        },
+      };
+      const stale = (await send("尝试采用旧成果")).json();
+      expect(stale.proposals).toHaveLength(0);
+      expect(stale.task.review.compatibilityProblem).not.toBeNull();
+      expect(stale.task.executionPlan.needsReview).toBe(true);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: documents[0].id, limit: 3, replaceEvidence: true },
+      };
+      await send("恢复原依据");
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "只改 Metadata",
+            requirements: ["以最初原题为准，只允许改 Metadata"],
+            allowedFields: ["metadata"],
+            metadataKeys: null,
+            executionMode: "execute",
+            nextAction: "refine_candidates",
+          },
+        },
+        {
+          name: "refine_candidates",
+          input: {
+            runId: first,
+            where: { field: "question", operator: "contains", value: "" },
+            instructions: "补足缺少的丙类问题",
+            allowedFields: ["metadata"],
+          },
+        },
+      ];
+      const refined = (await send("仅补 Metadata，原问题必须保留")).json();
+      const child = refined.task.runId;
+      expect(child).not.toBe(first);
+      toolSequence = [];
+      requestedTool = { name: "read_processing", input: { runId: child } };
+      await finish(child);
+      expect(
+        (await read()).json().task.review.protectedFieldChanges,
+      ).toBeGreaterThan(0);
+      requestedTool = {
+        name: "request_processing_apply",
+        input: {
+          runId: child,
+          allTask: true,
+          allValid: true,
+          target: { kind: "draft", id: source },
+        },
+      };
+      expect((await send("采用当前候选")).json().proposals).toHaveLength(0);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "只采用第二条",
+          requirements: ["允许问题和 Metadata 改动，仅采用第二条"],
+          allowedFields: ["question", "metadata"],
+          targetCount: 1,
+          nextAction: "none",
+        },
+      };
+      await send("改为只采用第二条，允许它的问题改动");
+      // Persisted-scope fixture: the public adoption must honor the current fixed record subset.
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            candidateScope: null,
+            processingScope: {
+              source: { kind: "draft", id: source },
+              recordIds: [original[1].id],
+            },
+          }),
+        ],
+      );
+      requestedTool = {
+        name: "request_processing_apply",
+        input: {
+          runId: child,
+          allTask: true,
+          allValid: true,
+          target: { kind: "draft", id: source },
+        },
+      };
+      const scoped = (await send("按当前固定范围采用")).json();
+      const proposal = scoped.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal, JSON.stringify(scoped)).toBeTruthy();
+      expect(proposal.summary.count).toBe(1);
+      requestedTool = { name: "read_processing", input: { runId: child } };
+      const accepted = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      const actual = (
+        await app.inject({ method: "GET", url: `${drafts}/${source}`, headers })
+      ).json().records;
+      expect(actual.find((r: any) => r.id === original[0].id).question).toBe(
+        original[0].question,
+      );
+      expect(
+        actual.find((r: any) => r.id === original[1].id).question,
+      ).not.toBe(original[1].question);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await db.end();
     }
   });
   it.each([true, "progress", "pending"] as const)(
@@ -4370,7 +5137,7 @@ describe("project assistant public contract", () => {
         );
         expect(notSubmitted.turns.at(-1).status).toBe("failed");
         expect(notSubmitted.turns.at(-1).errorCode).toBe(
-          "assistant_task_not_executed",
+          "assistant_candidate_selection_invalid",
         );
         expect(notSubmitted.task.runId).toBe(id);
       }
@@ -4634,7 +5401,9 @@ describe("project assistant public contract", () => {
       const state = (await read()).json();
       expect(state.task.stage).toBe("failed");
       expect(state.task.nextAction).toBe("plan_task");
-      expect(state.turns.at(-1).errorCode).toBe("assistant_task_not_executed");
+      expect(state.turns.at(-1).errorCode).toBe(
+        "assistant_context_unavailable",
+      );
       expect(state.turns.at(-1).tools[0].error.code).toBe(
         "assistant_context_unavailable",
       );
@@ -5294,7 +6063,11 @@ describe("project assistant public contract", () => {
         error: { code: "assistant_candidate_review_incomplete" },
       });
       expect(rejected.task.review.complete).toBe(false);
-      expect(rejected.task.review.compatibilityProblem).toContain("来源");
+      expect(rejected.task.review).toMatchObject({
+        total: 1,
+        countSatisfied: false,
+        compatibilityProblem: null,
+      });
       expect(
         rejected.proposals.some((item: any) => item.status === "pending"),
       ).toBe(false);
@@ -5332,7 +6105,7 @@ describe("project assistant public contract", () => {
             ),
         ).toMatchObject({
           status: "failed",
-          error: { code: "assistant_candidate_review_incomplete" },
+          error: { code: "processing_result_invalid" },
         });
         expect(
           partial.proposals.some((item: any) => item.status === "pending"),
@@ -5707,6 +6480,17 @@ describe("project assistant public contract", () => {
         expectedCount: 2,
         countSatisfied: true,
       });
+      requestedTool = { name: "request_publish", input: { draftId: source } };
+      const premature = (await send("直接发布当前实际内容")).json();
+      expect(
+        premature.proposals.filter(
+          (p: any) => p.action === "publish" && p.status === "pending",
+        ),
+      ).toHaveLength(0);
+      expect(premature.task.review).toMatchObject({
+        total: 1,
+        countSatisfied: false,
+      });
       requestedTool = {
         name: "plan_task",
         input: {
@@ -5779,6 +6563,84 @@ describe("project assistant public contract", () => {
         expectedCount: 1,
         countSatisfied: true,
       });
+      requestedTool = { name: "request_publish", input: { draftId: source } };
+      const publishable = (await send("发布新增一条后的草稿")).json();
+      expect(
+        publishable.proposals.some(
+          (p: any) => p.action === "publish" && p.status === "pending",
+        ),
+      ).toBe(true);
+      expect(publishable.task.review).toMatchObject({
+        countKind: "new",
+        total: 1,
+        deliveryComplete: true,
+      });
+      // A legacy pending card must be checked against the current contract at confirmation too.
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{targetCount}','2') WHERE id=$1",
+        [sessionId],
+      );
+      const pendingPublish = publishable.proposals.find(
+        (p: any) => p.action === "publish" && p.status === "pending",
+      );
+      const rejected = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${pendingPublish.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(rejected.statusCode, rejected.body).toBe(422);
+      expect(rejected.json().error.code).toBe(
+        "assistant_candidate_review_incomplete",
+      );
+      requestedTool = { name: "read_processing", input: { runId } };
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/proposals/${pendingPublish.id}/reject`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{targetCount}','1') WHERE id=$1",
+        [sessionId],
+      );
+      await db.query(
+        "UPDATE processing_acceptance SET receipt=receipt-'candidateOrigins' WHERE draft_id=$1",
+        [source],
+      );
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((turn: any) =>
+                ["queued", "running"].includes(turn.status),
+              ),
+          { timeout: 15000 },
+        )
+        .toBe(false);
+      requestedTool = { name: "request_publish", input: { draftId: source } };
+      const legacy = (await send("按实际新增一条发布")).json();
+      expect(legacy.task.review, JSON.stringify(legacy)).toMatchObject({
+        total: 1,
+        deliveryComplete: true,
+      });
+      requestedTool = { name: "read_processing", input: { runId } };
+      const ready = legacy.proposals.find(
+        (p: any) => p.action === "publish" && p.status === "pending",
+      );
+      const published = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${ready.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(published.statusCode, published.body).toBe(200);
+      expect(published.json().receipt.version.recordCount).toBe(2);
     } finally {
       requestedTool = undefined;
       await app.inject({
@@ -6612,7 +7474,7 @@ describe("project assistant public contract", () => {
         "read_background",
       );
       expect(cited.task.backgroundEvidence).toEqual([
-        { documentId: document.id, fragmentIndex: 1 },
+        { documentId: document.id, sha256: document.sha256, fragmentIndex: 1 },
       ]);
       requestedTool = {
         name: "plan_task",
@@ -8406,6 +9268,24 @@ describe("project assistant public contract", () => {
       });
       expect(adopted.statusCode, adopted.body).toBe(200);
       const adoptedDraft = adopted.json().receipt.receipt.draftId;
+      const adoptedRows = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts/${adoptedDraft}`,
+          headers,
+        })
+      ).json().records;
+      const manual = await app.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/collaborative-drafts/${adoptedDraft}/records/${adoptedRows[0].id}`,
+        headers,
+        payload: {
+          field: "metadata",
+          expectedFieldRevision: adoptedRows[0].metadataRevision,
+          value: [{ key: "reviewer", value: "人工复核" }],
+        },
+      });
+      expect(manual.statusCode, manual.body).toBe(200);
       await expect
         .poll(
           async () =>
@@ -8456,7 +9336,7 @@ describe("project assistant public contract", () => {
       ).toBe("assistant_candidate_review_incomplete");
       expect(blocked.task.review).toMatchObject({
         complete: false,
-        total: 2,
+        total: 0,
         baseCount: 1,
         remainingCount: 1,
       });
@@ -8471,6 +9351,7 @@ describe("project assistant public contract", () => {
           input: {
             title: "发布已采用结果",
             countKind: "new",
+            allowedFields: ["question", "metadata"],
             requirements: ["发布已采用的一条结果"],
             target: { kind: "draft", id: adoptedDraft },
             executionMode: "execute",
@@ -8531,6 +9412,17 @@ describe("project assistant public contract", () => {
       expect(delivered.task.stage).toBe("complete");
       expect(delivered.task.review.complete).toBe(true);
       expect(delivered.task.recovery).toBeNull();
+
+      const receipt = committed.json().receipt;
+      const versionRows = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/solo-test-sets/${receipt.testSet.id}/versions/${receipt.version.id}/records?limit=100`,
+        headers,
+      });
+      expect(versionRows.statusCode, versionRows.body).toBe(200);
+      expect(versionRows.json().records[0].metadata).toEqual([
+        { key: "reviewer", value: "人工复核" },
+      ]);
 
       expect(
         (

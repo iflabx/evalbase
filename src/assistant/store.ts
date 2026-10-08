@@ -67,7 +67,9 @@ export function taskPresentation(
       ? {
           processingScope: {
             source: task.processingScope.source,
-            configuration: task.processingScope.configuration,
+            ...(task.processingScope.configuration !== undefined
+              ? { configuration: task.processingScope.configuration }
+              : {}),
             count: task.processingScope.recordIds.length,
             hash: task.processingScope.hash,
           },
@@ -225,6 +227,7 @@ export async function readSession(
     `UPDATE assistant_session s SET task=task||'{"stage":"complete"}'::jsonb
      WHERE s.id=$1 AND s.content_revision=$2
        AND s.task->>'stage' IN ('awaiting_review','waiting_input')
+       AND (s.task->'review'->>'deliveryComplete') IS DISTINCT FROM 'false'
        AND EXISTS(SELECT 1 FROM assistant_proposal p WHERE p.session_id=s.id
          AND p.task_revision=s.task_revision AND p.action='publish' AND p.status='succeeded'
          AND p.receipt->'version'->>'id' IS NOT NULL)

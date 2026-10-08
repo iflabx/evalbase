@@ -2,10 +2,234 @@ import { describe, expect, it } from "vitest";
 import {
   advancePlan,
   revisePlan,
+  planRequirementsKey,
+  resolvedStepInput,
+  missingStepDependency,
   type ExecutionPlan,
 } from "../../src/assistant/plan.js";
 
 describe("restored execution plan boundaries", () => {
+  it("binds a preview and its draft as a pair and carries a confirmed new draft forward", () => {
+    const plan: ExecutionPlan = {
+      mode: "execute",
+      current: 3,
+      steps: [
+        {
+          title: "创建D1",
+          action: "create_draft",
+          status: "executed",
+          receipt: { key: "c1", draftId: "D1" },
+        },
+        {
+          title: "预览D1",
+          action: "preview_selection",
+          status: "executed",
+          receipt: { key: "p1", draftId: "D1", previewId: "P1" },
+        },
+        {
+          title: "创建D2",
+          action: "create_draft",
+          status: "executed",
+          receipt: { key: "c2", draftId: "D2" },
+        },
+        {
+          title: "采用预览",
+          action: "request_selection_apply",
+          status: "pending",
+        },
+      ],
+    };
+    expect(resolvedStepInput(plan)).toEqual({ draftId: "D1", previewId: "P1" });
+    expect(resolvedStepInput(plan, { draftId: "D2" })).toEqual({
+      draftId: "D2",
+    });
+    const adoption: ExecutionPlan = {
+      mode: "execute",
+      current: 0,
+      steps: [
+        {
+          title: "采用到新草稿",
+          action: "request_processing_apply",
+          status: "waiting",
+          receipt: { key: "apply", proposalId: "card" },
+        },
+        { title: "发布草稿", action: "request_publish", status: "pending" },
+      ],
+    };
+    const confirmed = advancePlan(
+      adoption,
+      "confirmed",
+      {
+        id: "card",
+        status: "succeeded",
+        receipt: { receipt: { draftId: "actual" } },
+      },
+      "confirm",
+    )!;
+    expect(resolvedStepInput(confirmed)).toEqual({ draftId: "actual" });
+  });
+  it("binds current dependencies to the matching prior receipts and leaves future holes open", () => {
+    let plan = revisePlan(
+      undefined,
+      {
+        executionMode: "execute",
+        steps: [
+          { title: "创建", action: "create_draft" },
+          {
+            title: "预览",
+            action: "preview_selection",
+            input: { assetIds: ["A"] },
+          },
+        ],
+      },
+      1,
+    )!;
+    expect(missingStepDependency(plan)).toBeUndefined();
+    plan = advancePlan(
+      plan,
+      "create_draft",
+      { draftId: "actual" },
+      "receipt",
+      1,
+    )!;
+    expect(resolvedStepInput(plan)).toEqual({
+      assetIds: ["A"],
+      draftId: "actual",
+    });
+    expect(missingStepDependency(plan)).toBeUndefined();
+    expect(
+      missingStepDependency({
+        ...plan,
+        current: 0,
+        steps: [
+          { title: "错误首步", action: "preview_selection", status: "pending" },
+        ],
+      }),
+    ).toBe("draftId");
+  });
+  it("invalidates completed work when the selected background basis changes", () => {
+    const task = {
+      requirements: ["依据附件分类"],
+      backgroundEvidence: [
+        { documentId: "A", sha256: "hash-A", fragmentIndex: 1 },
+      ],
+    };
+    const key = planRequirementsKey(task);
+    const before: ExecutionPlan = {
+      mode: "execute",
+      current: 1,
+      requirementsKey: key,
+      steps: [
+        {
+          title: "分类",
+          action: "submit_processing",
+          status: "executed",
+          input: { source: { kind: "assets", assetIds: ["asset"] } },
+          receipt: { key: "receipt", runId: "old" },
+        },
+      ],
+    };
+    const changed = planRequirementsKey({
+      ...task,
+      backgroundEvidence: [
+        { documentId: "B", sha256: "hash-B", fragmentIndex: 1 },
+      ],
+    });
+    expect(changed).not.toBe(key);
+    expect(
+      revisePlan(before, { executionMode: "execute" }, 2, undefined, changed)
+        ?.current,
+    ).toBe(0);
+    expect(before.steps[0]?.receipt?.runId).toBe("old");
+  });
+  it("finishes a full background read only after every page in the declared range", () => {
+    let plan = revisePlan(
+      undefined,
+      {
+        executionMode: "execute",
+        steps: [
+          {
+            title: "读取完整定义",
+            action: "read_background",
+            scope: "all",
+            input: { documentId: "doc" },
+          },
+        ],
+      },
+      1,
+    );
+    plan = advancePlan(
+      plan,
+      "read_background",
+      {
+        id: "doc",
+        fragmentCount: 4,
+        fragments: [{ index: 1 }, { index: 2 }],
+        nextFrom: 3,
+      },
+      "page1",
+      1,
+      { documentId: "doc", from: 1 },
+    );
+    expect(plan?.current).toBe(0);
+    const narrowed = advancePlan(
+      plan,
+      "read_background",
+      {
+        id: "doc",
+        matchCount: 1,
+        fragmentCount: 4,
+        fragments: [{ index: 4 }],
+        nextFrom: null,
+      },
+      "search",
+      1,
+      { documentId: "doc", query: "A.5" },
+    );
+    expect(narrowed?.current).toBe(0);
+    const wrong = advancePlan(
+      plan,
+      "read_background",
+      {
+        id: "other",
+        fragmentCount: 4,
+        fragments: [{ index: 3 }, { index: 4 }],
+        nextFrom: null,
+      },
+      "wrong",
+      1,
+      { documentId: "other", from: 3 },
+    );
+    expect(wrong?.current).toBe(0);
+    const gap = advancePlan(
+      plan,
+      "read_background",
+      {
+        id: "doc",
+        fragmentCount: 4,
+        fragments: [{ index: 4 }],
+        nextFrom: null,
+      },
+      "gap",
+      1,
+      { documentId: "doc", from: 4 },
+    );
+    expect(gap?.current).toBe(0);
+    plan = advancePlan(
+      plan,
+      "read_background",
+      {
+        id: "doc",
+        fragmentCount: 4,
+        fragments: [{ index: 3 }, { index: 4 }],
+        nextFrom: null,
+      },
+      "page2",
+      1,
+      { documentId: "doc", from: 3 },
+    );
+    expect(plan?.current).toBe(1);
+  });
   it("treats an unknown future processing reference as missing, never as a fixed empty ID", () => {
     const plan = revisePlan(
       undefined,

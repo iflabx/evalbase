@@ -30,6 +30,7 @@ export function reviewCandidates(
     revision: number;
   },
   selected = false,
+  actualDraft = false,
 ) {
   const seen = new Set<string>(),
     labels = new Map<string, number>();
@@ -61,34 +62,34 @@ export function reviewCandidates(
   }
   for (const batch of runs)
     for (const row of batch.records) {
-      const keys = goal?.metadataKeys ?? batch.run.options.metadataKeys;
-      if (keys && row.original) {
-        const editable = new Set(
-          keys
-            .map((key) => key.toLowerCase())
-            .filter(
-              (key) =>
-                !batch.run.options.metadataKeys ||
-                batch.run.options.metadataKeys.some(
-                  (allowed) => allowed.toLowerCase() === key,
-                ),
-            ),
-        );
+      if (!row.original) continue;
+      const baseline = row.original.baseline ?? row.original;
+      for (const [keys, original] of [
+        [
+          actualDraft ? undefined : batch.run.options.metadataKeys,
+          row.original,
+        ],
+        [goal?.metadataKeys, baseline],
+      ] as const) {
+        if (!keys) continue;
+        const editable = new Set(keys.map((key) => key.toLowerCase()));
         const protectedEntries = (entries: ProcessingInput["metadata"]) =>
           entries.filter((entry) => !editable.has(entry.key.toLowerCase()));
         if (
-          canonicalJson(protectedEntries(row.original.metadata)) !==
+          canonicalJson(protectedEntries(original.metadata)) !==
           canonicalJson(protectedEntries(row.result.metadata))
         )
           protectedFieldChanges++;
       }
       for (const field of ["question", "expectedOutput", "metadata"] as const)
         if (
-          (!batch.run.options.allowedFields.includes(field) ||
-            (goal?.allowedFields && !goal.allowedFields.includes(field))) &&
-          row.original &&
-          canonicalJson(row.result[field]) !==
-            canonicalJson(row.original[field])
+          (!actualDraft &&
+            !batch.run.options.allowedFields.includes(field) &&
+            canonicalJson(row.result[field]) !==
+              canonicalJson(row.original[field])) ||
+          (goal?.allowedFields &&
+            !goal.allowedFields.includes(field) &&
+            canonicalJson(row.result[field]) !== canonicalJson(baseline[field]))
         )
           protectedFieldChanges++;
     }

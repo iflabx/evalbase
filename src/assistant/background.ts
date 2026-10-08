@@ -227,6 +227,17 @@ export async function freezeBackground(
   },
 ): Promise<BackgroundSnapshot | undefined> {
   const session = await sessionRow(db, scope, sessionId);
+  if (
+    session.task.executionPlan?.steps
+      ?.slice(0, session.task.executionPlan.current + 1)
+      .some(
+        (step: { action: string; scope?: string; status: string }) =>
+          step.action === "read_background" &&
+          step.scope === "all" &&
+          step.status !== "executed",
+      )
+  )
+    throw new AssistantError(422, "assistant_background_not_read");
   const classifications = validateRules(session.task);
   if (processing) {
     let retained: ProcessingInput[] = [];

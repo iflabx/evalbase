@@ -8,6 +8,11 @@ import {
 } from "../../assistant/tasks.js";
 import { readProcessingRun } from "../../processing/store.js";
 import {
+  reviewTask,
+  taskCompatibilityProblem,
+} from "../../assistant/review.js";
+import { reviewCandidates } from "../../processing/review.js";
+import {
   scopeCandidateRun,
   candidateScopeForRun,
 } from "../../assistant/candidates.js";
@@ -459,6 +464,88 @@ export function registerAssistant({
             },
           };
           let receipt: unknown;
+          const task = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              proposal.session_id,
+            ])
+          ).rows[0]?.task;
+          if (proposal.action === "processing" && task?.runId) {
+            const runs = [];
+            for (const group of p.resultGroups ?? [
+              { runId: p.runId, resultIds: p.resultIds },
+            ]) {
+              const data = await readProcessingRun(
+                db,
+                artifacts,
+                context,
+                group.runId,
+                { limit: "10000" },
+                true,
+              );
+              const records = data.records.filter((row) =>
+                group.resultIds.includes(row.id),
+              );
+              runs.push({ ...data, records, total: records.length });
+            }
+            const checked = reviewCandidates(
+              runs[0]!,
+              {
+                ...task,
+                targetCount: null,
+                classifications: task.classifications?.map((rule: any) => ({
+                  ...rule,
+                  quotas: undefined,
+                  requiredValues: undefined,
+                })),
+              },
+              runs,
+              undefined,
+              true,
+            );
+            if (
+              taskCompatibilityProblem(task, runs) ||
+              checked.emptyQuestions ||
+              checked.duplicates ||
+              checked.protectedFieldChanges ||
+              checked.outsideLabels ||
+              checked.classifications.some((rule) => !rule.satisfied)
+            )
+              throw new AssistantError(
+                409,
+                "assistant_processing_context_changed",
+              );
+          }
+          if (proposal.action === "publish" && task?.runId) {
+            const data = await readProcessingRun(
+              db,
+              artifacts,
+              context,
+              task.runId,
+              { limit: "10000" },
+              true,
+            );
+            const checked = await reviewTask(
+              db,
+              artifacts,
+              context,
+              { ...task, targetDraftId: p.draftId },
+              data,
+              true,
+            );
+            if (!checked.review.complete)
+              throw new AssistantError(
+                422,
+                "assistant_candidate_review_incomplete",
+              );
+            await db.query(
+              "UPDATE assistant_session SET task=jsonb_set(task,'{review}',$2::jsonb) WHERE id=$1 AND task_revision=$3",
+              [
+                proposal.session_id,
+                JSON.stringify(checked.review),
+                proposal.task_revision,
+              ],
+            );
+          }
           if (proposal.action === "selection")
             receipt = await applySelectionPreview(
               db,

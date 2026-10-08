@@ -1,10 +1,10 @@
 # OPT-09 项目助手执行与恢复一致性修复
 
-Status: ready-for-agent
-Implementation: not-started
+Status: in-progress
+Implementation: in-progress
 Blocked by: none
 
-优先级：P1。2026-10-08 Owner 本轮仅授权进一步审查和创建一张修复 Ticket；尚未授权本张实施。沿用 `codex/assistant-optimization` 及 `/home/bistu/EvalBase/.worktrees/agent-data-processing`，以现有 OPT-06–08 实现为起点，不等待 OPT-05 最终验收，不形成依赖循环。
+优先级：P1。2026-10-09 Owner 已授权完成本张开发。沿用 `codex/assistant-optimization` 及 `/home/bistu/EvalBase/.worktrees/agent-data-processing`，以现有 OPT-06–08 实现为起点，不等待 OPT-05 最终验收，不形成依赖循环。
 
 ## 目标与依据
 

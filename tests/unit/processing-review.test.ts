@@ -29,6 +29,62 @@ const candidates = () =>
   }) as unknown as Page;
 
 describe("full candidate review", () => {
+  it("checks manual draft edits against current rules without reapplying model batch restrictions", () => {
+    const data = candidates();
+    data.run.options.allowedFields = ["metadata"];
+    data.run.options.metadataKeys = ["category"];
+    data.records.forEach((row) => {
+      row.original = { ...structuredClone(row.result), id: row.id };
+      row.result.question += "（手动修改）";
+      row.result.metadata.push({ key: "reviewer", value: "人工复核" });
+    });
+    const goal = { allowedFields: ["question", "metadata"] };
+    expect(reviewCandidates(data, goal).complete).toBe(false);
+    expect(
+      reviewCandidates(data, goal, [data], undefined, true, true).complete,
+    ).toBe(true);
+    expect(
+      reviewCandidates(
+        data,
+        { allowedFields: ["metadata"] },
+        [data],
+        undefined,
+        true,
+        true,
+      ).complete,
+    ).toBe(false);
+  });
+  it("checks newly protected fields against the earliest baseline after multiple refinements", () => {
+    const data = candidates();
+    data.run.options.operation = "rewrite";
+    data.run.options.allowedFields = ["metadata"];
+    data.records.forEach((row) => {
+      row.original = {
+        ...row.result,
+        id: row.id,
+        baseline: {
+          ...row.result,
+          id: "source",
+          question: "原始问题",
+          metadata: [{ key: "locked", value: "original" }],
+        },
+      } as NonNullable<typeof row.original>;
+    });
+    const review = reviewCandidates(data, {
+      allowedFields: ["metadata"],
+      metadataKeys: ["category"],
+    });
+    expect(review.protectedFieldChanges).toBeGreaterThan(0);
+    expect(review.complete).toBe(false);
+    // A current permission to rewrite questions still permits the prior question change.
+    data.records.forEach((row) => {
+      row.original!.baseline!.metadata = row.result.metadata;
+    });
+    expect(
+      reviewCandidates(data, { allowedFields: ["question", "metadata"] })
+        .complete,
+    ).toBe(true);
+  });
   it("accepts equivalent Metadata permission keys with different casing", () => {
     const data = candidates();
     data.run.options.metadataKeys = ["CATEGORY"];

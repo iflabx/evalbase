@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-08 最新审查补充：Owner 要求继续审查类似问题并创建修复 Ticket，已建立 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md)，当前 `not-started`，本轮尚无实施授权。当前存在未关闭 P1/P2，整改批次不能据历史通过记录收口；OPT-06–08 的既有实施和证据保留，新增问题与补验收统一由 OPT-09 跟踪。
+2026-10-09：Owner 已授权完成 [OPT-09 执行与恢复一致性修复](issues/09-execution-recovery-consistency.md)，当前实施与验证进行中。沿用当前分支及 4217 隔离环境，保留用户资料、失败会话和历史版本；OPT-06–08 历史记录不改写。整改批次 Owner 验收仍 pending，不包含合并、推送或正式部署。
 
 2026-10-08：Owner 先后单独授权 OPT-06 和 OPT-07，两张现已实施验证完成；应用提交分别为 `08356cb` 和 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`，详情见 [OPT-06 证据](opt06-verification.md) 与 [OPT-07 证据](opt07-verification.md)。OPT-08 已于 2026-10-08 单独授权并完成实施、通用小样本验证及既有隔离交付；原 200 条内容任务仍未完成，结果见其验证记录；整改批次只有一个最终人工 checkpoint。OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。本次 OPT-08 授权包含既有 Owner 隔离环境的最终切换；不包含合并或推送。
 
@@ -34,7 +34,7 @@ Implementation: in-progress
 | [OPT-06](issues/06-active-requirements.md)    | 目标理解、生效要求、规则反馈及摘要          | 现有 OPT-01–05 代码基础                      | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                  |
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
-| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 现有 OPT-06–08 实现；不等待 OPT-05 收口 | not-started | 只读审查与复现见 Ticket；实施及 R09 验收 pending |
+| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 现有 OPT-06–08 实现；不等待 OPT-05 收口 | in-progress | Owner 已授权，当前公开回归与复审进行中；R09 结果待验证记录 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；新增 OPT-09 修复后仍复用同一最终 checkpoint，不改写历史结论。
 
