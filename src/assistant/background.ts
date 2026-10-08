@@ -11,9 +11,23 @@ import {
 } from "./store.js";
 import type { BackgroundFragment } from "./extract-background.js";
 import type { CandidateGoal } from "../processing/review.js";
+import {
+  requirementSummary,
+  validateRules,
+  validateProcessingRequirements,
+} from "./requirements.js";
+import type {
+  ProcessingInput,
+  ProcessingOptions,
+} from "../processing/protocol.js";
+import {
+  processingSourceAvailable,
+  type ProcessingSource,
+} from "../processing/store.js";
 
 export type BackgroundSnapshot = {
   requirements: string[];
+  currentRequirements?: true;
   userRequests?: string[];
   classifications?: CandidateGoal["classifications"];
   documents: {
@@ -205,15 +219,67 @@ export async function freezeBackground(
   db: Pick<Database, "query">,
   scope: AssistantScope,
   sessionId: string,
+  processing?: {
+    options: ProcessingOptions;
+    records: ProcessingInput[];
+    source: ProcessingSource;
+    rootOperation?: string;
+  },
 ): Promise<BackgroundSnapshot | undefined> {
   const session = await sessionRow(db, scope, sessionId);
+  const classifications = validateRules(session.task);
+  if (processing) {
+    let retained: ProcessingInput[] = [];
+    let finalScopeKnown = false;
+    if (session.task.countKind === "final" && session.task.targetDraftId) {
+      const draftId = session.task.targetDraftId;
+      await processingSourceAvailable(
+        db,
+        scope.projectId,
+        { kind: "draft", id: draftId, recordIds: [] },
+        true,
+      );
+      const base = (
+        await db.query(
+          'SELECT id,question,expected_output AS "expectedOutput",metadata FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted ORDER BY position,id LIMIT 10001 FOR SHARE',
+          [draftId],
+        )
+      ).rows as ProcessingInput[];
+      if (base.length > 10000)
+        throw new AssistantError(422, "processing_capacity_exceeded");
+      const replaces =
+        processing.source.kind === "draft" &&
+        processing.source.id === draftId &&
+        (processing.rootOperation ?? processing.options.operation) !==
+          "augment";
+      const replacing = new Set(
+        replaces
+          ? processing.records.map(
+              (row) =>
+                (row as ProcessingInput & { baseline?: ProcessingInput })
+                  .baseline?.id ?? row.id,
+            )
+          : [],
+      );
+      const baseIds = new Set(base.map((row) => row.id));
+      finalScopeKnown = [...replacing].every((id) => baseIds.has(id));
+      retained = base.filter((row) => !replacing.has(row.id));
+    }
+    validateProcessingRequirements(
+      session.task,
+      processing.options,
+      processing.records,
+      retained,
+      finalScopeKnown,
+    );
+  }
   const documents = (
     await db.query(
       `SELECT ${catalogColumns},fragments FROM assistant_background_document WHERE session_id=$1 FOR SHARE`,
       [sessionId],
     )
   ).rows;
-  if (!documents.length && !session.task.classifications?.length) return;
+  if (!documents.length && !requirementSummary(session.task).length) return;
   const evidence: { documentId: string; fragmentIndex: number }[] =
     session.task.backgroundEvidence ?? [];
   if (documents.length && !evidence.length)
@@ -252,10 +318,9 @@ export async function freezeBackground(
   )
     throw new AssistantError(422, "assistant_background_capacity");
   return {
-    requirements: session.task.requirements ?? [],
-    ...(session.task.classifications?.length
-      ? { classifications: session.task.classifications }
-      : {}),
+    currentRequirements: true,
+    requirements: requirementSummary(session.task),
+    ...(classifications.length ? { classifications } : {}),
     userRequests: [
       session.task.goal,
       ...(session.task.supplements ?? []),

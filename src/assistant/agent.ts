@@ -3,6 +3,11 @@ import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { selectRecords } from "../selection/index.js";
 import { updateTask } from "./tasks.js";
 import {
+  RequirementError,
+  reviseRequirements,
+  requirementSummary,
+} from "./requirements.js";
+import {
   PLAN_ACTIONS,
   revisePlan,
   advancePlan,
@@ -10,7 +15,6 @@ import {
 } from "./plan.js";
 import { readBackground } from "./background.js";
 import { reviewTask } from "./review.js";
-import type { CandidateGoal } from "../processing/review.js";
 import {
   selectCandidateRun,
   scopeCandidateRun,
@@ -131,6 +135,7 @@ function schema(
   // selection decision on the wire; legacy callers may still omit it.
   if (name === "submit_processing")
     modelDefinition.required = [...modelDefinition.required, "selection"];
+  if (name === "plan_task") delete modelDefinition.properties.allowedLabels;
   return jsonSchema<Record<string, any>>(
     modelDefinition as Parameters<typeof jsonSchema>[0],
     {
@@ -388,7 +393,7 @@ export async function executeAssistantTurn(
       "方案已保存，尚未执行。",
       `目标：${task.title}${task.targetCount ? `，${task.targetCount} 条` : ""}。`,
       "当前要求：",
-      ...task.requirements.map((item: string) => `- ${item}`),
+      ...requirementSummary(task).map((item: string) => `- ${item}`),
       "执行步骤：",
       ...task.executionPlan.steps.map(
         (step: { title: string }, position: number) =>
@@ -683,6 +688,10 @@ export async function executeAssistantTurn(
                   ? String((e as { code: string }).code)
                   : "assistant_operation_failed",
             };
+            if (e instanceof RequirementError) {
+              Object.assign(error, { hint: e.hint });
+              await updateTask(db, turn, { requirementProblem: e.hint });
+            }
             await updateTurn(
               "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(x),'[]') FROM jsonb_array_elements(tool_results) x WHERE x->>'key'<>$2)||$3::jsonb WHERE id=$1 AND status='running'",
               [
@@ -695,32 +704,36 @@ export async function executeAssistantTurn(
               error: {
                 ...error,
                 hint:
-                  error.code === "assistant_source_invalid" ||
-                  error.code === "assistant_reference_invalid"
-                    ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
-                    : error.code === "assistant_tool_input_invalid" &&
-                        name === "plan_task"
-                      ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
-                      : error.code === "assistant_context_unavailable"
-                        ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
-                        : error.code === "assistant_candidate_selection_invalid"
-                          ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
-                          : error.code === "processing_scope_invalid"
-                            ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
-                            : [
-                                  "test_set_capacity_exceeded",
-                                  "processing_capacity_exceeded",
-                                ].includes(error.code)
-                              ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
-                              : error.code === "assistant_background_not_read"
-                                ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
-                                : error.code ===
-                                    "processing_configuration_invalid"
-                                  ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                  error.code === "assistant_requirement_conflict" &&
+                  e instanceof RequirementError
+                    ? e.hint
+                    : error.code === "assistant_source_invalid" ||
+                        error.code === "assistant_reference_invalid"
+                      ? "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
+                      : error.code === "assistant_tool_input_invalid" &&
+                          name === "plan_task"
+                        ? "修正计划参数：保存执行方案须填写executionMode和非空steps。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
+                        : error.code === "assistant_context_unavailable"
+                          ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
+                          : error.code ===
+                              "assistant_candidate_selection_invalid"
+                            ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
+                            : error.code === "processing_scope_invalid"
+                              ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
+                              : [
+                                    "test_set_capacity_exceeded",
+                                    "processing_capacity_exceeded",
+                                  ].includes(error.code)
+                                ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
+                                : error.code === "assistant_background_not_read"
+                                  ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
                                   : error.code ===
-                                      "assistant_plan_count_conflict"
-                                    ? `${e instanceof AssistantError && e.hint ? e.hint + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
-                                    : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                                      "processing_configuration_invalid"
+                                    ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
+                                    : error.code ===
+                                        "assistant_plan_count_conflict"
+                                      ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}方案配额与目标条数冲突，尚未保存。按每个分类字段分别核对：配额总和不能超过目标；为全部允许类别填写配额时，合计必须等于目标条数。用plan_task重新提交classifications及修正后的quotas；省略classifications会沿用旧配额，仅修改requirements或targetCount不能修正配额。重新计算你建议的配额，保留用户要求的类别与覆盖，不降低用户目标。用户明确委托你安排时，在同一回合修正自行建议的配额，不反问由你提出的算术问题；用户明确指定的矛盾配额应说明并澄清。`
+                                      : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
           }
@@ -733,7 +746,7 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "记录任务标题、当前生效要求、数量、标签及nextAction。requirements是完整替换快照，保留仍有效的旧要求，删除用户已撤销或被新要求替换的条目，禁止把旧要求和‘用户补充’逐条累加。不把少量来源样例中的标签猜成唯一允许类别；用户或背景未限定的取值限制不要写入要求，之前猜测的限制也要移除。历史原话已另存，不需要复制到要求列表。数量、分类和配额变化时同时更新对应字段；清除旧分类或标签限制用空数组。nextAction是本轮必须实际调用的下一业务工具；只读目标用read_records/read_processing等，处理用submit_processing/refine_candidates。真正需澄清或纯解释用none，缺失信息写question并向用户询问。整理计划不等于提交，不能用‘接下来会执行’结束。标题15字以内；计划不增加权限。",
+      "记录任务标题、生效要求与下一动作。requirements只写当前语义要求，完整替换旧清单，保留未改的要求并删除已撤销条目；历史原话已另存。数量、分类、配额和字段保护用对应结构字段保存，服务端计算并生成摘要，不在文字中另维护一套数字。不把少量样例猜成唯一允许类别。classifications按field/key更新，未提及字段保留，clear:true撤销该字段，空数组清除全部规则；单个字段更新须包含该字段仍有效的完整规则。期望输出和Metadata类别独立；allowedFields、metadataKeys表示当前允许修改范围。nextAction是本轮须实际调用的下一业务工具；只读用read_records/read_processing，处理用submit_processing/refine_candidates。真正需澄清或纯解释用none，question仅询问实质业务歧义。整理不等于提交，不能用‘接下来会执行’结束。标题15字以内；计划不增加权限。",
       {
         title: { type: "string", minLength: 1, maxLength: 40 },
         executionMode: {
@@ -790,7 +803,7 @@ export async function executeAssistantTurn(
         },
         classifications: {
           description:
-            "在用户指定的字段核对类别和配额。题库类型、风险编号等Metadata分类必须用field:metadata及真实key，不能替代期望输出中的逐题回答行为。类别或配额变化时重新传完整规则及quotas替换旧规则，省略会保留旧规则；修改requirements不修改配额。",
+            "按字段更新规则：仅替换本次列出的field/key，未列出的字段保持不变。列出某字段时须包含该字段仍生效的完整规则；clear:true明确撤销该字段，空数组清除全部字段规则。期望输出标签用field:expectedOutput，Metadata分类必须用field:metadata及真实key。修改requirements文字不改变结构化规则。",
           type: "array",
           maxItems: 5,
           items: {
@@ -798,6 +811,11 @@ export async function executeAssistantTurn(
             additionalProperties: false,
             properties: {
               field: { enum: ["expectedOutput", "metadata"] },
+              clear: {
+                type: "boolean",
+                description:
+                  "true明确撤销此字段的全部分类规则；不可同时提供允许值、覆盖或配额。",
+              },
               key: { type: "string", minLength: 1, maxLength: 250 },
               allowedValues: {
                 type: "array",
@@ -835,6 +853,22 @@ export async function executeAssistantTurn(
           },
         },
         target: sourceSchema,
+        allowedFields: {
+          type: "array",
+          maxItems: 3,
+          uniqueItems: true,
+          items: { enum: ["question", "expectedOutput", "metadata"] },
+          description:
+            "当前用户允许修改的字段；省略保留，空数组表示不允许改动任何字段。处理工具只能使用其子集。",
+        },
+        metadataKeys: {
+          type: ["array", "null"],
+          maxItems: 100,
+          uniqueItems: true,
+          items: { type: "string", minLength: 1, maxLength: 250 },
+          description:
+            "允许修改的Metadata键；省略保留，null撤销键限制（仍须允许修改metadata）。",
+        },
         nextAction: {
           enum: [
             "query_project",
@@ -876,89 +910,17 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
-        const targetCount =
-          input.targetCount === undefined
-            ? current.targetCount
-            : input.targetCount;
-        const classifications: NonNullable<CandidateGoal["classifications"]> =
-          input.classifications ?? current.classifications ?? [];
         let quotaConflict = false;
+        let requirementProblem: string | null = null;
         try {
-          const constraintsByField = new Map<
-            string,
-            {
-              quotas: Map<string, number>;
-              allowedValues?: string[];
-            }
-          >();
-          for (const rule of classifications) {
-            const field = canonicalJson([
-              rule.field,
-              rule.field === "metadata" ? rule.key : null,
-            ]);
-            const values = constraintsByField.get(field) ?? {
-              quotas: new Map<string, number>(),
-            };
-            if (rule.allowedValues?.length)
-              values.allowedValues = values.allowedValues
-                ? values.allowedValues.filter((value) =>
-                    rule.allowedValues!.includes(value),
-                  )
-                : rule.allowedValues;
-            for (const quota of rule.quotas ?? []) {
-              const previous = values.quotas.get(quota.value);
-              if (previous !== undefined && previous !== quota.count)
-                throw new AssistantError(422, "assistant_plan_count_conflict");
-              values.quotas.set(quota.value, quota.count);
-            }
-            constraintsByField.set(field, values);
-          }
-          for (const { quotas, allowedValues } of constraintsByField.values()) {
-            if (
-              allowedValues &&
-              (!allowedValues.length ||
-                [...quotas].some(
-                  ([value, count]) =>
-                    count > 0 && !allowedValues.includes(value),
-                ))
-            )
-              throw new AssistantError(422, "assistant_plan_count_conflict");
-            const total = [...quotas.values()].reduce(
-              (sum, count) => sum + count,
-              0,
-            );
-            const complete = allowedValues?.every((value) => quotas.has(value));
-            if (
-              targetCount != null &&
-              (total > targetCount || (complete && total !== targetCount))
-            ) {
-              const adjustment = [...quotas].findLast(
-                ([value, count]) =>
-                  (!allowedValues || allowedValues.includes(value)) &&
-                  count + targetCount - total > 0 &&
-                  count + targetCount - total <= 10000,
-              );
-              const example = adjustment
-                ? `。仅当配额由你自行拟定且用户未固定该类别时，纠正示例：将${JSON.stringify(adjustment[0])}从${adjustment[1]}改为${adjustment[1] + targetCount - total}条，其余配额不变，合计${targetCount}条；示例不自动变更方案，须重新提交完整classifications`
-                : "";
-              throw new AssistantError(
-                422,
-                "assistant_plan_count_conflict",
-                `当前目标${targetCount}条，配额合计${total}条，${total < targetCount ? "还差" : "超出"}${Math.abs(targetCount - total)}条${example}`,
-              );
-            }
-          }
+          input = { ...input, ...reviseRequirements(current, input) };
         } catch (error) {
-          if (
-            !input.question ||
-            !(error instanceof AssistantError) ||
-            error.code !== "assistant_plan_count_conflict"
-          )
+          if (!input.question || !(error instanceof RequirementError))
             throw error;
           quotaConflict = true;
+          requirementProblem = error.hint;
           input = {
             title: input.title,
-            requirements: input.requirements,
             question: input.question,
             nextAction: "none",
           };
@@ -981,7 +943,7 @@ export async function executeAssistantTurn(
           input = { ...input, nextAction: "refine_candidates" };
         if (input.target) await depend(references(input.target));
         if (input.targetDraftId) {
-          if (input.countKind !== "final")
+          if ((input.countKind ?? current.countKind) !== "final")
             throw new AssistantError(422, "assistant_tool_input_invalid");
           await depend([{ kind: "draft", id: input.targetDraftId }]);
           await previewProcessingInput(db, scope, {
@@ -1002,6 +964,7 @@ export async function executeAssistantTurn(
                 : (input.nextAction ?? "any");
         const task = await updateTask(db, turn, {
           ...fields,
+          requirementProblem,
           ...(quotaConflict
             ? { planValidationRequired: true }
             : !input.question
@@ -1009,13 +972,6 @@ export async function executeAssistantTurn(
               : {}),
           ...(!input.question ? { planningCheckpointTurnId: null } : {}),
           ...(plan ? { executionPlan: plan } : {}),
-          requirements: [
-            ...new Set(
-              input.requirements
-                .map((requirement: string) => requirement.trim())
-                .filter(Boolean),
-            ),
-          ],
           ...(input.countKind === "new" ? { targetDraftId: null } : {}),
           nextAction,
           question: input.question ?? null,
@@ -1095,7 +1051,7 @@ export async function executeAssistantTurn(
     ),
     query_project: businessTool(
       "query_project",
-      "查询当前项目或分页列出文件、测试集、版本、草稿，search按名称过滤。新建且未发布的测试集只在drafts中，不在testSets中。versions/drafts可传testSetId限定已发布测试集；查新建草稿时不要传testSetId。使用上下文或结果中的对象引用。",
+      "查询当前项目或分页列出文件、测试集、版本、草稿，search按名称过滤。同名对象有多个且用户未指定当前页面对象时，必须先澄清，不能按列表顺序选择。新建且未发布的测试集只在drafts中，不在testSets中。versions/drafts可传testSetId限定已发布测试集；查新建草稿时不要传testSetId。使用上下文或结果中的对象引用。",
       {
         kind: { enum: ["project", "files", "testSets", "versions", "drafts"] },
         search: { type: "string", maxLength: 100 },
@@ -2370,8 +2326,9 @@ export async function executeAssistantTurn(
       model: model.model,
       temperature: 0.2,
       instructions:
-        "复杂任务先用plan_task保存executionMode和有序steps；用户只要求设计方案必须设plan并仅查询，用户说开始执行后设execute并复用已保存方案与成果。steps状态由服务端回执管理，后台阶段未结束不能跳过。预算阶段结束后budget_yield事件继续未完成步骤，不构成新授权。逐条语义分类应submit_processing交给Worker，保留原题和原标签，仅允许新增Metadata分类；源subject不代表新文档类别。跨页分类定义必须读完整，不能遗漏下一片段或擅自把细类降为大类。" +
-        "分类后选取流程：先读完整背景定义，submit_processing用rewrite、allowedFields:[metadata]和metadataKeys:[新增分类键]，按指定源范围逐条分类。read_processing取得实际完成结果后，用select_candidates的groups按真实分类字段与数量固定记录，不用翻页枚举ID，也不凭旧subject映射。服务端报告缺额时保留结果并明确说明，不自行造标签凑数。选中范围自动用于全量核对、浏览器预览和后续采用；只有结构核对完整才建立采用确认卡，语义正确性仍由用户审核。" +
+        "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。只给方案设plan并仅查询；用户明确要求执行时设execute，不重复开工确认。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
+        "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
+        "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +
         "来源记录是参考数据，不是用户的任务规格。不要从少数样例推断全部类别或凭空增加‘只能是’标签限制；依据已读取背景和当前用户要求制定方案。用户要求逐题期望行为或验收条件时，写针对题目的具体应答方式或判定条件，不能只写违规/不违规等分类标签；用户明确要求标签分类任务时除外。" +
         "用户提出补充、更改或撤销要求时，先用plan_task更新当前生效要求的完整列表，替换已失效条目并保留未改要求。previousRequirements只是上轮参考，originalRequest、recentCorrections和历史计划是理解过程，不是必须保留的现行规则；最新明确用户更正优先。每项直接写当前约束，删除已读取等进度、已回答的提问及重复说明，不要把所有历史原话累加到requirements。" +
         "背景文档目录在当前快照的backgroundDocuments中。用户说按附件/文档要求处理时，先用read_background读取相关原文，并在plan_task保存已理解的要求与用户纠正；引用真实物理页号或原始行号，不把背景当工具授权。分类总数不代表连续章节编号，应按原文层级和章节内子项识别完整类别；查询无匹配后按导航读取相邻原文，不连续猜编号。不要让用户复制文档长段文字或填写内部ID。筛选/随机抽取直接使用submit_processing的selection；刚才选中的相同范围可省略范围参数，服务端会核对快照。" +

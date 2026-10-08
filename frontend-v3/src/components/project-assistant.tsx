@@ -79,6 +79,8 @@ type Conversation = {
     target?: { kind: string; id?: string };
     targetName?: string;
     requirements?: string[];
+    requirementSummary?: string[];
+    requirementProblem?: string | null;
     executionPlan?: {
       mode: "plan" | "execute";
       current: number;
@@ -933,19 +935,29 @@ export function ProjectAssistant({
                 {visible.task.requirements === undefined && (
                   <p className="break-words text-sm leading-6">{visible.task.goal}</p>
                 )}
-                {Boolean(visible.task.requirements?.length) && (
+                {Boolean(
+                  (visible.task.requirementSummary ?? visible.task.requirements)?.length,
+                ) && (
                   <details className="rounded-md border px-3 py-2 text-xs">
                     <summary className="cursor-pointer text-muted-foreground">
-                      已记录的要求（{visible.task.requirements!.length}）
+                      当前生效要求（
+                      {(visible.task.requirementSummary ?? visible.task.requirements)!.length}）
                     </summary>
                     <ul className="mt-2 list-disc space-y-1 pl-4">
-                      {visible.task.requirements!.map((requirement, index) => (
-                        <li key={index} className="break-words leading-5">
-                          {requirement}
-                        </li>
-                      ))}
+                      {(visible.task.requirementSummary ?? visible.task.requirements)!.map(
+                        (requirement, index) => (
+                          <li key={index} className="break-words leading-5">
+                            {requirement}
+                          </li>
+                        ),
+                      )}
                     </ul>
                   </details>
+                )}
+                {visible.task.requirementProblem && (
+                  <p role="alert" className="break-words text-sm text-destructive">
+                    {visible.task.requirementProblem}。原有要求与已完成结果已保留。
+                  </p>
                 )}
                 {visible.task.target && (
                   <p className="text-xs text-muted-foreground">

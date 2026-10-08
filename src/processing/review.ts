@@ -1,6 +1,7 @@
 import { canonicalJson } from "../package/contract.js";
 import type { readProcessingRun } from "./store.js";
 import type { ProcessingInput } from "./protocol.js";
+import { effectiveRules } from "../assistant/requirements.js";
 
 export type CandidateGoal = {
   targetCount?: number | null;
@@ -107,7 +108,7 @@ export function reviewCandidates(
         "processing_batch_failed",
       ].includes(issue.code),
     );
-  const classifications = (goal?.classifications ?? []).map((rule) => {
+  const classifications = effectiveRules(goal ?? {}).map((rule) => {
     const counts = new Map<string, number>();
     let missing = 0,
       outsideValues = 0;
@@ -116,7 +117,9 @@ export function reviewCandidates(
         rule.field === "expectedOutput"
           ? [record.expectedOutput]
           : record.metadata
-              .filter((entry) => entry.key === rule.key)
+              .filter(
+                (entry) => entry.key.toLowerCase() === rule.key?.toLowerCase(),
+              )
               .map((entry) => entry.value);
       if (values.length !== 1 || !values[0]!.trim()) {
         missing++;

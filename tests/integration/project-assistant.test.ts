@@ -1783,7 +1783,18 @@ describe("project assistant public contract", () => {
             "纠正示例",
           );
         }
-        expect(state.task.classifications).toEqual(corrected);
+        expect(state.task.classifications).toEqual([
+          {
+            field: "metadata",
+            key: "类别",
+            allowedValues: ["风险", "正常"],
+            quotas: [
+              { value: "风险", count: 155 },
+              { value: "正常", count: 45 },
+            ],
+          },
+          corrected[3],
+        ]);
         expect(state.task.runId).toBeUndefined();
       } finally {
         toolSequence = [];
@@ -2068,6 +2079,728 @@ describe("project assistant public contract", () => {
           expect(executed.task.runId).toEqual(expect.any(String));
         }
       } finally {
+        sessionId = previous;
+      }
+    },
+  );
+  it("keeps independent field rules when only a Metadata requirement is replaced, and reviews the same effective rules", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      const common = {
+        title: "分类要求",
+        requirements: ["保留原题与答案"],
+        targetCount: 2,
+        executionMode: "plan",
+        steps: [{ title: "添加风险类别", action: "submit_processing" }],
+      };
+      const outputRule = { field: "expectedOutput", allowedValues: ["原标签"] };
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          ...common,
+          classifications: [
+            outputRule,
+            { field: "metadata", key: "风险", allowedValues: ["旧类别"] },
+          ],
+        },
+      };
+      await send("先设计2条，保留原题和答案，风险暂用旧类别");
+      const riskRule = {
+        field: "metadata",
+        key: "风险",
+        allowedValues: ["A.1.a", "A.2.a"],
+      };
+      requestedTool = {
+        name: "plan_task",
+        input: { ...common, classifications: [riskRule] },
+      };
+      const replaced = (
+        await send("风险类别改为A.1.a和A.2.a，其他要求保持")
+      ).json();
+      expect(replaced.task.classifications).toEqual([outputRule, riskRule]);
+      const refreshed = (await read()).json();
+      expect(refreshed.task.classifications).toEqual([outputRule, riskRule]);
+      expect(refreshed.task.requirementSummary).toContain(
+        "期望输出：允许 原标签",
+      );
+      expect(refreshed.task.requirementSummary).toContain(
+        "Metadata「风险」：允许 A.1.a、A.2.a",
+      );
+      expect(JSON.stringify(refreshed.task.requirementSummary)).not.toContain(
+        "旧类别",
+      );
+
+      const path = `/api/projects/${projectId}/collaborative-drafts`;
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: path,
+          headers,
+          payload: { name: "独立字段来源" },
+        })
+      ).json().draft.id;
+      for (const question of ["甲类问题", "乙类问题"])
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `${path}/${source}/records`,
+              headers,
+              payload: { question, expectedOutput: "原标签", metadata: [] },
+            })
+          ).statusCode,
+        ).toBe(201);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            ...common,
+            executionMode: "execute",
+            allowedFields: ["metadata"],
+            metadataKeys: ["风险"],
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: source },
+            allRecords: true,
+            operation: "rewrite",
+            instructions: "保留原题和答案，仅新增风险类别",
+            allowedFields: ["metadata"],
+            metadataKeys: ["风险"],
+          },
+        },
+      ];
+      const submitted = (await send("按这个方案执行")).json();
+      expect(submitted.task.runId).toEqual(expect.any(String));
+      const processingConfig = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      const db = createPool(databaseUrl);
+      try {
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=attempt+1,lease_owner='assistant-test',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [submitted.task.runId],
+          )
+        ).rows[0];
+        const completed = await runProcessing(
+          db,
+          new ArtifactRepository(processingConfig.minio),
+          processingConfig,
+          job,
+        );
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, completed],
+        );
+      } finally {
+        await db.end();
+      }
+      // The completion event inspects the result automatically. A second user turn
+      // would race that event rather than exercise requirement propagation.
+      await expect
+        .poll(
+          async () =>
+            (await read()).json().task.review?.classifications?.length,
+          { timeout: 15000 },
+        )
+        .toBe(2);
+      const reviewed = (await read()).json();
+      expect(reviewed.task.review.classifications).toMatchObject([
+        { field: "expectedOutput", satisfied: true },
+        { field: "metadata", key: "风险", satisfied: true },
+      ]);
+    } finally {
+      toolSequence = [];
+      requestedTool = undefined;
+      sessionId = previous;
+    }
+  });
+  it("rejects processing that contradicts protected fields and retains the last valid requirements", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      const path = `/api/projects/${projectId}/collaborative-drafts`;
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: path,
+          headers,
+          payload: { name: "保护字段来源" },
+        })
+      ).json().draft.id;
+      await app.inject({
+        method: "POST",
+        url: `${path}/${source}/records`,
+        headers,
+        payload: {
+          question: "保留原题",
+          expectedOutput: "原答案",
+          metadata: [],
+        },
+      });
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            title: "仅补类别",
+            requirements: ["保留原题及答案"],
+            targetCount: 1,
+            allowedFields: ["metadata"],
+            metadataKeys: ["风险"],
+            classifications: [
+              { field: "metadata", key: "风险", allowedValues: ["A"] },
+            ],
+            nextAction: "submit_processing",
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: source },
+            allRecords: true,
+            operation: "rewrite",
+            instructions: "改写题目",
+            allowedFields: ["question", "metadata"],
+            metadataKeys: ["风险"],
+          },
+        },
+      ];
+      const state = (
+        await send("只新增风险类别，保留原题及答案", undefined, "failed")
+      ).json();
+      const failed = state.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "submit_processing");
+      expect(failed.error.code).toBe("assistant_requirement_conflict");
+      expect(failed.error.hint).toContain("问题");
+      expect(state.task.requirementProblem).toContain("问题");
+      expect(state.task.runId).toBeUndefined();
+      expect(state.task.allowedFields).toEqual(["metadata"]);
+      expect((await read()).json().task.requirementProblem).toEqual(
+        state.task.requirementProblem,
+      );
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "更正类别",
+          requirements: ["保留原题及答案"],
+          classifications: [{ field: "metadata", key: "风险", clear: true }],
+          nextAction: "none",
+        },
+      };
+      const cleared = (await send("不再限制风险类别")).json();
+      expect(cleared.task.classifications).toEqual([]);
+      expect(cleared.task.allowedFields).toEqual(["metadata"]);
+      expect(cleared.task.requirementProblem).toBeNull();
+    } finally {
+      sessionId = previous;
+    }
+  });
+  it.each([false, true])(
+    "reads legacy expected-output labels without rewriting old state (conflict: %s)",
+    async (conflict) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const db = createPool(databaseUrl);
+      try {
+        const legacy = {
+          title: "旧分类",
+          goal: "保留原答案并分类",
+          stage: "planning",
+          requirements: ["原有要求"],
+          allowedLabels: ["原答案"],
+          classifications: [
+            { field: "metadata", key: "风险", allowedValues: ["A", "B"] },
+            ...(conflict
+              ? [{ field: "expectedOutput", allowedValues: ["其他答案"] }]
+              : []),
+          ],
+        };
+        await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+          sessionId,
+          legacy,
+        ]);
+        const before = (await read()).json();
+        expect(before.task.requirementSummary).toContain(
+          "期望输出：允许 原答案",
+        );
+        expect(before.task.requirementSummary).toContain(
+          "Metadata「风险」：允许 A、B",
+        );
+        if (conflict)
+          expect(before.task.requirementProblem).toContain("期望输出");
+        else expect(before.task.requirementProblem).toBeNull();
+        expect(
+          (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task,
+        ).toEqual(legacy);
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            title: "更正类别",
+            requirements: ["原有要求"],
+            classifications: [
+              { field: "metadata", key: "风险", allowedValues: ["C"] },
+            ],
+            nextAction: "none",
+          },
+        };
+        const changed = (
+          await send(
+            "风险类别改为C，保留其他要求",
+            undefined,
+            conflict ? "failed" : "succeeded",
+          )
+        ).json();
+        if (conflict) {
+          expect(changed.task.requirementProblem).toContain("期望输出");
+          expect(
+            (
+              await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+                sessionId,
+              ])
+            ).rows[0].task.allowedLabels,
+          ).toEqual(["原答案"]);
+        } else {
+          expect(changed.task.classifications).toEqual([
+            { field: "expectedOutput", allowedValues: ["原答案"] },
+            { field: "metadata", key: "风险", allowedValues: ["C"] },
+          ]);
+          expect(changed.task.requirementSummary).not.toContain(
+            "Metadata「风险」：允许 A、B",
+          );
+          requestedTool = {
+            name: "plan_task",
+            input: {
+              title: "撤销答案规则",
+              requirements: ["仅限制风险类别"],
+              classifications: [{ field: "expectedOutput", clear: true }],
+              targetCount: null,
+              nextAction: "none",
+            },
+          };
+          const cleared = (await send("取消答案类别及数量限制")).json();
+          expect(cleared.task.classifications).toEqual([
+            { field: "metadata", key: "风险", allowedValues: ["C"] },
+          ]);
+          expect(
+            cleared.task.requirementSummary.some((line: string) =>
+              line.startsWith("期望输出："),
+            ),
+          ).toBe(false);
+        }
+      } finally {
+        await db.end();
+        sessionId = previous;
+      }
+    },
+  );
+  it.each([
+    { field: "expectedOutput", allowedValues: ["新答案"] },
+    { field: "metadata", key: "风险", allowedValues: ["新类别"] },
+  ])(
+    "rejects a protected source value that cannot satisfy its rule ($field)",
+    async (rule) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const path = `/api/projects/${projectId}/collaborative-drafts`;
+        const source = (
+          await app.inject({
+            method: "POST",
+            url: path,
+            headers,
+            payload: { name: "不相容的保护字段" },
+          })
+        ).json().draft.id;
+        await app.inject({
+          method: "POST",
+          url: `${path}/${source}/records`,
+          headers,
+          payload: {
+            question: "只改写问题",
+            expectedOutput: "原答案",
+            metadata: [{ key: "风险", value: "旧类别" }],
+          },
+        });
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: {
+              title: "保留字段",
+              requirements: ["只改问题"],
+              allowedFields: ["question"],
+              classifications: [rule],
+              nextAction: "submit_processing",
+            },
+          },
+          {
+            name: "submit_processing",
+            input: {
+              source: { kind: "draft", id: source },
+              allRecords: true,
+              operation: "rewrite",
+              instructions: "只改问题",
+              allowedFields: ["question"],
+            },
+          },
+        ];
+        const rejected = (
+          await send("只改问题，其他字段必须保留", undefined, "failed")
+        ).json();
+        expect(
+          rejected.turns
+            .at(-1)
+            .tools.find((tool: any) => tool.name === "submit_processing").error
+            .code,
+        ).toBe("assistant_requirement_conflict");
+        expect(rejected.task.requirementProblem).toContain("来源值无法满足");
+        expect(rejected.task.runId).toBeUndefined();
+        const original = (
+          await app.inject({ method: "GET", url: `${path}/${source}`, headers })
+        ).json().records[0];
+        expect(original.expectedOutput).toBe("原答案");
+        expect(original.metadata).toEqual([{ key: "风险", value: "旧类别" }]);
+      } finally {
+        sessionId = previous;
+      }
+    },
+  );
+  it("normalizes inherited Metadata keys and displays the actual scope of a simple submission", async () => {
+    const previous = sessionId;
+    const db = createPool(databaseUrl);
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const sessions = [sessionId];
+    try {
+      const path = `/api/projects/${projectId}/collaborative-drafts`;
+      const source = (
+        await app.inject({
+          method: "POST",
+          url: path,
+          headers,
+          payload: { name: "简单处理来源" },
+        })
+      ).json().draft.id;
+      await app.inject({
+        method: "POST",
+        url: `${path}/${source}/records`,
+        headers,
+        payload: {
+          question: "问题",
+          expectedOutput: "原答案",
+          metadata: [{ key: "risk", value: " x " }],
+        },
+      });
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "清洗字段",
+          requirements: ["清洗risk"],
+          allowedFields: ["metadata"],
+          metadataKeys: [" risk ", "RISK"],
+          nextAction: "none",
+        },
+      };
+      const plan = (await send("只清洗risk字段，先不执行")).json();
+      expect(plan.task.metadataKeys).toEqual(["risk"]);
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "draft", id: source },
+          allRecords: true,
+          operation: "clean",
+          instructions: "清洗risk",
+          allowedFields: ["metadata"],
+        },
+      };
+      const submitted = (await send("执行清洗")).json();
+      const runId = submitted.task.runId;
+      expect(
+        (
+          await db.query("SELECT options FROM processing_run WHERE id=$1", [
+            runId,
+          ])
+        ).rows[0].options.metadataKeys,
+      ).toEqual(["risk"]);
+
+      // A separate simple task does not need a synthetic multi-step plan.
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      sessions.push(sessionId);
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "draft", id: source },
+          allRecords: true,
+          operation: "augment",
+          outputCount: 3,
+          instructions: "扩写3个问题，保留答案",
+          allowedFields: ["question"],
+        },
+      };
+      const direct = (await send("扩写3条，保留答案")).json();
+      expect(direct.task.requirementSummary).toContain("本次新增候选：3 条");
+      expect(direct.task.requirementSummary).toContain("本次允许修改：问题");
+      expect(direct.task.requirementSummary).toContain("扩写3个问题，保留答案");
+      expect((await read()).json().task.requirementSummary).toEqual(
+        direct.task.requirementSummary,
+      );
+      expect(direct.task.executionPlan).toBeUndefined();
+      expect(direct.proposals).toEqual([]);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "暂不扩写",
+          targetCount: null,
+          requirements: [],
+          nextAction: "none",
+        },
+      };
+      const withdrawn = (await send("撤销扩写要求，暂不执行")).json();
+      expect(withdrawn.task.runId).toBe(direct.task.runId);
+      expect(withdrawn.task.targetCount).toBeNull();
+      expect(withdrawn.task.requirementSummary).not.toContain(
+        "扩写3个问题，保留答案",
+      );
+      expect(withdrawn.task.requirementSummary).not.toContain(
+        "本次新增候选：3 条",
+      );
+      expect((await read()).json().task.requirementSummary).toEqual(
+        withdrawn.task.requirementSummary,
+      );
+    } finally {
+      for (const id of sessions)
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${id}/stop`,
+          headers,
+          payload: {},
+        });
+      await db.end();
+      toolSequence = [];
+      requestedTool = undefined;
+      sessionId = previous;
+    }
+  });
+  it.each([
+    {
+      mode: "new",
+      operation: "rewrite",
+      outputCount: undefined,
+      labels: ["A", "A", "B", "B"],
+      quota: [{ value: "A", count: 1 }],
+      expected: "failed",
+      targetCount: 4,
+      categories: ["A", "B"],
+      sameTarget: false,
+    },
+    {
+      mode: "final",
+      operation: "augment",
+      outputCount: 2,
+      labels: ["A"],
+      quota: [
+        { value: "A", count: 2 },
+        { value: "B", count: 2 },
+      ],
+      expected: "succeeded",
+      targetCount: 4,
+      categories: ["A", "B"],
+      sameTarget: false,
+    },
+    {
+      mode: "final",
+      operation: "rewrite",
+      outputCount: undefined,
+      labels: ["A", "A", "B", "B"],
+      quota: [
+        { value: "A", count: 1 },
+        { value: "B", count: 3 },
+      ],
+      expected: "failed",
+      targetCount: 4,
+      categories: ["A", "B"],
+      sameTarget: true,
+    },
+    {
+      mode: "final",
+      operation: "augment",
+      outputCount: 2,
+      labels: ["A", "C", "D"],
+      quota: [],
+      expected: "failed",
+      targetCount: 4,
+      categories: ["A", "B", "C", "D"],
+      sameTarget: false,
+    },
+  ])(
+    "checks only the provable whole goal for protected quotas ($mode/$operation)",
+    async (scenario) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      try {
+        const path = `/api/projects/${projectId}/collaborative-drafts`;
+        const source = (
+          await app.inject({
+            method: "POST",
+            url: path,
+            headers,
+            payload: { name: "配额来源" },
+          })
+        ).json().draft.id;
+        for (const label of scenario.labels)
+          await app.inject({
+            method: "POST",
+            url: `${path}/${source}/records`,
+            headers,
+            payload: {
+              question: `问题${label}`,
+              expectedOutput: label,
+              metadata: [],
+            },
+          });
+        const target = scenario.sameTarget
+          ? source
+          : (
+              await app.inject({
+                method: "POST",
+                url: path,
+                headers,
+                payload: { name: "最终目标草稿" },
+              })
+            ).json().draft.id;
+        for (const label of scenario.sameTarget ? [] : ["B", "B"])
+          await app.inject({
+            method: "POST",
+            url: `${path}/${target}/records`,
+            headers,
+            payload: {
+              question: `已有${label}`,
+              expectedOutput: label,
+              metadata: [],
+            },
+          });
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: {
+              title: "固定配额",
+              requirements: ["保留答案"],
+              targetCount: scenario.targetCount,
+              countKind: scenario.mode,
+              ...(scenario.mode === "final" ? { targetDraftId: target } : {}),
+              allowedFields: ["question"],
+              classifications: [
+                {
+                  field: "expectedOutput",
+                  allowedValues: scenario.categories,
+                  requiredValues: scenario.categories,
+                  quotas: scenario.quota,
+                },
+              ],
+              nextAction: "submit_processing",
+            },
+          },
+          {
+            name: "submit_processing",
+            input: {
+              source: { kind: "draft", id: source },
+              allRecords: true,
+              operation: scenario.operation,
+              ...(scenario.outputCount
+                ? { outputCount: scenario.outputCount }
+                : {}),
+              instructions: "保留答案，只改问题",
+              allowedFields: ["question"],
+            },
+          },
+        ];
+        const state = (
+          await send(
+            "按目标处理，保留答案",
+            undefined,
+            scenario.expected as "succeeded" | "failed",
+          )
+        ).json();
+        const submission = state.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "submit_processing");
+        expect(submission.status).toBe(scenario.expected);
+        if (scenario.expected === "failed") {
+          expect(submission.error.code).toBe("assistant_requirement_conflict");
+          expect(submission.error.hint).toContain("A");
+          expect(state.task.runId).toBeUndefined();
+        } else {
+          expect(state.task.runId).toEqual(expect.any(String));
+          expect(state.task.targetCount).toBe(4);
+          expect(state.task.countKind).toBe("final");
+        }
+      } finally {
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        toolSequence = [];
+        requestedTool = undefined;
         sessionId = previous;
       }
     },
@@ -5358,10 +6091,13 @@ describe("project assistant public contract", () => {
           quotas: [{ value: "试用", count: 1 }],
         },
       ]);
+      expect(prompt.background.currentRequirements).toBe(true);
       expect(prompt.backgroundRule).toContain(
-        "later user corrections override",
+        "server-validated CURRENT requirements",
       );
       expect(prompt.background.requirements).toEqual([
+        "Metadata「类别」：允许 试用",
+        "Metadata「类别」：试用 1 条；合计 1 条",
         "按背景规范生成具体场景",
         "修正：不得包含真实个人信息",
       ]);
@@ -6788,7 +7524,8 @@ describe("project assistant public contract", () => {
           operation: "augment",
           outputCount: overflowAddition,
           instructions: "检查选取后任务容量，不执行生成",
-          allowedFields: ["question"],
+          allowedFields: ["question", "metadata"],
+          metadataKeys: ["riskCode"],
         };
         requestedTool = { name: "submit_processing", input: extra };
         const overflow = (

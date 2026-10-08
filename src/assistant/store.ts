@@ -5,6 +5,12 @@ import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import { backgroundCatalog } from "./background.js";
+import {
+  RequirementError,
+  effectiveRules,
+  requirementSummary,
+  validateRules,
+} from "./requirements.js";
 
 export const ASSISTANT_SESSION_TURN_LIMIT = 100;
 export type AssistantScope = { projectId: string; actorId: string };
@@ -12,15 +18,29 @@ function initialTaskTitle(text: string) {
   const named = text.match(/本会话命名为[“"「]([^”"」\n]{1,40})[”"」]/u)?.[1];
   return named ?? "新任务";
 }
-export function taskPresentation(task: Record<string, any> | null) {
-  if (!task) return task;
+export function taskPresentation(
+  task: Record<string, any> | null,
+  processing?: Parameters<typeof requirementSummary>[1],
+) {
+  if (!task || !Object.keys(task).length) return task;
   const presented = { ...task };
   delete presented.observations;
   delete presented.budgetCheckpoint;
   delete presented.planningCheckpointTurnId;
   delete presented.planValidationRequired;
+  let requirementProblem = task.requirementProblem ?? null;
+  try {
+    presented.classifications = validateRules(task);
+  } catch (error) {
+    if (!(error instanceof RequirementError)) throw error;
+    requirementProblem = error.hint;
+    presented.classifications = effectiveRules(task);
+  }
+  delete presented.allowedLabels;
   return {
     ...presented,
+    requirementSummary: requirementSummary(task, processing),
+    requirementProblem,
     ...(task.candidateScope
       ? {
           candidateScope: {
@@ -205,16 +225,35 @@ export async function readSession(
          AND p.task_revision=s.task_revision AND p.status IN ('pending','executing'))`,
     [id, session.content_revision],
   );
+  const processing = session.task?.runId
+    ? (
+        await db.query(
+          `SELECT r.id,r.options,r.input_count,t.task_revision
+           FROM assistant_session s
+           JOIN processing_run r ON r.id=s.task->>'runId'
+             AND r.project_id=s.project_id AND r.actor_id=s.actor_id
+           JOIN assistant_turn t ON t.id=split_part(r.idempotency_key,':',2)
+             AND split_part(r.idempotency_key,':',1)='assistant'
+             AND t.session_id=s.id AND t.task_revision=s.task_revision
+           WHERE s.id=$1 AND s.project_id=$2 AND s.actor_id=$3`,
+          [id, scope.projectId, scope.actorId],
+        )
+      ).rows[0]
+    : undefined;
   const current = await sessionRow(db, scope, id);
   if (current.content_revision !== session.content_revision)
     throw new AssistantError(409, "assistant_context_deleted");
+  const presentedTask = taskPresentation(
+    current.task,
+    processing?.id === current.task?.runId &&
+      processing?.task_revision === current.task_revision
+      ? processing
+      : undefined,
+  );
   return {
     sessionId: id,
-    task: taskPresentation(current.task),
-    title:
-      current.custom_title ??
-      taskPresentation(current.task)?.title ??
-      current.title,
+    task: presentedTask,
+    title: current.custom_title ?? presentedTask?.title ?? current.title,
     turns: turns.map((t) => ({
       id: t.id,
       event: t.event,

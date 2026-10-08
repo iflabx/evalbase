@@ -459,6 +459,7 @@ export async function createProcessingRun(
         client,
         scope,
         scope.assistantGuard.sessionId,
+        { options, records: data.records, source: data.source },
       );
       if (background) data.background = background;
     }

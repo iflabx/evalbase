@@ -1,6 +1,77 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAccountRoute } from "./mock-account";
 
+test("shows only the current effective requirements and retains a field conflict after reload", async ({
+  page,
+}) => {
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [
+            { id: "rules", title: "分类要求", ordinal: 1, updated_at: "2026-10-08T08:00:00.000Z" },
+          ],
+        },
+      });
+    if (path.endsWith("/sessions/rules"))
+      return route.fulfill({
+        json: {
+          sessionId: "rules",
+          task: {
+            title: "分类要求",
+            goal: "按背景选2条",
+            stage: "waiting_input",
+            target: { kind: "draft" },
+            targetName: "合成资料",
+            requirements: ["保留原题与答案"],
+            requirementSummary: [
+              "新增候选：2 条",
+              "期望输出：允许 原标签",
+              "Metadata「风险」：允许 A、B",
+              "保留原题与答案",
+            ],
+            requirementProblem: "期望输出受保护，来源值无法满足当前类别要求",
+          },
+          turns: [
+            {
+              id: "old",
+              userText: "风险用旧类别",
+              assistantText: "之前的要求已被更正",
+              status: "succeeded",
+              tools: [],
+            },
+          ],
+          proposals: [],
+        },
+      });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  const task = page.getByRole("region", { name: "当前任务" });
+  const summary = task.locator("summary");
+  await expect(summary).toHaveText("当前生效要求（4）");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(task.getByText("期望输出：允许 原标签", { exact: true })).toBeVisible();
+  await expect(task.getByText("Metadata「风险」：允许 A、B", { exact: true })).toBeVisible();
+  await expect(task).not.toContainText("旧类别");
+  await expect(page.getByRole("log")).toContainText("旧类别");
+  await expect(task.getByRole("alert")).toContainText("期望输出受保护");
+  await page.getByLabel("向项目助手发送消息").fill("请保留原答案，纠正方案");
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("请保留原答案，纠正方案");
+  await page.screenshot({ path: "test-results/opt06-requirements-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 420, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await task.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/opt06-requirements-narrow.png", fullPage: true });
+  await page.reload();
+  await page.getByRole("button", { name: "打开项目助手", exact: true }).click();
+  await expect(page.getByRole("region", { name: "当前任务" }).getByRole("alert")).toContainText(
+    "期望输出受保护",
+  );
+});
+
 test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
   page,
 }) => {

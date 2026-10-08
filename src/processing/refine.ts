@@ -164,7 +164,12 @@ export async function createRefinementRun(
       throw new ProcessingError(409, "model_connection_unavailable");
     await guardAssistantCommit(client, scope);
     const background = scope.assistantGuard
-      ? await freezeBackground(client, scope, scope.assistantGuard.sessionId)
+      ? await freezeBackground(client, scope, scope.assistantGuard.sessionId, {
+          options,
+          records,
+          source: parent.source,
+          rootOperation: refinement.rootOperation,
+        })
       : input.background;
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
