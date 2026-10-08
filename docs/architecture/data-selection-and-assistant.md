@@ -83,7 +83,7 @@
 
 ## 9. 方案执行与预算续做
 
-本节是 2026-10-08 的整改目标，尚未实施；产品行为以 [PRD §7](../PRD-data-selection-and-assistant.md#7-ai-04-项目助手) 为准。复用当前会话 task、回合、proposal、job、processing run 与领域回执；不建设通用 DAG 引擎。这里的字段是内部设计，不是已经存在的公开 API。
+本节是 2026-10-08 的整改设计；§9.1 已实施，提交 `08356cb`，证据见 [OPT-06](../../.scratch/assistant-optimization/issues/06-active-requirements.md)，§9.2–9.5 由后续 Ticket 承接，尚未完成。产品行为以 [PRD §7](../PRD-data-selection-and-assistant.md#7-ai-04-项目助手) 为准。复用当前会话 task、回合、proposal、job、processing run 与领域回执；不建设通用 DAG 引擎。这里的字段是内部设计，不作为新增公开 API。
 
 ### 9.1 单一生效要求
 

@@ -1,0 +1,67 @@
+OPT-06 checks, 2026-10-08 Asia/Shanghai; application 08356cb4946ff5b6c601c5625296feb5d8a6ff3e.
+These are bounded excerpts, not a full-repository passing claim. Baseline/withdrawn-red failures are intentional evidence.
+
+/tmp/evalbase-opt06-unit.log
+SHA256 cdedb4c22784240d573b36e8db623c38f42de5b72ecd26fb96189b6905d8fb0c
+> evalbase@0.2.0 test
+> vitest run tests/unit
+Test Files  27 passed (27)
+Tests  159 passed | 1 skipped (160)
+Duration  21.75s (transform 1.96s, setup 214ms, import 3.21s, tests 13.28s, environment 4ms)
+
+/tmp/evalbase-opt06-integration-confirm.log
+SHA256 2d6168927ff6eeecb05b877f70b9d9659aac7d1fd927b330a6240de00a6382fd
+Test Files  1 passed (1)
+Tests  90 passed (90)
+Duration  155.45s (transform 1.43s, setup 40ms, import 2.17s, tests 153.05s, environment 0ms)
+
+/tmp/evalbase-opt06-repair-final2.log
+SHA256 e057f4be1fb3d8399e8c98196fdce311c25e991e5a1ea121c854cb2d26a37fc3
+> evalbase@0.2.0 typecheck
+> tsc --noEmit
+Test Files  1 passed (1)
+Tests  20 passed | 75 skipped (95)
+Duration  35.08s (transform 1.35s, setup 34ms, import 2.13s, tests 32.72s, environment 0ms)
+
+/tmp/evalbase-opt06-final-green.log
+SHA256 4637cf743501b615f5fc9e0bb9163d59e5d81d6f33ebee6e0c376a5a38369ff2
+Test Files  1 passed (1)
+Tests  12 passed | 83 skipped (95)
+Duration  13.39s (transform 1.55s, setup 30ms, import 2.36s, tests 10.80s, environment 0ms)
+> evalbase@0.2.0 typecheck
+> tsc --noEmit
+
+/tmp/evalbase-opt06-browser-docker.log
+SHA256 5837c0699f5ce4fd6dace6fcaaddf21ea34d16a8bb30fa65f37029d49375b9f7
+16 passed (2.0m)
+
+/tmp/evalbase-opt06-browser-screens.log
+SHA256 ad4673f1db2d8296537add81fa2a81620686cc7c4b068947fbe97dff7d15ac69
+1 passed (29.5s)
+
+/tmp/evalbase-opt06-real-ambiguity.log
+SHA256 f3984cb8b551fdab0cb2781cb6d2a9db58cca2ab7e4b5f2fc84d07b3d0772523
+PASS short plan, real background, explicit execution, six protected records
+PASS necessary ambiguity only
+CLEANED disposable real probe database
+
+/tmp/evalbase-opt06-baseline.log
+SHA256 bfb0d8681fdfb97ba36af2f1de56e277861027aab9fa4b139f8418eac6ddb48f
+Test Files  1 failed (1)
+Tests  2 failed | 19 passed (21)
+Duration  38.22s (transform 1.43s, setup 35ms, import 2.21s, tests 35.77s, environment 0ms)
+
+/tmp/evalbase-opt06-withdrawn-red.log
+SHA256 cccd2945fb1198bc0a997dcc6de956594230d3a1c30dc6ce8b641796847fbcfa
+Test Files  1 failed (1)
+Tests  1 failed | 94 skipped (95)
+Duration  5.51s (transform 1.49s, setup 40ms, import 2.31s, tests 2.97s, environment 0ms)
+
+/tmp/evalbase-opt06-static.log
+SHA256 34d627e34938d303e8c90d625d2d9a6e9e160d838988d083648f72b16546c65d
+> evalbase@0.2.0 typecheck
+> tsc --noEmit
+> typecheck
+> tsc --noEmit
+> build:formal
+> vite build --outDir ../dist/web --emptyOutDir

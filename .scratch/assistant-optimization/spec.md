@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-08：Owner 当前授权编写整改方案及 Tickets。新增 OPT-06–08，承接已审查方案的三个功能部分，共一个整改批次、一个最终人工 checkpoint。新 Ticket 实施均未开始；OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。编写 Ticket 不授权修改代码、调用模型或切换环境。
+2026-10-08：Owner 已授权实施 OPT-06，现已实施验证完成；应用提交 `08356cb`，详情见 [OPT-06 证据](opt06-verification.md)。OPT-07–08 尚未开始，仍为一个整改批次、一个最终人工 checkpoint。OPT-01–04 保留历史完成记录，OPT-05 保留未完成状态并映射到后续 Ticket。本次单张授权不授权实施 OPT-07–08、切换 Owner 环境、合并或推送。
 
 - 历史授权：Owner 曾在持续目标中授权调研、文档、审查、开发、测试及最终 200 条实用测试集；原四项工作连续执行。本次以开头的文档授权与实施状态为准。
 - 历史优化基线 `4c71572d79187a0c834f6ef990187c60257ca3de`，工作分支 `codex/assistant-optimization`，工作区 `/home/bistu/EvalBase/.worktrees/agent-data-processing`。基线干净，原隔离环境和历史 200 条版本保留。
@@ -29,11 +29,11 @@ Implementation: in-progress
 | [OPT-03](issues/03-background.md)          | 背景附件、持久要求、短提示与同会话连续任务  | OPT-01/02；文档提取独立进行                      | completed      | PDF/MD/TXT 提取、权限与冻结回归通过；同会话真实 GB PDF 已使用                                    |
 | [OPT-04](issues/04-workspace.md)           | 宽工作区、状态与结果整理、最终 200 条闭环   | OPT-01/02/03                                     | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                        |
 | [OPT-05](issues/05-long-task-execution.md) | 历史长任务执行与未完成验收 | 原功能基础保留；待 OPT-06–08 对应证据收口 | in-progress | 历史局部证据保留；不作为新增整改通过证明 |
-| [OPT-06](issues/06-active-requirements.md) | 目标理解、生效要求、规则反馈及摘要 | 现有 OPT-01–05 代码基础 | not-started | R06-1–5 pending |
+| [OPT-06](issues/06-active-requirements.md) | 目标理解、生效要求、规则反馈及摘要 | 现有 OPT-01–05 代码基础 | completed | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md) |
 | [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复 | OPT-06 | not-started | R07-1–7 pending |
 | [OPT-08](issues/08-review-and-delivery.md) | 候选审核、通用任务闭环、唯一 checkpoint | OPT-07 | not-started | R08-1–7 pending；Owner pending |
 
-长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。最新历史完成记录指原四项；OPT-05 与本次整改尚未交付，不改写历史结论。
+长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口，不改写历史结论。
 
 ## 验证矩阵
 

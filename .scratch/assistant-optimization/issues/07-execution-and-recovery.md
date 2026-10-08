@@ -2,7 +2,9 @@
 
 Status: ready-for-agent
 Implementation: not-started
-Blocked by: [OPT-06](06-active-requirements.md)
+Blocked by: none
+
+[OPT-06](06-active-requirements.md) 已实施完成；本张尚未获得开发授权。
 
 ## 目标与范围
 
@@ -55,3 +57,4 @@ Blocked by: [OPT-06](06-active-requirements.md)
 ## Comments
 
 - 2026-10-08：从已审查整改方案编写，待 OPT-06 实施验证及后续开发授权；尚未运行验收用例。
+- 2026-10-08：OPT-06 依赖已解除，尚未开始本张开发。将 [OPT-06 记录的两项基线恢复失败](../opt06-verification.md#opt-07-接续问题) 纳入本张回执及恢复验证；保留 Owner 原始失败会话和历史成果。

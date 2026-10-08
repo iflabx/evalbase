@@ -1,7 +1,7 @@
 # OPT-06 目标理解与生效要求管理
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
 ## 目标与范围
@@ -20,7 +20,7 @@ Blocked by: none
 
 ## 验收标准
 
-所有项初始为 pending；证据编号引用 [测试计划 §5](../../../docs/test-plan-data-selection-and-assistant.md#5-整改验收计划)。
+R06-1–5 实施验证通过，证据见 [OPT-06 验证记录](../opt06-verification.md)。证据编号引用 [测试计划 §5](../../../docs/test-plan-data-selection-and-assistant.md#5-整改验收计划)；整个整改批次的人工 checkpoint 仍为 pending。
 
 | 编号 | 可观察的完成条件 | 对应证据 |
 | --- | --- | --- |
@@ -45,6 +45,8 @@ Blocked by: none
 
 沿用 frontend-v1 组件与视觉，冻结原型只读；本轮行为差异由当前助手 PRD 授权。实现前按实际页面补齐字段顺序、加载、空态与键盘核对，不伪造后续 Ticket 的可用状态。
 
+本次实现对齐当前助手任务区：标题及阶段 → 原有执行步骤 → 当前生效要求（服务端数量、字段规则、语义要求）→ 冲突提示 → 任务对象 → 原有处理进度及候选核对。要求仍使用既有 `details/summary` 折叠区、donor 字体/边框/间距，支持键盘展开；不增规则编辑表单。加载中沿用原有会话加载态；尚无要求不显示空折叠区，旧会话缺少清单时回显原目标。冲突提示使用既有 `role=alert` 和错误色，不禁用输入及已有结果入口；有效更正后移除。发送、停止、重试、采用及发布按钮权限和顺序保持既有合同。
+
 ## 验证与交付
 
 运行受影响 HTTP/SDK 回归、类型检查、lint，以及要求摘要的浏览器检查；如前端变化则验证构建。假模型验证参数边界，小量真实模型核对短请求与必要澄清；不重跑万条分类。通过后记录实际命令、SHA、结果和限制，按 Spec 解锁 OPT-07；本张不单独占用人工 checkpoint。
@@ -52,3 +54,4 @@ Blocked by: none
 ## Comments
 
 - 2026-10-08：从已审查整改方案编写，尚未实施或测试；Owner 当前授权为编写 Tickets。
+- 2026-10-08：Owner 单独授权开发本张；应用及测试提交 `08356cb4946ff5b6c601c5625296feb5d8a6ff3e`，R06-1–5 通过直接验证与 Standards/Spec 复审。数量/规则冲突在处理前拒绝，撤销要求后旧运行说明不再回填；真实模型短请求、同名澄清与 16 项浏览器检查通过。详细命令、截图、历史恢复限制和路由处置见验证记录。OPT-07 依赖已解除，实施仍待授权；4217 原环境、资料和失败会话保持不变，本张无单独 Owner checkpoint。
