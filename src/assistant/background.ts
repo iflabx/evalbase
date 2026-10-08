@@ -460,13 +460,27 @@ export function validateBackgroundRules(
               })),
         )
       ) {
-        const quoted = excerpts.find((excerpt) =>
-          normalize(excerpt).includes(normalize(value)),
-        );
+        const quoted =
+          excerpts.find((excerpt) =>
+            normalize(excerpt).includes(normalize(value)),
+          ) ??
+          excerpts.find((excerpt) => {
+            const name = value
+              .replace(/^\s*[a-z](?:\.[0-9a-z]+)+\s*/iu, "")
+              .trim();
+            return (
+              name.length > 1 && normalize(excerpt).includes(normalize(name))
+            );
+          });
         const lines = (quoted ?? excerpts[0] ?? "").split(/\r?\n/u);
+        const name = value.replace(/^\s*[a-z](?:\.[0-9a-z]+)+\s*/iu, "").trim();
         const index = Math.max(
           0,
-          lines.findIndex((line) => normalize(line).includes(normalize(value))),
+          lines.findIndex(
+            (line) =>
+              normalize(line).includes(normalize(value)) ||
+              (name.length > 1 && normalize(line).includes(normalize(name))),
+          ),
         );
         const suggestion = lines
           .slice(index, index + 5)

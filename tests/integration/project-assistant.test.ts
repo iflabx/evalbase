@@ -10710,6 +10710,7 @@ describe("project assistant public contract", () => {
             nextAction: "select_candidates",
           },
         },
+        { name: "plan_task", input: { ...valid, steps: {} } },
         { name: "plan_task", input: valid },
       ];
       const corrected = (await send("纠正分类并保存方案")).json();
@@ -10721,7 +10722,12 @@ describe("project assistant public contract", () => {
         error: { code: "assistant_tool_input_invalid" },
       });
       expect(tools[0].error.hint).toContain("question");
-      expect(tools[1].status).toBe("succeeded");
+      expect(tools[1]).toMatchObject({
+        status: "failed",
+        error: { code: "assistant_tool_input_invalid" },
+      });
+      expect(tools[1].error.hint).toContain("steps");
+      expect(tools[2].status).toBe("succeeded");
       expect(corrected.task.classifications[0].allowedValues).toEqual([
         "A.1.a",
         "A.2.a",

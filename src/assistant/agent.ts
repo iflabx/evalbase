@@ -305,14 +305,19 @@ export async function executeAssistantTurn(
   let summarizing = false;
   let budgetBoundary = false;
   let noProgress = false;
-  let lastFailure: { name: string; code: string } | undefined;
+  let lastFailure: { name: string; code: string; hint: string } | undefined;
   const schemaHints = new Map<string, string>();
-  function recordFailure(name: string, code: string) {
-    if (lastFailure?.name === name && lastFailure.code === code) {
+  function recordFailure(name: string, code: string, hint = "") {
+    const reason = hint.slice(0, 320);
+    if (
+      lastFailure?.name === name &&
+      lastFailure.code === code &&
+      lastFailure.hint === reason
+    ) {
       noProgress = true;
       budgetBoundary = true;
     }
-    lastFailure = { name, code };
+    lastFailure = { name, code, hint: reason };
   }
   let modelSteps = 0;
   let protocolRepair = false;
@@ -630,7 +635,7 @@ export async function executeAssistantTurn(
       description,
       inputSchema: schema(properties, required, name, (hint) => {
         schemaHints.set(name, hint);
-        recordFailure(name, "assistant_tool_input_invalid");
+        recordFailure(name, "assistant_tool_input_invalid", hint);
       }),
       execute: (input) => {
         // Explicit reuse has the same receipt identity as the legacy omission.
@@ -1041,7 +1046,11 @@ export async function executeAssistantTurn(
             const failureKey = actionStarted
               ? key
               : `assistant:${turn.id}:validation:${sha256(canonicalJson({ name, input }))}`;
-            recordFailure(name, error.code);
+            recordFailure(
+              name,
+              error.code,
+              "hint" in error ? String(error.hint) : "",
+            );
             await updateTurn(
               "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(x),'[]') FROM jsonb_array_elements(tool_results) x WHERE x->>'key'<>$2)||$3::jsonb WHERE id=$1 AND status='running'",
               [
