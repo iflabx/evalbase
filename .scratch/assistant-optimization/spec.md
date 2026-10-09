@@ -40,7 +40,7 @@ Implementation: in-progress
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
 | [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 待最终 Owner 验收（含 OPT-10 证据） | in-progress | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
 | [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | completed | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending |
-| [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存与助手入口体验 | 现有 OPT-10 及页面补修；待单独开发授权 | not-started | R11-1–9 待执行；一个 Ticket、一次人工 checkpoint |
+| [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示 | 现有 OPT-10 及页面补修；待单独开发授权 | not-started | R11-1–10 待执行；一个 Ticket、一次人工 checkpoint |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
