@@ -35,7 +35,7 @@
 
 精修来源公开链路：3 条参考生成 7 条 → 只精修 1 条 Metadata → 清洗 7 条 → 保存新草稿 → 发布 → 查询来源。被精修行有扩写／改写／清洗，其余行只有扩写／清洗；相同输入参考不会重复列处理步骤。归档原始文件后，公开 provenance 不泄漏其名称。来源身份与原期望输出保持。
 
-执行入口为仓库现有 Vitest／Playwright 配置，隔离浏览器临时配置不提交。完整原始日志在执行端 `.scratch/assistant-optimization/opt11-*.log`，不进入源码；其中 `processing-final`、`assistant-http`、`browser-final`、`browser-offline` 分别记录上述最终结果。正式类型、lint、构建、文档及环境结果在收口时补记。
+执行入口为仓库现有 Vitest／Playwright 配置，隔离浏览器临时配置不提交。完整原始日志在执行端 `.scratch/assistant-optimization/opt11-*.log`，不进入源码；其中 `processing-final`、`assistant-http`、`browser-final`、`browser-offline` 分别记录上述最终结果。正式类型、lint、构建、文档及固定环境结果见下文。
 
 - 根目录与 frontend-v3 类型检查通过；受影响文件 ESLint 零错误，保留 2 个原有草稿 Hook 警告及 1 个共享静态文案的开发热更新警告。
 - 生产模式 Vite 构建及 `tsc -p tsconfig.server.json` 通过，使用现有依赖，构建产物与配置不提交。
@@ -52,3 +52,14 @@
 ## 限制与 Owner 验收
 
 本轮验证交互、结构、真实持久化和权限边界；不评价既有 200 条的语义质量，也未重跑该模型任务。Owner 原会话、资料、77 个运行、18 个采用回执保留。旧关系缺少证据时只能显示可证部分。自动测试与现场只读检查不代表 Owner 接受；人工验收仍 pending。
+
+## 固定环境与现场复验
+
+- 应用实现提交 `b3d1822c06f82df16aa31ec8f1ceb135eab584c6`；现场发现空筛选出现孤立 0，补修 `f8e3579c1c517abad9f4d486cec96be3e05cef01`，补修 ESLint 与生产构建通过。最终 Web、ordinary Worker、model Worker 均为 `evalbase-agent-checkpoint:f8e3579c1c51`，应用 `GIT_SHA` 为后者。后续收口提交仅记录文档和截图，无需重建应用。
+- `/health/ready` 返回 200、PostgreSQL/MinIO 均 ok、完整 SHA 匹配。前端 index 及全部入口 JS/CSS 返回 200。数据库与对象存储容器保留原实例，均已运行 5 天；未修改环境凭据或卷。
+- 更新前后均为 1 项目、2 账号、29 会话、77 运行、18 采用回执、0 活跃任务。未创建长期测试项目或账号，未采用／发布用户待确认的 200 条成果。
+- Computer Use 在现有用户浏览器通过 SSH 隧道访问真实 4217：现有 200 条改写结果的 Metadata／新增 gbRisk 直接可见，真实来源仍为 ChineseSafe 原序号；行详情 Enter 打开、Escape 关闭后焦点恢复；需核对 0 的筛选空态可返回全部；任务列表有来源、发起人、时间。
+- 现有 100 条资料配置页现场验证第 1 页选 1 条＋第 2 页勾选本页＝21 条；无匹配时显示 21 条隐藏选择，清除条件不丢选择。未提交处理；核对后清空临时选择。原助手会话展示 200 条当前有效候选、旧确认过期仍被拦截，未发送提示或确认采用。
+- 1440px 实际双栏，右侧设置位置约 x=960、宽 440px；480px 设置在记录表之后，页宽 465px，没有整页横向溢出。窄窗口详情宽 480px；检查后恢复浏览器默认尺寸。
+
+截图：[配置桌面](evidence/opt11-config-1440.jpg)、[配置窄屏](evidence/opt11-config-480.jpg)、[真实结果及来源](evidence/opt11-results-1440.jpg)。入口为 `http://127.0.0.1:4217/`；继续使用现有管理员与编辑账号进行同一次 Owner checkpoint。

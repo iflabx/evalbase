@@ -133,3 +133,5 @@ Blocked by: none
 - 路由盘点：`POST processing-inputs` reused（窄扩展搜索、固定 Metadata 条件、已选视图及摘要）；`GET processing-runs/:runId` reused（可选 review view、全量统计、分页展示与真实回执）；`GET processing-runs` reused（来源/操作者）；`POST processing-runs`、cancel/retry/accept reused（协议保持）；`GET assistant/sessions/:sessionId/candidates` reused（按任务有效关系核对后的分页展示）；草稿读取、版本 provenance 列表/详情 reused（按页来源展示）。无新增公开路由、无 retired 路由、无新表。
 
 - 2026-10-09 实施完成：公开处理 HTTP 13 项、助手范围/背景/多批 HTTP 4 项、受影响浏览器 10 项通过；首个跨页选择与筛选来源测试已记录 red/green。两轴复审发现均已修复，实际构建及同一 4217 环境证据见 [验证记录](../opt11-verification.md)。未重新执行真实 200 条模型处理，不把结构验证当成内容审核。Owner pending。
+
+- 2026-10-09 最终隔离交付：应用 `f8e3579c1c517abad9f4d486cec96be3e05cef01`，三项服务同版本，ready 与前端资源请求通过；Computer Use 真实页面复验及 1440／480px 截图已记录。1 项目、2 账号及用户会话／运行／采用回执数量保持，Owner pending。

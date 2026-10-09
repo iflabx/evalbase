@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-09 最新体验实施：[OPT-11](issues/11-processing-workspace-ux.md) 已获授权并完成代码与针对性验证，当前正在完成固定版本环境核对；实施及 Standards/Spec 审阅证据见 [OPT-11 验证记录](opt11-verification.md)。Owner 验收 pending，OPT-05/09 历史状态不改写。
+2026-10-09 最新体验实施：[OPT-11](issues/11-processing-workspace-ux.md) 已获授权并完成代码与针对性验证，三项应用服务已固定到 `f8e3579` 并完成环境与浏览器核对；实施及 Standards/Spec 审阅证据见 [OPT-11 验证记录](opt11-verification.md)。Owner 验收 pending，OPT-05/09 历史状态不改写。
 
 2026-10-09 最新状态：[OPT-10](issues/10-fixed-input-and-recovery.md) 已完成实施和复审，应用固定 `4ee577c` 已切入同一 4217 环境；原失败会话沿用固定 200 条恢复至待确认，内容及最终 Owner 验收 pending。实际验证见 [OPT-10 记录](opt10-verification.md)。OPT-09 按验收退回规则记 in-progress，既有证据保留。当前修复与验收状态以本段和下表为准，以下原交付记录不作为最新故障已关闭的证明。
 
