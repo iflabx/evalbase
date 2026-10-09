@@ -3,7 +3,7 @@ import { mockAccountRoute } from "./mock-account";
 
 test("selects explicit inputs, previews processing results, and confirms adoption without duplicate writes", async ({
   page,
-}) => {
+}, testInfo) => {
   const base = "/api/projects/processing_project",
     value = {
       question: " 原问题 ",
@@ -88,15 +88,27 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   });
   await page.goto("/projects/processing_project/processing?source=assets&sourceId=asset");
   await expect(page.getByRole("heading", { name: "选择输入记录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "处理任务", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Metadata", exact: true })).toBeVisible();
+  await expect(page.getByText("类别：", { exact: true })).toBeVisible();
+  await expect(page.getByText("(空)", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "开始清洗 · 0 条输入" })).toBeDisabled();
   await page.getByRole("button", { name: "选择全部记录", exact: true }).click();
   await page.setViewportSize({ width: 800, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  await page.screenshot({ path: "test-results/processing-config-narrow.png", fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("processing-config-narrow.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "开始清洗 · 1 条输入" }).click();
   await expect(page.getByRole("heading", { name: "清洗结果" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "选择输入记录" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "处理任务", exact: true })).toHaveCount(0);
+  await expect(page.getByText("类别：", { exact: true })).toHaveCount(2);
+  for (const entry of await page.getByText("类别：", { exact: true }).all())
+    await expect(entry).toBeVisible();
   await page.getByRole("button", { name: "选择全部有效结果" }).click();
   await page.getByRole("button", { name: "采用选中结果" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -107,7 +119,17 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   await page.reload();
   await expect(page.getByRole("heading", { name: "清洗结果" })).toBeVisible();
   expect(accepted).toBe(1);
-  await page.screenshot({ path: "test-results/processing-results-narrow.png", fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("processing-results-narrow.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "返回处理任务", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "处理任务", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "选择输入记录" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "清洗结果" })).toHaveCount(0);
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "清洗结果" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "处理任务", exact: true })).toHaveCount(0);
 });
 
 test("can retry missing records in a legacy succeeded run", async ({ page }) => {

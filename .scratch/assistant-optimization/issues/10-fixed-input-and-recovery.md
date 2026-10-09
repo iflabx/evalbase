@@ -100,6 +100,7 @@ Blocked by: none
 
 ## Comments
 
+- 2026-10-09：Owner 追加数据处理页反馈；Metadata 默认展示及配置/任务列表/结果分开展示的范围、验证和固定环境见 [页面反馈](../processing-ui-followup.md)。保留本张原实施及恢复证据，Owner 验收 pending。
 - 2026-10-09：根据 Owner 原会话只读审查创建；已确认固定输入、依据变化、候选汇总和恢复参数之间的连锁问题。Implementation 为 not-started，验收矩阵尚未执行。
 - 2026-10-09：Owner 授权实施。公开 SDK/HTTP 固定输入回归先红后绿，开始补齐旧候选恢复、附件规则及采用/发布检查；仍在开发和验证中。
 

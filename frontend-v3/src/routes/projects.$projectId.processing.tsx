@@ -102,7 +102,7 @@ function ProcessingPage() {
   const runs = useQuery({
     queryKey: ["processing-runs", projectId],
     queryFn: () => request<{ runs: Run[] }>(path),
-    enabled: access.canWrite,
+    enabled: access.canWrite && !search.run && !(search.source && search.sourceId),
     refetchInterval: 5000,
   });
   const runId = search.run;
@@ -121,11 +121,25 @@ function ProcessingPage() {
         title="数据处理"
         description="选择记录、提交处理，核对结果后再采用。原件和正式版本保持不变。"
         actions={
-          <Button variant="outline" asChild>
-            <Link to="/projects/$projectId/test-sets" params={{ projectId }}>
-              返回测试集
-            </Link>
-          </Button>
+          <>
+            {(source || runId) && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  void navigate({
+                    search: { source: undefined, sourceId: undefined, run: undefined },
+                  })
+                }
+              >
+                返回处理任务
+              </Button>
+            )}
+            <Button variant="outline" asChild>
+              <Link to="/projects/$projectId/test-sets" params={{ projectId }}>
+                返回测试集
+              </Link>
+            </Button>
+          </>
         }
       />
       {access.isPending ? (
@@ -151,74 +165,78 @@ function ProcessingPage() {
               projectId={projectId}
               runId={runId}
               onBack={() => {
-                void navigate({ search: { ...search, run: undefined } });
+                void navigate({
+                  search: { source: undefined, sourceId: undefined, run: undefined },
+                });
               }}
             />
           )}
-          <section className="overflow-hidden rounded-md border bg-card shadow-sm">
-            <div className="border-b px-5 py-4">
-              <h2 className="font-semibold">处理任务</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                关闭页面后，已提交的任务仍会继续。最多显示最近 100 项。
-              </p>
-            </div>
-            {runs.error ? (
-              <div className="p-5" role="alert">
-                <p>{errorText(runs.error)}</p>
-                <Button variant="outline" onClick={() => void runs.refetch()}>
-                  重试
-                </Button>
+          {!source && !runId && (
+            <section className="overflow-hidden rounded-md border bg-card shadow-sm">
+              <div className="border-b px-5 py-4">
+                <h2 className="font-semibold">处理任务</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  关闭页面后，已提交的任务仍会继续。最多显示最近 100 项。
+                </p>
               </div>
-            ) : !runs.data?.runs.length ? (
-              <p className="p-5 text-sm text-muted-foreground">
-                暂无处理任务。打开原始文件、版本或草稿，点击“处理数据”开始。
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead className="bg-muted/60 text-left text-muted-foreground">
-                    <tr>
-                      <th className="px-5 py-3">任务</th>
-                      <th className="px-4 py-3">输入记录</th>
-                      <th className="px-4 py-3">状态</th>
-                      <th className="px-4 py-3">创建时间</th>
-                      <th className="px-5 py-3 text-right">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {runs.data.runs.map((run) => (
-                      <tr key={run.id} className="border-t">
-                        <td className="px-5 py-4 font-medium">
-                          {labels[run.options.operation]} · {run.inputCount} 条输入
-                        </td>
-                        <td className="px-4 py-4">{run.inputCount} 条</td>
-                        <td className="px-4 py-4">
-                          {run.partial ? "部分成功，待核对" : statuses[run.status]}
-                          {run.status === "running" ? ` ${run.progress}%` : ""}
-                        </td>
-                        <td className="px-4 py-4 text-muted-foreground">
-                          {new Date(run.createdAt).toLocaleString()}
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              void navigate({
-                                search: { run: run.id, source: undefined, sourceId: undefined },
-                              });
-                            }}
-                          >
-                            查看
-                          </Button>
-                        </td>
+              {runs.error ? (
+                <div className="p-5" role="alert">
+                  <p>{errorText(runs.error)}</p>
+                  <Button variant="outline" onClick={() => void runs.refetch()}>
+                    重试
+                  </Button>
+                </div>
+              ) : !runs.data?.runs.length ? (
+                <p className="p-5 text-sm text-muted-foreground">
+                  暂无处理任务。打开原始文件、版本或草稿，点击“处理数据”开始。
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead className="bg-muted/60 text-left text-muted-foreground">
+                      <tr>
+                        <th className="px-5 py-3">任务</th>
+                        <th className="px-4 py-3">输入记录</th>
+                        <th className="px-4 py-3">状态</th>
+                        <th className="px-4 py-3">创建时间</th>
+                        <th className="px-5 py-3 text-right">操作</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+                    </thead>
+                    <tbody>
+                      {runs.data.runs.map((run) => (
+                        <tr key={run.id} className="border-t">
+                          <td className="px-5 py-4 font-medium">
+                            {labels[run.options.operation]} · {run.inputCount} 条输入
+                          </td>
+                          <td className="px-4 py-4">{run.inputCount} 条</td>
+                          <td className="px-4 py-4">
+                            {run.partial ? "部分成功，待核对" : statuses[run.status]}
+                            {run.status === "running" ? ` ${run.progress}%` : ""}
+                          </td>
+                          <td className="px-4 py-4 text-muted-foreground">
+                            {new Date(run.createdAt).toLocaleString()}
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                void navigate({
+                                  search: { run: run.id, source: undefined, sourceId: undefined },
+                                });
+                              }}
+                            >
+                              查看
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>
@@ -329,14 +347,15 @@ function ProcessingForm({
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[720px] table-fixed text-sm">
               <thead className="bg-muted/60 text-left text-muted-foreground">
                 <tr>
                   <th className="w-12 px-4 py-3">
                     <span className="sr-only">选择</span>
                   </th>
                   <th className="px-4 py-3">问题 / 原始内容</th>
-                  <th className="px-4 py-3">期望输出</th>
+                  <th className="w-28 px-4 py-3">期望输出</th>
+                  <th className="w-48 px-4 py-3">Metadata</th>
                 </tr>
               </thead>
               <tbody>
@@ -366,10 +385,12 @@ function ProcessingForm({
                         <pre className="mt-2 whitespace-pre-wrap break-all font-sans">
                           {row.raw ? JSON.stringify(row.raw, null, 2) : row.question}
                         </pre>
-                        <MetadataSummary entries={row.metadata} />
                       </details>
                     </td>
                     <td className="max-w-xs break-words px-4 py-3">{row.expectedOutput || "—"}</td>
+                    <td className="break-words px-4 py-3">
+                      <MetadataSummary entries={row.metadata} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -606,9 +627,6 @@ function ProcessingResults({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={onBack}>
-            返回任务
-          </Button>
           {!terminal ? (
             <Button
               variant="outline"
@@ -751,13 +769,14 @@ function ProcessingResults({
                 {[row.original, row.result].map((record, i) => (
                   <td key={i} className="space-y-2 break-words px-4 py-4">
                     <p className="whitespace-pre-wrap">{record.question || "空问题"}</p>
-                    <details>
-                      <summary className="cursor-pointer text-xs text-primary">
-                        期望输出与 Metadata
-                      </summary>
-                      <p className="my-2 whitespace-pre-wrap">{record.expectedOutput || "—"}</p>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">期望输出</p>
+                      <p className="whitespace-pre-wrap">{record.expectedOutput || "—"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Metadata</p>
                       <MetadataSummary entries={record.metadata} />
-                    </details>
+                    </div>
                   </td>
                 ))}
               </tr>
