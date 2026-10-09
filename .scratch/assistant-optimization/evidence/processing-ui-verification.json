@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-09",
+  "frontendCommit": "963a92b5485568d5434551b7af9946e20700de09",
+  "backendCommit": "4ee577c0d0f3e4d8def90fb12153d78740fdcd98",
+  "image": "evalbase-agent-checkpoint:963a92b54855",
+  "validation": {
+    "typecheck": 0,
+    "lint": 0,
+    "docsCheck": 0,
+    "frontendBuild": 0,
+    "webImageBuild": 0,
+    "browserRegression": {
+      "passed": 2,
+      "durationSeconds": 23.6,
+      "exit": 0
+    },
+    "red": {
+      "failed": 1,
+      "passed": 1,
+      "failure": "configuration page unexpectedly showed task list"
+    }
+  },
+  "browser": {
+    "inputMetadataVisible": true,
+    "resultOriginalAndOutputMetadataVisible": true,
+    "threeViewsExclusive": true,
+    "refreshRetainsResults": true,
+    "narrowWidth": 480,
+    "documentClientWidth": 465,
+    "documentScrollWidth": 465,
+    "adoptedOrPublished": false,
+    "historyBackAndForwardRetainView": true
+  },
+  "environment": {
+    "readyStatus": 200,
+    "gitSha": "963a92b5485568d5434551b7af9946e20700de09",
+    "webOnlyUpdate": true,
+    "workerContainerUnchanged": true,
+    "modelWorkerContainerUnchanged": true,
+    "accounts": 2,
+    "projects": 1,
+    "sessions": 29,
+    "runs": 76
+  },
+  "limitations": [
+    "Owner acceptance pending",
+    "Only focused browser regression; no full suite"
+  ],
+  "buildMethod": "Existing 4ee577c runtime image plus freshly compiled frontend; no runtime dependency changes",
+  "review": {
+    "standards": "no P0/P1/P2",
+    "spec": "no P0/P1/P2",
+    "independentExecution": false
+  }
+}

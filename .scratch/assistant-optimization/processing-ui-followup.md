@@ -18,6 +18,25 @@
 - 修前 Computer Use：Metadata column 数量 0，配置页“处理任务”可见，复现两项反馈。
 - 现有 processing.spec.ts 增加默认 Metadata、三种页面状态及结果→列表→结果断言，保留采用幂等和旧成功运行补足重试用例。
 - 服务器宿主测试初始被既有构建目录权限及浏览器缺少 libatk 阻断；不修改系统或无关目录，改用已有 Playwright 1.62.1 容器和本工作树独立临时构建目录。
-- 类型、lint、构建、浏览器回归、独立复审及固定 Web 环境结果待填写。Owner 验收 pending。
+- 最终定向浏览器回归 **2 passed / exit 0，23.6 秒**：Metadata 默认可见、配置/结果/列表互斥、结果返回任务再查看、采用确认及刷新不重复写入、旧成功运行的缺失记录重试。修前为 1 failed / 1 passed，失败正是配置页同时出现任务列表。
+- frontend-v3 typecheck、受影响 ESLint、docs:check、前端正式构建均 exit 0；窄窗口用例和真实 Computer Use 的 480px 结果页无页面横向溢出（clientWidth/scrollWidth 同为 465）。真实页面刷新、返回任务、浏览器前进后退及两侧 Metadata 均核对通过。
+- Standards、Spec 两名代理仅审本轮差异，均无 P0/P1/P2；不代签测试或 Owner 验收。Owner 验收 pending。
+
+## 固定环境
+
+最终前端应用提交 `963a92b5485568d5434551b7af9946e20700de09`；Web 镜像 `evalbase-agent-checkpoint:963a92b54855`，revision 标签与 `/health/ready.git_sha` 均一致，ready 为 200。后台实现保持 `4ee577c0d0f3e4d8def90fb12153d78740fdcd98`，两个 Worker 的原容器 ID 与镜像均未改变。
+
+常规 Docker 构建及首轮浏览器容器启动发生环境等待，未宣称这些阻塞尝试通过。最终仅从当前固定 4ee577c 运行镜像复制本轮已编译静态前端，构建 exit 0 后 `up -d --no-deps web`；后端及依赖无变化。临时 Dockerfile 使用以下内容，构建上下文仅为本轮前端产物目录，没有配置或凭据：
+
+```dockerfile
+FROM evalbase-agent-checkpoint:4ee577c0d0f3
+COPY . /app/dist/web/
+LABEL org.opencontainers.image.revision=963a92b5485568d5434551b7af9946e20700de09
+LABEL evalbase.backend.revision=4ee577c0d0f3e4d8def90fb12153d78740fdcd98
+```
+
+验收库仍为 1 项目、2 账号、29 会话、76 个处理运行；未新增处理、采用或发布。临时测试仅用 mock API，无新增验收数据。
+
+[输入页截图](evidence/processing-ui-input.png)、[结果页截图](evidence/processing-ui-results.png)、[验证摘要](evidence/processing-ui-verification.json)。源配置通过原文件或版本/草稿的“处理数据”进入；配置与结果通过“返回处理任务”查看已有任务。
 
 本轮只更新同一隔离 checkpoint 的 Web，Worker/Model Worker 保留 4ee577c。不合并 main、不推送、不正式部署，不新增验收项目或账号。
