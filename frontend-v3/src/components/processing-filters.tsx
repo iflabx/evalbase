@@ -132,7 +132,7 @@ export function ProcessingFilters({
           ))}
         </div>
       )}
-      {(search || conditions.length) && (
+      {(search.length > 0 || conditions.length > 0) && (
         <Button size="sm" variant="ghost" disabled={disabled} onClick={() => onChange("", [])}>
           清除搜索和筛选
         </Button>
