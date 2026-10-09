@@ -5755,6 +5755,20 @@ describe("project assistant public contract", () => {
       await finish(refined);
       expect((await read()).json().task.runIds).toEqual([runIds[0], refined]);
       expect((await read()).json().task.review.total).toBe(2);
+      const reviewView = await app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}/candidates?run=${refined}&view=all&limit=10`,
+        headers,
+      });
+      expect(reviewView.statusCode, reviewView.body).toBe(200);
+      expect(reviewView.json()).toMatchObject({ taskTotal: 2, total: 1 });
+      expect(
+        reviewView.json().effectiveRuns.map((item: any) => item.runId),
+      ).toEqual([runIds[0], refined]);
+      expect(reviewView.json().records[0].sourcePresentation.badges).toEqual([
+        "模型扩写",
+        "已改写",
+      ]);
       for (const selection of [{ allValid: false }, { resultIds: ["0:0"] }]) {
         requestedTool = {
           name: "request_processing_apply",
@@ -6822,6 +6836,18 @@ describe("project assistant public contract", () => {
         headers,
       });
       expect(inside.statusCode, inside.body).toBe(200);
+      const workspace = await app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}/candidates?run=${runs[0]}&view=all`,
+        headers,
+      });
+      expect(workspace.statusCode, workspace.body).toBe(200);
+      expect(workspace.json()).toMatchObject({
+        taskTotal: 0,
+        total: 0,
+        stats: { all: 0, changed: 0, needsReview: 0 },
+      });
+      expect(workspace.json().effectiveRuns).toHaveLength(2);
     } finally {
       requestedTool = undefined;
       sessionId = previous;

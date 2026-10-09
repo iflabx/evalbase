@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SourceInfo } from "@/components/processing-review";
 import { DataSelection } from "@/components/data-selection";
 import {
   AlertDialog,
@@ -52,11 +53,12 @@ function DraftWorkspaceRoute() {
   return <DraftWorkspace key={`${projectId}:${draftId}`} />;
 }
 const sourceLabel = (record: SharedDraftRecord) =>
-  record.source
+  record.sourcePresentation?.label ??
+  (record.source
     ? `${record.sourceFileName ?? "资料文件"} · 第 ${record.source.ordinal} 条${record.caseId ? " · 继承自父版本" : ""}`
     : record.caseId
       ? "原版本手工新增 · 继承自父版本"
-      : "手工新增 · 本草稿添加";
+      : "手工新增 · 本草稿添加");
 function metadataProblem(entries: MetadataEntry[]) {
   const values = entries.filter((entry) => entry.key.trim() || entry.value);
   if (values.some((entry) => !entry.key.trim())) return "请填写 Metadata 字段名。";
@@ -1356,7 +1358,11 @@ function DraftWorkspace() {
                                   {record.expectedOutput || "未填写"}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-muted-foreground">
-                                  {sourceLabel(record)}
+                                  {record.sourcePresentation ? (
+                                    <SourceInfo value={record.sourcePresentation} />
+                                  ) : (
+                                    sourceLabel(record)
+                                  )}
                                 </td>
                               </tr>
                             ))

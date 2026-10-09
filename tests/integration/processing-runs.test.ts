@@ -89,6 +89,188 @@ describe("durable data processing", () => {
       await root.end();
     }
   });
+  it("filters processing input across pages and retains source identity in saved results", async () => {
+    const upload = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/pending-uploads`,
+      headers: {
+        ...headers,
+        "content-type": "application/octet-stream",
+        "x-file-name": "selection-origin.jsonl",
+      },
+      payload:
+        Array.from({ length: 45 }, (_, i) =>
+          JSON.stringify({
+            question: i === 44 ? "" : `  Q ${i + 1}  `,
+            answer: "Protected",
+            category: i % 2 ? "B" : "A",
+          }),
+        ).join("\n") + "\n",
+    });
+    expect(upload.statusCode, upload.body).toBe(201);
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/pending-upload-batches/confirm`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        collectionId,
+        pendingUploadIds: [upload.json().pendingUpload.id],
+        mode: "raw",
+      },
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(201);
+    const assetId = confirmed.json().assets[0].id;
+    const mapping = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/assets/${assetId}/mapping`,
+      headers,
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: `/api/projects/${projectId}/assets/${assetId}/mapping`,
+          headers,
+          payload: {
+            parsedViewId: mapping.json().parsedViewId,
+            expectedRevision: 0,
+            mapping: {
+              question: "/question",
+              expectedOutput: "/answer",
+              metadata: ["/category"],
+            },
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const source = { kind: "assets", assetIds: [assetId] };
+    const preview = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/processing-inputs`,
+      headers,
+      payload: {
+        source,
+        offset: 20,
+        limit: 20,
+        conditions: [
+          {
+            field: "metadata",
+            key: "category",
+            operator: "equals",
+            value: "A",
+          },
+        ],
+        selectedIds: [`${assetId}:1`, `${assetId}:2`],
+      },
+    });
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json()).toMatchObject({
+      total: 23,
+      sourceTotal: 45,
+      hiddenSelected: 1,
+      sourceSummary: { name: "selection-origin.jsonl" },
+    });
+    expect(preview.json().records.map((row: any) => row.id)).toEqual([
+      `${assetId}:41`,
+      `${assetId}:43`,
+      `${assetId}:45`,
+    ]);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/processing-runs`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        source: {
+          ...source,
+          recordIds: Array.from(
+            { length: 45 },
+            (_, i) => `${assetId}:${i + 1}`,
+          ),
+        },
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const run = created.json().run,
+      db = createPool(databaseUrl),
+      config = { ...loadConfig(), databaseUrl };
+    try {
+      const claimed = await db.query(
+        "UPDATE job SET status='running',attempt=attempt+1,lease_owner='processing-test',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",
+        [run.jobId],
+      );
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        claimed.rows[0],
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [run.jobId, result],
+      );
+      const path = `/api/projects/${projectId}/processing-runs/${run.id}`;
+      const changed = await app.inject({
+        method: "GET",
+        url: `${path}?view=changed&limit=20`,
+        headers,
+      });
+      expect(changed.json()).toMatchObject({
+        total: 44,
+        stats: { all: 45, changed: 44, needsReview: 1 },
+        run: {
+          sourceSummary: { name: "selection-origin.jsonl" },
+          actorName: "管理员",
+        },
+      });
+      const warning = await app.inject({
+        method: "GET",
+        url: `${path}?view=issues`,
+        headers,
+      });
+      expect(warning.json().records).toHaveLength(1);
+      expect(warning.json().records[0].original.id).toBe(`${assetId}:45`);
+      const accepted = await app.inject({
+        method: "POST",
+        url: `${path}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: [changed.json().records[0].id],
+          target: { kind: "newDraft", name: "Origin draft", purpose: "" },
+        },
+      });
+      expect(accepted.statusCode, accepted.body).toBe(201);
+      const refreshed = await app.inject({
+        method: "GET",
+        url: `${path}?view=all`,
+        headers,
+      });
+      expect(refreshed.json().receipts).toContainEqual(
+        expect.objectContaining({
+          adopted: 1,
+          draftId: accepted.json().receipt.draftId,
+        }),
+      );
+      const draft = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${accepted.json().receipt.draftId}`,
+        headers,
+      });
+      expect(draft.json().records[0].sourcePresentation).toMatchObject({
+        label: "selection-origin.jsonl · 第 1 条",
+        badges: ["已清洗"],
+      });
+      expect(draft.json().records[0].source.assetId).toBe(
+        accepted.json().receipt.assetId,
+      );
+    } finally {
+      await db.end();
+    }
+  });
   it("freezes explicit input, queues once, saves fenced batches, and retains results across retry", async () => {
     const upload = await app.inject({
       method: "POST",
@@ -702,6 +884,317 @@ describe("durable data processing", () => {
     }
   });
 
+  it("traces per-record refinements and generated-then-cleaned origins without leaking inaccessible sources", async () => {
+    const db = createPool(databaseUrl),
+      config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
+      },
+      artifacts = new ArtifactRepository(config.minio);
+    const server = createServer(async (request, response) => {
+      let text = "";
+      for await (const chunk of request) text += chunk;
+      const instruction = JSON.parse(JSON.parse(text).messages.at(-1).content);
+      const inputs =
+        instruction.operation === "augment"
+          ? Array.from(
+              { length: instruction.outputCount },
+              (_, i) => instruction.records[i % instruction.records.length],
+            )
+          : instruction.records;
+      const records = inputs.map((row: any, index: number) => ({
+        sourceId: row.id,
+        question:
+          instruction.operation === "augment"
+            ? `  新问题 ${index}  `
+            : row.question,
+        expectedOutput: "FORGED",
+        metadata: [...row.metadata, { key: "gbRisk", value: "A.1" }],
+      }));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: "synthetic",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: JSON.stringify({ records }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    try {
+      const revision = Number(
+        (
+          await db.query(
+            "SELECT coalesce(max(revision),0) AS revision FROM model_connection",
+          )
+        ).rows[0].revision,
+      );
+      expect(
+        (
+          await app.inject({
+            method: "PUT",
+            url: "/api/settings/model-connection",
+            headers,
+            payload: {
+              revision,
+              name: "可控模型",
+              endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+              model: "synthetic",
+              apiKey: "synthetic-key",
+              enabled: true,
+            },
+          })
+        ).statusCode,
+      ).toBe(200);
+      const upload = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/pending-uploads`,
+        headers: {
+          ...headers,
+          "content-type": "application/octet-stream",
+          "x-file-name": "original-basis.jsonl",
+        },
+        payload:
+          Array.from({ length: 3 }, (_, i) =>
+            JSON.stringify({
+              question: `Q${i}`,
+              answer: "Protected",
+              category: "normal",
+            }),
+          ).join("\n") + "\n",
+      });
+      const confirmed = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/pending-upload-batches/confirm`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          collectionId,
+          pendingUploadIds: [upload.json().pendingUpload.id],
+          mode: "raw",
+        },
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(201);
+      const assetId = confirmed.json().assets[0].id;
+      const mapping = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/assets/${assetId}/mapping`,
+        headers,
+      });
+      expect(
+        (
+          await app.inject({
+            method: "PUT",
+            url: `/api/projects/${projectId}/assets/${assetId}/mapping`,
+            headers,
+            payload: {
+              parsedViewId: mapping.json().parsedViewId,
+              expectedRevision: 0,
+              mapping: {
+                question: "/question",
+                expectedOutput: "/answer",
+                metadata: ["/category"],
+              },
+            },
+          })
+        ).statusCode,
+      ).toBe(200);
+      const path = `/api/projects/${projectId}/processing-runs`;
+      async function finish(run: any) {
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=1,lease_owner='origin-test',lease_expires_at=now()+interval '30 seconds' WHERE id=$1 RETURNING *",
+            [run.jobId],
+          )
+        ).rows[0];
+        const result = await runProcessing(db, artifacts, config, job);
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, result],
+        );
+      }
+      const expanded = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "assets",
+            assetIds: [assetId],
+            recordIds: [1, 2, 3].map((n) => `${assetId}:${n}`),
+          },
+          options: {
+            operation: "augment",
+            instructions: "参考三条新增七条",
+            allowedFields: ["question"],
+            outputCount: 7,
+          },
+        },
+      });
+      expect(expanded.statusCode, expanded.body).toBe(201);
+      await finish(expanded.json().run);
+      const initial = await app.inject({
+        method: "GET",
+        url: `${path}/${expanded.json().run.id}?view=all`,
+        headers,
+      });
+      expect(initial.json().records).toHaveLength(7);
+      for (const row of initial.json().records)
+        expect(
+          row.sourcePresentation.steps.filter((step: any) =>
+            step.href?.endsWith(`run=${expanded.json().run.id}`),
+          ),
+        ).toHaveLength(1);
+      const refined = await app.inject({
+        method: "POST",
+        url: `${path}/${expanded.json().run.id}/refinements`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: ["0:0"],
+          instructions: "只为选中一条新增 gbRisk",
+          allowedFields: ["metadata"],
+        },
+      });
+      expect(refined.statusCode, refined.body).toBe(201);
+      await finish(refined.json().run);
+      const review = await app.inject({
+        method: "GET",
+        url: `${path}/${refined.json().run.id}?view=all`,
+        headers,
+      });
+      expect(review.statusCode, review.body).toBe(200);
+      expect(review.json().records[0].sourcePresentation).toMatchObject({
+        label: "模型扩写 · 参考 original-basis.jsonl",
+        badges: ["模型扩写", "已改写"],
+        generated: true,
+      });
+      expect(review.json().records[1].sourcePresentation.badges).toEqual([
+        "模型扩写",
+      ]);
+      expect(
+        review
+          .json()
+          .records.every(
+            (row: any) => row.result.expectedOutput === "Protected",
+          ),
+      ).toBe(true);
+      const adopted = await app.inject({
+        method: "POST",
+        url: `${path}/${refined.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: review.json().allIds,
+          target: { kind: "newDraft", name: "生成来源核对", purpose: "" },
+        },
+      });
+      expect(adopted.statusCode, adopted.body).toBe(201);
+      const clean = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "assets",
+            assetIds: [adopted.json().receipt.assetId],
+            recordIds: [1, 2, 3, 4, 5, 6, 7].map(
+              (n) => `${adopted.json().receipt.assetId}:${n}`,
+            ),
+          },
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(clean.statusCode, clean.body).toBe(201);
+      await finish(clean.json().run);
+      const result = await app.inject({
+        method: "GET",
+        url: `${path}/${clean.json().run.id}?view=all`,
+        headers,
+      });
+      const saveBody = {
+        resultIds: result.json().allIds,
+        target: { kind: "newDraft", name: "连续来源核对", purpose: "" },
+      };
+      const saved = await app.inject({
+        method: "POST",
+        url: `${path}/${clean.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: saveBody,
+      });
+      expect(saved.statusCode, saved.body).toBe(201);
+      const replay = await app.inject({
+        method: "POST",
+        url: `${path}/${clean.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: saveBody,
+      });
+      expect(replay.json().replayed).toBe(true);
+      const receiptPage = await app.inject({
+        method: "GET",
+        url: `${path}/${clean.json().run.id}?view=all`,
+        headers,
+      });
+      expect(receiptPage.json().receipts).toHaveLength(1);
+      expect(receiptPage.body).not.toContain("candidateOrigins");
+      const draftPath = `/api/projects/${projectId}/collaborative-drafts/${saved.json().receipt.draftId}`;
+      const draft = await app.inject({
+        method: "GET",
+        url: draftPath,
+        headers,
+      });
+      expect(draft.json().records[0].sourcePresentation.badges).toEqual([
+        "模型扩写",
+        "已改写",
+        "已清洗",
+      ]);
+      expect(draft.json().records[1].sourcePresentation.badges).toEqual([
+        "模型扩写",
+        "已清洗",
+      ]);
+      const published = await app.inject({
+        method: "POST",
+        url: `${draftPath}/publish`,
+        headers,
+        payload: { revision: draft.json().draft.revision },
+      });
+      expect(published.statusCode, published.body).toBe(201);
+      const traceUrl = `/api/projects/${projectId}/solo-test-sets/${published.json().testSet.id}/versions/${published.json().version.id}/provenance?status=all`;
+      const trace = await app.inject({ method: "GET", url: traceUrl, headers });
+      expect(trace.statusCode, trace.body).toBe(200);
+      expect(trace.json().changes[0].source.presentation.label).toBe(
+        "模型扩写 · 参考 original-basis.jsonl",
+      );
+      await db.query(
+        "UPDATE data_asset SET status='archived' WHERE project_id=$1 AND id=$2",
+        [projectId, assetId],
+      );
+      const hidden = await app.inject({
+        method: "GET",
+        url: traceUrl,
+        headers,
+      });
+      expect(hidden.statusCode, hidden.body).toBe(200);
+      expect(hidden.body).not.toContain("original-basis.jsonl");
+    } finally {
+      await db.end();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   it("executes a submitted task through the real model worker and reports persisted completion", async () => {
     const db = createPool(databaseUrl);
     let worker: ReturnType<typeof spawn> | undefined;

@@ -251,6 +251,8 @@ export function ProjectAssistant({
     [error, setError] = useState(""),
     [pendingSubmissions, setPendingSubmissions] = useState<Record<string, Submission>>({});
   const queryClient = useQueryClient(),
+    candidatePane = useRef<HTMLDivElement>(null),
+    candidateSelections = useRef<Record<string, CandidateSelection>>({}),
     historyRef = useRef<HTMLDivElement>(null),
     contentRef = useRef<HTMLDivElement>(null),
     follow = useRef(true),
@@ -306,6 +308,7 @@ export function ProjectAssistant({
   const visible = conversation.error ? undefined : conversation.data;
   useLayoutEffect(() => {
     setPicked(undefined);
+    candidateSelections.current = {};
   }, [sessionId, visible?.task?.candidateScope?.hash]);
   const taskRuns = visible?.task?.runIds ?? (visible?.task?.runId ? [visible.task.runId] : []);
   const reviewRun =
@@ -1048,7 +1051,9 @@ export function ProjectAssistant({
                     projectId={projectId}
                     runId={visible.task.runId}
                     open={open}
-                    onNavigate={() => setOpen(false)}
+                    onReview={() =>
+                      candidatePane.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
                   />
                 )}
                 {visible.task.review?.runId === visible.task.runId && visible.task.review && (
@@ -1158,43 +1163,49 @@ export function ProjectAssistant({
                 )}
               </section>
             )}
-            {taskRuns.length > 1 && reviewRun && (
-              <Select
-                value={reviewRun}
-                onValueChange={(id) => {
-                  setCandidateRun(id);
-                  setPicked(undefined);
-                }}
-              >
-                <SelectTrigger aria-label="选择候选批次">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {taskRuns.map((runId, index) => (
-                    <SelectItem key={runId} value={runId}>
-                      批次 {index + 1}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {canWrite &&
-              sessionId &&
-              reviewRun &&
-              visible?.task &&
-              ["awaiting_review", "awaiting_confirmation", "failed", "stopped"].includes(
-                visible.task.stage,
-              ) && (
-                <AssistantCandidates
-                  key={`${sessionId}:${reviewRun}:${visible.task.candidateScope?.hash ?? "all"}`}
-                  base={base}
-                  sessionId={sessionId}
-                  runId={reviewRun}
-                  scopeHash={visible.task.candidateScope?.hash}
-                  selected={picked}
-                  onSelect={setPicked}
-                />
+            <div ref={candidatePane} className="space-y-3">
+              {taskRuns.length > 1 && reviewRun && (
+                <Select
+                  value={reviewRun}
+                  onValueChange={(id) => {
+                    if (picked) candidateSelections.current[picked.runId] = picked;
+                    setCandidateRun(id);
+                    setPicked(candidateSelections.current[id]);
+                  }}
+                >
+                  <SelectTrigger aria-label="选择候选批次">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {taskRuns.map((runId, index) => (
+                      <SelectItem key={runId} value={runId}>
+                        批次 {index + 1}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
+              {canWrite &&
+                sessionId &&
+                reviewRun &&
+                visible?.task &&
+                ["awaiting_review", "awaiting_confirmation", "failed", "stopped"].includes(
+                  visible.task.stage,
+                ) && (
+                  <AssistantCandidates
+                    key={`${sessionId}:${reviewRun}:${visible.task.candidateScope?.hash ?? "all"}`}
+                    base={base}
+                    sessionId={sessionId}
+                    runId={reviewRun}
+                    scopeHash={visible.task.candidateScope?.hash}
+                    selected={picked}
+                    onSelect={(value) => {
+                      candidateSelections.current[value.runId] = value;
+                      setPicked(value);
+                    }}
+                  />
+                )}
+            </div>
           </aside>
         </div>
       </SheetContent>
@@ -1206,12 +1217,12 @@ function ProcessingTaskCard({
   projectId,
   runId,
   open,
-  onNavigate,
+  onReview,
 }: {
   projectId: string;
   runId: string;
   open: boolean;
-  onNavigate: () => void;
+  onReview: () => void;
 }) {
   const task = useQuery({
     queryKey: ["assistant-processing-run", projectId, runId],
@@ -1254,7 +1265,7 @@ function ProcessingTaskCard({
     <div className="space-y-2 rounded-md border bg-card px-3 py-3">
       <p>
         {run
-          ? `${operations[run.options.operation] ?? "数据处理"} · ${run.partial ? "部分成功" : (statuses[run.status] ?? run.status)} · ${done ? `${task.data!.total} 条有效结果` : `${run.inputCount} 条输入`}`
+          ? `${operations[run.options.operation] ?? "数据处理"} · ${run.partial ? "部分成功" : (statuses[run.status] ?? run.status)} · ${done ? `${task.data!.total} 条结果` : `${run.inputCount} 条输入`}`
           : "处理任务已提交，正在读取进度…"}
       </p>
       {run?.status === "running" && (
@@ -1270,15 +1281,11 @@ function ProcessingTaskCard({
           {errorText(task.error)}
         </p>
       )}
-      <Link
-        to="/projects/$projectId/processing"
-        params={{ projectId }}
-        search={{ source: undefined, sourceId: undefined, run: runId }}
-        onClick={onNavigate}
-        className="inline-block text-sm text-primary hover:underline"
-      >
-        {done && task.data!.total > 0 ? "预览结果" : "查看任务"}
-      </Link>
+      {done && task.data!.total > 0 && (
+        <Button variant="ghost" size="sm" className="h-auto px-0 text-primary" onClick={onReview}>
+          预览本任务候选
+        </Button>
+      )}
     </div>
   );
 }

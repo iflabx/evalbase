@@ -1,4 +1,5 @@
 import type { AssistantGuard } from "../../assistant/fence.js";
+import { presentSources } from "../../processing/provenance.js";
 import {
   createSharedDraft,
   DraftCreateError,
@@ -402,9 +403,24 @@ export function registerDrafts(
         { name: String(person.name), avatarColor: String(person.avatar_color) },
       ]),
     );
+    const presentations = await presentSources(
+      db,
+      artifacts,
+      {
+        projectId: request.params.projectId,
+        actorId: (request as AuthenticatedRequest).actor.id,
+      },
+      rows.rows.map((row) => row.source),
+    );
     return {
       draft: summary,
-      records: rows.rows.map(draftRow),
+      records: rows.rows.map((row, index) => ({
+        ...draftRow(row),
+        ...(presentations[index]?.label === "原始来源不可访问"
+          ? { sourceFileName: null }
+          : {}),
+        sourcePresentation: presentations[index],
+      })),
       authors,
       total: Number(rows.rows[0]?.total ?? 0),
     };

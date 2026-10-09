@@ -1,10 +1,10 @@
 # OPT-11 数据处理页面操作与视觉体验调整
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P2。2026-10-09 Owner 授权整理修改 Ticket，尚未授权实施。以 OPT-10 及其页面补修后的现有实现为基础，沿用 `codex/assistant-optimization`；不等待 OPT-05/09 的最终人工验收，不改变它们的历史状态。本张完成后统一进行一次人工 checkpoint。
+优先级：P2。2026-10-09 Owner 已授权完成 OPT-11 开发。以 OPT-10 及其页面补修后的现有实现为基础，沿用 `codex/assistant-optimization`；不等待 OPT-05/09 的最终人工验收，不改变它们的历史状态。本张完成后统一进行一次人工 checkpoint。
 
 ## 目标与依据
 
@@ -100,7 +100,7 @@ Blocked by: none
 
 ## 验收矩阵
 
-以下均为待执行的要求，不能预填为通过。复用 [现有测试计划](../../../docs/test-plan-data-selection-and-assistant.md)，只补本张直接缺口。
+以下是验收要求，实际自动验证和现场核对见 [验证记录](../opt11-verification.md)，Owner 验收 pending。复用 [现有测试计划](../../../docs/test-plan-data-selection-and-assistant.md)，只补本张直接缺口。
 
 | 编号 | 场景 | 通过条件 |
 | --- | --- | --- |
@@ -122,9 +122,14 @@ Blocked by: none
 - 完成受影响类型检查、lint、前端构建、上述浏览器正常/关键失败路径；仅在接口或服务发生变化时补对应 HTTP/持久化验证。执行一次最终 Standards/Spec 复审，修复 P0/P1，记录未验证限制。
 - 更新相关 PRD、架构和测试入口中确实受影响的合同及实施证据；保留既有 OPT-10 恢复记录。文档变更运行 `npm run docs:check` 并检查本张链接、表格和状态。
 - 开发授权后复用同一 4217 隔离环境、一个长期验收项目及管理员/编辑两账号；保留用户资料和会话，只重建受影响服务，记录实际固定 SHA、健康及前端请求证据。只有文档变更时不重建服务。
-- 同一张 Ticket 完成后一次交给 Owner 验收。当前不包含实施、合并 main、推送、tag 或正式部署授权。
+- 同一张 Ticket 完成后一次交给 Owner 验收。当前授权 OPT-11 实施；不包含合并 main、推送、tag 或正式部署。
 
 ## Comments
 
 - 2026-10-09：按 Owner 要求将本轮全部操作与视觉问题合为一张修改 Ticket，并明确选择、差异、保存及助手多批成果边界。Implementation 为 not-started，全部 R11 验收 pending。
 - 2026-10-09：Owner 追加处理后来源展示要求；新增 §6 与 R11-10，区分清洗/改写的原记录来源和扩写的参考来源，覆盖草稿、处理结果和来源与修改页。仍仅为文档修改，尚未实施。
+
+- 2026-10-09 开始实施：Owner 明确授权 OPT-11；分支 `codex/assistant-optimization`、基线 `c5cc0978f90018a69cad571079834c494f7066e1`，已跟踪工作树干净。依赖完成，应用 implement + ponytail full。公开测试边界为 processing HTTP、正式前端浏览器和既有助手候选 HTTP；首个跨页选择 browser red/green 已通过，下一片为筛选→处理→保存后真实来源的 HTTP 验证。
+- 路由盘点：`POST processing-inputs` reused（窄扩展搜索、固定 Metadata 条件、已选视图及摘要）；`GET processing-runs/:runId` reused（可选 review view、全量统计、分页展示与真实回执）；`GET processing-runs` reused（来源/操作者）；`POST processing-runs`、cancel/retry/accept reused（协议保持）；`GET assistant/sessions/:sessionId/candidates` reused（按任务有效关系核对后的分页展示）；草稿读取、版本 provenance 列表/详情 reused（按页来源展示）。无新增公开路由、无 retired 路由、无新表。
+
+- 2026-10-09 实施完成：公开处理 HTTP 13 项、助手范围/背景/多批 HTTP 4 项、受影响浏览器 10 项通过；首个跨页选择与筛选来源测试已记录 red/green。两轴复审发现均已修复，实际构建及同一 4217 环境证据见 [验证记录](../opt11-verification.md)。未重新执行真实 200 条模型处理，不把结构验证当成内容审核。Owner pending。

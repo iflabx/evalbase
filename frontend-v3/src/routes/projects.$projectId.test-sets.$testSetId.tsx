@@ -1,3 +1,4 @@
+import { SourceInfo } from "@/components/processing-review";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -803,18 +804,13 @@ function ProvenanceView({
                             <ChangeBadge changeType={change.changeType} />
                           </td>
                           <td className="px-4 py-3">
-                            {change.source ? (
-                              <>
-                                <span className="block">
-                                  {change.source.fileName ?? "原始资料"}
-                                </span>
-                                <span className="mt-1 block text-xs text-muted-foreground">
-                                  第 {change.source.ordinal} 条记录
-                                  {change.source.processing
-                                    ? ` · ${processingLabel(change.source.processing.operation)}产物`
-                                    : ""}
-                                </span>
-                              </>
+                            {change.source?.presentation ? (
+                              <SourceInfo value={change.source.presentation} />
+                            ) : change.source ? (
+                              <span>
+                                {change.source.fileName ?? "原始资料"} · 第 {change.source.ordinal}{" "}
+                                条
+                              </span>
                             ) : (
                               "手工新增"
                             )}
@@ -1001,13 +997,19 @@ function ChangeDetailDialog({
                 <div>
                   <dt className="inline text-muted-foreground">来源资料：</dt>
                   <dd className="inline">
-                    {change.source?.fileName ?? (change.source ? "原始资料" : "手工新增")}
+                    {change.source?.presentation?.label ??
+                      change.source?.fileName ??
+                      (change.source ? "原始资料" : "手工新增")}
                   </dd>
                 </div>
                 <div>
                   <dt className="inline text-muted-foreground">来源记录：</dt>
                   <dd className="inline">
-                    {change.source ? `第 ${change.source.ordinal} 条记录` : "本次编辑"}
+                    {change.source?.presentation
+                      ? "实际来源身份见下方处理过程"
+                      : change.source
+                        ? `第 ${change.source.ordinal} 条记录`
+                        : "本次编辑"}
                   </dd>
                 </div>
                 <div>
@@ -1018,6 +1020,7 @@ function ChangeDetailDialog({
                       : "无字段内容修改"}
                   </dd>
                 </div>
+                {change.source?.presentation && <SourceInfo value={change.source.presentation} />}
                 {change.source?.processing && (
                   <div className="mt-2 border-t pt-3">
                     <p>

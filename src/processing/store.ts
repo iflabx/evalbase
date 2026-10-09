@@ -9,6 +9,10 @@ import {
   type BackgroundSnapshot,
 } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
+import {
+  filterProcessingRecords,
+  processingSourceSummary,
+} from "./presentation.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -552,7 +556,20 @@ export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
   for (const row of rows.rows) {
     try {
       await processingSourceAvailable(db, scope.projectId, row.source);
-      runs.push(summary(row));
+      const sourceSummary = await processingSourceSummary(
+        db,
+        scope,
+        row.source,
+      );
+      const actor = await db.query(
+        "SELECT coalesce(display_name,username) AS name FROM app_user WHERE id=$1",
+        [row.actor_id],
+      );
+      runs.push({
+        ...summary(row),
+        sourceSummary,
+        actorName: actor.rows[0]?.name ?? "未记录",
+      });
     } catch (error) {
       if (!(error instanceof ProcessingError)) throw error;
     }
@@ -768,7 +785,18 @@ export async function previewProcessingInput(
   if (
     !isPlainObject(input) ||
     !isPlainObject(input.source) ||
-    Object.keys(input).some((k) => !["source", "offset", "limit"].includes(k))
+    Object.keys(input).some(
+      (k) =>
+        ![
+          "source",
+          "offset",
+          "limit",
+          "search",
+          "conditions",
+          "selectedIds",
+          "selectedOnly",
+        ].includes(k),
+    )
   )
     throw new ProcessingError(422, "processing_scope_invalid");
   const source = parseSource({ ...input.source, recordIds: ["preview"] });
@@ -782,6 +810,16 @@ export async function previewProcessingInput(
     !Number.isSafeInteger(limit) ||
     limit < 1 ||
     limit > (fullSource ? 10000 : 100)
+  )
+    throw new ProcessingError(422, "query_parameter_invalid");
+  const selectedIds = input.selectedIds ?? [];
+  if (
+    !Array.isArray(selectedIds) ||
+    selectedIds.length > 10000 ||
+    selectedIds.some((id) => typeof id !== "string") ||
+    new Set(selectedIds).size !== selectedIds.length ||
+    (input.selectedOnly !== undefined &&
+      typeof input.selectedOnly !== "boolean")
   )
     throw new ProcessingError(422, "query_parameter_invalid");
   const client = await db.connect();
@@ -813,7 +851,15 @@ export async function previewProcessingInput(
       ).rows.map((r) => r.id);
     if (allIds.length > 10000)
       throw new ProcessingError(422, "processing_capacity_exceeded");
-    const page = allIds.slice(offset, offset + limit);
+    if (selectedIds.some((id) => !allIds.includes(id)))
+      throw new ProcessingError(409, "processing_scope_changed");
+    filterProcessingRecords([], input.search, input.conditions);
+    const filtered = Boolean(
+      String(input.search ?? "").trim() ||
+      (Array.isArray(input.conditions) && input.conditions.length) ||
+      input.selectedOnly,
+    );
+    const page = filtered ? allIds : allIds.slice(offset, offset + limit);
     const data =
       page.length || source.kind === "draft"
         ? await snapshot(client, scope.projectId, {
@@ -821,12 +867,26 @@ export async function previewProcessingInput(
             recordIds: page,
           })
         : { records: [], revision: undefined };
+    const matched = filtered
+      ? filterProcessingRecords(data.records, input.search, input.conditions)
+      : data.records;
+    const matchedIds = filtered ? matched.map((row) => row.id) : allIds;
+    const selected = new Set(selectedIds);
+    const visible = input.selectedOnly
+      ? matched.filter((row) => selected.has(row.id))
+      : matched;
+    const sourceSummary = await processingSourceSummary(client, scope, source);
     await processingAccess(client, scope, true, requiredCapability);
     await client.query("COMMIT");
     return {
-      records: data.records,
-      allIds,
-      total: allIds.length,
+      records: filtered ? visible.slice(offset, offset + limit) : data.records,
+      allIds: matchedIds,
+      total: input.selectedOnly ? visible.length : matchedIds.length,
+      sourceTotal: allIds.length,
+      matchedTotal: matchedIds.length,
+      hiddenSelected: selectedIds.filter((id) => !matchedIds.includes(id))
+        .length,
+      sourceSummary,
       offset,
       limit,
       revision: data.revision,

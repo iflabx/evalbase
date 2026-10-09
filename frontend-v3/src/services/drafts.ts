@@ -35,6 +35,7 @@ export type SharedDraftRecord = {
   metadata: MetadataEntry[];
   source: { assetId: string; ordinal: number } | null;
   sourceFileName: string | null;
+  sourcePresentation?: import("@/services/workspace").SourcePresentation;
   rowRevision: number;
   questionRevision: number;
   expectedOutputRevision: number;

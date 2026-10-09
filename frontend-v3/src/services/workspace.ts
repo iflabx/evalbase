@@ -181,6 +181,12 @@ export type SoloTestSetVersionDetail = {
   graph: { nodes: TestSetVersionNode[] };
 };
 
+export type SourcePresentation = {
+  label: string;
+  badges: string[];
+  steps: { label: string; href?: string }[];
+  generated?: boolean;
+};
 export type ProvenanceRecord = {
   question: string;
   expectedOutput: string;
@@ -191,6 +197,7 @@ export type ProvenanceRecord = {
     fileName?: string;
     collectionId?: string;
     processing?: { runId: string; operation: string; inputKind: string; inputId: string };
+    presentation?: SourcePresentation;
   } | null;
 };
 

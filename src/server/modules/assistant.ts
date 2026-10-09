@@ -10,7 +10,10 @@ import { readProcessingRun } from "../../processing/store.js";
 import {
   reviewTask,
   taskCompatibilityProblem,
+  effectiveTaskRuns,
+  scopeRunToTask,
 } from "../../assistant/review.js";
+import { presentProcessingReview } from "../../processing/presentation.js";
 import { reviewCandidates } from "../../processing/review.js";
 import {
   scopeCandidateRun,
@@ -678,7 +681,12 @@ export function registerAssistant({
     );
   app.get<{
     Params: Params;
-    Querystring: { offset?: string; limit?: string; run?: string };
+    Querystring: {
+      offset?: string;
+      limit?: string;
+      run?: string;
+      view?: string;
+    };
   }>(
     `${path}/sessions/:sessionId/candidates`,
     { preHandler: authenticate },
@@ -715,16 +723,77 @@ export function registerAssistant({
           artifacts,
           currentScope,
           runId,
-          fixedScope ? { offset: "0", limit: "10000" } : request.query,
-          Boolean(fixedScope),
+          fixedScope || request.query.view !== undefined
+            ? { offset: "0", limit: "10000" }
+            : request.query,
+          Boolean(fixedScope || request.query.view !== undefined),
         );
         if (fixedScope) {
           result = scopeCandidateRun(result, fixedScope);
-          result = {
+          if (request.query.view === undefined)
+            result = {
+              ...result,
+              records: result.records.slice(offset, offset + limit),
+              offset,
+              limit,
+            };
+        }
+        if (request.query.view !== undefined) {
+          const taskRuns = [];
+          for (const id of session.task.runIds ?? [session.task.runId]) {
+            const run =
+              id === runId
+                ? result
+                : scopeCandidateRun(
+                    await readProcessingRun(
+                      db,
+                      artifacts,
+                      currentScope,
+                      id,
+                      { limit: "10000" },
+                      true,
+                    ),
+                    candidateScopeForRun(session.task, id),
+                  );
+            taskRuns.push(scopeRunToTask(session.task, run));
+          }
+          const effective = effectiveTaskRuns(taskRuns);
+          if (effective.reduce((total, item) => total + item.total, 0) > 10000)
+            throw new AssistantError(422, "processing_capacity_exceeded");
+          const current = effective.find((item) => item.run.id === runId) ?? {
             ...result,
-            records: result.records.slice(offset, offset + limit),
-            offset,
-            limit,
+            records: [],
+            allIds: [],
+            total: 0,
+          };
+          const page = await presentProcessingReview(
+            db,
+            artifacts,
+            currentScope,
+            current,
+            request.query,
+          );
+          const after = await sessionRow(
+            db,
+            currentScope,
+            request.params.sessionId,
+          );
+          if (
+            after.task_revision !== session.task_revision ||
+            after.task.candidateScope?.hash !==
+              session.task.candidateScope?.hash
+          )
+            throw new AssistantError(
+              409,
+              "assistant_candidate_selection_changed",
+            );
+          return {
+            ...page,
+            taskTotal: effective.reduce((total, item) => total + item.total, 0),
+            effectiveRuns: effective.map((item) => ({
+              runId: item.run.id,
+              total: item.total,
+            })),
           };
         }
         const sources = result.records.map((row) => {

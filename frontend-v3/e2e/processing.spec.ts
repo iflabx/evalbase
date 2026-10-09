@@ -93,7 +93,7 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   await expect(page.getByText("类别：", { exact: true })).toBeVisible();
   await expect(page.getByText("(空)", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "开始清洗 · 0 条输入" })).toBeDisabled();
-  await page.getByRole("button", { name: "选择全部记录", exact: true }).click();
+  await page.getByRole("button", { name: "选择全部匹配记录", exact: true }).click();
   await page.setViewportSize({ width: 800, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -106,16 +106,16 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   await expect(page.getByRole("heading", { name: "清洗结果" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "选择输入记录" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "处理任务", exact: true })).toHaveCount(0);
-  await expect(page.getByText("类别：", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("类别：", { exact: true })).toHaveCount(1);
   for (const entry of await page.getByText("类别：", { exact: true }).all())
     await expect(entry).toBeVisible();
-  await page.getByRole("button", { name: "选择全部有效结果" }).click();
-  await page.getByRole("button", { name: "采用选中结果" }).click();
+  await page.getByRole("button", { name: "选择全部匹配结果" }).click();
+  await page.getByRole("button", { name: "保存处理结果" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(accepted).toBe(0);
-  await page.getByRole("button", { name: "确认采用", exact: true }).click();
+  await page.getByRole("button", { name: "确认保存", exact: true }).click();
   await expect.poll(() => accepted).toBe(1);
-  await expect(page.getByText("已采用 1 条结果并保存派生文件。")).toBeVisible();
+  await expect(page.getByText("已保存 1 条处理结果，并建立独立文件。")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "清洗结果" })).toBeVisible();
   expect(accepted).toBe(1);

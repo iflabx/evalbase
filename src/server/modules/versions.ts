@@ -2,6 +2,10 @@ import {
   guardAssistantCommit,
   type AssistantGuard,
 } from "../../assistant/fence.js";
+import {
+  presentSources,
+  type SourcePresentation,
+} from "../../processing/provenance.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { writeBatches } from "../../db/batch.js";
 import type { PoolClient } from "pg";
@@ -796,6 +800,7 @@ export function registerVersions(
       ordinal: number;
       fileName?: string;
       collectionId?: string;
+      presentation?: SourcePresentation;
       processing?: {
         runId: string;
         operation: string;
@@ -829,6 +834,45 @@ export function registerVersions(
       at: string;
     } | null;
   };
+
+  async function displayChanges(
+    changes: SoloVersionChange[],
+    projectId: string,
+    actorId: string,
+  ) {
+    const sources = changes
+      .flatMap((change) => [
+        change.current?.source,
+        change.previous?.source,
+        change.source,
+      ])
+      .filter((source): source is NonNullable<SoloVersionRecord["source"]> =>
+        Boolean(source),
+      );
+    const presentations = await presentSources(
+      db,
+      artifacts,
+      { projectId, actorId },
+      sources,
+    );
+    sources.forEach((source, index) => {
+      source.presentation = presentations[index];
+      if (presentations[index]?.label === "原始来源不可访问") {
+        source.fileName = "来源不可访问";
+        source.collectionId = "";
+        delete source.processing;
+      } else if (
+        source.processing &&
+        !presentations[index]?.steps.some((step) =>
+          step.href?.includes(
+            `run=${encodeURIComponent(source.processing!.runId)}`,
+          ),
+        )
+      )
+        delete source.processing;
+    });
+    return changes;
+  }
 
   function soloVersionRecord(row: Record<string, unknown>): SoloVersionRecord {
     const origin = isPlainObject(row.origin_ref) ? row.origin_ref : undefined;
@@ -2049,7 +2093,11 @@ export function registerVersions(
           addedFiles: result.addedFiles,
           manualAddedCount: result.manualAddedCount,
         },
-        changes: matching.slice(offset, offset + limit),
+        changes: await displayChanges(
+          matching.slice(offset, offset + limit),
+          request.params.projectId,
+          (request as AuthenticatedRequest).actor.id,
+        ),
         pagination: { total: matching.length, limit, offset },
       };
     },
@@ -2088,7 +2136,11 @@ export function registerVersions(
       );
       if (!change)
         return reply.code(404).send({ error: { code: "change_not_found" } });
-      return { change };
+      return {
+        change: (
+          await displayChanges([change], request.params.projectId, actor.id)
+        )[0],
+      };
     },
   );
 

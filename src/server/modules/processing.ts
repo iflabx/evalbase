@@ -1,4 +1,5 @@
 import { createRefinementRun } from "../../processing/refine.js";
+import { presentProcessingReview } from "../../processing/presentation.js";
 import { reviewCandidates } from "../../processing/review.js";
 import { acceptProcessingResults } from "../../processing/accept.js";
 import type { FastifyReply } from "fastify";
@@ -135,22 +136,43 @@ export function registerProcessing({
         }),
       ),
   );
-  app.get<{ Params: Params; Querystring: { offset?: string; limit?: string } }>(
-    `${path}/:runId`,
-    { preHandler: authenticate },
-    async (request, reply) =>
-      respond(reply, () =>
-        readProcessingRun(
+  app.get<{
+    Params: Params;
+    Querystring: { offset?: string; limit?: string; view?: string };
+  }>(`${path}/:runId`, { preHandler: authenticate }, async (request, reply) =>
+    respond(reply, async () => {
+      const scope = {
+        projectId: request.params.projectId,
+        actorId: (request as AuthenticatedRequest).actor.id,
+      };
+      if (request.query.view !== undefined) {
+        const data = await readProcessingRun(
           db,
           artifacts,
-          {
-            projectId: request.params.projectId,
-            actorId: (request as AuthenticatedRequest).actor.id,
-          },
+          scope,
           request.params.runId,
+          { limit: "10000" },
+          true,
+        );
+        return presentProcessingReview(
+          db,
+          artifacts,
+          scope,
+          data,
           request.query,
-        ),
-      ),
+        );
+      }
+      return readProcessingRun(
+        db,
+        artifacts,
+        {
+          projectId: request.params.projectId,
+          actorId: (request as AuthenticatedRequest).actor.id,
+        },
+        request.params.runId,
+        request.query,
+      );
+    }),
   );
   app.post<{ Params: Params; Body: unknown }>(
     `${path}/:runId/accept`,

@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Implementation: in-progress
 
-2026-10-09 文档新增：[OPT-11 数据处理体验调整](issues/11-processing-workspace-ux.md) 已写清来源、选择、配置、差异核对、保存及助手入口范围，Implementation 为 not-started，尚未授权开发；依赖现有 OPT-10 与页面补修实现，不等待旧 Ticket 最终验收。当前环境和历史验收状态不因创建文档改变。
+2026-10-09 最新体验实施：[OPT-11](issues/11-processing-workspace-ux.md) 已获授权并完成代码与针对性验证，当前正在完成固定版本环境核对；实施及 Standards/Spec 审阅证据见 [OPT-11 验证记录](opt11-verification.md)。Owner 验收 pending，OPT-05/09 历史状态不改写。
 
 2026-10-09 最新状态：[OPT-10](issues/10-fixed-input-and-recovery.md) 已完成实施和复审，应用固定 `4ee577c` 已切入同一 4217 环境；原失败会话沿用固定 200 条恢复至待确认，内容及最终 Owner 验收 pending。实际验证见 [OPT-10 记录](opt10-verification.md)。OPT-09 按验收退回规则记 in-progress，既有证据保留。当前修复与验收状态以本段和下表为准，以下原交付记录不作为最新故障已关闭的证明。
 
@@ -40,7 +40,7 @@ Implementation: in-progress
 | [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
 | [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 待最终 Owner 验收（含 OPT-10 证据） | in-progress | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
 | [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | completed | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending |
-| [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示 | 现有 OPT-10 及页面补修；待单独开发授权 | not-started | R11-1–10 待执行；一个 Ticket、一次人工 checkpoint |
+| [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示 | 现有 OPT-10 及页面补修；已获开发授权 | completed | [实施与验证](opt11-verification.md)；一个 Ticket、一次人工 checkpoint，Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

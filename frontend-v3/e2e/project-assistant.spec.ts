@@ -157,7 +157,7 @@ test("distinguishes a failed model reply from retained processing and keeps the 
     task.getByText("下一步：核对已保留的候选，回复失败不会重新生成数据。", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "候选结果" }).getByText("内容待你审核", { exact: true }),
+    page.getByRole("region", { name: "候选结果" }).getByText(/内容待你审核/),
   ).toBeVisible();
   const retry = task.getByRole("button", { name: "重试未完成步骤" });
   await expect(retry).toBeEnabled();
@@ -175,7 +175,7 @@ test("distinguishes a failed model reply from retained processing and keeps the 
 
 test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
   page,
-}) => {
+}, info) => {
   let sent: unknown;
   let scopeHash = "initial-classified-selection";
   await assistantPage(page, async (route, path) => {
@@ -293,26 +293,24 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   });
   await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("退款问题改写");
   await expect(page.getByText("候选待审核", { exact: true })).toBeVisible();
-  await expect(page.getByText("期望输出：分类或配额未符合要求", { exact: true })).toBeVisible();
+  await expect(page.getByText("期望输出：分类取值或配额未符合要求", { exact: true })).toBeVisible();
   await expect(page.getByText("退款：实际 25 / 要求 26 条", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("后台逐条分类");
   await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("已执行");
-  await page.getByText("处理问题（1）", { exact: true }).click();
-  await expect(
-    page.getByText("受保护字段变化 · 第 1 批 · 输入第 11 条：原问题 11", { exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("选择候选 1", { exact: true }).check();
+  await page.getByText("任务级校验说明", { exact: true }).click();
+  await expect(page.getByText("受保护字段变化 · 输入第 11 条", { exact: true })).toBeVisible();
+  await page.getByLabel("选择结果 1", { exact: true }).check();
   await page.getByRole("button", { name: "下一页候选" }).click();
-  await page.getByLabel("选择候选 11", { exact: true }).check();
+  await page.getByLabel("选择结果 11", { exact: true }).check();
   await expect(page.getByText("已选 2 条候选", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "查看候选 11" }).click();
+  await page.getByRole("row", { name: "查看记录 11", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("原问题 11");
   await expect(page.getByRole("dialog")).toContainText("新问题 11");
   await expect(page.getByRole("dialog")).toContainText("合成退款资料.csv · 第 11 条");
   await expect(page.getByRole("dialog")).toContainText("本次变化：问题");
-  await page.screenshot({ path: "test-results/opt08-candidate-desktop.png" });
+  await page.screenshot({ path: info.outputPath("opt11-candidate-desktop.png") });
   await page.setViewportSize({ width: 420, height: 800 });
-  await page.screenshot({ path: "test-results/opt08-candidate-narrow.png" });
+  await page.screenshot({ path: info.outputPath("opt11-candidate-narrow.png") });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.keyboard.press("Escape");
   await page.getByLabel("向项目助手发送消息").fill("只把选中的问题写得更口语");
@@ -323,8 +321,8 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   });
   scopeHash = "changed-classified-selection";
   await expect(page.getByText("已选 0 条候选", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("选择候选 1", { exact: true })).not.toBeChecked();
-  await expect(page.getByText("共 25 条 · 第 1 页", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("选择结果 1", { exact: true })).not.toBeChecked();
+  await expect(page.getByText("共 25 条匹配 · 第 1 页", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("log").getByText("[processing_completed]", { exact: true }),
   ).toHaveCount(0);
@@ -460,12 +458,20 @@ test("selects task batches without carrying checked rows into another batch and 
   await expect(page.getByText(/最终总数 2 \/ 目标 2 条/)).toBeVisible();
   await expect(page.getByText("草稿已有 1 条 · 待采用 1 条")).toBeVisible();
   await expect(page.getByText("第二批问题", { exact: true })).toBeVisible();
-  await page.getByLabel("选择候选 1", { exact: true }).check();
+  await page.getByLabel("选择结果 1", { exact: true }).check();
   await page.getByRole("combobox", { name: "选择候选批次" }).click();
   await page.getByRole("option", { name: "批次 1", exact: true }).click();
   await expect(page.getByText("第一批问题", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("选择候选 1", { exact: true })).not.toBeChecked();
-  await page.getByLabel("选择候选 1", { exact: true }).check();
+  await expect(page.getByLabel("选择结果 1", { exact: true })).not.toBeChecked();
+  await page.getByLabel("选择结果 1", { exact: true }).check();
+  await page.getByRole("combobox", { name: "选择候选批次" }).click();
+  await page.getByRole("option", { name: "批次 2", exact: true }).click();
+  await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "预览本任务候选", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "项目助手", exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "选择候选批次" }).click();
+  await page.getByRole("option", { name: "批次 1", exact: true }).click();
+  await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
   await page.getByLabel("向项目助手发送消息").fill("只改选中这一条");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   expect(sent).toEqual({
