@@ -453,6 +453,13 @@ function ProcessingForm({
     refetchOnMount: "always",
   });
   useEffect(() => {
+    if (!canRetainReadResult(input.error))
+      queryClient.removeQueries({
+        queryKey: ["processing-inputs", actorId, projectId, source],
+        type: "inactive",
+      });
+  }, [actorId, projectId, source, queryClient, input.error]);
+  useEffect(() => {
     const revision = input.data?.sourceRevision;
     if (revision && sourceRevision.current && sourceRevision.current !== revision) {
       setScopeChanged(true);

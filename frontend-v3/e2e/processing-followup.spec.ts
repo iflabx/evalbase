@@ -363,11 +363,17 @@ test("hides confirmed results when the same polling query loses access", async (
 
 test("hides revoked source projections but retains the user's configuration", async ({ page }) => {
   let forbidden = false;
+  let releaseSearch: (() => void) | undefined;
   await page.route("**/api/**", async (route) => {
     if (await mockAccountRoute(route)) return;
     if (new URL(route.request().url()).pathname.endsWith("/processing-inputs")) {
-      if (forbidden)
+      if (forbidden) {
+        if (route.request().postDataJSON().search === "保密")
+          await new Promise<void>((resolve) => {
+            releaseSearch = resolve;
+          });
         return route.fulfill({ status: 403, json: { error: { code: "processing_not_found" } } });
+      }
       return route.fulfill({
         json: {
           sourceRevision: "view-1",
@@ -395,6 +401,15 @@ test("hides revoked source projections but retains the user's configuration", as
   });
   await page.goto("/projects/p/processing?source=assets&sourceId=asset");
   await expect(page.locator("summary").filter({ hasText: "保密记录" })).toBeVisible();
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/processing-inputs") &&
+        response.request().postDataJSON().search === "保密",
+    ),
+    page.getByRole("textbox", { name: "搜索输入记录", exact: true }).fill("保密"),
+  ]);
+  await page.getByRole("textbox", { name: "搜索输入记录", exact: true }).fill("");
   await page.getByRole("textbox", { name: "补充要求（选填）" }).fill("这是用户自己的处理要求");
   await page.getByRole("link", { name: "返回处理任务", exact: true }).click();
   forbidden = true;
@@ -407,4 +422,13 @@ test("hides revoked source projections but retains the user's configuration", as
   await expect(page.getByRole("textbox", { name: "补充要求（选填）" })).toHaveValue(
     "这是用户自己的处理要求",
   );
+  await Promise.all([
+    page.waitForRequest(
+      (req) => req.url().endsWith("/processing-inputs") && req.postDataJSON().search === "保密",
+    ),
+    page.getByRole("textbox", { name: "搜索输入记录", exact: true }).fill("保密"),
+  ]);
+  expect(await page.getByText("保密记录").count()).toBe(0);
+  releaseSearch?.();
+  await expect(page.getByRole("button", { name: "重试读取来源", exact: true })).toBeVisible();
 });
