@@ -41,8 +41,11 @@ Implementation: in-progress
 | [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 待最终 Owner 验收（含 OPT-10 证据） | in-progress | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
 | [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | completed | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending |
 | [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示 | 现有 OPT-10 及页面补修；已获开发授权 | completed | [实施与验证](opt11-verification.md)；一个 Ticket、一次人工 checkpoint，Owner pending |
+| [OPT-12](issues/12-processing-usability-followup.md) | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；等待单独开发授权 | not-started | 2026-10-11 两轮审查合并；R12-1–12 pending，UI 严格复用 frontend-v1 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
+
+OPT-12 是 OPT-11 后续体验调整，当前仅有文档授权；不等待旧 Ticket 的最终人工验收才允许编写或后续获授权修复，也不把本张文档变更记作旧验收通过。未来实施继续沿用同一分支和 4217 隔离环境，一个 Ticket、一次 Owner checkpoint。
 
 ## 验证矩阵
 
@@ -94,6 +97,8 @@ Implementation: in-progress
 - v5 末批预算复审 P2 已定位并补公开回归：新配方按本批真实数量预算，v1v4 保留原估算。39,999 字节的最后单条扩写请求先因错误估算被拒（RED），修正后可以发送且仍不超 40,000 字节。真实候选尚未采用，最终闭环继续。
 
 - 2026-10-08 后续审查：在固定 `a5e7815` 核查最新失败回合和相似代码路径，新建 OPT-09，统一跟踪执行依赖、有效依据/范围、失败恢复、字段保护和实际发布核对。当前只完成审查和任务文档，实施未开始；OPT-05 收口依赖同步更新，历史完成记录保留。
+
+- 2026-10-11：Owner 要求把两轮数据处理体验建议合并为一张修改 Ticket，新增 OPT-12 及 PRD §6.4 引用；仅文档修改，尚未授权开发，原 checkpoint 和历史状态保留。
 
 ## 最新完成记录
 
