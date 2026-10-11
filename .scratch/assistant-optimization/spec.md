@@ -1,6 +1,6 @@
 # 项目助手实测优化实施规格
 
-2026-10-11 最新状态：OPT-12 已完成实现、针对性回归及 Standards/Spec 复审，基线 `e257ca1`；同一分支及 4217 环境，Owner 验收 pending。证据见 [OPT-12 验证记录](opt12-verification.md)。
+2026-10-11 最新状态：OPT-12 已完成实现、针对性回归及 Standards/Spec 复审，基线 `e257ca1`；同一分支及 4217 环境，Owner 验收 pending。4217 三项应用服务固定 `7d9c8e5`，健康及 Computer Use 现场复核完成；证据见 [OPT-12 验证记录](opt12-verification.md)。
 
 Status: ready-for-agent
 Implementation: in-progress
