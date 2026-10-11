@@ -256,7 +256,7 @@ export async function presentSources(
     inputId?: string;
     parent?: string | null;
     generated?: boolean;
-    references?: { key: string; count: number; ordinals: number[] }[];
+    references?: string[];
     savedTarget?: { label: string; href: string };
   };
   const nodes = new Map<string, Node>(),
@@ -269,6 +269,11 @@ export async function presentSources(
     string,
     { input: InputSnapshot; operation: string } | null
   >();
+  const inputRecords = new Map<
+    string,
+    Map<string, InputSnapshot["records"][number]>
+  >();
+  const runReferenceKeys = new Map<string, string[]>();
   const base = `/projects/${encodeURIComponent(scope.projectId)}`;
   for (let depth = 0; pending.size && depth < 32; depth++) {
     const batch = [...pending];
@@ -317,35 +322,25 @@ export async function presentSources(
       const key = `${row.id}:${row.ordinal}`,
         runId = row.locator?.processingRunId,
         run = runs.get(runId);
-      const original = run?.input.records.find(
-        (record) => record.id === row.locator?.inputId,
-      );
+      if (run && !inputRecords.has(runId))
+        inputRecords.set(
+          runId,
+          new Map(run.input.records.map((record) => [record.id, record])),
+        );
+      const original = inputRecords.get(runId)?.get(row.locator?.inputId);
       const parent = original
         ? sourceKey(original.baseline?.source ?? original.source)
         : undefined;
-      const referenceGroups = new Map<
-        string,
-        { key: string; count: number; ordinals: number[] }
-      >();
-      if (run?.operation === "augment") {
+      if (run?.operation === "augment" && !runReferenceKeys.has(runId)) {
+        const referenceKeys = new Set<string>();
         for (const record of run.input.records) {
           const source = record.baseline?.source ?? record.source;
           const referenceKey = sourceKey(source);
           if (!referenceKey || !isPlainObject(source)) continue;
-          const asset = String(source.assetId),
-            ordinal = Number(source.ordinal);
-          const group = referenceGroups.get(asset) ?? {
-            key: referenceKey,
-            count: 0,
-            ordinals: [],
-          };
-          if (!group.ordinals.includes(ordinal)) {
-            group.ordinals.push(ordinal);
-            group.count++;
-          }
-          referenceGroups.set(asset, group);
-          if (!nodes.has(group.key)) pending.set(group.key, source);
+          referenceKeys.add(referenceKey);
+          if (!nodes.has(referenceKey)) pending.set(referenceKey, source);
         }
+        runReferenceKeys.set(runId, [...referenceKeys]);
       }
       nodes.set(key, {
         name: row.file_name,
@@ -362,7 +357,7 @@ export async function presentSources(
                   run.operation) === "augment",
               runHref: `${base}/processing?run=${encodeURIComponent(runId)}`,
               parent,
-              references: [...referenceGroups.values()],
+              references: runReferenceKeys.get(runId),
             }
           : {}),
       });
@@ -400,6 +395,17 @@ export async function presentSources(
             href: `${base}/test-sets/drafts/${encodeURIComponent(row.id)}`,
           };
   }
+  const rendered = new Map<string, SourcePresentation>();
+  const runReferences = new Map<
+    string,
+    {
+      fileCount: number;
+      fileName?: string;
+      steps: SourcePresentation["steps"];
+      omitted: boolean;
+      missing: boolean;
+    }
+  >();
   function render(
     key: string | null,
     seen = new Set<string>(),
@@ -408,6 +414,8 @@ export async function presentSources(
     const node = nodes.get(key);
     if (!node || seen.has(key))
       return { label: "原始来源不可访问", badges: [], steps: [] };
+    const cached = rendered.get(key);
+    if (cached) return cached;
     seen.add(key);
     const direct = {
       label: `${node.name} · 第 ${key.slice(key.lastIndexOf(":") + 1)} 条`,
@@ -429,29 +437,57 @@ export async function presentSources(
       };
     const parent = render(node.parent, new Set(seen)),
       generated = Boolean(node.generated || parent.generated);
-    const references = (node.references ?? []).map((reference) => ({
-      ...reference,
-      presentation: render(reference.key, new Set(seen)),
-    }));
-    const referenceFiles = new Set(
-      references.flatMap((reference) =>
-        reference.presentation.steps
-          .filter((step) => step.kind === "reference" && step.href)
-          .map((step) => step.href!),
-      ),
-    );
+    let reference = runReferences.get(node.runId!);
+    if (!reference) {
+      const references = (node.references ?? []).map((reference) =>
+        render(reference, new Set(seen)),
+      );
+      // Resolve all identities once per run, then retain only compact display
+      // positions. Shared frozen input is not copied/expanded for every row.
+      const referenceSteps = [
+        ...new Map(
+          references.flatMap((reference) =>
+            reference.steps
+              .filter((step) => step.kind === "reference")
+              .map((step) => [`${step.href}\0${step.label}`, step] as const),
+          ),
+        ).values(),
+      ];
+      const files = new Set(
+        referenceSteps.flatMap((step) => (step.href ? [step.href] : [])),
+      );
+      const shown = new Map<string, number>();
+      const visible = referenceSteps.filter((step) => {
+        const count = shown.get(step.href ?? "") ?? 0;
+        shown.set(step.href ?? "", count + 1);
+        return count < 10;
+      });
+      reference = {
+        fileCount: files.size,
+        fileName: references.find((reference) => reference.fileName)?.fileName,
+        steps: visible,
+        omitted: referenceSteps.length > visible.length,
+        missing: references.some(
+          (reference) =>
+            !reference.steps.some(
+              (step) => step.kind === "reference" && step.href,
+            ),
+        ),
+      };
+      runReferences.set(node.runId!, reference);
+    }
     const label =
-      referenceFiles.size > 1
-        ? `模型扩写 · 参考 ${referenceFiles.size} 份原始数据`
+      reference.fileCount > 1
+        ? `模型扩写 · 参考 ${reference.fileCount} 份原始数据`
         : node.generated && !parent.generated
-          ? `模型扩写 · 参考 ${parent.fileName ?? parent.label}`
+          ? `模型扩写 · 参考 ${parent.fileName ?? reference.fileName ?? "来源未记录"}`
           : parent.label;
     const steps = node.runId
       ? (histories.get(`${node.runId}\0${node.inputId}`) ?? [])
       : [];
     const badge = operationLabels[node.operation] ?? "已处理";
     const processingSteps = steps.length ? steps : [{ label: badge }];
-    return {
+    const presentation: SourcePresentation = {
       label,
       ...(parent.fileName ? { fileName: parent.fileName } : {}),
       generated,
@@ -463,16 +499,11 @@ export async function presentSources(
       ].filter((value, index, all) => all.indexOf(value) === index),
       steps: [
         ...parent.steps.filter(
-          (step) => !referenceFiles.size || step.kind !== "reference",
+          (step) => !reference.fileCount || step.kind !== "reference",
         ),
-        ...references.flatMap((reference) =>
-          reference.presentation.steps
-            .filter((step) => step.kind === "reference")
-            .map((step) => ({
-              ...step,
-              label: `${reference.presentation.fileName ?? step.label} · 参考 ${reference.count} 条（第 ${reference.ordinals.slice(0, 10).join("、")}${reference.count > 10 ? " 等" : ""} 条）`,
-            })),
-        ),
+        ...reference.steps,
+        ...(reference.omitted ? [{ label: "更多参考位置已省略" }] : []),
+        ...(reference.missing ? [{ label: "部分来源未记录" }] : []),
         ...processingSteps,
         { label: node.name, href: node.href, kind: "saved" as const },
         ...(node.savedTarget
@@ -486,6 +517,8 @@ export async function presentSources(
           ) === index,
       ),
     };
+    rendered.set(key, presentation);
+    return presentation;
   }
   return sources.map((source) =>
     source != null && !sourceKey(source)

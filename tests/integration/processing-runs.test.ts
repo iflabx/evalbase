@@ -1654,6 +1654,16 @@ describe("durable data processing", () => {
         "已改写",
         "已清洗",
       ]);
+      expect(draft.json().records[0].sourcePresentation.label).toBe(
+        "模型扩写 · 参考 original-basis.jsonl",
+      );
+      expect(
+        draft
+          .json()
+          .records[0].sourcePresentation.steps.some(
+            (step: any) => step.kind === "reference" && step.href,
+          ),
+      ).toBe(true);
       const published = await app.inject({
         method: "POST",
         url: `${draftPath}/publish`,
@@ -1917,6 +1927,32 @@ describe("durable data processing", () => {
           .map((step: any) => step.label)
           .join("\n"),
       ).toContain("original-basis.jsonl");
+      const mixedDraftSave = await app.inject({
+        method: "POST",
+        url: `${path}/${mixedAugment.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: mixedResult.allIds,
+          target: { kind: "newDraft", name: "完整混合来源", purpose: "" },
+        },
+      });
+      expect(mixedDraftSave.statusCode, mixedDraftSave.body).toBe(201);
+      const mixedDraft = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${mixedDraftSave.json().receipt.draftId}`,
+        headers,
+      });
+      for (const record of mixedDraft.json().records) {
+        expect(record.sourcePresentation.label).toBe(
+          "模型扩写 · 参考 2 份原始数据",
+        );
+        const references = record.sourcePresentation.steps
+          .filter((step: any) => step.kind === "reference")
+          .map((step: any) => step.label)
+          .join("\n");
+        expect(references).toContain("original-basis.jsonl");
+        expect(references).toContain("second-basis.jsonl");
+      }
       await db.query(
         "UPDATE data_asset SET status='archived' WHERE project_id=$1 AND id=$2",
         [projectId, assetId],

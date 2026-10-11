@@ -15,7 +15,7 @@
 - 浏览器首个 red：`opt13-browser-red.log`，旧版无法找到“继续处理所选 2 条”。
 - 初次链路回归发现原始扩写任务重新运行的可选元数据 undefined 序列化错误，已修复；普通转换与生成输入的保存方式分别验证。
 - 全部单元测试：29 文件，189 通过、1 个既有跳过；`opt13-tests-final.log`。
-- 最终处理/助手持久化回归：3 文件、150 项全部通过（265.71 秒），执行命令为 `vitest run tests/integration/processing-runs.test.ts tests/integration/assistant-tasks.test.ts tests/integration/project-assistant.test.ts --maxWorkers=1`；`opt13-regression-approved.log`。
+- 整体处理/助手持久化回归：3 文件、150 项全部通过（265.71 秒），对应首轮实施 `75f0190`，命令为 `vitest run tests/integration/processing-runs.test.ts tests/integration/assistant-tasks.test.ts tests/integration/project-assistant.test.ts --maxWorkers=1`；`opt13-regression-approved.log`。现场来源投影修正后，受影响处理集成 13 项再次全部通过（12.68 秒），类型及 lint 通过；`opt13-source-regression-final.log`。
 - 21 项受影响浏览器测试全部通过；`opt13-browser-closure.log`。覆盖继续所选实际结果、默认保存回来源草稿、两种另存的未知响应及离开返回后同键核对、Metadata、冲突、输入/结果分页和选择、撤权、稳定加载、来源详情键盘焦点。
 - 类型检查通过；后端受影响文件 lint 无错误，前端 `src e2e` lint 无错误、10 个既有警告；`opt13-static-final.log`、`opt13-last-checks.log`。全目录 lint 另受历史未跟踪 `opt11.playwright.config.ts` 的 4 个格式错误影响，本张不修改该旧文件。
 - 受影响前端源构建通过，1440/1280/480px 截图及整页无横向溢出断言通过。最终归档镜像构建同时编译正式前端与服务端。
@@ -33,6 +33,10 @@
 发现并修复：原草稿扩写任务重新运行改清洗后误追加、未知另存请求跨页恢复丢失名称/目标、助手多组采用统一排除回执导致漏检。逐组核对只豁免该普通/助手运行自身的合法另存回执；手动后续运行仍检查全部回执。定向复审均关闭，无剩余 P0/P1。
 
 全部修复留有针对性断言；复审不代签测试或 Owner 验收。
+
+### 现场补修
+
+首轮镜像实际读取草稿第 41 条发现：参考集合使用第一条 key 却反复覆写为最后一条 value，导致首条引用失配；混合原始文件保存进草稿时仅追一条中间记录也会漏文件。新增公开保存/草稿读取断言先红后绿，完整冻结身份逐一取证后才限制展示位置。引用集合、输入查找与紧凑投影在本请求内按运行共享，完成节点也复用，避免大批量引用按行重复展开；没有跨请求缓存。两名独立审阅者对来源与容量修正均关闭 P1，无剩余 P0/P1。新代码需固定到最后的补修提交再现场复核，实际 SHA 见执行记录。
 
 ## 隔离环境与历史修复
 
