@@ -21,11 +21,13 @@ export async function adoptedCandidateKeys(
   scope: ProcessingScope,
   runs: CandidateRun[],
   draftId?: string,
+  shared = false,
+  excludeRunIds: string[] = [],
 ) {
   const receipts = (
     await db.query(
-      "SELECT run_id,result_ids,receipt FROM processing_acceptance WHERE project_id=$1 AND actor_id=$2 AND ($3::text IS NULL OR draft_id=$3)",
-      [scope.projectId, scope.actorId, draftId ?? null],
+      "SELECT run_id,result_ids,receipt FROM processing_acceptance WHERE project_id=$1 AND ($4 OR actor_id=$2) AND ($3::text IS NULL OR draft_id=$3) AND NOT (run_id=ANY($5::text[]))",
+      [scope.projectId, scope.actorId, draftId ?? null, shared, excludeRunIds],
     )
   ).rows;
   const identities = new Set<string>();

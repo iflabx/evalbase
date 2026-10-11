@@ -1,5 +1,6 @@
 import { guardAssistantCommit } from "../assistant/fence.js";
 import { adoptedCandidateKeys } from "./adoption.js";
+import { processingResultName } from "./names.js";
 import type { Database } from "../db/pool.js";
 import { writeBatches } from "../db/batch.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -82,6 +83,7 @@ async function selectedGroup(
   }
   return {
     run,
+    continuation: Boolean(snapshot.continuation),
     selected: ids.map((id) => {
       const row = available.get(id),
         input = row && original.get(row.sourceId);
@@ -96,9 +98,13 @@ async function selectedGroup(
         source: run.source,
         originalId: input.baseline?.id ?? row.sourceId,
         adoptionFields:
-          snapshot.refinement?.adoptionFields ?? run.options.allowedFields,
+          snapshot.continuation?.adoptionFields ??
+          snapshot.refinement?.adoptionFields ??
+          run.options.allowedFields,
         rootOperation:
-          snapshot.refinement?.rootOperation ?? run.options.operation,
+          snapshot.continuation?.rootOperation ??
+          snapshot.refinement?.rootOperation ??
+          run.options.operation,
       };
     }),
   };
@@ -187,6 +193,9 @@ export async function acceptProcessingResults(
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `processing-candidates:${scope.projectId}`,
+    ]);
     // One receipt and all domain writes commit together. A second browser can safely retry the same confirmation.
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `processing-accept:${scope.projectId}:${scope.actorId}:${key}`,
@@ -251,6 +260,20 @@ export async function acceptProcessingResults(
         ),
       );
     const run = loaded.find((item) => item.run.id === runId)!.run;
+    for (const group of loaded) {
+      const priorCandidates = await adoptedCandidateKeys(
+        client,
+        artifacts,
+        scope,
+        [{ run: group.run, records: group.selected }],
+        undefined,
+        true,
+        // Only this group's own receipt is an existing alternate destination; other groups remain cross-round identities.
+        group.continuation ? [] : [group.run.id],
+      );
+      if (priorCandidates.size)
+        throw new ProcessingError(409, "processing_already_adopted");
+    }
     if (groups.length > 1) {
       await guardAssistantCommit(client, scope);
       const task = (
@@ -444,13 +467,10 @@ export async function acceptProcessingResults(
         [scope.projectId],
       )
     ).rows[0];
-    const label = { clean: "清洗", rewrite: "改写", augment: "扩充" }[
-      run.options.operation
-    ];
     const name =
       groups.length > 1
         ? `任务成果-${acceptanceId.slice(-8)}.jsonl`
-        : `${label}结果-${runId.slice(-8)}.jsonl`;
+        : processingResultName(run.options.operation, runId);
     await client.query(
       `INSERT INTO data_asset(id,project_id,collection_id,blob_sha256,object_ref,size_bytes,mime_type,file_name,format,status,uploaded_by,processing_run_id)
       VALUES($1,$2,$3,$4,$5,$6,'application/x-ndjson',$7,'jsonl','stored',$8,$9)`,
@@ -470,7 +490,13 @@ export async function acceptProcessingResults(
     await client.query(
       `INSERT INTO source_attribution_revision(id,asset_id,source_type,source_name,purpose,responsible_actor,responsible_person,license_status,sensitivity)
       VALUES($1,$2,'model_processed',$3,$4,$5,$5,'derived_from_source','inherited')`,
-      [opaqueId("attr"), assetId, name, `${label}处理结果`, scope.actorId],
+      [
+        opaqueId("attr"),
+        assetId,
+        name,
+        `${{ clean: "清洗", rewrite: "改写", augment: "扩充" }[run.options.operation]}处理结果`,
+        scope.actorId,
+      ],
     );
     const mapping = {
       question: "/question",

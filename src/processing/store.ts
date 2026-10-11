@@ -67,6 +67,14 @@ export type InputSnapshot = {
   })[];
   source: ProcessingSource;
   revision?: number;
+  continuation?: {
+    parentRunId: string;
+    kind: "continue" | "rerun";
+    inputParentRunId?: string;
+    inputRootOperation: ProcessingOptions["operation"];
+    rootOperation: ProcessingOptions["operation"];
+    adoptionFields: ProcessingOptions["allowedFields"];
+  };
   refinement?: {
     parentRunId: string;
     selectedIds: string[];
@@ -75,6 +83,7 @@ export type InputSnapshot = {
   };
 };
 export type ProcessingRun = {
+  continuation_kind?: "continue" | "rerun";
   id: string;
   project_id: string;
   actor_id: string;
@@ -319,6 +328,7 @@ function summary(row: ProcessingRun) {
   return {
     id: row.id,
     parentRunId: row.parent_run_id ?? null,
+    continuationKind: row.continuation_kind ?? null,
     jobId: row.job_id,
     source: row.source,
     options: row.options,
@@ -349,7 +359,7 @@ function summary(row: ProcessingRun) {
   };
 }
 const selectRun =
-  "SELECT r.*,j.status,j.progress,j.error_code,j.result,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues FROM processing_run r JOIN job j ON j.id=r.job_id";
+  "SELECT r.*,j.payload->>'continuationKind' AS continuation_kind,j.status,j.progress,j.error_code,j.result,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues FROM processing_run r JOIN job j ON j.id=r.job_id";
 export async function getProcessingRun(
   db: Pick<Database, "query">,
   scope: ProcessingScope,
@@ -689,7 +699,14 @@ export async function readProcessingRun(
     throw new ProcessingError(409, "processing_source_unavailable");
   return {
     run: summary(run),
-    rootOperation: input.refinement?.rootOperation ?? run.options.operation,
+    rootOperation:
+      input.continuation?.rootOperation ??
+      input.refinement?.rootOperation ??
+      run.options.operation,
+    adoptionFields:
+      input.continuation?.adoptionFields ??
+      input.refinement?.adoptionFields ??
+      run.options.allowedFields,
     ...(all
       ? {
           backgroundGoal: {

@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Plus, Search } from "lucide-react";
+import { FileText, Plus, Search, MoreHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -34,7 +40,15 @@ import { useProjectAccess } from "@/hooks/use-project-access";
 import { Pagination } from "@/routes/index";
 
 export const Route = createFileRoute("/projects/$projectId/processing")({
-  validateSearch: (value: Record<string, unknown>) => ({
+  validateSearch: (
+    value: Record<string, unknown>,
+  ): {
+    source?: "assets" | "draft" | "version" | undefined;
+    sourceId?: string | undefined;
+    run?: string | undefined;
+    parent?: string | undefined;
+    mode?: "continue" | "rerun" | undefined;
+  } => ({
     source:
       typeof value["source"] === "string" &&
       ["assets", "draft", "version"].includes(value["source"])
@@ -42,6 +56,8 @@ export const Route = createFileRoute("/projects/$projectId/processing")({
         : undefined,
     sourceId: typeof value["sourceId"] === "string" ? value["sourceId"] : undefined,
     run: typeof value["run"] === "string" ? value["run"] : undefined,
+    parent: typeof value["parent"] === "string" ? value["parent"] : undefined,
+    mode: value["mode"] === "continue" || value["mode"] === "rerun" ? value["mode"] : undefined,
   }),
   component: ProcessingPage,
 });
@@ -61,6 +77,8 @@ type Receipt = {
   fileName?: string;
 };
 type Run = {
+  parentRunId?: string;
+  continuationKind?: "continue" | "rerun";
   sourceSummary?: SourceSummary;
   actorName?: string;
   id: string;
@@ -87,6 +105,8 @@ type ResultPage = {
   run: Run;
   records: ReviewRow[];
   rootOperation?: string;
+  adoptionFields?: string[];
+  adoptedIds?: string[];
   stats?: { all: number; changed: number; needsReview: number };
   receipts?: Receipt[];
   total: number;
@@ -137,6 +157,12 @@ const errors: Record<string, string> = {
   test_set_capacity_exceeded: "目标草稿超过 5 个来源文件、10,000 条记录或 100 MB 的上限。",
   processing_not_found: "当前任务不可访问，或来源已被删除。",
   processing_record_too_large: "单条输入超过模型处理大小限制，请缩小记录内容。",
+  processing_already_adopted: "所选结果已有保存记录，请移除已保存选择，或从保存后的数据继续处理。",
+  processing_input_corrupt: "历史输入快照不可用，无法重新运行。请返回来源重新选择。",
+  draft_not_editing: "原草稿已发布，不能继续写入。处理结果和选择已保留。",
+  draft_paused: "原草稿已暂停，请恢复父对象后再保存。",
+  draft_not_found: "目标草稿已发布、删除或不可用，未改动其他草稿。处理结果和选择已保留。",
+  draft_record_removed: "原记录已被移除，未覆盖草稿。处理结果和选择已保留。",
 };
 const errorText = (error: unknown) =>
   errors[error instanceof Error ? error.message : ""] ?? "操作失败，输入已保留，请重试。";
@@ -157,11 +183,13 @@ function ProcessingPage() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState("all");
   const [historyPage, setHistoryPage] = useState(1);
+  const actorId = queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? "";
   const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs`;
   const runs = useQuery({
     queryKey: ["processing-runs", projectId],
     queryFn: () => request<{ runs: Run[] }>(path),
-    enabled: access.canWrite && !search.run && !(search.source && search.sourceId),
+    enabled:
+      access.canWrite && !search.run && !search.parent && !(search.source && search.sourceId),
     refetchInterval: 5000,
   });
   const history = (runs.data?.runs ?? []).filter(
@@ -173,14 +201,30 @@ function ProcessingPage() {
   );
   const runId = search.run;
   const source =
-    search.source && search.sourceId
+    search.parent && search.mode
       ? {
-          kind: search.source,
-          ...(search.source === "assets"
-            ? { assetIds: [search.sourceId] }
-            : { id: search.sourceId }),
+          kind: search.mode === "continue" ? "results" : "rerun",
+          id: search.parent,
+          ...(search.mode === "continue"
+            ? {
+                resultIds:
+                  queryClient.getQueryData<string[]>([
+                    "processing-followup-selection",
+                    actorId,
+                    projectId,
+                    search.parent,
+                  ]) ?? [],
+              }
+            : {}),
         }
-      : null;
+      : search.source && search.sourceId
+        ? {
+            kind: search.source,
+            ...(search.source === "assets"
+              ? { assetIds: [search.sourceId] }
+              : { id: search.sourceId }),
+          }
+        : null;
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {!(source && !runId) && (
@@ -229,15 +273,21 @@ function ProcessingPage() {
         <>
           {source && !runId && (
             <ProcessingForm
-              key={`${projectId}:${source.kind}:${search.sourceId}`}
+              key={`${projectId}:${JSON.stringify(source)}`}
               projectId={projectId}
               source={source}
-              actorId={
-                queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? ""
-              }
+              actorId={actorId}
               onCreated={async (id) => {
                 await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
-                await navigate({ search: { ...search, run: id } });
+                await navigate({
+                  search: {
+                    source: undefined,
+                    sourceId: undefined,
+                    parent: undefined,
+                    mode: undefined,
+                    run: id,
+                  },
+                });
               }}
             />
           )}
@@ -246,6 +296,21 @@ function ProcessingPage() {
               key={`${projectId}:${runId}`}
               projectId={projectId}
               runId={runId}
+              onFollowup={(mode, ids) => {
+                queryClient.setQueryData(
+                  ["processing-followup-selection", actorId, projectId, runId],
+                  ids,
+                );
+                void navigate({
+                  search: {
+                    source: undefined,
+                    sourceId: undefined,
+                    run: undefined,
+                    parent: runId,
+                    mode,
+                  },
+                });
+              }}
               onBack={() => {
                 void navigate({
                   search: { source: undefined, sourceId: undefined, run: undefined },
@@ -348,6 +413,19 @@ function ProcessingPage() {
                                   {run.sourceSummary?.kindLabel ?? "来源类型未记录"} ·{" "}
                                   {run.options.instructions || "未记录处理要求"}
                                 </p>
+                                {run.parentRunId && (
+                                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
+                                    {run.continuationKind === "rerun" ? "重新运行自" : "继续处理自"}{" "}
+                                    <Link
+                                      className="text-primary hover:underline"
+                                      to="/projects/$projectId/processing"
+                                      params={{ projectId }}
+                                      search={{ run: run.parentRunId }}
+                                    >
+                                      上一轮任务
+                                    </Link>
+                                  </p>
+                                )}
                               </td>
                               <td className="px-4 py-3">{run.inputCount} 条</td>
                               <td className="px-4 py-3">
@@ -413,7 +491,10 @@ function ProcessingForm({
 }) {
   const queryClient = useQueryClient();
   const cacheKey = ["processing-config", actorId, projectId, JSON.stringify(source)];
+  const followup = source["kind"] === "results" || source["kind"] === "rerun";
+  const rerun = source["kind"] === "rerun";
   queryClient.setQueryDefaults(["processing-config"], { gcTime: Infinity });
+  queryClient.setQueryDefaults(["processing-followup-selection"], { gcTime: Infinity });
   const saved = useRef(
     queryClient.getQueryData<{
       page: number;
@@ -427,10 +508,14 @@ function ProcessingForm({
       count: string;
       sourceRevision?: string;
       operationKey: string;
+      pendingSubmission?: { key: string; body: unknown };
     }>(cacheKey),
   ).current;
   const sourceRevision = useRef(saved?.sourceRevision);
   const submittedConfig = useRef(false);
+  const initialized = useRef(Boolean(saved));
+  const pendingSubmission = useRef(saved?.pendingSubmission);
+  const [unknownSubmit, setUnknownSubmit] = useState(Boolean(saved?.pendingSubmission));
   const [scopeChanged, setScopeChanged] = useState(false);
   const [page, setPage] = useState(saved?.page ?? 1),
     [selected, setSelected] = useState<Set<string>>(new Set(saved?.selected)),
@@ -468,6 +553,7 @@ function ProcessingForm({
         sourceSummary?: SourceSummary;
         sourceRevision?: string;
         metadataKeys?: string[];
+        parent?: { id: string; options: Run["options"]; createdAt: string };
       }>(`/api/projects/${encodeURIComponent(projectId)}/processing-inputs`, {
         source,
         offset: (page - 1) * 20,
@@ -481,6 +567,18 @@ function ProcessingForm({
     refetchOnWindowFocus: false,
     refetchOnMount: "always",
   });
+  useEffect(() => {
+    if (!followup || !input.data || initialized.current) return;
+    initialized.current = true;
+    setSelected(new Set(input.data.allIds));
+    if (rerun && input.data.parent) {
+      const options = input.data.parent.options;
+      setOperation(options.operation);
+      setInstructions(options.instructions);
+      setAllowedFields(options.allowedFields ?? ["question"]);
+      setCount(String(options.outputCount ?? 20));
+    }
+  }, [followup, rerun, input.data]);
   useEffect(() => {
     if (!canRetainReadResult(input.error))
       queryClient.removeQueries({
@@ -508,9 +606,11 @@ function ProcessingForm({
       count,
       sourceRevision: sourceRevision.current,
       operationKey,
+      pendingSubmission: pendingSubmission.current,
     });
   });
   function change() {
+    if (unknownSubmit) return;
     setOperationKey(crypto.randomUUID());
     setError("");
   }
@@ -527,28 +627,61 @@ function ProcessingForm({
           ? `请填写${labels[operation]}要求。`
           : "";
   async function submit() {
-    if (busy || reason || input.isError || input.isFetching || scopeChanged) return;
+    if (
+      busy ||
+      (!pendingSubmission.current && (reason || input.isError || input.isFetching || scopeChanged))
+    )
+      return;
     setBusy(true);
     setError("");
     try {
+      const body = followup
+        ? {
+            mode: rerun ? "rerun" : "continue",
+            ...(rerun ? {} : { resultIds: [...selected].map((id) => id.slice(10)) }),
+            options: {
+              operation,
+              instructions,
+              allowedFields,
+              ...(operation === "augment" ? { outputCount: Number(count) } : {}),
+            },
+          }
+        : {
+            source: { ...source, recordIds: [...selected] },
+            options: {
+              operation,
+              instructions,
+              allowedFields,
+              ...(operation === "augment" ? { outputCount: Number(count) } : {}),
+            },
+          };
+      pendingSubmission.current ??= { key: operationKey, body };
+      queryClient.setQueryData(cacheKey, {
+        ...queryClient.getQueryData<object>(cacheKey),
+        pendingSubmission: pendingSubmission.current,
+      });
       const result = await post<{ run: Run }>(
-        `/api/projects/${encodeURIComponent(projectId)}/processing-runs`,
-        {
-          source: { ...source, recordIds: [...selected] },
-          options: {
-            operation,
-            instructions,
-            allowedFields,
-            ...(operation === "augment" ? { outputCount: Number(count) } : {}),
-          },
-        },
-        operationKey,
+        `/api/projects/${encodeURIComponent(projectId)}/processing-runs${followup ? `/${encodeURIComponent(String(source["id"]))}/followups` : ""}`,
+        pendingSubmission.current.body,
+        pendingSubmission.current.key,
       );
       submittedConfig.current = true;
       queryClient.removeQueries({ queryKey: cacheKey, exact: true });
       await onCreated(result.run.id);
     } catch (e) {
       setError(errorText(e));
+      const code = e instanceof Error ? e.message : "";
+      if (
+        code.startsWith("processing_") ||
+        code.startsWith("model_connection_") ||
+        ["idempotency_conflict", "validation_error", "csrf_rejected"].includes(code)
+      )
+        pendingSubmission.current = undefined;
+      else {
+        setUnknownSubmit(true);
+        setError("");
+      }
+      if (!pendingSubmission.current) setUnknownSubmit(false);
     } finally {
       setBusy(false);
     }
@@ -564,16 +697,20 @@ function ProcessingForm({
     <div className="space-y-5">
       <PageHeader
         title={`处理 ${visibleInput?.sourceSummary?.name ?? "数据"}`}
-        description={`${visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条 · 已选 ${selected.size} 条`}
+        description={`${visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条 · 已选 ${selected.size} 条${followup && visibleInput?.parent ? ` · ${labels[visibleInput.parent.options.operation]} · ${new Date(visibleInput.parent.createdAt).toLocaleString()}` : ""}`}
         actions={
           <>
             <Button variant="ghost" asChild>
               <Link
                 to="/projects/$projectId/processing"
                 params={{ projectId }}
-                search={{ source: undefined, sourceId: undefined, run: undefined }}
+                search={
+                  followup
+                    ? { run: String(source["id"]) }
+                    : { source: undefined, sourceId: undefined, run: undefined }
+                }
               >
-                返回处理任务
+                {followup ? "返回上次结果" : "返回处理任务"}
               </Link>
             </Button>
             {visibleInput?.sourceSummary?.href && (
@@ -586,6 +723,29 @@ function ProcessingForm({
           </>
         }
       />
+      {followup && (
+        <p className="text-sm text-muted-foreground">
+          {rerun
+            ? "使用上次提交的完整输入重新处理；不会读取来源的最新内容。"
+            : "来自上一次处理结果；本轮只处理所选输入，未选结果保留在上一轮。"}
+        </p>
+      )}
+      {followup && visibleInput?.parent && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted-foreground">查看上一轮处理要求</summary>
+          <p className="mt-2 whitespace-pre-wrap break-words">
+            {visibleInput.parent.options.instructions || "未填写要求"}
+          </p>
+        </details>
+      )}
+      {unknownSubmit && (
+        <div role="alert" className="rounded-lg border p-4 text-sm">
+          提交结果尚未确认，请用同一次请求核对，避免重复创建。
+          <Button className="ml-2" variant="outline" onClick={() => void submit()} disabled={busy}>
+            核对提交结果
+          </Button>
+        </div>
+      )}
       {(visibleInput?.sourceSummary?.files.length ?? 0) > 1 && (
         <details className="text-sm">
           <summary>查看来源文件</summary>
@@ -644,324 +804,328 @@ function ProcessingForm({
           开始{labels[operation]}
         </Button>
       </Card>
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <Card className="min-w-0 overflow-hidden">
-          <CardHeader className="border-b bg-muted/60 px-4 py-3">
-            <h2 className="font-semibold">选择输入记录</h2>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="space-y-3 border-b p-4">
-              <ProcessingFilters
-                search={search}
-                conditions={conditions}
-                metadataKeys={visibleInput?.metadataKeys ?? []}
-                disabled={busy}
-                onChange={(text, filters) => {
-                  setSearch(text);
-                  setConditions(filters);
-                  setPage(1);
-                }}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy || !visibleInput || input.isFetching}
-                  onClick={() => {
-                    setSelected(
-                      (old) => new Set([...old, ...visibleInput!.records.map((row) => row.id)]),
-                    );
-                    change();
-                  }}
-                >
-                  勾选本页
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy || !visibleInput || input.isFetching}
-                  onClick={() => {
-                    setSelected((old) => new Set([...old, ...visibleInput!.allIds]));
-                    change();
-                  }}
-                >
-                  选择全部匹配记录（{visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条）
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy || !selected.size}
-                  onClick={() => {
-                    setSelected(new Set());
+      <fieldset disabled={busy || unknownSubmit} className="min-w-0">
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <Card className="min-w-0 overflow-hidden">
+            <CardHeader className="border-b bg-muted/60 px-4 py-3">
+              <h2 className="font-semibold">选择输入记录</h2>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="space-y-3 border-b p-4">
+                <ProcessingFilters
+                  search={search}
+                  conditions={conditions}
+                  metadataKeys={visibleInput?.metadataKeys ?? []}
+                  disabled={rerun || busy}
+                  onChange={(text, filters) => {
+                    setSearch(text);
+                    setConditions(filters);
                     setPage(1);
-                    change();
                   }}
-                >
-                  清空选择
-                </Button>
-                <label className="ml-auto flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={selectedOnly}
-                    disabled={busy}
-                    onCheckedChange={(value) => {
-                      setSelectedOnly(value === true);
-                      setPage(1);
-                    }}
-                  />
-                  只看已选
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
-                {selected.size} 条{hidden > 0 && visibleInput ? `（${hidden} 条在当前筛选外）` : ""}
-                。提交使用完整已选集合。
-              </p>
-            </div>
-            {input.error ? (
-              <div className="space-y-2 p-5" role="alert">
-                <p>{errorText(input.error)} 已选记录与处理要求已保留。</p>
-                <Button variant="outline" onClick={() => void input.refetch()}>
-                  重试读取来源
-                </Button>
-              </div>
-            ) : input.isPending ? (
-              <p className="p-5 text-sm text-muted-foreground">正在读取记录…</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[440px] table-fixed text-sm">
-                  <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
-                    <tr>
-                      <th className="w-12 px-4 py-2 font-medium">
-                        <Checkbox
-                          aria-label="选择本页记录"
-                          disabled={
-                            busy ||
-                            input.isFetching ||
-                            !visibleInput?.records.length ||
-                            scopeChanged
-                          }
-                          checked={
-                            Boolean(visibleInput?.records.length) &&
-                            visibleInput!.records.every((row) => selected.has(row.id))
-                          }
-                          onCheckedChange={(checked) => {
-                            setSelected((old) => {
-                              const next = new Set(old);
-                              for (const row of visibleInput?.records ?? []) {
-                                if (checked) next.add(row.id);
-                                else next.delete(row.id);
-                              }
-                              return next;
-                            });
-                            change();
-                          }}
-                        />
-                      </th>
-                      <th className="px-4 py-2 font-medium">问题 / 原始内容</th>
-                      <th className="w-[22%] px-4 py-2 font-medium">期望输出</th>
-                      <th className="w-[30%] px-4 py-2 font-medium">Metadata</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleInput?.records.map((row) => (
-                      <tr key={row.id} className="border-t align-top">
-                        <td className="px-4 py-3">
-                          <Checkbox
-                            aria-label={`选择记录 ${row.id}`}
-                            disabled={busy || input.isFetching || scopeChanged}
-                            checked={selected.has(row.id)}
-                            onCheckedChange={(checked) => {
-                              setSelected((old) => {
-                                const next = new Set(old);
-                                if (checked) next.add(row.id);
-                                else next.delete(row.id);
-                                return next;
-                              });
-                              if (selectedOnly) setPage(1);
-                              change();
-                            }}
-                          />
-                        </td>
-                        <td className="break-words px-4 py-3">
-                          <details>
-                            <summary className="cursor-pointer line-clamp-2">
-                              {row.question || JSON.stringify(row.raw) || "（空问题）"}
-                            </summary>
-                            <p className="mt-2 whitespace-pre-wrap break-words">
-                              {row.raw ? JSON.stringify(row.raw, null, 2) : row.question}
-                            </p>
-                          </details>
-                        </td>
-                        <td className="px-4 py-3">
-                          <details>
-                            <summary className="cursor-pointer line-clamp-2 break-words">
-                              {row.expectedOutput || "（空值）"}
-                            </summary>
-                            <p className="whitespace-pre-wrap break-words">
-                              {row.expectedOutput || "（空值）"}
-                            </p>
-                          </details>
-                        </td>
-                        <td className="px-4 py-3">
-                          <MetadataSummary entries={row.metadata} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!visibleInput?.records.length && (
-                  <div className="space-y-2 p-6 text-center text-sm">
-                    <p>{selectedOnly ? "当前范围没有已选记录。" : "没有匹配记录。"}</p>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setSearch("");
-                        setConditions([]);
-                        setSelectedOnly(false);
-                        setPage(1);
-                      }}
-                    >
-                      显示全部记录
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="px-4 pb-3">
-              <Pagination
-                current={page}
-                total={visibleInput?.total ?? 0}
-                unit="条记录"
-                pages={Math.max(1, Math.ceil((visibleInput?.total ?? 0) / 20))}
-                onChange={setPage}
-              />
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          id="processing-settings"
-          className="scroll-mt-28 min-w-0 overflow-hidden xl:sticky xl:top-20"
-        >
-          <CardHeader className="border-b bg-muted/60 px-4 py-3">
-            <h2 className="font-semibold">处理要求</h2>
-          </CardHeader>
-          <CardContent className="space-y-5 p-4">
-            <div className="space-y-2 text-sm">
-              <div className="flex gap-2" role="group" aria-label="处理方式">
-                {Object.entries(labels).map(([value, label]) => (
+                />
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
-                    key={value}
                     size="sm"
-                    className="flex-1"
-                    variant={operation === value ? "default" : "outline"}
-                    aria-pressed={operation === value}
-                    disabled={busy}
+                    variant="outline"
+                    disabled={rerun || busy || !visibleInput || input.isFetching}
                     onClick={() => {
-                      setOperation(value as typeof operation);
+                      setSelected(
+                        (old) => new Set([...old, ...visibleInput!.records.map((row) => row.id)]),
+                      );
                       change();
                     }}
                   >
-                    {label}
+                    勾选本页
                   </Button>
-                ))}
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
-            </div>
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">允许修改的字段</legend>
-              <div className="flex flex-wrap gap-4">
-                {[
-                  ["question", "问题"],
-                  ["expectedOutput", "期望输出"],
-                  ["metadata", "Metadata"],
-                ].map(([field, label]) => (
-                  <label key={field} className="flex items-center gap-2 text-sm">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={rerun || busy || !visibleInput || input.isFetching}
+                    onClick={() => {
+                      setSelected((old) => new Set([...old, ...visibleInput!.allIds]));
+                      change();
+                    }}
+                  >
+                    选择全部匹配记录（{visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条）
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={rerun || busy || !selected.size}
+                    onClick={() => {
+                      setSelected(new Set());
+                      setPage(1);
+                      change();
+                    }}
+                  >
+                    清空选择
+                  </Button>
+                  <label className="ml-auto flex items-center gap-2 text-sm">
                     <Checkbox
-                      disabled={busy}
-                      checked={allowedFields.includes(field!)}
-                      onCheckedChange={(yes) => {
-                        setAllowedFields((old) =>
-                          yes ? [...old, field!] : old.filter((value) => value !== field),
-                        );
-                        change();
+                      checked={selectedOnly}
+                      disabled={rerun || busy}
+                      onCheckedChange={(value) => {
+                        setSelectedOnly(value === true);
+                        setPage(1);
                       }}
                     />
-                    {label}
+                    只看已选
                   </label>
-                ))}
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                未勾选的字段保留输入原值；切换处理方式不改变字段授权。
-              </p>
-              {!allowedFields.length && (
-                <p className="text-xs text-destructive">请至少选择一个字段。</p>
-              )}
-            </fieldset>
-            <label className="block space-y-2 text-sm">
-              <span>{operation === "clean" ? "补充要求（选填）" : "具体要求"}</span>
-              <Textarea
-                disabled={busy}
-                value={instructions}
-                maxLength={8000}
-                rows={4}
-                placeholder={
-                  {
-                    clean: "例如：统一标点，保留原意。留空则只整理首尾空白。",
-                    rewrite: "例如：保留原意，改写为清晰、独立的问题。",
-                    augment: "例如：围绕相同意图增加不同措辞和场景。",
-                  }[operation]
-                }
-                onChange={(event) => {
-                  setInstructions(event.target.value);
-                  change();
-                }}
-              />
-              {operation !== "clean" && !instructions.trim() && (
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  请填写{labels[operation]}要求后开始。
+                  匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
+                  {selected.size} 条
+                  {hidden > 0 && visibleInput ? `（${hidden} 条在当前筛选外）` : ""}
+                  。提交使用完整已选集合。
                 </p>
+              </div>
+              {input.error ? (
+                <div className="space-y-2 p-5" role="alert">
+                  <p>{errorText(input.error)} 已选记录与处理要求已保留。</p>
+                  <Button variant="outline" onClick={() => void input.refetch()}>
+                    重试读取来源
+                  </Button>
+                </div>
+              ) : input.isPending ? (
+                <p className="p-5 text-sm text-muted-foreground">正在读取记录…</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[440px] table-fixed text-sm">
+                    <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+                      <tr>
+                        <th className="w-12 px-4 py-2 font-medium">
+                          <Checkbox
+                            aria-label="选择本页记录"
+                            disabled={
+                              rerun ||
+                              busy ||
+                              input.isFetching ||
+                              !visibleInput?.records.length ||
+                              scopeChanged
+                            }
+                            checked={
+                              Boolean(visibleInput?.records.length) &&
+                              visibleInput!.records.every((row) => selected.has(row.id))
+                            }
+                            onCheckedChange={(checked) => {
+                              setSelected((old) => {
+                                const next = new Set(old);
+                                for (const row of visibleInput?.records ?? []) {
+                                  if (checked) next.add(row.id);
+                                  else next.delete(row.id);
+                                }
+                                return next;
+                              });
+                              change();
+                            }}
+                          />
+                        </th>
+                        <th className="px-4 py-2 font-medium">问题 / 原始内容</th>
+                        <th className="w-[22%] px-4 py-2 font-medium">期望输出</th>
+                        <th className="w-[30%] px-4 py-2 font-medium">Metadata</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleInput?.records.map((row) => (
+                        <tr key={row.id} className="border-t align-top">
+                          <td className="px-4 py-3">
+                            <Checkbox
+                              aria-label={`选择记录 ${row.id}`}
+                              disabled={rerun || busy || input.isFetching || scopeChanged}
+                              checked={selected.has(row.id)}
+                              onCheckedChange={(checked) => {
+                                setSelected((old) => {
+                                  const next = new Set(old);
+                                  if (checked) next.add(row.id);
+                                  else next.delete(row.id);
+                                  return next;
+                                });
+                                if (selectedOnly) setPage(1);
+                                change();
+                              }}
+                            />
+                          </td>
+                          <td className="break-words px-4 py-3">
+                            <details>
+                              <summary className="cursor-pointer line-clamp-2">
+                                {row.question || JSON.stringify(row.raw) || "（空问题）"}
+                              </summary>
+                              <p className="mt-2 whitespace-pre-wrap break-words">
+                                {row.raw ? JSON.stringify(row.raw, null, 2) : row.question}
+                              </p>
+                            </details>
+                          </td>
+                          <td className="px-4 py-3">
+                            <details>
+                              <summary className="cursor-pointer line-clamp-2 break-words">
+                                {row.expectedOutput || "（空值）"}
+                              </summary>
+                              <p className="whitespace-pre-wrap break-words">
+                                {row.expectedOutput || "（空值）"}
+                              </p>
+                            </details>
+                          </td>
+                          <td className="px-4 py-3">
+                            <MetadataSummary entries={row.metadata} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!visibleInput?.records.length && (
+                    <div className="space-y-2 p-6 text-center text-sm">
+                      <p>{selectedOnly ? "当前范围没有已选记录。" : "没有匹配记录。"}</p>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setSearch("");
+                          setConditions([]);
+                          setSelectedOnly(false);
+                          setPage(1);
+                        }}
+                      >
+                        显示全部记录
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
-            </label>
-            {operation === "augment" && (
+              <div className="px-4 pb-3">
+                <Pagination
+                  current={page}
+                  total={visibleInput?.total ?? 0}
+                  unit="条记录"
+                  pages={Math.max(1, Math.ceil((visibleInput?.total ?? 0) / 20))}
+                  onChange={setPage}
+                />
+              </div>
+            </CardContent>
+          </Card>
+          <Card
+            id="processing-settings"
+            className="scroll-mt-28 min-w-0 overflow-hidden xl:sticky xl:top-20"
+          >
+            <CardHeader className="border-b bg-muted/60 px-4 py-3">
+              <h2 className="font-semibold">处理要求</h2>
+            </CardHeader>
+            <CardContent className="space-y-5 p-4">
+              <div className="space-y-2 text-sm">
+                <div className="flex gap-2" role="group" aria-label="处理方式">
+                  {Object.entries(labels).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      size="sm"
+                      className="flex-1"
+                      variant={operation === value ? "default" : "outline"}
+                      aria-pressed={operation === value}
+                      disabled={busy}
+                      onClick={() => {
+                        setOperation(value as typeof operation);
+                        change();
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+              </div>
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">允许修改的字段</legend>
+                <div className="flex flex-wrap gap-4">
+                  {[
+                    ["question", "问题"],
+                    ["expectedOutput", "期望输出"],
+                    ["metadata", "Metadata"],
+                  ].map(([field, label]) => (
+                    <label key={field} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        disabled={busy}
+                        checked={allowedFields.includes(field!)}
+                        onCheckedChange={(yes) => {
+                          setAllowedFields((old) =>
+                            yes ? [...old, field!] : old.filter((value) => value !== field),
+                          );
+                          change();
+                        }}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  未勾选的字段保留输入原值；切换处理方式不改变字段授权。
+                </p>
+                {!allowedFields.length && (
+                  <p className="text-xs text-destructive">请至少选择一个字段。</p>
+                )}
+              </fieldset>
               <label className="block space-y-2 text-sm">
-                <span>新增记录数量（输入 {selected.size} 条）</span>
-                <Input
-                  aria-label="新增记录数量"
-                  type="number"
-                  min={1}
-                  max={10000}
-                  value={count}
+                <span>{operation === "clean" ? "补充要求（选填）" : "具体要求"}</span>
+                <Textarea
                   disabled={busy}
+                  value={instructions}
+                  maxLength={8000}
+                  rows={4}
+                  placeholder={
+                    {
+                      clean: "例如：统一标点，保留原意。留空则只整理首尾空白。",
+                      rewrite: "例如：保留原意，改写为清晰、独立的问题。",
+                      augment: "例如：围绕相同意图增加不同措辞和场景。",
+                    }[operation]
+                  }
                   onChange={(event) => {
-                    setCount(event.target.value);
+                    setInstructions(event.target.value);
                     change();
                   }}
                 />
-                {invalidCount && (
-                  <p className="text-xs text-destructive">请输入 1–10,000 的整数。</p>
+                {operation !== "clean" && !instructions.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    请填写{labels[operation]}要求后开始。
+                  </p>
                 )}
               </label>
-            )}
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <div className="space-y-2 border-t pt-4">
-              {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
-              <Button
-                className="w-full"
-                disabled={
-                  busy || Boolean(reason) || input.isError || input.isFetching || scopeChanged
-                }
-                onClick={() => void submit()}
-              >
-                {busy ? "正在提交…" : `开始${labels[operation]} · ${selected.size} 条输入`}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              {operation === "augment" && (
+                <label className="block space-y-2 text-sm">
+                  <span>新增记录数量（输入 {selected.size} 条）</span>
+                  <Input
+                    aria-label="新增记录数量"
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={count}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setCount(event.target.value);
+                      change();
+                    }}
+                  />
+                  {invalidCount && (
+                    <p className="text-xs text-destructive">请输入 1–10,000 的整数。</p>
+                  )}
+                </label>
+              )}
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <div className="space-y-2 border-t pt-4">
+                {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
+                <Button
+                  className="w-full"
+                  disabled={
+                    busy || Boolean(reason) || input.isError || input.isFetching || scopeChanged
+                  }
+                  onClick={() => void submit()}
+                >
+                  {busy ? "正在提交…" : `开始${labels[operation]} · ${selected.size} 条输入`}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </fieldset>
     </div>
   );
 }
@@ -969,25 +1133,54 @@ function ProcessingResults({
   projectId,
   runId,
   onBack,
+  onFollowup,
 }: {
   projectId: string;
   runId: string;
   onBack: () => void;
+  onFollowup: (mode: "continue" | "rerun", ids: string[]) => void;
 }) {
   const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}`;
-  const [view, setView] = useState("all");
-  const [text, setText] = useState("");
-  const [page, setPage] = useState(1),
-    [selected, setSelected] = useState<Set<string>>(new Set()),
+  const queryClient = useQueryClient();
+  const actorId = queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? "";
+  const cacheKey = ["processing-result-position", actorId, projectId, runId];
+  queryClient.setQueryDefaults(["processing-result-position"], { gcTime: Infinity });
+  const position = useRef(
+    queryClient.getQueryData<{
+      view: string;
+      text: string;
+      page: number;
+      selected: string[];
+      pendingSave?: { key: string; body: unknown };
+      destination?: string;
+      name?: string;
+      targetDraftId?: string;
+    }>(cacheKey),
+  ).current;
+  const [view, setView] = useState(position?.view ?? "all");
+  const [text, setText] = useState(position?.text ?? "");
+  const [page, setPage] = useState(position?.page ?? 1),
+    [selected, setSelected] = useState<Set<string>>(new Set(position?.selected)),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [confirm, setConfirm] = useState(false);
-  const [destination, setDestination] = useState("asset"),
-    [name, setName] = useState(""),
-    [key, setKey] = useState(() => crypto.randomUUID()),
+  const [destination, setDestination] = useState(position?.destination ?? "asset"),
+    [name, setName] = useState(position?.name ?? ""),
+    [key, setKey] = useState(() => position?.pendingSave?.key ?? crypto.randomUUID()),
     [receipt, setReceipt] = useState<Receipt | null>(null);
-  const queryClient = useQueryClient();
-  const [targetDraftId, setTargetDraftId] = useState("");
+  const [targetDraftId, setTargetDraftId] = useState(position?.targetDraftId ?? "");
+  useEffect(() => {
+    queryClient.setQueryData(cacheKey, {
+      view,
+      text,
+      page,
+      selected: [...selected],
+      pendingSave: submitted.current,
+      destination,
+      name,
+      targetDraftId,
+    });
+  });
   const drafts = useQuery({
     queryKey: ["processing-target-drafts", projectId],
     queryFn: () =>
@@ -1045,8 +1238,8 @@ function ProcessingResults({
       setBusy(false);
     }
   }
-  const submitted = useRef<{ key: string; body: unknown } | null>(null);
-  const [unknownSave, setUnknownSave] = useState(false);
+  const submitted = useRef<{ key: string; body: unknown } | null>(position?.pendingSave ?? null);
+  const [unknownSave, setUnknownSave] = useState(Boolean(position?.pendingSave));
   async function accept() {
     if (busy) return;
     setBusy(true);
@@ -1063,10 +1256,18 @@ function ProcessingResults({
         } else if (destination === "newDraft") target = { kind: "newDraft", name, purpose: "" };
         submitted.current = { key, body: { resultIds: [...selected], target } };
       }
+      queryClient.setQueryData(cacheKey, {
+        ...queryClient.getQueryData<object>(cacheKey),
+        pendingSave: submitted.current,
+        destination,
+        name,
+        targetDraftId,
+      });
       const result = await post<{
         receipt: Receipt;
       }>(`${path}/accept`, submitted.current!.body, key);
       setReceipt(result.receipt);
+      submitted.current = null;
       setUnknownSave(false);
       setConfirm(false);
       setSelected(new Set());
@@ -1076,18 +1277,21 @@ function ProcessingResults({
     } catch (e) {
       setError(errorText(e));
       const code = e instanceof Error ? e.message : "";
-      const rejected = [
-        "draft_revision_conflict",
-        "draft_field_conflict",
-        "processing_source_unavailable",
-        "processing_not_found",
-        "processing_still_running",
-        "test_set_capacity_exceeded",
-        "processing_capacity_exceeded",
-        "idempotency_conflict",
-        "validation_error",
-        "processing_selection_invalid",
-      ].includes(code);
+      const rejected =
+        code.startsWith("processing_") ||
+        code.startsWith("draft_") ||
+        [
+          "draft_revision_conflict",
+          "draft_field_conflict",
+          "processing_source_unavailable",
+          "processing_not_found",
+          "processing_still_running",
+          "test_set_capacity_exceeded",
+          "processing_capacity_exceeded",
+          "idempotency_conflict",
+          "validation_error",
+          "processing_selection_invalid",
+        ].includes(code);
       if (submitted.current && !rejected) setUnknownSave(true);
       else if (rejected) {
         submitted.current = null;
@@ -1115,6 +1319,8 @@ function ProcessingResults({
     terminal = ["succeeded", "failed", "cancelled"].includes(run.status);
   const stale = data.isFetching || data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
+  const savedSelection = [...selected].filter((id) => value.adoptedIds?.includes(id));
+  const sourceDraft = run.source.kind === "draft";
   return (
     <div className="space-y-4">
       <Card>
@@ -1139,6 +1345,25 @@ function ProcessingResults({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              {terminal && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="更多任务操作"
+                      disabled={busy || unknownSave || stale || data.isError}
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => onFollowup("rerun", [])}>
+                      重新运行
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {!terminal ? (
                 <Button
                   variant="outline"
@@ -1156,6 +1381,16 @@ function ProcessingResults({
               )}
             </div>
           </div>
+          {run.parentRunId && (
+            <Link
+              className="mt-2 inline-block text-sm text-primary hover:underline"
+              to="/projects/$projectId/processing"
+              params={{ projectId }}
+              search={{ run: run.parentRunId }}
+            >
+              返回上一轮任务
+            </Link>
+          )}
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-muted-foreground">查看提交的处理要求</summary>
             <div className="mt-2 space-y-1">
@@ -1220,17 +1455,19 @@ function ProcessingResults({
           role="status"
           className="flex flex-wrap items-center gap-2 rounded-lg border border-chart-2/40 bg-chart-2/10 px-4 py-3 text-sm"
         >
-          <span>已保存 {item.adopted} 条处理结果，并建立独立文件。</span>
+          <span>
+            已保存 {item.adopted} 条处理结果{item.draftId ? "到草稿。" : "到原始数据。"}
+          </span>
           {item.draftId && (
             <Link
               className="text-primary"
               to="/projects/$projectId/test-sets/drafts/$draftId"
               params={{ projectId, draftId: item.draftId }}
             >
-              打开草稿
+              返回草稿
             </Link>
           )}
-          {item.collectionId && (
+          {item.collectionId && !item.draftId && (
             <Link
               className="text-primary"
               to="/projects/$projectId/datasets/$collectionId/files/$assetId"
@@ -1332,13 +1569,75 @@ function ProcessingResults({
             </span>
             <Button
               size="sm"
+              variant="outline"
               className="ml-auto"
-              disabled={!terminal || busy || !selected.size || data.isError || stale}
-              onClick={() => setConfirm(true)}
+              disabled={
+                !terminal ||
+                busy ||
+                !selected.size ||
+                data.isError ||
+                stale ||
+                unknownSave ||
+                savedSelection.length > 0
+              }
+              onClick={() => onFollowup("continue", [...selected])}
             >
-              保存所选 {selected.size} 条
+              继续处理所选 {selected.size} 条
             </Button>
+            <Button
+              size="sm"
+              disabled={!terminal || busy || !selected.size || data.isError || stale}
+              onClick={() => {
+                if (!unknownSave) setDestination(sourceDraft ? "draft" : "asset");
+                setConfirm(true);
+              }}
+            >
+              {sourceDraft ? "保存回原草稿" : `保存所选 ${selected.size} 条`}
+            </Button>
+            {sourceDraft && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={
+                  !terminal || busy || !selected.size || data.isError || stale || unknownSave
+                }
+                onClick={() => {
+                  setDestination("asset");
+                  setConfirm(true);
+                }}
+              >
+                另存到…
+              </Button>
+            )}
           </div>
+          {(savedSelection.length > 0 || !terminal || !selected.size || value.total === 0) && (
+            <div className="px-4 py-2 text-xs text-muted-foreground">
+              {savedSelection.length ? (
+                <>
+                  已选中 {savedSelection.length} 条已保存结果，不能继续处理。
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy || unknownSave}
+                    onClick={() => {
+                      setSelected(
+                        (old) => new Set([...old].filter((id) => !savedSelection.includes(id))),
+                      );
+                      setKey(crypto.randomUUID());
+                    }}
+                  >
+                    移除已保存选择
+                  </Button>
+                </>
+              ) : !terminal ? (
+                "任务结束后可继续处理。"
+              ) : value.total === 0 ? (
+                "暂无可用结果；可重试未完成批次。"
+              ) : (
+                "请先选择要继续处理的结果。"
+              )}
+            </div>
+          )}
           {stale && (
             <p role="status" className="border-b px-5 py-3 text-sm text-muted-foreground">
               正在读取结果，下面保留上一次条件的内容；读取完成后可选择。
@@ -1388,40 +1687,48 @@ function ProcessingResults({
           <DialogHeader>
             <DialogTitle>保存 {selected.size} 条处理结果</DialogTitle>
             <DialogDescription>
-              {destination === "draft" && run.options.operation !== "augment"
-                ? `更新 ${selected.size} 条记录的指定字段（${run.options.allowedFields?.map((field) => ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[field as "question"]).join("、") ?? "未记录"}）。`
+              {destination === "draft" &&
+              value.rootOperation !== "augment" &&
+              run.options.operation !== "augment"
+                ? `更新 ${selected.size} 条记录的指定字段（${(value.adoptionFields ?? run.options.allowedFields)?.map((field) => ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[field as "question"]).join("、") ?? "未记录"}）。`
                 : destination === "asset"
                   ? `保存 ${selected.size} 条到独立原始数据文件。`
                   : `向草稿追加 ${selected.size} 条记录。`}{" "}
-              同时保留独立处理文件，原件与正式版本保持不变。
+              确认后才保存，不会发布版本。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <label className="block space-y-2 text-sm">
-              <span>保存到</span>
-              <Select
-                value={destination}
-                disabled={busy || unknownSave}
-                onValueChange={(v) => {
-                  setDestination(v);
-                  setKey(crypto.randomUUID());
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="asset">保存为原始数据</SelectItem>
-                  <SelectItem value="newDraft">新建测试集草稿</SelectItem>
-                  <SelectItem value="existingDraft">加入已有草稿</SelectItem>
-                  {run.source.kind === "draft" && (
-                    <SelectItem value="draft">
-                      {run.options.operation === "augment" ? "加入来源草稿" : "更新来源草稿"}
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </label>
+            {destination === "draft" ? (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                保存回原草稿：<strong>{run.sourceSummary?.name ?? "来源名称读取中"}</strong>
+              </div>
+            ) : (
+              <label className="block space-y-2 text-sm">
+                <span>保存到</span>
+                <Select
+                  value={destination}
+                  disabled={busy || unknownSave}
+                  onValueChange={(v) => {
+                    setDestination(v);
+                    setKey(crypto.randomUUID());
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="asset">保存为原始数据</SelectItem>
+                    <SelectItem value="newDraft">新建测试集草稿</SelectItem>
+                    <SelectItem value="existingDraft">加入已有草稿</SelectItem>
+                    {run.source.kind === "draft" && (
+                      <SelectItem value="draft">
+                        {run.options.operation === "augment" ? "加入来源草稿" : "更新来源草稿"}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </label>
+            )}
             {destination === "existingDraft" && (
               <label className="block space-y-2 text-sm">
                 <span>目标草稿</span>
@@ -1466,7 +1773,9 @@ function ProcessingResults({
             )}
             {destination === "draft" && (
               <p className="text-sm text-muted-foreground">
-                只采用本次允许修改的字段。同字段已被他人修改时会停止采用并保留其内容。
+                {value.rootOperation === "augment" || run.options.operation === "augment"
+                  ? "所选生成记录会追加到原草稿，不替换已有记录。"
+                  : "只采用本次允许修改的字段。同字段已被他人修改时会停止采用并保留其内容。"}
               </p>
             )}
             {error && (
@@ -1487,8 +1796,9 @@ function ProcessingResults({
             <Button
               disabled={
                 busy ||
-                (destination === "newDraft" && !name.trim()) ||
-                (destination === "existingDraft" && !targetDraftId)
+                (!submitted.current &&
+                  ((destination === "newDraft" && !name.trim()) ||
+                    (destination === "existingDraft" && !targetDraftId)))
               }
               onClick={() => void accept()}
             >

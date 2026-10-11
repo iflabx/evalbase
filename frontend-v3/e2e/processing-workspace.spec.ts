@@ -140,7 +140,7 @@ for (const failure of ["network", "http500"])
     await expect(page.getByRole("dialog")).toContainText("保存响应未确认");
     await expect(page.getByRole("dialog").getByRole("combobox")).toBeDisabled();
     await page.getByRole("button", { name: "确认保存", exact: true }).click();
-    await expect(page.getByText("已保存 1 条处理结果，并建立独立文件。")).toBeVisible();
+    await expect(page.getByText("已保存 1 条处理结果到原始数据。")).toBeVisible();
     expect(keys).toHaveLength(2);
     expect(keys[0]).toBe(keys[1]);
     await page.reload();
@@ -286,14 +286,12 @@ test("retains the chosen target on conflict and retries using the current draft 
   });
   await page.goto("/projects/processing_project/processing?run=conflict");
   await page.getByRole("button", { name: "选择全部匹配结果", exact: true }).click();
-  await page.getByRole("button", { name: /^保存所选 \d+ 条$/ }).click();
-  await page.getByRole("dialog").getByRole("combobox").click();
-  await page.getByRole("option", { name: "更新来源草稿", exact: true }).click();
+  await page.getByRole("button", { name: "保存回原草稿", exact: true }).click();
   await page.getByRole("button", { name: "确认保存", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("草稿已变化");
-  await expect(page.getByRole("dialog").getByRole("combobox")).toBeEnabled();
+  await expect(page.getByRole("dialog").getByRole("combobox")).toHaveCount(0);
   await page.getByRole("button", { name: "确认保存", exact: true }).click();
-  await expect(page.getByRole("link", { name: "打开草稿", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回草稿", exact: true })).toBeVisible();
   expect(attempts.map((entry) => entry.body.target.expectedRevision)).toEqual([1, 2]);
   expect(attempts).toHaveLength(2);
   expect(attempts[0]!.key).not.toBe(attempts[1]!.key);

@@ -10,6 +10,12 @@ import { loadConfig } from "../../src/config.js";
 
 import { runProcessing } from "../../src/processing/execute.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
+import { acceptProcessingResults } from "../../src/processing/accept.js";
+import { createRefinementRun } from "../../src/processing/refine.js";
+import {
+  processingNameRepairs,
+  applyProcessingNameRepairs,
+} from "../../src/processing/names.js";
 
 const origin = "http://127.0.0.1:4217";
 const databaseName = `processing_${randomUUID().replaceAll("-", "")}`;
@@ -956,7 +962,10 @@ describe("durable data processing", () => {
             ? `  新问题 ${index}  `
             : row.question,
         expectedOutput: "FORGED",
-        metadata: [...row.metadata, { key: "gbRisk", value: "A.1" }],
+        metadata: [
+          ...row.metadata.filter((entry: any) => entry.key !== "gbRisk"),
+          { key: "gbRisk", value: "A.1" },
+        ],
       }));
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
@@ -1014,7 +1023,7 @@ describe("durable data processing", () => {
           "x-file-name": "original-basis.jsonl",
         },
         payload:
-          Array.from({ length: 3 }, (_, i) =>
+          Array.from({ length: 12 }, (_, i) =>
             JSON.stringify({
               question: `Q${i}`,
               answer: "Protected",
@@ -1097,20 +1106,420 @@ describe("durable data processing", () => {
         headers,
       });
       expect(initial.json().records).toHaveLength(7);
+      async function follow(
+        parent: string,
+        resultIds: string[],
+        operation: string,
+        outputCount?: number,
+      ) {
+        const key = randomUUID();
+        const payload = {
+          mode: "continue",
+          resultIds,
+          options: {
+            operation,
+            instructions: operation === "clean" ? "" : "处理所选记录",
+            allowedFields:
+              operation === "rewrite" ? ["metadata"] : ["question"],
+            ...(outputCount ? { outputCount } : {}),
+          },
+        };
+        const response = await app.inject({
+          method: "POST",
+          url: `${path}/${parent}/followups`,
+          headers: { ...headers, "idempotency-key": key },
+          payload,
+        });
+        expect(response.statusCode, response.body).toBe(201);
+        const replay = await app.inject({
+          method: "POST",
+          url: `${path}/${parent}/followups`,
+          headers: { ...headers, "idempotency-key": key },
+          payload,
+        });
+        expect(replay.statusCode, replay.body).toBe(200);
+        expect(replay.json().run.id).toBe(response.json().run.id);
+        await finish(response.json().run);
+        const data = await app.inject({
+          method: "GET",
+          url: `${path}/${response.json().run.id}?view=all`,
+          headers,
+        });
+        expect(data.statusCode, data.body).toBe(200);
+        return data.json();
+      }
+      const parentId = expanded.json().run.id;
+      const beforeCount = (
+        await db.query(
+          "SELECT count(*)::int AS count FROM processing_run WHERE project_id=$1",
+          [projectId],
+        )
+      ).rows[0].count;
+      const originalHash = (
+        await db.query("SELECT input_hash FROM processing_run WHERE id=$1", [
+          parentId,
+        ])
+      ).rows[0].input_hash;
+      await db.query(
+        "UPDATE processing_run SET input_hash='corrupt-test-snapshot' WHERE id=$1",
+        [parentId],
+      );
+      const corrupt = await app.inject({
+        method: "POST",
+        url: `${path}/${parentId}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "rerun",
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(corrupt.statusCode, corrupt.body).toBe(409);
+      expect(corrupt.json().error.code).toBe("processing_input_corrupt");
+      await db.query("UPDATE processing_run SET input_hash=$2 WHERE id=$1", [
+        parentId,
+        originalHash,
+      ]);
+      const invalidSelection = await app.inject({
+        method: "POST",
+        url: `${path}/${parentId}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "continue",
+          resultIds: ["99:0"],
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(invalidSelection.statusCode, invalidSelection.body).toBe(422);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM processing_run WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].count,
+      ).toBe(beforeCount);
+      const previewChild = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/processing-inputs`,
+        headers,
+        payload: {
+          source: {
+            kind: "results",
+            id: expanded.json().run.id,
+            resultIds: ["0:0", "0:2"],
+          },
+          offset: 0,
+          limit: 20,
+        },
+      });
+      expect(previewChild.statusCode, previewChild.body).toBe(200);
+      expect(
+        previewChild.json().records.map((row: any) => row.question),
+      ).toEqual(["  新问题 0  ", "  新问题 2  "]);
+      const childClean = await follow(
+        expanded.json().run.id,
+        ["0:0", "0:2"],
+        "clean",
+      );
+      expect(childClean.records.map((row: any) => row.result.question)).toEqual(
+        ["新问题 0", "新问题 2"],
+      );
+      expect(childClean.run.modelRevision).toBeNull();
+      const childRewrite = await follow(
+        childClean.run.id,
+        [childClean.allIds[0]],
+        "rewrite",
+      );
+      expect(childRewrite.records).toHaveLength(1);
+      expect(childRewrite.records[0].result.expectedOutput).toBe("Protected");
+      const childAugment = await follow(
+        childRewrite.run.id,
+        childRewrite.allIds,
+        "augment",
+        2,
+      );
+      expect(childAugment.records).toHaveLength(2);
+      const finalChild = await follow(
+        childAugment.run.id,
+        childAugment.allIds,
+        "clean",
+      );
+      expect(finalChild.rootOperation).toBe("augment");
+      expect(finalChild.records.map((row: any) => row.result.question)).toEqual(
+        ["新问题 0", "新问题 1"],
+      );
+      const rerunPreview = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/processing-inputs`,
+        headers,
+        payload: {
+          source: { kind: "rerun", id: finalChild.run.id },
+          offset: 0,
+          limit: 20,
+        },
+      });
+      expect(
+        rerunPreview.json().records.map((row: any) => row.question),
+      ).toEqual(["  新问题 0  ", "  新问题 1  "]);
+      const repeated = await app.inject({
+        method: "POST",
+        url: `${path}/${finalChild.run.id}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "rerun",
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(repeated.statusCode, repeated.body).toBe(201);
+      await finish(repeated.json().run);
+      const concurrentSaves = await Promise.all(
+        ["手动连续处理", "并发另存"].map((name) =>
+          app.inject({
+            method: "POST",
+            url: `${path}/${finalChild.run.id}/accept`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: {
+              resultIds: finalChild.allIds,
+              target: { kind: "newDraft", name, purpose: "" },
+            },
+          }),
+        ),
+      );
+      expect(
+        concurrentSaves.map((response) => response.statusCode).sort(),
+      ).toEqual([201, 409]);
+      const savedChild = concurrentSaves.find(
+        (response) => response.statusCode === 201,
+      )!;
+      expect(
+        concurrentSaves.find((response) => response.statusCode === 409)!.json()
+          .error.code,
+      ).toBe("processing_already_adopted");
+      expect(savedChild.statusCode, savedChild.body).toBe(201);
+      const parentSaveAfterChild = await app.inject({
+        method: "POST",
+        url: `${path}/${childAugment.run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { resultIds: childAugment.allIds, target: { kind: "asset" } },
+      });
+      expect(parentSaveAfterChild.statusCode, parentSaveAfterChild.body).toBe(
+        409,
+      );
+      expect(parentSaveAfterChild.json().error.code).toBe(
+        "processing_already_adopted",
+      );
+      const savedAgain = await app.inject({
+        method: "POST",
+        url: `${path}/${childAugment.run.id}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "continue",
+          resultIds: childAugment.allIds,
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(savedAgain.statusCode, savedAgain.body).toBe(409);
+      expect(savedAgain.json().error.code).toBe("processing_already_adopted");
+      const adoptedChild = await app.inject({
+        method: "GET",
+        url: `${path}/${childAugment.run.id}?view=all`,
+        headers,
+      });
+      expect(adoptedChild.json().adoptedIds).toEqual(childAugment.allIds);
+      const sourceDraftId = savedChild.json().receipt.draftId;
+      const draftRead = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${sourceDraftId}`,
+        headers,
+      });
+      const sourceRun = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "draft",
+            id: sourceDraftId,
+            recordIds: draftRead.json().records.map((row: any) => row.id),
+          },
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(sourceRun.statusCode, sourceRun.body).toBe(201);
+      await finish(sourceRun.json().run);
+      const sourceResult = await app.inject({
+        method: "GET",
+        url: `${path}/${sourceRun.json().run.id}?view=all`,
+        headers,
+      });
+      const draftChild = await follow(
+        sourceRun.json().run.id,
+        [sourceResult.json().allIds[0]],
+        "rewrite",
+      );
+      expect(draftChild.rootOperation).toBe("rewrite");
+      expect(draftChild.adoptionFields).toEqual(["question", "metadata"]);
+      const saveBack = await app.inject({
+        method: "POST",
+        url: `${path}/${draftChild.run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: draftChild.allIds,
+          target: {
+            kind: "draft",
+            id: sourceDraftId,
+            expectedRevision: draftRead.json().draft.revision,
+          },
+        },
+      });
+      expect(saveBack.statusCode, saveBack.body).toBe(201);
+      const savedDraft = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${sourceDraftId}`,
+        headers,
+      });
+      expect(savedDraft.json().records).toHaveLength(2);
+      expect(savedDraft.json().records[0].metadata).toContainEqual({
+        key: "gbRisk",
+        value: "A.1",
+      });
+      const sourceAugment = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "draft",
+            id: sourceDraftId,
+            recordIds: savedDraft.json().records.map((row: any) => row.id),
+          },
+          options: {
+            operation: "augment",
+            instructions: "原草稿扩写",
+            allowedFields: ["question"],
+            outputCount: 2,
+          },
+        },
+      });
+      expect(sourceAugment.statusCode, sourceAugment.body).toBe(201);
+      await finish(sourceAugment.json().run);
+      const rerunAsClean = await app.inject({
+        method: "POST",
+        url: `${path}/${sourceAugment.json().run.id}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "rerun",
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(rerunAsClean.statusCode, rerunAsClean.body).toBe(201);
+      await finish(rerunAsClean.json().run);
+      const rerunCleanResults = await app.inject({
+        method: "GET",
+        url: `${path}/${rerunAsClean.json().run.id}?view=all`,
+        headers,
+      });
+      expect(rerunCleanResults.json().rootOperation).toBe("clean");
+      const rerunSave = await app.inject({
+        method: "POST",
+        url: `${path}/${rerunAsClean.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: rerunCleanResults.json().allIds,
+          target: {
+            kind: "draft",
+            id: sourceDraftId,
+            expectedRevision: savedDraft.json().draft.revision,
+          },
+        },
+      });
+      expect(rerunSave.statusCode, rerunSave.body).toBe(201);
+      const rerunDraft = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collaborative-drafts/${sourceDraftId}`,
+        headers,
+      });
+      expect(rerunDraft.json().records).toHaveLength(2);
+      expect(rerunDraft.json().records.map((row: any) => row.id)).toEqual(
+        savedDraft.json().records.map((row: any) => row.id),
+      );
+      const malformedAsset = savedChild.json().receipt.assetId;
+      // Arrange a proven system naming defect; assertions read the public file projection.
+      await db.query("UPDATE data_asset SET file_name=$2 WHERE id=$1", [
+        malformedAsset,
+        `鎵╁厖结果-${finalChild.run.id.slice(-8)}.jsonl`,
+      ]);
+      // This result was cleaned, so it is deliberately outside the augment-only repair.
+      expect(
+        (await processingNameRepairs(db)).some(
+          (row) => row.assetId === malformedAsset,
+        ),
+      ).toBe(false);
+      const generatedSaved = await app.inject({
+        method: "POST",
+        url: `${path}/${repeated.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { resultIds: ["0:0"], target: { kind: "asset" } },
+      });
+      expect(generatedSaved.statusCode, generatedSaved.body).toBe(201);
       for (const row of initial.json().records)
         expect(
           row.sourcePresentation.steps.filter((step: any) =>
             step.href?.endsWith(`run=${expanded.json().run.id}`),
           ),
         ).toHaveLength(1);
-      const refined = await app.inject({
+      const freshInput = await app.inject({
         method: "POST",
-        url: `${path}/${expanded.json().run.id}/refinements`,
+        url: `${path}/${expanded.json().run.id}/followups`,
         headers: { ...headers, "idempotency-key": randomUUID() },
         payload: {
-          resultIds: ["0:0"],
-          instructions: "只为选中一条新增 gbRisk",
-          allowedFields: ["metadata"],
+          mode: "rerun",
+          options: {
+            operation: "augment",
+            instructions: "新增独立来源核对",
+            allowedFields: ["question"],
+            outputCount: 7,
+          },
+        },
+      });
+      expect(freshInput.statusCode, freshInput.body).toBe(201);
+      await finish(freshInput.json().run);
+      const refined = await app.inject({
+        method: "POST",
+        url: `${path}/${freshInput.json().run.id}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "continue",
+          resultIds: Array.from({ length: 7 }, (_, i) => `0:${i}`),
+          options: {
+            operation: "rewrite",
+            instructions: "只为选中七条新增 gbRisk",
+            allowedFields: ["metadata"],
+          },
         },
       });
       expect(refined.statusCode, refined.body).toBe(201);
@@ -1128,6 +1537,7 @@ describe("durable data processing", () => {
       });
       expect(review.json().records[1].sourcePresentation.badges).toEqual([
         "模型扩写",
+        "已改写",
       ]);
       expect(
         review
@@ -1146,6 +1556,37 @@ describe("durable data processing", () => {
         },
       });
       expect(adopted.statusCode, adopted.body).toBe(201);
+      // Only a real augment asset is eligible; an identically named user upload is not.
+      const expandSaved = await app.inject({
+        method: "POST",
+        url: `${path}/${expanded.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { resultIds: ["0:6"], target: { kind: "asset" } },
+      });
+      expect(expandSaved.statusCode, expandSaved.body).toBe(201);
+      const corruptId = expandSaved.json().receipt.assetId;
+      await db.query("UPDATE data_asset SET file_name=$2 WHERE id=$1", [
+        corruptId,
+        `鎵╁厖结果-${expanded.json().run.id.slice(-8)}.jsonl`,
+      ]);
+      const repairs = (await processingNameRepairs(db)).filter(
+        (row) => row.assetId === corruptId,
+      );
+      expect(repairs).toHaveLength(1);
+      expect(await applyProcessingNameRepairs(db, repairs)).toBe(1);
+      expect(await applyProcessingNameRepairs(db, repairs)).toBe(0);
+      const repairedList = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/collections/${collectionId}/assets`,
+        headers,
+      });
+      expect(repairedList.statusCode, repairedList.body).toBe(200);
+      expect(
+        repairedList.json().assets.find((row: any) => row.id === corruptId)
+          .fileName,
+      ).toBe(`扩充结果-${expanded.json().run.id.slice(-8)}.jsonl`);
+      expect(await applyProcessingNameRepairs(db, repairs, true)).toBe(1);
+      expect(await applyProcessingNameRepairs(db, repairs)).toBe(1);
       const clean = await app.inject({
         method: "POST",
         url: path,
@@ -1210,6 +1651,7 @@ describe("durable data processing", () => {
       ]);
       expect(draft.json().records[1].sourcePresentation.badges).toEqual([
         "模型扩写",
+        "已改写",
         "已清洗",
       ]);
       const published = await app.inject({
@@ -1225,6 +1667,256 @@ describe("durable data processing", () => {
       expect(trace.json().changes[0].source.presentation.label).toBe(
         "模型扩写 · 参考 original-basis.jsonl",
       );
+      const secondUpload = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/pending-uploads`,
+        headers: {
+          ...headers,
+          "content-type": "application/octet-stream",
+          "x-file-name": "second-basis.jsonl",
+        },
+        payload:
+          Array.from({ length: 11 }, (_, i) =>
+            JSON.stringify({
+              question: `Second reference ${i}`,
+              answer: "Protected",
+            }),
+          ).join("\n") + "\n",
+      });
+      expect(secondUpload.statusCode, secondUpload.body).toBe(201);
+      const secondConfirm = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/pending-upload-batches/confirm`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          collectionId,
+          pendingUploadIds: [secondUpload.json().pendingUpload.id],
+          mode: "raw",
+        },
+      });
+      expect(secondConfirm.statusCode, secondConfirm.body).toBe(201);
+      const secondAsset = secondConfirm.json().assets[0].id;
+      const secondMapping = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/assets/${secondAsset}/mapping`,
+        headers,
+      });
+      const secondMapped = await app.inject({
+        method: "PUT",
+        url: `/api/projects/${projectId}/assets/${secondAsset}/mapping`,
+        headers,
+        payload: {
+          parsedViewId: secondMapping.json().parsedViewId,
+          expectedRevision: 0,
+          mapping: {
+            question: "/question",
+            expectedOutput: "/answer",
+            metadata: [],
+          },
+        },
+      });
+      expect(secondMapped.statusCode, secondMapped.body).toBe(200);
+      const twoFileRun = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "assets",
+            assetIds: [assetId, secondAsset],
+            recordIds: [`${assetId}:1`, `${secondAsset}:1`],
+          },
+          options: {
+            operation: "augment",
+            instructions: "使用两份参考",
+            allowedFields: ["question"],
+            outputCount: 2,
+          },
+        },
+      });
+      expect(twoFileRun.statusCode, twoFileRun.body).toBe(201);
+      await finish(twoFileRun.json().run);
+      const twoFileRead = await app.inject({
+        method: "GET",
+        url: `${path}/${twoFileRun.json().run.id}?view=all`,
+        headers,
+      });
+      for (const row of twoFileRead.json().records) {
+        expect(row.sourcePresentation.label).toBe(
+          "模型扩写 · 参考 2 份原始数据",
+        );
+        const references = row.sourcePresentation.steps.filter(
+          (step: any) => step.kind === "reference",
+        );
+        expect(references).toHaveLength(2);
+        expect(references.map((step: any) => step.label)).toEqual(
+          expect.arrayContaining([
+            expect.stringContaining("original-basis.jsonl"),
+            expect.stringContaining("second-basis.jsonl"),
+          ]),
+        );
+      }
+      const twoFileClean = await follow(
+        twoFileRun.json().run.id,
+        twoFileRead.json().allIds,
+        "clean",
+      );
+      expect(twoFileClean.records[0].sourcePresentation.label).toBe(
+        "模型扩写 · 参考 2 份原始数据",
+      );
+      const savedTwoFileChild = await app.inject({
+        method: "POST",
+        url: `${path}/${twoFileClean.run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { resultIds: twoFileClean.allIds, target: { kind: "asset" } },
+      });
+      expect(savedTwoFileChild.statusCode, savedTwoFileChild.body).toBe(201);
+      const savedOriginalRoot = await app.inject({
+        method: "POST",
+        url: `${path}/${twoFileRun.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: twoFileRead.json().allIds,
+          target: { kind: "asset" },
+        },
+      });
+      expect(savedOriginalRoot.statusCode, savedOriginalRoot.body).toBe(409);
+      expect(savedOriginalRoot.json().error.code).toBe(
+        "processing_already_adopted",
+      );
+      const [firstBasis, lastBasis] = [assetId, secondAsset].sort();
+      const mixedClean = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "assets",
+            assetIds: [firstBasis, lastBasis],
+            recordIds: [
+              ...Array.from({ length: 11 }, (_, i) => `${firstBasis}:${i + 1}`),
+              `${lastBasis}:1`,
+            ],
+          },
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(mixedClean.statusCode, mixedClean.body).toBe(201);
+      await finish(mixedClean.json().run);
+      const actorId = (
+        await db.query("SELECT actor_id FROM processing_run WHERE id=$1", [
+          mixedClean.json().run.id,
+        ])
+      ).rows[0].actor_id;
+      const legacyChild = await createRefinementRun(
+        db,
+        artifacts,
+        { projectId, actorId },
+        mixedClean.json().run.id,
+        randomUUID(),
+        {
+          resultIds: ["0:0"],
+          instructions: "调整 Metadata",
+          allowedFields: ["metadata"],
+        },
+      );
+      await finish(legacyChild.run);
+      const firstSaved = await app.inject({
+        method: "POST",
+        url: `${path}/${mixedClean.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { resultIds: ["0:0"], target: { kind: "asset" } },
+      });
+      expect(firstSaved.statusCode, firstSaved.body).toBe(201);
+      // Domain commit boundary: a group may ignore only its own same-round receipt, never another group's receipt.
+      await expect(
+        acceptProcessingResults(
+          db,
+          artifacts,
+          {
+            projectId,
+            actorId,
+            acceptanceGroups: [
+              { runId: mixedClean.json().run.id, resultIds: ["0:1"] },
+              { runId: legacyChild.run.id, resultIds: ["0:0"] },
+            ],
+          },
+          mixedClean.json().run.id,
+          randomUUID(),
+          {
+            resultIds: ["0:1"],
+            target: {
+              kind: "newDraft",
+              name: "不能重复采用跨轮候选",
+              purpose: "",
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ code: "processing_already_adopted" });
+      const mixedRows = (
+        await app.inject({
+          method: "GET",
+          url: `${path}/${mixedClean.json().run.id}?view=all`,
+          headers,
+        })
+      ).json();
+      const mixedSaved = await app.inject({
+        method: "POST",
+        url: `${path}/${mixedClean.json().run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { resultIds: mixedRows.allIds, target: { kind: "asset" } },
+      });
+      expect(mixedSaved.statusCode, mixedSaved.body).toBe(201);
+      const mixedAsset = mixedSaved.json().receipt.assetId;
+      const mixedAugment = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: {
+            kind: "assets",
+            assetIds: [mixedAsset],
+            recordIds: Array.from(
+              { length: 12 },
+              (_, i) => `${mixedAsset}:${i + 1}`,
+            ),
+          },
+          options: {
+            operation: "augment",
+            instructions: "参考混合文件",
+            allowedFields: ["question"],
+            outputCount: 1,
+          },
+        },
+      });
+      expect(mixedAugment.statusCode, mixedAugment.body).toBe(201);
+      await finish(mixedAugment.json().run);
+      const mixedResult = (
+        await app.inject({
+          method: "GET",
+          url: `${path}/${mixedAugment.json().run.id}?view=all`,
+          headers,
+        })
+      ).json();
+      expect(mixedResult.records[0].sourcePresentation.label).toBe(
+        "模型扩写 · 参考 2 份原始数据",
+      );
+      expect(
+        mixedResult.records[0].sourcePresentation.steps
+          .filter((step: any) => step.kind === "reference")
+          .map((step: any) => step.label)
+          .join("\n"),
+      ).toContain("second-basis.jsonl");
+      expect(
+        mixedResult.records[0].sourcePresentation.steps
+          .filter((step: any) => step.kind === "reference")
+          .map((step: any) => step.label)
+          .join("\n"),
+      ).toContain("original-basis.jsonl");
       await db.query(
         "UPDATE data_asset SET status='archived' WHERE project_id=$1 AND id=$2",
         [projectId, assetId],

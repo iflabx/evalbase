@@ -117,7 +117,7 @@ Owner 已确认将两轮体验审查合为 [OPT-12](../.scratch/assistant-optimi
 
 ### 6.5 处理结果再次处理增补（2026-10-12）
 
-Owner 已确认将方案整理为 [OPT-13](../.scratch/assistant-optimization/issues/13-processing-result-continuation.md)，本次仅授权文档，开发尚未开始。下列行为为待实施增补，布局与验收集中在该 Ticket。
+Owner 已授权 [OPT-13](../.scratch/assistant-optimization/issues/13-processing-result-continuation.md) 完整开发及同一 4217 隔离验收环境更新。下列行为为本张实施合同，布局与验收集中在该 Ticket；实际证据见 [验证记录](../.scratch/assistant-optimization/opt13-verification.md)，Owner checkpoint 单独记录。
 
 - 已终止任务的可用、未保存结果可按明确选择继续清洗、改写或扩充；直接以本轮所选结果为输入建立新任务，无须先保存成文件或草稿。新结果仅属于本轮范围，未选结果留在原任务；不自动合并、采用或发布。
 - “重新运行”使用该任务提交时的完整输入快照和配置，可调整处理要求后明确提交新任务；不偷换为来源最新内容。它与继续处理当前结果、重试原任务未完成批次分别表达。

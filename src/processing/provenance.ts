@@ -1,9 +1,11 @@
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { isPlainObject } from "../server/support.js";
+import { hasProjectCapability } from "../security/project-access.js";
 import {
   processingSourceAvailable,
   ProcessingError,
+  getProcessingRun,
   type ProcessingScope,
   type InputSnapshot,
 } from "./store.js";
@@ -11,7 +13,12 @@ import {
 export type SourcePresentation = {
   label: string;
   badges: string[];
-  steps: { label: string; href?: string }[];
+  steps: {
+    label: string;
+    href?: string;
+    kind?: "reference" | "processing" | "saved";
+    occurredAt?: string;
+  }[];
   generated?: boolean;
   fileName?: string;
 };
@@ -27,6 +34,78 @@ const sourceKey = (value: unknown) =>
     ? `${value.assetId}:${value.ordinal}`
     : null;
 
+/** Generated rows reference the frozen augmentation input, not just the model's first sourceId. */
+export async function processingReferences(
+  db: Pick<Database, "query">,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  runId: string,
+): Promise<SourcePresentation | null> {
+  const seen = new Set<string>();
+  for (let depth = 0; runId && depth < 32 && !seen.has(runId); depth++) {
+    seen.add(runId);
+    const run = await getProcessingRun(db, scope, runId);
+    const input = JSON.parse(
+      (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
+    ) as InputSnapshot;
+    if (run.options.operation === "augment") {
+      const sources = new Map<string, unknown>();
+      let missing = false;
+      for (const record of input.records) {
+        const source = record.baseline?.source ?? record.source;
+        if (!sourceKey(source) || !isPlainObject(source)) {
+          missing = true;
+          continue;
+        }
+        sources.set(sourceKey(source)!, source);
+      }
+      const presentations = await presentSources(db, artifacts, scope, [
+        ...sources.values(),
+      ]);
+      const steps = presentations.flatMap((origin) =>
+        origin.steps.filter((step) => step.kind === "reference"),
+      );
+      const unique = [
+        ...new Map(
+          steps.map((step) => [`${step.href}\0${step.label}`, step]),
+        ).values(),
+      ];
+      const files = new Set(
+        unique.flatMap((step) => (step.href ? [step.href] : [])),
+      );
+      missing ||= presentations.some(
+        (origin) =>
+          !origin.steps.some((step) => step.kind === "reference" && step.href),
+      );
+      const shown = new Map<string, number>();
+      const visible = unique.filter((step) => {
+        const count = shown.get(step.href ?? "") ?? 0;
+        shown.set(step.href ?? "", count + 1);
+        return count < 10;
+      });
+      return {
+        label:
+          files.size > 1
+            ? `模型扩写 · 参考 ${files.size} 份原始数据`
+            : `模型扩写 · 参考 ${presentations[0]?.fileName ?? "来源未记录"}`,
+        badges: [],
+        generated: true,
+        steps: [
+          ...visible,
+          ...(missing || !files.size ? [{ label: "部分来源未记录" }] : []),
+        ],
+      };
+    }
+    runId =
+      input.refinement?.parentRunId ??
+      (input.continuation?.kind === "continue"
+        ? input.continuation.parentRunId
+        : input.continuation?.inputParentRunId) ??
+      "";
+  }
+  return null;
+}
+
 /** Follow only each row's proven refinement identity; retained rows skip unselected steps. */
 export async function processingHistory(
   db: Pick<Database, "query">,
@@ -34,12 +113,12 @@ export async function processingHistory(
   scope: ProcessingScope,
   requests: { runId: string; inputId: string }[],
 ) {
-  type Run = { input: InputSnapshot; operation: string };
+  type Run = { input: InputSnapshot; operation: string; createdAt: string };
   const runs = new Map<string, Run | null>(),
     batches = new Map<string, { sourceIds: string[]; indices: number[] }>();
   const key = (row: { runId: string; inputId: string }) =>
     `${row.runId}\0${row.inputId}`;
-  const histories = new Map<string, { label: string; href?: string }[]>(
+  const histories = new Map<string, SourcePresentation["steps"]>(
     requests.map((row) => [key(row), []]),
   );
   let pending = [
@@ -51,7 +130,7 @@ export async function processingHistory(
     );
     if (ids.length) {
       const rows = await db.query(
-        "SELECT id,source,options,input_ref FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[]) AND (cardinality(background_document_ids)=0 OR actor_id=$3)",
+        "SELECT id,source,options,input_ref,created_at FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[]) AND (cardinality(background_document_ids)=0 OR actor_id=$3)",
         [scope.projectId, ids, scope.actorId],
       );
       ids.forEach((id) => runs.set(id, null));
@@ -66,6 +145,7 @@ export async function processingHistory(
                 ),
               ),
               operation: row.options.operation,
+              createdAt: row.created_at,
             });
         } catch (error) {
           if (!(error instanceof ProcessingError)) throw error;
@@ -91,11 +171,18 @@ export async function processingHistory(
         history.unshift({
           label: operationLabels[run.operation] ?? "已处理",
           href: `/projects/${encodeURIComponent(scope.projectId)}/processing?run=${encodeURIComponent(row.runId)}`,
+          kind: "processing",
+          occurredAt: run.createdAt,
         });
-      if (refinement && row.inputId.startsWith("candidate:"))
+      const parentId =
+        refinement?.parentRunId ??
+        (run.input.continuation?.kind === "continue"
+          ? run.input.continuation.parentRunId
+          : run.input.continuation?.inputParentRunId);
+      if (parentId && row.inputId.startsWith("candidate:"))
         parents.push({
           current: row,
-          runId: refinement.parentRunId,
+          runId: parentId,
           resultId: row.inputId.slice(10),
         });
     }
@@ -169,6 +256,8 @@ export async function presentSources(
     inputId?: string;
     parent?: string | null;
     generated?: boolean;
+    references?: { key: string; count: number; ordinals: number[] }[];
+    savedTarget?: { label: string; href: string };
   };
   const nodes = new Map<string, Node>(),
     pending = new Map<string, unknown>();
@@ -234,6 +323,30 @@ export async function presentSources(
       const parent = original
         ? sourceKey(original.baseline?.source ?? original.source)
         : undefined;
+      const referenceGroups = new Map<
+        string,
+        { key: string; count: number; ordinals: number[] }
+      >();
+      if (run?.operation === "augment") {
+        for (const record of run.input.records) {
+          const source = record.baseline?.source ?? record.source;
+          const referenceKey = sourceKey(source);
+          if (!referenceKey || !isPlainObject(source)) continue;
+          const asset = String(source.assetId),
+            ordinal = Number(source.ordinal);
+          const group = referenceGroups.get(asset) ?? {
+            key: referenceKey,
+            count: 0,
+            ordinals: [],
+          };
+          if (!group.ordinals.includes(ordinal)) {
+            group.ordinals.push(ordinal);
+            group.count++;
+          }
+          referenceGroups.set(asset, group);
+          if (!nodes.has(group.key)) pending.set(group.key, source);
+        }
+      }
       nodes.set(key, {
         name: row.file_name,
         href: `${base}/datasets/${encodeURIComponent(row.collection_id)}/files/${encodeURIComponent(row.id)}`,
@@ -244,10 +357,12 @@ export async function presentSources(
               runId,
               inputId: original?.id,
               generated:
-                (run.input.refinement?.rootOperation ?? run.operation) ===
-                "augment",
+                (run.input.continuation?.rootOperation ??
+                  run.input.refinement?.rootOperation ??
+                  run.operation) === "augment",
               runHref: `${base}/processing?run=${encodeURIComponent(runId)}`,
               parent,
+              references: [...referenceGroups.values()],
             }
           : {}),
       });
@@ -265,6 +380,26 @@ export async function presentSources(
         : [],
     ),
   );
+  if (await hasProjectCapability(db, scope.projectId, scope.actorId, "write")) {
+    const targets = await db.query(
+      `SELECT DISTINCT ON(pa.asset_id) pa.asset_id,d.id,d.name FROM processing_acceptance pa JOIN collaborative_draft d ON d.id=pa.draft_id AND d.project_id=$1 LEFT JOIN test_set ts ON ts.id=d.test_set_id LEFT JOIN test_set_version v ON v.id=d.parent_version_id WHERE pa.project_id=$1 AND pa.asset_id=ANY($2::text[]) AND d.status IN('editing','published') AND (ts.id IS NULL OR ts.status='available') AND (v.id IS NULL OR v.status='published') AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(d.id,ts.id,v.id)) ORDER BY pa.asset_id,pa.created_at DESC`,
+      [
+        scope.projectId,
+        [
+          ...new Set(
+            [...nodes.keys()].map((key) => key.slice(0, key.lastIndexOf(":"))),
+          ),
+        ],
+      ],
+    );
+    for (const row of targets.rows)
+      for (const [key, node] of nodes)
+        if (key.startsWith(`${row.asset_id}:`))
+          node.savedTarget = {
+            label: `草稿：${row.name || "未命名测试集"}`,
+            href: `${base}/test-sets/drafts/${encodeURIComponent(row.id)}`,
+          };
+  }
   function render(
     key: string | null,
     seen = new Set<string>(),
@@ -277,6 +412,7 @@ export async function presentSources(
     const direct = {
       label: `${node.name} · 第 ${key.slice(key.lastIndexOf(":") + 1)} 条`,
       href: node.href,
+      kind: "reference" as const,
     };
     if (!node.processed)
       return {
@@ -287,16 +423,29 @@ export async function presentSources(
       };
     if (!node.operation || node.parent === undefined)
       return {
-        label: `${direct.label} · 原始来源未记录`,
+        label: "已处理 · 原始来源未记录",
         badges: [],
-        steps: [direct],
+        steps: [{ label: node.name, href: node.href, kind: "saved" }],
       };
-    const parent = render(node.parent, seen),
+    const parent = render(node.parent, new Set(seen)),
       generated = Boolean(node.generated || parent.generated);
+    const references = (node.references ?? []).map((reference) => ({
+      ...reference,
+      presentation: render(reference.key, new Set(seen)),
+    }));
+    const referenceFiles = new Set(
+      references.flatMap((reference) =>
+        reference.presentation.steps
+          .filter((step) => step.kind === "reference" && step.href)
+          .map((step) => step.href!),
+      ),
+    );
     const label =
-      node.generated && !parent.generated
-        ? `模型扩写 · 参考 ${parent.fileName ?? parent.label}`
-        : parent.label;
+      referenceFiles.size > 1
+        ? `模型扩写 · 参考 ${referenceFiles.size} 份原始数据`
+        : node.generated && !parent.generated
+          ? `模型扩写 · 参考 ${parent.fileName ?? parent.label}`
+          : parent.label;
     const steps = node.runId
       ? (histories.get(`${node.runId}\0${node.inputId}`) ?? [])
       : [];
@@ -313,10 +462,29 @@ export async function presentSources(
           .map((step) => step.label),
       ].filter((value, index, all) => all.indexOf(value) === index),
       steps: [
-        ...parent.steps,
+        ...parent.steps.filter(
+          (step) => !referenceFiles.size || step.kind !== "reference",
+        ),
+        ...references.flatMap((reference) =>
+          reference.presentation.steps
+            .filter((step) => step.kind === "reference")
+            .map((step) => ({
+              ...step,
+              label: `${reference.presentation.fileName ?? step.label} · 参考 ${reference.count} 条（第 ${reference.ordinals.slice(0, 10).join("、")}${reference.count > 10 ? " 等" : ""} 条）`,
+            })),
+        ),
         ...processingSteps,
-        { label: `当前产物：${node.name}`, href: node.href },
-      ],
+        { label: node.name, href: node.href, kind: "saved" as const },
+        ...(node.savedTarget
+          ? [{ ...node.savedTarget, kind: "saved" as const }]
+          : []),
+      ].filter(
+        (step, index, all) =>
+          !step.href ||
+          all.findIndex(
+            (other) => other.href === step.href && other.label === step.label,
+          ) === index,
+      ),
     };
   }
   return sources.map((source) =>

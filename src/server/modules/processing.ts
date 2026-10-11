@@ -1,4 +1,8 @@
-import { createRefinementRun } from "../../processing/refine.js";
+import {
+  createRefinementRun,
+  previewFollowupInput,
+} from "../../processing/refine.js";
+import { isPlainObject } from "../support.js";
 import { presentProcessingReview } from "../../processing/presentation.js";
 import { reviewCandidates } from "../../processing/review.js";
 import { acceptProcessingResults } from "../../processing/accept.js";
@@ -43,12 +47,17 @@ export function registerProcessing({
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      const scope = { projectId: request.params.projectId, actorId: actor.id };
       return respond(reply, () =>
-        previewProcessingInput(
-          db,
-          { projectId: request.params.projectId, actorId: actor.id },
-          request.body,
-        ),
+        isPlainObject(request.body) &&
+        isPlainObject(request.body.source) &&
+        ["results", "rerun"].includes(String(request.body.source.kind))
+          ? previewFollowupInput(db, artifacts, scope, request.body)
+          : previewProcessingInput(
+              db,
+              { projectId: request.params.projectId, actorId: actor.id },
+              request.body,
+            ),
       );
     },
   );
@@ -105,26 +114,6 @@ export function registerProcessing({
         return { review: reviewCandidates(data) };
       }),
   );
-  app.post<{ Params: Params; Body: unknown }>(
-    `${path}/:runId/refinements`,
-    { preHandler: authenticate },
-    async (request, reply) => {
-      const actor = (request as AuthenticatedRequest).actor;
-      if (!writeAllowed(request, actor))
-        return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      return respond(reply, async () => {
-        const value = await createRefinementRun(
-          db,
-          artifacts,
-          { projectId: request.params.projectId, actorId: actor.id },
-          request.params.runId,
-          request.headers["idempotency-key"],
-          request.body,
-        );
-        return reply.code(value.replayed ? 200 : 201).send(value);
-      });
-    },
-  );
   app.get<{ Params: Params }>(
     path,
     { preHandler: authenticate },
@@ -135,6 +124,35 @@ export function registerProcessing({
           actorId: (request as AuthenticatedRequest).actor.id,
         }),
       ),
+  );
+  app.post<{ Params: Params; Body: unknown }>(
+    `${path}/:runId/followups`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !isPlainObject(request.body) ||
+        !["continue", "rerun"].includes(String(request.body.mode))
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "processing_scope_invalid" } });
+      const { mode, ...body } = request.body;
+      return respond(reply, async () => {
+        const result = await createRefinementRun(
+          db,
+          artifacts,
+          { projectId: request.params.projectId, actorId: actor.id },
+          request.params.runId,
+          request.headers["idempotency-key"],
+          body,
+          mode as "continue" | "rerun",
+        );
+        return reply.code(result.replayed ? 200 : 201).send(result);
+      });
+    },
   );
   app.get<{
     Params: Params;

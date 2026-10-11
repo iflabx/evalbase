@@ -184,7 +184,12 @@ export type SoloTestSetVersionDetail = {
 export type SourcePresentation = {
   label: string;
   badges: string[];
-  steps: { label: string; href?: string }[];
+  steps: {
+    label: string;
+    href?: string;
+    kind?: "reference" | "processing" | "saved";
+    occurredAt?: string;
+  }[];
   generated?: boolean;
 };
 export type ProvenanceRecord = {

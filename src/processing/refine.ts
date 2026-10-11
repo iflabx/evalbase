@@ -11,13 +11,36 @@ import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId, isPlainObject } from "../server/support.js";
 import { processingOptions, PROCESSING_EXECUTION } from "./protocol.js";
 import {
+  processingSourceSummary,
+  filterProcessingRecords,
+} from "./presentation.js";
+import {
   getProcessingRun,
   processingAccess,
   readProcessingRun,
   ProcessingError,
   type InputSnapshot,
+  type ProcessingRun,
   type ProcessingScope,
 } from "./store.js";
+
+async function readFrozenInput(
+  artifacts: ArtifactRepository,
+  run: ProcessingRun,
+) {
+  if (!run.input_ref)
+    throw new ProcessingError(409, "processing_input_corrupt");
+  try {
+    const bytes = await artifacts.readBytes(run.input_ref, 100000000);
+    if (sha256(bytes) !== run.input_hash)
+      throw new Error("Input hash mismatch");
+    const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
+    if (!Array.isArray(input.records)) throw new Error("Missing input records");
+    return input;
+  } catch {
+    throw new ProcessingError(409, "processing_input_corrupt");
+  }
+}
 
 /** Refine candidates, retaining their original adoption baseline and unselected values. */
 export async function createRefinementRun(
@@ -27,6 +50,7 @@ export async function createRefinementRun(
   parentId: string,
   key: unknown,
   body: unknown,
+  mode: "refine" | "continue" | "rerun" = "refine",
 ) {
   await processingAccess(db, scope);
   if (
@@ -35,34 +59,58 @@ export async function createRefinementRun(
     key.length > 200 ||
     !isPlainObject(body) ||
     Object.keys(body).some(
-      (k) => !["resultIds", "instructions", "allowedFields"].includes(k),
+      (k) =>
+        !(
+          mode === "refine"
+            ? ["resultIds", "instructions", "allowedFields"]
+            : mode === "continue"
+              ? ["resultIds", "options"]
+              : ["options"]
+        ).includes(k),
     ) ||
-    !Array.isArray(body.resultIds) ||
-    !body.resultIds.length ||
-    body.resultIds.length > 10000 ||
-    body.resultIds.some(
-      (id) => typeof id !== "string" || !/^\d+:\d+$/u.test(id),
-    ) ||
-    new Set(body.resultIds).size !== body.resultIds.length
+    (mode !== "rerun" &&
+      (!Array.isArray(body.resultIds) ||
+        !body.resultIds.length ||
+        body.resultIds.length > 10000 ||
+        body.resultIds.some(
+          (id) => typeof id !== "string" || !/^\d+:\d+$/u.test(id),
+        ) ||
+        new Set(body.resultIds).size !== body.resultIds.length))
   )
     throw new ProcessingError(422, "processing_refinement_invalid");
   let options;
   try {
-    options = processingOptions({
-      operation: "rewrite",
-      instructions: body.instructions,
-      allowedFields: body.allowedFields ?? ["question"],
-    });
+    options = processingOptions(
+      mode !== "refine"
+        ? body.options
+        : {
+            operation: "rewrite",
+            instructions: body.instructions,
+            allowedFields: body.allowedFields ?? ["question"],
+          },
+    );
   } catch {
     throw new ProcessingError(422, "processing_configuration_invalid");
   }
   const digest = sha256(
-    canonicalJson({ parentId, resultIds: [...body.resultIds].sort(), options }),
+    canonicalJson({
+      parentId,
+      mode,
+      resultIds: Array.isArray(body.resultIds)
+        ? [...body.resultIds].sort()
+        : [],
+      options,
+    }),
   );
   const client = await db.connect();
   let storedInput: string | undefined;
   try {
     await client.query("BEGIN");
+    // ponytail: project-wide adoption fence for at most 10 users; split by candidate if measured contention warrants it.
+    if (mode !== "refine")
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `processing-candidates:${scope.projectId}`,
+      ]);
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `processing:${scope.projectId}:${scope.actorId}:${key}`,
     ]);
@@ -96,73 +144,137 @@ export async function createRefinementRun(
     const parent = await getProcessingRun(client, scope, parentId, true);
     if (!["succeeded", "failed", "cancelled"].includes(parent.status))
       throw new ProcessingError(409, "processing_still_running");
-    const data = await readProcessingRun(
-      db,
-      artifacts,
-      scope,
-      parentId,
-      { limit: "10000" },
-      true,
-    );
-    if (body.resultIds.some((id) => !data.allIds.includes(id)))
+    const data =
+      mode === "rerun"
+        ? null
+        : await readProcessingRun(
+            db,
+            artifacts,
+            scope,
+            parentId,
+            { limit: "10000" },
+            true,
+          );
+    const resultIds = (
+      Array.isArray(body.resultIds) ? body.resultIds : []
+    ) as string[];
+    if (data && resultIds.some((id) => !data.allIds.includes(id)))
       throw new ProcessingError(422, "processing_result_invalid");
-    const adopted = await adoptedCandidateKeys(client, artifacts, scope, [
-      data,
-    ]);
+    const adopted = data
+      ? await adoptedCandidateKeys(
+          client,
+          artifacts,
+          scope,
+          [data],
+          undefined,
+          mode !== "refine",
+        )
+      : new Set();
     if (
-      body.resultIds.some((id) =>
+      resultIds.some((id) =>
         adopted.has(candidateKey({ runId: parentId, resultId: id })),
       )
     )
       throw new ProcessingError(409, "processing_already_adopted");
-    const input = JSON.parse(
-      (await artifacts.readBytes(parent.input_ref!, 100000000)).toString(
-        "utf8",
-      ),
-    ) as InputSnapshot;
+    const input = await readFrozenInput(artifacts, parent);
     const snapshots = new Map(input.records.map((row) => [row.id, row]));
-    const selected = new Set(body.resultIds);
+    const selected = new Set(resultIds);
+    const inputRootOperation =
+      mode === "rerun"
+        ? (input.continuation?.inputRootOperation ??
+          input.refinement?.rootOperation ??
+          "clean")
+        : (input.continuation?.rootOperation ??
+          input.refinement?.rootOperation ??
+          parent.options.operation);
     const refinement = {
       parentRunId: parentId,
-      selectedIds: body.resultIds.map((id) => `candidate:${id}`),
-      rootOperation:
-        input.refinement?.rootOperation ?? parent.options.operation,
+      selectedIds: resultIds.map((id) => `candidate:${id}`),
+      rootOperation: inputRootOperation,
       adoptionFields: [
         ...new Set([
-          ...(input.refinement?.adoptionFields ?? parent.options.allowedFields),
+          ...(input.continuation?.adoptionFields ??
+            input.refinement?.adoptionFields ??
+            parent.options.allowedFields),
           ...options.allowedFields,
         ]),
       ],
     };
-    const records = data.records.map((row) => {
-      const original = snapshots.get(row.result.sourceId);
-      if (!original) throw new ProcessingError(409, "processing_input_corrupt");
-      return {
-        id: `candidate:${row.id}`,
-        candidateOrigin: row.candidateOrigin,
-        question: row.result.question,
-        expectedOutput: row.result.expectedOutput,
-        metadata: row.result.metadata,
-        baseline: original.baseline ?? original,
-        ...(original.source === undefined ? {} : { source: original.source }),
-        ...(original.revisions === undefined
-          ? {}
-          : { revisions: original.revisions }),
-      };
-    });
+    const records: InputSnapshot["records"] =
+      mode === "rerun"
+        ? input.records.map(({ candidateOrigin: _origin, ...row }) => row)
+        : data!.records
+            .filter((row) => mode === "refine" || selected.has(row.id))
+            .map((row) => {
+              const original = snapshots.get(row.result.sourceId);
+              if (!original)
+                throw new ProcessingError(409, "processing_input_corrupt");
+              return {
+                id: `candidate:${row.id}`,
+                ...(options.operation === "augment"
+                  ? {}
+                  : { candidateOrigin: row.candidateOrigin }),
+                question: row.result.question,
+                expectedOutput: row.result.expectedOutput,
+                metadata: row.result.metadata,
+                baseline: original.baseline ?? original,
+                ...(original.source === undefined
+                  ? {}
+                  : { source: original.source }),
+                ...(original.revisions === undefined
+                  ? {}
+                  : { revisions: original.revisions }),
+              };
+            });
+    if (!records.length)
+      throw new ProcessingError(422, "processing_result_invalid");
+    if (
+      options.operation === "clean" &&
+      !options.instructions &&
+      records.some((row) => row.raw !== undefined)
+    )
+      throw new ProcessingError(422, "processing_mapping_required");
     if (
       records.length > 10000 ||
       Buffer.byteLength(canonicalJson({ records, refinement })) > 100000000
     )
       throw new ProcessingError(422, "processing_capacity_exceeded");
-    const model = (
-      await client.query(
-        "SELECT revision,enabled FROM model_connection ORDER BY revision DESC LIMIT 1",
-      )
-    ).rows[0];
-    if (!model?.enabled)
+    const model =
+      options.operation !== "clean" || options.instructions
+        ? (
+            await client.query(
+              "SELECT revision,enabled FROM model_connection ORDER BY revision DESC LIMIT 1",
+            )
+          ).rows[0]
+        : null;
+    if (
+      (options.operation !== "clean" || options.instructions) &&
+      !model?.enabled
+    )
       throw new ProcessingError(409, "model_connection_unavailable");
     await guardAssistantCommit(client, scope);
+    const rootOperation =
+      options.operation === "augment" || inputRootOperation === "augment"
+        ? "augment"
+        : options.operation;
+    const inputParentRunId =
+      input.continuation?.inputParentRunId ??
+      (input.continuation?.kind === "continue"
+        ? input.continuation.parentRunId
+        : input.refinement?.parentRunId);
+    const continuation =
+      mode === "refine"
+        ? undefined
+        : {
+            parentRunId: parentId,
+            kind: mode,
+            inputRootOperation,
+            ...(mode === "rerun" && inputParentRunId
+              ? { inputParentRunId }
+              : {}),
+            rootOperation,
+            adoptionFields: refinement.adoptionFields,
+          };
     const background = scope.assistantGuard
       ? await freezeBackground(client, scope, scope.assistantGuard.sessionId, {
           options,
@@ -173,23 +285,28 @@ export async function createRefinementRun(
       : input.background;
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
-    const stored = await artifacts.storeProcessing(
-      Buffer.from(
-        canonicalJson({
-          source: input.source,
-          ...(input.revision === undefined ? {} : { revision: input.revision }),
-          records,
-          refinement,
-          ...(background ? { background } : {}),
-        }),
-      ),
-      runId,
-      "input",
+    const bytes = Buffer.from(
+      canonicalJson({
+        source: input.source,
+        ...(input.revision === undefined ? {} : { revision: input.revision }),
+        records,
+        ...(mode === "refine" ? { refinement } : { continuation }),
+        ...(background ? { background } : {}),
+      }),
     );
+    if (bytes.byteLength > 100000000)
+      throw new ProcessingError(422, "processing_capacity_exceeded");
+    const stored = await artifacts.storeProcessing(bytes, runId, "input");
     storedInput = stored.objectRef;
     await client.query(
       "INSERT INTO job(id,project_id,actor_id,kind,payload,status,idempotency_key,correlation_id) VALUES($1,$2,$3,'process_data',$4,'queued',$5,$1)",
-      [jobId, scope.projectId, scope.actorId, { runId }, `processing:${runId}`],
+      [
+        jobId,
+        scope.projectId,
+        scope.actorId,
+        { runId, ...(mode === "refine" ? {} : { continuationKind: mode }) },
+        `processing:${runId}`,
+      ],
     );
     await client.query(
       `INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count,model_revision,target_draft_id,execution_config,parent_run_id,background_document_ids)
@@ -206,7 +323,7 @@ export async function createRefinementRun(
         stored.objectRef,
         stored.sha256,
         records.length,
-        model.revision,
+        model?.revision ?? null,
         parent.target_draft_id,
         PROCESSING_EXECUTION,
         parentId,
@@ -235,4 +352,137 @@ export async function createRefinementRun(
   } finally {
     client.release();
   }
+}
+
+/** Preview frozen inputs only; never creates a task or accepts caller-supplied record bodies. */
+export async function previewFollowupInput(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  body: unknown,
+) {
+  if (
+    !isPlainObject(body) ||
+    !isPlainObject(body.source) ||
+    Object.keys(body).some(
+      (key) =>
+        ![
+          "source",
+          "offset",
+          "limit",
+          "search",
+          "conditions",
+          "selectedOnly",
+          "selectedIds",
+        ].includes(key),
+    ) ||
+    Object.keys(body.source).some(
+      (key) => !["kind", "id", "resultIds"].includes(key),
+    ) ||
+    !["results", "rerun"].includes(String(body.source.kind)) ||
+    typeof body.source.id !== "string" ||
+    body.source.id.length > 250
+  )
+    throw new ProcessingError(422, "processing_scope_invalid");
+  const offset = Number(body.offset ?? 0),
+    limit = Number(body.limit ?? 20);
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 100 ||
+    (body.selectedOnly !== undefined && typeof body.selectedOnly !== "boolean")
+  )
+    throw new ProcessingError(422, "query_parameter_invalid");
+  const parent = await getProcessingRun(db, scope, body.source.id);
+  if (!["succeeded", "failed", "cancelled"].includes(parent.status))
+    throw new ProcessingError(409, "processing_still_running");
+  const input = await readFrozenInput(artifacts, parent);
+  let records = input.records;
+  if (body.source.kind === "results") {
+    const ids = body.source.resultIds;
+    if (
+      !Array.isArray(ids) ||
+      !ids.length ||
+      ids.length > 10000 ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => typeof id !== "string" || !/^\d+:\d+$/u.test(id))
+    )
+      throw new ProcessingError(422, "processing_selection_invalid");
+    const data = await readProcessingRun(
+      db,
+      artifacts,
+      scope,
+      parent.id,
+      { limit: "10000" },
+      true,
+    );
+    if (ids.some((id) => !data.allIds.includes(id)))
+      throw new ProcessingError(422, "processing_result_invalid");
+    const adopted = await adoptedCandidateKeys(
+      db,
+      artifacts,
+      scope,
+      [data],
+      undefined,
+      true,
+    );
+    if (
+      ids.some((id) =>
+        adopted.has(candidateKey({ runId: parent.id, resultId: id })),
+      )
+    )
+      throw new ProcessingError(409, "processing_already_adopted");
+    records = data.records
+      .filter((row) => ids.includes(row.id))
+      .map((row) => ({ id: `candidate:${row.id}`, ...row.result }));
+  } else if (body.source.resultIds !== undefined)
+    throw new ProcessingError(422, "processing_scope_invalid");
+  const ids = records.map((row) => row.id),
+    selected = body.selectedIds ?? [];
+  if (
+    !Array.isArray(selected) ||
+    selected.length > 10000 ||
+    new Set(selected).size !== selected.length ||
+    selected.some((id) => typeof id !== "string" || !ids.includes(id))
+  )
+    throw new ProcessingError(422, "query_parameter_invalid");
+  const matched = filterProcessingRecords(
+      records,
+      body.search,
+      body.conditions,
+    ),
+    visible = body.selectedOnly
+      ? matched.filter((row) => selected.includes(row.id))
+      : matched;
+  const sourceSummary = await processingSourceSummary(db, scope, parent.source);
+  await getProcessingRun(db, scope, parent.id);
+  return {
+    records: visible.slice(offset, offset + limit),
+    allIds: matched.map((row) => row.id),
+    total: visible.length,
+    sourceTotal: records.length,
+    matchedTotal: matched.length,
+    sourceRevision: sha256(canonicalJson([parent.input_hash, ids])),
+    metadataKeys: [
+      ...new Set(
+        records.flatMap((row) => row.metadata.map((entry) => entry.key)),
+      ),
+    ]
+      .sort()
+      .slice(0, 100),
+    sourceSummary: {
+      ...sourceSummary,
+      kindLabel:
+        body.source.kind === "results"
+          ? "上一次处理结果"
+          : "上次提交的完整输入",
+    },
+    parent: {
+      id: parent.id,
+      options: parent.options,
+      createdAt: parent.created_at,
+    },
+  };
 }

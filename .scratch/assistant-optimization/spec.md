@@ -1,6 +1,6 @@
 # 项目助手实测优化实施规格
 
-2026-10-12 文档增补：[OPT-13](issues/13-processing-result-continuation.md) 已整理“结果继续处理、按原输入重新运行、已保存成果入口、草稿来源默认保存回原草稿、来源摘要简化与历史产物名称乱码修复”及 frontend-v1 严格对齐要求。仅获文档授权，Implementation 为 not-started；未改代码或切换 4217，不改变 OPT-12 及既有 Owner 验收记录。
+2026-10-12 最新实施：[OPT-13](issues/13-processing-result-continuation.md) 已完成“结果继续处理、按原输入重新运行、已保存成果入口、草稿来源默认保存回原草稿、来源摘要简化与历史产物名称乱码修复”，UI 严格复用 frontend-v1。Implementation 为 completed；189 项单元、150 项集成、21 项浏览器测试通过，Standards/Spec 复审无剩余 P0/P1。沿用同一 4217，实际范围和限制见 [验证记录](opt13-verification.md)，Owner pending，不改写既有验收记录。
 
 2026-10-11 最新状态：OPT-12 已完成实现、针对性回归及 Standards/Spec 复审，基线 `e257ca1`；同一分支及 4217 环境，Owner 验收 pending。4217 三项应用服务固定 `7d9c8e5`，健康及 Computer Use 现场复核完成；证据见 [OPT-12 验证记录](opt12-verification.md)。
 
@@ -32,21 +32,21 @@ Implementation: in-progress
 
 ## 功能与完成台账
 
-| 项目                                          | 范围                                        | 依赖                                         | Implementation | 证据                                                                                               |
-| --------------------------------------------- | ------------------------------------------- | -------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------- |
-| [OPT-01](issues/01-reliability.md)            | 数量/分类核对、参数解析、保留成功的缺失恢复 | 已有助手及处理服务                           | completed      | 缺失恢复/配额/固定范围回归及全量新 200 条核对完成；语义限制见闭环证明                              |
-| [OPT-02](issues/02-integration.md)            | 多批任务成果、采用同步、溯源下载与中文名称  | 缺失恢复已验证；独立修复不等待 OPT-01 其他项 | completed      | 七批合为一个资产采用，保留七个真实来源；发布、CSV/ZIP 全量比对通过                                 |
-| [OPT-03](issues/03-background.md)             | 背景附件、持久要求、短提示与同会话连续任务  | OPT-01/02；文档提取独立进行                  | completed      | PDF/MD/TXT 提取、权限与冻结回归通过；同会话真实 GB PDF 已使用                                      |
-| [OPT-04](issues/04-workspace.md)              | 宽工作区、状态与结果整理、最终 200 条闭环   | OPT-01/02/03                                 | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                          |
-| [OPT-05](issues/05-long-task-execution.md) | 历史长任务执行与未完成验收 | 原功能基础保留；待含 OPT-10 证据的最终 Owner 内容验收 | in-progress | 历史局部证据保留；不作为新增整改通过证明 |
-| [OPT-06](issues/06-active-requirements.md)    | 目标理解、生效要求、规则反馈及摘要          | 现有 OPT-01–05 代码基础                      | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                  |
-| [OPT-07](issues/07-execution-and-recovery.md) | 真实步骤推进、后台衔接、成果恢复            | OPT-06                                       | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md) |
-| [OPT-08](issues/08-review-and-delivery.md)    | 候选审核、通用任务闭环、唯一 checkpoint     | OPT-07 已完成                                | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending                       |
-| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 待最终 Owner 验收（含 OPT-10 证据） | in-progress | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
-| [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | completed | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending |
-| [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示 | 现有 OPT-10 及页面补修；已获开发授权 | completed | [实施与验证](opt11-verification.md)；一个 Ticket、一次人工 checkpoint，Owner pending |
-| [OPT-12](issues/12-processing-usability-followup.md) | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；Owner 已授权开发 | completed | [实施与复审](opt12-verification.md)；R12-1–12 Owner pending，UI 严格复用 frontend-v1 |
-| [OPT-13](issues/13-processing-result-continuation.md) | 继续处理、重新运行、保存回来源草稿、来源摘要与历史乱码修复 | 现有 OPT-11/12 及样式补修；等待单独开发授权 | not-started | 仅文档；R13-1–13 pending，UI 严格复用 frontend-v1 |
+| 项目                                                  | 范围                                                           | 依赖                                                  | Implementation | 证据                                                                                                    |
+| ----------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------- |
+| [OPT-01](issues/01-reliability.md)                    | 数量/分类核对、参数解析、保留成功的缺失恢复                    | 已有助手及处理服务                                    | completed      | 缺失恢复/配额/固定范围回归及全量新 200 条核对完成；语义限制见闭环证明                                   |
+| [OPT-02](issues/02-integration.md)                    | 多批任务成果、采用同步、溯源下载与中文名称                     | 缺失恢复已验证；独立修复不等待 OPT-01 其他项          | completed      | 七批合为一个资产采用，保留七个真实来源；发布、CSV/ZIP 全量比对通过                                      |
+| [OPT-03](issues/03-background.md)                     | 背景附件、持久要求、短提示与同会话连续任务                     | OPT-01/02；文档提取独立进行                           | completed      | PDF/MD/TXT 提取、权限与冻结回归通过；同会话真实 GB PDF 已使用                                           |
+| [OPT-04](issues/04-workspace.md)                      | 宽工作区、状态与结果整理、最终 200 条闭环                      | OPT-01/02/03                                          | completed      | 16 项浏览器回归通过；Computer Use 同会话新 200 条闭环完成                                               |
+| [OPT-05](issues/05-long-task-execution.md)            | 历史长任务执行与未完成验收                                     | 原功能基础保留；待含 OPT-10 证据的最终 Owner 内容验收 | in-progress    | 历史局部证据保留；不作为新增整改通过证明                                                                |
+| [OPT-06](issues/06-active-requirements.md)            | 目标理解、生效要求、规则反馈及摘要                             | 现有 OPT-01–05 代码基础                               | completed      | R06-1–5 通过；应用 `08356cb`；[验证与复审](opt06-verification.md)                                       |
+| [OPT-07](issues/07-execution-and-recovery.md)         | 真实步骤推进、后台衔接、成果恢复                               | OPT-06                                                | completed      | R07-1–7 通过；应用 `9027332f3b1db8610479e14e3aad6cb64efcb5ef`；[验证与复审](opt07-verification.md)      |
+| [OPT-08](issues/08-review-and-delivery.md)            | 候选审核、通用任务闭环、唯一 checkpoint                        | OPT-07 已完成                                         | completed      | 固定 Web `1aa3707` / Worker `7ed8a3a`；实测及复审见 [OPT-08 记录](opt08-verification.md)；Owner pending |
+| [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对        | 待最终 Owner 验收（含 OPT-10 证据）                   | in-progress    | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回                       |
+| [OPT-10](issues/10-fixed-input-and-recovery.md)       | 固定输入、候选汇总、背景规则与方案恢复                         | 现有 OPT-09 实现；不等待旧 Ticket 最终验收            | completed      | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending                                          |
+| [OPT-11](issues/11-processing-workspace-ux.md)        | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示     | 现有 OPT-10 及页面补修；已获开发授权                  | completed      | [实施与验证](opt11-verification.md)；一个 Ticket、一次人工 checkpoint，Owner pending                    |
+| [OPT-12](issues/12-processing-usability-followup.md)  | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；Owner 已授权开发                    | completed      | [实施与复审](opt12-verification.md)；R12-1–12 Owner pending，UI 严格复用 frontend-v1                    |
+| [OPT-13](issues/13-processing-result-continuation.md) | 继续处理、重新运行、保存回来源草稿、来源摘要与历史乱码修复     | 现有 OPT-11/12 及样式补修；Owner 已授权开发           | completed      | [验证记录](opt13-verification.md)；Owner pending，UI 严格复用 frontend-v1                               |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

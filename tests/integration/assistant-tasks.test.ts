@@ -53,6 +53,66 @@ describe("assistant continuous task public contract", () => {
       | "proposal" = "clean",
     failReply = false,
     failRefinement = false;
+  let requestedRefinement:
+    | {
+        runId: string;
+        resultIds: string[];
+        instructions: string;
+        allowedFields: string[];
+      }
+    | undefined;
+  const refinementSessions = new Map<string, string>();
+  async function refineThroughAssistant(
+    parent: string,
+    payload: {
+      resultIds: string[];
+      instructions: string;
+      allowedFields: string[];
+    },
+    key = randomUUID(),
+  ) {
+    mode = "explain";
+    let id = refinementSessions.get(key);
+    if (!id) {
+      id = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId as string;
+      refinementSessions.set(key, id);
+    }
+    requestedRefinement = { runId: parent, ...payload };
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${id}/turns`,
+        headers: { ...headers, "idempotency-key": key },
+        payload: { message: payload.instructions },
+      });
+      expect([200, 202], response.body).toContain(response.statusCode);
+      const read = async () =>
+        (
+          await app.inject({
+            method: "GET",
+            url: `${base()}/sessions/${id}`,
+            headers,
+          })
+        ).json();
+      await expect
+        .poll(async () => (await read()).turns.at(-1)?.status, {
+          timeout: 15000,
+        })
+        .toBe("succeeded");
+      const child = (await read()).task.runId;
+      expect(child).toBeTruthy();
+      return child as string;
+    } finally {
+      requestedRefinement = undefined;
+    }
+  }
   let repairPattern: "recover" | "partial" | null = null;
   let repairCalls = 0;
   let augmentationPattern = false;
@@ -344,6 +404,23 @@ describe("assistant continuous task public contract", () => {
               arguments: JSON.stringify({
                 source: { kind: "draft", id: draftId },
               }),
+            },
+          },
+        ],
+      };
+      finish = "tool_calls";
+    }
+    if (requestedRefinement && body.tools && last?.role !== "tool") {
+      message = {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: `selected_refinement_${requests.length}`,
+            type: "function",
+            function: {
+              name: "refine_candidates",
+              arguments: JSON.stringify(requestedRefinement),
             },
           },
         ],
@@ -1014,24 +1091,8 @@ describe("assistant continuous task public contract", () => {
         instructions: "问题写得更自然",
         allowedFields: ["question"],
       };
-    const refined = await app.inject({
-      method: "POST",
-      url: `${path}/${parent}/refinements`,
-      headers: { ...headers, "idempotency-key": key },
-      payload,
-    });
-    expect(refined.statusCode, refined.body).toBe(201);
-    const child = refined.json().run.id;
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: `${path}/${parent}/refinements`,
-          headers: { ...headers, "idempotency-key": key },
-          payload,
-        })
-      ).json().run.id,
-    ).toBe(child);
+    const child = await refineThroughAssistant(parent, payload, key);
+    expect(await refineThroughAssistant(parent, payload, key)).toBe(child);
     preferBaseline = true;
     await execute(child);
     preferBaseline = false;
@@ -1067,18 +1128,11 @@ describe("assistant continuous task public contract", () => {
         .filter((body) => !body.tools)
         .every((body) => body.temperature === 0.2),
     ).toBe(true);
-    const failedRun = await app.inject({
-      method: "POST",
-      url: `${path}/${child}/refinements`,
-      headers: { ...headers, "idempotency-key": randomUUID() },
-      payload: {
-        resultIds: [after.records[0].id],
-        instructions: "再次调整问题",
-        allowedFields: ["question"],
-      },
+    const failedId = await refineThroughAssistant(child, {
+      resultIds: [after.records[0].id],
+      instructions: "再次调整问题",
+      allowedFields: ["question"],
     });
-    expect(failedRun.statusCode, failedRun.body).toBe(201);
-    const failedId = failedRun.json().run.id;
     const legacyDb = createPool(databaseUrl);
     try {
       await legacyDb.query(
@@ -1146,18 +1200,11 @@ describe("assistant continuous task public contract", () => {
     expect(
       recovered.records.slice(1).map((r: any) => r.result.question),
     ).toEqual(after.records.slice(1).map((r: any) => r.result.question));
-    const second = await app.inject({
-      method: "POST",
-      url: `${path}/${child}/refinements`,
-      headers: { ...headers, "idempotency-key": randomUUID() },
-      payload: {
-        resultIds: [after.records[0].id],
-        instructions: "再次调整问题",
-        allowedFields: ["question"],
-      },
+    const grandchild = await refineThroughAssistant(child, {
+      resultIds: [after.records[0].id],
+      instructions: "再次调整问题",
+      allowedFields: ["question"],
     });
-    expect(second.statusCode, second.body).toBe(201);
-    const grandchild = second.json().run.id;
     await execute(grandchild);
     const latest = (
       await app.inject({
@@ -2687,24 +2734,8 @@ describe("assistant continuous task public contract", () => {
         instructions: "Rephrase selected question",
         allowedFields: ["question"],
       };
-    const refined = await app.inject({
-      method: "POST",
-      url: `${path}/${parent}/refinements`,
-      headers: { ...headers, "idempotency-key": key },
-      payload,
-    });
-    expect(refined.statusCode, refined.body).toBe(201);
-    const child = refined.json().run.id;
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: `${path}/${parent}/refinements`,
-          headers: { ...headers, "idempotency-key": key },
-          payload,
-        })
-      ).json().run.id,
-    ).toBe(child);
+    const child = await refineThroughAssistant(parent, payload, key);
+    expect(await refineThroughAssistant(parent, payload, key)).toBe(child);
     await execute(child);
     const after = (
       await app.inject({

@@ -8,7 +8,12 @@ import type {
 } from "./store.js";
 import { ProcessingError } from "./store.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
-import { presentSources, processingHistory } from "./provenance.js";
+import {
+  presentSources,
+  processingHistory,
+  processingReferences,
+} from "./provenance.js";
+import { adoptedCandidateKeys, candidateKey } from "./adoption.js";
 
 export function filterProcessingRecords<T extends ProcessingInput>(
   records: T[],
@@ -164,6 +169,7 @@ export function processingReviewPage(
   return {
     run: data.run,
     rootOperation: data.rootOperation,
+    adoptionFields: data.adoptionFields,
     issues: data.issues,
     records: matched.slice(offset, offset + limit),
     allIds: matched.map((row) => row.id),
@@ -253,8 +259,25 @@ export async function presentProcessingReview(
       row.original ? [{ runId: data.run.id, inputId: row.original.id }] : [],
     ),
   );
+  const adopted = await adoptedCandidateKeys(
+    db,
+    artifacts,
+    scope,
+    [data],
+    undefined,
+    true,
+  );
+  const references =
+    data.rootOperation === "augment"
+      ? await processingReferences(db, artifacts, scope, data.run.id)
+      : null;
   return {
     ...page,
+    adoptedIds: data.records
+      .filter((row) =>
+        adopted.has(candidateKey({ runId: data.run.id, resultId: row.id })),
+      )
+      .map((row) => row.id),
     run: {
       ...page.run,
       sourceSummary,
@@ -272,9 +295,10 @@ export async function presentProcessingReview(
       const sourcePresentation = {
         ...origin,
         label:
-          generated && !origin.generated
+          references?.label ??
+          (generated && !origin.generated
             ? `模型扩写 · 参考 ${origin.fileName ?? origin.label}`
-            : origin.label,
+            : origin.label),
         generated: generated || origin.generated,
         badges: [
           ...new Set([
@@ -283,9 +307,18 @@ export async function presentProcessingReview(
           ]),
         ],
         steps: [
-          ...origin.steps,
+          ...origin.steps.filter(
+            (step) => !references || step.kind !== "reference",
+          ),
+          ...(references?.steps ?? []),
           ...(history.length ? history : [{ label: badge }]),
-        ],
+        ].filter(
+          (step, index, all) =>
+            !step.href ||
+            all.findIndex(
+              (other) => other.href === step.href && other.label === step.label,
+            ) === index,
+        ),
       };
       return {
         ...row,

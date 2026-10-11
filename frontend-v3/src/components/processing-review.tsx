@@ -4,6 +4,14 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -47,30 +55,103 @@ const fieldLabels: Record<string, string> = {
 };
 export function SourceInfo({ value }: { value?: SourcePresentation | undefined }) {
   if (!value) return <span className="text-muted-foreground">来源未记录</span>;
+  const references = value.steps.filter(
+    (step) => step.kind === "reference" || (!step.kind && !step.href?.includes("/processing?")),
+  );
+  const processing = value.steps.filter(
+    (step) =>
+      step.kind === "processing" ||
+      (!step.kind && (step.href?.includes("/processing?") || !step.href)),
+  );
+  const saved = value.steps.filter((step) => step.kind === "saved");
+  const badges = [...new Set(value.badges)].filter((badge) => !value.label.includes(badge));
+  const stepList = (steps: SourcePresentation["steps"], reference = false) => (
+    <ol className="space-y-2">
+      {steps.map((step, index) => (
+        <li key={`${step.href ?? step.label}:${index}`} className="break-words">
+          {step.href ? (
+            <a href={step.href} className="text-primary hover:underline">
+              {reference && value.generated ? `参考位置：${step.label}` : step.label}
+            </a>
+          ) : (
+            step.label
+          )}
+          {step.kind === "processing" && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {step.occurredAt ? new Date(step.occurredAt).toLocaleString() : "时间未记录"}
+            </span>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
   return (
-    <details className="min-w-0 text-xs">
-      <summary className="cursor-pointer break-words text-muted-foreground">
-        {value.label}{" "}
-        {value.badges.map((badge) => (
-          <Badge key={badge} variant="secondary" className="ml-1 font-normal">
-            {badge}
-          </Badge>
-        ))}
-      </summary>
-      <ol className="mt-2 space-y-1 border-l pl-3">
-        {value.steps.map((step, index) => (
-          <li key={index}>
-            {step.href ? (
-              <a href={step.href} className="break-words text-primary hover:underline">
-                {step.label}
-              </a>
-            ) : (
-              step.label
-            )}
-          </li>
-        ))}
-      </ol>
-    </details>
+    <div className="min-w-0 text-xs">
+      <p className="line-clamp-2 break-words text-muted-foreground" title={value.label}>
+        {value.label}
+        {badges.length > 0 && <span className="ml-1">{badges.join(" · ")}</span>}
+      </p>
+      {value.steps.length > 0 && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="link"
+              className="h-auto px-0 py-1 text-xs"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              查看来源
+            </Button>
+          </DialogTrigger>
+          <DialogContent
+            className="max-h-[85vh] overflow-y-auto sm:max-w-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <DialogHeader>
+              <DialogTitle>数据来源</DialogTitle>
+              <DialogDescription>
+                {value.generated
+                  ? "新生成记录；下面是实际参考资料和处理过程。"
+                  : "原始位置、处理过程与保存结果。"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-5 text-sm">
+              <section>
+                <h3 className="mb-2 font-medium">{value.generated ? "参考资料" : "原始资料"}</h3>
+                {references.length ? (
+                  stepList(references, true)
+                ) : (
+                  <p className="text-muted-foreground">部分来源未记录</p>
+                )}
+              </section>
+              <section>
+                <h3 className="mb-2 font-medium">处理过程</h3>
+                {processing.length ? (
+                  stepList(processing)
+                ) : (
+                  <p className="text-muted-foreground">未记录处理操作</p>
+                )}
+              </section>
+              {saved.length > 0 && (
+                <section>
+                  <h3 className="mb-2 font-medium">保存结果</h3>
+                  {stepList(saved.slice(-1))}
+                  {saved.length > 1 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        查看中间文件（{saved.length - 1}）
+                      </summary>
+                      <div className="mt-2">{stepList(saved.slice(0, -1))}</div>
+                    </details>
+                  )}
+                </section>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
   );
 }
 function FullValue({
