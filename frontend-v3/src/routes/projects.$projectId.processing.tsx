@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, Plus, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -101,6 +104,27 @@ const statuses: Record<string, string> = {
   cancel_requested: "正在取消",
   cancelled: "已取消",
 };
+function ProcessingStatus({ run }: { run: Run }) {
+  const partial = run.status === "succeeded" && run.executionComplete === false;
+  return (
+    <Badge
+      variant="outline"
+      className={
+        partial
+          ? "border-chart-5/30 bg-chart-5/10 text-chart-5"
+          : run.status === "succeeded"
+            ? "border-chart-2/30 bg-chart-2/10 text-chart-2"
+            : run.status === "failed"
+              ? "border-destructive/30 bg-destructive/10 text-destructive"
+              : run.status === "running"
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "bg-muted text-muted-foreground"
+      }
+    >
+      {partial ? "部分完成，需核对执行" : statuses[run.status]}
+    </Badge>
+  );
+}
 const errors: Record<string, string> = {
   model_connection_unavailable: "请先由管理员在设置中启用模型连接。",
   processing_source_unavailable: "来源已回收或不可用，恢复来源后可继续。",
@@ -166,7 +190,10 @@ function ProcessingPage() {
           actions={
             <>
               {access.canWrite && !source && !runId && (
-                <Button onClick={() => setCreating(true)}>新建处理</Button>
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="size-4" />
+                  新建处理
+                </Button>
               )}
               {(source || runId) && (
                 <Button
@@ -227,25 +254,22 @@ function ProcessingPage() {
             />
           )}
           {!source && !runId && (
-            <section className="overflow-hidden rounded-md border bg-card shadow-sm">
-              <div className="border-b px-5 py-4">
-                <h2 className="font-semibold">处理任务</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  关闭页面后，已提交的任务仍会继续。最多显示最近 100 项。
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 border-b px-5 py-3">
-                <Input
-                  aria-label="搜索处理任务"
-                  placeholder="搜索来源或处理要求"
-                  className="w-full sm:max-w-xs"
-                  value={historySearch}
-                  maxLength={200}
-                  onChange={(event) => {
-                    setHistorySearch(event.target.value);
-                    setHistoryPage(1);
-                  }}
-                />
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    aria-label="搜索处理任务"
+                    placeholder="搜索来源或处理要求"
+                    className="pl-8"
+                    value={historySearch}
+                    maxLength={200}
+                    onChange={(event) => {
+                      setHistorySearch(event.target.value);
+                      setHistoryPage(1);
+                    }}
+                  />
+                </div>
                 <Select
                   value={historyStatus}
                   onValueChange={(value) => {
@@ -279,92 +303,97 @@ function ProcessingPage() {
                   </Button>
                 )}
               </div>
-              {runs.isPending ? (
-                <p className="p-5 text-sm text-muted-foreground">正在读取处理任务…</p>
-              ) : runs.error ? (
-                <div className="p-5" role="alert">
-                  <p>{errorText(runs.error)}</p>
-                  <Button variant="outline" onClick={() => void runs.refetch()}>
-                    重试
-                  </Button>
-                </div>
-              ) : !history.length ? (
-                <p className="p-5 text-sm text-muted-foreground">
-                  {historySearch || historyStatus !== "all"
-                    ? "没有匹配结果，请清除搜索或筛选。"
-                    : "暂无处理任务。点击“新建处理”开始。"}
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px] text-sm">
-                    <thead className="bg-muted/60 text-left text-muted-foreground">
-                      <tr>
-                        <th className="px-5 py-3">任务</th>
-                        <th className="px-4 py-3">输入记录</th>
-                        <th className="px-4 py-3">状态</th>
-                        <th className="px-4 py-3">发起人 / 时间</th>
-                        <th className="px-5 py-3 text-right">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.slice((historyPage - 1) * 20, historyPage * 20).map((run) => (
-                        <tr key={run.id} className="border-t">
-                          <td className="px-5 py-4 font-medium">
-                            {run.sourceSummary?.name ?? "来源未记录"} ·{" "}
-                            {labels[run.options.operation]}
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {run.sourceSummary?.kindLabel ?? "来源类型未记录"}
-                            </p>
-                            <p
-                              className="mt-1 max-w-sm truncate text-xs font-normal text-muted-foreground"
-                              title={run.options.instructions}
-                            >
-                              {run.options.instructions || "未记录处理要求"}
-                            </p>
-                          </td>
-                          <td className="px-4 py-4">{run.inputCount} 条</td>
-                          <td className="px-4 py-4">
-                            {run.status === "succeeded" && run.executionComplete === false
-                              ? "部分完成，需核对执行"
-                              : statuses[run.status]}
-                            {run.status === "running" ? ` ${run.progress}%` : ""}
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {run.hasSavedResult ? "有保存记录" : "暂无保存记录"}
-                            </p>
-                          </td>
-                          <td className="px-4 py-4 text-muted-foreground">
-                            <p>{run.actorName ?? "未记录"}</p>
-                            {new Date(run.createdAt).toLocaleString()}
-                          </td>
-                          <td className="px-5 py-4 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                void navigate({
-                                  search: { run: run.id, source: undefined, sourceId: undefined },
-                                });
-                              }}
-                            >
-                              查看
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <div className="px-5 pb-4">
-                <Pagination
-                  current={historyPage}
-                  total={history.length}
-                  pages={Math.max(1, Math.ceil(history.length / 20))}
-                  unit="项匹配任务（最近 100 项范围）"
-                  onChange={setHistoryPage}
-                />
-              </div>
-            </section>
+              <Card className="min-w-0 overflow-hidden">
+                <CardContent className="p-0">
+                  {runs.isPending ? (
+                    <p className="p-5 text-sm text-muted-foreground">正在读取处理任务…</p>
+                  ) : runs.error ? (
+                    <div className="p-5" role="alert">
+                      <p>{errorText(runs.error)}</p>
+                      <Button variant="outline" onClick={() => void runs.refetch()}>
+                        重试
+                      </Button>
+                    </div>
+                  ) : !history.length ? (
+                    <p className="p-5 text-sm text-muted-foreground">
+                      {historySearch || historyStatus !== "all"
+                        ? "没有匹配结果，请清除搜索或筛选。"
+                        : "暂无处理任务。点击“新建处理”开始。"}
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[640px] text-sm">
+                        <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+                          <tr>
+                            <th className="px-4 py-2 font-medium">任务</th>
+                            <th className="px-4 py-2 font-medium">输入记录</th>
+                            <th className="px-4 py-2 font-medium">状态</th>
+                            <th className="px-4 py-2 font-medium">发起人 / 时间</th>
+                            <th className="px-4 py-2 text-right font-medium">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.slice((historyPage - 1) * 20, historyPage * 20).map((run) => (
+                            <tr key={run.id} className="border-t">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2 font-medium">
+                                  <FileText className="size-4 shrink-0 text-primary" />
+                                  {run.sourceSummary?.name ?? "来源未记录"} ·{" "}
+                                  {labels[run.options.operation]}
+                                </div>
+                                <p
+                                  className="mt-0.5 max-w-sm truncate pl-6 text-xs text-muted-foreground"
+                                  title={run.options.instructions}
+                                >
+                                  {run.sourceSummary?.kindLabel ?? "来源类型未记录"} ·{" "}
+                                  {run.options.instructions || "未记录处理要求"}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3">{run.inputCount} 条</td>
+                              <td className="px-4 py-3">
+                                <ProcessingStatus run={run} />
+                                {run.status === "running" ? ` ${run.progress}%` : ""}
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {run.hasSavedResult ? "有保存记录" : "暂无保存记录"}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                <p>{run.actorName ?? "未记录"}</p>
+                                {new Date(run.createdAt).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    void navigate({
+                                      search: {
+                                        run: run.id,
+                                        source: undefined,
+                                        sourceId: undefined,
+                                      },
+                                    });
+                                  }}
+                                >
+                                  查看
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Pagination
+                current={historyPage}
+                total={history.length}
+                pages={Math.max(1, Math.ceil(history.length / 20))}
+                unit="项匹配任务（最近 100 项范围）"
+                onChange={setHistoryPage}
+              />
+            </div>
           )}
         </>
       )}
@@ -593,7 +622,7 @@ function ProcessingForm({
           </Button>
         </div>
       )}
-      <div className="sticky top-12 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm xl:hidden">
+      <Card className="sticky top-12 z-10 flex flex-wrap items-center gap-2 p-3 text-sm xl:hidden">
         <span>已选 {selected.size} 条</span>
         <Button
           size="sm"
@@ -614,310 +643,324 @@ function ProcessingForm({
         >
           开始{labels[operation]}
         </Button>
-      </div>
+      </Card>
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-sm">
-          <div className="space-y-3 border-b px-5 py-4">
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="border-b bg-muted/60 px-4 py-3">
             <h2 className="font-semibold">选择输入记录</h2>
-            <ProcessingFilters
-              search={search}
-              conditions={conditions}
-              metadataKeys={visibleInput?.metadataKeys ?? []}
-              disabled={busy}
-              onChange={(text, filters) => {
-                setSearch(text);
-                setConditions(filters);
-                setPage(1);
-              }}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || !visibleInput || input.isFetching}
-                onClick={() => {
-                  setSelected(
-                    (old) => new Set([...old, ...visibleInput!.records.map((row) => row.id)]),
-                  );
-                  change();
-                }}
-              >
-                勾选本页
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || !visibleInput || input.isFetching}
-                onClick={() => {
-                  setSelected((old) => new Set([...old, ...visibleInput!.allIds]));
-                  change();
-                }}
-              >
-                选择全部匹配记录（{visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条）
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy || !selected.size}
-                onClick={() => {
-                  setSelected(new Set());
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="space-y-3 border-b p-4">
+              <ProcessingFilters
+                search={search}
+                conditions={conditions}
+                metadataKeys={visibleInput?.metadataKeys ?? []}
+                disabled={busy}
+                onChange={(text, filters) => {
+                  setSearch(text);
+                  setConditions(filters);
                   setPage(1);
-                  change();
                 }}
-              >
-                清空选择
-              </Button>
-              <label className="ml-auto flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={selectedOnly}
-                  disabled={busy}
-                  onCheckedChange={(value) => {
-                    setSelectedOnly(value === true);
-                    setPage(1);
-                  }}
-                />
-                只看已选
-              </label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
-              {selected.size} 条{hidden > 0 && visibleInput ? `（${hidden} 条在当前筛选外）` : ""}
-              。提交使用完整已选集合。
-            </p>
-          </div>
-          {input.error ? (
-            <div className="space-y-2 p-5" role="alert">
-              <p>{errorText(input.error)} 已选记录与处理要求已保留。</p>
-              <Button variant="outline" onClick={() => void input.refetch()}>
-                重试读取来源
-              </Button>
-            </div>
-          ) : input.isPending ? (
-            <p className="p-5 text-sm text-muted-foreground">正在读取记录…</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[440px] table-fixed text-sm">
-                <thead className="bg-muted/60 text-left text-muted-foreground">
-                  <tr>
-                    <th className="w-12 px-3 py-3">
-                      <Checkbox
-                        aria-label="选择本页记录"
-                        disabled={
-                          busy || input.isFetching || !visibleInput?.records.length || scopeChanged
-                        }
-                        checked={
-                          Boolean(visibleInput?.records.length) &&
-                          visibleInput!.records.every((row) => selected.has(row.id))
-                        }
-                        onCheckedChange={(checked) => {
-                          setSelected((old) => {
-                            const next = new Set(old);
-                            for (const row of visibleInput?.records ?? []) {
-                              if (checked) next.add(row.id);
-                              else next.delete(row.id);
-                            }
-                            return next;
-                          });
-                          change();
-                        }}
-                      />
-                    </th>
-                    <th className="px-3 py-3">问题 / 原始内容</th>
-                    <th className="w-[22%] px-3 py-3">期望输出</th>
-                    <th className="w-[30%] px-3 py-3">Metadata</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleInput?.records.map((row) => (
-                    <tr key={row.id} className="border-t align-top">
-                      <td className="px-3 py-3">
-                        <Checkbox
-                          aria-label={`选择记录 ${row.id}`}
-                          disabled={busy || input.isFetching || scopeChanged}
-                          checked={selected.has(row.id)}
-                          onCheckedChange={(checked) => {
-                            setSelected((old) => {
-                              const next = new Set(old);
-                              if (checked) next.add(row.id);
-                              else next.delete(row.id);
-                              return next;
-                            });
-                            if (selectedOnly) setPage(1);
-                            change();
-                          }}
-                        />
-                      </td>
-                      <td className="break-words px-3 py-3">
-                        <details>
-                          <summary className="cursor-pointer line-clamp-2">
-                            {row.question || JSON.stringify(row.raw) || "（空问题）"}
-                          </summary>
-                          <p className="mt-2 whitespace-pre-wrap break-words">
-                            {row.raw ? JSON.stringify(row.raw, null, 2) : row.question}
-                          </p>
-                        </details>
-                      </td>
-                      <td className="px-3 py-3">
-                        <details>
-                          <summary className="cursor-pointer line-clamp-2 break-words">
-                            {row.expectedOutput || "（空值）"}
-                          </summary>
-                          <p className="whitespace-pre-wrap break-words">
-                            {row.expectedOutput || "（空值）"}
-                          </p>
-                        </details>
-                      </td>
-                      <td className="px-3 py-3">
-                        <MetadataSummary entries={row.metadata} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!visibleInput?.records.length && (
-                <div className="space-y-2 p-6 text-center text-sm">
-                  <p>{selectedOnly ? "当前范围没有已选记录。" : "没有匹配记录。"}</p>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setSearch("");
-                      setConditions([]);
-                      setSelectedOnly(false);
-                      setPage(1);
-                    }}
-                  >
-                    显示全部记录
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="px-4 pb-3">
-            <Pagination
-              current={page}
-              total={visibleInput?.total ?? 0}
-              unit="条记录"
-              pages={Math.max(1, Math.ceil((visibleInput?.total ?? 0) / 20))}
-              onChange={setPage}
-            />
-          </div>
-        </section>
-        <section
-          id="processing-settings"
-          className="scroll-mt-28 min-w-0 space-y-4 rounded-md border bg-card p-5 shadow-sm xl:sticky xl:top-20"
-        >
-          <h2 className="font-semibold">处理要求</h2>
-          <div className="space-y-2 text-sm">
-            <label>要做什么</label>
-            <div className="flex gap-2" role="group" aria-label="处理方式">
-              {Object.entries(labels).map(([value, label]) => (
+              />
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  key={value}
                   size="sm"
-                  className="flex-1"
-                  variant={operation === value ? "default" : "outline"}
-                  aria-pressed={operation === value}
-                  disabled={busy}
+                  variant="outline"
+                  disabled={busy || !visibleInput || input.isFetching}
                   onClick={() => {
-                    setOperation(value as typeof operation);
+                    setSelected(
+                      (old) => new Set([...old, ...visibleInput!.records.map((row) => row.id)]),
+                    );
                     change();
                   }}
                 >
-                  {label}
+                  勾选本页
                 </Button>
-              ))}
-            </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
-          </div>
-          <fieldset className="space-y-2">
-            <legend className="mb-2 text-sm font-medium">允许修改的字段</legend>
-            <div className="flex flex-wrap gap-4">
-              {[
-                ["question", "问题"],
-                ["expectedOutput", "期望输出"],
-                ["metadata", "Metadata"],
-              ].map(([field, label]) => (
-                <label key={field} className="flex items-center gap-2 text-sm">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || !visibleInput || input.isFetching}
+                  onClick={() => {
+                    setSelected((old) => new Set([...old, ...visibleInput!.allIds]));
+                    change();
+                  }}
+                >
+                  选择全部匹配记录（{visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条）
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || !selected.size}
+                  onClick={() => {
+                    setSelected(new Set());
+                    setPage(1);
+                    change();
+                  }}
+                >
+                  清空选择
+                </Button>
+                <label className="ml-auto flex items-center gap-2 text-sm">
                   <Checkbox
+                    checked={selectedOnly}
                     disabled={busy}
-                    checked={allowedFields.includes(field!)}
-                    onCheckedChange={(yes) => {
-                      setAllowedFields((old) =>
-                        yes ? [...old, field!] : old.filter((value) => value !== field),
-                      );
-                      change();
+                    onCheckedChange={(value) => {
+                      setSelectedOnly(value === true);
+                      setPage(1);
                     }}
                   />
-                  {label}
+                  只看已选
                 </label>
-              ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
+                {selected.size} 条{hidden > 0 && visibleInput ? `（${hidden} 条在当前筛选外）` : ""}
+                。提交使用完整已选集合。
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              未勾选的字段保留输入原值；切换处理方式不改变字段授权。
-            </p>
-            {!allowedFields.length && (
-              <p className="text-xs text-destructive">请至少选择一个字段。</p>
+            {input.error ? (
+              <div className="space-y-2 p-5" role="alert">
+                <p>{errorText(input.error)} 已选记录与处理要求已保留。</p>
+                <Button variant="outline" onClick={() => void input.refetch()}>
+                  重试读取来源
+                </Button>
+              </div>
+            ) : input.isPending ? (
+              <p className="p-5 text-sm text-muted-foreground">正在读取记录…</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[440px] table-fixed text-sm">
+                  <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="w-12 px-4 py-2 font-medium">
+                        <Checkbox
+                          aria-label="选择本页记录"
+                          disabled={
+                            busy ||
+                            input.isFetching ||
+                            !visibleInput?.records.length ||
+                            scopeChanged
+                          }
+                          checked={
+                            Boolean(visibleInput?.records.length) &&
+                            visibleInput!.records.every((row) => selected.has(row.id))
+                          }
+                          onCheckedChange={(checked) => {
+                            setSelected((old) => {
+                              const next = new Set(old);
+                              for (const row of visibleInput?.records ?? []) {
+                                if (checked) next.add(row.id);
+                                else next.delete(row.id);
+                              }
+                              return next;
+                            });
+                            change();
+                          }}
+                        />
+                      </th>
+                      <th className="px-4 py-2 font-medium">问题 / 原始内容</th>
+                      <th className="w-[22%] px-4 py-2 font-medium">期望输出</th>
+                      <th className="w-[30%] px-4 py-2 font-medium">Metadata</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleInput?.records.map((row) => (
+                      <tr key={row.id} className="border-t align-top">
+                        <td className="px-4 py-3">
+                          <Checkbox
+                            aria-label={`选择记录 ${row.id}`}
+                            disabled={busy || input.isFetching || scopeChanged}
+                            checked={selected.has(row.id)}
+                            onCheckedChange={(checked) => {
+                              setSelected((old) => {
+                                const next = new Set(old);
+                                if (checked) next.add(row.id);
+                                else next.delete(row.id);
+                                return next;
+                              });
+                              if (selectedOnly) setPage(1);
+                              change();
+                            }}
+                          />
+                        </td>
+                        <td className="break-words px-4 py-3">
+                          <details>
+                            <summary className="cursor-pointer line-clamp-2">
+                              {row.question || JSON.stringify(row.raw) || "（空问题）"}
+                            </summary>
+                            <p className="mt-2 whitespace-pre-wrap break-words">
+                              {row.raw ? JSON.stringify(row.raw, null, 2) : row.question}
+                            </p>
+                          </details>
+                        </td>
+                        <td className="px-4 py-3">
+                          <details>
+                            <summary className="cursor-pointer line-clamp-2 break-words">
+                              {row.expectedOutput || "（空值）"}
+                            </summary>
+                            <p className="whitespace-pre-wrap break-words">
+                              {row.expectedOutput || "（空值）"}
+                            </p>
+                          </details>
+                        </td>
+                        <td className="px-4 py-3">
+                          <MetadataSummary entries={row.metadata} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!visibleInput?.records.length && (
+                  <div className="space-y-2 p-6 text-center text-sm">
+                    <p>{selectedOnly ? "当前范围没有已选记录。" : "没有匹配记录。"}</p>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setSearch("");
+                        setConditions([]);
+                        setSelectedOnly(false);
+                        setPage(1);
+                      }}
+                    >
+                      显示全部记录
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
-          </fieldset>
-          <label className="block space-y-2 text-sm">
-            <span>{operation === "clean" ? "补充要求（选填）" : "具体要求"}</span>
-            <Textarea
-              disabled={busy}
-              value={instructions}
-              maxLength={8000}
-              rows={4}
-              placeholder={
-                {
-                  clean: "例如：统一标点，保留原意。留空则只整理首尾空白。",
-                  rewrite: "例如：保留原意，改写为清晰、独立的问题。",
-                  augment: "例如：围绕相同意图增加不同措辞和场景。",
-                }[operation]
-              }
-              onChange={(event) => {
-                setInstructions(event.target.value);
-                change();
-              }}
-            />
-            {operation !== "clean" && !instructions.trim() && (
-              <p className="text-xs text-muted-foreground">请填写{labels[operation]}要求后开始。</p>
-            )}
-          </label>
-          {operation === "augment" && (
+            <div className="px-4 pb-3">
+              <Pagination
+                current={page}
+                total={visibleInput?.total ?? 0}
+                unit="条记录"
+                pages={Math.max(1, Math.ceil((visibleInput?.total ?? 0) / 20))}
+                onChange={setPage}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          id="processing-settings"
+          className="scroll-mt-28 min-w-0 overflow-hidden xl:sticky xl:top-20"
+        >
+          <CardHeader className="border-b bg-muted/60 px-4 py-3">
+            <h2 className="font-semibold">处理要求</h2>
+          </CardHeader>
+          <CardContent className="space-y-5 p-4">
+            <div className="space-y-2 text-sm">
+              <div className="flex gap-2" role="group" aria-label="处理方式">
+                {Object.entries(labels).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    size="sm"
+                    className="flex-1"
+                    variant={operation === value ? "default" : "outline"}
+                    aria-pressed={operation === value}
+                    disabled={busy}
+                    onClick={() => {
+                      setOperation(value as typeof operation);
+                      change();
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+            </div>
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">允许修改的字段</legend>
+              <div className="flex flex-wrap gap-4">
+                {[
+                  ["question", "问题"],
+                  ["expectedOutput", "期望输出"],
+                  ["metadata", "Metadata"],
+                ].map(([field, label]) => (
+                  <label key={field} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      disabled={busy}
+                      checked={allowedFields.includes(field!)}
+                      onCheckedChange={(yes) => {
+                        setAllowedFields((old) =>
+                          yes ? [...old, field!] : old.filter((value) => value !== field),
+                        );
+                        change();
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                未勾选的字段保留输入原值；切换处理方式不改变字段授权。
+              </p>
+              {!allowedFields.length && (
+                <p className="text-xs text-destructive">请至少选择一个字段。</p>
+              )}
+            </fieldset>
             <label className="block space-y-2 text-sm">
-              <span>新增记录数量（输入 {selected.size} 条）</span>
-              <Input
-                aria-label="新增记录数量"
-                type="number"
-                min={1}
-                max={10000}
-                value={count}
+              <span>{operation === "clean" ? "补充要求（选填）" : "具体要求"}</span>
+              <Textarea
                 disabled={busy}
+                value={instructions}
+                maxLength={8000}
+                rows={4}
+                placeholder={
+                  {
+                    clean: "例如：统一标点，保留原意。留空则只整理首尾空白。",
+                    rewrite: "例如：保留原意，改写为清晰、独立的问题。",
+                    augment: "例如：围绕相同意图增加不同措辞和场景。",
+                  }[operation]
+                }
                 onChange={(event) => {
-                  setCount(event.target.value);
+                  setInstructions(event.target.value);
                   change();
                 }}
               />
-              {invalidCount && <p className="text-xs text-destructive">请输入 1–10,000 的整数。</p>}
+              {operation !== "clean" && !instructions.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  请填写{labels[operation]}要求后开始。
+                </p>
+              )}
             </label>
-          )}
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <div className="space-y-2 border-t pt-4">
-            {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
-            <Button
-              className="w-full"
-              disabled={
-                busy || Boolean(reason) || input.isError || input.isFetching || scopeChanged
-              }
-              onClick={() => void submit()}
-            >
-              {busy ? "正在提交…" : `开始${labels[operation]} · ${selected.size} 条输入`}
-            </Button>
-          </div>
-        </section>
+            {operation === "augment" && (
+              <label className="block space-y-2 text-sm">
+                <span>新增记录数量（输入 {selected.size} 条）</span>
+                <Input
+                  aria-label="新增记录数量"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={count}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setCount(event.target.value);
+                    change();
+                  }}
+                />
+                {invalidCount && (
+                  <p className="text-xs text-destructive">请输入 1–10,000 的整数。</p>
+                )}
+              </label>
+            )}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="space-y-2 border-t pt-4">
+              {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
+              <Button
+                className="w-full"
+                disabled={
+                  busy || Boolean(reason) || input.isError || input.isFetching || scopeChanged
+                }
+                onClick={() => void submit()}
+              >
+                {busy ? "正在提交…" : `开始${labels[operation]} · ${selected.size} 条输入`}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -1073,73 +1116,83 @@ function ProcessingResults({
   const stale = data.isFetching || data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
   return (
-    <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-        <div>
-          <h2 className="font-semibold">{labels[run.options.operation]}结果</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {run.sourceSummary?.name ?? "来源未记录"}
-          </p>
-          <p role="status" className="mt-1 text-sm text-muted-foreground">
-            {run.status === "succeeded" && run.executionComplete === false
-              ? "部分完成，仍需核对执行结果"
-              : statuses[run.status]}{" "}
-            · 已产生 {run.outputCount ?? value.stats?.all ?? value.total} /{" "}
-            {run.options.outputCount ?? run.inputCount} 条结果
-            {run.missingCount ? ` · 尚缺 ${run.missingCount} 条` : ""}
-            {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {!terminal ? (
-            <Button
-              variant="outline"
-              disabled={busy || run.status === "cancel_requested"}
-              onClick={() => void action("cancel")}
-            >
-              取消任务
-            </Button>
-          ) : (
-            (run.status !== "succeeded" || Boolean(run.missingCount)) && (
-              <Button variant="outline" disabled={busy} onClick={() => void action("retry")}>
-                重试未完成批次
-              </Button>
-            )
-          )}
-        </div>
-      </div>
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">{labels[run.options.operation]}结果</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {run.sourceSummary?.name ?? "来源未记录"}
+              </p>
+              <div
+                role="status"
+                className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+              >
+                <ProcessingStatus run={run} />
+                <span>
+                  已产生 {run.outputCount ?? value.stats?.all ?? value.total} /{" "}
+                  {run.options.outputCount ?? run.inputCount} 条结果
+                  {run.missingCount ? ` · 尚缺 ${run.missingCount} 条` : ""}
+                  {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!terminal ? (
+                <Button
+                  variant="outline"
+                  disabled={busy || run.status === "cancel_requested"}
+                  onClick={() => void action("cancel")}
+                >
+                  取消任务
+                </Button>
+              ) : (
+                (run.status !== "succeeded" || Boolean(run.missingCount)) && (
+                  <Button variant="outline" disabled={busy} onClick={() => void action("retry")}>
+                    重试未完成批次
+                  </Button>
+                )
+              )}
+            </div>
+          </div>
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer text-muted-foreground">查看提交的处理要求</summary>
+            <div className="mt-2 space-y-1">
+              <p className="whitespace-pre-wrap break-words">
+                {run.options.instructions || "未填要求：整理首尾空白并提示空值、重复。"}
+              </p>
+              <p>
+                允许修改：
+                {run.options.allowedFields
+                  ?.map(
+                    (field) =>
+                      ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[
+                        field as "question"
+                      ],
+                  )
+                  .join("、") ?? "未记录"}
+              </p>
+              <p>
+                {run.actorName ?? "未记录"} · {new Date(run.createdAt).toLocaleString()}
+              </p>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
       {data.isError && (
-        <div role="alert" className="border-b bg-muted/40 px-5 py-3 text-sm">
+        <div role="alert" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           状态读取中断，下面保留上次确认的结果；不能确认当前进度。
           <Button variant="ghost" size="sm" onClick={() => void data.refetch()}>
             重试读取
           </Button>
         </div>
       )}
-      <details className="border-b px-5 py-3 text-sm">
-        <summary className="cursor-pointer text-muted-foreground">查看提交的处理要求</summary>
-        <div className="mt-2 space-y-1">
-          <p className="whitespace-pre-wrap break-words">
-            {run.options.instructions || "未填要求：整理首尾空白并提示空值、重复。"}
-          </p>
-          <p>
-            允许修改：
-            {run.options.allowedFields
-              ?.map(
-                (field) =>
-                  ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[
-                    field as "question"
-                  ],
-              )
-              .join("、") ?? "未记录"}
-          </p>
-          <p>
-            {run.actorName ?? "未记录"} · {new Date(run.createdAt).toLocaleString()}
-          </p>
-        </div>
-      </details>
       {(error || run.errorCode || value.issues.length > 0) && (
-        <div role="alert" className="border-b bg-muted/40 px-5 py-3 text-sm">
+        <div
+          role="alert"
+          className="rounded-lg border border-chart-5/40 bg-chart-5/10 px-4 py-3 text-sm"
+        >
           <p>
             {error ||
               (run.errorCode
@@ -1162,7 +1215,11 @@ function ProcessingResults({
         </div>
       )}
       {saved.map((item, index) => (
-        <div key={index} role="status" className="flex flex-wrap gap-2 border-b px-5 py-3 text-sm">
+        <div
+          key={index}
+          role="status"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-chart-2/40 bg-chart-2/10 px-4 py-3 text-sm"
+        >
           <span>已保存 {item.adopted} 条处理结果，并建立独立文件。</span>
           {item.draftId && (
             <Link
@@ -1184,18 +1241,21 @@ function ProcessingResults({
           )}
         </div>
       ))}
-      <div className="flex flex-wrap gap-2 border-b px-5 py-3" aria-label="结果筛选">
-        <Input
-          aria-label="搜索处理结果"
-          placeholder="搜索问题、期望输出、Metadata 或来源"
-          className="w-full sm:max-w-xs"
-          value={text}
-          maxLength={200}
-          onChange={(event) => {
-            setText(event.target.value);
-            setPage(1);
-          }}
-        />
+      <div className="flex flex-wrap items-center gap-2" aria-label="结果筛选">
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
+          <Input
+            aria-label="搜索处理结果"
+            placeholder="搜索问题、期望输出、Metadata 或来源"
+            className="pl-8"
+            value={text}
+            maxLength={200}
+            onChange={(event) => {
+              setText(event.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
         {text && (
           <Button
             size="sm"
@@ -1227,95 +1287,97 @@ function ProcessingResults({
               (key === "all" ? value.total : "")}
           </Button>
         ))}
-        <span className="ml-auto self-center text-xs text-muted-foreground">
-          结构检查通过不代表内容正确，请审核后保存。
-        </span>
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-b px-5 py-3">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!terminal || busy || data.isError || stale || unknownSave}
-          onClick={() => {
-            setSelected((old) => new Set([...old, ...value.records.map((r) => r.id)]));
-            setKey(crypto.randomUUID());
-          }}
-        >
-          勾选本页
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!terminal || busy || data.isError || stale || unknownSave}
-          onClick={() => {
-            setSelected((old) => new Set([...old, ...value.allIds]));
-            setKey(crypto.randomUUID());
-          }}
-        >
-          选择全部匹配结果
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy || unknownSave}
-          onClick={() => {
-            setSelected(new Set());
-            setKey(crypto.randomUUID());
-          }}
-        >
-          清空选择
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          已选 {selected.size} 条
-          {[...selected].filter((id) => !value.allIds.includes(id)).length > 0
-            ? `（${[...selected].filter((id) => !value.allIds.includes(id)).length} 条在当前筛选外）`
-            : ""}
-        </span>
-        <Button
-          size="sm"
-          className="ml-auto"
-          disabled={!terminal || busy || !selected.size || data.isError || stale}
-          onClick={() => setConfirm(true)}
-        >
-          保存所选 {selected.size} 条
-        </Button>
-      </div>
-      {stale && (
-        <p role="status" className="border-b px-5 py-3 text-sm text-muted-foreground">
-          正在读取结果，下面保留上一次条件的内容；读取完成后可选择。
-        </p>
-      )}
-      <ProcessingReview
-        rows={value.records}
-        selected={selected}
-        disabled={!terminal || busy || data.isError || stale || unknownSave}
-        generated={value.rootOperation === "augment" || run.options.operation === "augment"}
-        offset={stale ? (value.offset ?? (page - 1) * 20) : (page - 1) * 20}
+      <Card className="min-w-0 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!terminal || busy || data.isError || stale || unknownSave}
+              onClick={() => {
+                setSelected((old) => new Set([...old, ...value.records.map((r) => r.id)]));
+                setKey(crypto.randomUUID());
+              }}
+            >
+              勾选本页
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!terminal || busy || data.isError || stale || unknownSave}
+              onClick={() => {
+                setSelected((old) => new Set([...old, ...value.allIds]));
+                setKey(crypto.randomUUID());
+              }}
+            >
+              选择全部匹配结果
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy || unknownSave}
+              onClick={() => {
+                setSelected(new Set());
+                setKey(crypto.randomUUID());
+              }}
+            >
+              清空选择
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              已选 {selected.size} 条
+              {[...selected].filter((id) => !value.allIds.includes(id)).length > 0
+                ? `（${[...selected].filter((id) => !value.allIds.includes(id)).length} 条在当前筛选外）`
+                : ""}
+            </span>
+            <Button
+              size="sm"
+              className="ml-auto"
+              disabled={!terminal || busy || !selected.size || data.isError || stale}
+              onClick={() => setConfirm(true)}
+            >
+              保存所选 {selected.size} 条
+            </Button>
+          </div>
+          {stale && (
+            <p role="status" className="border-b px-5 py-3 text-sm text-muted-foreground">
+              正在读取结果，下面保留上一次条件的内容；读取完成后可选择。
+            </p>
+          )}
+          <ProcessingReview
+            rows={value.records}
+            selected={selected}
+            disabled={!terminal || busy || data.isError || stale || unknownSave}
+            generated={value.rootOperation === "augment" || run.options.operation === "augment"}
+            offset={stale ? (value.offset ?? (page - 1) * 20) : (page - 1) * 20}
+            total={value.total}
+            pageSize={20}
+            onPageChange={setPage}
+            loading={data.isFetching || data.isPlaceholderData}
+            error={data.isError}
+            onRetry={() => void data.refetch()}
+            onToggle={(id, checked) => {
+              setSelected((old) => {
+                const next = new Set(old);
+                if (checked) next.add(id);
+                else next.delete(id);
+                return next;
+              });
+              setKey(crypto.randomUUID());
+            }}
+          />
+          <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+            结构检查通过不代表内容正确，请审核后保存。
+          </p>
+        </CardContent>
+      </Card>
+      <Pagination
+        current={page}
         total={value.total}
-        pageSize={20}
-        onPageChange={setPage}
-        loading={data.isFetching || data.isPlaceholderData}
-        error={data.isError}
-        onRetry={() => void data.refetch()}
-        onToggle={(id, checked) => {
-          setSelected((old) => {
-            const next = new Set(old);
-            if (checked) next.add(id);
-            else next.delete(id);
-            return next;
-          });
-          setKey(crypto.randomUUID());
-        }}
+        unit="条结果"
+        pages={Math.max(1, Math.ceil(value.total / 20))}
+        onChange={setPage}
       />
-      <div className="px-5 pb-4">
-        <Pagination
-          current={page}
-          total={value.total}
-          unit="条结果"
-          pages={Math.max(1, Math.ceil(value.total / 20))}
-          onChange={setPage}
-        />
-      </div>
       <Dialog
         open={confirm}
         onOpenChange={(v) => {
@@ -1435,6 +1497,6 @@ function ProcessingResults({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </div>
   );
 }

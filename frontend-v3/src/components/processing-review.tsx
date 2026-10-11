@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -202,14 +203,14 @@ export function ProcessingReview({
     <>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[440px] table-fixed text-sm">
-          <thead className="bg-muted/60 text-left text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
             <tr>
-              <th className="w-12 px-3 py-3">
+              <th className="w-12 px-4 py-2 font-medium">
                 <span className="sr-only">选择</span>
               </th>
-              <th className="w-[35%] px-3 py-3">问题 / 来源</th>
-              <th className="w-[18%] px-3 py-3">期望输出</th>
-              <th className="px-3 py-3">Metadata / 变化</th>
+              <th className="w-[35%] px-4 py-2 font-medium">问题 / 来源</th>
+              <th className="w-[18%] px-4 py-2 font-medium">期望输出</th>
+              <th className="px-4 py-2 font-medium">Metadata / 变化</th>
             </tr>
           </thead>
           <tbody>
@@ -238,7 +239,7 @@ export function ProcessingReview({
                 }}
               >
                 <td
-                  className="px-3 py-3"
+                  className="px-4 py-3"
                   onClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => event.stopPropagation()}
                 >
@@ -249,7 +250,7 @@ export function ProcessingReview({
                     onCheckedChange={(value) => onToggle(row.id, value === true)}
                   />
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-4 py-3">
                   <p className="line-clamp-2 break-words">{row.result.question || "（空问题）"}</p>
                   <div
                     className="mt-1"
@@ -266,12 +267,12 @@ export function ProcessingReview({
                     />
                   </div>
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-4 py-3">
                   <p className="line-clamp-2 break-words">
                     {row.result.expectedOutput || "（空值）"}
                   </p>
                 </td>
-                <td className="space-y-2 px-3 py-3">
+                <td className="space-y-2 px-4 py-3">
                   {metadataChanges(row.original, row.result).length ? (
                     <>
                       {metadataChanges(row.original, row.result)
@@ -389,38 +390,48 @@ export function ProcessingReview({
                     : undefined)
                 }
               />
-              <section className="rounded-md border bg-muted/30 p-4 text-sm">
-                <h3 className="mb-2 font-semibold">
-                  本次变化：
-                  {changes(detail)
-                    .map((field) => fieldLabels[field] ?? field)
-                    .join("、") || "未改变"}
-                </h3>
-                {metadataDiff.map((line, index) => (
-                  <p key={index} className="whitespace-pre-wrap break-words">
-                    {line}
-                  </p>
-                ))}
-              </section>
+              <Card className="bg-muted/30 text-sm">
+                <CardContent className="p-4">
+                  <h3 className="mb-2 font-semibold">
+                    本次变化：
+                    {changes(detail)
+                      .map((field) => fieldLabels[field] ?? field)
+                      .join("、") || "未改变"}
+                  </h3>
+                  {metadataDiff.map((line, index) => (
+                    <p key={index} className="whitespace-pre-wrap break-words">
+                      {line}
+                    </p>
+                  ))}
+                </CardContent>
+              </Card>
               <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-                <section className="min-w-0 rounded-md border p-4">
-                  <h3 className="mb-4 font-semibold">{generated ? "参考输入" : "修改前"}</h3>
-                  <FullValue
-                    value={original}
-                    foldedFields={["question", "expectedOutput"].filter(
-                      (field) => !changes(detail).includes(field),
-                    )}
-                  />
-                </section>
-                <section className="min-w-0 rounded-md border p-4">
-                  <h3 className="mb-4 font-semibold">处理结果</h3>
-                  <FullValue
-                    value={detail.result}
-                    foldedFields={["question", "expectedOutput"].filter(
-                      (field) => !changes(detail).includes(field),
-                    )}
-                  />
-                </section>
+                <Card className="min-w-0 overflow-hidden">
+                  <CardHeader className="border-b bg-muted/60 px-4 py-3">
+                    <h3 className="font-semibold">{generated ? "参考输入" : "修改前"}</h3>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <FullValue
+                      value={original}
+                      foldedFields={["question", "expectedOutput"].filter(
+                        (field) => !changes(detail).includes(field),
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+                <Card className="min-w-0 overflow-hidden">
+                  <CardHeader className="border-b bg-muted/60 px-4 py-3">
+                    <h3 className="font-semibold">处理结果</h3>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <FullValue
+                      value={detail.result}
+                      foldedFields={["question", "expectedOutput"].filter(
+                        (field) => !changes(detail).includes(field),
+                      )}
+                    />
+                  </CardContent>
+                </Card>
               </div>
               {original?.baseline && (
                 <details className="rounded-md border p-4">
