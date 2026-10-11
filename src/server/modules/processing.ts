@@ -138,7 +138,12 @@ export function registerProcessing({
   );
   app.get<{
     Params: Params;
-    Querystring: { offset?: string; limit?: string; view?: string };
+    Querystring: {
+      offset?: string;
+      limit?: string;
+      view?: string;
+      search?: string;
+    };
   }>(`${path}/:runId`, { preHandler: authenticate }, async (request, reply) =>
     respond(reply, async () => {
       const scope = {

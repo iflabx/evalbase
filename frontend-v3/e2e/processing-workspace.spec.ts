@@ -135,7 +135,7 @@ for (const failure of ["network", "http500"])
     ).toBe(true);
     await page.screenshot({ path: info.outputPath("processing-review-480.png"), fullPage: true });
     await page.getByRole("button", { name: "选择全部匹配结果", exact: true }).click();
-    await page.getByRole("button", { name: "保存处理结果", exact: true }).click();
+    await page.getByRole("button", { name: /^保存所选 \d+ 条$/ }).click();
     await page.getByRole("button", { name: "确认保存", exact: true }).click();
     await expect(page.getByRole("dialog")).toContainText("保存响应未确认");
     await expect(page.getByRole("dialog").getByRole("combobox")).toBeDisabled();
@@ -206,7 +206,7 @@ test("filters inputs without losing hidden selection and validates protected exp
   await page.getByRole("button", { name: "添加筛选", exact: true }).click();
   await expect(page.getByLabel("选择记录 asset:1", { exact: true })).toBeVisible();
   await expect(page.getByText(/1 条在当前筛选外/)).toBeVisible();
-  await page.getByRole("button", { name: "选择全部匹配记录", exact: true }).click();
+  await page.getByRole("button", { name: /^选择全部匹配记录/ }).click();
   await expect(page.getByRole("button", { name: "开始清洗 · 24 条输入" })).toBeEnabled();
   await page.getByLabel("只看已选").check();
   await page.getByLabel("搜索输入记录").fill("不存在");
@@ -218,8 +218,7 @@ test("filters inputs without losing hidden selection and validates protected exp
   await page.getByLabel("只看已选").uncheck();
   for (const id of [1, 2, 3])
     await page.getByLabel(`选择记录 asset:${id}`, { exact: true }).check();
-  await page.getByRole("combobox", { name: "处理方式" }).click();
-  await page.getByRole("option", { name: "扩充", exact: true }).click();
+  await page.getByRole("button", { name: "扩充", exact: true }).click();
   await expect(page.getByText("请填写扩充要求后开始。", { exact: true })).toBeVisible();
   await page.getByPlaceholder("例如：围绕相同意图增加不同措辞和场景。").fill("增加不同措辞");
   await page.getByLabel("新增记录数量").fill("0");
@@ -287,7 +286,7 @@ test("retains the chosen target on conflict and retries using the current draft 
   });
   await page.goto("/projects/processing_project/processing?run=conflict");
   await page.getByRole("button", { name: "选择全部匹配结果", exact: true }).click();
-  await page.getByRole("button", { name: "保存处理结果", exact: true }).click();
+  await page.getByRole("button", { name: /^保存所选 \d+ 条$/ }).click();
   await page.getByRole("dialog").getByRole("combobox").click();
   await page.getByRole("option", { name: "更新来源草稿", exact: true }).click();
   await page.getByRole("button", { name: "确认保存", exact: true }).click();

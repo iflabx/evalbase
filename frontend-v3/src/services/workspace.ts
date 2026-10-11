@@ -250,6 +250,13 @@ export function resetWorkspaceSession() {
   session = undefined;
 }
 
+/** Only transport failures and server errors permit showing a confirmed read result. */
+export function canRetainReadResult(error: unknown): boolean {
+  return (
+    !error || error instanceof TypeError || ((error as { status?: number }).status ?? 0) >= 500
+  );
+}
+
 export async function request<T>(
   path: string,
   init?: RequestInit,
@@ -273,7 +280,9 @@ export async function request<T>(
           };
         }
       | undefined;
-    throw Object.assign(new Error(body?.error?.code ?? "操作失败"), body?.error);
+    throw Object.assign(new Error(body?.error?.code ?? "操作失败"), body?.error, {
+      status: response.status,
+    });
   }
   if (response.status === 204) return undefined as T;
   if (format === "response") return response as T;

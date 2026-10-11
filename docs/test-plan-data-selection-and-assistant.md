@@ -68,6 +68,8 @@
 
 需求证据、浏览器修复、受控会话结果与限制见 [实施验证](../.scratch/agent-data-processing/verification.md)。Owner 人工验收仍为 pending，不能由自动测试或代理复审代签。
 
+OPT-12 以 [R12-1–12](../.scratch/assistant-optimization/issues/12-processing-usability-followup.md#验收矩阵) 为本轮连续操作验收矩阵：三类来源的配置恢复及修订重核、入口不提交任务、最近 100 项历史查找、1280/1440/1024/480px 布局、稳定结果查询及失败恢复、连续跨页只读核对、准确执行/检查/保存表达，以及共享助手候选和保存协议回归。采用授权分页、合成 HTTP 响应及独立自动化库/桶；不重跑真实 200/10,000 条任务或增加压力测试。实际命令、截图、审阅和未覆盖边界集中于 [OPT-12 验证记录](../.scratch/assistant-optimization/opt12-verification.md)，Owner 验收仍单独记 pending。
+
 会话 4 后续反馈的完成证明必须使用保留下来的原草稿：10 条记录改写 → 预览 → 采纳 → 唯一发布，并另验新会话的自然语言闭环。单个工具绿测不足以替代这两条连续流程。
 
 ## 历史持续任务验收补充

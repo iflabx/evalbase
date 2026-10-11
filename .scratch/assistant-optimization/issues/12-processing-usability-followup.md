@@ -1,14 +1,14 @@
 # OPT-12 数据处理操作连续性与核对体验优化
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1（未提交配置丢失），其余体验改进 P2。2026-10-11 Owner 仅授权把两轮体验审查整理为一张修改 Ticket，**尚未授权开发**；`ready-for-agent` 不解除执行等待。以 OPT-11 已有实现为基础，后续沿用 `codex/assistant-optimization` 及同一 4217 隔离环境，一个 Ticket、一次人工 checkpoint。OPT-11 和其他 Ticket 的历史实施及 Owner 验收状态保持原记录。
+优先级：P1（未提交配置丢失），其余体验改进 P2。2026-10-11 Owner 已单独授权完成 OPT-12 开发。以 OPT-11 已有实现为基础，后续沿用 `codex/assistant-optimization` 及同一 4217 隔离环境，一个 Ticket、一次人工 checkpoint。OPT-11 和其他 Ticket 的历史实施及 Owner 验收状态保持原记录。
 
 ## 目标与依据
 
-让用户更容易开始处理、保留未提交操作、找到所需结果、连续核对变化并清楚保存成果。产品合同见 [PRD §6.4](../../../docs/PRD-data-selection-and-assistant.md#64-数据处理连续操作增补2026-10-11待实施)，本张承接该合同的布局、实现边界与验收；继续遵守 [CONTEXT](../../../CONTEXT.md)、[处理架构](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)、[前端复用约定](../../../docs/architecture/phase1a-frontend-reuse.md)和[批次约定](../spec.md#整改批次执行约定)。
+让用户更容易开始处理、保留未提交操作、找到所需结果、连续核对变化并清楚保存成果。产品合同见 [PRD §6.4](../../../docs/PRD-data-selection-and-assistant.md#64-数据处理连续操作增补2026-10-11)，本张承接该合同的布局、实现边界与验收；继续遵守 [CONTEXT](../../../CONTEXT.md)、[处理架构](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)、[前端复用约定](../../../docs/architecture/phase1a-frontend-reuse.md)和[批次约定](../spec.md#整改批次执行约定)。
 
 ### 审查事实
 
@@ -85,7 +85,7 @@ Blocked by: none
 
 ## 验收矩阵
 
-所有项目目前 **pending**，下表是未来开发验收要求，不是已通过记录。
+Owner 人工验收全部 **pending**。代码、针对性自动化及双轴复审核对已完成，实际证据与覆盖限制见 [OPT-12 验证记录](../opt12-verification.md)；下表保留人工验收条件，不代签通过。
 
 | 编号 | 场景 | 通过条件 |
 | --- | --- | --- |
@@ -106,10 +106,13 @@ Blocked by: none
 
 ## 交付与授权
 
-- 后续开发须得到单独授权；先核对最新分支、HEAD、工作区和接口，以实际差异选择类型检查、lint、构建、浏览器及必要的公开 HTTP/持久化检查，执行一次最终 Standards/Spec 审阅。UI 验证包含上述窗口尺寸的截图及 donor 对照，不以“用了同一组件库”代替检查。
+- 已获本张开发授权；先核对最新分支、HEAD、工作区和接口，以实际差异选择类型检查、lint、构建、浏览器及必要的公开 HTTP/持久化检查，执行一次最终 Standards/Spec 审阅。UI 验证包含上述窗口尺寸的截图及 donor 对照，不以“用了同一组件库”代替检查。
 - 复用同一 4217 checkpoint、现有一个长期项目及管理员/编辑两账号。保护现有会话、资料和历史结果，只重建受影响服务；给出固定 SHA、健康和实际前端路径证据，完成后统一交 Owner 验收。
-- 当前只创建本 Ticket 并维护 PRD/台账引用；不改应用代码、不重建环境、不合并 main、不推送 GitHub、不打 tag、不正式部署。
+- 当前授权本张开发、必要验证及既有 4217 环境更新；不合并 main、不推送 GitHub、不打 tag、不正式部署。
 
 ## Comments
 
 - 2026-10-11：按 Owner 要求合并两轮建议并依据现场复查校正；保留已有吸顶和真实保存回执，新增配置丢失、入口、稳定加载、状态区分和查找便利性的明确验收。Implementation 为 not-started，开发授权等待，全部 R12 项 pending。
+
+- 2026-10-11 开始实施：Owner 单独授权 OPT-12；分支 codex/assistant-optimization，基线 e257ca127102a845a6cdc38840e0489be207f518，已跟踪工作树干净，依赖满足，implement + ponytail full 及既定公开浏览器/HTTP 边界有效。首个浏览器 RED 已证明跨页配置离开再返回丢失要求；使用受限 Playwright 容器及旧 4217 前端、合成 HTTP 响应复现，未写用户数据。
+- 路由盘点：POST processing-inputs reused（授权来源字段候选/修订摘要）；GET processing-runs reused（执行证据、真实保存标识）；GET processing-runs/:runId reused（现有分页/view 增加 search）；GET assistant/sessions/:sessionId/candidates reused（共享搜索、有效任务范围不变）；集合/文件/测试集版本/草稿既有读取 reused；提交、重试、取消、采用和助手执行协议 reused、无改动。无新公开路由、数据表或依赖，无 retired 路由。

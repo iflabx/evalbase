@@ -1,5 +1,7 @@
 # 项目助手实测优化实施规格
 
+2026-10-11 最新状态：OPT-12 已完成实现、针对性回归及 Standards/Spec 复审，基线 `e257ca1`；同一分支及 4217 环境，Owner 验收 pending。证据见 [OPT-12 验证记录](opt12-verification.md)。
+
 Status: ready-for-agent
 Implementation: in-progress
 
@@ -41,11 +43,11 @@ Implementation: in-progress
 | [OPT-09](issues/09-execution-recovery-consistency.md) | 当前步骤可执行性、有效依据/范围、失败恢复及真实交付核对 | 待最终 Owner 验收（含 OPT-10 证据） | in-progress | 历史三项服务固定 `abc9863`；[历史验证](opt09-verification.md)保留，Owner 验收退回 |
 | [OPT-10](issues/10-fixed-input-and-recovery.md) | 固定输入、候选汇总、背景规则与方案恢复 | 现有 OPT-09 实现；不等待旧 Ticket 最终验收 | completed | [实施与验证](opt10-verification.md)，原会话恢复；Owner pending |
 | [OPT-11](issues/11-processing-workspace-ux.md) | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示 | 现有 OPT-10 及页面补修；已获开发授权 | completed | [实施与验证](opt11-verification.md)；一个 Ticket、一次人工 checkpoint，Owner pending |
-| [OPT-12](issues/12-processing-usability-followup.md) | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；等待单独开发授权 | not-started | 2026-10-11 两轮审查合并；R12-1–12 pending，UI 严格复用 frontend-v1 |
+| [OPT-12](issues/12-processing-usability-followup.md) | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；Owner 已授权开发 | completed | [实施与复审](opt12-verification.md)；R12-1–12 Owner pending，UI 严格复用 frontend-v1 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
-OPT-12 是 OPT-11 后续体验调整，当前仅有文档授权；不等待旧 Ticket 的最终人工验收才允许编写或后续获授权修复，也不把本张文档变更记作旧验收通过。未来实施继续沿用同一分支和 4217 隔离环境，一个 Ticket、一次 Owner checkpoint。
+OPT-12 是 OPT-11 后续体验调整，Owner 已单独授权开发；不等待旧 Ticket 的最终人工验收才允许编写或后续获授权修复，也不把本张文档变更记作旧验收通过。本次实施沿用同一分支和 4217 隔离环境，一个 Ticket、一次 Owner checkpoint。
 
 ## 验证矩阵
 

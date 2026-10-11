@@ -166,10 +166,12 @@ describe("durable data processing", () => {
     expect(preview.statusCode, preview.body).toBe(200);
     expect(preview.json()).toMatchObject({
       total: 23,
+      metadataKeys: ["category"],
       sourceTotal: 45,
       hiddenSelected: 1,
       sourceSummary: { name: "selection-origin.jsonl" },
     });
+    expect(preview.json().sourceRevision).toMatch(/^[0-9a-f]{64}$/);
     expect(preview.json().records.map((row: any) => row.id)).toEqual([
       `${assetId}:41`,
       `${assetId}:43`,
@@ -226,6 +228,30 @@ describe("durable data processing", () => {
           sourceSummary: { name: "selection-origin.jsonl" },
           actorName: "管理员",
         },
+      });
+      expect(changed.json().run.executionComplete).toBe(true);
+      const bySource = await app.inject({
+        method: "GET",
+        url: `${path}?view=all&search=selection-origin.jsonl&offset=40&limit=2`,
+        headers,
+      });
+      expect(bySource.statusCode, bySource.body).toBe(200);
+      expect(bySource.json()).toMatchObject({
+        total: 45,
+        stats: { all: 45, changed: 44, needsReview: 1 },
+      });
+      expect(bySource.json().records).toHaveLength(2);
+      expect(bySource.json().allIds).toHaveLength(45);
+      const noMatch = await app.inject({
+        method: "GET",
+        url: `${path}?view=all&search=no-such-field-value`,
+        headers,
+      });
+      expect(noMatch.json()).toMatchObject({
+        total: 0,
+        allIds: [],
+        records: [],
+        stats: { all: 0, changed: 0, needsReview: 0 },
       });
       const warning = await app.inject({
         method: "GET",
@@ -564,6 +590,26 @@ describe("durable data processing", () => {
       expect(finished.json().run).toMatchObject({
         status: "succeeded",
         partial: true,
+        executionComplete: true,
+      });
+      // Legacy partial-only evidence must not be presented as proven completion.
+      await db.query(
+        "UPDATE processing_batch SET issues='[]' WHERE run_id=$1",
+        [run.id],
+      );
+      await db.query("UPDATE job SET result=$2 WHERE id=$1", [
+        job.id,
+        { partial: true },
+      ]);
+      const uncertain = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}`,
+        headers,
+      });
+      expect(uncertain.json().run).toMatchObject({
+        status: "succeeded",
+        missingCount: 0,
+        executionComplete: false,
       });
     } finally {
       await db.end();

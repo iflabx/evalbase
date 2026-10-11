@@ -22,6 +22,7 @@ import {
   opaqueId,
   mapMaterialRecord,
   normalizeDisplayMapping,
+  displayFieldName,
   displayText,
   readMetadataEntries,
 } from "../server/support.js";
@@ -80,6 +81,7 @@ export type ProcessingRun = {
   job_id: string;
   parent_run_id?: string | null;
   background_document_ids: string[];
+  has_execution_issues?: boolean;
   request_hash: string;
   source: ProcessingSource;
   options: ProcessingOptions;
@@ -325,6 +327,16 @@ function summary(row: ProcessingRun) {
     execution: row.execution_config,
     outputCount: Number(row.output_count ?? 0),
     missingCount: missingCount(row),
+    executionComplete:
+      row.status === "succeeded" &&
+      missingCount(row) === 0 &&
+      row.has_execution_issues === false &&
+      !row.error_code &&
+      !(
+        isPlainObject(row.result) &&
+        row.result.partial === true &&
+        Number(row.issue_count ?? 0) === 0
+      ),
     partial:
       (row.status === "failed" && Number(row.output_count) > 0) ||
       (row.status === "succeeded" && Number(row.issue_count) > 0),
@@ -337,7 +349,7 @@ function summary(row: ProcessingRun) {
   };
 }
 const selectRun =
-  "SELECT r.*,j.status,j.progress,j.error_code,j.result,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count FROM processing_run r JOIN job j ON j.id=r.job_id";
+  "SELECT r.*,j.status,j.progress,j.error_code,j.result,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues FROM processing_run r JOIN job j ON j.id=r.job_id";
 export async function getProcessingRun(
   db: Pick<Database, "query">,
   scope: ProcessingScope,
@@ -551,6 +563,17 @@ export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
     `${selectRun} WHERE r.project_id=$1 AND r.input_ref IS NOT NULL AND (cardinality(r.background_document_ids)=0 OR r.actor_id=$2) ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
     [scope.projectId, scope.actorId],
   );
+  const savedRuns = await db.query(
+    `SELECT DISTINCT pa.run_id FROM processing_acceptance pa
+    JOIN data_asset da ON da.id=pa.receipt->>'assetId' AND da.project_id=$1 AND da.status='stored'
+    LEFT JOIN collaborative_draft d ON d.id=pa.draft_id AND d.project_id=$1
+    LEFT JOIN test_set ts ON ts.id=d.test_set_id LEFT JOIN test_set_version v ON v.id=d.parent_version_id
+    WHERE pa.project_id=$1 AND pa.run_id=ANY($2::text[])
+    AND (pa.draft_id IS NULL OR (d.id IS NOT NULL AND d.status IN('editing','published') AND (ts.id IS NULL OR ts.status='available') AND (v.id IS NULL OR v.status='published')))
+    AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(da.id,d.id,ts.id,v.id))`,
+    [scope.projectId, rows.rows.map((row) => row.id)],
+  );
+  const saved = new Set(savedRuns.rows.map((row) => row.run_id));
   // Do not disclose prompts or snapshots of recycled sources through the index.
   const runs = [];
   for (const row of rows.rows) {
@@ -567,6 +590,7 @@ export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
       );
       runs.push({
         ...summary(row),
+        hasSavedResult: saved.has(row.id),
         sourceSummary,
         actorName: actor.rows[0]?.name ?? "未记录",
       });
@@ -875,6 +899,48 @@ export async function previewProcessingInput(
     const visible = input.selectedOnly
       ? matched.filter((row) => selected.has(row.id))
       : matched;
+    const views =
+      source.kind === "assets"
+        ? (
+            await client.query(
+              "SELECT id,display_mapping FROM parsed_view WHERE asset_id=ANY($1::text[]) AND is_current AND status='ready' ORDER BY id FOR SHARE",
+              [source.assetIds],
+            )
+          ).rows
+        : [];
+    const keys = new Set<string>();
+    for (const view of views)
+      for (const path of normalizeDisplayMapping(view.display_mapping)
+        ?.metadata ?? [])
+        keys.add(displayFieldName(path));
+    const metadataSql =
+      source.kind === "draft"
+        ? "SELECT metadata FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted ORDER BY position,id LIMIT 10000"
+        : source.kind === "version"
+          ? "SELECT cr.metadata FROM resolve_version_members($1) vm JOIN case_revision cr ON cr.id=vm.case_revision_id ORDER BY vm.ordinal LIMIT 10000"
+          : "SELECT sr.value->'metadata' AS metadata FROM source_record sr WHERE sr.parsed_view_id=ANY($1::text[]) AND sr.parse_status='valid' AND jsonb_typeof(sr.value->'metadata')='array' ORDER BY sr.ordinal LIMIT 10000";
+    const metadata = await client.query(metadataSql, [
+      source.kind === "assets"
+        ? views
+            .filter(
+              (view) =>
+                normalizeDisplayMapping(view.display_mapping)
+                  ?.metadataEntries === "/metadata",
+            )
+            .map((view) => view.id)
+        : source.id,
+    ]);
+    for (const row of metadata.rows)
+      for (const entry of readMetadataEntries(row.metadata))
+        if (entry.key) keys.add(entry.key);
+    const sourceRevision = sha256(
+      canonicalJson([
+        source.kind,
+        source.kind === "assets" ? views : source.id,
+        data.revision ?? null,
+        allIds,
+      ]),
+    );
     const sourceSummary = await processingSourceSummary(client, scope, source);
     await processingAccess(client, scope, true, requiredCapability);
     await client.query("COMMIT");
@@ -884,6 +950,8 @@ export async function previewProcessingInput(
       total: input.selectedOnly ? visible.length : matchedIds.length,
       sourceTotal: allIds.length,
       matchedTotal: matchedIds.length,
+      sourceRevision,
+      metadataKeys: [...keys].sort().slice(0, 100),
       hiddenSelected: selectedIds.filter((id) => !matchedIds.includes(id))
         .length,
       sourceSummary,

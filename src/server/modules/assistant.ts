@@ -686,6 +686,7 @@ export function registerAssistant({
       limit?: string;
       run?: string;
       view?: string;
+      search?: string;
     };
   }>(
     `${path}/sessions/:sessionId/candidates`,

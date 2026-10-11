@@ -178,6 +178,8 @@ test("reviews candidates inside the assistant and preserves cross-page selection
 }, info) => {
   let sent: unknown;
   let scopeHash = "initial-classified-selection";
+  let candidateForbidden = false;
+  let releaseDeniedAll: (() => void) | undefined;
   await assistantPage(page, async (route, path) => {
     if (path === `${assistantBase}/sessions`)
       return route.fulfill({
@@ -246,6 +248,13 @@ test("reviews candidates inside the assistant and preserves cross-page selection
         },
       });
     if (path.endsWith("/candidates")) {
+      if (candidateForbidden) {
+        if (new URL(route.request().url()).searchParams.get("view") === "all")
+          await new Promise<void>((resolve) => {
+            releaseDeniedAll = resolve;
+          });
+        return route.fulfill({ status: 403, json: { error: { code: "processing_not_found" } } });
+      }
       const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
       return route.fulfill({
         json: {
@@ -330,6 +339,27 @@ test("reviews candidates inside the assistant and preserves cross-page selection
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+  await page.getByRole("button", { name: "有变化", exact: true }).click();
+  await expect(page.getByRole("row", { name: "查看记录 1", exact: true })).toBeVisible();
+  candidateForbidden = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+  await expect(
+    page.getByText("候选范围变化或来源不可用。已有成果保留，请核对当前任务。"),
+  ).toBeVisible();
+  await expect(page.getByRole("row", { name: "查看记录 1", exact: true })).toHaveCount(0);
+  await Promise.all([
+    page.waitForRequest(
+      (req) =>
+        req.url().includes("/candidates?") && new URL(req.url()).searchParams.get("view") === "all",
+    ),
+    page.getByRole("button", { name: "全部", exact: true }).click(),
+  ]);
+  expect(await page.getByRole("row", { name: "查看记录 1", exact: true }).count()).toBe(0);
+  releaseDeniedAll?.();
+  await expect(page.getByRole("button", { name: "重试读取候选", exact: true })).toBeVisible();
+  candidateForbidden = false;
+  await page.getByRole("button", { name: "重试读取候选", exact: true }).click();
+  await expect(page.getByRole("row", { name: "查看记录 1", exact: true })).toBeVisible();
 });
 
 test("opens the actual adopted draft from the persisted receipt", async ({ page }) => {

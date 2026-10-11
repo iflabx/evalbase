@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,12 +16,15 @@ export function ProcessingFilters({
   conditions,
   onChange,
   disabled,
+  metadataKeys = [],
 }: {
   search: string;
   conditions: SelectionCondition[];
   onChange: (search: string, conditions: SelectionCondition[]) => void;
   disabled: boolean;
+  metadataKeys?: string[];
 }) {
+  const listId = useId();
   const [key, setKey] = useState(""),
     [operator, setOperator] = useState<SelectionCondition["operator"]>("contains"),
     [value, setValue] = useState("");
@@ -47,12 +50,23 @@ export function ProcessingFilters({
           <Input
             aria-label="Metadata 字段名"
             className="w-36"
-            placeholder="字段名"
+            placeholder="选择或输入字段名"
+            list={listId}
+            disabled={disabled}
             value={key}
             maxLength={250}
             onChange={(event) => setKey(event.target.value)}
           />
-          <Select value={operator} onValueChange={(v) => setOperator(v as typeof operator)}>
+          <datalist id={listId}>
+            {metadataKeys.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <Select
+            disabled={disabled}
+            value={operator}
+            onValueChange={(v) => setOperator(v as typeof operator)}
+          >
             <SelectTrigger aria-label="Metadata 比较方式" className="w-28">
               <SelectValue />
             </SelectTrigger>
@@ -72,6 +86,7 @@ export function ProcessingFilters({
           {["contains", "equals"].includes(operator) && (
             <Input
               aria-label="Metadata 筛选值"
+              disabled={disabled}
               className="w-36"
               value={value}
               placeholder="比较值"

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/state-view";
+import { ProcessingSourcePicker } from "@/components/processing-source-picker";
 import { ProcessingFilters } from "@/components/processing-filters";
 import { ProcessingReview, issueLabels, type ReviewRow } from "@/components/processing-review";
 import type { SelectionCondition } from "@/services/selection";
 import { MetadataSummary } from "@/components/material-record-table";
-import { request, type MetadataEntry } from "@/services/workspace";
+import { request, canRetainReadResult, type MetadataEntry } from "@/services/workspace";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import { Pagination } from "@/routes/index";
 
@@ -69,6 +70,8 @@ type Run = {
   };
   status: string;
   partial?: boolean;
+  executionComplete?: boolean;
+  hasSavedResult?: boolean;
   outputCount?: number;
   missingCount?: number;
   progress: number;
@@ -84,6 +87,7 @@ type ResultPage = {
   stats?: { all: number; changed: number; needsReview: number };
   receipts?: Receipt[];
   total: number;
+  offset?: number;
   allIds: string[];
   issues: { code: string; count?: number }[];
 };
@@ -125,6 +129,10 @@ function ProcessingPage() {
     navigate = Route.useNavigate();
   const access = useProjectAccess(projectId),
     queryClient = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("all");
+  const [historyPage, setHistoryPage] = useState(1);
   const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs`;
   const runs = useQuery({
     queryKey: ["processing-runs", projectId],
@@ -132,6 +140,13 @@ function ProcessingPage() {
     enabled: access.canWrite && !search.run && !(search.source && search.sourceId),
     refetchInterval: 5000,
   });
+  const history = (runs.data?.runs ?? []).filter(
+    (run) =>
+      (historyStatus === "all" || run.status === historyStatus) &&
+      [run.sourceSummary?.name, run.sourceSummary?.kindLabel, run.options.instructions].some(
+        (value) => value?.toLowerCase().includes(historySearch.trim().toLowerCase()),
+      ),
+  );
   const runId = search.run;
   const source =
     search.source && search.sourceId
@@ -150,6 +165,9 @@ function ProcessingPage() {
           description="选择记录、提交处理，核对结果后再采用。原件和正式版本保持不变。"
           actions={
             <>
+              {access.canWrite && !source && !runId && (
+                <Button onClick={() => setCreating(true)}>新建处理</Button>
+              )}
               {(source || runId) && (
                 <Button
                   variant="ghost"
@@ -166,6 +184,16 @@ function ProcessingPage() {
           }
         />
       )}
+      {creating && access.canWrite && (
+        <ProcessingSourcePicker
+          projectId={projectId}
+          onClose={() => setCreating(false)}
+          onChoose={(kind, id) => {
+            setCreating(false);
+            void navigate({ search: { source: kind, sourceId: id, run: undefined } });
+          }}
+        />
+      )}
       {access.isPending ? (
         <p>正在读取权限…</p>
       ) : !access.canWrite ? (
@@ -174,9 +202,12 @@ function ProcessingPage() {
         <>
           {source && !runId && (
             <ProcessingForm
-              key={`${source.kind}:${search.sourceId}`}
+              key={`${projectId}:${source.kind}:${search.sourceId}`}
               projectId={projectId}
               source={source}
+              actorId={
+                queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? ""
+              }
               onCreated={async (id) => {
                 await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
                 await navigate({ search: { ...search, run: id } });
@@ -185,7 +216,7 @@ function ProcessingPage() {
           )}
           {runId && (
             <ProcessingResults
-              key={runId}
+              key={`${projectId}:${runId}`}
               projectId={projectId}
               runId={runId}
               onBack={() => {
@@ -203,16 +234,65 @@ function ProcessingPage() {
                   关闭页面后，已提交的任务仍会继续。最多显示最近 100 项。
                 </p>
               </div>
-              {runs.error ? (
+              <div className="flex flex-wrap items-center gap-2 border-b px-5 py-3">
+                <Input
+                  aria-label="搜索处理任务"
+                  placeholder="搜索来源或处理要求"
+                  className="w-full sm:max-w-xs"
+                  value={historySearch}
+                  maxLength={200}
+                  onChange={(event) => {
+                    setHistorySearch(event.target.value);
+                    setHistoryPage(1);
+                  }}
+                />
+                <Select
+                  value={historyStatus}
+                  onValueChange={(value) => {
+                    setHistoryStatus(value);
+                    setHistoryPage(1);
+                  }}
+                >
+                  <SelectTrigger aria-label="任务执行状态" className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部执行状态</SelectItem>
+                    {Object.entries(statuses).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(historySearch || historyStatus !== "all") && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setHistorySearch("");
+                      setHistoryStatus("all");
+                      setHistoryPage(1);
+                    }}
+                  >
+                    清除条件
+                  </Button>
+                )}
+              </div>
+              {runs.isPending ? (
+                <p className="p-5 text-sm text-muted-foreground">正在读取处理任务…</p>
+              ) : runs.error ? (
                 <div className="p-5" role="alert">
                   <p>{errorText(runs.error)}</p>
                   <Button variant="outline" onClick={() => void runs.refetch()}>
                     重试
                   </Button>
                 </div>
-              ) : !runs.data?.runs.length ? (
+              ) : !history.length ? (
                 <p className="p-5 text-sm text-muted-foreground">
-                  暂无处理任务。打开原始文件、版本或草稿，点击“处理数据”开始。
+                  {historySearch || historyStatus !== "all"
+                    ? "没有匹配结果，请清除搜索或筛选。"
+                    : "暂无处理任务。点击“新建处理”开始。"}
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -227,16 +307,30 @@ function ProcessingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {runs.data.runs.map((run) => (
+                      {history.slice((historyPage - 1) * 20, historyPage * 20).map((run) => (
                         <tr key={run.id} className="border-t">
                           <td className="px-5 py-4 font-medium">
                             {run.sourceSummary?.name ?? "来源未记录"} ·{" "}
                             {labels[run.options.operation]}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {run.sourceSummary?.kindLabel ?? "来源类型未记录"}
+                            </p>
+                            <p
+                              className="mt-1 max-w-sm truncate text-xs font-normal text-muted-foreground"
+                              title={run.options.instructions}
+                            >
+                              {run.options.instructions || "未记录处理要求"}
+                            </p>
                           </td>
                           <td className="px-4 py-4">{run.inputCount} 条</td>
                           <td className="px-4 py-4">
-                            {run.partial ? "部分成功，待核对" : statuses[run.status]}
+                            {run.status === "succeeded" && run.executionComplete === false
+                              ? "部分完成，需核对执行"
+                              : statuses[run.status]}
                             {run.status === "running" ? ` ${run.progress}%` : ""}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {run.hasSavedResult ? "有保存记录" : "暂无保存记录"}
+                            </p>
                           </td>
                           <td className="px-4 py-4 text-muted-foreground">
                             <p>{run.actorName ?? "未记录"}</p>
@@ -261,6 +355,15 @@ function ProcessingPage() {
                   </table>
                 </div>
               )}
+              <div className="px-5 pb-4">
+                <Pagination
+                  current={historyPage}
+                  total={history.length}
+                  pages={Math.max(1, Math.ceil(history.length / 20))}
+                  unit="项匹配任务（最近 100 项范围）"
+                  onChange={setHistoryPage}
+                />
+              </div>
             </section>
           )}
         </>
@@ -271,27 +374,53 @@ function ProcessingPage() {
 function ProcessingForm({
   projectId,
   source,
+  actorId,
   onCreated,
 }: {
+  actorId: string;
   projectId: string;
   source: Record<string, unknown>;
   onCreated: (id: string) => Promise<void>;
 }) {
-  const [page, setPage] = useState(1),
-    [selected, setSelected] = useState<Set<string>>(new Set()),
-    [operation, setOperation] = useState<"clean" | "rewrite" | "augment">("clean");
-  const [search, setSearch] = useState(""),
-    [conditions, setConditions] = useState<SelectionCondition[]>([]),
-    [selectedOnly, setSelectedOnly] = useState(false);
-  const [instructions, setInstructions] = useState(""),
-    [allowedFields, setAllowedFields] = useState(["question"]),
-    [count, setCount] = useState("20"),
+  const queryClient = useQueryClient();
+  const cacheKey = ["processing-config", actorId, projectId, JSON.stringify(source)];
+  queryClient.setQueryDefaults(["processing-config"], { gcTime: Infinity });
+  const saved = useRef(
+    queryClient.getQueryData<{
+      page: number;
+      selected: string[];
+      operation: "clean" | "rewrite" | "augment";
+      search: string;
+      conditions: SelectionCondition[];
+      selectedOnly: boolean;
+      instructions: string;
+      allowedFields: string[];
+      count: string;
+      sourceRevision?: string;
+      operationKey: string;
+    }>(cacheKey),
+  ).current;
+  const sourceRevision = useRef(saved?.sourceRevision);
+  const submittedConfig = useRef(false);
+  const [scopeChanged, setScopeChanged] = useState(false);
+  const [page, setPage] = useState(saved?.page ?? 1),
+    [selected, setSelected] = useState<Set<string>>(new Set(saved?.selected)),
+    [operation, setOperation] = useState<"clean" | "rewrite" | "augment">(
+      saved?.operation ?? "clean",
+    );
+  const [search, setSearch] = useState(saved?.search ?? ""),
+    [conditions, setConditions] = useState<SelectionCondition[]>(saved?.conditions ?? []),
+    [selectedOnly, setSelectedOnly] = useState(saved?.selectedOnly ?? false);
+  const [instructions, setInstructions] = useState(saved?.instructions ?? ""),
+    [allowedFields, setAllowedFields] = useState(saved?.allowedFields ?? ["question"]),
+    [count, setCount] = useState(saved?.count ?? "20"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [operationKey, setOperationKey] = useState(() => crypto.randomUUID());
+  const [operationKey, setOperationKey] = useState(saved?.operationKey ?? crypto.randomUUID());
   const input = useQuery({
     queryKey: [
       "processing-inputs",
+      actorId,
       projectId,
       source,
       page,
@@ -308,6 +437,8 @@ function ProcessingForm({
         sourceTotal?: number;
         matchedTotal?: number;
         sourceSummary?: SourceSummary;
+        sourceRevision?: string;
+        metadataKeys?: string[];
       }>(`/api/projects/${encodeURIComponent(projectId)}/processing-inputs`, {
         source,
         offset: (page - 1) * 20,
@@ -319,6 +450,29 @@ function ProcessingForm({
       }),
     retry: false,
     refetchOnWindowFocus: false,
+    refetchOnMount: "always",
+  });
+  useEffect(() => {
+    const revision = input.data?.sourceRevision;
+    if (revision && sourceRevision.current && sourceRevision.current !== revision) {
+      setScopeChanged(true);
+    } else if (revision) sourceRevision.current = revision;
+  }, [input.data?.sourceRevision]);
+  useEffect(() => {
+    if (submittedConfig.current) return;
+    queryClient.setQueryData(cacheKey, {
+      page,
+      selected: [...selected],
+      operation,
+      search,
+      conditions,
+      selectedOnly,
+      instructions,
+      allowedFields,
+      count,
+      sourceRevision: sourceRevision.current,
+      operationKey,
+    });
   });
   function change() {
     setOperationKey(crypto.randomUUID());
@@ -337,7 +491,7 @@ function ProcessingForm({
           ? `请填写${labels[operation]}要求。`
           : "";
   async function submit() {
-    if (busy || reason || input.isError) return;
+    if (busy || reason || input.isError || input.isFetching || scopeChanged) return;
     setBusy(true);
     setError("");
     try {
@@ -354,6 +508,8 @@ function ProcessingForm({
         },
         operationKey,
       );
+      submittedConfig.current = true;
+      queryClient.removeQueries({ queryKey: cacheKey, exact: true });
       await onCreated(result.run.id);
     } catch (e) {
       setError(errorText(e));
@@ -367,11 +523,12 @@ function ProcessingForm({
     augment: "参考选中数据生成新记录，不覆盖原始输入。",
   }[operation];
   const hidden = [...selected].filter((id) => !input.data?.allIds.includes(id)).length;
+  const visibleInput = input.isError ? undefined : input.data;
   return (
     <div className="space-y-5">
       <PageHeader
-        title={`处理 ${input.data?.sourceSummary?.name ?? "数据"}`}
-        description={`${input.data?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${input.data?.sourceTotal ?? input.data?.total ?? 0} 条 · 已选 ${selected.size} 条`}
+        title={`处理 ${visibleInput?.sourceSummary?.name ?? "数据"}`}
+        description={`${visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条 · 已选 ${selected.size} 条`}
         actions={
           <>
             <Button variant="ghost" asChild>
@@ -383,31 +540,82 @@ function ProcessingForm({
                 返回处理任务
               </Link>
             </Button>
-            {input.data?.sourceSummary?.href && (
+            {visibleInput?.sourceSummary?.href && (
               <Button variant="outline" asChild>
-                <a href={input.data.sourceSummary.href}>查看来源</a>
+                <a href={visibleInput.sourceSummary.href} target="_blank" rel="noopener noreferrer">
+                  查看来源
+                </a>
               </Button>
             )}
           </>
         }
       />
-      {(input.data?.sourceSummary?.files.length ?? 0) > 1 && (
+      {(visibleInput?.sourceSummary?.files.length ?? 0) > 1 && (
         <details className="text-sm">
           <summary>查看来源文件</summary>
-          {input.data!.sourceSummary!.files.map((file) => (
-            <a key={file.href} className="block text-primary" href={file.href}>
+          {visibleInput!.sourceSummary!.files.map((file) => (
+            <a
+              key={file.href}
+              className="block text-primary"
+              href={file.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               {file.name}
             </a>
           ))}
         </details>
       )}
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(300px,2fr)]">
+      {scopeChanged && (
+        <div role="alert" className="rounded-md border bg-muted/40 p-4 text-sm">
+          来源修订已变化，处理要求已保留。请重新核对输入记录。
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-2"
+            onClick={() => {
+              setSelected(new Set());
+              setSelectedOnly(false);
+              setPage(1);
+              change();
+              sourceRevision.current = visibleInput?.sourceRevision;
+              setScopeChanged(false);
+            }}
+          >
+            重新选择记录
+          </Button>
+        </div>
+      )}
+      <div className="sticky top-12 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-card p-3 text-sm xl:hidden">
+        <span>已选 {selected.size} 条</span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            document
+              .getElementById("processing-settings")
+              ?.scrollIntoView({ block: "start", behavior: "instant" })
+          }
+        >
+          设置处理
+        </Button>
+        <Button
+          size="sm"
+          className="ml-auto"
+          disabled={busy || Boolean(reason) || input.isError || input.isFetching || scopeChanged}
+          onClick={() => void submit()}
+        >
+          开始{labels[operation]}
+        </Button>
+      </div>
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-sm">
           <div className="space-y-3 border-b px-5 py-4">
             <h2 className="font-semibold">选择输入记录</h2>
             <ProcessingFilters
               search={search}
               conditions={conditions}
+              metadataKeys={visibleInput?.metadataKeys ?? []}
               disabled={busy}
               onChange={(text, filters) => {
                 setSearch(text);
@@ -419,10 +627,10 @@ function ProcessingForm({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy || !input.data || input.isFetching}
+                disabled={busy || !visibleInput || input.isFetching}
                 onClick={() => {
                   setSelected(
-                    (old) => new Set([...old, ...input.data!.records.map((row) => row.id)]),
+                    (old) => new Set([...old, ...visibleInput!.records.map((row) => row.id)]),
                   );
                   change();
                 }}
@@ -432,13 +640,13 @@ function ProcessingForm({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy || !input.data || input.isFetching}
+                disabled={busy || !visibleInput || input.isFetching}
                 onClick={() => {
-                  setSelected((old) => new Set([...old, ...input.data!.allIds]));
+                  setSelected((old) => new Set([...old, ...visibleInput!.allIds]));
                   change();
                 }}
               >
-                选择全部匹配记录
+                选择全部匹配记录（{visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条）
               </Button>
               <Button
                 size="sm"
@@ -465,8 +673,8 @@ function ProcessingForm({
               </label>
             </div>
             <p className="text-xs text-muted-foreground">
-              匹配 {input.data?.matchedTotal ?? input.data?.total ?? 0} 条 / 已选 {selected.size} 条
-              {hidden > 0 && input.data ? `（${hidden} 条在当前筛选外）` : ""}
+              匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
+              {selected.size} 条{hidden > 0 && visibleInput ? `（${hidden} 条在当前筛选外）` : ""}
               。提交使用完整已选集合。
             </p>
           </div>
@@ -481,24 +689,44 @@ function ProcessingForm({
             <p className="p-5 text-sm text-muted-foreground">正在读取记录…</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] table-fixed text-sm">
+              <table className="w-full min-w-[440px] table-fixed text-sm">
                 <thead className="bg-muted/60 text-left text-muted-foreground">
                   <tr>
                     <th className="w-12 px-3 py-3">
-                      <span className="sr-only">选择</span>
+                      <Checkbox
+                        aria-label="选择本页记录"
+                        disabled={
+                          busy || input.isFetching || !visibleInput?.records.length || scopeChanged
+                        }
+                        checked={
+                          Boolean(visibleInput?.records.length) &&
+                          visibleInput!.records.every((row) => selected.has(row.id))
+                        }
+                        onCheckedChange={(checked) => {
+                          setSelected((old) => {
+                            const next = new Set(old);
+                            for (const row of visibleInput?.records ?? []) {
+                              if (checked) next.add(row.id);
+                              else next.delete(row.id);
+                            }
+                            return next;
+                          });
+                          change();
+                        }}
+                      />
                     </th>
                     <th className="px-3 py-3">问题 / 原始内容</th>
-                    <th className="w-28 px-3 py-3">期望输出</th>
-                    <th className="w-44 px-3 py-3">Metadata</th>
+                    <th className="w-[22%] px-3 py-3">期望输出</th>
+                    <th className="w-[30%] px-3 py-3">Metadata</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {input.data?.records.map((row) => (
+                  {visibleInput?.records.map((row) => (
                     <tr key={row.id} className="border-t align-top">
                       <td className="px-3 py-3">
                         <Checkbox
                           aria-label={`选择记录 ${row.id}`}
-                          disabled={busy}
+                          disabled={busy || input.isFetching || scopeChanged}
                           checked={selected.has(row.id)}
                           onCheckedChange={(checked) => {
                             setSelected((old) => {
@@ -539,7 +767,7 @@ function ProcessingForm({
                   ))}
                 </tbody>
               </table>
-              {!input.data?.records.length && (
+              {!visibleInput?.records.length && (
                 <div className="space-y-2 p-6 text-center text-sm">
                   <p>{selectedOnly ? "当前范围没有已选记录。" : "没有匹配记录。"}</p>
                   <Button
@@ -560,36 +788,38 @@ function ProcessingForm({
           <div className="px-4 pb-3">
             <Pagination
               current={page}
-              total={input.data?.total ?? 0}
+              total={visibleInput?.total ?? 0}
               unit="条记录"
-              pages={Math.max(1, Math.ceil((input.data?.total ?? 0) / 20))}
+              pages={Math.max(1, Math.ceil((visibleInput?.total ?? 0) / 20))}
               onChange={setPage}
             />
           </div>
         </section>
-        <section className="min-w-0 space-y-4 rounded-md border bg-card p-5 shadow-sm xl:sticky xl:top-20">
+        <section
+          id="processing-settings"
+          className="scroll-mt-28 min-w-0 space-y-4 rounded-md border bg-card p-5 shadow-sm xl:sticky xl:top-20"
+        >
           <h2 className="font-semibold">处理要求</h2>
           <div className="space-y-2 text-sm">
             <label>要做什么</label>
-            <Select
-              value={operation}
-              disabled={busy}
-              onValueChange={(value) => {
-                setOperation(value as typeof operation);
-                change();
-              }}
-            >
-              <SelectTrigger aria-label="处理方式">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(labels).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2" role="group" aria-label="处理方式">
+              {Object.entries(labels).map(([value, label]) => (
+                <Button
+                  key={value}
+                  size="sm"
+                  className="flex-1"
+                  variant={operation === value ? "default" : "outline"}
+                  aria-pressed={operation === value}
+                  disabled={busy}
+                  onClick={() => {
+                    setOperation(value as typeof operation);
+                    change();
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
             <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
           </div>
           <fieldset className="space-y-2">
@@ -672,7 +902,9 @@ function ProcessingForm({
             {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
             <Button
               className="w-full"
-              disabled={busy || Boolean(reason) || input.isError || input.isPending}
+              disabled={
+                busy || Boolean(reason) || input.isError || input.isFetching || scopeChanged
+              }
               onClick={() => void submit()}
             >
               {busy ? "正在提交…" : `开始${labels[operation]} · ${selected.size} 条输入`}
@@ -694,6 +926,7 @@ function ProcessingResults({
 }) {
   const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}`;
   const [view, setView] = useState("all");
+  const [text, setText] = useState("");
   const [page, setPage] = useState(1),
     [selected, setSelected] = useState<Set<string>>(new Set()),
     [busy, setBusy] = useState(false),
@@ -714,15 +947,41 @@ function ProcessingResults({
     enabled: confirm,
   });
   const data = useQuery({
-    queryKey: ["processing-run", projectId, runId, page, view],
-    queryFn: () => request<ResultPage>(`${path}?offset=${(page - 1) * 20}&limit=20&view=${view}`),
+    queryKey: ["processing-run", projectId, runId, page, view, text],
+    placeholderData: (previous, query) =>
+      canRetainReadResult(query?.state.error) ? previous : undefined,
+    queryFn: () =>
+      request<ResultPage>(
+        `${path}?offset=${(page - 1) * 20}&limit=20&view=${view}&search=${encodeURIComponent(text)}`,
+      ),
     refetchInterval: (q) =>
       ["queued", "running", "retry_wait", "cancel_requested"].includes(
         q.state.data?.run.status ?? "",
       )
         ? 3000
         : false,
+    retry: false,
   });
+  const lastConfirmed = useRef<ResultPage | undefined>(undefined);
+  useEffect(() => {
+    if (!canRetainReadResult(data.error)) {
+      lastConfirmed.current = undefined;
+      queryClient.removeQueries({
+        queryKey: ["processing-run", projectId, runId],
+        type: "inactive",
+      });
+    } else if (data.isSuccess && !data.isPlaceholderData) lastConfirmed.current = data.data;
+  }, [
+    projectId,
+    runId,
+    queryClient,
+    data.error,
+    data.data,
+    data.isSuccess,
+    data.isPlaceholderData,
+  ]);
+  const transient = canRetainReadResult(data.error);
+  const value = transient ? (data.data ?? lastConfirmed.current) : undefined;
   async function action(kind: "cancel" | "retry") {
     setBusy(true);
     setError("");
@@ -789,8 +1048,8 @@ function ProcessingResults({
       setBusy(false);
     }
   }
-  if (data.isPending) return <p>正在读取处理结果…</p>;
-  if (!data.data)
+  if (data.isPending && !value) return <p>正在读取处理结果…</p>;
+  if (!value)
     return (
       <div role="alert">
         <p>{errorText(data.error)}</p>
@@ -802,9 +1061,9 @@ function ProcessingResults({
         </Button>
       </div>
     );
-  const value = data.data,
-    run = value.run,
+  const run = value.run,
     terminal = ["succeeded", "failed", "cancelled"].includes(run.status);
+  const stale = data.isFetching || data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
   return (
     <section className="min-w-0 overflow-hidden rounded-md border bg-card shadow-sm">
@@ -815,12 +1074,13 @@ function ProcessingResults({
             {run.sourceSummary?.name ?? "来源未记录"}
           </p>
           <p role="status" className="mt-1 text-sm text-muted-foreground">
-            {run.partial ? "部分成功，待核对" : statuses[run.status]} · 已完成{" "}
-            {run.outputCount ?? value.stats?.all ?? value.total} /{" "}
-            {run.options.outputCount ?? run.inputCount} · 已产生 {value.stats?.all ?? value.total}{" "}
-            条结果
+            {run.status === "succeeded" && run.executionComplete === false
+              ? "部分完成，仍需核对执行结果"
+              : statuses[run.status]}{" "}
+            · 已产生 {run.outputCount ?? value.stats?.all ?? value.total} /{" "}
+            {run.options.outputCount ?? run.inputCount} 条结果
             {run.missingCount ? ` · 尚缺 ${run.missingCount} 条` : ""}
-            {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条需核对` : ""}
+            {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -918,10 +1178,33 @@ function ProcessingResults({
         </div>
       ))}
       <div className="flex flex-wrap gap-2 border-b px-5 py-3" aria-label="结果筛选">
+        <Input
+          aria-label="搜索处理结果"
+          placeholder="搜索问题、期望输出、Metadata 或来源"
+          className="w-full sm:max-w-xs"
+          value={text}
+          maxLength={200}
+          onChange={(event) => {
+            setText(event.target.value);
+            setPage(1);
+          }}
+        />
+        {text && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setText("");
+              setPage(1);
+            }}
+          >
+            清除搜索
+          </Button>
+        )}
         {[
           ["all", "全部"],
           ["changed", "有变化"],
-          ["issues", "需核对"],
+          ["issues", "自动检查问题"],
         ].map(([key, label]) => (
           <Button
             key={key}
@@ -945,7 +1228,7 @@ function ProcessingResults({
         <Button
           size="sm"
           variant="outline"
-          disabled={!terminal || busy || data.isError || unknownSave}
+          disabled={!terminal || busy || data.isError || stale || unknownSave}
           onClick={() => {
             setSelected((old) => new Set([...old, ...value.records.map((r) => r.id)]));
             setKey(crypto.randomUUID());
@@ -956,7 +1239,7 @@ function ProcessingResults({
         <Button
           size="sm"
           variant="outline"
-          disabled={!terminal || busy || data.isError || unknownSave}
+          disabled={!terminal || busy || data.isError || stale || unknownSave}
           onClick={() => {
             setSelected((old) => new Set([...old, ...value.allIds]));
             setKey(crypto.randomUUID());
@@ -975,22 +1258,38 @@ function ProcessingResults({
         >
           清空选择
         </Button>
-        <span className="text-sm text-muted-foreground">已选 {selected.size} 条</span>
+        <span className="text-sm text-muted-foreground">
+          已选 {selected.size} 条
+          {[...selected].filter((id) => !value.allIds.includes(id)).length > 0
+            ? `（${[...selected].filter((id) => !value.allIds.includes(id)).length} 条在当前筛选外）`
+            : ""}
+        </span>
         <Button
           size="sm"
           className="ml-auto"
-          disabled={!terminal || busy || !selected.size || data.isError}
+          disabled={!terminal || busy || !selected.size || data.isError || stale}
           onClick={() => setConfirm(true)}
         >
-          保存处理结果
+          保存所选 {selected.size} 条
         </Button>
       </div>
+      {stale && (
+        <p role="status" className="border-b px-5 py-3 text-sm text-muted-foreground">
+          正在读取结果，下面保留上一次条件的内容；读取完成后可选择。
+        </p>
+      )}
       <ProcessingReview
         rows={value.records}
         selected={selected}
-        disabled={!terminal || busy || data.isError || unknownSave}
+        disabled={!terminal || busy || data.isError || stale || unknownSave}
         generated={value.rootOperation === "augment" || run.options.operation === "augment"}
-        offset={(page - 1) * 20}
+        offset={stale ? (value.offset ?? (page - 1) * 20) : (page - 1) * 20}
+        total={value.total}
+        pageSize={20}
+        onPageChange={setPage}
+        loading={data.isFetching || data.isPlaceholderData}
+        error={data.isError}
+        onRetry={() => void data.refetch()}
         onToggle={(id, checked) => {
           setSelected((old) => {
             const next = new Set(old);

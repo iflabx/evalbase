@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -71,15 +72,31 @@ export function SourceInfo({ value }: { value?: SourcePresentation | undefined }
     </details>
   );
 }
-function FullValue({ value }: { value?: ProcessingValue | undefined }) {
+function FullValue({
+  value,
+  foldedFields = [],
+}: {
+  value?: ProcessingValue | undefined;
+  foldedFields?: string[];
+}) {
   return value ? (
     <div className="space-y-4 text-sm">
       {["question", "expectedOutput"].map((field) => (
         <div key={field}>
           <h4 className="mb-1 font-medium text-muted-foreground">{fieldLabels[field]}</h4>
-          <p className="whitespace-pre-wrap break-words">
-            {value[field as "question" | "expectedOutput"] || "（空值）"}
-          </p>
+          {foldedFields.includes(field) &&
+          value[field as "question" | "expectedOutput"].length > 200 ? (
+            <details>
+              <summary className="cursor-pointer text-primary">未变化，展开完整内容</summary>
+              <p className="mt-2 whitespace-pre-wrap break-words">
+                {value[field as "question" | "expectedOutput"]}
+              </p>
+            </details>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">
+              {value[field as "question" | "expectedOutput"] || "（空值）"}
+            </p>
+          )}
         </div>
       ))}
       <div>
@@ -131,6 +148,12 @@ export function ProcessingReview({
   disabled = false,
   generated = false,
   offset = 0,
+  total,
+  pageSize = 20,
+  onPageChange,
+  loading = false,
+  error = false,
+  onRetry,
 }: {
   rows: ReviewRow[];
   selected: Set<string>;
@@ -138,8 +161,31 @@ export function ProcessingReview({
   disabled?: boolean;
   generated?: boolean;
   offset?: number;
+  total?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
 }) {
   const [detail, setDetail] = useState<ReviewRow>();
+  const [position, setPosition] = useState(0);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  useEffect(() => {
+    if (!detail || loading || error) return;
+    const next = rows[position - offset];
+    if (next) {
+      setDetail(next);
+      returnFocus.current = rowRefs.current.get(next.id) ?? null;
+    }
+  }, [rows, position, offset, loading, error, detail]);
+  function move(delta: number) {
+    const next = position + delta;
+    if (loading || error || next < 0 || next >= (total ?? offset + rows.length)) return;
+    setPosition(next);
+    if (next < offset || next >= offset + rows.length)
+      onPageChange?.(Math.floor(next / pageSize) + 1);
+  }
   const returnFocus = useRef<HTMLTableRowElement | null>(null);
   const changes = (row: ReviewRow) =>
     row.changedFields ??
@@ -155,7 +201,7 @@ export function ProcessingReview({
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] table-fixed text-sm">
+        <table className="w-full min-w-[440px] table-fixed text-sm">
           <thead className="bg-muted/60 text-left text-muted-foreground">
             <tr>
               <th className="w-12 px-3 py-3">
@@ -170,17 +216,23 @@ export function ProcessingReview({
             {rows.map((row, index) => (
               <tr
                 key={row.id}
+                ref={(node) => {
+                  if (node) rowRefs.current.set(row.id, node);
+                  else rowRefs.current.delete(row.id);
+                }}
                 tabIndex={0}
                 aria-label={`查看记录 ${offset + index + 1}`}
                 className="cursor-pointer border-t align-top hover:bg-muted/30 focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={(event) => {
                   returnFocus.current = event.currentTarget;
+                  setPosition(offset + index);
                   setDetail(row);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     returnFocus.current = event.currentTarget;
+                    setPosition(offset + index);
                     setDetail(row);
                   }
                 }}
@@ -220,22 +272,37 @@ export function ProcessingReview({
                   </p>
                 </td>
                 <td className="space-y-2 px-3 py-3">
-                  <MetadataSummary entries={row.result.metadata} />
-                  {metadataChanges(row.original, row.result)
-                    .slice(0, 3)
-                    .map((line, i) => (
-                      <p key={i} className="line-clamp-2 break-words text-xs text-primary">
-                        {line}
-                      </p>
-                    ))}
+                  {metadataChanges(row.original, row.result).length ? (
+                    <>
+                      {metadataChanges(row.original, row.result)
+                        .slice(0, 3)
+                        .map((line, i) => (
+                          <p key={i} className="line-clamp-2 break-words text-xs text-primary">
+                            {line}
+                          </p>
+                        ))}
+                      <details className="text-xs">
+                        <summary className="cursor-pointer text-muted-foreground">
+                          查看完整 Metadata
+                        </summary>
+                        <MetadataSummary entries={row.result.metadata} />
+                      </details>
+                    </>
+                  ) : (
+                    <MetadataSummary entries={row.result.metadata} />
+                  )}
                   <p className="text-xs text-primary">
                     {changes(row)
+                      .filter(
+                        (field) =>
+                          field !== "metadata" || !metadataChanges(row.original, row.result).length,
+                      )
                       .map((field) => fieldLabels[field] ?? field)
-                      .join("、") || "未改变"}
+                      .join("、") || (changes(row).length ? "" : "未改变")}
                   </p>
                   {row.issues?.map((issue, i) => (
                     <p key={i} className="text-xs text-destructive">
-                      需核对：{issueLabels[issue.code] ?? "此结果需要核对"}
+                      自动检查：{issueLabels[issue.code] ?? "此结果需要核对"}
                     </p>
                   ))}
                 </td>
@@ -259,7 +326,10 @@ export function ProcessingReview({
           className="w-full overflow-y-auto sm:max-w-3xl"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            if (returnFocus.current?.isConnected) returnFocus.current.focus();
+            if (returnFocus.current?.isConnected) {
+              returnFocus.current.focus();
+              returnFocus.current.scrollIntoView({ block: "nearest" });
+            }
           }}
         >
           <SheetHeader>
@@ -270,6 +340,45 @@ export function ProcessingReview({
                 : "核对完整内容后再保存；结构检查通过不代表内容正确。"}
             </SheetDescription>
           </SheetHeader>
+          {detail && (
+            <div className="mt-4 flex items-center justify-between gap-2 border-b pb-3 text-sm">
+              <span>
+                {loading || error ? "正在核对目标位置：" : ""}第 {position + 1} 条，共{" "}
+                {total ?? rows.length} 条
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={loading || error || position <= 0}
+                  onClick={() => move(-1)}
+                >
+                  上一条
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={loading || error || position + 1 >= (total ?? rows.length)}
+                  onClick={() => move(1)}
+                >
+                  下一条
+                </Button>
+              </div>
+            </div>
+          )}
+          {detail && loading && (
+            <p role="status" className="mt-3 text-sm text-muted-foreground">
+              正在读取下一条，下面保留上次内容…
+            </p>
+          )}
+          {detail && error && (
+            <div role="alert" className="mt-3 text-sm text-destructive">
+              读取失败，下面仍是上次确认的记录。
+              <Button size="sm" variant="ghost" onClick={onRetry}>
+                重试读取记录
+              </Button>
+            </div>
+          )}
           {detail && (
             <div className="mt-5 min-w-0 space-y-5">
               <SourceInfo
@@ -296,11 +405,21 @@ export function ProcessingReview({
               <div className="grid min-w-0 gap-4 sm:grid-cols-2">
                 <section className="min-w-0 rounded-md border p-4">
                   <h3 className="mb-4 font-semibold">{generated ? "参考输入" : "修改前"}</h3>
-                  <FullValue value={original} />
+                  <FullValue
+                    value={original}
+                    foldedFields={["question", "expectedOutput"].filter(
+                      (field) => !changes(detail).includes(field),
+                    )}
+                  />
                 </section>
                 <section className="min-w-0 rounded-md border p-4">
                   <h3 className="mb-4 font-semibold">处理结果</h3>
-                  <FullValue value={detail.result} />
+                  <FullValue
+                    value={detail.result}
+                    foldedFields={["question", "expectedOutput"].filter(
+                      (field) => !changes(detail).includes(field),
+                    )}
+                  />
                 </section>
               </div>
               {original?.baseline && (

@@ -97,7 +97,7 @@ export async function processingSourceSummary(
 
 export function processingReviewPage(
   data: Awaited<ReturnType<typeof readProcessingRun>>,
-  query: { offset?: string; limit?: string; view?: string },
+  query: { offset?: string; limit?: string; view?: string; search?: string },
 ) {
   const offset = Number(query.offset ?? 0),
     limit = Number(query.limit ?? 20),
@@ -108,7 +108,9 @@ export function processingReviewPage(
     !Number.isSafeInteger(limit) ||
     limit < 1 ||
     limit > 100 ||
-    !["all", "changed", "issues"].includes(view)
+    !["all", "changed", "issues"].includes(view) ||
+    (query.search !== undefined &&
+      (typeof query.search !== "string" || query.search.length > 200))
   )
     throw new ProcessingError(422, "query_parameter_invalid");
   const seen = new Set<string>();
@@ -139,7 +141,20 @@ export function processingReviewPage(
     seen.add(content);
     return { ...row, changedFields, issues };
   });
-  const matched = rows.filter(
+  const text = (query.search ?? "").trim().toLowerCase();
+  const searched = rows.filter(
+    (row) =>
+      !text ||
+      [
+        row.result.question,
+        row.result.expectedOutput,
+        ...row.result.metadata.flatMap((entry) => [entry.key, entry.value]),
+        ...("sourceLabel" in row && typeof row.sourceLabel === "string"
+          ? [row.sourceLabel]
+          : []),
+      ].some((value) => value.toLowerCase().includes(text)),
+  );
+  const matched = searched.filter(
     (row) =>
       view === "all" ||
       (view === "changed"
@@ -154,9 +169,9 @@ export function processingReviewPage(
     allIds: matched.map((row) => row.id),
     total: matched.length,
     stats: {
-      all: rows.length,
-      changed: rows.filter((row) => row.changedFields.length).length,
-      needsReview: rows.filter((row) => row.issues.length).length,
+      all: searched.length,
+      changed: searched.filter((row) => row.changedFields.length).length,
+      needsReview: searched.filter((row) => row.issues.length).length,
     },
     offset,
     limit,
@@ -168,17 +183,50 @@ export async function presentProcessingReview(
   artifacts: ArtifactRepository,
   scope: ProcessingScope,
   data: Awaited<ReturnType<typeof readProcessingRun>>,
-  query: { offset?: string; limit?: string; view?: string },
+  query: { offset?: string; limit?: string; view?: string; search?: string },
 ) {
-  const page = processingReviewPage(data, query);
-  const origins = await presentSources(
-    db,
-    artifacts,
-    scope,
-    page.records.map(
-      (row) => row.original?.baseline?.source ?? row.original?.source,
-    ),
+  if (
+    query.search !== undefined &&
+    (typeof query.search !== "string" || query.search.length > 200)
+  )
+    throw new ProcessingError(422, "query_parameter_invalid");
+  // Only a source-name search needs the full bounded provenance projection.
+  // Ordinary browsing still resolves provenance for the current page only.
+  const searchable = query.search?.trim()
+    ? await presentSources(
+        db,
+        artifacts,
+        scope,
+        data.records.map(
+          (row) => row.original?.baseline?.source ?? row.original?.source,
+        ),
+      )
+    : null;
+  const page = processingReviewPage(
+    searchable
+      ? {
+          ...data,
+          records: data.records.map((row, index) => ({
+            ...row,
+            sourceLabel: searchable[index]!.label,
+          })),
+        }
+      : data,
+    query,
   );
+  const sourceById = searchable
+    ? new Map(data.records.map((row, index) => [row.id, searchable[index]!]))
+    : null;
+  const origins = sourceById
+    ? page.records.map((row) => sourceById.get(row.id)!)
+    : await presentSources(
+        db,
+        artifacts,
+        scope,
+        page.records.map(
+          (row) => row.original?.baseline?.source ?? row.original?.source,
+        ),
+      );
   const sourceSummary = await processingSourceSummary(
     db,
     scope,

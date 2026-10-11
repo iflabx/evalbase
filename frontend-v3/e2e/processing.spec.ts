@@ -93,7 +93,7 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   await expect(page.getByText("类别：", { exact: true })).toBeVisible();
   await expect(page.getByText("(空)", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "开始清洗 · 0 条输入" })).toBeDisabled();
-  await page.getByRole("button", { name: "选择全部匹配记录", exact: true }).click();
+  await page.getByRole("button", { name: /^选择全部匹配记录/ }).click();
   await page.setViewportSize({ width: 800, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -110,7 +110,7 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
   for (const entry of await page.getByText("类别：", { exact: true }).all())
     await expect(entry).toBeVisible();
   await page.getByRole("button", { name: "选择全部匹配结果" }).click();
-  await page.getByRole("button", { name: "保存处理结果" }).click();
+  await page.getByRole("button", { name: /^保存所选 \d+ 条$/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(accepted).toBe(0);
   await page.getByRole("button", { name: "确认保存", exact: true }).click();
@@ -178,6 +178,6 @@ test("can retry missing records in a legacy succeeded run", async ({ page }) => 
   await expect(page.getByText("保留的候选", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "重试未完成批次" }).click();
   await expect.poll(() => recovered).toBe(true);
-  await expect(page.getByRole("status").filter({ hasText: "已产生 2 条结果" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "已产生 2 / 2 条结果" })).toBeVisible();
   await expect(page.getByRole("button", { name: "重试未完成批次" })).toHaveCount(0);
 });
