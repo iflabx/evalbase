@@ -124,7 +124,7 @@ test("selects explicit inputs, previews processing results, and confirms adoptio
     fullPage: true,
   });
   await page.getByRole("button", { name: "返回处理任务", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "处理任务", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "搜索处理任务", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "选择输入记录" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "清洗结果" })).toHaveCount(0);
   await page.getByRole("button", { name: "查看", exact: true }).click();
