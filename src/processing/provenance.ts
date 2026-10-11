@@ -92,7 +92,9 @@ export async function processingReferences(
         generated: true,
         steps: [
           ...visible,
-          ...(missing || !files.size ? [{ label: "部分来源未记录" }] : []),
+          ...(missing || !files.size
+            ? [{ label: "部分来源未记录", kind: "reference" as const }]
+            : []),
         ],
       };
     }
@@ -162,7 +164,7 @@ export async function processingHistory(
       const run = runs.get(row.runId),
         input = run?.input.records.find((record) => record.id === row.inputId);
       if (!run || !input || row.visited.has(row.runId)) {
-        history.unshift({ label: "部分处理过程未记录" });
+        history.unshift({ label: "部分处理过程未记录", kind: "processing" });
         continue;
       }
       row.visited.add(row.runId);
@@ -227,14 +229,18 @@ export async function processingHistory(
         : index!;
       const inputId = batch?.sourceIds[position];
       if (!inputId) {
-        histories.get(current.origin)!.unshift({ label: "部分处理过程未记录" });
+        histories
+          .get(current.origin)!
+          .unshift({ label: "部分处理过程未记录", kind: "processing" });
         return [];
       }
       return [{ ...current, runId, inputId }];
     });
   }
   pending.forEach((row) =>
-    histories.get(row.origin)!.unshift({ label: "部分处理过程未记录" }),
+    histories
+      .get(row.origin)!
+      .unshift({ label: "部分处理过程未记录", kind: "processing" }),
   );
   return histories;
 }
@@ -502,8 +508,12 @@ export async function presentSources(
           (step) => !reference.fileCount || step.kind !== "reference",
         ),
         ...reference.steps,
-        ...(reference.omitted ? [{ label: "更多参考位置已省略" }] : []),
-        ...(reference.missing ? [{ label: "部分来源未记录" }] : []),
+        ...(reference.omitted
+          ? [{ label: "更多参考位置已省略", kind: "reference" as const }]
+          : []),
+        ...(reference.missing
+          ? [{ label: "部分来源未记录", kind: "reference" as const }]
+          : []),
         ...processingSteps,
         { label: node.name, href: node.href, kind: "saved" as const },
         ...(node.savedTarget
@@ -512,9 +522,15 @@ export async function presentSources(
       ].filter(
         (step, index, all) =>
           !step.href ||
-          all.findIndex(
-            (other) => other.href === step.href && other.label === step.label,
-          ) === index,
+          (step.kind === "saved"
+            ? all.findLastIndex(
+                (other) =>
+                  other.href === step.href && other.label === step.label,
+              )
+            : all.findIndex(
+                (other) =>
+                  other.href === step.href && other.label === step.label,
+              )) === index,
       ),
     };
     rendered.set(key, presentation);

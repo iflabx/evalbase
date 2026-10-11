@@ -1467,6 +1467,14 @@ describe("durable data processing", () => {
       expect(rerunDraft.json().records.map((row: any) => row.id)).toEqual(
         savedDraft.json().records.map((row: any) => row.id),
       );
+      expect(
+        rerunDraft
+          .json()
+          .records[0].sourcePresentation.steps.filter(
+            (step: any) => step.kind === "saved",
+          )
+          .at(-1).href,
+      ).toBe(`/projects/${projectId}/test-sets/drafts/${sourceDraftId}`);
       const malformedAsset = savedChild.json().receipt.assetId;
       // Arrange a proven system naming defect; assertions read the public file projection.
       await db.query("UPDATE data_asset SET file_name=$2 WHERE id=$1", [
@@ -1952,6 +1960,11 @@ describe("durable data processing", () => {
           .join("\n");
         expect(references).toContain("original-basis.jsonl");
         expect(references).toContain("second-basis.jsonl");
+        expect(
+          record.sourcePresentation.steps
+            .filter((step: any) => step.kind === "saved")
+            .at(-1).label,
+        ).toBe("草稿：完整混合来源");
       }
       await db.query(
         "UPDATE data_asset SET status='archived' WHERE project_id=$1 AND id=$2",
