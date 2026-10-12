@@ -258,7 +258,6 @@ function ProcessingPage() {
       {!(source && !runId) && (
         <PageHeader
           title="数据处理"
-          description="选择记录、提交处理，核对结果后再采用。原件和正式版本保持不变。"
           actions={
             <>
               {access.canWrite && !source && !runId && (
@@ -468,7 +467,7 @@ function ProcessingPage() {
                                     title={run.options.instructions}
                                   >
                                     {run.sourceSummary?.kindLabel ?? "来源类型未记录"} ·{" "}
-                                    {run.options.instructions || "未记录处理要求"}
+                                    {run.options.instructions || "要求未记录"}
                                   </p>
                                   {run.parentRunId && (
                                     <p className="mt-1 pl-6 text-xs text-muted-foreground">
@@ -491,7 +490,11 @@ function ProcessingPage() {
                                   <ProcessingStatus run={run} />
                                   {run.status === "running" ? ` ${run.progress}%` : ""}
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    {run.hasSavedResult ? "有保存记录" : "暂无保存记录"}
+                                    {run.hasSavedResult === true
+                                      ? "有已保存结果"
+                                      : run.hasSavedResult === false
+                                        ? "未保存"
+                                        : "保存状态未记录"}
                                   </p>
                                 </td>
                                 <td className="px-4 py-3 text-muted-foreground">
@@ -759,8 +762,8 @@ function ProcessingForm({
     }
   }
   const description = {
-    clean: "不填要求时整理首尾空白并提示空值、重复，不会删除重复记录；填写语义要求时调用模型。",
-    rewrite: "保留原意，按要求修改表达。未勾选的字段保持原值。",
+    clean: "留空要求：整理首尾空白，检查空值和重复，不删除记录。",
+    rewrite: "保留原意，按要求修改表达。",
     augment: "参考选中数据生成新记录，不覆盖原始输入。",
   }[operation];
   const hidden = [...selected].filter((id) => !input.data?.allIds.includes(id)).length;
@@ -769,7 +772,7 @@ function ProcessingForm({
     <div className="space-y-5">
       <PageHeader
         title={`处理 ${visibleInput?.sourceSummary?.name ?? "数据"}`}
-        description={`${visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条 · 已选 ${selected.size} 条${followup && visibleInput?.parent ? ` · ${labels[visibleInput.parent.options.operation]} · ${new Date(visibleInput.parent.createdAt).toLocaleString()}` : ""}`}
+        description={`${visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条${followup && visibleInput?.parent ? ` · ${labels[visibleInput.parent.options.operation]} · ${new Date(visibleInput.parent.createdAt).toLocaleString()}` : ""}`}
         actions={
           <>
             <Button variant="ghost" asChild>
@@ -947,8 +950,7 @@ function ProcessingForm({
                 <p className="text-xs text-muted-foreground">
                   匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
                   {selected.size} 条
-                  {hidden > 0 && visibleInput ? `（${hidden} 条在当前筛选外）` : ""}
-                  。提交使用完整已选集合。
+                  {hidden > 0 && visibleInput ? `（含筛选外 ${hidden} 条，也会提交）` : ""}
                 </p>
               </div>
               <div className="px-4">
@@ -1112,6 +1114,14 @@ function ProcessingForm({
                   ))}
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+                {operation === "clean" && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">清洗说明</summary>
+                    <p className="mt-2 leading-relaxed">
+                      填写要求时使用模型清洗；未勾选的字段保留原值。
+                    </p>
+                  </details>
+                )}
               </div>
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">允许修改的字段</legend>
@@ -1136,12 +1146,7 @@ function ProcessingForm({
                     </label>
                   ))}
                 </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  未勾选的字段保留输入原值；切换处理方式不改变字段授权。
-                </p>
-                {!allowedFields.length && (
-                  <p className="text-xs text-destructive">请至少选择一个字段。</p>
-                )}
+                <p className="text-xs leading-relaxed text-muted-foreground">仅修改勾选字段。</p>
               </fieldset>
               <label className="block space-y-2 text-sm">
                 <span>{operation === "clean" ? "补充要求（选填）" : "具体要求"}</span>
@@ -1162,11 +1167,6 @@ function ProcessingForm({
                     change();
                   }}
                 />
-                {operation !== "clean" && !instructions.trim() && (
-                  <p className="text-xs text-muted-foreground">
-                    请填写{labels[operation]}要求后开始。
-                  </p>
-                )}
               </label>
               {operation === "augment" && (
                 <label className="block space-y-2 text-sm">
@@ -1183,9 +1183,6 @@ function ProcessingForm({
                       change();
                     }}
                   />
-                  {invalidCount && (
-                    <p className="text-xs text-destructive">请输入 1–10,000 的整数。</p>
-                  )}
                 </label>
               )}
               {error && (

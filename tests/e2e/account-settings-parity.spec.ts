@@ -147,11 +147,14 @@ test("separates pending invitations from historical records", async ({
     has: page.getByRole("heading", { name: "待处理邀请" }),
   });
   const history = page.locator("section.member-card").filter({
-    has: page.getByRole("heading", { name: "邀请记录" }),
+    has: page.getByRole("heading", { name: /^邀请记录/ }),
   });
   await expect(pending).toContainText("pending@example.test");
   await expect(pending).not.toContainText("accepted@example.test");
-  await expect(history).toContainText("accepted@example.test");
+  await expect(history.getByText("accepted@example.test")).not.toBeVisible();
+  await history.locator("summary").focus();
+  await history.locator("summary").press("Enter");
+  await expect(history.getByText("accepted@example.test")).toBeVisible();
   await expect(history).toContainText("成员已移除");
   await expect(history).not.toContainText("pending@example.test");
 });

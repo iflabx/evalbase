@@ -208,13 +208,13 @@ function SettingsPage() {
                 : "项目成员"
         }
         description={
-          section === "profile"
-            ? "管理你的显示名称与头像颜色。"
-            : section === "info"
-              ? "查看并接受发给你的项目邀请。"
-              : section === "models"
-                ? "配置团队共用的模型服务。"
-                : `${project?.name ?? "当前项目"} · 管理项目成员和访问权限。`
+          section === "info"
+            ? "查看并接受发给你的项目邀请。"
+            : section === "models"
+              ? "配置团队共用的模型服务。"
+              : section === "members"
+                ? (project?.name ?? "当前项目")
+                : ""
         }
         actions={
           section === "members" && isAdmin ? (
@@ -305,10 +305,6 @@ function SettingsPage() {
             ))}
           {section === "profile" && (
             <section className="member-card profile-card">
-              <div className="member-card-head">
-                <h2>公开资料</h2>
-                <p>其他项目成员会看到你的显示名称和头像。</p>
-              </div>
               <form className="profile-form" onSubmit={saveProfile}>
                 <div className="profile-preview">
                   <span
@@ -325,7 +321,7 @@ function SettingsPage() {
                 </div>
                 <div className="profile-row">
                   <label className="profile-row-label" htmlFor="profile-name">
-                    显示名称<small>用于成员列表和协作状态。</small>
+                    显示名称
                   </label>
                   <input
                     id="profile-name"
@@ -338,7 +334,7 @@ function SettingsPage() {
                 </div>
                 <div className="profile-row">
                   <div className="profile-row-label" id="profile-color-label">
-                    头像颜色<small>选择预设颜色，或使用自定义颜色。</small>
+                    头像颜色
                   </div>
                   <div className="profile-color" role="group" aria-labelledby="profile-color-label">
                     {palette.map((swatch, index) => (
@@ -432,7 +428,12 @@ function SettingsPage() {
               <section className="member-card">
                 <div className="member-card-head">
                   <h2>成员与权限</h2>
-                  <p>查看成员并管理其在当前项目的角色。</p>
+                  <details className="mt-2 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">权限说明</summary>
+                    <p>
+                      管理员管理所有项目及成员；编辑可修改项目内容；查看仅可浏览与下载已发布内容。
+                    </p>
+                  </details>
                 </div>
                 {members.isLoading ? (
                   <p className="member-empty">正在加载成员…</p>
@@ -553,7 +554,6 @@ function SettingsPage() {
                   <section className="member-card">
                     <div className="member-card-head">
                       <h2>待处理邀请</h2>
-                      <p>对方接受后会出现在上方成员列表中。</p>
                     </div>
                     {invitations.isLoading ? (
                       <p className="member-empty">正在加载邀请…</p>
@@ -576,10 +576,19 @@ function SettingsPage() {
                     )}
                   </section>
                   <section className="member-card">
-                    <div className="member-card-head">
-                      <h2>邀请记录</h2>
-                      <p>已接受、撤销和过期的邀请；当前成员以上方列表为准。</p>
-                    </div>
+                    <details>
+                      <summary className="member-card-head cursor-pointer">
+                        <h2 className="inline">
+                          邀请记录{invitations.isSuccess ? `（${pastInvites.length}）` : ""}
+                        </h2>
+                      </summary>
+                      {invitations.isSuccess &&
+                        (pastInvites.length ? (
+                          pastInvites.map(invitationRow)
+                        ) : (
+                          <p className="member-empty">暂无历史邀请。</p>
+                        ))}
+                    </details>
                     {invitations.isLoading ? (
                       <p className="member-empty">正在加载记录…</p>
                     ) : invitations.isError ? (
@@ -594,17 +603,10 @@ function SettingsPage() {
                           重试
                         </Button>
                       </p>
-                    ) : pastInvites.length ? (
-                      pastInvites.map(invitationRow)
-                    ) : (
-                      <p className="member-empty">暂无历史邀请。</p>
-                    )}
+                    ) : null}
                   </section>
                 </>
               )}
-              <p className="settings-help">
-                管理员可邀请和管理成员；编辑权限可修改项目内容；查看权限可浏览与下载。
-              </p>
             </>
           )}
           {notice && (

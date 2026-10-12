@@ -28,13 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  EmptyBlock,
-  ErrorBlock,
-  PageHeader,
-  StateView,
-  TableLoadingBlock,
-} from "@/components/state-view";
+import { EmptyBlock, PageHeader, StateView, TableLoadingBlock } from "@/components/state-view";
 import { useListSearch } from "@/hooks/use-list-search";
 import {
   listTestSets,
@@ -193,7 +187,6 @@ function TestSetsPage() {
     <div className="mx-auto max-w-7xl">
       <PageHeader
         title="测试集"
-        description="从原始数据选择记录，编辑后创建或迭代测试集版本。"
         actions={
           <>
             {access.canManage && (
@@ -269,6 +262,13 @@ function TestSetsPage() {
         }}
         empty={
           <EmptyBlock
+            description={
+              committedSearch.trim()
+                ? ""
+                : access.canWrite
+                  ? "新建测试集，从原始数据选择记录或手动添加。"
+                  : "项目发布测试集后会显示在这里。"
+            }
             title={
               committedSearch.trim()
                 ? "没有匹配结果"

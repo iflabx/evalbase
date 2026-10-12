@@ -111,7 +111,7 @@ export function ProcessingSourcePicker({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>新建处理</DialogTitle>
-          <DialogDescription>选择一个已有来源，核对输入和要求后再开始。</DialogDescription>
+          <DialogDescription className="sr-only">选择处理来源。</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <Select

@@ -104,7 +104,7 @@ export function AssistantCandidates({
             : "候选数量读取后显示；已有成果保留。"}
         </p>
         <p className="text-xs text-muted-foreground">
-          内容待你审核。勾选后可在原会话调整或确认采用；翻页不改变选择。
+          内容待审核；勾选后可在对话中调整或确认采用。
         </p>
       </div>
       <div className="flex flex-wrap gap-2 p-3">

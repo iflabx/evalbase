@@ -1011,9 +1011,7 @@ function DraftWorkspace() {
                 draft.testSetId ? `继续创建新版本 · ${draft.name}` : draft.name || "新建测试集草稿"
               }
               description={
-                draft.parentVersionId
-                  ? `基于 ${draft.parentVersionLabel ?? "父版本"} 创建草稿`
-                  : "从资料中选择记录，也可以手动新增。"
+                draft.parentVersionId ? `基于 ${draft.parentVersionLabel ?? "父版本"} 创建草稿` : ""
               }
               actions={
                 <div className="draft-page-actions">
@@ -1280,11 +1278,15 @@ function DraftWorkspace() {
               >
                 <Card className="min-w-0">
                   <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 px-5 py-[18px]">
-                    <div>
-                      <CardTitle className="text-[15px]">草稿记录</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        共 {total} 条 · 点击整行在右侧编辑
-                      </p>
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
+                      <Input
+                        aria-label="搜索草稿记录"
+                        className="pl-9"
+                        placeholder="搜索问题、输出或来源"
+                        value={recordFilterInput}
+                        onChange={(event) => setRecordFilterInput(event.target.value)}
+                      />
                     </div>
                     <Button
                       variant="outline"
@@ -1296,16 +1298,6 @@ function DraftWorkspace() {
                     </Button>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
-                      <Search className="size-4 text-muted-foreground" />
-                      <Input
-                        aria-label="搜索草稿记录"
-                        placeholder="搜索问题、输出或来源"
-                        value={recordFilterInput}
-                        onChange={(event) => setRecordFilterInput(event.target.value)}
-                      />
-                      <span className="shrink-0 text-xs text-muted-foreground">每页 20 条</span>
-                    </div>
                     <div className="max-w-full overflow-x-auto">
                       <table className="w-full min-w-[660px] table-fixed text-sm">
                         <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
@@ -1397,7 +1389,7 @@ function DraftWorkspace() {
                       <p className="mt-1 text-sm text-muted-foreground">
                         {selected
                           ? `${sourceLabel(selected)}${selectedNumber ? ` · 第 ${selectedNumber} 条` : ""}`
-                          : "在左侧表格选择记录后，可在这里编辑长文本和 Metadata。"}
+                          : "点击左侧任意一行，在这里编辑。"}
                       </p>
                     </div>
                     {selected && (
@@ -1468,10 +1460,12 @@ function DraftWorkspace() {
                       <div
                         className="grid gap-2"
                         onBlurCapture={(event) => {
-                          if (!(
-                            event.relatedTarget instanceof Node &&
-                            event.currentTarget.contains(event.relatedTarget)
-                          )) {
+                          if (
+                            !(
+                              event.relatedTarget instanceof Node &&
+                              event.currentTarget.contains(event.relatedTarget)
+                            )
+                          ) {
                             clearFocus();
                             void saveField("metadata");
                           }

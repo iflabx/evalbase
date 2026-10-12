@@ -205,7 +205,7 @@ test("filters inputs without losing hidden selection and validates protected exp
   await page.getByLabel("Metadata 筛选值").fill("A");
   await page.getByRole("button", { name: "添加筛选", exact: true }).click();
   await expect(page.getByLabel("选择记录 asset:1", { exact: true })).toBeVisible();
-  await expect(page.getByText(/1 条在当前筛选外/)).toBeVisible();
+  await expect(page.getByText(/含筛选外 1 条，也会提交/)).toBeVisible();
   await page.getByRole("button", { name: /^选择全部匹配记录/ }).click();
   await expect(page.getByRole("button", { name: "开始清洗 · 24 条输入" })).toBeEnabled();
   await page.getByLabel("只看已选").check();
@@ -219,10 +219,10 @@ test("filters inputs without losing hidden selection and validates protected exp
   for (const id of [1, 2, 3])
     await page.getByLabel(`选择记录 asset:${id}`, { exact: true }).check();
   await page.getByRole("button", { name: "扩充", exact: true }).click();
-  await expect(page.getByText("请填写扩充要求后开始。", { exact: true })).toBeVisible();
+  await expect(page.getByText("请填写扩充要求。", { exact: true })).toBeVisible();
   await page.getByPlaceholder("例如：围绕相同意图增加不同措辞和场景。").fill("增加不同措辞");
   await page.getByLabel("新增记录数量").fill("0");
-  await expect(page.getByText("请输入 1–10,000 的整数。", { exact: true })).toBeVisible();
+  await expect(page.getByText("新增数量须为 1–10,000 的整数。", { exact: true })).toBeVisible();
   await page.getByLabel("新增记录数量").fill("7");
   await expect(page.getByText("新增记录数量（输入 3 条）", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "开始扩充 · 3 条输入" }).click();

@@ -444,9 +444,7 @@ export function ProjectAssistant({
       <SheetContent className="flex w-full min-w-0 flex-col gap-0 p-0 sm:max-w-6xl">
         <SheetHeader className="border-b px-5 py-5 pr-12">
           <SheetTitle>项目助手</SheetTitle>
-          <SheetDescription>
-            查询资料、筛选记录、清洗改写与扩充；采用和发布由你确认。
-          </SheetDescription>
+          <SheetDescription className="sr-only">处理当前项目的数据与测试集。</SheetDescription>
         </SheetHeader>
         <div className="flex items-center gap-2 border-b px-5 py-3">
           <Select
@@ -571,13 +569,8 @@ export function ProjectAssistant({
                   !visible?.turns.length &&
                   !conversation.error && (
                     <div className="rounded-md border bg-card p-5 text-sm shadow-sm">
-                      <h3 className="font-semibold">从当前项目开始</h3>
-                      <p className="mt-2 leading-6 text-muted-foreground">
-                        例如：“列出项目里的原始文件”“创建一个意图识别测试集草稿”“把这个草稿的问题改写得更自然，保留答案和
-                        Metadata”。
-                      </p>
-                      <p className="mt-3 text-xs text-muted-foreground">
-                        范围不清楚时，助手会先询问。处理结果可以先预览，再决定是否采用。
+                      <p className="leading-6 text-muted-foreground">
+                        描述你的目标，例如“把当前草稿的问题改写得更自然，保留答案”。
                       </p>
                     </div>
                   )}
@@ -1117,16 +1110,11 @@ export function ProjectAssistant({
                         ))}
                       </div>
                     </details>
-                    <p className="text-muted-foreground">
-                      以上是结构与数量核对，内容是否正确请审核候选。
-                    </p>
                     {visible.task.review.classifications?.map((rule, i) => (
                       <div key={i} className="text-muted-foreground">
                         <p>
                           {rule.key || "期望输出"}：
-                          {rule.satisfied
-                            ? "分类取值与配额核对通过，内容待审核"
-                            : "分类取值或配额未符合要求"}
+                          {rule.satisfied ? "分类取值与配额核对通过" : "分类取值或配额未符合要求"}
                           {rule.missing ? ` · 缺少唯一分类 ${rule.missing} 条` : ""}
                           {rule.outsideValues ? ` · 范围外 ${rule.outsideValues} 条` : ""}
                         </p>

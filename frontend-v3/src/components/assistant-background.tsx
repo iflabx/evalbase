@@ -149,11 +149,12 @@ export function AssistantBackground({
           </>
         )}
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">
-        PDF、MD、TXT · 最多 5 份，合计 10 MB。只用于本会话背景，不占数据来源名额。
-      </p>
+      <details className="text-xs leading-5 text-muted-foreground">
+        <summary className="cursor-pointer">上传要求</summary>
+        <p className="mt-2">PDF、MD、TXT · 最多 5 份，合计 10 MB。仅用于本会话背景。</p>
+      </details>
       {!documents.length && (
-        <p className="text-sm text-muted-foreground">先添加标准或说明，再说“按附件要求处理”。</p>
+        <p className="text-sm text-muted-foreground">可添加标准或说明作为会话背景。</p>
       )}
       {documents.map((doc) => (
         <div key={doc.id} className="flex min-w-0 items-center gap-2 rounded-md border px-3 py-2">
