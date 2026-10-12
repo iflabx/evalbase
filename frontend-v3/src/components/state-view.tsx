@@ -1,16 +1,155 @@
-import type { ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { AlertTriangle, Copy, Inbox, Loader2, XCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { JobStatus } from "@/types";
+import { canRetainReadResult } from "@/services/workspace";
+
+function useDelayedBusy(busy: boolean) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!busy) {
+      setVisible(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setVisible(true), 200);
+    return () => window.clearTimeout(timer);
+  }, [busy]);
+  return busy && visible;
+}
+
+/** Fixed-height feedback avoids pushing the table on each background read. */
+export function QueryFeedback({
+  busy,
+  error,
+  onRetry,
+  message = "正在更新…",
+}: {
+  busy: boolean;
+  error?: unknown;
+  onRetry?: () => void;
+  message?: string;
+}) {
+  const visible = useDelayedBusy(busy);
+  return (
+    <div
+      className="query-feedback flex min-h-6 items-center gap-2 text-xs text-muted-foreground"
+      aria-busy={busy}
+    >
+      {error ? (
+        <>
+          <span role="alert">读取失败，已保留上次结果。</span>
+          {onRetry && (
+            <button className="text-primary hover:underline" onClick={onRetry}>
+              重试
+            </button>
+          )}
+        </>
+      ) : visible ? (
+        <span>{message}</span>
+      ) : null}
+    </div>
+  );
+}
+
+export function TableLoadingBlock({
+  columns,
+  rows = 5,
+  minWidth = "640px",
+  framed = true,
+  widths,
+  busy = true,
+  content,
+}: {
+  columns: string[];
+  rows?: number;
+  minWidth?: string;
+  framed?: boolean;
+  widths?: string[];
+  busy?: boolean;
+  content?: ReactNode;
+}) {
+  const visible = useDelayedBusy(busy);
+  return (
+    <div
+      className={
+        framed
+          ? "overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+          : "overflow-hidden"
+      }
+      aria-busy={busy}
+    >
+      <div className="overflow-x-auto">
+        <table
+          className="w-full text-sm"
+          style={{ minWidth, tableLayout: widths ? "fixed" : "auto" }}
+        >
+          {widths && (
+            <colgroup>
+              {widths.map((width, i) => (
+                <col key={i} style={{ width }} />
+              ))}
+            </colgroup>
+          )}
+          <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+            <tr>
+              {columns.map((name) => (
+                <th
+                  key={name}
+                  className={`px-4 py-2 font-medium ${name === "操作" ? "text-right" : ""}`}
+                >
+                  {name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody aria-label={visible ? "加载中" : undefined}>
+            {!busy ? (
+              <tr>
+                <td colSpan={columns.length} className="p-4">
+                  {content}
+                </td>
+              </tr>
+            ) : (
+              Array.from({ length: rows }, (_, row) => (
+                <tr key={row} className="h-16 border-t">
+                  {columns.map((name) => (
+                    <td key={name} className="px-4 py-3">
+                      <Skeleton
+                        className={`loading-skeleton h-4 w-3/4 bg-muted/70 ${visible ? "" : "invisible"}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export function LoadingBlock({ rows = 4 }: { rows?: number }) {
+  const visible = useDelayedBusy(true);
   return (
     <div className="space-y-3" aria-busy="true" aria-label="加载中">
       {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton key={i} className="h-14 w-full" />
+        <Skeleton
+          key={i}
+          className={`loading-skeleton h-14 w-full bg-muted/70 ${visible ? "" : "invisible"}`}
+        />
       ))}
     </div>
   );
@@ -197,6 +336,10 @@ export function StateView<T>({
   onRetry,
   children,
   loadingRows,
+  loading,
+  isRefreshing = false,
+  isPlaceholder = false,
+  retainDataOnError = false,
 }: {
   isLoading: boolean;
   error: unknown;
@@ -206,18 +349,62 @@ export function StateView<T>({
   onRetry?: () => void;
   children: (data: T) => ReactNode;
   loadingRows?: number;
+  loading?: ReactNode;
+  isRefreshing?: boolean;
+  isPlaceholder?: boolean;
+  retainDataOnError?: boolean;
 }) {
-  if (isLoading) return <LoadingBlock {...(loadingRows ? { rows: loadingRows } : {})} />;
-  if (error)
-    return (
-      <ErrorBlock
-        message={error instanceof Error ? error.message : "未知错误"}
+  const panel = useRef<HTMLDivElement>(null);
+  const [confirmedHeight, setHeight] = useState(344);
+  const hasFrame = Boolean(loading);
+  useLayoutEffect(() => {
+    if (hasFrame && !isLoading && panel.current)
+      setHeight(Math.max(344, panel.current.getBoundingClientRect().height));
+  }, [data, hasFrame, isLoading]);
+  const retain = retainDataOnError && canRetainReadResult(error) && data !== undefined;
+  const body = isLoading ? (
+    (loading ?? <LoadingBlock {...(loadingRows ? { rows: loadingRows } : {})} />)
+  ) : error && !retain ? (
+    <ErrorBlock
+      message={error instanceof Error ? error.message : "未知错误"}
+      {...(onRetry ? { onRetry } : {})}
+    />
+  ) : data === undefined ? (
+    <EmptyBlock title="暂无数据" />
+  ) : isEmpty?.(data) ? (
+    (empty ?? <EmptyBlock title="暂无数据" />)
+  ) : (
+    children(data)
+  );
+  // Existing callers retain their compact layout; stable read panels opt in with a table skeleton.
+  if (!loading) return <>{body}</>;
+  const fallback = !isLoading && (data === undefined || (error && !retain) || isEmpty?.(data));
+  const framedBody =
+    fallback && isValidElement(loading) && loading.type === TableLoadingBlock
+      ? cloneElement(loading as ReactElement<{ busy?: boolean; content?: ReactNode }>, {
+          busy: false,
+          content: body,
+        })
+      : body;
+  return (
+    <div
+      ref={panel}
+      style={{ minHeight: isLoading ? confirmedHeight : 344 }}
+      aria-busy={isLoading || isRefreshing}
+    >
+      <QueryFeedback
+        busy={isRefreshing && !isLoading}
+        error={retain ? error : undefined}
         {...(onRetry ? { onRetry } : {})}
       />
-    );
-  if (data === undefined) return <EmptyBlock title="暂无数据" />;
-  if (isEmpty?.(data)) return <>{empty ?? <EmptyBlock title="暂无数据" />}</>;
-  return <>{children(data)}</>;
+      <div
+        className={isLoading ? "" : "content-enter"}
+        inert={isPlaceholder || Boolean(error && retain)}
+      >
+        {framedBody}
+      </div>
+    </div>
+  );
 }
 
 export function PageHeader({

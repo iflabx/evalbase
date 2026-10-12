@@ -69,10 +69,19 @@ const json = (method: string, body: unknown): RequestInit => ({
   headers: { "content-type": "application/json" },
   body: JSON.stringify(body),
 });
-export async function listSharedDrafts(projectId: string, testSetId?: string) {
+export async function listSharedDrafts(
+  projectId: string,
+  testSetId?: string,
+  signal?: AbortSignal,
+) {
   const query = new URLSearchParams();
   if (testSetId) query.set("testSetId", testSetId);
-  return (await request<{ drafts: SharedDraft[] }>(`${root(projectId)}?${query}`)).drafts;
+  return (
+    await request<{ drafts: SharedDraft[] }>(
+      `${root(projectId)}?${query}`,
+      signal ? { signal } : undefined,
+    )
+  ).drafts;
 }
 export async function createSharedDraft(
   projectId: string,

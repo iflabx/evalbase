@@ -114,16 +114,25 @@ export function registerProcessing({
         return { review: reviewCandidates(data) };
       }),
   );
-  app.get<{ Params: Params }>(
-    path,
-    { preHandler: authenticate },
-    async (request, reply) =>
-      respond(reply, () =>
-        listProcessingRuns(db, {
+  app.get<{
+    Params: Params;
+    Querystring: {
+      limit?: string;
+      offset?: string;
+      search?: string;
+      status?: string;
+    };
+  }>(path, { preHandler: authenticate }, async (request, reply) =>
+    respond(reply, () =>
+      listProcessingRuns(
+        db,
+        {
           projectId: request.params.projectId,
           actorId: (request as AuthenticatedRequest).actor.id,
-        }),
+        },
+        request.query,
       ),
+    ),
   );
   app.post<{ Params: Params; Body: unknown }>(
     `${path}/:runId/followups`,

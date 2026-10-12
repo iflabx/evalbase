@@ -14,14 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
+import { EmptyBlock, PageHeader, StateView, TableLoadingBlock } from "@/components/state-view";
 import { NameDialog } from "@/components/name-dialog";
 import { ConfirmedUploadDialog } from "@/components/confirmed-upload-dialog";
-import { createCollection, listCollections } from "@/services/workspace";
+import { canRetainReadResult, createCollection, listCollections } from "@/services/workspace";
+import { useListSearch } from "@/hooks/use-list-search";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import { Pagination } from "@/routes/index";
 
 const PAGE_SIZE = 10;
+const COLUMN_WIDTHS = ["34%", "12%", "8%", "12%", "10%", "12%", "12%"];
 export const Route = createFileRoute("/projects/$projectId/datasets")({ component: DatasetsRoute });
 
 function DatasetsRoute() {
@@ -34,32 +36,53 @@ function DatasetsPage() {
   const { projectId } = Route.useParams();
   const queryClient = useQueryClient();
   const access = useProjectAccess(projectId);
-  const [search, setSearch] = useState("");
   const [type, setType] = useState<"all" | "dataset" | "system">("all");
   const [content, setContent] = useState<"all" | "populated" | "empty">("all");
   const [descending, setDescending] = useState(true);
   const [page, setPage] = useState(1);
+  const { search, committedSearch, inputProps } = useListSearch(setPage);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const collections = useQuery({
-    queryKey: ["collections", projectId, { search, type, content, descending, page }],
-    queryFn: () =>
-      listCollections(projectId, {
-        name: search,
-        type,
-        content,
-        sort: descending ? "updated_desc" : "updated_asc",
-        limit: PAGE_SIZE,
-        offset: (page - 1) * PAGE_SIZE,
-      }),
+    queryKey: [
+      "collections",
+      projectId,
+      access.actorId,
+      { search: committedSearch, type, content, descending, page },
+    ],
+    queryFn: ({ signal }) =>
+      listCollections(
+        projectId,
+        {
+          name: committedSearch,
+          type,
+          content,
+          sort: descending ? "updated_desc" : "updated_asc",
+          limit: PAGE_SIZE,
+          offset: (page - 1) * PAGE_SIZE,
+        },
+        signal,
+      ),
+    enabled: access.canRead,
+    staleTime: 15_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    retry: false,
+    placeholderData: (previous, query) =>
+      query?.queryKey[1] === projectId &&
+      query.queryKey[2] === access.actorId &&
+      canRetainReadResult(query.state.error)
+        ? previous
+        : undefined,
   });
   const uploadTargets = useQuery({
-    queryKey: ["collection-upload-targets", projectId],
+    queryKey: ["collection-upload-targets", projectId, access.actorId],
     queryFn: () => listCollections(projectId, { limit: 100, offset: 0 }),
-    enabled: access.canWrite,
+    enabled: access.canWrite && uploading,
   });
-  const rows = collections.data?.items ?? [];
-  const total = collections.data?.total ?? 0;
+  const rows = access.canRead ? collections.data?.items : undefined;
+  const total = access.canRead ? (collections.data?.total ?? 0) : 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const current = Math.min(page, pages);
 
@@ -90,10 +113,7 @@ function DatasetsPage() {
             placeholder="搜索原始数据"
             className="pl-8"
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
+            {...inputProps}
           />
         </div>
         <Select
@@ -134,9 +154,19 @@ function DatasetsPage() {
         </Button>
       </div>
       <StateView
-        isLoading={collections.isLoading}
-        error={collections.error}
+        isLoading={access.isPending || collections.isLoading}
+        error={access.error ?? collections.error}
         data={rows}
+        loading={
+          <TableLoadingBlock
+            columns={["名称", "类型", "文件数", "统一记录数", "状态", "最近更新", "操作"]}
+            widths={COLUMN_WIDTHS}
+            minWidth="896px"
+          />
+        }
+        isRefreshing={collections.isFetching || search !== committedSearch}
+        isPlaceholder={collections.isPlaceholderData}
+        retainDataOnError
         isEmpty={(items) => items.length === 0}
         onRetry={() => void collections.refetch()}
         empty={
@@ -153,7 +183,12 @@ function DatasetsPage() {
         {(items) => (
           <Card>
             <CardContent className="overflow-x-auto p-0">
-              <table className="w-full min-w-4xl text-sm">
+              <table className="w-full min-w-4xl table-fixed text-sm">
+                <colgroup>
+                  {COLUMN_WIDTHS.map((width, i) => (
+                    <col key={i} style={{ width }} />
+                  ))}
+                </colgroup>
                 <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 font-medium">名称</th>
@@ -221,15 +256,17 @@ function DatasetsPage() {
           </Card>
         )}
       </StateView>
-      {total > 0 && (
-        <Pagination
-          total={total}
-          current={current}
-          pages={pages}
-          onChange={setPage}
-          unit="项原始数据"
-        />
-      )}
+      <div className="min-h-12">
+        {total > 0 && (
+          <Pagination
+            total={total}
+            current={current}
+            pages={pages}
+            onChange={setPage}
+            unit="项原始数据"
+          />
+        )}
+      </div>
       {access.canWrite && (
         <NameDialog
           open={creating}

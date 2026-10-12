@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Plus, Search, MoreHorizontal } from "lucide-react";
+import { FileText, Plus, Search, MoreHorizontal, RefreshCw } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -29,7 +29,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { PageHeader } from "@/components/state-view";
+import {
+  EmptyBlock,
+  LoadingBlock,
+  PageHeader,
+  QueryFeedback,
+  StateView,
+  TableLoadingBlock,
+} from "@/components/state-view";
+import { useListSearch } from "@/hooks/use-list-search";
 import { ProcessingSourcePicker } from "@/components/processing-source-picker";
 import { ProcessingFilters } from "@/components/processing-filters";
 import { ProcessingReview, issueLabels, type ReviewRow } from "@/components/processing-review";
@@ -115,6 +123,7 @@ type ResultPage = {
   issues: { code: string; count?: number }[];
 };
 const labels = { clean: "清洗", rewrite: "改写", augment: "扩充" };
+const HISTORY_COLUMN_WIDTHS = ["40%", "10%", "15%", "22%", "13%"];
 const statuses: Record<string, string> = {
   queued: "等待中",
   running: "处理中",
@@ -166,11 +175,12 @@ const errors: Record<string, string> = {
 };
 const errorText = (error: unknown) =>
   errors[error instanceof Error ? error.message : ""] ?? "操作失败，输入已保留，请重试。";
-function post<T>(path: string, body: unknown, key?: string) {
+function post<T>(path: string, body: unknown, key?: string, signal?: AbortSignal) {
   return request<T>(path, {
     method: "POST",
     headers: { "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}) },
     body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
   });
 }
 function ProcessingPage() {
@@ -180,25 +190,43 @@ function ProcessingPage() {
   const access = useProjectAccess(projectId),
     queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState("all");
   const [historyPage, setHistoryPage] = useState(1);
+  const {
+    search: historySearch,
+    committedSearch,
+    setSearch: setHistorySearch,
+    inputProps,
+  } = useListSearch(setHistoryPage);
   const actorId = queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? "";
   const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs`;
   const runs = useQuery({
-    queryKey: ["processing-runs", projectId],
-    queryFn: () => request<{ runs: Run[] }>(path),
+    queryKey: ["processing-runs", projectId, actorId, committedSearch, historyStatus, historyPage],
+    queryFn: ({ signal }) =>
+      request<{ runs: Run[]; pagination: { total: number }; hasActive: boolean }>(
+        `${path}?limit=20&offset=${(historyPage - 1) * 20}&search=${encodeURIComponent(committedSearch)}&status=${historyStatus}`,
+        { signal },
+      ),
     enabled:
       access.canWrite && !search.run && !search.parent && !(search.source && search.sourceId),
-    refetchInterval: 5000,
+    refetchInterval: (query) => (query.state.data?.hasActive ? 5000 : false),
+    refetchIntervalInBackground: false,
+    staleTime: 15_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    retry: false,
+    placeholderData: (previous, query) =>
+      query?.queryKey[1] === projectId &&
+      query.queryKey[2] === actorId &&
+      canRetainReadResult(query.state.error)
+        ? previous
+        : undefined,
   });
-  const history = (runs.data?.runs ?? []).filter(
-    (run) =>
-      (historyStatus === "all" || run.status === historyStatus) &&
-      [run.sourceSummary?.name, run.sourceSummary?.kindLabel, run.options.instructions].some(
-        (value) => value?.toLowerCase().includes(historySearch.trim().toLowerCase()),
-      ),
-  );
+  const history = access.canWrite ? runs.data?.runs : undefined;
+  const historyTotal = access.canWrite
+    ? (runs.data?.pagination?.total ?? runs.data?.runs.length ?? 0)
+    : 0;
   const runId = search.run;
   const source =
     search.parent && search.mode
@@ -273,7 +301,7 @@ function ProcessingPage() {
         <>
           {source && !runId && (
             <ProcessingForm
-              key={`${projectId}:${JSON.stringify(source)}`}
+              key={`${projectId}:${actorId}:${JSON.stringify(source)}`}
               projectId={projectId}
               source={source}
               actorId={actorId}
@@ -293,7 +321,7 @@ function ProcessingPage() {
           )}
           {runId && (
             <ProcessingResults
-              key={`${projectId}:${runId}`}
+              key={`${projectId}:${actorId}:${runId}`}
               projectId={projectId}
               runId={runId}
               onFollowup={(mode, ids) => {
@@ -329,10 +357,7 @@ function ProcessingPage() {
                     className="pl-8"
                     value={historySearch}
                     maxLength={200}
-                    onChange={(event) => {
-                      setHistorySearch(event.target.value);
-                      setHistoryPage(1);
-                    }}
+                    {...inputProps}
                   />
                 </div>
                 <Select
@@ -354,6 +379,18 @@ function ProcessingPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="刷新处理任务"
+                  title="刷新处理任务"
+                  disabled={runs.isFetching}
+                  onClick={() => void runs.refetch()}
+                >
+                  <RefreshCw
+                    className={`size-4 ${runs.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+                  />
+                </Button>
                 {(historySearch || historyStatus !== "all") && (
                   <Button
                     size="sm"
@@ -368,106 +405,129 @@ function ProcessingPage() {
                   </Button>
                 )}
               </div>
-              <Card className="min-w-0 overflow-hidden">
-                <CardContent className="p-0">
-                  {runs.isPending ? (
-                    <p className="p-5 text-sm text-muted-foreground">正在读取处理任务…</p>
-                  ) : runs.error ? (
-                    <div className="p-5" role="alert">
-                      <p>{errorText(runs.error)}</p>
-                      <Button variant="outline" onClick={() => void runs.refetch()}>
-                        重试
-                      </Button>
-                    </div>
-                  ) : !history.length ? (
-                    <p className="p-5 text-sm text-muted-foreground">
-                      {historySearch || historyStatus !== "all"
+              <StateView
+                isLoading={runs.isPending}
+                data={history}
+                error={runs.error}
+                loading={
+                  <TableLoadingBlock
+                    columns={["任务", "输入记录", "状态", "发起人 / 时间", "操作"]}
+                    widths={HISTORY_COLUMN_WIDTHS}
+                  />
+                }
+                isRefreshing={runs.isFetching || historySearch !== committedSearch}
+                isPlaceholder={runs.isPlaceholderData}
+                retainDataOnError
+                isEmpty={(items) => items.length === 0}
+                onRetry={() => void runs.refetch()}
+                empty={
+                  <EmptyBlock
+                    title={
+                      committedSearch || historyStatus !== "all"
                         ? "没有匹配结果，请清除搜索或筛选。"
-                        : "暂无处理任务。点击“新建处理”开始。"}
-                    </p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[640px] text-sm">
-                        <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
-                          <tr>
-                            <th className="px-4 py-2 font-medium">任务</th>
-                            <th className="px-4 py-2 font-medium">输入记录</th>
-                            <th className="px-4 py-2 font-medium">状态</th>
-                            <th className="px-4 py-2 font-medium">发起人 / 时间</th>
-                            <th className="px-4 py-2 text-right font-medium">操作</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {history.slice((historyPage - 1) * 20, historyPage * 20).map((run) => (
-                            <tr key={run.id} className="border-t">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2 font-medium">
-                                  <FileText className="size-4 shrink-0 text-primary" />
-                                  {run.sourceSummary?.name ?? "来源未记录"} ·{" "}
-                                  {labels[run.options.operation]}
-                                </div>
-                                <p
-                                  className="mt-0.5 max-w-sm truncate pl-6 text-xs text-muted-foreground"
-                                  title={run.options.instructions}
-                                >
-                                  {run.sourceSummary?.kindLabel ?? "来源类型未记录"} ·{" "}
-                                  {run.options.instructions || "未记录处理要求"}
-                                </p>
-                                {run.parentRunId && (
-                                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
-                                    {run.continuationKind === "rerun" ? "重新运行自" : "继续处理自"}{" "}
-                                    <Link
-                                      className="text-primary hover:underline"
-                                      to="/projects/$projectId/processing"
-                                      params={{ projectId }}
-                                      search={{ run: run.parentRunId }}
-                                    >
-                                      上一轮任务
-                                    </Link>
-                                  </p>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">{run.inputCount} 条</td>
-                              <td className="px-4 py-3">
-                                <ProcessingStatus run={run} />
-                                {run.status === "running" ? ` ${run.progress}%` : ""}
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {run.hasSavedResult ? "有保存记录" : "暂无保存记录"}
-                                </p>
-                              </td>
-                              <td className="px-4 py-3 text-muted-foreground">
-                                <p>{run.actorName ?? "未记录"}</p>
-                                {new Date(run.createdAt).toLocaleString()}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    void navigate({
-                                      search: {
-                                        run: run.id,
-                                        source: undefined,
-                                        sourceId: undefined,
-                                      },
-                                    });
-                                  }}
-                                >
-                                  查看
-                                </Button>
-                              </td>
+                        : "暂无处理任务。点击“新建处理”开始。"
+                    }
+                  />
+                }
+              >
+                {(history) => (
+                  <Card className="min-w-0 overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[640px] table-fixed text-sm">
+                          <colgroup>
+                            {HISTORY_COLUMN_WIDTHS.map((width, i) => (
+                              <col key={i} style={{ width }} />
+                            ))}
+                          </colgroup>
+                          <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+                            <tr>
+                              <th className="px-4 py-2 font-medium">任务</th>
+                              <th className="px-4 py-2 font-medium">输入记录</th>
+                              <th className="px-4 py-2 font-medium">状态</th>
+                              <th className="px-4 py-2 font-medium">发起人 / 时间</th>
+                              <th className="px-4 py-2 text-right font-medium">操作</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                          </thead>
+                          <tbody>
+                            {history.map((run) => (
+                              <tr key={run.id} className="border-t">
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2 font-medium">
+                                    <FileText className="size-4 shrink-0 text-primary" />
+                                    <span
+                                      className="min-w-0 truncate"
+                                      title={run.sourceSummary?.name}
+                                    >
+                                      {run.sourceSummary?.name ?? "来源未记录"} ·{" "}
+                                      {labels[run.options.operation]}
+                                    </span>
+                                  </div>
+                                  <p
+                                    className="mt-0.5 max-w-sm truncate pl-6 text-xs text-muted-foreground"
+                                    title={run.options.instructions}
+                                  >
+                                    {run.sourceSummary?.kindLabel ?? "来源类型未记录"} ·{" "}
+                                    {run.options.instructions || "未记录处理要求"}
+                                  </p>
+                                  {run.parentRunId && (
+                                    <p className="mt-1 pl-6 text-xs text-muted-foreground">
+                                      {run.continuationKind === "rerun"
+                                        ? "重新运行自"
+                                        : "继续处理自"}{" "}
+                                      <Link
+                                        className="text-primary hover:underline"
+                                        to="/projects/$projectId/processing"
+                                        params={{ projectId }}
+                                        search={{ run: run.parentRunId }}
+                                      >
+                                        上一轮任务
+                                      </Link>
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">{run.inputCount} 条</td>
+                                <td className="px-4 py-3">
+                                  <ProcessingStatus run={run} />
+                                  {run.status === "running" ? ` ${run.progress}%` : ""}
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {run.hasSavedResult ? "有保存记录" : "暂无保存记录"}
+                                  </p>
+                                </td>
+                                <td className="px-4 py-3 text-muted-foreground">
+                                  <p>{run.actorName ?? "未记录"}</p>
+                                  {new Date(run.createdAt).toLocaleString()}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      void navigate({
+                                        search: {
+                                          run: run.id,
+                                          source: undefined,
+                                          sourceId: undefined,
+                                        },
+                                      });
+                                    }}
+                                  >
+                                    查看
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </StateView>
               <Pagination
                 current={historyPage}
-                total={history.length}
-                pages={Math.max(1, Math.ceil(history.length / 20))}
+                total={historyTotal}
+                pages={Math.max(1, Math.ceil(historyTotal / 20))}
                 unit="项匹配任务（最近 100 项范围）"
                 onChange={setHistoryPage}
               />
@@ -543,7 +603,7 @@ function ProcessingForm({
       selectedOnly,
       selectedOnly ? [...selected] : null,
     ],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       post<{
         records: InputRecord[];
         allIds: string[];
@@ -554,21 +614,33 @@ function ProcessingForm({
         sourceRevision?: string;
         metadataKeys?: string[];
         parent?: { id: string; options: Run["options"]; createdAt: string };
-      }>(`/api/projects/${encodeURIComponent(projectId)}/processing-inputs`, {
-        source,
-        offset: (page - 1) * 20,
-        limit: 20,
-        search,
-        conditions,
-        selectedOnly,
-        ...(selectedOnly ? { selectedIds: [...selected] } : {}),
-      }),
+      }>(
+        `/api/projects/${encodeURIComponent(projectId)}/processing-inputs`,
+        {
+          source,
+          offset: (page - 1) * 20,
+          limit: 20,
+          search,
+          conditions,
+          selectedOnly,
+          ...(selectedOnly ? { selectedIds: [...selected] } : {}),
+        },
+        undefined,
+        signal,
+      ),
+    placeholderData: (previous, query) =>
+      query?.queryKey[1] === actorId &&
+      query.queryKey[2] === projectId &&
+      JSON.stringify(query.queryKey[3]) === JSON.stringify(source) &&
+      canRetainReadResult(query.state.error)
+        ? previous
+        : undefined,
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnMount: "always",
   });
   useEffect(() => {
-    if (!followup || !input.data || initialized.current) return;
+    if (!followup || !input.data || input.isPlaceholderData || initialized.current) return;
     initialized.current = true;
     setSelected(new Set(input.data.allIds));
     if (rerun && input.data.parent) {
@@ -578,7 +650,7 @@ function ProcessingForm({
       setAllowedFields(options.allowedFields ?? ["question"]);
       setCount(String(options.outputCount ?? 20));
     }
-  }, [followup, rerun, input.data]);
+  }, [followup, rerun, input.data, input.isPlaceholderData]);
   useEffect(() => {
     if (!canRetainReadResult(input.error))
       queryClient.removeQueries({
@@ -692,7 +764,7 @@ function ProcessingForm({
     augment: "参考选中数据生成新记录，不覆盖原始输入。",
   }[operation];
   const hidden = [...selected].filter((id) => !input.data?.allIds.includes(id)).length;
-  const visibleInput = input.isError ? undefined : input.data;
+  const visibleInput = canRetainReadResult(input.error) ? input.data : undefined;
   return (
     <div className="space-y-5">
       <PageHeader
@@ -827,7 +899,7 @@ function ProcessingForm({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={rerun || busy || !visibleInput || input.isFetching}
+                    disabled={rerun || busy || !visibleInput || input.isFetching || input.isError}
                     onClick={() => {
                       setSelected(
                         (old) => new Set([...old, ...visibleInput!.records.map((row) => row.id)]),
@@ -840,7 +912,7 @@ function ProcessingForm({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={rerun || busy || !visibleInput || input.isFetching}
+                    disabled={rerun || busy || !visibleInput || input.isFetching || input.isError}
                     onClick={() => {
                       setSelected((old) => new Set([...old, ...visibleInput!.allIds]));
                       change();
@@ -879,7 +951,14 @@ function ProcessingForm({
                   。提交使用完整已选集合。
                 </p>
               </div>
-              {input.error ? (
+              <div className="px-4">
+                <QueryFeedback
+                  busy={input.isFetching}
+                  error={visibleInput ? input.error : undefined}
+                  onRetry={() => void input.refetch()}
+                />
+              </div>
+              {input.error && !visibleInput ? (
                 <div className="space-y-2 p-5" role="alert">
                   <p>{errorText(input.error)} 已选记录与处理要求已保留。</p>
                   <Button variant="outline" onClick={() => void input.refetch()}>
@@ -887,9 +966,13 @@ function ProcessingForm({
                   </Button>
                 </div>
               ) : input.isPending ? (
-                <p className="p-5 text-sm text-muted-foreground">正在读取记录…</p>
+                <TableLoadingBlock
+                  columns={["选择", "问题 / 原始内容", "期望输出", "Metadata"]}
+                  minWidth="440px"
+                  framed={false}
+                />
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" inert={input.isError || input.isPlaceholderData}>
                   <table className="w-full min-w-[440px] table-fixed text-sm">
                     <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                       <tr>
@@ -1182,20 +1265,26 @@ function ProcessingResults({
     });
   });
   const drafts = useQuery({
-    queryKey: ["processing-target-drafts", projectId],
+    queryKey: ["processing-target-drafts", projectId, actorId],
     queryFn: () =>
       request<{
         drafts: { id: string; name: string; parentVersionLabel: string | null; paused: boolean }[];
       }>(`/api/projects/${encodeURIComponent(projectId)}/collaborative-drafts`),
     enabled: confirm,
   });
-  const data = useQuery({
-    queryKey: ["processing-run", projectId, runId, page, view, text],
+  const data = useQuery<ResultPage>({
+    queryKey: ["processing-run", projectId, runId, actorId, page, view, text],
     placeholderData: (previous, query) =>
-      canRetainReadResult(query?.state.error) ? previous : undefined,
-    queryFn: () =>
+      query?.queryKey[1] === projectId &&
+      query.queryKey[2] === runId &&
+      query.queryKey[3] === actorId &&
+      canRetainReadResult(query.state.error)
+        ? previous
+        : undefined,
+    queryFn: ({ signal }) =>
       request<ResultPage>(
         `${path}?offset=${(page - 1) * 20}&limit=20&view=${view}&search=${encodeURIComponent(text)}`,
+        { signal },
       ),
     refetchInterval: (q) =>
       ["queued", "running", "retry_wait", "cancel_requested"].includes(
@@ -1273,6 +1362,7 @@ function ProcessingResults({
       setSelected(new Set());
       setKey(crypto.randomUUID());
       await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
       await data.refetch();
     } catch (e) {
       setError(errorText(e));
@@ -1302,7 +1392,20 @@ function ProcessingResults({
       setBusy(false);
     }
   }
-  if (data.isPending && !value) return <p>正在读取处理结果…</p>;
+  if (data.isPending && !value)
+    return (
+      <div className="space-y-4" aria-busy="true">
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <LoadingBlock rows={2} />
+            <QueryFeedback busy message="正在读取处理结果…" />
+          </CardContent>
+        </Card>
+        <TableLoadingBlock
+          columns={["选择", "问题 / 来源", "期望输出 / 变化", "Metadata / 变化"]}
+        />
+      </div>
+    );
   if (!value)
     return (
       <div role="alert">
@@ -1317,7 +1420,7 @@ function ProcessingResults({
     );
   const run = value.run,
     terminal = ["succeeded", "failed", "cancelled"].includes(run.status);
-  const stale = data.isFetching || data.isPlaceholderData || !data.data;
+  const stale = data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
   const savedSelection = [...selected].filter((id) => value.adoptedIds?.includes(id));
   const sourceDraft = run.source.kind === "draft";
@@ -1638,11 +1741,12 @@ function ProcessingResults({
               )}
             </div>
           )}
-          {stale && (
-            <p role="status" className="border-b px-5 py-3 text-sm text-muted-foreground">
-              正在读取结果，下面保留上一次条件的内容；读取完成后可选择。
-            </p>
-          )}
+          <div className="border-b px-4">
+            <QueryFeedback
+              busy={data.isFetching}
+              message={stale ? "正在更新条件，读取完成后可选择。" : "正在更新任务状态…"}
+            />
+          </div>
           <ProcessingReview
             rows={value.records}
             selected={selected}
@@ -1652,7 +1756,7 @@ function ProcessingResults({
             total={value.total}
             pageSize={20}
             onPageChange={setPage}
-            loading={data.isFetching || data.isPlaceholderData}
+            loading={stale}
             error={data.isError}
             onRetry={() => void data.refetch()}
             onToggle={(id, checked) => {

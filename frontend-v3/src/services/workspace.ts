@@ -327,6 +327,7 @@ export async function listCollections(
     content?: "all" | "populated" | "empty";
     sort?: "updated_desc" | "updated_asc";
   },
+  signal?: AbortSignal,
 ): Promise<Page<Collection>> {
   const query = new URLSearchParams({
     limit: String(input.limit),
@@ -339,7 +340,10 @@ export async function listCollections(
   const response = await request<{
     collections: Collection[];
     pagination: { total: number };
-  }>(`/api/projects/${encodeURIComponent(projectId)}/collections?${query}`);
+  }>(
+    `/api/projects/${encodeURIComponent(projectId)}/collections?${query}`,
+    signal ? { signal } : undefined,
+  );
   return { items: response.collections, total: response.pagination.total };
 }
 
@@ -493,13 +497,17 @@ export async function moveMaterialFile(projectId: string, assetId: string, colle
 export async function listTestSets(
   projectId: string,
   input: PageRequest & { name?: string },
+  signal?: AbortSignal,
 ): Promise<Page<TestSet>> {
   const query = new URLSearchParams({ limit: String(input.limit), offset: String(input.offset) });
   if (input.name?.trim()) query.set("name", input.name.trim());
   const response = await request<{
     testSets: TestSet[];
     pagination: { total: number };
-  }>(`/api/projects/${encodeURIComponent(projectId)}/solo-test-sets?${query}`);
+  }>(
+    `/api/projects/${encodeURIComponent(projectId)}/solo-test-sets?${query}`,
+    signal ? { signal } : undefined,
+  );
   return { items: response.testSets, total: response.pagination.total };
 }
 

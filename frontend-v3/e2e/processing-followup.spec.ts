@@ -177,6 +177,8 @@ test("searches and paginates task history and opens existing files without submi
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/processing-runs")) {
       if (route.request().method() === "POST") submits++;
+      const query = new URL(route.request().url()).searchParams;
+      const offset = Number(query.get("offset") ?? 0);
       return route.fulfill({
         json: {
           runs: Array.from({ length: 25 }, (_, i) => ({
@@ -192,7 +194,11 @@ test("searches and paginates task history and opens existing files without submi
             inputCount: 20,
             createdAt: "2026-10-11",
             errorCode: null,
-          })),
+          }))
+            .filter((run) => run.options.instructions.includes(query.get("search") ?? ""))
+            .slice(offset, offset + 20),
+          pagination: { total: query.get("search") ? 1 : 25 },
+          hasActive: false,
         },
       });
     }

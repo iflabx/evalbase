@@ -1,9 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
-import { request } from "@/services/workspace";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { canRetainReadResult, request } from "@/services/workspace";
 
 export function useProjectAccess(projectId: string, enabled = true) {
+  const actorId =
+    useQueryClient().getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? "";
   const query = useQuery({
-    queryKey: ["project-access", projectId],
+    queryKey: ["project-access", projectId, actorId],
     queryFn: async () =>
       (
         await request<{
@@ -13,11 +15,13 @@ export function useProjectAccess(projectId: string, enabled = true) {
           };
         }>(`/api/projects/${encodeURIComponent(projectId)}/access`)
       ).access,
-    enabled: !!projectId && enabled,
+    enabled: !!projectId && !!actorId && enabled,
   });
   return {
     ...query,
-    canWrite: query.data?.capabilities.write === true,
-    canManage: query.data?.capabilities.manage === true,
+    actorId,
+    canRead: canRetainReadResult(query.error) && query.data?.capabilities.read === true,
+    canWrite: canRetainReadResult(query.error) && query.data?.capabilities.write === true,
+    canManage: canRetainReadResult(query.error) && query.data?.capabilities.manage === true,
   };
 }

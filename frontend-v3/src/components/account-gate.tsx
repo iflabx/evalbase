@@ -43,6 +43,18 @@ export function AccountGate({ setup }: { setup: boolean }) {
     (!registering ||
       (password.length >= 8 && confirm === password && (activeMode !== "setup" || name.trim())));
 
+  async function finishLogin() {
+    sessionStorage.removeItem(loginEmailKey);
+    resetWorkspaceSession();
+    const privateQueries = {
+      predicate: (query: { queryKey: readonly unknown[] }) =>
+        !["session", "installation"].includes(String(query.queryKey[0])),
+    };
+    await queryClient.cancelQueries(privateQueries);
+    queryClient.removeQueries(privateQueries);
+    await queryClient.invalidateQueries({ queryKey: ["session"] });
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -67,9 +79,7 @@ export function AccountGate({ setup }: { setup: boolean }) {
         await registerAccount({ email: email.trim(), password, confirmPassword: confirm });
         try {
           await login(email.trim(), password);
-          sessionStorage.removeItem(loginEmailKey);
-          resetWorkspaceSession();
-          await queryClient.invalidateQueries({ queryKey: ["session"] });
+          await finishLogin();
         } catch {
           setMode("login");
           setPassword("");
@@ -78,9 +88,7 @@ export function AccountGate({ setup }: { setup: boolean }) {
         }
       } else {
         await login(email.trim(), password);
-        sessionStorage.removeItem(loginEmailKey);
-        resetWorkspaceSession();
-        await queryClient.invalidateQueries({ queryKey: ["session"] });
+        await finishLogin();
       }
     } catch (cause) {
       const code = cause instanceof Error ? cause.message : "";

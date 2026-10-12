@@ -35,7 +35,8 @@ async function publicPost<T>(path: string, body: object): Promise<T> {
 
 export async function installation() {
   const response = await fetch("/api/installation", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("无法获取初始化状态");
+  if (!response.ok)
+    throw Object.assign(new Error("无法获取初始化状态"), { status: response.status });
   return response.json() as Promise<{ needsAdministrator: boolean; needsMigration?: boolean }>;
 }
 export function createAdministrator(input: {
@@ -59,7 +60,9 @@ export async function login(email: string, password: string) {
 }
 export async function currentSession() {
   const response = await fetch("/api/session", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("authentication_required");
+  if (response.status === 401) return null;
+  if (!response.ok)
+    throw Object.assign(new Error("authentication_required"), { status: response.status });
   return response.json() as Promise<Session>;
 }
 export async function logout() {

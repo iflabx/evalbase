@@ -358,8 +358,9 @@ function summary(row: ProcessingRun) {
     result: row.result,
   };
 }
-const selectRun =
-  "SELECT r.*,j.payload->>'continuationKind' AS continuation_kind,j.status,j.progress,j.error_code,j.result,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues FROM processing_run r JOIN job j ON j.id=r.job_id";
+const runStatusColumns =
+  "j.payload->>'continuationKind' AS continuation_kind,j.status,j.progress,j.error_code,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues";
+const selectRun = `SELECT r.*,j.result,${runStatusColumns} FROM processing_run r JOIN job j ON j.id=r.job_id`;
 export async function getProcessingRun(
   db: Pick<Database, "query">,
   scope: ProcessingScope,
@@ -567,12 +568,94 @@ export async function readProcessingStatus(
     total: Number(run.output_count ?? 0),
   };
 }
-export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
+export async function listProcessingRuns(
+  db: Database,
+  scope: ProcessingScope,
+  query: {
+    limit?: string;
+    offset?: string;
+    search?: string;
+    status?: string;
+  } = {},
+) {
   await processingAccess(db, scope);
-  const rows = await db.query<ProcessingRun>(
-    `${selectRun} WHERE r.project_id=$1 AND r.input_ref IS NOT NULL AND (cardinality(r.background_document_ids)=0 OR r.actor_id=$2) ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
+  const limit = Number(query.limit ?? 20),
+    offset = Number(query.offset ?? 0);
+  if (
+    Object.values(query).some((value) => typeof value !== "string") ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 20 ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    (query.search?.length ?? 0) > 200 ||
+    ![
+      "all",
+      "queued",
+      "running",
+      "retry_wait",
+      "cancel_requested",
+      "succeeded",
+      "failed",
+      "cancelled",
+    ].includes(query.status ?? "all")
+  )
+    throw new ProcessingError(422, "query_parameter_invalid");
+  const text = (query.search ?? "").trim().toLowerCase();
+  // ponytail: inspect at most the existing 100-task window; paginate after lifecycle/search checks.
+  // Project out record-ID arrays and execution bodies even on the database-to-Web hop.
+  const rows = await db.query<ProcessingRun & { actor_name: string }>(
+    `SELECT r.id,r.parent_run_id,r.job_id,r.input_count,r.created_at,
+      jsonb_set(r.source,'{recordIds}','[]'::jsonb) AS source,
+      jsonb_build_object('operation',r.options->'operation','instructions',r.options->'instructions','outputCount',r.options->'outputCount') AS options,
+      jsonb_build_object('partial',j.result->'partial') AS result,
+      coalesce(u.display_name,u.username) AS actor_name,${runStatusColumns}
+      FROM processing_run r JOIN job j ON j.id=r.job_id LEFT JOIN app_user u ON u.id=r.actor_id
+      WHERE r.project_id=$1 AND r.input_ref IS NOT NULL AND (cardinality(r.background_document_ids)=0 OR r.actor_id=$2)
+      ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
     [scope.projectId, scope.actorId],
   );
+  const sources = new Map<
+    string,
+    Promise<Awaited<ReturnType<typeof processingSourceSummary>>>
+  >();
+  const visible = [];
+  let hasActive = false;
+  for (const row of rows.rows) {
+    const key = JSON.stringify(row.source);
+    let source = sources.get(key);
+    if (!source) {
+      source = (async () => {
+        await processingSourceAvailable(db, scope.projectId, row.source);
+        return processingSourceSummary(db, scope, row.source);
+      })();
+      sources.set(key, source);
+    }
+    try {
+      const sourceSummary = await source;
+      hasActive ||= [
+        "queued",
+        "running",
+        "retry_wait",
+        "cancel_requested",
+      ].includes(row.status);
+      if (query.status && query.status !== "all" && row.status !== query.status)
+        continue;
+      if (
+        text &&
+        ![
+          sourceSummary.name,
+          sourceSummary.kindLabel,
+          row.options.instructions,
+        ].some((value) => value?.toLowerCase().includes(text))
+      )
+        continue;
+      visible.push({ row, sourceSummary });
+    } catch (error) {
+      if (!(error instanceof ProcessingError)) throw error;
+    }
+  }
+  const page = visible.slice(offset, offset + limit);
   const savedRuns = await db.query(
     `SELECT DISTINCT pa.run_id FROM processing_acceptance pa
     JOIN data_asset da ON da.id=pa.receipt->>'assetId' AND da.project_id=$1 AND da.status='stored'
@@ -581,34 +664,46 @@ export async function listProcessingRuns(db: Database, scope: ProcessingScope) {
     WHERE pa.project_id=$1 AND pa.run_id=ANY($2::text[])
     AND (pa.draft_id IS NULL OR (d.id IS NOT NULL AND d.status IN('editing','published') AND (ts.id IS NULL OR ts.status='available') AND (v.id IS NULL OR v.status='published')))
     AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(da.id,d.id,ts.id,v.id))`,
-    [scope.projectId, rows.rows.map((row) => row.id)],
+    [scope.projectId, page.map(({ row }) => row.id)],
   );
   const saved = new Set(savedRuns.rows.map((row) => row.run_id));
-  // Do not disclose prompts or snapshots of recycled sources through the index.
-  const runs = [];
-  for (const row of rows.rows) {
-    try {
-      await processingSourceAvailable(db, scope.projectId, row.source);
-      const sourceSummary = await processingSourceSummary(
-        db,
-        scope,
-        row.source,
-      );
-      const actor = await db.query(
-        "SELECT coalesce(display_name,username) AS name FROM app_user WHERE id=$1",
-        [row.actor_id],
-      );
-      runs.push({
-        ...summary(row),
-        hasSavedResult: saved.has(row.id),
-        sourceSummary,
-        actorName: actor.rows[0]?.name ?? "未记录",
-      });
-    } catch (error) {
-      if (!(error instanceof ProcessingError)) throw error;
-    }
-  }
-  return { runs };
+  const runs = page.map(({ row, sourceSummary }) => {
+    const state = summary(row),
+      instructions = row.options.instructions ?? "";
+    return {
+      id: row.id,
+      parentRunId: row.parent_run_id ?? null,
+      continuationKind: row.continuation_kind ?? null,
+      source:
+        row.source.kind === "assets"
+          ? { kind: "assets" }
+          : { kind: row.source.kind, id: row.source.id },
+      options: {
+        operation: row.options.operation,
+        instructions:
+          instructions.length > 240
+            ? `${instructions.slice(0, 240)}…`
+            : instructions,
+      },
+      inputCount: row.input_count,
+      outputCount: state.outputCount,
+      missingCount: state.missingCount,
+      executionComplete: state.executionComplete,
+      partial: state.partial,
+      status: row.status,
+      progress: row.progress,
+      errorCode: row.error_code,
+      createdAt: row.created_at,
+      hasSavedResult: saved.has(row.id),
+      sourceSummary,
+      actorName: row.actor_name ?? "未记录",
+    };
+  });
+  return {
+    runs,
+    pagination: { total: visible.length, limit, offset },
+    hasActive,
+  };
 }
 export async function readProcessingRun(
   db: Pick<Database, "query">,

@@ -95,6 +95,174 @@ describe("durable data processing", () => {
       await root.end();
     }
   });
+  it("paginates bounded task summaries and searches the full visible history", async () => {
+    const upload = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/pending-uploads`,
+      headers: {
+        ...headers,
+        "content-type": "application/octet-stream",
+        "x-file-name": "loading-origin.jsonl",
+      },
+      payload: '{"question":"Q","answer":"A"}\n',
+    });
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/pending-upload-batches/confirm`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        collectionId,
+        pendingUploadIds: [upload.json().pendingUpload.id],
+        mode: "raw",
+      },
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(201);
+    const assetId = confirmed.json().assets[0].id;
+    const mappingUrl = `/api/projects/${projectId}/assets/${assetId}/mapping`;
+    const mapping = await app.inject({
+      method: "GET",
+      url: mappingUrl,
+      headers,
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: mappingUrl,
+          headers,
+          payload: {
+            parsedViewId: mapping.json().parsedViewId,
+            expectedRevision: 0,
+            mapping: {
+              question: "/question",
+              expectedOutput: "/answer",
+              metadata: [],
+            },
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const path = `/api/projects/${projectId}/processing-runs`;
+    const db = createPool(databaseUrl);
+    const ids: string[] = [];
+    try {
+      for (let i = 0; i < 25; i++) {
+        const created = await app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: {
+              kind: "assets",
+              assetIds: [assetId],
+              recordIds: [`${assetId}:1`],
+            },
+            options: {
+              operation: "clean",
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          },
+        });
+        expect(created.statusCode, created.body).toBe(201);
+        ids.push(created.json().run.id);
+        await db.query(
+          "UPDATE processing_run SET created_at=now()-($2*interval '1 second'),options=jsonb_set(options,'{instructions}',to_jsonb($3::text)) WHERE id=$1",
+          [
+            ids[i],
+            i,
+            `${i === 24 ? "最后一项关键词" : "整理"}${"说明".repeat(2000)}`,
+          ],
+        );
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [
+            created.json().run.jobId,
+            { privateBody: "not-for-list".repeat(2000) },
+          ],
+        );
+      }
+      const first = await app.inject({
+        method: "GET",
+        url: `${path}?limit=20&offset=0`,
+        headers,
+      });
+      expect(first.statusCode, first.body).toBe(200);
+      expect(first.json().runs).toHaveLength(20);
+      expect(first.json().pagination).toMatchObject({
+        total: 25,
+        limit: 20,
+        offset: 0,
+      });
+      expect(first.json().hasActive).toBe(false);
+      expect(first.json().runs[0].source).not.toHaveProperty("recordIds");
+      expect(first.json().runs[0]).not.toHaveProperty("execution");
+      expect(first.json().runs[0]).not.toHaveProperty("result");
+      expect(
+        first.json().runs[0].options.instructions.length,
+      ).toBeLessThanOrEqual(241);
+      expect(first.body).not.toContain("not-for-list");
+      const second = await app.inject({
+        method: "GET",
+        url: `${path}?limit=20&offset=20`,
+        headers,
+      });
+      expect(second.json().runs.map((run: { id: string }) => run.id)).toEqual(
+        ids.slice(20),
+      );
+      const matching = await app.inject({
+        method: "GET",
+        url: `${path}?search=${encodeURIComponent("最后一项关键词")}&status=succeeded`,
+        headers,
+      });
+      expect(matching.json().pagination.total).toBe(1);
+      expect(matching.json().runs[0].id).toBe(ids[24]);
+      const empty = await app.inject({
+        method: "GET",
+        url: `${path}?status=failed`,
+        headers,
+      });
+      expect(empty.json().pagination.total).toBe(0);
+      await db.query(
+        "UPDATE job SET status='queued' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [ids[24]],
+      );
+      expect(
+        (await app.inject({ method: "GET", url: path, headers })).json()
+          .hasActive,
+      ).toBe(true);
+      for (const query of [
+        "limit=21",
+        "limit=0",
+        "offset=-1",
+        "offset=1.5",
+        "status=unknown",
+        `search=${"a".repeat(201)}`,
+      ])
+        expect(
+          (
+            await app.inject({
+              method: "GET",
+              url: `${path}?${query}`,
+              headers,
+            })
+          ).statusCode,
+        ).toBe(422);
+      await db.query("UPDATE data_asset SET status='archived' WHERE id=$1", [
+        assetId,
+      ]);
+      const inaccessible = await app.inject({
+        method: "GET",
+        url: path,
+        headers,
+      });
+      expect(inaccessible.json().runs).toEqual([]);
+      expect(inaccessible.json().pagination.total).toBe(0);
+      expect(inaccessible.json().hasActive).toBe(false);
+    } finally {
+      await db.end();
+    }
+  });
   it("filters processing input across pages and retains source identity in saved results", async () => {
     const upload = await app.inject({
       method: "POST",

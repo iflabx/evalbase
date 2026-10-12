@@ -44,8 +44,11 @@ export function AppSidebar() {
     (pathname === "/settings" && typeof location.search.project === "string"
       ? location.search.project
       : undefined);
+  const account = useQuery({ queryKey: ["session"], queryFn: currentSession });
+  const actorId = account.data?.actor.id;
   const projects = useQuery({
-    queryKey: ["projects", "switcher"],
+    queryKey: ["projects", "switcher", actorId],
+    enabled: Boolean(actorId),
     queryFn: () => listProjects({ limit: 100, offset: 0 }),
   });
   const projectId =
@@ -55,7 +58,6 @@ export function AppSidebar() {
       : requestedProjectId;
   const access = useProjectAccess(projectId ?? "");
   const [creating, setCreating] = useState(false);
-  const account = useQuery({ queryKey: ["session"], queryFn: currentSession });
   const isAdmin = account.data?.actor.role === "admin";
   const project = projects.data?.items.find((item) => item.id === projectId);
 
@@ -98,7 +100,7 @@ export function AppSidebar() {
                             当前项目
                           </span>
                           <span className="block truncate text-sm font-medium">
-                            {project?.name ?? "当前项目"}
+                            {access.canRead ? (project?.name ?? "当前项目") : "当前项目"}
                           </span>
                         </span>
                         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />

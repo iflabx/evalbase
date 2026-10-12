@@ -28,7 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EmptyBlock, ErrorBlock, PageHeader, StateView } from "@/components/state-view";
+import {
+  EmptyBlock,
+  ErrorBlock,
+  PageHeader,
+  StateView,
+  TableLoadingBlock,
+} from "@/components/state-view";
+import { useListSearch } from "@/hooks/use-list-search";
 import {
   listTestSets,
   listSoloTestSetTrash,
@@ -42,6 +49,7 @@ import { Pagination } from "@/routes/index";
 import { createSharedDraft, listSharedDrafts } from "@/services/drafts";
 
 const PAGE_SIZE = 10;
+const COLUMN_WIDTHS = ["25%", "9%", "7%", "22%", "10%", "14%", "13%"];
 
 function formatUpdatedAt(value: string) {
   const date = new Date(value);
@@ -73,15 +81,20 @@ function TestSetsRoute() {
 function TestSetsPage() {
   const { projectId } = Route.useParams();
   const access = useProjectAccess(projectId);
-  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const { search, committedSearch, setSearch, inputProps } = useListSearch(setPage);
   const [filter, setFilter] = useState<"all" | "draft" | "published">("all");
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const drafts = useQuery({
-    queryKey: ["shared-drafts", projectId],
-    queryFn: () => listSharedDrafts(projectId),
+    queryKey: ["shared-drafts", projectId, access.actorId],
+    queryFn: ({ signal }) => listSharedDrafts(projectId, undefined, signal),
     enabled: access.canWrite,
+    staleTime: 15_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    retry: false,
   });
   async function startCreate() {
     setCreating(true);
@@ -108,7 +121,8 @@ function TestSetsPage() {
   const matchingDrafts =
     access.canWrite && effectiveFilter !== "published"
       ? (drafts.data ?? []).filter(
-          (draft) => !draft.testSetId && (draft.name || "未命名草稿").includes(search.trim()),
+          (draft) =>
+            !draft.testSetId && (draft.name || "未命名草稿").includes(committedSearch.trim()),
         )
       : [];
   const draftOffset = (page - 1) * PAGE_SIZE;
@@ -120,23 +134,42 @@ function TestSetsPage() {
     queryKey: [
       "solo-test-sets",
       projectId,
-      search,
+      access.actorId,
+      committedSearch,
       effectiveFilter,
       page,
       publishedOffset,
       publishedSlots,
     ],
-    queryFn: () =>
-      listTestSets(projectId, {
-        name: search,
-        limit: publishedSlots || 1,
-        offset: publishedSlots ? publishedOffset : 0,
-      }),
-    enabled: effectiveFilter !== "draft" && (effectiveFilter === "published" || drafts.isSuccess),
+    queryFn: ({ signal }) =>
+      listTestSets(
+        projectId,
+        {
+          name: committedSearch,
+          limit: publishedSlots || 1,
+          offset: publishedSlots ? publishedOffset : 0,
+        },
+        signal,
+      ),
+    enabled:
+      access.canRead &&
+      effectiveFilter !== "draft" &&
+      (effectiveFilter === "published" || drafts.isSuccess),
+    staleTime: 15_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    retry: false,
   });
-  const rows = publishedSlots ? (testSets.data?.items ?? []) : [];
-  const total =
-    matchingDrafts.length + (effectiveFilter === "draft" ? 0 : (testSets.data?.total ?? 0));
+  const rows =
+    !access.canRead || (access.canWrite && effectiveFilter !== "published" && !drafts.data)
+      ? undefined
+      : publishedSlots
+        ? testSets.data?.items
+        : [];
+  const total = access.canRead
+    ? matchingDrafts.length + (effectiveFilter === "draft" ? 0 : (testSets.data?.total ?? 0))
+    : 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   async function moveToTrash() {
@@ -186,10 +219,7 @@ function TestSetsPage() {
             placeholder="搜索测试集"
             className="pl-8"
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
+            {...inputProps}
           />
         </div>
         {access.canWrite && (
@@ -213,14 +243,25 @@ function TestSetsPage() {
       </div>
       <StateView
         isLoading={
+          access.isPending ||
           (access.canWrite && effectiveFilter !== "published" && drafts.isLoading) ||
           (effectiveFilter !== "draft" && testSets.isLoading)
         }
         error={
+          access.error ??
           (access.canWrite && effectiveFilter !== "published" ? drafts.error : null) ??
           (effectiveFilter !== "draft" ? testSets.error : null)
         }
         data={rows}
+        loading={
+          <TableLoadingBlock
+            columns={["名称", "当前版本", "记录数", "来源", "状态", "更新时间", "操作"]}
+            widths={COLUMN_WIDTHS}
+            minWidth="980px"
+          />
+        }
+        isRefreshing={drafts.isFetching || testSets.isFetching || search !== committedSearch}
+        retainDataOnError
         isEmpty={(items) => items.length === 0 && newDrafts.length === 0}
         onRetry={() => {
           if (access.canWrite && effectiveFilter !== "published") void drafts.refetch();
@@ -229,10 +270,14 @@ function TestSetsPage() {
         empty={
           <EmptyBlock
             title={
-              search.trim() ? "没有匹配结果" : filter === "draft" ? "还没有草稿" : "还没有测试集"
+              committedSearch.trim()
+                ? "没有匹配结果"
+                : filter === "draft"
+                  ? "还没有草稿"
+                  : "还没有测试集"
             }
             action={
-              search.trim() ? (
+              committedSearch.trim() ? (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -254,7 +299,12 @@ function TestSetsPage() {
         {(items) => (
           <Card className="min-w-0">
             <CardContent className="max-w-full overflow-x-auto p-0">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[980px] table-fixed text-sm">
+                <colgroup>
+                  {COLUMN_WIDTHS.map((width, i) => (
+                    <col key={i} style={{ width }} />
+                  ))}
+                </colgroup>
                 <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 font-medium">名称</th>
@@ -353,21 +403,23 @@ function TestSetsPage() {
           </Card>
         )}
       </StateView>
-      {total > 0 && (
-        <Pagination
-          total={total}
-          current={page}
-          pages={pages}
-          onChange={setPage}
-          unit={
-            filter === "draft"
-              ? "个草稿"
-              : filter === "published" || !access.canWrite
-                ? "个正式测试集"
-                : "项测试集与草稿"
-          }
-        />
-      )}
+      <div className="min-h-12">
+        {total > 0 && (
+          <Pagination
+            total={total}
+            current={page}
+            pages={pages}
+            onChange={setPage}
+            unit={
+              filter === "draft"
+                ? "个草稿"
+                : filter === "published" || !access.canWrite
+                  ? "个正式测试集"
+                  : "项测试集与草稿"
+            }
+          />
+        )}
+      </div>
       {access.canManage && (
         <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} projectId={projectId} />
       )}
