@@ -1,5 +1,7 @@
 # 项目助手实测优化实施规格
 
+2026-10-12 新增待开发：[OPT-14 页面加载性能与平滑过渡](issues/14-loading-performance-and-transitions.md)，集中处理列表请求减量、刷新策略、稳定加载布局、搜索防抖与轻量动画，UI 严格对齐 frontend-v1。本次仅授权编写 Ticket，Implementation 为 not-started；现有 4217、旧 Ticket 及 Owner 验收状态保持原记录。
+
 2026-10-12 最新实施：[OPT-13](issues/13-processing-result-continuation.md) 已完成“结果继续处理、按原输入重新运行、已保存成果入口、草稿来源默认保存回原草稿、来源摘要简化与历史产物名称乱码修复”，UI 严格复用 frontend-v1。Implementation 为 completed；189 项单元、150 项集成、21 项浏览器测试通过，Standards/Spec 复审无剩余 P0/P1。沿用同一 4217，实际范围和限制见 [验证记录](opt13-verification.md)，Owner pending，不改写既有验收记录。
 
 2026-10-11 最新状态：OPT-12 已完成实现、针对性回归及 Standards/Spec 复审，基线 `e257ca1`；同一分支及 4217 环境，Owner 验收 pending。4217 三项应用服务固定 `7d9c8e5`，健康及 Computer Use 现场复核完成；证据见 [OPT-12 验证记录](opt12-verification.md)。
@@ -47,6 +49,7 @@ Implementation: in-progress
 | [OPT-11](issues/11-processing-workspace-ux.md)        | 数据处理选择、配置、结果核对、保存、助手入口与处理来源展示     | 现有 OPT-10 及页面补修；已获开发授权                  | completed      | [实施与验证](opt11-verification.md)；一个 Ticket、一次人工 checkpoint，Owner pending                    |
 | [OPT-12](issues/12-processing-usability-followup.md)  | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；Owner 已授权开发                    | completed      | [实施与复审](opt12-verification.md)；R12-1–12 Owner pending，UI 严格复用 frontend-v1                    |
 | [OPT-13](issues/13-processing-result-continuation.md) | 继续处理、重新运行、保存回来源草稿、来源摘要与历史乱码修复     | 现有 OPT-11/12 及样式补修；Owner 已授权开发           | completed      | [验证记录](opt13-verification.md)；Owner pending，UI 严格复用 frontend-v1                               |
+| [OPT-14](issues/14-loading-performance-and-transitions.md) | 列表减量、按需刷新、稳定布局、搜索防抖与轻量加载过渡 | 现有 OPT-13 实现；本次仅授权编写文档 | not-started | [范围与验收](issues/14-loading-performance-and-transitions.md#验收标准)；待开发，同一 4217、一次 checkpoint |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

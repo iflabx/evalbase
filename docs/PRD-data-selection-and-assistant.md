@@ -127,6 +127,10 @@ Owner 已授权 [OPT-13](../.scratch/assistant-optimization/issues/13-processing
 - 继承当前权限、个人背景/来源生命周期、容量、字段保护、幂等及人工确认规则。手动继续只处理所选范围；项目助手已有局部调整保留未选候选和多批有效成果的含义不变。
 - UI 严格复用 frontend-v1 的字体、token、布局密度及适用组件，正式实现只在 frontend-v3；原型和 donor 只读，不引入通用工作流编排界面。
 
+### 6.6 页面加载体验增补（2026-10-12，待开发）
+
+Owner 已确认将页面请求减量、按需刷新、稳定加载布局、搜索防抖和轻量过渡动画整理为 [OPT-14](../.scratch/assistant-optimization/issues/14-loading-performance-and-transitions.md)。适用范围为原始数据/测试集列表、数据处理读取及共用加载外壳；具体交互和验收集中在该 Ticket。继承当前权限、缓存清理、选择/输入保护及确认语义，UI 严格对齐 frontend-v1。此次仅授权编写文档，不表示功能已实现或 4217 已更新。
+
 ## 7. AI-04 项目助手
 
 本节为当前整改目标，实施状态见 [台账](../.scratch/assistant-optimization/spec.md)。通用数据任务沿用 §6 的三字段、来源和字段保护合同；不得将安全风险分类或某个样例数量设为产品默认。
