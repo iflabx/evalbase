@@ -131,9 +131,9 @@ Owner 已授权 [OPT-13](../.scratch/assistant-optimization/issues/13-processing
 
 Owner 已确认将页面请求减量、按需刷新、稳定加载布局、搜索防抖和轻量过渡动画整理为 [OPT-14](../.scratch/assistant-optimization/issues/14-loading-performance-and-transitions.md)。适用范围为原始数据/测试集列表、数据处理读取及共用加载外壳；具体交互和验收集中在该 Ticket。继承当前权限、缓存清理、选择/输入保护及确认语义，UI 严格对齐 frontend-v1。Owner 随后授权完成开发；实际实现、回归、服务固定版本及限制见 [OPT-14 验证](../.scratch/assistant-optimization/opt14-verification.md)，人工验收 pending。
 
-### 6.7 页面文案与信息层级增补（2026-10-12，待实施）
+### 6.7 页面文案与信息层级增补（2026-10-12）
 
-Owner 确认将页面文案审查整理为 [OPT-15](../.scratch/assistant-optimization/issues/15-ui-copy-and-information-hierarchy.md)。精简数据处理、测试集列表/草稿、设置及项目助手的重复常驻说明，辅助信息按需展示；关键选择范围、保存目标与结果、异常恢复及采用/发布/删除后果仍直接可见。本修订调整早期文档中对应说明的展示位置，不改变业务语义或用户内容；UI 严格对齐 frontend-v1，具体范围和验收以 Ticket 为准。当前仅编写任务文档，尚未实施。
+Owner 确认将页面文案审查整理为 [OPT-15](../.scratch/assistant-optimization/issues/15-ui-copy-and-information-hierarchy.md)。精简数据处理、测试集列表/草稿、设置及项目助手的重复常驻说明，辅助信息按需展示；关键选择范围、保存目标与结果、异常恢复及采用/发布/删除后果仍直接可见。本修订调整早期文档中对应说明的展示位置，不改变业务语义或用户内容；UI 严格对齐 frontend-v1，具体范围和验收以 Ticket 为准。Owner 于 2026-10-13 授权开发，现已完成实施；验证与固定版本见 [OPT-15 记录](../.scratch/assistant-optimization/opt15-verification.md)，人工验收 pending。
 
 ## 7. AI-04 项目助手
 

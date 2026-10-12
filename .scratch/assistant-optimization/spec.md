@@ -1,6 +1,6 @@
 # 项目助手实测优化实施规格
 
-2026-10-12 最新任务文档：[OPT-15 页面文案精简与信息层级优化](issues/15-ui-copy-and-information-hierarchy.md) 已建立，覆盖处理页、测试集草稿、设置和助手的重复说明及提示位置，保留关键结果、范围和异常信息，UI 严格复用 frontend-v1。当前仅授权写 Ticket，Implementation 为 not-started；4217 与既有 Ticket 验收状态不变。后续实施按根 AGENTS.md 的比例规则选择检查。
+2026-10-13 最新实施：[OPT-15 页面文案精简与信息层级优化](issues/15-ui-copy-and-information-hierarchy.md) 已完成处理页、测试集草稿、设置和助手的重复说明删减及辅助信息折叠，保留关键结果、范围和异常反馈，UI 严格复用 frontend-v1。应用 `214d961`，Implementation completed，Owner pending；同一 4217 的 Web 固定版本、针对性验证及限制见 [实施记录](opt15-verification.md)，既有 Ticket 验收状态不改写。
 
 2026-10-12 最新实施：[OPT-14 页面加载性能与平滑过渡](issues/14-loading-performance-and-transitions.md) 已完成列表减量、按需刷新、稳定布局、搜索防抖与轻量动画，UI 严格复用 frontend-v1。代码 `9d9e3f1`，实施与验证、两轴审阅及 4217 各服务固定版本见 [记录](opt14-verification.md)。Implementation 为 completed，Owner pending；旧 Ticket 及人工验收状态保留原记录。
 
@@ -52,7 +52,7 @@ Implementation: in-progress
 | [OPT-12](issues/12-processing-usability-followup.md)  | 配置保留、新建处理入口、任务查找、稳定加载、状态表达与连续核对 | 现有 OPT-11 实现；Owner 已授权开发                    | completed      | [实施与复审](opt12-verification.md)；R12-1–12 Owner pending，UI 严格复用 frontend-v1                    |
 | [OPT-13](issues/13-processing-result-continuation.md) | 继续处理、重新运行、保存回来源草稿、来源摘要与历史乱码修复     | 现有 OPT-11/12 及样式补修；Owner 已授权开发           | completed      | [验证记录](opt13-verification.md)；Owner pending，UI 严格复用 frontend-v1                               |
 | [OPT-14](issues/14-loading-performance-and-transitions.md) | 列表减量、按需刷新、稳定布局、搜索防抖与轻量加载过渡 | 现有 OPT-13 实现；Owner 已授权开发 | completed | [实施与验证](opt14-verification.md)；同一 4217、一次 checkpoint，Owner pending |
-| [OPT-15](issues/15-ui-copy-and-information-hierarchy.md) | 页面文案精简、重复统计合并、辅助说明按需展示 | 现有 OPT-14 实现；待单独开发授权 | not-started | 仅任务文档；frontend-v1 风格、关键反馈与业务规则保留 |
+| [OPT-15](issues/15-ui-copy-and-information-hierarchy.md) | 页面文案精简、重复统计合并、辅助说明按需展示 | 现有 OPT-14 实现；Owner 已授权开发 | completed | [实施记录](opt15-verification.md)；同一 4217、一次 checkpoint，Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

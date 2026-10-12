@@ -1,10 +1,10 @@
 # OPT-15 页面文案精简与信息层级优化
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P2。2026-10-12 Owner 根据 4217 页面审查要求建立本张 Ticket；当前仅授权编写任务文档，尚未授权实施。基于 OPT-14 已实现代码，不等待旧 Ticket 人工验收即可后续获授权开发，也不代签旧验收。
+优先级：P2。2026-10-12 Owner 根据 4217 页面审查要求建立本张 Ticket，2026-10-13 随后明确授权完成开发。基于 OPT-14 已实现代码，沿用同一分支与 4217；本张实施完成，Owner checkpoint pending。实际范围及验证见 [实施记录](../opt15-verification.md)，不代签旧验收。
 
 ## 目标与依据
 
@@ -65,3 +65,4 @@ Blocked by: none
 ## Comments
 
 - 2026-10-12：Owner 要求基于页面文案审查建立一张 Ticket。当前仅新增文档及索引，Implementation 为 not-started；4217 运行版本、用户数据及既有验收状态不变。
+- 2026-10-13：Owner 授权实施；完成受影响页面的重复文案删减、数量集中展示、辅助说明与历史邀请折叠。按展示调整的比例规则完成类型检查、受影响 lint、固定 Web 构建及针对性浏览器验证，未改业务接口或执行流程。4217 Web 固定应用 `214d961`，交付与限制见 [实施记录](../opt15-verification.md)；Owner 验收 pending。
