@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpDown, Database, FileUp, Plus, Search } from "lucide-react";
@@ -85,6 +85,9 @@ function DatasetsPage() {
   const total = access.canRead ? (collections.data?.total ?? 0) : 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const current = Math.min(page, pages);
+  useEffect(() => {
+    if (collections.isSuccess && !collections.isPlaceholderData && page > pages) setPage(pages);
+  }, [collections.isSuccess, collections.isPlaceholderData, page, pages]);
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -256,7 +259,7 @@ function DatasetsPage() {
           </Card>
         )}
       </StateView>
-      <div className="min-h-12">
+      <div className="">
         {total > 0 && (
           <Pagination
             total={total}

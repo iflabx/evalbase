@@ -2103,6 +2103,16 @@ describe("durable data processing", () => {
           .map((step: any) => step.label)
           .join("\n"),
       ).toContain("original-basis.jsonl");
+      expect(
+        mixedResult.records[0].sourcePresentation.referenceGroups
+          .map((group: any) => group.recordCount)
+          .sort((a: number, b: number) => a - b),
+      ).toEqual([1, 11]);
+      expect(
+        mixedResult.records[0].sourcePresentation.referenceGroups.find(
+          (group: any) => group.recordCount === 11,
+        ).positions,
+      ).toHaveLength(10);
       const mixedDraftSave = await app.inject({
         method: "POST",
         url: `${path}/${mixedAugment.json().run.id}/accept`,
@@ -2654,7 +2664,7 @@ describe("durable data processing", () => {
     [1, true],
     [0, false, true],
   ] as const)(
-    "recovers only missing rewrite outputs without replacing successful candidates (retained %i, legacy %s)",
+    "recovers only missing rewrite outputs without replacing successful candidates on the legacy recipe (retained %i, legacy %s)",
     async (retainedIndex, legacy, malformed: boolean = false) => {
       const draft = await app.inject({
         method: "POST",
@@ -2770,6 +2780,10 @@ describe("durable data processing", () => {
         expect(submitted.statusCode, submitted.body).toBe(201);
         const run = submitted.json().run;
         async function execute() {
+          await db.query(
+            "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}',to_jsonb('processing-v5'::text)) WHERE id=$1",
+            [run.id],
+          );
           const job = (
             await db.query(
               "UPDATE job SET status='running',attempt=attempt+1,lease_owner='missing-test',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",
@@ -2887,4 +2901,411 @@ describe("durable data processing", () => {
       }
     },
   );
+  it("OPT16 deduplicates cross-batch augmentation, preserves survivors, and never resets completion budgets", async () => {
+    const db = createPool(databaseUrl),
+      config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
+      },
+      artifacts = new ArtifactRepository(config.minio);
+    const draft = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts`,
+      headers,
+      payload: {},
+    });
+    const draftId = draft.json().draft.id;
+    const seed = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${draftId}/records`,
+      headers,
+      payload: {
+        question: "Seed",
+        expectedOutput: "Protected",
+        metadata: [
+          { key: "a", value: "" },
+          { key: "b", value: "1" },
+        ],
+      },
+    });
+    const targetOnly = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${draftId}/records`,
+      headers,
+      payload: {
+        question: "TargetOnly",
+        expectedOutput: "Protected",
+        metadata: seed.json().record.metadata ?? [
+          { key: "a", value: "" },
+          { key: "b", value: "1" },
+        ],
+      },
+    });
+    expect(targetOnly.statusCode, targetOnly.body).toBe(201);
+    let calls = 0,
+      sequence = 0,
+      stuck = false,
+      recovering = false;
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const prompt = JSON.parse(JSON.parse(body).messages.at(-1).content);
+      calls++;
+      const rows = Array.from({ length: prompt.outputCount }, (_, index) => ({
+        sourceId: prompt.records[0].id,
+        question:
+          recovering && index === 0 && prompt.outputCount > 1
+            ? "LaterPreserved"
+            : stuck
+              ? "Seed"
+              : calls === 2 && index === 0
+                ? "New0"
+                : calls === 2 && index === 1
+                  ? "TargetOnly"
+                  : calls === 2 && index === 2
+                    ? ""
+                    : `New${sequence++}`,
+        metadata: [...prompt.records[0].metadata].reverse(),
+      }));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: "controlled",
+          object: "chat.completion",
+          created: 1,
+          model: "synthetic",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: JSON.stringify({ records: rows }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const path = `/api/projects/${projectId}/processing-runs`;
+    async function finish(run: { id: string; jobId: string }) {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=attempt+1,lease_owner='opt16',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",
+          [run.jobId],
+        )
+      ).rows[0];
+      try {
+        const result = await runProcessing(db, artifacts, config, job);
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2,error_code=NULL WHERE id=$1",
+          [job.id, result],
+        );
+      } catch (error) {
+        expect((error as Error).message).toBe("processing_batch_failed");
+        await db.query(
+          "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=$1",
+          [job.id],
+        );
+      }
+    }
+    try {
+      const connection = await app.inject({
+        method: "GET",
+        url: "/api/settings/model-connection",
+        headers,
+      });
+      const configured = await app.inject({
+        method: "PUT",
+        url: "/api/settings/model-connection",
+        headers,
+        payload: {
+          revision: connection.json().connection?.revision ?? 0,
+          name: "OPT16",
+          endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+          model: "synthetic",
+          apiKey: "synthetic-test",
+          enabled: true,
+        },
+      });
+      expect(configured.statusCode, configured.body).toBe(200);
+      async function create(count: number) {
+        const response = await app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: {
+              kind: "draft",
+              id: draftId,
+              recordIds: [seed.json().record.id],
+            },
+            options: {
+              operation: "augment",
+              instructions: "Generate distinct cases",
+              allowedFields: ["question", "metadata"],
+              outputCount: count,
+            },
+          },
+        });
+        expect(response.statusCode, response.body).toBe(201);
+        return response.json().run;
+      }
+      const run = await create(21);
+      await finish(run);
+      const read = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}?limit=100&view=all`,
+        headers,
+      });
+      expect(read.statusCode, read.body).toBe(200);
+      expect(read.json().total).toBe(21);
+      expect(
+        new Set(read.json().records.map((row: any) => row.result.question))
+          .size,
+      ).toBe(21);
+      expect(
+        read.json().records.some((row: any) => row.result.question === "Seed"),
+      ).toBe(false);
+      expect(read.json().usableCount).toBe(21);
+      expect(
+        read
+          .json()
+          .records.some(
+            (row: any) =>
+              !row.result.question.trim() ||
+              row.result.question === "TargetOnly",
+          ),
+      ).toBe(false);
+      expect(calls).toBe(4); // three initial batches plus only the missing three records.
+      const view = await app.inject({
+        method: "GET",
+        url: `${path}/${run.id}?limit=20&view=all`,
+        headers,
+      });
+      expect(view.statusCode, view.body).toBe(200);
+      expect(view.json().records[0].sourcePresentation.generated).toBe(true);
+      expect(view.json().records[0].sourcePresentation.referenceGroups).toEqual(
+        [],
+      );
+      expect(view.json().records[0].sourcePresentation.steps).toContainEqual(
+        expect.objectContaining({ label: "部分来源未记录" }),
+      );
+      stuck = true;
+      const partial = await create(2);
+      const start = calls;
+      await finish(partial);
+      expect(calls - start).toBe(3);
+      await finish(partial);
+      expect(calls - start).toBe(3);
+      expect(
+        (
+          await db.query(
+            "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+            [partial.id],
+          )
+        ).rows[0].model_attempts,
+      ).toBe(3);
+      const attention = await app.inject({
+        method: "GET",
+        url: `${path}?status=attention`,
+        headers,
+      });
+      expect(
+        attention.json().runs.some((row: any) => row.id === partial.id),
+      ).toBe(true);
+      const complete = await app.inject({
+        method: "GET",
+        url: `${path}?status=complete`,
+        headers,
+      });
+      expect(
+        complete.json().runs.some((row: any) => row.id === partial.id),
+      ).toBe(false);
+      const child = await app.inject({
+        method: "POST",
+        url: `${path}/${partial.id}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { mode: "complete" },
+      });
+      expect(child.statusCode, child.body).toBe(201);
+      expect(child.json().run.options.outputCount).toBe(2);
+      // Resume an earlier batch with two calls left; a later batch is already fixed.
+      stuck = false;
+      recovering = true;
+      const resumed = await create(21);
+      const persistedRow = {
+        sourceId: seed.json().record.id,
+        question: "LaterPreserved",
+        expectedOutput: "Protected",
+        metadata: [
+          { key: "b", value: "1" },
+          { key: "a", value: "" },
+        ],
+      };
+      const preserved = await artifacts.storeProcessing(
+        Buffer.from(JSON.stringify({ records: [persistedRow], issues: [] })),
+        resumed.id,
+        "batch-2",
+      );
+      await db.query(
+        "INSERT INTO processing_batch(run_id,ordinal,error_code,model_attempts,model_started_at) VALUES($1,0,'processing_batch_failed',1,now())",
+        [resumed.id],
+      );
+      await db.query(
+        "INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,result_indices) VALUES($1,2,$2,1,ARRAY[0])",
+        [resumed.id, preserved.objectRef],
+      );
+      await finish(resumed);
+      const recovered = await app.inject({
+        method: "GET",
+        url: `${path}/${resumed.id}?limit=100&view=all`,
+        headers,
+      });
+      expect(recovered.statusCode, recovered.body).toBe(200);
+      expect(recovered.json().total).toBe(21);
+      expect(
+        new Set(recovered.json().records.map((row: any) => row.result.question))
+          .size,
+      ).toBe(21);
+      expect(
+        recovered.json().records.find((row: any) => row.id === "2:0").result,
+      ).toEqual(persistedRow);
+    } finally {
+      await db.end();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+  it("OPT16 previews full-scope duplicate removals and commits only explicit, conflict-safe draft deletions", async () => {
+    const db = createPool(databaseUrl),
+      config = { ...loadConfig(), databaseUrl },
+      artifacts = new ArtifactRepository(config.minio);
+    try {
+      const draft = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: {},
+      });
+      const draftId = draft.json().draft.id,
+        ids: string[] = [];
+      for (const question of [" Q ", "Q", "Unique"]) {
+        const row = await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts/${draftId}/records`,
+          headers,
+          payload: { question, expectedOutput: "A", metadata: [] },
+        });
+        ids.push(row.json().record.id);
+      }
+      const path = `/api/projects/${projectId}/processing-runs`,
+        submitted = await app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "draft", id: draftId, recordIds: ids },
+            options: {
+              operation: "clean",
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          },
+        });
+      const run = submitted.json().run,
+        job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=1,lease_owner='dedup',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",
+            [run.jobId],
+          )
+        ).rows[0];
+      const result = await runProcessing(db, artifacts, config, job);
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      const preview = await app.inject({
+        method: "POST",
+        url: `${path}/${run.id}/deduplication`,
+        headers,
+        payload: { resultIds: ["0:2", "0:1", "0:0"] },
+      });
+      expect(preview.statusCode, preview.body).toBe(200);
+      expect(preview.json()).toMatchObject({
+        keptIds: ["0:0", "0:2"],
+        excludedIds: ["0:1"],
+        removedRecordIds: [ids[1]],
+      });
+      const current = (
+        await db.query("SELECT revision FROM collaborative_draft WHERE id=$1", [
+          draftId,
+        ])
+      ).rows[0];
+      const body = {
+          resultIds: preview.json().keptIds,
+          deduplication: { checkedIds: preview.json().checkedIds },
+          target: {
+            kind: "draft",
+            id: draftId,
+            expectedRevision: Number(current.revision),
+          },
+        },
+        key = randomUUID();
+      await db.query(
+        "UPDATE collaborative_draft_record SET metadata_revision=metadata_revision+1 WHERE draft_id=$1 AND id=$2",
+        [draftId, ids[1]],
+      );
+      const conflict = await app.inject({
+        method: "POST",
+        url: `${path}/${run.id}/accept`,
+        headers: { ...headers, "idempotency-key": key },
+        payload: body,
+      });
+      expect(conflict.statusCode, conflict.body).toBe(409);
+      expect(conflict.json().error.code).toBe("draft_field_conflict");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+            [draftId],
+          )
+        ).rows[0].n,
+      ).toBe(3);
+      await db.query(
+        "UPDATE collaborative_draft_record SET metadata_revision=metadata_revision-1 WHERE draft_id=$1 AND id=$2",
+        [draftId, ids[1]],
+      );
+      const saved = await app.inject({
+        method: "POST",
+        url: `${path}/${run.id}/accept`,
+        headers: { ...headers, "idempotency-key": key },
+        payload: body,
+      });
+      expect(saved.statusCode, saved.body).toBe(201);
+      expect(saved.json().receipt.removed).toBe(1);
+      const replay = await app.inject({
+        method: "POST",
+        url: `${path}/${run.id}/accept`,
+        headers: { ...headers, "idempotency-key": key },
+        payload: body,
+      });
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json().receipt).toEqual(saved.json().receipt);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+            [draftId],
+          )
+        ).rows[0].n,
+      ).toBe(2);
+    } finally {
+      await db.end();
+    }
+  });
 });

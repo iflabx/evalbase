@@ -236,7 +236,7 @@ test("shows compact source history, keeps distinct processing steps and restores
   const trigger = page.getByRole("button", { name: "查看来源", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog")).toContainText("参考资料");
+  await expect(page.getByRole("dialog")).toContainText("任务参考范围");
   await expect(
     page.getByRole("dialog").getByRole("link", { name: "模型扩写", exact: true }),
   ).toHaveCount(2);

@@ -42,6 +42,7 @@ export function QueryFeedback({
   message?: string;
 }) {
   const visible = useDelayedBusy(busy);
+  if (!busy && !error) return null;
   return (
     <div
       className="query-feedback flex min-h-6 items-center gap-2 text-xs text-muted-foreground"
@@ -165,7 +166,7 @@ export function EmptyBlock({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-14 text-center">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-8 text-center">
       <Inbox className="mb-3 size-8 text-muted-foreground" />
       <h3 className="text-sm font-medium text-foreground">{title}</h3>
       {description && <p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p>}
@@ -359,7 +360,7 @@ export function StateView<T>({
   const hasFrame = Boolean(loading);
   useLayoutEffect(() => {
     if (hasFrame && !isLoading && panel.current)
-      setHeight(Math.max(344, panel.current.getBoundingClientRect().height));
+      setHeight(panel.current.getBoundingClientRect().height);
   }, [data, hasFrame, isLoading]);
   const retain = retainDataOnError && canRetainReadResult(error) && data !== undefined;
   const body = isLoading ? (
@@ -389,7 +390,7 @@ export function StateView<T>({
   return (
     <div
       ref={panel}
-      style={{ minHeight: isLoading ? confirmedHeight : 344 }}
+      style={{ minHeight: isLoading ? confirmedHeight : undefined }}
       aria-busy={isLoading || isRefreshing}
     >
       <QueryFeedback

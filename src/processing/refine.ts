@@ -3,6 +3,7 @@ import {
   linkAssistantProcessing,
 } from "../assistant/fence.js";
 import type { Database } from "../db/pool.js";
+import { deduplicate } from "./deduplication.js";
 import { freezeBackground } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import { adoptedCandidateKeys, candidateKey } from "./adoption.js";
@@ -275,7 +276,7 @@ export async function createRefinementRun(
             rootOperation,
             adoptionFields: refinement.adoptionFields,
           };
-    const background = scope.assistantGuard
+    let background = scope.assistantGuard
       ? await freezeBackground(client, scope, scope.assistantGuard.sessionId, {
           options,
           records,
@@ -283,6 +284,46 @@ export async function createRefinementRun(
           rootOperation: refinement.rootOperation,
         })
       : input.background;
+    if (background && scope.completionBaseline) {
+      background = {
+        ...background,
+        classifications: background.classifications?.map((rule) => {
+          const counts = new Map<string, number>();
+          for (const row of scope.completionBaseline!) {
+            const value =
+              rule.field === "expectedOutput"
+                ? row.expectedOutput
+                : row.metadata.find(
+                    (entry) =>
+                      entry.key.toLowerCase() === rule.key?.toLowerCase(),
+                  )?.value;
+            if (value !== undefined)
+              counts.set(value, (counts.get(value) ?? 0) + 1);
+          }
+          return {
+            ...rule,
+            ...(rule.quotas
+              ? {
+                  quotas: rule.quotas.map((quota) => ({
+                    ...quota,
+                    count: Math.max(
+                      0,
+                      quota.count - (counts.get(quota.value) ?? 0),
+                    ),
+                  })),
+                }
+              : {}),
+            ...(rule.requiredValues
+              ? {
+                  requiredValues: rule.requiredValues.filter(
+                    (value) => !counts.has(value),
+                  ),
+                }
+              : {}),
+          };
+        }),
+      };
+    }
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     const bytes = Buffer.from(
@@ -290,6 +331,18 @@ export async function createRefinementRun(
         source: input.source,
         ...(input.revision === undefined ? {} : { revision: input.revision }),
         records,
+        ...(options.operation === "augment"
+          ? {
+              deduplicationBaseline: [
+                ...(input.deduplicationBaseline ?? []),
+                ...input.records,
+                ...(data?.records.map((row) => ({
+                  id: row.id,
+                  ...row.result,
+                })) ?? []),
+              ],
+            }
+          : {}),
         ...(mode === "refine" ? { refinement } : { continuation }),
         ...(background ? { background } : {}),
       }),
@@ -352,6 +405,53 @@ export async function createRefinementRun(
   } finally {
     client.release();
   }
+}
+
+/** An explicit, bounded child task for the remaining unique augmentation count. */
+export async function completeProcessingRun(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  parentId: string,
+  key: unknown,
+) {
+  const data = await readProcessingRun(
+    db,
+    artifacts,
+    scope,
+    parentId,
+    { limit: "10000" },
+    true,
+  );
+  if (data.run.options.operation !== "augment")
+    throw new ProcessingError(422, "processing_configuration_invalid");
+  const input = await readFrozenInput(
+    artifacts,
+    await getProcessingRun(db, scope, parentId),
+  );
+  const plan = deduplicate(
+    data.records
+      .filter((row) => row.result.question.trim())
+      .map((row) => ({ id: row.id, ...row.result })),
+    [...input.records, ...(input.deduplicationBaseline ?? [])],
+  );
+  const keptIds = new Set(plan.keptIds);
+  const kept = data.records.filter((row) => keptIds.has(row.id)),
+    missing = (data.run.options.outputCount ?? 0) - kept.length;
+  if (missing <= 0)
+    throw new ProcessingError(409, "processing_completion_unnecessary");
+  return createRefinementRun(
+    db,
+    artifacts,
+    { ...scope, completionBaseline: kept.map((row) => row.result) },
+    parentId,
+    key,
+    {
+      ...(kept.length ? { resultIds: plan.keptIds } : {}),
+      options: { ...data.run.options, outputCount: missing },
+    },
+    kept.length ? "continue" : "rerun",
+  );
 }
 
 /** Preview frozen inputs only; never creates a task or accepts caller-supplied record bodies. */

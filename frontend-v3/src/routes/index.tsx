@@ -194,29 +194,33 @@ export function Pagination({
   onChange: (page: number) => void;
   unit: string;
 }) {
+  if (total === 0) return null;
   return (
     <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
       <span>
-        共 {total} {unit} · 第 {current}/{pages} 页
+        共 {total} {unit}
+        {pages > 1 ? ` · 第 ${current}/${pages} 页` : ""}
       </span>
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={current <= 1}
-          onClick={() => onChange(current - 1)}
-        >
-          上一页
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={current >= pages}
-          onClick={() => onChange(current + 1)}
-        >
-          下一页
-        </Button>
-      </div>
+      {pages > 1 && (
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={current <= 1}
+            onClick={() => onChange(current - 1)}
+          >
+            上一页
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={current >= pages}
+            onClick={() => onChange(current + 1)}
+          >
+            下一页
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

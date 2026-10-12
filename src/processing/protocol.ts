@@ -1,4 +1,4 @@
-import { canonicalJson } from "../package/contract.js";
+import { contentKey } from "./deduplication.js";
 import {
   isPlainObject,
   normalizeMetadataEntries,
@@ -6,7 +6,7 @@ import {
 } from "../server/support.js";
 
 export const PROCESSING_EXECUTION = {
-  recipeVersion: "processing-v5",
+  recipeVersion: "processing-v6",
   batchSize: 20,
   maxInputBytesPerBatch: 40000,
   maxOutputTokens: 8192,
@@ -120,7 +120,7 @@ function recordWarnings(records: ProcessingOutput[]): ProcessingIssue[] {
   for (const { sourceId, ...record } of records) {
     if (!record.question.trim())
       issues.push({ code: "empty_question", sourceId });
-    const content = canonicalJson(record);
+    const content = contentKey(record);
     if (seen.has(content)) issues.push({ code: "duplicate_content", sourceId });
     seen.add(content);
   }

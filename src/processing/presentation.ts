@@ -1,3 +1,4 @@
+import { deduplicate } from "./deduplication.js";
 import type { Database } from "../db/pool.js";
 import { selectRecords } from "../selection/index.js";
 import type { ProcessingInput } from "./protocol.js";
@@ -113,12 +114,20 @@ export function processingReviewPage(
     !Number.isSafeInteger(limit) ||
     limit < 1 ||
     limit > 100 ||
-    !["all", "changed", "issues"].includes(view) ||
+    !["all", "changed", "issues", "duplicates"].includes(view) ||
     (query.search !== undefined &&
       (typeof query.search !== "string" || query.search.length > 200))
   )
     throw new ProcessingError(422, "query_parameter_invalid");
-  const seen = new Set<string>();
+  const duplicate = deduplicate(
+    data.records.map((row) => ({ id: row.id, ...row.result })),
+  );
+  const duplicateIds = new Set(duplicate.duplicateIds),
+    questionCollisionIds = new Set(duplicate.questionCollisionIds),
+    keptIds = new Set(duplicate.keptIds);
+  const usableCount = data.records.filter(
+    (row) => keptIds.has(row.id) && row.result.question.trim(),
+  ).length;
   const rows = data.records.map((row) => {
     const added = data.rootOperation === "augment" || !row.original;
     const changedFields = added
@@ -137,13 +146,9 @@ export function processingReviewPage(
         issue.sourceId === row.result.sourceId,
     );
     if (!row.result.question.trim()) issues.push({ code: "empty_question" });
-    const content = JSON.stringify([
-      row.result.question,
-      row.result.expectedOutput,
-      row.result.metadata,
-    ]);
-    if (seen.has(content)) issues.push({ code: "duplicate_content" });
-    seen.add(content);
+    if (duplicateIds.has(row.id)) issues.push({ code: "duplicate_content" });
+    if (questionCollisionIds.has(row.id))
+      issues.push({ code: "question_collision" });
     return { ...row, changedFields, issues };
   });
   const text = (query.search ?? "").trim().toLowerCase();
@@ -164,7 +169,9 @@ export function processingReviewPage(
       view === "all" ||
       (view === "changed"
         ? row.changedFields.length > 0
-        : row.issues.length > 0),
+        : view === "duplicates"
+          ? duplicateIds.has(row.id)
+          : row.issues.length > 0),
   );
   return {
     run: data.run,
@@ -174,7 +181,10 @@ export function processingReviewPage(
     records: matched.slice(offset, offset + limit),
     allIds: matched.map((row) => row.id),
     total: matched.length,
+    duplicateCount: duplicate.duplicateIds.length,
+    usableCount: data.usableCount ?? usableCount,
     stats: {
+      duplicates: searched.filter((row) => duplicateIds.has(row.id)).length,
       all: searched.length,
       changed: searched.filter((row) => row.changedFields.length).length,
       needsReview: searched.filter((row) => row.issues.length).length,
@@ -300,6 +310,7 @@ export async function presentProcessingReview(
             ? `模型扩写 · 参考 ${origin.fileName ?? origin.label}`
             : origin.label),
         generated: generated || origin.generated,
+        referenceGroups: references?.referenceGroups ?? origin.referenceGroups,
         badges: [
           ...new Set([
             ...origin.badges,

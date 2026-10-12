@@ -38,6 +38,7 @@ export type ReviewRow = {
 };
 export const issueLabels: Record<string, string> = {
   empty_question: "问题为空",
+  question_collision: "问题相同，其他字段不同",
   duplicate_content: "内容重复",
   missing_output: "缺少结果",
   excess_output: "已忽略超量结果",
@@ -112,15 +113,54 @@ export function SourceInfo({ value }: { value?: SourcePresentation | undefined }
               <DialogTitle>数据来源</DialogTitle>
               <DialogDescription>
                 {value.generated
-                  ? "新生成记录；下面是实际参考资料和处理过程。"
+                  ? "以下为任务参考范围，未记录本条内容与具体参考记录的一一对应关系。"
                   : "原始位置、处理过程与保存结果。"}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-5 text-sm">
               <section>
-                <h3 className="mb-2 font-medium">{value.generated ? "参考资料" : "原始资料"}</h3>
-                {references.length ? (
-                  stepList(references, true)
+                <h3 className="mb-2 font-medium">
+                  {value.generated ? "任务参考范围" : "原始资料"}
+                </h3>
+                {value.generated && value.referenceGroups?.length ? (
+                  <div className="space-y-2">
+                    {value.referenceGroups.map((group) => (
+                      <details key={group.href} className="rounded-md border px-3 py-2">
+                        <summary className="cursor-pointer">
+                          <span>{group.fileName}</span>
+                          <span className="ml-2 text-muted-foreground">
+                            {group.recordCount === null
+                              ? "数量未完整记录"
+                              : `${group.recordCount} 条参考记录`}
+                          </span>
+                        </summary>
+                        <div className="mt-2 max-h-48 overflow-y-auto">
+                          {stepList(group.positions, true)}
+                        </div>
+                        <a
+                          className="mt-2 inline-block text-primary hover:underline"
+                          href={group.href}
+                        >
+                          打开参考文件
+                        </a>
+                        {(group.recordCount === null ||
+                          group.recordCount > group.positions.length) && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            仅展开前 {group.positions.length} 个已记录位置。
+                          </p>
+                        )}
+                      </details>
+                    ))}
+                  </div>
+                ) : references.length ? (
+                  <details>
+                    <summary className="cursor-pointer text-muted-foreground">
+                      展开{value.generated ? "已记录的任务参考范围" : "原始位置"}
+                    </summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto">
+                      {stepList(references, true)}
+                    </div>
+                  </details>
                 ) : (
                   <p className="text-muted-foreground">部分来源未记录</p>
                 )}

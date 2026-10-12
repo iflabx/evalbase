@@ -1,11 +1,15 @@
 import {
   createRefinementRun,
+  completeProcessingRun,
   previewFollowupInput,
 } from "../../processing/refine.js";
 import { isPlainObject } from "../support.js";
 import { presentProcessingReview } from "../../processing/presentation.js";
 import { reviewCandidates } from "../../processing/review.js";
-import { acceptProcessingResults } from "../../processing/accept.js";
+import {
+  acceptProcessingResults,
+  previewDeduplication,
+} from "../../processing/accept.js";
 import type { FastifyReply } from "fastify";
 import type { ServerContext } from "../context.js";
 import type { AuthenticatedRequest } from "../support.js";
@@ -95,6 +99,31 @@ export function registerProcessing({
         ),
       ),
   );
+  app.post<{ Params: Params; Body: unknown }>(
+    `${path}/:runId/deduplication`,
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      if (!writeAllowed(request, actor))
+        return reply.code(403).send({ error: { code: "csrf_rejected" } });
+      if (
+        !isPlainObject(request.body) ||
+        Object.keys(request.body).some((key) => key !== "resultIds")
+      )
+        return reply
+          .code(422)
+          .send({ error: { code: "processing_deduplication_invalid" } });
+      return respond(reply, () =>
+        previewDeduplication(
+          db,
+          artifacts,
+          { projectId: request.params.projectId, actorId: actor.id },
+          request.params.runId,
+          (request.body as { resultIds: unknown }).resultIds,
+        ),
+      );
+    },
+  );
   app.get<{ Params: Params }>(
     `${path}/:runId/review`,
     { preHandler: authenticate },
@@ -143,13 +172,25 @@ export function registerProcessing({
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
       if (
         !isPlainObject(request.body) ||
-        !["continue", "rerun"].includes(String(request.body.mode))
+        !["continue", "rerun", "complete"].includes(String(request.body.mode))
       )
         return reply
           .code(422)
           .send({ error: { code: "processing_scope_invalid" } });
       const { mode, ...body } = request.body;
       return respond(reply, async () => {
+        if (mode === "complete") {
+          if (Object.keys(body).length)
+            throw new ProcessingError(422, "processing_scope_invalid");
+          const result = await completeProcessingRun(
+            db,
+            artifacts,
+            { projectId: request.params.projectId, actorId: actor.id },
+            request.params.runId,
+            request.headers["idempotency-key"],
+          );
+          return reply.code(result.replayed ? 200 : 201).send(result);
+        }
         const result = await createRefinementRun(
           db,
           artifacts,

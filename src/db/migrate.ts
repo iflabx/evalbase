@@ -1874,6 +1874,8 @@ export async function migrate(
           AND (ts.status='permanently_deleted'
             OR v.status IN ('permanently_deleted','tombstoned'))`);
     }
+    await client.query(`ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_attempts integer NOT NULL DEFAULT 0;
+      ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_started_at timestamptz`);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

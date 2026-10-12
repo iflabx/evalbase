@@ -1,3 +1,4 @@
+import { contentKey, deduplicate } from "./deduplication.js";
 import { guardAssistantCommit } from "../assistant/fence.js";
 import { adoptedCandidateKeys } from "./adoption.js";
 import { processingResultName } from "./names.js";
@@ -110,6 +111,65 @@ async function selectedGroup(
   };
 }
 
+function checkedIds(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > 10000 ||
+    value.some((id) => typeof id !== "string" || !/^\d+:\d+$/u.test(id)) ||
+    new Set(value).size !== value.length
+  )
+    throw new ProcessingError(422, "processing_deduplication_invalid");
+  return sortedIds(value as string[]);
+}
+/** Full selected scope; immutable results and server identities are the only authority. */
+export async function previewDeduplication(
+  db: Pick<Database, "query">,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  runId: string,
+  value: unknown,
+) {
+  await processingAccess(db, scope);
+  const ids = checkedIds(value),
+    group = await selectedGroup(db, artifacts, scope, runId, ids),
+    rows = group.selected;
+  const knownDraft =
+    group.run.target_draft_id ??
+    (group.run.source.kind === "draft" ? group.run.source.id : null);
+  const existing =
+    rows[0]?.rootOperation === "augment" && knownDraft
+      ? (
+          await db.query(
+            "SELECT question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+            [knownDraft],
+          )
+        ).rows.map((row) => ({
+          question: row.question,
+          expectedOutput: row.expected_output,
+          metadata: row.metadata,
+        }))
+      : [];
+  const plan = deduplicate(rows, existing);
+  const keptIds = new Set(plan.keptIds),
+    excludedIds = new Set(plan.excludedIds);
+  const keptOriginals = new Set(
+    rows.filter((row) => keptIds.has(row.id)).map((row) => row.originalId),
+  );
+  const removable = rows.filter(
+    (row) =>
+      excludedIds.has(row.id) &&
+      row.source.kind === "draft" &&
+      row.rootOperation !== "augment" &&
+      !keptOriginals.has(row.originalId),
+  );
+  return {
+    ...plan,
+    checkedIds: ids,
+    inspected: ids.length,
+    removedRecordIds: [...new Set(removable.map((row) => row.originalId))],
+  };
+}
 export async function acceptProcessingResults(
   db: Database,
   artifacts: ArtifactRepository,
@@ -124,7 +184,9 @@ export async function acceptProcessingResults(
     !key.trim() ||
     key.length > 200 ||
     !isPlainObject(input) ||
-    Object.keys(input).some((k) => !["resultIds", "target"].includes(k)) ||
+    Object.keys(input).some(
+      (k) => !["resultIds", "target", "deduplication"].includes(k),
+    ) ||
     !Array.isArray(input.resultIds) ||
     !input.resultIds.length ||
     input.resultIds.length > 10000 ||
@@ -189,7 +251,20 @@ export async function acceptProcessingResults(
     ) !== canonicalJson(ids)
   )
     throw new ProcessingError(422, "processing_accept_invalid");
-  const digest = processingAcceptanceHash(ids, target, groups);
+  const dedupIds =
+    input.deduplication === undefined
+      ? undefined
+      : isPlainObject(input.deduplication) &&
+          Object.keys(input.deduplication).every((k) => k === "checkedIds")
+        ? checkedIds(input.deduplication.checkedIds)
+        : checkedIds(null);
+  if (dedupIds && groups.length !== 1)
+    throw new ProcessingError(422, "processing_deduplication_invalid");
+  const digest = processingAcceptanceHash(
+    ids,
+    dedupIds ? { ...target, deduplication: dedupIds } : target,
+    groups,
+  );
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -313,6 +388,25 @@ export async function acceptProcessingResults(
         throw new ProcessingError(422, "processing_capacity_exceeded");
     }
     const selected = loaded.flatMap((item) => item.selected);
+    const dedupPlan = dedupIds
+      ? await previewDeduplication(client, artifacts, scope, runId, dedupIds)
+      : null;
+    if (
+      dedupPlan &&
+      canonicalJson(sortedIds(dedupPlan.keptIds)) !== canonicalJson(ids)
+    )
+      throw new ProcessingError(409, "processing_deduplication_changed");
+    const excludedRows = dedupPlan
+      ? (
+          await selectedGroup(
+            client,
+            artifacts,
+            scope,
+            runId,
+            dedupPlan.excludedIds,
+          )
+        ).selected
+      : [];
     let draftId: string | null =
       target.kind === "draft" ? String(target.id) : null;
     let revision = 0;
@@ -331,6 +425,11 @@ export async function acceptProcessingResults(
         true,
       );
       revision = Number(draft.revision);
+      if (
+        dedupPlan?.removedRecordIds.length &&
+        revision !== target.expectedRevision
+      )
+        throw new ProcessingError(409, "draft_revision_conflict");
       if (
         !selected.every(
           (row) =>
@@ -359,8 +458,65 @@ export async function acceptProcessingResults(
         row.source.id === draftId &&
         row.rootOperation !== "augment",
     );
+    const removingRows = excludedRows.filter(
+      (row) =>
+        draftId &&
+        row.source.kind === "draft" &&
+        row.source.id === draftId &&
+        row.rootOperation !== "augment" &&
+        dedupPlan?.removedRecordIds.includes(row.originalId),
+    );
+    const removingIds = [...new Set(removingRows.map((row) => row.originalId))];
+    if (removingIds.length) {
+      const current = await client.query(
+        "SELECT * FROM collaborative_draft_record WHERE draft_id=$1 AND id=ANY($2::text[]) AND deleted=false ORDER BY id FOR UPDATE",
+        [draftId, removingIds],
+      );
+      const byId = new Map(current.rows.map((row) => [row.id, row]));
+      for (const row of removingRows) {
+        const now = byId.get(row.originalId),
+          baseline = row.input.baseline ?? row.input;
+        if (!now) throw new ProcessingError(409, "draft_record_removed");
+        for (const field of [
+          "question",
+          "expectedOutput",
+          "metadata",
+        ] as const) {
+          const column = field === "expectedOutput" ? "expected_output" : field;
+          if (Number(now[`${column}_revision`]) !== baseline.revisions?.[field])
+            throw new ProcessingError(409, "draft_field_conflict");
+        }
+      }
+    }
     const replacingIds = replacingRows.map((row) => row.originalId);
     const replacingSet = new Set(replacingRows);
+    if (draftId) {
+      const existing = await client.query(
+        "SELECT id,question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+        [draftId],
+      );
+      const planned = new Set([
+        ...replacingRows.map((row) => row.originalId),
+        ...removingIds,
+      ]);
+      const keys = new Set(
+        existing.rows
+          .filter((row) => !planned.has(row.id))
+          .map((row) =>
+            contentKey({
+              question: row.question,
+              expectedOutput: row.expected_output,
+              metadata: row.metadata,
+            }),
+          ),
+      );
+      for (const row of selected) {
+        const key = contentKey(row);
+        if (!replacingSet.has(row) && keys.has(key))
+          throw new ProcessingError(409, "processing_duplicate_target");
+        keys.add(key);
+      }
+    }
     if (new Set(replacingIds).size !== replacingIds.length)
       throw new ProcessingError(422, "processing_results_overlap");
     const updates: {
@@ -454,7 +610,9 @@ export async function acceptProcessingResults(
       if (
         assets.length + 1 > 5 ||
         Number(size.bytes) + bytes.byteLength > 100000000 ||
-        Number(capacity.count) + (selected.length - replacingRows.length) >
+        Number(capacity.count) -
+          removingIds.length +
+          (selected.length - replacingRows.length) >
           10000
       )
         throw new ProcessingError(422, "test_set_capacity_exceeded");
@@ -592,6 +750,11 @@ export async function acceptProcessingResults(
             run_id: row.runId,
           })),
         );
+      if (removingIds.length)
+        await client.query(
+          "UPDATE collaborative_draft_record SET deleted=true,row_revision=row_revision+1 WHERE draft_id=$1 AND id=ANY($2::text[])",
+          [draftId, removingIds],
+        );
       await client.query(
         "UPDATE collaborative_draft SET revision=revision+1,updated_by=$2,updated_at=now() WHERE id=$1",
         [draftId, scope.actorId],
@@ -605,7 +768,12 @@ export async function acceptProcessingResults(
       draftId,
       adopted: selected.length,
       changedFields: updates.length,
-      candidateOrigins: selected.map((row) => row.candidateOrigin),
+      candidateOrigins: [...selected, ...removingRows].map(
+        (row) => row.candidateOrigin,
+      ),
+      removed: removingIds.length,
+      updated: replacingRows.length,
+      added: selected.length - replacingRows.length,
       ...(groups.length > 1 ? { resultGroups: groups } : {}),
       ...(draftId ? { revision: revision + 1 } : {}),
     };

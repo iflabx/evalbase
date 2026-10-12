@@ -9,6 +9,7 @@ import {
   type BackgroundSnapshot,
 } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
+import { deduplicate } from "./deduplication.js";
 import {
   filterProcessingRecords,
   processingSourceSummary,
@@ -49,12 +50,18 @@ export type ProcessingScope = {
   expectedInputHash?: string;
   /** Frozen by the assistant confirmation; never accepted from a public processing body. */
   acceptanceGroups?: { runId: string; resultIds: string[] }[];
+  /** Internal completion context, derived from immutable results, never a public body. */
+  completionBaseline?: ProcessingResult["records"];
 };
 export type ProcessingSource =
   | { kind: "assets"; assetIds: string[]; recordIds: string[] }
   | { kind: "draft" | "version"; id: string; recordIds: string[] };
 export type CandidateOrigin = { runId: string; resultId: string };
 export type InputSnapshot = {
+  deduplicationBaseline?: Pick<
+    ProcessingInput,
+    "question" | "expectedOutput" | "metadata"
+  >[];
   background?: BackgroundSnapshot;
   records: (ProcessingInput & {
     candidateOrigin?: CandidateOrigin;
@@ -470,6 +477,20 @@ export async function createProcessingRun(
       ).rowCount
     )
       throw new ProcessingError(409, "processing_source_unavailable");
+    if (
+      options.operation === "augment" &&
+      (target || source.kind === "draft")
+    ) {
+      const baseline = await client.query(
+        "SELECT question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false ORDER BY position,id FOR SHARE",
+        [target || (source as { id: string }).id],
+      );
+      data.deduplicationBaseline = baseline.rows.map((row) => ({
+        question: row.question,
+        expectedOutput: row.expected_output,
+        metadata: row.metadata,
+      }));
+    }
     let modelRevision: number | null = null;
     if (options.operation !== "clean" || options.instructions) {
       const model = await client.query(
@@ -492,11 +513,10 @@ export async function createProcessingRun(
     }
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
-    const stored = await artifacts.storeProcessing(
-      Buffer.from(canonicalJson(data)),
-      runId,
-      "input",
-    );
+    const inputBytes = Buffer.from(canonicalJson(data));
+    if (inputBytes.byteLength > 100000000)
+      throw new ProcessingError(422, "processing_capacity_exceeded");
+    const stored = await artifacts.storeProcessing(inputBytes, runId, "input");
     storedInput = stored.objectRef;
     await client.query(
       `INSERT INTO job(id,project_id,actor_id,kind,payload,status,idempotency_key,correlation_id)
@@ -591,6 +611,9 @@ export async function listProcessingRuns(
     (query.search?.length ?? 0) > 200 ||
     ![
       "all",
+      "active",
+      "complete",
+      "attention",
       "queued",
       "running",
       "retry_wait",
@@ -639,7 +662,24 @@ export async function listProcessingRuns(
         "retry_wait",
         "cancel_requested",
       ].includes(row.status);
-      if (query.status && query.status !== "all" && row.status !== query.status)
+      const group = [
+        "queued",
+        "running",
+        "retry_wait",
+        "cancel_requested",
+      ].includes(row.status)
+        ? "active"
+        : row.status === "cancelled"
+          ? "cancelled"
+          : summary(row).executionComplete
+            ? "complete"
+            : "attention";
+      if (
+        query.status &&
+        query.status !== "all" &&
+        row.status !== query.status &&
+        group !== query.status
+      )
         continue;
       if (
         text &&
@@ -794,6 +834,16 @@ export async function readProcessingRun(
     throw new ProcessingError(409, "processing_source_unavailable");
   return {
     run: summary(run),
+    usableCount: all
+      ? deduplicate(
+          records
+            .filter((row) => row.result.question.trim())
+            .map((row) => ({ id: row.id, ...row.result })),
+          run.options.operation === "augment"
+            ? [...input.records, ...(input.deduplicationBaseline ?? [])]
+            : [],
+        ).keptIds.length
+      : undefined,
     rootOperation:
       input.continuation?.rootOperation ??
       input.refinement?.rootOperation ??

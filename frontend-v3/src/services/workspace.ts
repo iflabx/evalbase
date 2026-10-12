@@ -182,6 +182,12 @@ export type SoloTestSetVersionDetail = {
 };
 
 export type SourcePresentation = {
+  referenceGroups?: {
+    fileName: string;
+    href: string;
+    recordCount: number | null;
+    positions: { label: string; href?: string }[];
+  }[];
   label: string;
   badges: string[];
   steps: {

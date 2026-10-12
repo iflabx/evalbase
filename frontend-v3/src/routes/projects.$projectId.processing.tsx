@@ -109,13 +109,22 @@ type Run = {
   errorCode: string | null;
   result?: { partial?: boolean };
 };
+type Deduplication = {
+  checkedIds: string[];
+  keptIds: string[];
+  excludedIds: string[];
+  removedRecordIds: string[];
+  inspected: number;
+};
 type ResultPage = {
   run: Run;
   records: ReviewRow[];
   rootOperation?: string;
   adoptionFields?: string[];
   adoptedIds?: string[];
-  stats?: { all: number; changed: number; needsReview: number };
+  usableCount?: number;
+  duplicateCount?: number;
+  stats?: { all: number; changed: number; needsReview: number; duplicates?: number };
   receipts?: Receipt[];
   total: number;
   offset?: number;
@@ -167,6 +176,9 @@ const errors: Record<string, string> = {
   processing_not_found: "当前任务不可访问，或来源已被删除。",
   processing_record_too_large: "单条输入超过模型处理大小限制，请缩小记录内容。",
   processing_already_adopted: "所选结果已有保存记录，请移除已保存选择，或从保存后的数据继续处理。",
+  processing_duplicate_target: "目标草稿已有相同内容，请重新去重或核对保存目标。",
+  processing_deduplication_changed: "去重范围已变化，请恢复排除后重新检查。",
+  processing_deduplication_invalid: "请选择要检查的结果。",
   processing_input_corrupt: "历史输入快照不可用，无法重新运行。请返回来源重新选择。",
   draft_not_editing: "原草稿已发布，不能继续写入。处理结果和选择已保留。",
   draft_paused: "原草稿已暂停，请恢复父对象后再保存。",
@@ -228,6 +240,10 @@ function ProcessingPage() {
     ? (runs.data?.pagination?.total ?? runs.data?.runs.length ?? 0)
     : 0;
   const runId = search.run;
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(historyTotal / 20));
+    if (runs.isSuccess && !runs.isPlaceholderData && historyPage > pages) setHistoryPage(pages);
+  }, [runs.isSuccess, runs.isPlaceholderData, historyTotal, historyPage]);
   const source =
     search.parent && search.mode
       ? {
@@ -323,6 +339,7 @@ function ProcessingPage() {
               key={`${projectId}:${actorId}:${runId}`}
               projectId={projectId}
               runId={runId}
+              onCreated={(id) => void navigate({ search: { run: id } })}
               onFollowup={(mode, ids) => {
                 queryClient.setQueryData(
                   ["processing-followup-selection", actorId, projectId, runId],
@@ -370,8 +387,13 @@ function ProcessingPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部执行状态</SelectItem>
-                    {Object.entries(statuses).map(([value, label]) => (
+                    <SelectItem value="all">全部状态</SelectItem>
+                    {Object.entries({
+                      active: "进行中",
+                      complete: "已完成",
+                      attention: "需处理",
+                      cancelled: "已取消",
+                    }).map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
@@ -1214,11 +1236,13 @@ function ProcessingResults({
   runId,
   onBack,
   onFollowup,
+  onCreated,
 }: {
   projectId: string;
   runId: string;
   onBack: () => void;
   onFollowup: (mode: "continue" | "rerun", ids: string[]) => void;
+  onCreated: (id: string) => void;
 }) {
   const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}`;
   const queryClient = useQueryClient();
@@ -1232,11 +1256,16 @@ function ProcessingResults({
       page: number;
       selected: string[];
       pendingSave?: { key: string; body: unknown };
+      deduplication?: Deduplication;
       destination?: string;
       name?: string;
       targetDraftId?: string;
     }>(cacheKey),
   ).current;
+  const [deduplication, setDeduplication] = useState<Deduplication | undefined>(
+    position?.deduplication,
+  );
+  const [dedupPreview, setDedupPreview] = useState<Deduplication | null>(null);
   const [view, setView] = useState(position?.view ?? "all");
   const [text, setText] = useState(position?.text ?? "");
   const [page, setPage] = useState(position?.page ?? 1),
@@ -1255,6 +1284,7 @@ function ProcessingResults({
       text,
       page,
       selected: [...selected],
+      deduplication,
       pendingSave: submitted.current,
       destination,
       name,
@@ -1311,6 +1341,10 @@ function ProcessingResults({
   ]);
   const transient = canRetainReadResult(data.error);
   const value = transient ? (data.data ?? lastConfirmed.current) : undefined;
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil((value?.total ?? 0) / 20));
+    if (data.isSuccess && !data.isPlaceholderData && page > pages) setPage(pages);
+  }, [value?.total, data.isSuccess, data.isPlaceholderData, page]);
   async function action(kind: "cancel" | "retry") {
     setBusy(true);
     setError("");
@@ -1326,6 +1360,40 @@ function ProcessingResults({
   }
   const submitted = useRef<{ key: string; body: unknown } | null>(position?.pendingSave ?? null);
   const [unknownSave, setUnknownSave] = useState(Boolean(position?.pendingSave));
+  const completionSubmission = useRef<string | null>(null);
+  async function completeMissing() {
+    setBusy(true);
+    setError("");
+    const submitKey = completionSubmission.current ?? crypto.randomUUID();
+    completionSubmission.current = submitKey;
+    try {
+      const response = await post<{ run: { id: string } }>(
+        `${path}/followups`,
+        { mode: "complete" },
+        submitKey,
+      );
+      completionSubmission.current = null;
+      await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
+      onCreated(response.run.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function inspectDuplicates() {
+    setBusy(true);
+    setError("");
+    try {
+      setDedupPreview(
+        await post<Deduplication>(`${path}/deduplication`, { resultIds: [...selected] }),
+      );
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function accept() {
     if (busy) return;
     setBusy(true);
@@ -1340,7 +1408,14 @@ function ProcessingResults({
           );
           target = { kind: "draft", id, expectedRevision: current.draft.revision };
         } else if (destination === "newDraft") target = { kind: "newDraft", name, purpose: "" };
-        submitted.current = { key, body: { resultIds: [...selected], target } };
+        submitted.current = {
+          key,
+          body: {
+            resultIds: [...selected],
+            target,
+            ...(deduplication ? { deduplication: { checkedIds: deduplication.checkedIds } } : {}),
+          },
+        };
       }
       queryClient.setQueryData(cacheKey, {
         ...queryClient.getQueryData<object>(cacheKey),
@@ -1357,6 +1432,7 @@ function ProcessingResults({
       setUnknownSave(false);
       setConfirm(false);
       setSelected(new Set());
+      setDeduplication(undefined);
       setKey(crypto.randomUUID());
       await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
       await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
@@ -1417,6 +1493,8 @@ function ProcessingResults({
     );
   const run = value.run,
     terminal = ["succeeded", "failed", "cancelled"].includes(run.status);
+  const usableCount = value.usableCount ?? run.outputCount ?? value.total,
+    completionMissing = Math.max(0, (run.options.outputCount ?? 0) - usableCount);
   const stale = data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
   const savedSelection = [...selected].filter((id) => value.adoptedIds?.includes(id));
@@ -1437,14 +1515,26 @@ function ProcessingResults({
               >
                 <ProcessingStatus run={run} />
                 <span>
-                  已产生 {run.outputCount ?? value.stats?.all ?? value.total} /{" "}
-                  {run.options.outputCount ?? run.inputCount} 条结果
-                  {run.missingCount ? ` · 尚缺 ${run.missingCount} 条` : ""}
+                  {run.options.operation === "augment"
+                    ? `已获得 ${usableCount} / ${run.options.outputCount ?? run.inputCount} 条有效结果`
+                    : `已产生 ${run.outputCount ?? value.stats?.all ?? value.total} / ${run.inputCount} 条结果`}
+                  {(run.options.operation === "augment" ? completionMissing : run.missingCount)
+                    ? ` · 尚缺 ${run.options.operation === "augment" ? completionMissing : run.missingCount} 条`
+                    : ""}
                   {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
                 </span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              {terminal && run.options.operation === "augment" && completionMissing > 0 && (
+                <Button
+                  variant="outline"
+                  disabled={busy || unknownSave || stale || data.isError}
+                  onClick={() => void completeMissing()}
+                >
+                  补齐剩余 {completionMissing} 条
+                </Button>
+              )}
               {terminal && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -1609,6 +1699,7 @@ function ProcessingResults({
           ["all", "全部"],
           ["changed", "有变化"],
           ["issues", "自动检查问题"],
+          ["duplicates", "只看重复"],
         ].map(([key, label]) => (
           <Button
             key={key}
@@ -1620,8 +1711,9 @@ function ProcessingResults({
             }}
           >
             {label}{" "}
-            {value.stats?.[key === "issues" ? "needsReview" : (key as "all" | "changed")] ??
-              (key === "all" ? value.total : "")}
+            {value.stats?.[
+              key === "issues" ? "needsReview" : (key as "all" | "changed" | "duplicates")
+            ] ?? (key === "all" ? value.total : "")}
           </Button>
         ))}
       </div>
@@ -1631,7 +1723,9 @@ function ProcessingResults({
             <Button
               size="sm"
               variant="outline"
-              disabled={!terminal || busy || data.isError || stale || unknownSave}
+              disabled={
+                !terminal || busy || data.isError || stale || unknownSave || Boolean(deduplication)
+              }
               onClick={() => {
                 setSelected((old) => new Set([...old, ...value.records.map((r) => r.id)]));
                 setKey(crypto.randomUUID());
@@ -1642,7 +1736,9 @@ function ProcessingResults({
             <Button
               size="sm"
               variant="outline"
-              disabled={!terminal || busy || data.isError || stale || unknownSave}
+              disabled={
+                !terminal || busy || data.isError || stale || unknownSave || Boolean(deduplication)
+              }
               onClick={() => {
                 setSelected((old) => new Set([...old, ...value.allIds]));
                 setKey(crypto.randomUUID());
@@ -1653,7 +1749,7 @@ function ProcessingResults({
             <Button
               size="sm"
               variant="ghost"
-              disabled={busy || unknownSave}
+              disabled={busy || unknownSave || Boolean(deduplication)}
               onClick={() => {
                 setSelected(new Set());
                 setKey(crypto.randomUUID());
@@ -1661,6 +1757,31 @@ function ProcessingResults({
             >
               清空选择
             </Button>
+            {deduplication ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || unknownSave}
+                onClick={() => {
+                  setSelected(new Set(deduplication.checkedIds));
+                  setDeduplication(undefined);
+                  setKey(crypto.randomUUID());
+                }}
+              >
+                恢复排除（{deduplication.excludedIds.length}）
+              </Button>
+            ) : (value.duplicateCount ?? value.stats?.duplicates ?? 0) > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  !terminal || busy || unknownSave || stale || data.isError || !selected.size
+                }
+                onClick={() => void inspectDuplicates()}
+              >
+                去重
+              </Button>
+            ) : null}
             <span className="text-sm text-muted-foreground">
               已选 {selected.size} 条
               {[...selected].filter((id) => !value.allIds.includes(id)).length > 0
@@ -1692,7 +1813,11 @@ function ProcessingResults({
                 setConfirm(true);
               }}
             >
-              {sourceDraft ? "保存回原草稿" : `保存所选 ${selected.size} 条`}
+              {sourceDraft
+                ? "保存回原草稿"
+                : run.missingCount
+                  ? `采用现有 ${selected.size} 条`
+                  : `保存所选 ${selected.size} 条`}
             </Button>
             {sourceDraft && (
               <Button
@@ -1747,7 +1872,9 @@ function ProcessingResults({
           <ProcessingReview
             rows={value.records}
             selected={selected}
-            disabled={!terminal || busy || data.isError || stale || unknownSave}
+            disabled={
+              !terminal || busy || data.isError || stale || unknownSave || Boolean(deduplication)
+            }
             generated={value.rootOperation === "augment" || run.options.operation === "augment"}
             offset={stale ? (value.offset ?? (page - 1) * 20) : (page - 1) * 20}
             total={value.total}
@@ -1779,6 +1906,46 @@ function ProcessingResults({
         onChange={setPage}
       />
       <Dialog
+        open={Boolean(dedupPreview)}
+        onOpenChange={(open) => {
+          if (!open) setDedupPreview(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>检查重复内容</DialogTitle>
+            <DialogDescription>
+              检查 {dedupPreview?.inspected} 条，每组保留一条，排除{" "}
+              {dedupPreview?.excludedIds.length} 条。仅比较问题、期望输出和 Metadata
+              完全相同的内容。
+            </DialogDescription>
+          </DialogHeader>
+          {dedupPreview?.removedRecordIds.length ? (
+            <p className="text-sm text-muted-foreground">
+              保存回原草稿时，将在确认后移除 {dedupPreview.removedRecordIds.length}{" "}
+              条重复原记录；其他保存目标不删除原记录。
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDedupPreview(null)}>
+              取消
+            </Button>
+            <Button
+              disabled={!dedupPreview?.excludedIds.length}
+              onClick={() => {
+                if (!dedupPreview) return;
+                setDeduplication(dedupPreview);
+                setSelected(new Set(dedupPreview.keptIds));
+                setKey(crypto.randomUUID());
+                setDedupPreview(null);
+              }}
+            >
+              排除重复
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={confirm}
         onOpenChange={(v) => {
           if (!busy) setConfirm(v);
@@ -1795,6 +1962,9 @@ function ProcessingResults({
                 : destination === "asset"
                   ? `保存 ${selected.size} 条到独立原始数据文件。`
                   : `向草稿追加 ${selected.size} 条记录。`}{" "}
+              {destination === "draft" && deduplication
+                ? `更新 ${value.rootOperation === "augment" ? 0 : selected.size} 条、新增 ${value.rootOperation === "augment" ? selected.size : 0} 条、移除 ${deduplication.removedRecordIds.length} 条重复原记录。`
+                : ""}
               确认后才保存，不会发布版本。
             </DialogDescription>
           </DialogHeader>

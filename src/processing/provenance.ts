@@ -10,7 +10,47 @@ import {
   type InputSnapshot,
 } from "./store.js";
 
+export type ReferenceGroup = {
+  fileName: string;
+  href: string;
+  recordCount: number | null;
+  positions: { label: string; href?: string }[];
+};
+function referenceGroups(
+  steps: SourcePresentation["steps"],
+  inherited: ReferenceGroup[] = [],
+): ReferenceGroup[] {
+  const groups = new Map<string, ReferenceGroup>();
+  for (const step of steps) {
+    if (!step.href) continue;
+    const group = groups.get(step.href) ?? {
+      fileName: step.label.split(" · 第")[0]!,
+      href: step.href,
+      recordCount: 0,
+      positions: [],
+    };
+    if (!group.positions.some((other) => other.label === step.label))
+      group.positions.push(step);
+    groups.set(step.href, group);
+  }
+  for (const group of groups.values())
+    group.recordCount = group.positions.length;
+  for (const previous of inherited) {
+    const current = groups.get(previous.href);
+    // Nested task scopes can overlap; their union is not a proven per-record count.
+    groups.set(previous.href, {
+      ...previous,
+      recordCount: null,
+      positions: current?.positions ?? previous.positions,
+    });
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    positions: group.positions.slice(0, 10),
+  }));
+}
 export type SourcePresentation = {
+  referenceGroups?: ReferenceGroup[];
   label: string;
   badges: string[];
   steps: {
@@ -89,6 +129,10 @@ export async function processingReferences(
             ? `模型扩写 · 参考 ${files.size} 份原始数据`
             : `模型扩写 · 参考 ${presentations[0]?.fileName ?? "来源未记录"}`,
         badges: [],
+        referenceGroups: referenceGroups(
+          unique,
+          presentations.flatMap((origin) => origin.referenceGroups ?? []),
+        ),
         generated: true,
         steps: [
           ...visible,
@@ -405,6 +449,7 @@ export async function presentSources(
   const runReferences = new Map<
     string,
     {
+      groups: ReferenceGroup[];
       fileCount: number;
       fileName?: string;
       steps: SourcePresentation["steps"];
@@ -469,6 +514,10 @@ export async function presentSources(
         return count < 10;
       });
       reference = {
+        groups: referenceGroups(
+          referenceSteps,
+          references.flatMap((origin) => origin.referenceGroups ?? []),
+        ),
         fileCount: files.size,
         fileName: references.find((reference) => reference.fileName)?.fileName,
         steps: visible,
@@ -497,6 +546,11 @@ export async function presentSources(
       label,
       ...(parent.fileName ? { fileName: parent.fileName } : {}),
       generated,
+      referenceGroups: generated
+        ? reference.groups.length
+          ? reference.groups
+          : parent.referenceGroups
+        : undefined,
       badges: [
         ...parent.badges,
         ...processingSteps

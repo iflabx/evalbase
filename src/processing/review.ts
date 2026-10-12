@@ -1,4 +1,5 @@
 import { canonicalJson } from "../package/contract.js";
+import { contentKey } from "./deduplication.js";
 import type { readProcessingRun } from "./store.js";
 import type { ProcessingInput } from "./protocol.js";
 import { effectiveRules } from "../assistant/requirements.js";
@@ -49,11 +50,7 @@ export function reviewCandidates(
     runs.flatMap((batch) => batch.records.map((row) => row.result));
   for (const record of records) {
     if (!record.question.trim()) emptyQuestions++;
-    const key = canonicalJson({
-      question: record.question,
-      expectedOutput: record.expectedOutput,
-      metadata: record.metadata,
-    });
+    const key = contentKey(record);
     if (seen.has(key)) duplicates++;
     else seen.add(key);
     labels.set(

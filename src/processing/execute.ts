@@ -1,4 +1,5 @@
 import { generateText } from "ai";
+import { contentKey } from "./deduplication.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import type { Config } from "../config.js";
 import type { Database } from "../db/pool.js";
@@ -52,6 +53,7 @@ function modelRequest(
   batch?: { offset: number; total: number },
   dataOnly = false,
   distinctBatches = false,
+  previous: ProcessingResult["records"] = [],
 ) {
   const base = processingPrompt(
     inputs,
@@ -76,6 +78,14 @@ function modelRequest(
       question: row.question.slice(0, 300),
       expectedOutput: row.expectedOutput.slice(0, 300),
     })),
+    ...(previous.length
+      ? {
+          previousBatchExamples: previous.slice(-20).map((row) => ({
+            question: row.question.slice(0, 300),
+            expectedOutput: row.expectedOutput.slice(0, 300),
+          })),
+        }
+      : {}),
     correctionRule:
       options.operation === "augment"
         ? "Return only the missing new records. Do not repeat or rewrite accepted candidates. Count alreadyAccepted toward any category quotas in the original instructions."
@@ -86,9 +96,12 @@ function modelRequest(
   while (
     Buffer.byteLength(base.system + prompt) >
       PROCESSING_EXECUTION.maxInputBytesPerBatch &&
-    correction.alreadyAccepted.length
+    (correction.alreadyAccepted.length ||
+      correction.previousBatchExamples?.length)
   ) {
-    correction.alreadyAccepted.shift();
+    if (correction.previousBatchExamples?.length)
+      correction.previousBatchExamples.shift();
+    else correction.alreadyAccepted.shift();
     prompt = JSON.stringify(correction);
   }
   return { system: base.system, prompt };
@@ -189,11 +202,16 @@ export async function runProcessing(
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
   const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
-  const distinctBatches =
-    run.execution_config.recipeVersion === "processing-v5";
-  const dataOnly = ["processing-v3", "processing-v4", "processing-v5"].includes(
+  const distinctBatches = ["processing-v5", "processing-v6"].includes(
     run.execution_config.recipeVersion,
   );
+  const deduplication = run.execution_config.recipeVersion === "processing-v6";
+  const dataOnly = [
+    "processing-v3",
+    "processing-v4",
+    "processing-v5",
+    "processing-v6",
+  ].includes(run.execution_config.recipeVersion);
   if (
     ![
       "processing-v1",
@@ -201,6 +219,7 @@ export async function runProcessing(
       "processing-v3",
       "processing-v4",
       "processing-v5",
+      "processing-v6",
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
       ...run.execution_config,
@@ -228,6 +247,32 @@ export async function runProcessing(
   let output = 0,
     failed = 0,
     warningCount = 0;
+  const acceptedContent = new Set<string>();
+  const acceptedRows: ProcessingResult["records"] = [];
+  if (deduplication && run.options.operation === "augment") {
+    for (const row of [
+      ...input.records,
+      ...(input.deduplicationBaseline ?? []),
+    ])
+      acceptedContent.add(contentKey(row));
+    // Seed every preserved batch before resuming an earlier incomplete batch.
+    const preserved = await db.query(
+      "SELECT result_ref FROM processing_batch WHERE run_id=$1 AND result_ref IS NOT NULL ORDER BY ordinal",
+      [run.id],
+    );
+    for (const batch of preserved.rows) {
+      const stored = JSON.parse(
+        (await artifacts.readBytes(batch.result_ref, 100000000)).toString(
+          "utf8",
+        ),
+      ) as ProcessingResult;
+      for (const row of stored.records) {
+        const key = contentKey(row);
+        if (!acceptedContent.has(key)) acceptedRows.push(row);
+        acceptedContent.add(key);
+      }
+    }
+  }
   const positions = new Map(input.records.map((row, index) => [row.id, index]));
   for (let index = 0; index < groups.length; index++) {
     await fence(db, job);
@@ -235,7 +280,7 @@ export async function runProcessing(
     await processingSourceAvailable(db, job.project_id, run.source);
     const prior = (
       await db.query(
-        "SELECT result_ref,output_count,issues,error_code,result_indices FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
+        "SELECT result_ref,output_count,issues,error_code,result_indices,model_attempts,model_started_at FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
         [run.id, index],
       )
     ).rows[0];
@@ -269,9 +314,13 @@ export async function runProcessing(
           allowedFields: [],
         });
       else {
-        const deadline = Date.now() + run.execution_config.batchTimeoutMs;
+        const started =
+          deduplication && prior?.model_started_at
+            ? new Date(prior.model_started_at).getTime()
+            : Date.now();
+        const deadline = started + run.execution_config.batchTimeoutMs;
         const batchSignal = AbortSignal.timeout(
-          run.execution_config.batchTimeoutMs,
+          Math.max(1, deadline - Date.now()),
         );
         const expected = input.refinement ? modelInputs.length : group.count;
         const eligible = new Set(modelInputs.map((row) => row.id));
@@ -301,7 +350,7 @@ export async function runProcessing(
         );
         // Preserve every valid result, including from a previous attempt. Only request missing output.
         for (
-          let attempt = 0;
+          let attempt = deduplication ? Number(prior?.model_attempts ?? 0) : 0;
           result.records.length < expected &&
           attempt < run.execution_config.maxAttempts;
           attempt++
@@ -336,6 +385,7 @@ export async function runProcessing(
               : undefined,
             dataOnly,
             distinctBatches,
+            deduplication ? acceptedRows : [],
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >
@@ -343,9 +393,29 @@ export async function runProcessing(
           )
             throw new ProcessingError(422, "processing_record_too_large");
           try {
+            if (deduplication) {
+              // Reserve before calling the model; a crash/retry cannot reset the call or time budget.
+              const reserved = await db.query(
+                `INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at)
+                SELECT $1,$2,1,now() WHERE EXISTS(SELECT 1 FROM job WHERE id=$3 AND lease_owner=$4 AND attempt=$5 AND status='running' AND lease_expires_at>now())
+                ON CONFLICT(run_id,ordinal) DO UPDATE SET model_attempts=processing_batch.model_attempts+1,
+                  model_started_at=coalesce(processing_batch.model_started_at,now())
+                WHERE processing_batch.model_attempts<$6 AND (processing_batch.model_started_at IS NULL OR processing_batch.model_started_at>now()-($7::int * interval '1 millisecond')) RETURNING ordinal`,
+                [
+                  run.id,
+                  index,
+                  job.id,
+                  job.lease_owner,
+                  job.attempt,
+                  run.execution_config.maxAttempts,
+                  run.execution_config.batchTimeoutMs,
+                ],
+              );
+              if (!reserved.rowCount) break;
+            }
             const extra = await generateText({
               model: model.model,
-              ...(["processing-v4", "processing-v5"].includes(
+              ...(["processing-v4", "processing-v5", "processing-v6"].includes(
                 run.execution_config.recipeVersion,
               )
                 ? { temperature: 0.2 }
@@ -378,22 +448,20 @@ export async function runProcessing(
                 ].includes(issue.code),
               ),
             );
-            const seen = new Set(
-              result.records.map((row) =>
-                canonicalJson({
-                  question: row.question,
-                  expectedOutput: row.expectedOutput,
-                  metadata: row.metadata,
-                }),
-              ),
-            );
+            const seen = new Set([
+              ...(deduplication ? acceptedContent : []),
+              ...result.records.map(contentKey),
+            ]);
             const added = validated.records.filter((row) => {
               if (run.options.operation !== "augment") return true;
-              const key = canonicalJson({
-                question: row.question,
-                expectedOutput: row.expectedOutput,
-                metadata: row.metadata,
-              });
+              if (deduplication && !row.question.trim()) {
+                diagnostics.push({
+                  code: "empty_question",
+                  sourceId: row.sourceId,
+                });
+                return false;
+              }
+              const key = contentKey(row);
               if (seen.has(key)) return false;
               seen.add(key);
               return true;
@@ -550,6 +618,14 @@ export async function runProcessing(
       throw error;
     } finally {
       client.release();
+    }
+    if (deduplication && run.options.operation === "augment" && body) {
+      const saved = JSON.parse(body.toString("utf8")) as ProcessingResult;
+      for (const row of saved.records) {
+        const key = contentKey(row);
+        if (!acceptedContent.has(key)) acceptedRows.push(row);
+        acceptedContent.add(key);
+      }
     }
     output += count;
     warningCount += issues.length;

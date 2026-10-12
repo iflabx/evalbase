@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Plus, Search, Trash2 } from "lucide-react";
@@ -165,6 +165,28 @@ function TestSetsPage() {
     ? matchingDrafts.length + (effectiveFilter === "draft" ? 0 : (testSets.data?.total ?? 0))
     : 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  useEffect(() => {
+    if (
+      access.canRead &&
+      (effectiveFilter === "draft" || (testSets.isSuccess && !testSets.isPlaceholderData)) &&
+      (!access.canWrite || effectiveFilter === "published" || drafts.isSuccess) &&
+      page > pages
+    )
+      setPage(pages);
+  }, [
+    access.canRead,
+    access.canWrite,
+    effectiveFilter,
+    testSets.isSuccess,
+    testSets.isPending,
+    testSets.isError,
+    testSets.isPlaceholderData,
+    drafts.isPending,
+    drafts.isSuccess,
+    drafts.isError,
+    page,
+    pages,
+  ]);
 
   async function moveToTrash() {
     if (!trashTarget) return;
@@ -403,7 +425,7 @@ function TestSetsPage() {
           </Card>
         )}
       </StateView>
-      <div className="min-h-12">
+      <div className="">
         {total > 0 && (
           <Pagination
             total={total}
