@@ -188,6 +188,7 @@ test("draft page keeps prototype hierarchy, confirmation, and narrow layout", as
   await expect(page.getByRole("tab", { name: /草稿记录/ })).toContainText("2");
   await expect(page.getByRole("tab", { name: /添加资料/ })).toContainText("1");
   await expect(page.locator(".draft-page-actions button")).toHaveText([
+    "处理数据",
     "删除当前草稿",
     "退出草稿",
     "创建 v1",
