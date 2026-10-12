@@ -112,6 +112,15 @@ test("separates pending invitations from historical records", async ({
       });
     if (pathname === "/api/me/invitations")
       return route.fulfill({ json: { invitations: [] } });
+    if (pathname === "/api/projects/p1/access")
+      return route.fulfill({
+        json: {
+          access: {
+            role: "admin",
+            capabilities: { read: true, write: true, export: true, manage: true },
+          },
+        },
+      });
     if (pathname === "/api/projects/p1/members")
       return route.fulfill({ json: { members: [] } });
     if (pathname === "/api/projects/p1/invitations")
