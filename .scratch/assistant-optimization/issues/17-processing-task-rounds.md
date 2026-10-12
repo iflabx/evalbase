@@ -1,10 +1,10 @@
 # OPT-17 单任务工作区与轻量处理轮次历史
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-16
+Implementation: completed
+Blocked by: none
 
-优先级：P2。2026-10-13 Owner 确认将“一个处理任务、一个工作页面、多轮处理历史”整理为本张 Ticket，当前只授权文档，不开发、不切换运行环境。实施顺序为 OPT-16 → OPT-17，复用去重补齐、来源及列表规则；依赖代码与合同，不把 OPT-16 单独人工验收设为额外开工条件。后续开发仍须 Owner 授权。
+优先级：P2。2026-10-13 Owner 先确认建立本张 Ticket，随后明确授权完成 OPT-17 开发；OPT-16 代码依赖已满足。复用去重补齐、来源及列表规则，UI 严格对齐 frontend-v1，同一 4217 集中验收；Owner pending。实际实施、验证和固定版本见 [验证记录](../opt17-verification.md)。
 
 ## 目标与依据
 
@@ -12,7 +12,7 @@ Blocked by: OPT-16
 
 继承 [PRD §6](../../../docs/PRD-data-selection-and-assistant.md#6-ai-03-清洗改写扩充)、[CONTEXT](../../../CONTEXT.md)、[处理架构](../../../docs/architecture/data-selection-and-assistant.md#4-上传和处理任务)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)、[前端复用约定](../../../docs/architecture/phase1a-frontend-reuse.md)及 [OPT-16](16-processing-deduplication-and-list-ux.md)。当前问题依据为 `40b3356` 上的 OPT-13 合同/代码和 Owner 截图：继续处理已有父子运行关系，但每次运行单列一行，手动后续结果仅包含所选范围，尚无任务级当前结果汇总。
 
-本张覆盖 [OPT-13](13-processing-result-continuation.md) 中“每轮独立任务行/页面、未选结果仅留上一运行、单次结果不汇总”的展示与工作区规则；底层每轮运行、真实来源、字段保护、采用身份、权限与修订约束继续保留。本文为待实施合同，不改写历史实现或 Owner 验收记录。
+本张覆盖 [OPT-13](13-processing-result-continuation.md) 中“每轮独立任务行/页面、未选结果仅留上一运行、单次结果不汇总”的展示与工作区规则；底层每轮运行、真实来源、字段保护、采用身份、权限与修订约束继续保留。本文为实施合同，不改写历史实现或 Owner 验收记录。
 
 ## 1. 任务、轮次与当前结果
 
@@ -95,8 +95,9 @@ Blocked by: OPT-16
 - 集中浏览器检查一条小样本多轮链、历史回看、保存后继续，以及列表/错误/窄屏交互；完整数量边界交由可控夹具，不反复调用真实模型生成大批数据，不做额外压力或长时稳定测试。
 - 按实际影响运行类型、lint、必要构建及定向回归；实施时更新受影响架构、领域词条和测试计划的最小差异，证据集中记录。需要持久状态升级时验证历史兼容与来源清理，不扩大为无关全仓改造。
 - 后续获授权实施时复用当前分支、同一 4217、既有项目和管理员/编辑账号，保留用户数据；一个 Ticket 一次集中 checkpoint，不逐轮、逐页面人工验收。只重建改动服务；合并、推送、tag 和正式部署另按授权。
-- 当前只新增本 Ticket 和必要的 Spec/PRD 索引，检查 Markdown 与一次 `npm run docs:check`；Implementation not-started，不运行应用测试、不重建环境，不把文档状态当成交付完成。
+- 初次建票阶段仅文档授权的限制已被后续明确开发指令解除；本轮交付范围和证据集中在验证记录，Owner 验收独立记录。
 
 ## Comments
 
 - 2026-10-13：Owner 确认将单任务工作区、当前结果汇总和轻量轮次历史整理为 OPT-17；UI 严格对齐 frontend-v1，精简流程、避免过度开发，先不改代码。实施依赖 OPT-16，现阶段仅文档授权，历史任务和验收状态保持。
+- 2026-10-13：Owner 明确授权“先完成 OPT-17 的开发”；实施完成，Owner pending。复用现有分支、4217 与账号数据，不合并 main、推送或正式部署；详细证据见验证记录。

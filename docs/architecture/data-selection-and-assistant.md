@@ -198,3 +198,14 @@ Owner 批准的产品边界以 [OPT-16](../../.scratch/assistant-optimization/is
 - 五组任务筛选在授权的最近 100 项集合中先分类、后统计和分页；原后台状态保留。列表释放正常态固定占高，仅加载时保留必要尺寸，继续复用原缓存、旧响应保护和 donor 组件。
 
 命令、兼容性回归及交付版本集中见 [验证记录](../../.scratch/assistant-optimization/opt16-verification.md)。
+
+## 11. OPT-17 单任务工作区
+
+产品边界以 [OPT-17](../../.scratch/assistant-optimization/issues/17-processing-task-rounds.md) 为准。复用运行、批次、Worker、冻结对象和采用服务，仅添加 `processing_task` 的归属、修订及有效记录引用；运行补充任务、轮序、执行前引用和轮次类型。正文仍存既有对象，不建立另一套版本库。
+
+- `processing/tasks.ts` 汇总终态成果：修改替换稳定身份、扩写追加、重做从该轮固定前态替代效果；未完成输入保留原值，不允许作为已处理成果采用。任务修订约束启动、排除及保存，启动与保存共用项目候选事务 fence，并在来源锁之前取得；读取不在任务锁内更新历史运行。
+- 新增 `GET processing-tasks`、`GET :runId`、`GET :runId/history` 及 `POST :runId/input/rounds/deduplication/accept` 的薄路由，服务端落实权限、CSRF、严格参数和旧链接定位。列表先按完整任务归组，再限制最近 100 项、搜索、分类和分页；历史正文沿用原单轮分页读取。原 processing-runs 与助手工具合同保持。
+- 当前集合保存调用既有采用服务，跨轮字段基线和新生成归属不丢失；更新、追加、明确移除、回执及已提交排除清理同事务完成。回执记录实际草稿行身份，仅在可证的单一已保存范围上读取新修订继续；不同会话不强行共享工作区。
+- 一次迁移只按可证父子单链归组，轮次顺序由关联而非时间/名称决定；分叉保持独立历史，不重写输入正文、身份或回执。来源清理同步清空有效/排除引用；每次读取继续校验全部相关来源及个人背景权限。
+
+实现、定向回归、已关闭的审阅项及同一 4217 固定版本见 [验证记录](../../.scratch/assistant-optimization/opt17-verification.md)。
