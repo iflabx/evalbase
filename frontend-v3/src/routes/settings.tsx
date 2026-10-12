@@ -431,7 +431,7 @@ function SettingsPage() {
                   <details className="mt-2 text-xs text-muted-foreground">
                     <summary className="cursor-pointer">权限说明</summary>
                     <p>
-                      管理员管理所有项目及成员；编辑可修改项目内容；查看仅可浏览与下载已发布内容。
+                      管理员管理所有项目及成员；编辑可修改项目内容；查看可浏览与下载，不能修改内容。
                     </p>
                   </details>
                 </div>
