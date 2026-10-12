@@ -1,10 +1,10 @@
 # OPT-16 数据处理去重补齐、来源说明与列表体验优化
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1（去重与来源准确性），其余展示调整合并交付。2026-10-13 Owner 确认把四点建议整理为一张 Ticket；当前仅授权文档，不开发、不切换运行环境。基于 OPT-13–15 已有实现，后续获授权时复用当前分支和 4217，一次集中 checkpoint，不等待旧 Ticket 人工验收才允许修复，也不代签旧验收。
+优先级：P1（去重与来源准确性），其余展示调整合并交付。2026-10-13 Owner 已授权完成开发；复用当前分支和 4217，沿用既有账号与数据，一次集中 checkpoint。实施与验证集中于后续验证记录，旧 Ticket 的人工验收状态保留。
 
 ## 目标与依据
 
@@ -101,3 +101,7 @@ Blocked by: none
 ## Comments
 
 - 2026-10-13：Owner 确认将四项建议整理成一张修改 Ticket，UI 严格对齐 frontend-v1，精简流程、避免过度开发，先不改代码。新建 OPT-16 及索引/PRD 增补引用；Implementation not-started，未新增运行验收或修改历史状态。
+
+## 实施与待验收
+
+应用、两轴审阅发现及修复、实际测试命令、同一 4217 固定版本和限制见 [OPT-16 验证记录](../opt16-verification.md)。Owner 验收 pending；不改写 OPT-11–15 的历史验收状态。OPT-17 保持未开发。
