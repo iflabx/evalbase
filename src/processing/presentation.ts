@@ -129,7 +129,9 @@ export function processingReviewPage(
     (row) => keptIds.has(row.id) && row.result.question.trim(),
   ).length;
   const rows = data.records.map((row) => {
-    const added = data.rootOperation === "augment" || !row.original;
+    const added =
+      (row.original?.adoptionOperation ?? data.rootOperation) === "augment" ||
+      !row.original;
     const changedFields = added
       ? ["new"]
       : (["question", "expectedOutput", "metadata"] as const).filter(
@@ -298,7 +300,8 @@ export async function presentProcessingReview(
       const history = row.original
         ? (histories.get(`${data.run.id}\0${row.original.id}`) ?? [])
         : [];
-      const generated = data.rootOperation === "augment";
+      const generated =
+        (row.original?.adoptionOperation ?? data.rootOperation) === "augment";
       const badge = { clean: "已清洗", rewrite: "已改写", augment: "模型扩写" }[
         data.run.options.operation
       ];

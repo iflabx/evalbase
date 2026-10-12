@@ -15,6 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -55,7 +62,7 @@ export const Route = createFileRoute("/projects/$projectId/processing")({
     sourceId?: string | undefined;
     run?: string | undefined;
     parent?: string | undefined;
-    mode?: "continue" | "rerun" | undefined;
+    mode?: "continue" | "rerun" | "saved" | undefined;
   } => ({
     source:
       typeof value["source"] === "string" &&
@@ -65,7 +72,9 @@ export const Route = createFileRoute("/projects/$projectId/processing")({
     sourceId: typeof value["sourceId"] === "string" ? value["sourceId"] : undefined,
     run: typeof value["run"] === "string" ? value["run"] : undefined,
     parent: typeof value["parent"] === "string" ? value["parent"] : undefined,
-    mode: value["mode"] === "continue" || value["mode"] === "rerun" ? value["mode"] : undefined,
+    mode: ["continue", "rerun", "saved"].includes(String(value["mode"]))
+      ? (value["mode"] as "continue" | "rerun" | "saved")
+      : undefined,
   }),
   component: ProcessingPage,
 });
@@ -85,6 +94,12 @@ type Receipt = {
   fileName?: string;
 };
 type Run = {
+  taskId?: string;
+  title?: string;
+  roundCount?: number;
+  currentCount?: number;
+  savedCount?: number;
+  unsavedCount?: number;
   parentRunId?: string;
   continuationKind?: "continue" | "rerun";
   sourceSummary?: SourceSummary;
@@ -117,6 +132,24 @@ type Deduplication = {
   inspected: number;
 };
 type ResultPage = {
+  task?: {
+    id: string;
+    revision: number;
+    title: string;
+    latestRunId: string;
+    roundCount: number;
+    currentCount: number;
+    incomplete: boolean;
+    excludedCount: number;
+    savedCount: number;
+    unsavedCount: number;
+    fullySaved: boolean;
+    canContinueSaved?: boolean;
+    latestUsableCount?: number;
+  };
+  unprocessedIds?: string[];
+  unsavedIds?: string[];
+  saveDisposition?: { updateIds: string[]; addIds: string[]; removeCount: number };
   run: Run;
   records: ReviewRow[];
   rootOperation?: string;
@@ -164,6 +197,9 @@ function ProcessingStatus({ run }: { run: Run }) {
   );
 }
 const errors: Record<string, string> = {
+  processing_task_changed: "任务已变化，输入已保留，请刷新当前成果后重新核对。",
+  processing_task_not_found: "当前任务不可访问，或来源已被删除。",
+  processing_saved_range_unavailable: "保存范围无法确认，请从已保存的草稿继续处理。",
   model_connection_unavailable: "请先由管理员在设置中启用模型连接。",
   processing_source_unavailable: "来源已回收或不可用，恢复来源后可继续。",
   processing_scope_changed: "选中的记录已变化，请重新选择。",
@@ -211,7 +247,7 @@ function ProcessingPage() {
     inputProps,
   } = useListSearch(setHistoryPage);
   const actorId = queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? "";
-  const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs`;
+  const path = `/api/projects/${encodeURIComponent(projectId)}/processing-tasks`;
   const runs = useQuery({
     queryKey: ["processing-runs", projectId, actorId, committedSearch, historyStatus, historyPage],
     queryFn: ({ signal }) =>
@@ -247,7 +283,7 @@ function ProcessingPage() {
   const source =
     search.parent && search.mode
       ? {
-          kind: search.mode === "continue" ? "results" : "rerun",
+          kind: search.mode === "continue" ? "results" : search.mode,
           id: search.parent,
           ...(search.mode === "continue"
             ? {
@@ -271,7 +307,7 @@ function ProcessingPage() {
         : null;
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      {!(source && !runId) && (
+      {!(source && (!runId || search.mode)) && (
         <PageHeader
           title="数据处理"
           actions={
@@ -314,7 +350,7 @@ function ProcessingPage() {
         <p role="alert">编辑权限才能运行处理和查看未发布结果。</p>
       ) : (
         <>
-          {source && !runId && (
+          {source && (!runId || search.mode) && (
             <ProcessingForm
               key={`${projectId}:${actorId}:${JSON.stringify(source)}`}
               projectId={projectId}
@@ -334,12 +370,12 @@ function ProcessingPage() {
               }}
             />
           )}
-          {runId && (
+          {runId && !search.mode && (
             <ProcessingResults
               key={`${projectId}:${actorId}:${runId}`}
               projectId={projectId}
               runId={runId}
-              onCreated={(id) => void navigate({ search: { run: id } })}
+              onCreated={() => void navigate({ search: { run: runId } })}
               onFollowup={(mode, ids) => {
                 queryClient.setQueryData(
                   ["processing-followup-selection", actorId, projectId, runId],
@@ -349,7 +385,7 @@ function ProcessingPage() {
                   search: {
                     source: undefined,
                     sourceId: undefined,
-                    run: undefined,
+                    run: runId,
                     parent: runId,
                     mode,
                   },
@@ -464,7 +500,7 @@ function ProcessingPage() {
                           <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                             <tr>
                               <th className="px-4 py-2 font-medium">任务</th>
-                              <th className="px-4 py-2 font-medium">输入记录</th>
+                              <th className="px-4 py-2 font-medium">当前成果</th>
                               <th className="px-4 py-2 font-medium">状态</th>
                               <th className="px-4 py-2 font-medium">发起人 / 时间</th>
                               <th className="px-4 py-2 text-right font-medium">操作</th>
@@ -480,18 +516,17 @@ function ProcessingPage() {
                                       className="min-w-0 truncate"
                                       title={run.sourceSummary?.name}
                                     >
-                                      {run.sourceSummary?.name ?? "来源未记录"} ·{" "}
-                                      {labels[run.options.operation]}
+                                      {run.title ??
+                                        `${run.sourceSummary?.name ?? "来源未记录"} · 数据处理`}
                                     </span>
                                   </div>
                                   <p
                                     className="mt-0.5 max-w-sm truncate pl-6 text-xs text-muted-foreground"
                                     title={run.options.instructions}
                                   >
-                                    {run.sourceSummary?.kindLabel ?? "来源类型未记录"} ·{" "}
-                                    {run.options.instructions || "要求未记录"}
+                                    第 {run.roundCount ?? 1} 轮 · {labels[run.options.operation]}
                                   </p>
-                                  {run.parentRunId && (
+                                  {!run.roundCount && run.parentRunId && (
                                     <p className="mt-1 pl-6 text-xs text-muted-foreground">
                                       {run.continuationKind === "rerun"
                                         ? "重新运行自"
@@ -507,16 +542,22 @@ function ProcessingPage() {
                                     </p>
                                   )}
                                 </td>
-                                <td className="px-4 py-3">{run.inputCount} 条</td>
+                                <td className="px-4 py-3">
+                                  {run.currentCount ?? run.inputCount} 条
+                                </td>
                                 <td className="px-4 py-3">
                                   <ProcessingStatus run={run} />
                                   {run.status === "running" ? ` ${run.progress}%` : ""}
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    {run.hasSavedResult === true
-                                      ? "有已保存结果"
-                                      : run.hasSavedResult === false
-                                        ? "未保存"
-                                        : "保存状态未记录"}
+                                    {run.savedCount !== undefined
+                                      ? run.savedCount
+                                        ? `已保存 ${run.savedCount} · 未保存 ${run.unsavedCount ?? 0}`
+                                        : "未保存"
+                                      : run.hasSavedResult === true
+                                        ? "有已保存结果"
+                                        : run.hasSavedResult === false
+                                          ? "未保存"
+                                          : "保存状态未记录"}
                                   </p>
                                 </td>
                                 <td className="px-4 py-3 text-muted-foreground">
@@ -576,7 +617,8 @@ function ProcessingForm({
 }) {
   const queryClient = useQueryClient();
   const cacheKey = ["processing-config", actorId, projectId, JSON.stringify(source)];
-  const followup = source["kind"] === "results" || source["kind"] === "rerun";
+  const followup = ["results", "rerun", "saved"].includes(String(source["kind"]));
+  const taskMode = source["kind"] === "results" ? "continue" : String(source["kind"]);
   const rerun = source["kind"] === "rerun";
   queryClient.setQueryDefaults(["processing-config"], { gcTime: Infinity });
   queryClient.setQueryDefaults(["processing-followup-selection"], { gcTime: Infinity });
@@ -640,16 +682,27 @@ function ProcessingForm({
         metadataKeys?: string[];
         parent?: { id: string; options: Run["options"]; createdAt: string };
       }>(
-        `/api/projects/${encodeURIComponent(projectId)}/processing-inputs`,
-        {
-          source,
-          offset: (page - 1) * 20,
-          limit: 20,
-          search,
-          conditions,
-          selectedOnly,
-          ...(selectedOnly ? { selectedIds: [...selected] } : {}),
-        },
+        followup
+          ? `/api/projects/${encodeURIComponent(projectId)}/processing-tasks/${encodeURIComponent(String(source["id"]))}/input`
+          : `/api/projects/${encodeURIComponent(projectId)}/processing-inputs`,
+        followup
+          ? {
+              mode: taskMode,
+              resultIds: source["resultIds"],
+              offset: (page - 1) * 20,
+              limit: 20,
+              search,
+              conditions,
+            }
+          : {
+              source,
+              offset: (page - 1) * 20,
+              limit: 20,
+              search,
+              conditions,
+              selectedOnly,
+              ...(selectedOnly ? { selectedIds: [...selected] } : {}),
+            },
         undefined,
         signal,
       ),
@@ -734,8 +787,11 @@ function ProcessingForm({
     try {
       const body = followup
         ? {
-            mode: rerun ? "rerun" : "continue",
-            ...(rerun ? {} : { resultIds: [...selected].map((id) => id.slice(10)) }),
+            mode: taskMode,
+            expectedRevision: Number(sourceRevision.current),
+            ...(taskMode === "continue"
+              ? { resultIds: [...selected].map((id) => id.slice(10)) }
+              : {}),
             options: {
               operation,
               instructions,
@@ -758,13 +814,15 @@ function ProcessingForm({
         pendingSubmission: pendingSubmission.current,
       });
       const result = await post<{ run: Run }>(
-        `/api/projects/${encodeURIComponent(projectId)}/processing-runs${followup ? `/${encodeURIComponent(String(source["id"]))}/followups` : ""}`,
+        followup
+          ? `/api/projects/${encodeURIComponent(projectId)}/processing-tasks/${encodeURIComponent(String(source["id"]))}/rounds`
+          : `/api/projects/${encodeURIComponent(projectId)}/processing-runs`,
         pendingSubmission.current.body,
         pendingSubmission.current.key,
       );
       submittedConfig.current = true;
       queryClient.removeQueries({ queryKey: cacheKey, exact: true });
-      await onCreated(result.run.id);
+      await onCreated(followup ? (result.run.taskId ?? String(source["id"])) : result.run.id);
     } catch (e) {
       setError(errorText(e));
       const code = e instanceof Error ? e.message : "";
@@ -824,7 +882,9 @@ function ProcessingForm({
         <p className="text-sm text-muted-foreground">
           {rerun
             ? "使用上次提交的完整输入重新处理；不会读取来源的最新内容。"
-            : "来自上一次处理结果；本轮只处理所选输入，未选结果保留在上一轮。"}
+            : taskMode === "saved"
+              ? "读取已保存范围的草稿当前值，其他草稿记录不加入本任务。"
+              : "本轮只处理所选记录，未选记录保留在当前成果中。"}
         </p>
       )}
       {followup && visibleInput?.parent && (
@@ -1231,6 +1291,155 @@ function ProcessingForm({
     </div>
   );
 }
+function ProcessingRoundHistory({
+  projectId,
+  taskId,
+  open,
+  onOpenChange,
+  initialRound,
+}: {
+  projectId: string;
+  taskId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialRound?: string | undefined;
+}) {
+  const [page, setPage] = useState(1),
+    [round, setRound] = useState<string>(),
+    [resultPage, setResultPage] = useState(1);
+  useEffect(() => {
+    if (open && initialRound) setRound(initialRound);
+  }, [open, initialRound]);
+  const actorId = useQueryClient().getQueryData<{ actor: { id: string } }>(["session"])?.actor.id;
+  const history = useQuery({
+    queryKey: ["processing-round-history", projectId, actorId, taskId, page],
+    queryFn: () =>
+      request<{ rounds: (Run & { roundNumber: number; savedCount: number })[]; total: number }>(
+        `/api/projects/${encodeURIComponent(projectId)}/processing-tasks/${encodeURIComponent(taskId)}/history?limit=20&offset=${(page - 1) * 20}`,
+      ),
+    enabled: open,
+    retry: false,
+  });
+  const detail = useQuery({
+    queryKey: ["processing-round-readonly", projectId, actorId, round, resultPage],
+    queryFn: () =>
+      request<ResultPage>(
+        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(round!)}?view=all&limit=20&offset=${(resultPage - 1) * 20}`,
+      ),
+    enabled: open && Boolean(round),
+    retry: false,
+  });
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) setRound(undefined);
+      }}
+    >
+      <SheetContent
+        className={
+          round ? "w-full overflow-y-auto sm:max-w-5xl" : "w-full overflow-y-auto sm:max-w-lg"
+        }
+      >
+        <SheetHeader>
+          <SheetTitle>{round ? "历史轮次结果" : "轮次历史"}</SheetTitle>
+          <SheetDescription>历史输入与结果保持不变；继续处理和保存使用当前成果。</SheetDescription>
+        </SheetHeader>
+        <div className="mt-5 space-y-4">
+          {round ? (
+            <>
+              <Button variant="ghost" onClick={() => setRound(undefined)}>
+                返回轮次历史
+              </Button>
+              {detail.isPending ? (
+                <LoadingBlock rows={3} />
+              ) : detail.isError ? (
+                <p role="alert">{errorText(detail.error)}</p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    本轮输出 {detail.data?.total ?? 0} 条
+                  </p>
+                  <ProcessingReview
+                    rows={detail.data?.records ?? []}
+                    selected={new Set()}
+                    onToggle={() => {}}
+                    disabled
+                    generated={detail.data?.rootOperation === "augment"}
+                    offset={(resultPage - 1) * 20}
+                    total={detail.data?.total ?? 0}
+                    onPageChange={setResultPage}
+                  />
+                  <Pagination
+                    current={resultPage}
+                    total={detail.data?.total ?? 0}
+                    unit="条结果"
+                    pages={Math.max(1, Math.ceil((detail.data?.total ?? 0) / 20))}
+                    onChange={setResultPage}
+                  />
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {history.isPending ? (
+                <LoadingBlock rows={3} />
+              ) : history.isError ? (
+                <p role="alert">{errorText(history.error)}</p>
+              ) : (
+                history.data?.rounds.map((item) => (
+                  <Card key={item.id}>
+                    <CardContent className="space-y-2 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-medium">
+                          第 {item.roundNumber} 轮 · {labels[item.options.operation]}
+                        </h3>
+                        <ProcessingStatus run={item} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {item.actorName} · {new Date(item.createdAt).toLocaleString()} · 输入{" "}
+                        {item.inputCount} / 输出 {item.outputCount ?? 0}
+                      </p>
+                      <p className="line-clamp-3 whitespace-pre-wrap text-sm">
+                        {item.options.instructions || "整理首尾空白"}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          {item.savedCount ? `已保存 ${item.savedCount} 条` : "未保存"}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setRound(item.id);
+                            setResultPage(1);
+                          }}
+                        >
+                          查看本轮
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+              <Pagination
+                current={page}
+                total={history.data?.total ?? 0}
+                unit="轮"
+                pages={Math.max(1, Math.ceil((history.data?.total ?? 0) / 20))}
+                onChange={setPage}
+              />
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                返回当前成果
+              </Button>
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 function ProcessingResults({
   projectId,
   runId,
@@ -1241,10 +1450,10 @@ function ProcessingResults({
   projectId: string;
   runId: string;
   onBack: () => void;
-  onFollowup: (mode: "continue" | "rerun", ids: string[]) => void;
+  onFollowup: (mode: "continue" | "rerun" | "saved", ids: string[]) => void;
   onCreated: (id: string) => void;
 }) {
-  const path = `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}`;
+  const path = `/api/projects/${encodeURIComponent(projectId)}/processing-tasks/${encodeURIComponent(runId)}`;
   const queryClient = useQueryClient();
   const actorId = queryClient.getQueryData<{ actor: { id: string } }>(["session"])?.actor.id ?? "";
   const cacheKey = ["processing-result-position", actorId, projectId, runId];
@@ -1255,6 +1464,7 @@ function ProcessingResults({
       text: string;
       page: number;
       selected: string[];
+      selectionInitialized?: boolean;
       pendingSave?: { key: string; body: unknown };
       deduplication?: Deduplication;
       destination?: string;
@@ -1278,12 +1488,16 @@ function ProcessingResults({
     [key, setKey] = useState(() => position?.pendingSave?.key ?? crypto.randomUUID()),
     [receipt, setReceipt] = useState<Receipt | null>(null);
   const [targetDraftId, setTargetDraftId] = useState(position?.targetDraftId ?? "");
+  const [roundHistoryOpen, setRoundHistoryOpen] = useState(false);
+  const [linkedRound, setLinkedRound] = useState<string>();
+  const linkedRoundOpened = useRef(false);
   useEffect(() => {
     queryClient.setQueryData(cacheKey, {
       view,
       text,
       page,
       selected: [...selected],
+      selectionInitialized: selectionInitialized.current,
       deduplication,
       pendingSave: submitted.current,
       destination,
@@ -1339,6 +1553,14 @@ function ProcessingResults({
     data.isSuccess,
     data.isPlaceholderData,
   ]);
+  const linkedTaskId = data.data?.task?.id;
+  useEffect(() => {
+    if (linkedTaskId && linkedTaskId !== runId && !linkedRoundOpened.current) {
+      linkedRoundOpened.current = true;
+      setLinkedRound(runId);
+      setRoundHistoryOpen(true);
+    }
+  }, [linkedTaskId, runId]);
   const transient = canRetainReadResult(data.error);
   const value = transient ? (data.data ?? lastConfirmed.current) : undefined;
   useEffect(() => {
@@ -1349,7 +1571,10 @@ function ProcessingResults({
     setBusy(true);
     setError("");
     try {
-      await post(`${path}/${kind}`, {});
+      await post(
+        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(value!.run.id)}/${kind}`,
+        {},
+      );
       await data.refetch();
       await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
     } catch (e) {
@@ -1360,6 +1585,25 @@ function ProcessingResults({
   }
   const submitted = useRef<{ key: string; body: unknown } | null>(position?.pendingSave ?? null);
   const [unknownSave, setUnknownSave] = useState(Boolean(position?.pendingSave));
+  const selectionInitialized = useRef(position?.selectionInitialized ?? Boolean(position));
+  useEffect(() => {
+    if (!value?.task || !data.isSuccess || data.isPlaceholderData) return;
+    if (!selectionInitialized.current) {
+      if (!["succeeded", "failed", "cancelled"].includes(value.run.status)) return;
+      selectionInitialized.current = true;
+      setSelected(new Set(value.unsavedIds ?? []));
+    } else if (!unknownSave)
+      setSelected((old) => new Set([...old].filter((id) => !value.adoptedIds?.includes(id))));
+  }, [
+    value?.task,
+    value?.run.status,
+    value?.unsavedIds,
+    value?.adoptedIds,
+    data.isSuccess,
+    data.isPlaceholderData,
+    unknownSave,
+  ]);
+
   const completionSubmission = useRef<string | null>(null);
   async function completeMissing() {
     setBusy(true);
@@ -1367,14 +1611,15 @@ function ProcessingResults({
     const submitKey = completionSubmission.current ?? crypto.randomUUID();
     completionSubmission.current = submitKey;
     try {
-      const response = await post<{ run: { id: string } }>(
-        `${path}/followups`,
-        { mode: "complete" },
+      await post<{ run: { id: string } }>(
+        `${path}/rounds`,
+        { mode: "complete", expectedRevision: value!.task!.revision },
         submitKey,
       );
       completionSubmission.current = null;
       await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
-      onCreated(response.run.id);
+      await data.refetch();
+      onCreated(value!.task!.id);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -1413,7 +1658,7 @@ function ProcessingResults({
           body: {
             resultIds: [...selected],
             target,
-            ...(deduplication ? { deduplication: { checkedIds: deduplication.checkedIds } } : {}),
+            expectedRevision: value!.task!.revision,
           },
         };
       }
@@ -1493,7 +1738,8 @@ function ProcessingResults({
     );
   const run = value.run,
     terminal = ["succeeded", "failed", "cancelled"].includes(run.status);
-  const usableCount = value.usableCount ?? run.outputCount ?? value.total,
+  const usableCount =
+      value.task?.latestUsableCount ?? value.usableCount ?? run.outputCount ?? value.total,
     completionMissing = Math.max(0, (run.options.outputCount ?? 0) - usableCount);
   const stale = data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
@@ -1505,9 +1751,10 @@ function ProcessingResults({
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold">{labels[run.options.operation]}结果</h2>
+              <h2 className="font-semibold">{value.task?.title ?? "当前成果"}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {run.sourceSummary?.name ?? "来源未记录"}
+                第 {value.task?.roundCount ?? 1} 轮 · {labels[run.options.operation]} · 当前成果{" "}
+                {value.task?.currentCount ?? value.total} 条
               </p>
               <div
                 role="status"
@@ -1515,9 +1762,11 @@ function ProcessingResults({
               >
                 <ProcessingStatus run={run} />
                 <span>
-                  {run.options.operation === "augment"
-                    ? `已获得 ${usableCount} / ${run.options.outputCount ?? run.inputCount} 条有效结果`
-                    : `已产生 ${run.outputCount ?? value.stats?.all ?? value.total} / ${run.inputCount} 条结果`}
+                  {value.task
+                    ? `本轮输入 ${run.inputCount} · 输出 ${run.outputCount ?? 0} · 当前未保存 ${value.task.unsavedCount} 条`
+                    : run.options.operation === "augment"
+                      ? `已获得 ${usableCount} / ${run.options.outputCount ?? run.inputCount} 条有效结果`
+                      : `已产生 ${run.outputCount ?? value.stats?.all ?? value.total} / ${run.inputCount} 条结果`}
                   {(run.options.operation === "augment" ? completionMissing : run.missingCount)
                     ? ` · 尚缺 ${run.options.operation === "augment" ? completionMissing : run.missingCount} 条`
                     : ""}
@@ -1526,6 +1775,24 @@ function ProcessingResults({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLinkedRound(undefined);
+                  setRoundHistoryOpen(true);
+                }}
+              >
+                轮次历史（{value.task?.roundCount ?? 1}）
+              </Button>
+              {terminal && value.task?.canContinueSaved && (
+                <Button
+                  variant="outline"
+                  disabled={busy || unknownSave || stale || data.isError}
+                  onClick={() => onFollowup("saved", [])}
+                >
+                  基于已保存草稿继续
+                </Button>
+              )}
               {terminal && run.options.operation === "augment" && completionMissing > 0 && (
                 <Button
                   variant="outline"
@@ -1571,7 +1838,7 @@ function ProcessingResults({
               )}
             </div>
           </div>
-          {run.parentRunId && (
+          {!value.task && run.parentRunId && (
             <Link
               className="mt-2 inline-block text-sm text-primary hover:underline"
               to="/projects/$projectId/processing"
@@ -1605,6 +1872,18 @@ function ProcessingResults({
           </details>
         </CardContent>
       </Card>
+      <ProcessingRoundHistory
+        projectId={projectId}
+        taskId={value.task?.id ?? runId}
+        open={roundHistoryOpen}
+        onOpenChange={setRoundHistoryOpen}
+        initialRound={linkedRound}
+      />
+      {value.task?.incomplete && terminal && (
+        <p role="status" className="text-sm text-muted-foreground">
+          本轮未全部完成；未完成记录保留此前值。
+        </p>
+      )}
       {data.isError && (
         <div role="alert" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           状态读取中断，下面保留上次确认的结果；不能确认当前进度。
@@ -1727,7 +2006,13 @@ function ProcessingResults({
                 !terminal || busy || data.isError || stale || unknownSave || Boolean(deduplication)
               }
               onClick={() => {
-                setSelected((old) => new Set([...old, ...value.records.map((r) => r.id)]));
+                setSelected(
+                  (old) =>
+                    new Set([
+                      ...old,
+                      ...value.records.filter((r) => !r.unprocessed).map((r) => r.id),
+                    ]),
+                );
                 setKey(crypto.randomUUID());
               }}
             >
@@ -1740,7 +2025,13 @@ function ProcessingResults({
                 !terminal || busy || data.isError || stale || unknownSave || Boolean(deduplication)
               }
               onClick={() => {
-                setSelected((old) => new Set([...old, ...value.allIds]));
+                setSelected(
+                  (old) =>
+                    new Set([
+                      ...old,
+                      ...value.allIds.filter((id) => !value.unprocessedIds?.includes(id)),
+                    ]),
+                );
                 setKey(crypto.randomUUID());
               }}
             >
@@ -1757,18 +2048,24 @@ function ProcessingResults({
             >
               清空选择
             </Button>
-            {deduplication ? (
+            {(value.task?.excludedCount ?? 0) > 0 ? (
               <Button
                 size="sm"
                 variant="outline"
                 disabled={busy || unknownSave}
-                onClick={() => {
-                  setSelected(new Set(deduplication.checkedIds));
-                  setDeduplication(undefined);
-                  setKey(crypto.randomUUID());
-                }}
+                onClick={() =>
+                  void post<{ restoredIds: string[] }>(`${path}/deduplication`, {
+                    action: "restore",
+                    expectedRevision: value.task!.revision,
+                  })
+                    .then((response) => {
+                      setSelected((old) => new Set([...old, ...response.restoredIds]));
+                      return data.refetch();
+                    })
+                    .catch((e) => setError(errorText(e)))
+                }
               >
-                恢复排除（{deduplication.excludedIds.length}）
+                恢复排除（{value.task?.excludedCount ?? 0}）
               </Button>
             ) : (value.duplicateCount ?? value.stats?.duplicates ?? 0) > 0 ? (
               <Button
@@ -1932,12 +2229,24 @@ function ProcessingResults({
             </Button>
             <Button
               disabled={!dedupPreview?.excludedIds.length}
-              onClick={() => {
+              onClick={async () => {
                 if (!dedupPreview) return;
-                setDeduplication(dedupPreview);
-                setSelected(new Set(dedupPreview.keptIds));
-                setKey(crypto.randomUUID());
-                setDedupPreview(null);
+                setBusy(true);
+                try {
+                  await post(`${path}/deduplication`, {
+                    resultIds: dedupPreview.checkedIds,
+                    action: "exclude",
+                    expectedRevision: value.task!.revision,
+                  });
+                  setSelected(new Set(dedupPreview.keptIds));
+                  setKey(crypto.randomUUID());
+                  setDedupPreview(null);
+                  await data.refetch();
+                } catch (e) {
+                  setError(errorText(e));
+                } finally {
+                  setBusy(false);
+                }
               }}
             >
               排除重复
@@ -1955,13 +2264,15 @@ function ProcessingResults({
           <DialogHeader>
             <DialogTitle>保存 {selected.size} 条处理结果</DialogTitle>
             <DialogDescription>
-              {destination === "draft" &&
-              value.rootOperation !== "augment" &&
-              run.options.operation !== "augment"
-                ? `更新 ${selected.size} 条记录的指定字段（${(value.adoptionFields ?? run.options.allowedFields)?.map((field) => ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[field as "question"]).join("、") ?? "未记录"}）。`
-                : destination === "asset"
-                  ? `保存 ${selected.size} 条到独立原始数据文件。`
-                  : `向草稿追加 ${selected.size} 条记录。`}{" "}
+              {value.task
+                ? `保存所选 ${selected.size} 条${destination === "draft" ? `：更新 ${[...selected].filter((id) => value.saveDisposition?.updateIds.includes(id)).length} 条，新增 ${[...selected].filter((id) => value.saveDisposition?.addIds.includes(id)).length} 条，移除 ${value.saveDisposition?.removeCount ?? 0} 条排除的原记录` : destination === "asset" ? "到原始数据" : "到草稿"}。当前仍有 ${Math.max(0, value.task.unsavedCount - selected.size)} 条未选择。`
+                : destination === "draft" &&
+                    value.rootOperation !== "augment" &&
+                    run.options.operation !== "augment"
+                  ? `更新 ${selected.size} 条记录的指定字段（${(value.adoptionFields ?? run.options.allowedFields)?.map((field) => ({ question: "问题", expectedOutput: "期望输出", metadata: "Metadata" })[field as "question"]).join("、") ?? "未记录"}）。`
+                  : destination === "asset"
+                    ? `保存 ${selected.size} 条到独立原始数据文件。`
+                    : `向草稿追加 ${selected.size} 条记录。`}{" "}
               {destination === "draft" && deduplication
                 ? `更新 ${value.rootOperation === "augment" ? 0 : selected.size} 条、新增 ${value.rootOperation === "augment" ? selected.size : 0} 条、移除 ${deduplication.removedRecordIds.length} 条重复原记录。`
                 : ""}

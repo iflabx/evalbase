@@ -1876,6 +1876,87 @@ export async function migrate(
     }
     await client.query(`ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_attempts integer NOT NULL DEFAULT 0;
       ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_started_at timestamptz`);
+    await client.query(`CREATE TABLE IF NOT EXISTS processing_task (
+      id text PRIMARY KEY, project_id text NOT NULL REFERENCES project(id),
+      root_run_id text NOT NULL REFERENCES processing_run(id),
+      latest_run_id text NOT NULL REFERENCES processing_run(id),
+      revision integer NOT NULL DEFAULT 0, current_refs jsonb NOT NULL DEFAULT '[]',
+      excluded_refs jsonb NOT NULL DEFAULT '[]', applied_run_id text, applied_hash text,
+      incomplete boolean NOT NULL DEFAULT false, updated_at timestamptz NOT NULL DEFAULT now());
+      ALTER TABLE processing_task ADD COLUMN IF NOT EXISTS assistant_session_id text REFERENCES assistant_session(id) ON DELETE SET NULL;
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS task_id text REFERENCES processing_task(id);
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS round_number integer;
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS round_kind text;
+      ALTER TABLE processing_run ADD COLUMN IF NOT EXISTS task_before jsonb;
+      CREATE INDEX IF NOT EXISTS processing_task_project_idx ON processing_task(project_id,updated_at DESC);
+      CREATE INDEX IF NOT EXISTS processing_run_task_idx ON processing_run(task_id,round_number)`);
+    await client.query(`CREATE OR REPLACE FUNCTION clear_processing_task_references() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD.input_ref IS NOT NULL AND NEW.input_ref IS NULL THEN
+          UPDATE processing_task SET current_refs='[]',excluded_refs='[]',revision=revision+1 WHERE id=NEW.task_id;
+        END IF;
+        RETURN NEW;
+      END $$;
+      DROP TRIGGER IF EXISTS processing_task_reference_cleanup ON processing_run;
+      CREATE TRIGGER processing_task_reference_cleanup AFTER UPDATE OF input_ref ON processing_run FOR EACH ROW EXECUTE FUNCTION clear_processing_task_references()`);
+    const roundsClaimed = await client.query(
+      `INSERT INTO schema_migration(id) VALUES('processing-task-rounds-v1') ON CONFLICT DO NOTHING RETURNING id`,
+    );
+    if (roundsClaimed.rowCount) {
+      const runs = (
+        await client.query(
+          "SELECT id,project_id,parent_run_id,created_at FROM processing_run ORDER BY created_at,id",
+        )
+      ).rows;
+      const byId = new Map(runs.map((r) => [r.id, r]));
+      const children = new Map<string, number>();
+      for (const r of runs)
+        if (byId.get(r.parent_run_id)?.project_id === r.project_id)
+          children.set(
+            r.parent_run_id,
+            (children.get(r.parent_run_id) ?? 0) + 1,
+          );
+      const chains = new Map<string, typeof runs>();
+      const depths = new Map<string, number>();
+      for (const r of runs) {
+        let cursor = r;
+        const path = new Set<string>();
+        let ambiguous = false;
+        while (
+          cursor.parent_run_id &&
+          byId.get(cursor.parent_run_id)?.project_id === r.project_id
+        ) {
+          if (path.has(cursor.id)) {
+            ambiguous = true;
+            break;
+          }
+          path.add(cursor.id);
+          cursor = byId.get(cursor.parent_run_id)!;
+          if ((children.get(cursor.id) ?? 0) > 1) ambiguous = true;
+        }
+        if ((children.get(r.id) ?? 0) > 1) ambiguous = true;
+        const root = ambiguous ? r.id : cursor.id;
+        depths.set(r.id, ambiguous ? 0 : path.size);
+        chains.set(root, [...(chains.get(root) ?? []), r]);
+      }
+      for (const [id, chain] of chains) {
+        chain.sort((a, b) => depths.get(a.id)! - depths.get(b.id)!);
+        await client.query(
+          "INSERT INTO processing_task(id,project_id,root_run_id,latest_run_id,updated_at) VALUES($1,$2,$1,$3,$4)",
+          [
+            id,
+            chain[0]!.project_id,
+            chain.at(-1)!.id,
+            chain.at(-1)!.created_at,
+          ],
+        );
+        for (const [index, r] of chain.entries())
+          await client.query(
+            "UPDATE processing_run SET task_id=$2,round_number=$3,round_kind=$4 WHERE id=$1",
+            [r.id, id, index + 1, index ? "continue" : null],
+          );
+      }
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

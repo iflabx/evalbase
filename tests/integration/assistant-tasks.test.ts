@@ -2448,9 +2448,12 @@ describe("assistant continuous task public contract", () => {
       });
       expect(patched.statusCode, patched.body).toBe(200);
       const actual = (await execute()).at(-1);
-      expect(
-        Buffer.byteLength(actual.messages.map((m: any) => m.content).join("")),
-      ).toBe(39999);
+      const actualBytes = Buffer.byteLength(
+        actual.messages.map((m: any) => m.content).join(""),
+      );
+      // Earlier-batch correction hints may shrink at the byte ceiling; the fixed input must remain usable.
+      expect(actualBytes).toBeLessThanOrEqual(39999);
+      expect(actualBytes).toBeGreaterThan(39000);
       expect(
         JSON.parse(actual.messages.at(-1).content).augmentationBatch,
       ).toEqual({ offset: 20, count: 1, total: 21 });

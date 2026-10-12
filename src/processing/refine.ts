@@ -7,6 +7,7 @@ import { deduplicate } from "./deduplication.js";
 import { freezeBackground } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import { adoptedCandidateKeys, candidateKey } from "./adoption.js";
+import { attachProcessingRound, guardProcessingTask } from "./task-state.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId, isPlainObject } from "../server/support.js";
@@ -101,6 +102,15 @@ export async function createRefinementRun(
         ? [...body.resultIds].sort()
         : [],
       options,
+      ...(scope.taskRound
+        ? {
+            task: {
+              id: scope.taskRound.taskId,
+              revision: scope.taskRound.expectedRevision,
+              kind: scope.taskRound.kind,
+            },
+          }
+        : {}),
     }),
   );
   const client = await db.connect();
@@ -132,6 +142,7 @@ export async function createRefinementRun(
       return { run: result.run, replayed: true };
     }
     const located = await getProcessingRun(client, scope, parentId);
+    await guardProcessingTask(client, scope);
     if (
       located.background_document_ids.length &&
       (
@@ -159,7 +170,11 @@ export async function createRefinementRun(
     const resultIds = (
       Array.isArray(body.resultIds) ? body.resultIds : []
     ) as string[];
-    if (data && resultIds.some((id) => !data.allIds.includes(id)))
+    if (
+      !scope.taskRound?.records &&
+      data &&
+      resultIds.some((id) => !data.allIds.includes(id))
+    )
       throw new ProcessingError(422, "processing_result_invalid");
     const adopted = data
       ? await adoptedCandidateKeys(
@@ -172,6 +187,7 @@ export async function createRefinementRun(
         )
       : new Set();
     if (
+      !scope.taskRound?.records &&
       resultIds.some((id) =>
         adopted.has(candidateKey({ runId: parentId, resultId: id })),
       )
@@ -202,7 +218,8 @@ export async function createRefinementRun(
       ],
     };
     const records: InputSnapshot["records"] =
-      mode === "rerun"
+      scope.taskRound?.records ??
+      (mode === "rerun"
         ? input.records.map(({ candidateOrigin: _origin, ...row }) => row)
         : data!.records
             .filter((row) => mode === "refine" || selected.has(row.id))
@@ -226,7 +243,7 @@ export async function createRefinementRun(
                   ? {}
                   : { revisions: original.revisions }),
               };
-            });
+            }));
     if (!records.length)
       throw new ProcessingError(422, "processing_result_invalid");
     if (
@@ -334,6 +351,7 @@ export async function createRefinementRun(
         ...(options.operation === "augment"
           ? {
               deduplicationBaseline: [
+                ...(scope.taskRound?.deduplicationBaseline ?? []),
                 ...(input.deduplicationBaseline ?? []),
                 ...input.records,
                 ...(data?.records.map((row) => ({
@@ -384,6 +402,7 @@ export async function createRefinementRun(
       ],
     );
     await linkAssistantProcessing(client, scope, runId);
+    await attachProcessingRound(client, scope, runId, parentId);
     await client.query("COMMIT");
     const result = await readProcessingRun(db, artifacts, scope, runId, {
       limit: "1",

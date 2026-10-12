@@ -7,7 +7,7 @@ test("continues only selected processed values without an intermediate save", as
   await page.route("**/api/**", async (route) => {
     if (await mockAccountRoute(route)) return;
     const path = new URL(route.request().url()).pathname;
-    if (path.endsWith("/processing-inputs"))
+    if (path.endsWith("/input"))
       return route.fulfill({
         json: {
           records: [0, 1].map((i) => ({
@@ -19,7 +19,7 @@ test("continues only selected processed values without an intermediate save", as
           allIds: ["candidate:0:0", "candidate:1:0"],
           total: 2,
           sourceTotal: 2,
-          sourceRevision: "parent-frozen",
+          sourceRevision: "1",
           metadataKeys: [],
           sourceSummary: { name: "问题.csv", kindLabel: "上一次处理结果", files: [] },
           parent: {
@@ -29,7 +29,7 @@ test("continues only selected processed values without an intermediate save", as
           },
         },
       });
-    if (path.endsWith("/followups")) {
+    if (path.endsWith("/rounds")) {
       const body = route.request().postDataJSON();
       attempts.push({ key: route.request().headers()["idempotency-key"]!, body });
       expect(body.resultIds).toEqual(["0:0", "1:0"]);
@@ -37,7 +37,7 @@ test("continues only selected processed values without an intermediate save", as
       if (attempts.length === 1) return route.abort("failed");
       return route.fulfill({ status: 201, json: { run: { id: "child" } } });
     }
-    if (path.endsWith("/processing-runs/parent") || path.endsWith("/processing-runs/child"))
+    if (path.endsWith("/processing-tasks/parent") || path.endsWith("/processing-tasks/child"))
       return route.fulfill({
         json: {
           run: {
@@ -50,6 +50,16 @@ test("continues only selected processed values without an intermediate save", as
             source: { kind: "assets" },
             createdAt: "2026-10-12",
             sourceSummary: { name: "问题.csv", files: [] },
+          },
+          task: {
+            id: "parent",
+            revision: 1,
+            title: "问题.csv · 数据处理",
+            roundCount: 1,
+            currentCount: 24,
+            excludedCount: 0,
+            unsavedCount: 24,
+            savedCount: 0,
           },
           records: Array.from({ length: 24 }, (_, i) => i)
             .slice(
@@ -88,7 +98,7 @@ test("continues only selected processed values without an intermediate save", as
   await expect(page.getByRole("alert")).toContainText("提交结果尚未确认");
   await expect(page.getByRole("textbox", { name: "具体要求" })).toBeDisabled();
   await page.getByRole("button", { name: "核对提交结果", exact: true }).click();
-  await expect(page).toHaveURL(/run=child/);
+  await expect(page).toHaveURL(/run=parent/);
   expect(attempts).toHaveLength(2);
   expect(attempts[0]).toEqual(attempts[1]);
 });
@@ -113,7 +123,7 @@ test("defaults to the true source draft and reconciles an unknown save with the 
         json: { receipt: { assetId: "saved", draftId: "source", adopted: 1 } },
       });
     }
-    if (path.endsWith("/processing-runs/draft-run"))
+    if (path.endsWith("/processing-tasks/draft-run"))
       return route.fulfill({
         json: {
           run: {
@@ -130,7 +140,18 @@ test("defaults to the true source draft and reconciles an unknown save with the 
               allowedFields: ["question"],
             },
           },
+          task: {
+            id: "draft-run",
+            revision: 1,
+            title: "真实来源草稿 · 数据处理",
+            roundCount: 1,
+            currentCount: 1,
+            excludedCount: 0,
+            unsavedCount: 1,
+            savedCount: 0,
+          },
           rootOperation: "augment",
+          saveDisposition: { updateIds: [], addIds: ["0:0"], removeCount: 0 },
           total: 1,
           allIds: ["0:0"],
           adoptedIds: [],
@@ -152,7 +173,7 @@ test("defaults to the true source draft and reconciles an unknown save with the 
   await page.getByLabel("选择结果 1", { exact: true }).check();
   await page.getByRole("button", { name: "保存回原草稿", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("真实来源草稿");
-  await expect(page.getByRole("dialog")).toContainText("向草稿追加 1 条记录");
+  await expect(page.getByRole("dialog")).toContainText("新增 1 条");
   await expect(page.getByRole("dialog").getByRole("combobox")).toHaveCount(0);
   await page.getByRole("button", { name: "确认保存", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("保存响应未确认");
@@ -162,6 +183,7 @@ test("defaults to the true source draft and reconciles an unknown save with the 
   await page.getByRole("button", { name: "确认保存", exact: true }).click();
   expect(attempts[0]).toEqual(attempts[1]);
   expect(attempts[1]?.body).toEqual({
+    expectedRevision: 1,
     resultIds: ["0:0"],
     target: { kind: "draft", id: "source", expectedRevision: 7 },
   });
@@ -176,7 +198,7 @@ test("shows compact source history, keeps distinct processing steps and restores
 }, info) => {
   await page.route("**/api/**", async (route) => {
     if (await mockAccountRoute(route)) return;
-    if (new URL(route.request().url()).pathname.endsWith("/processing-runs/source"))
+    if (new URL(route.request().url()).pathname.endsWith("/processing-tasks/source"))
       return route.fulfill({
         json: {
           run: {
@@ -272,7 +294,7 @@ for (const target of ["newDraft", "existingDraft"] as const) {
           json: { receipt: { assetId: "saved", draftId: "target", adopted: 1 } },
         });
       }
-      if (path.endsWith("/processing-runs/restore"))
+      if (path.endsWith("/processing-tasks/restore"))
         return route.fulfill({
           json: {
             run: {
@@ -284,6 +306,16 @@ for (const target of ["newDraft", "existingDraft"] as const) {
               outputCount: 1,
               createdAt: "2026-10-12",
               options: { operation: "clean", instructions: "", allowedFields: ["question"] },
+            },
+            task: {
+              id: "restore",
+              revision: 1,
+              title: "问题.csv · 数据处理",
+              roundCount: 1,
+              currentCount: 1,
+              excludedCount: 0,
+              unsavedCount: 1,
+              savedCount: 0,
             },
             total: 1,
             allIds: ["0:0"],

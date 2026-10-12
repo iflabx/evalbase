@@ -36,7 +36,7 @@ test("pages compact history on the server and stops polling idle tasks", async (
       return route.fulfill({ status: 500, json: { error: { code: "internal_error" } } });
     if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/processing-runs")) {
+    if (url.pathname.endsWith("/processing-tasks")) {
       requests.push(url);
       if (failure)
         return route.fulfill({ status: 500, json: { error: { code: "internal_error" } } });
@@ -45,6 +45,9 @@ test("pages compact history on the server and stops polling idle tasks", async (
         json: {
           runs: Array.from({ length: Math.min(20, 25 - offset) }, (_, i) => ({
             id: `task-${offset + i}`,
+            taskTitle: `任务 ${offset + i + 1} · 数据处理`,
+            currentCount: 1,
+            roundNumber: 1,
             source: { kind: "assets" },
             options: { operation: "clean", instructions: "整理空白" },
             sourceSummary: { name: `任务 ${offset + i + 1}`, kindLabel: "原始数据", files: [] },
@@ -63,10 +66,10 @@ test("pages compact history on the server and stops polling idle tasks", async (
     return route.fulfill({ json: { projects: [], pagination: { total: 0 } } });
   });
   await page.goto("/projects/p/processing");
-  await expect(page.getByText("任务 1 · 清洗", { exact: true })).toBeVisible();
+  await expect(page.getByText("任务 1 · 数据处理", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "下一页", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "下一页", exact: true }).click();
-  await expect(page.getByText("任务 21 · 清洗", { exact: true })).toBeVisible();
+  await expect(page.getByText("任务 21 · 数据处理", { exact: true })).toBeVisible();
   expect(requests.at(-1)?.searchParams.get("offset")).toBe("20");
   const count = requests.length;
   await page.waitForTimeout(5500);
@@ -76,7 +79,7 @@ test("pages compact history on the server and stops polling idle tasks", async (
   failure = true;
   await page.getByRole("button", { name: "刷新处理任务", exact: true }).click();
   await expect(page.getByText("读取失败，已保留上次结果。", { exact: true })).toBeVisible();
-  await expect(page.getByText("任务 21 · 清洗", { exact: true })).toBeVisible();
+  await expect(page.getByText("任务 21 · 数据处理", { exact: true })).toBeVisible();
   failure = false;
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(page.getByText("读取失败，已保留上次结果。", { exact: true })).toHaveCount(0);
@@ -89,7 +92,7 @@ test("pages compact history on the server and stops polling idle tasks", async (
   sessionFailure = true;
   await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("button", { name: "连接暂时中断，重试", exact: true })).toBeVisible();
-  await expect(page.getByText("任务 21 · 清洗", { exact: true })).toBeVisible();
+  await expect(page.getByText("任务 21 · 数据处理", { exact: true })).toBeVisible();
 });
 
 test("updates active tasks and stops periodic reads after completion", async ({ page }) => {
@@ -97,7 +100,7 @@ test("updates active tasks and stops periodic reads after completion", async ({ 
   await page.route("**/api/**", async (route) => {
     if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/processing-runs")) {
+    if (url.pathname.endsWith("/processing-tasks")) {
       reads++;
       const active = reads === 1;
       return route.fulfill({

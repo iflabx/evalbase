@@ -4,6 +4,15 @@ import {
   previewFollowupInput,
 } from "../../processing/refine.js";
 import { isPlainObject } from "../support.js";
+import {
+  readProcessingTask,
+  listProcessingTasks,
+  createProcessingTaskRound,
+  previewTaskInput,
+  processingTaskHistory,
+  deduplicateTask,
+  acceptTask,
+} from "../../processing/tasks.js";
 import { presentProcessingReview } from "../../processing/presentation.js";
 import { reviewCandidates } from "../../processing/review.js";
 import {
@@ -44,6 +53,108 @@ export function registerProcessing({
       throw error;
     }
   }
+  const tasks = "/api/projects/:projectId/processing-tasks";
+  app.get<{ Params: Params; Querystring: Record<string, string> }>(
+    tasks,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, () =>
+        listProcessingTasks(
+          db,
+          artifacts,
+          {
+            projectId: request.params.projectId,
+            actorId: (request as AuthenticatedRequest).actor.id,
+          },
+          request.query,
+        ),
+      ),
+  );
+  app.get<{ Params: Params; Querystring: Record<string, string> }>(
+    `${tasks}/:runId`,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, () =>
+        readProcessingTask(
+          db,
+          artifacts,
+          {
+            projectId: request.params.projectId,
+            actorId: (request as AuthenticatedRequest).actor.id,
+          },
+          request.params.runId,
+          request.query,
+        ),
+      ),
+  );
+  app.get<{ Params: Params; Querystring: Record<string, string> }>(
+    `${tasks}/:runId/history`,
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, () =>
+        processingTaskHistory(
+          db,
+          artifacts,
+          {
+            projectId: request.params.projectId,
+            actorId: (request as AuthenticatedRequest).actor.id,
+          },
+          request.params.runId,
+          request.query,
+        ),
+      ),
+  );
+  for (const action of ["rounds", "input", "deduplication", "accept"] as const)
+    app.post<{ Params: Params; Body: unknown }>(
+      `${tasks}/:runId/${action}`,
+      { preHandler: authenticate },
+      async (request, reply) => {
+        const actor = (request as AuthenticatedRequest).actor;
+        if (!writeAllowed(request, actor))
+          return reply.code(403).send({ error: { code: "csrf_rejected" } });
+        const scope = {
+          projectId: request.params.projectId,
+          actorId: actor.id,
+        };
+        return respond(reply, async () => {
+          if (action === "rounds") {
+            const result = await createProcessingTaskRound(
+              db,
+              artifacts,
+              scope,
+              request.params.runId,
+              request.headers["idempotency-key"],
+              request.body,
+            );
+            return reply.code(result.replayed ? 200 : 201).send(result);
+          }
+          if (action === "input")
+            return previewTaskInput(
+              db,
+              artifacts,
+              scope,
+              request.params.runId,
+              request.body,
+            );
+          if (action === "deduplication")
+            return deduplicateTask(
+              db,
+              artifacts,
+              scope,
+              request.params.runId,
+              request.body,
+            );
+          return acceptTask(
+            db,
+            artifacts,
+            scope,
+            request.params.runId,
+            request.headers["idempotency-key"],
+            request.body,
+          );
+        });
+      },
+    );
   app.post<{ Params: Params; Body: unknown }>(
     "/api/projects/:projectId/processing-inputs",
     { preHandler: authenticate },

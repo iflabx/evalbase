@@ -34,6 +34,7 @@ export type ReviewRow = {
   sourcePresentation?: SourcePresentation;
   sourceLabel?: string;
   changedFields?: string[];
+  unprocessed?: boolean;
   issues?: { code: string }[];
 };
 export const issueLabels: Record<string, string> = {
@@ -311,7 +312,7 @@ export function ProcessingReview({
   const returnFocus = useRef<HTMLTableRowElement | null>(null);
   const changes = (row: ReviewRow) =>
     row.changedFields ??
-    (generated || !row.original
+    ((row.sourcePresentation?.generated ?? generated) || !row.original
       ? ["new"]
       : ["question", "expectedOutput", "metadata"].filter(
           (field) =>
@@ -367,7 +368,7 @@ export function ProcessingReview({
                   <Checkbox
                     aria-label={`选择结果 ${offset + index + 1}`}
                     checked={selected.has(row.id)}
-                    disabled={disabled}
+                    disabled={disabled || row.unprocessed}
                     onCheckedChange={(value) => onToggle(row.id, value === true)}
                   />
                 </td>
@@ -414,13 +415,16 @@ export function ProcessingReview({
                     <MetadataSummary entries={row.result.metadata} />
                   )}
                   <p className="text-xs text-primary">
-                    {changes(row)
-                      .filter(
-                        (field) =>
-                          field !== "metadata" || !metadataChanges(row.original, row.result).length,
-                      )
-                      .map((field) => fieldLabels[field] ?? field)
-                      .join("、") || (changes(row).length ? "" : "未改变")}
+                    {row.unprocessed
+                      ? "尚未处理，保留原值"
+                      : changes(row)
+                          .filter(
+                            (field) =>
+                              field !== "metadata" ||
+                              !metadataChanges(row.original, row.result).length,
+                          )
+                          .map((field) => fieldLabels[field] ?? field)
+                          .join("、") || (changes(row).length ? "" : "未改变")}
                   </p>
                   {row.issues?.map((issue, i) => (
                     <p key={i} className="text-xs text-destructive">
@@ -529,7 +533,9 @@ export function ProcessingReview({
               <div className="grid min-w-0 gap-4 sm:grid-cols-2">
                 <Card className="min-w-0 overflow-hidden">
                   <CardHeader className="border-b bg-muted/60 px-4 py-3">
-                    <h3 className="font-semibold">{generated ? "参考输入" : "修改前"}</h3>
+                    <h3 className="font-semibold">
+                      {(detail.sourcePresentation?.generated ?? generated) ? "参考输入" : "修改前"}
+                    </h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     <FullValue

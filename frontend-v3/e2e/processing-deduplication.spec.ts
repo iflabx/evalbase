@@ -7,12 +7,19 @@ test("checks hidden selections, restores exclusions, and confirms explicit origi
   const ids = Array.from({ length: 25 }, (_, i) => `${Math.floor(i / 20)}:${i % 20}`);
   const kept = ids.filter((id) => id !== "1:0");
   let checked: string[] = [],
-    save: {resultIds: string[]; deduplication: {checkedIds: string[]}} | undefined;
+    save: { resultIds: string[]; expectedRevision: number } | undefined;
+  let excluded = false;
   await page.route("**/api/**", async (route) => {
     if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url()),
       path = url.pathname;
     if (path.endsWith("/deduplication")) {
+      const body = route.request().postDataJSON();
+      if (body.action === "restore") {
+        excluded = false;
+        return route.fulfill({ json: { restoredIds: ["1:0"] } });
+      }
+      if (body.action === "exclude") excluded = true;
       checked = route.request().postDataJSON().resultIds;
       return route.fulfill({
         json: {
@@ -41,7 +48,7 @@ test("checks hidden selections, restores exclusions, and confirms explicit origi
     }
     if (path.endsWith("/collaborative-drafts/draft"))
       return route.fulfill({ json: { draft: { revision: 3 } } });
-    if (path.endsWith("/processing-runs/run")) {
+    if (path.endsWith("/processing-tasks/run")) {
       const search = url.searchParams.get("search");
       const offset = Number(url.searchParams.get("offset") ?? 0);
       const visible = search
@@ -61,6 +68,17 @@ test("checks hidden selections, restores exclusions, and confirms explicit origi
             createdAt: "2026-10-13",
           },
           rootOperation: "clean",
+          task: {
+            id: "run",
+            revision: 1,
+            title: "协作草稿 · 数据处理",
+            roundCount: 1,
+            currentCount: excluded ? 24 : 25,
+            excludedCount: excluded ? 1 : 0,
+            unsavedCount: excluded ? 24 : 25,
+            savedCount: 0,
+          },
+          saveDisposition: { updateIds: ids, addIds: [], removeCount: excluded ? 1 : 0 },
           records: visible.map((i) => ({
             id: ids[i],
             original: { question: "问题", expectedOutput: "A", metadata: [] },
@@ -101,10 +119,10 @@ test("checks hidden selections, restores exclusions, and confirms explicit origi
     await page.screenshot({ path: info.outputPath(`opt16-results-${width}.png`), fullPage: true });
   }
   await page.getByRole("button", { name: "保存回原草稿", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("移除 1 条重复原记录");
+  await expect(page.getByRole("dialog")).toContainText("移除 1 条排除的原记录");
   await page.getByRole("button", { name: "确认保存", exact: true }).click();
   await expect.poll(() => save?.resultIds).toEqual(kept);
-  expect(save!.deduplication.checkedIds).toEqual(ids);
+  expect(save!.expectedRevision).toBe(1);
 });
 
 test("shows only five status filters and keeps one-page footers close to settled tables", async ({

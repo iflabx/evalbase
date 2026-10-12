@@ -10,6 +10,8 @@ import {
 } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import { deduplicate } from "./deduplication.js";
+import { attachProcessingRound, guardProcessingTask } from "./task-state.js";
+import type { TaskRound, TaskSave } from "./task-state.js";
 import {
   filterProcessingRecords,
   processingSourceSummary,
@@ -52,6 +54,9 @@ export type ProcessingScope = {
   acceptanceGroups?: { runId: string; resultIds: string[] }[];
   /** Internal completion context, derived from immutable results, never a public body. */
   completionBaseline?: ProcessingResult["records"];
+  /** Resolved and fenced by the task service, never trusted from a run request. */
+  taskRound?: TaskRound;
+  taskSave?: TaskSave;
 };
 export type ProcessingSource =
   | { kind: "assets"; assetIds: string[]; recordIds: string[] }
@@ -65,6 +70,9 @@ export type InputSnapshot = {
   background?: BackgroundSnapshot;
   records: (ProcessingInput & {
     candidateOrigin?: CandidateOrigin;
+    taskRecordKey?: string;
+    adoptionOperation?: ProcessingOptions["operation"];
+    adoptionFields?: ProcessingOptions["allowedFields"];
     baseline?: ProcessingInput & {
       source?: unknown;
       revisions?: Record<string, number>;
@@ -331,9 +339,10 @@ function missingCount(row: ProcessingRun) {
   return Math.max(0, expected - Number(row.output_count ?? 0));
 }
 
-function summary(row: ProcessingRun) {
+export function processingRunSummary(row: ProcessingRun) {
   return {
     id: row.id,
+    taskId: (row as ProcessingRun & { task_id?: string }).task_id,
     parentRunId: row.parent_run_id ?? null,
     continuationKind: row.continuation_kind ?? null,
     jobId: row.job_id,
@@ -365,6 +374,7 @@ function summary(row: ProcessingRun) {
     result: row.result,
   };
 }
+const summary = processingRunSummary;
 const runStatusColumns =
   "j.payload->>'continuationKind' AS continuation_kind,j.status,j.progress,j.error_code,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues";
 const selectRun = `SELECT r.*,j.result,${runStatusColumns} FROM processing_run r JOIN job j ON j.id=r.job_id`;
@@ -424,6 +434,15 @@ export async function createProcessingRun(
       source,
       options,
       target,
+      ...(scope.taskRound
+        ? {
+            task: {
+              id: scope.taskRound.taskId,
+              revision: scope.taskRound.expectedRevision,
+              kind: scope.taskRound.kind,
+            },
+          }
+        : {}),
       ...(scope.expectedInputHash
         ? { expectedInputHash: scope.expectedInputHash }
         : {}),
@@ -448,7 +467,13 @@ export async function createProcessingRun(
       await client.query("COMMIT");
       return { run: summary(run), replayed: true };
     }
+    await guardProcessingTask(client, scope);
     const data = await snapshot(client, scope.projectId, source);
+    if (scope.taskRound?.recordKeys)
+      data.records = data.records.map((row) => ({
+        ...row,
+        taskRecordKey: scope.taskRound!.recordKeys![row.id],
+      }));
     if (
       scope.expectedInputHash &&
       scope.expectedInputHash !==
@@ -548,6 +573,7 @@ export async function createProcessingRun(
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])
     ).rows[0];
     await linkAssistantProcessing(client, scope, runId);
+    await attachProcessingRound(client, scope, runId);
     await client.query("COMMIT");
     return { run: summary(run), replayed: false };
   } catch (error) {
@@ -923,7 +949,18 @@ export async function controlProcessingRun(
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `processing-candidates:${scope.projectId}`,
+    ]);
     const run = await getProcessingRun(client, scope, runId, true);
+    const workspace = (
+      await client.query(
+        "SELECT latest_run_id FROM processing_task WHERE id=(SELECT task_id FROM processing_run WHERE id=$1) FOR UPDATE",
+        [runId],
+      )
+    ).rows[0];
+    if (workspace && workspace.latest_run_id !== runId)
+      throw new ProcessingError(409, "processing_task_changed");
     await processingAccess(client, scope, true);
     await guardAssistantCommit(client, scope);
     if (action === "cancel")

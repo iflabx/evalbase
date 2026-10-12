@@ -1,6 +1,7 @@
 import { contentKey, deduplicate } from "./deduplication.js";
 import { guardAssistantCommit } from "../assistant/fence.js";
 import { adoptedCandidateKeys } from "./adoption.js";
+import { guardProcessingTask } from "./task-state.js";
 import { processingResultName } from "./names.js";
 import type { Database } from "../db/pool.js";
 import { writeBatches } from "../db/batch.js";
@@ -46,7 +47,7 @@ export function processingAcceptanceHash(
   );
 }
 
-async function selectedGroup(
+export async function selectedProcessingGroup(
   db: Pick<Database, "query">,
   artifacts: ArtifactRepository,
   scope: ProcessingScope,
@@ -99,10 +100,12 @@ async function selectedGroup(
         source: run.source,
         originalId: input.baseline?.id ?? row.sourceId,
         adoptionFields:
+          input.adoptionFields ??
           snapshot.continuation?.adoptionFields ??
           snapshot.refinement?.adoptionFields ??
           run.options.allowedFields,
         rootOperation:
+          input.adoptionOperation ??
           snapshot.continuation?.rootOperation ??
           snapshot.refinement?.rootOperation ??
           run.options.operation,
@@ -132,7 +135,7 @@ export async function previewDeduplication(
 ) {
   await processingAccess(db, scope);
   const ids = checkedIds(value),
-    group = await selectedGroup(db, artifacts, scope, runId, ids),
+    group = await selectedProcessingGroup(db, artifacts, scope, runId, ids),
     rows = group.selected;
   const knownDraft =
     group.run.target_draft_id ??
@@ -234,7 +237,7 @@ export async function acceptProcessingResults(
   })) ?? [{ runId, resultIds: ids }];
   if (
     !groups.length ||
-    groups.length > 12 ||
+    groups.length > (scope.taskSave ? 10000 : 12) ||
     new Set(groups.map((group) => group.runId)).size !== groups.length ||
     groups.some(
       (group) =>
@@ -326,7 +329,7 @@ export async function acceptProcessingResults(
     const loaded = [];
     for (const group of groups)
       loaded.push(
-        await selectedGroup(
+        await selectedProcessingGroup(
           client,
           artifacts,
           scope,
@@ -349,7 +352,18 @@ export async function acceptProcessingResults(
       if (priorCandidates.size)
         throw new ProcessingError(409, "processing_already_adopted");
     }
-    if (groups.length > 1) {
+    await guardProcessingTask(client, scope);
+    const activeTask =
+      !scope.assistantGuard &&
+      (
+        await client.query(
+          `SELECT t.id FROM processing_task t JOIN processing_run latest ON latest.id=t.latest_run_id JOIN job j ON j.id=latest.job_id
+      WHERE t.id IN(SELECT task_id FROM processing_run WHERE id=ANY($1::text[])) AND j.status NOT IN('succeeded','failed','cancelled') FOR UPDATE OF t`,
+          [groups.map((group) => group.runId)],
+        )
+      ).rowCount;
+    if (activeTask) throw new ProcessingError(409, "processing_still_running");
+    if (groups.length > 1 && !scope.taskSave) {
       await guardAssistantCommit(client, scope);
       const task = (
         await client.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -396,17 +410,31 @@ export async function acceptProcessingResults(
       canonicalJson(sortedIds(dedupPlan.keptIds)) !== canonicalJson(ids)
     )
       throw new ProcessingError(409, "processing_deduplication_changed");
-    const excludedRows = dedupPlan
+    const excludedRows = scope.taskSave
       ? (
-          await selectedGroup(
-            client,
-            artifacts,
-            scope,
-            runId,
-            dedupPlan.excludedIds,
+          await Promise.all(
+            scope.taskSave.excludedGroups.map((group) =>
+              selectedProcessingGroup(
+                client,
+                artifacts,
+                scope,
+                group.runId,
+                group.resultIds,
+              ),
+            ),
           )
-        ).selected
-      : [];
+        ).flatMap((group) => group.selected)
+      : dedupPlan
+        ? (
+            await selectedProcessingGroup(
+              client,
+              artifacts,
+              scope,
+              runId,
+              dedupPlan.excludedIds,
+            )
+          ).selected
+        : [];
     let draftId: string | null =
       target.kind === "draft" ? String(target.id) : null;
     let revision = 0;
@@ -426,7 +454,7 @@ export async function acceptProcessingResults(
       );
       revision = Number(draft.revision);
       if (
-        dedupPlan?.removedRecordIds.length &&
+        (dedupPlan?.removedRecordIds.length || excludedRows.length) &&
         revision !== target.expectedRevision
       )
         throw new ProcessingError(409, "draft_revision_conflict");
@@ -464,7 +492,13 @@ export async function acceptProcessingResults(
         row.source.kind === "draft" &&
         row.source.id === draftId &&
         row.rootOperation !== "augment" &&
-        dedupPlan?.removedRecordIds.includes(row.originalId),
+        (scope.taskSave
+          ? !selected.some(
+              (kept) =>
+                kept.originalId === row.originalId &&
+                kept.rootOperation !== "augment",
+            )
+          : dedupPlan?.removedRecordIds.includes(row.originalId)),
     );
     const removingIds = [...new Set(removingRows.map((row) => row.originalId))];
     if (removingIds.length) {
@@ -490,6 +524,8 @@ export async function acceptProcessingResults(
     }
     const replacingIds = replacingRows.map((row) => row.originalId);
     const replacingSet = new Set(replacingRows);
+    const savedRows: { runId: string; resultId: string; recordId: string }[] =
+      [];
     if (draftId) {
       const existing = await client.query(
         "SELECT id,question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
@@ -731,6 +767,18 @@ export async function acceptProcessingResults(
       const appending = selected
         .map((row, index) => ({ row, index }))
         .filter(({ row }) => !replacingSet.has(row));
+      const appendedIds = new Map(
+        appending.map(({ index }) => [index, opaqueId("draftrow")]),
+      );
+      selected.forEach((row, index) =>
+        savedRows.push({
+          runId: row.runId,
+          resultId: row.id,
+          recordId: replacingSet.has(row)
+            ? row.originalId
+            : appendedIds.get(index)!,
+        }),
+      );
       if (appending.length)
         await writeBatches(
           client,
@@ -741,7 +789,7 @@ export async function acceptProcessingResults(
         FROM jsonb_to_recordset($3::jsonb) AS x(id text,position bigint,question text,expected_output text,metadata jsonb,source jsonb,run_id text)`,
           [draftId, scope.actorId],
           appending.map(({ row, index }) => ({
-            id: opaqueId("draftrow"),
+            id: appendedIds.get(index)!,
             position: ++highWater,
             question: row.question,
             expected_output: row.expectedOutput,
@@ -774,6 +822,10 @@ export async function acceptProcessingResults(
       removed: removingIds.length,
       updated: replacingRows.length,
       added: selected.length - replacingRows.length,
+      ...(scope.taskSave?.requestHash
+        ? { taskRequestHash: scope.taskSave.requestHash }
+        : {}),
+      ...(draftId ? { savedRows } : {}),
       ...(groups.length > 1 ? { resultGroups: groups } : {}),
       ...(draftId ? { revision: revision + 1 } : {}),
     };
@@ -797,6 +849,17 @@ export async function acceptProcessingResults(
         ],
       );
     await guardAssistantCommit(client, scope);
+    if (scope.taskSave) {
+      const removedRefs = removingRows.map(
+        (row) => `${row.runId}\u001f${row.id}`,
+      );
+      await client.query(
+        `UPDATE processing_task SET revision=revision+1,updated_at=now(),
+        excluded_refs=coalesce((SELECT jsonb_agg(ref) FROM jsonb_array_elements(excluded_refs) ref
+          WHERE NOT ((ref->>'runId') || chr(31) || (ref->>'resultId') = ANY($2::text[]))), '[]'::jsonb) WHERE id=$1`,
+        [scope.taskSave.taskId, removedRefs],
+      );
+    }
     await client.query("COMMIT");
     return { receipt, replayed: false };
   } catch (error) {
