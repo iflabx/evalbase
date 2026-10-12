@@ -90,6 +90,14 @@
 - 系统产物名称统一使用 UTF-8 中文。`scripts/repair-processing-names.ts` 默认只预览；apply 必须先以独占方式创建备份映射，再按资产/项目/关联扩写运行/旧名称精确更新，回执中的同一文件名同步修正。rollback 使用同一映射和条件反向更新；重复 apply 不再修改。仅命中已确认的 `鎵╁厖结果-运行尾号.jsonl`，不转码用户文件、不修改对象字节或来源身份。
 - 控件沿用 frontend-v1 的 Button、Dialog、DropdownMenu、表格及 token。实施、边界复验与 checkpoint 固定版本见 [OPT-13 验证](../../.scratch/assistant-optimization/opt13-verification.md)。
 
+### OPT-14 列表读取与加载体验
+
+- `GET processing-runs` 复用原路由，新增有界 limit/offset/search/status；最近 100 项、顺序、私人背景及来源生命周期校验不变，授权范围筛选后统计并分页，单页最多 20 项。SQL 只读取列表所需投影，来源摘要按请求复用，发起人批量关联，采用回执只读取当前页；完整任务要求、输入身份、模型配置及产物正文仍由详情路径按需读取。助手领域读取不调用此分页接口。
+- `hasActive` 覆盖当前授权最近历史，而非仅当前页；活跃历史每 5 秒更新，终态历史停止定时更新，隐藏窗口暂停。成功创建/取消/重试/保存使历史失效；返回、恢复前台、重新联网及显式刷新会核对。受影响只读列表缓存 15 秒，键含账号、项目及条件，过渡旧行不可按新范围操作；读取使用 AbortSignal，防抖 275 ms 并避开中文组合输入。
+- 公共品牌外壳先出现，正文等待会话及权限。受影响列表保留标题、表头、列宽与分页区域；首次失败不能冒充已确认空结果。同范围后台更新保留最近真实结果及输入/选择，固定状态区避免反复插入提示；401/403/404 隔离旧内容，短暂网络/5xx 保留已确认内容及恢复入口。登录先取消/清理私有查询；侧栏项目、个人资料与在线状态按账号隔离。
+- 约 200 ms 后才显示加载提示；骨架采用 donor token，首次内容和页面切换仅 180 ms 淡入，后台更新不重播。减少动态效果时关闭动画。保存/采用/发布仍使用原权限、范围、CAS 与幂等复核，不因展示缓存放宽写入。
+- 无新表、迁移、路由、依赖或动画框架。变更限于 Web/列表读取，Worker 配方与模型调用不变；实际验证及独立服务代码版本见 [OPT-14 记录](../../.scratch/assistant-optimization/opt14-verification.md)。
+
 ## 5. 数据一致性与可复用点
 
 复用 hasProjectCapability、CSRF/Origin、mapMaterialRecord、writeBatches、ArtifactRepository、统一版本读取、草稿字段 CAS 和实际同步发布事务。不要恢复旧 /jobs、/drafts、/candidates、/transformation-runs 公共接口。
