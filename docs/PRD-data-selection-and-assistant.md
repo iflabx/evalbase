@@ -139,6 +139,10 @@ Owner 确认将页面文案审查整理为 [OPT-15](../.scratch/assistant-optimi
 
 Owner 确认将四点建议整理为 [OPT-16](../.scratch/assistant-optimization/issues/16-processing-deduplication-and-list-ux.md)：扩写按完整有效集合去重并有界补齐；清洗提供显式去重，保存回原草稿的重复行移除须在现有保存确认中列明；生成来源如实展示任务参考范围；三个列表收紧间距和分页，执行筛选归为五类。具体规则、边界与验收集中在该 Ticket，覆盖本节及 OPT-11–15 中对应的旧表达，未涉及行为继续有效。原始资料、正式版本、历史结果与真实来源保留，权限、修订、幂等和人工采用规则继续生效；UI 严格对齐 frontend-v1。当前只授权编写文档，Implementation not-started，不代表已实施或验收通过。
 
+### 6.9 单任务工作区与处理轮次增补（2026-10-13，待实施）
+
+Owner 确认将连续处理集中为 [OPT-17](../.scratch/assistant-optimization/issues/17-processing-task-rounds.md)：一个处理任务在列表占一行，在同一工作区配置后续处理、查看当前有效结果与只读轮次历史；后续清洗/改写替换所选并保留未选成果，扩写追加，保存以当前有效集合及累计实际改动为准。具体范围、已保存对象续做、并发/历史兼容和验收集中于 Ticket，实施依赖 OPT-16。此增补覆盖 §6.5/OPT-13 对应的分散展示、手动未选成果及汇总规则，保留后台独立运行、来源事实、字段保护、权限、修订、幂等及人工保存/发布约束；不引入正式版本树。UI 严格对齐 frontend-v1。当前仅文档授权，Implementation not-started。
+
 ## 7. AI-04 项目助手
 
 本节为当前整改目标，实施状态见 [台账](../.scratch/assistant-optimization/spec.md)。通用数据任务沿用 §6 的三字段、来源和字段保护合同；不得将安全风险分类或某个样例数量设为产品默认。

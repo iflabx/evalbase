@@ -1,5 +1,7 @@
 # 项目助手实测优化实施规格
 
+2026-10-13 最新计划：[OPT-17 单任务工作区与轻量处理轮次历史](issues/17-processing-task-rounds.md) 已按 Owner 要求建立；Implementation not-started，仅文档授权。实施依赖 OPT-16，连续处理在同一任务汇总当前成果并按需查看轮次；合同与十项验收集中于 Ticket，UI 严格对齐 frontend-v1。以下旧实施及验收记录保留。
+
 2026-10-13 最新计划：[OPT-16 数据处理去重补齐、来源说明与列表体验优化](issues/16-processing-deduplication-and-list-ux.md) 已按 Owner 要求整理为一张 Ticket；Implementation not-started，当前只授权文档、未授权开发。规则、有限补齐、原草稿移除确认及九项验收集中于 Ticket；UI 严格对齐 frontend-v1，沿用现有实现与环境，不改写以下历史状态。
 
 2026-10-13 最新实施：[OPT-15 页面文案精简与信息层级优化](issues/15-ui-copy-and-information-hierarchy.md) 已完成处理页、测试集草稿、设置和助手的重复说明删减及辅助信息折叠，保留关键结果、范围和异常反馈，UI 严格复用 frontend-v1。应用 `214d961`，Implementation completed，Owner pending；同一 4217 的 Web 固定版本、针对性验证及限制见 [实施记录](opt15-verification.md)，既有 Ticket 验收状态不改写。
@@ -56,6 +58,7 @@ Implementation: in-progress
 | [OPT-14](issues/14-loading-performance-and-transitions.md) | 列表减量、按需刷新、稳定布局、搜索防抖与轻量加载过渡 | 现有 OPT-13 实现；Owner 已授权开发 | completed | [实施与验证](opt14-verification.md)；同一 4217、一次 checkpoint，Owner pending |
 | [OPT-15](issues/15-ui-copy-and-information-hierarchy.md) | 页面文案精简、重复统计合并、辅助说明按需展示 | 现有 OPT-14 实现；Owner 已授权开发 | completed | [实施记录](opt15-verification.md)；同一 4217、一次 checkpoint，Owner pending |
 | [OPT-16](issues/16-processing-deduplication-and-list-ux.md) | 去重与有界补齐、真实参考范围、紧凑分页及五类执行筛选 | 现有 OPT-13–15；当前仅文档授权 | not-started | 一张 Ticket、一次集中 checkpoint；未开发，UI 严格对齐 frontend-v1 |
+| [OPT-17](issues/17-processing-task-rounds.md) | 单任务工作区、当前成果汇总、轮次历史与跨轮保存 | OPT-16；当前仅文档授权 | not-started | 一张 Ticket、一次集中 checkpoint；未开发，UI 严格对齐 frontend-v1 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
