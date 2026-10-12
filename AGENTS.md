@@ -2,165 +2,81 @@
 
 ## Project
 
-This repository contains the EvalBase Phase 1A product definition and application implementation. Commit `92cb8a5` / `prototype/solo-workflow-v5.3` is the complete user-visible interaction contract: the product must include every frozen behavior and expose no user operation absent from that prototype. `frontend-v1/` is the immutable visual/component donor; `frontend-v2/` is deprecated history; formal frontend work occurs only under `frontend-v3/`.
-
-## EvalBase v2 work
-
-For specs, Tickets, implementation, or checkpoint work under `.scratch/evalbase-v2/`, read [v2 Implementation Spec](.scratch/evalbase-v2/spec.md) first. It defines the v2 source-of-truth overrides, four Ticket dependencies, three checkpoint batches, authorization semantics, and progress ledger. Use the v2 PRD and frozen login/multiuser prototype for changed behavior; keep v1 contracts for inherited behavior. Continue using `frontend-v1/` as the immutable donor and `frontend-v3/` as the implementation target.
-
-Apply the implementation skill pair, TDD, necessary validation, review, and resource-isolation rules below to v2 behavior-changing Ticket work as well. Use **Proportional changes** for presentation-only follow-ups. For v2 only, the Spec's per-feature branch and batch authorization/checkpoint rules replace per-Ticket branching, repeated authorization within an authorized batch, and individual Owner checkpoints. Explicitly authorizing one Ticket still authorizes only that Ticket. Keep v1 history unchanged. Run docs:check and also validate v2 links, dependencies, and the Spec lifecycle table; the existing checker covers the v1 ledger only.
-
-## Current implementation state
-
-Confirm the exact branch, `HEAD`, and [implementation progress](docs/agents/phase1a-progress.md) before making a new change. `Status:` remains the triage eligibility label defined in `docs/agents/triage-labels.md`; implementation completion is recorded separately in each Ticket's `Implementation:` line and `Comments`.
-
-Run `npm run docs:check` when a Ticket changes documentation, lifecycle records, the progress ledger, or cross-document status. It is not required for a code-only Ticket that cannot affect those files.
-
-For branch creation, integration, GitHub push, Release and deployment handoff, follow [development workflow](docs/agents/development-workflow.md).
-
-## Proportional changes
-
-Choose checks by the effect of the diff. A presentation-only follow-up changes visible wording, accessible labels, or styling without changing an operation, navigation, state, permission, API, stored data, or domain meaning. Handle it on the authorized branch with the smallest diff; it does not need a new Ticket, parity table, red-green test, full Standards/Spec review, or broad suite solely because it touches `frontend-v3/`. Review the final diff and affected wording occurrences; for changed TS/TSX run frontend typecheck, and use one focused browser check when available. A checkpoint Web rebuild already covers the frontend build. Update an existing assertion only when its expected wording changed. If an unrelated stale test fixture blocks that check, report it and use a direct browser check; repair the fixture as separate work.
-
-For a terminology change, update only current normative documents that define the affected term. Preserve historical PRDs and frozen prototypes unless the Owner requests their revision. Regenerate a flow diagram only when the flow changes. Run `docs:check` when documentation changes. Prefer one local commit for the change and its necessary documentation.
-
-For an existing Owner checkpoint, reuse its data and resources. Rebuild only services whose code changed, then verify the fixed Web SHA, health, and affected page; a frontend-only change needs only Web. A documentation-only edit needs no container rebuild. Use the Ticket protocol and wider validation when behavior, data, security, or another public contract changes, or when the Owner explicitly requests them.
+EvalBase contains the product definitions and application implementation. `frontend-v1/` is the read-only visual/component donor; `frontend-v2/` is deprecated history; formal frontend changes belong in `frontend-v3/`. Frozen prototypes remain read-only unless the Owner explicitly requests their revision.
 
 ## Sources of truth
 
-- When changing product scope, behavior, formats, states, permissions, or acceptance criteria, read `docs/PRD-evalbase-v1.md` and `CONTEXT.md` first.
-- Treat the PRD as the normative product contract and `CONTEXT.md` as the domain-language contract.
-- Treat `docs/architecture/phase1a-architecture.md` as the Phase 1A technical design and qualifying ADRs under `docs/adr/` as the authority for hard-to-reverse technical decisions. Read both before writing specs, tickets, or implementation; neither may expand the PRD.
-- When designing or implementing the Phase 1A Web, read `docs/architecture/phase1a-frontend-reuse.md`, the frozen prototype record, and [`docs/reviews/phase1a-frozen-prototype-v5.3-contract-ticket-implementation-delta-audit.md`](docs/reviews/phase1a-frozen-prototype-v5.3-contract-ticket-implementation-delta-audit.md). `frontend-v3/` is the formal frontend; never edit `frontend-v1/` or continue product development in deprecated `frontend-v2/`.
-- Keep `docs/system-flow-v2.md`, `docs/system-flow-v2.mmd`, and `docs/system-flow-v2.png` aligned with affected PRD behavior.
-- Treat `docs/research/reference-products.md` as research evidence, not as a product commitment. Verify changed external claims against primary sources.
+- Use the current feature's approved PRD and Implementation Spec for behavior; use `CONTEXT.md` for domain meaning. Latest explicit Owner decisions override earlier project rules within their stated scope. Preserve applicable security and data constraints; ask only when a material conflict remains unresolved by those decisions and the documented scope.
+- For Phase 1A inherited behavior, use `docs/PRD-evalbase-v1.md`, `docs/architecture/phase1a-architecture.md` and relevant `docs/adr/` decisions. Commit `92cb8a5` / `prototype/solo-workflow-v5.3` governs that iteration, not later approved features.
+- For v2 work, use [v2 Implementation Spec](.scratch/evalbase-v2/spec.md) to locate the v2 PRD, frozen prototype, batch dependencies and progress. For later feature tracks, use the current Ticket's governing Spec, such as `.scratch/agent-data-processing/spec.md` or `.scratch/assistant-optimization/spec.md` when present in the working checkout. Later approved contracts override only the behavior they change; inherited behavior keeps its existing contract.
+- Read the current Ticket in full. Read only affected sections of its Spec, PRD, glossary, architecture, test plan and relevant ADRs; follow references that constrain this change. Reuse already-read unchanged context. Historical audits and decision records are evidence to consult when needed, not a mandatory reading chain.
+- For workflow only, this guide replaces older generic full-reading, per-Ticket branch/confirmation and duplicate-check requirements in Specs or Skills. Product AC, explicit execution holds and risk-specific safety checks remain binding.
+- For frontend work, consult the applicable prototype and [frontend reuse guidance](docs/architecture/phase1a-frontend-reuse.md). Research documents are evidence, not product commitments; verify external claims when changing them.
+
+## Current implementation state
+
+At the start of a task, inspect the working directory, branch, `HEAD` and relevant tracked/untracked changes; preserve unrelated work. Consult the feature's progress record when executing a Ticket. Phase 1A uses [implementation progress](docs/agents/phase1a-progress.md); later tracks use their Spec ledger. `Status:` is the triage label; `Implementation:` and Comments record execution.
+
+Follow [development workflow](docs/agents/development-workflow.md) for branches, integration, push and deployment. Reuse the authorized feature/batch branch; a new Ticket within it does not require another branch. Implementation must not run directly on `main`. Merge, push, tag, Release and production deployment each need authorization covering that action; existing explicit authorization remains valid within its scope and must not be requested again.
+
+## Proportional changes
+
+- **Documentation only:** change the relevant rules/records, inspect the diff, check changed Markdown and run `npm run docs:check` once after the final document edits. No application build, browser checkpoint, TDD or full code review is required.
+- **Presentation only:** wording, accessible labels or styling without changing operations, navigation, state, permissions, APIs, stored data or domain meaning. Use the smallest diff on the authorized branch. No new Ticket, parity table, red-green test, full Standards/Spec review or broad suite is needed solely for changing frontend files. Inspect affected occurrences; run frontend typecheck for TS/TSX and one focused browser check when available. An actual checkpoint Web rebuild counts as the build check. Update existing wording assertions only when affected; report unrelated fixture failures without expanding the task.
+- **Behavior changes:** use the Ticket protocol below. A known, localized bug needs a focused reproduction/regression and affected checks; the full diagnostic loop is reserved for an unclear cause, intermittent failure or complex regression. Do not create a new Ticket solely to fix an already authorized localized bug.
+- Choose validation by the affected behavior and risk. Reuse successful checks for unchanged inputs; rerun only checks invalidated by later changes. Full repository suites require a concrete remaining risk or an explicit gate. Ordinary Owner acceptance alone is not such a reason.
+- Reuse the existing Owner checkpoint and its data. Rebuild only changed services; a documentation-only edit leaves the running environment unchanged. Update current normative terminology only when its meaning or display contract changes; preserve historical PRDs and frozen prototypes.
 
 ### Frontend prototype parity
 
-For every behavior-changing Ticket that changes `frontend-v3/`, treat frozen v5.3 as the interaction contract and `frontend-v1/` as the visual/component donor. Presentation-only follow-ups use **Proportional changes** above. Before editing, write a compact Ticket-local parity table covering the affected page's visible fields, control order, labels, enabled states, empty/error states, and explicit exclusions. Do not replace that comparison with a generic component library interpretation.
+For behavior-changing frontend Tickets, compare the affected screen with its applicable frozen prototype plus recorded Owner-approved amendments. Record only the affected fields, control order, labels, states and exclusions in a compact Ticket note; reuse an existing comparison when still valid. Match `frontend-v1/` typography, tokens, icons, density and suitable components. Do not introduce a different visual style through a design skill.
 
-- Reuse copied donor typography, tokens, components, icons, layout and decorative transitions directly where they fit. Decorative donor animation may remain when it adds no user operation, page, state or workflow and honors `prefers-reduced-motion`.
-- Implement only the frozen paths that belong to the current Ticket. Do not make a later-Ticket path look callable through a fake route, placeholder page, hidden wide API, or speculative control; record any necessary staged inactive item explicitly in the Ticket.
-- Before commit, run the current Ticket's narrow browser semantic check when the browser environment is available, and check the affected screen against the frozen prototype for hierarchy, control order, labels, pagination, dialogs, empty/error states and forbidden controls. Owner checkpoint dependencies follow the relevant Ticket; the incremental-storage iteration uses the batches in [Test Plan §H.3](docs/test-plan-phase1a.md#h3-切换与验收规则).
+Check the affected page through a focused browser flow when available, including relevant empty/error states and narrow-window behavior. Never claim a browser check passed when unavailable. Do not expose future operations through fake routes, placeholder pages or hidden wider APIs. Public APIs must implement the current approved contract, with permissions enforced server-side.
 
 ## Agent skills
 
-### Issue tracker
+Use Skills whose scope matches the task; explaining a term or editing a rule is not an implementation task. Load a relevant Skill once and reuse it until its instructions change. Project scope, explicit user decisions and safety constraints take precedence over generic Skill workflows.
 
-Issues and specs are tracked as local Markdown under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Triage uses the default canonical state labels. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-This is a single-context repository: use the root `CONTEXT.md` and record qualifying technical decisions under `docs/adr/`. See `docs/agents/domain.md`.
+- Local issues/specs: [issue tracker](docs/agents/issue-tracker.md).
+- Eligibility labels: [triage labels](docs/agents/triage-labels.md).
+- Domain vocabulary and ADR use: [domain docs](docs/agents/domain.md).
 
 ## Phase 1A ticket execution protocol
 
-Apply this protocol to every behavior-changing implementation Ticket under `.scratch/phase1a-test-data-management/issues/`. Presentation-only follow-ups use **Proportional changes**. A Ticket marked `ready-for-agent` is eligible for work only when all dependencies are complete and no Project Owner execution hold remains.
+This protocol also applies to later behavior-changing Tickets, with their current Spec and batch rules. A ready label indicates eligibility, not authorization; check dependencies and any active Owner hold.
 
 ### Required skill pair
 
-For every Project Owner-authorized behavior-changing Ticket implementation, use `implement` and `ponytail full` together. Confirm that both skill instructions are loaded before implementation; if either skill is unavailable in the active session, report the missing skill and stop instead of simulating it.
+Use `implement` and `ponytail full` for authorized behavior-changing Ticket implementation. If unavailable, identify the missing Skill; do not pretend to have followed it. This pair does not trigger for documentation/presentation-only follow-ups. Minimalism must preserve accepted requirements, permissions, validation at trust boundaries, data-loss protection and accessibility.
 
-- `implement` owns the outer workflow: execute the current Ticket from its approved Spec, use TDD at the agreed public seams, run regular and final checks, perform the required code review, and create the permitted local commit.
-- `ponytail full` owns each implementation decision: understand the affected flow first, then prefer existing code, the standard library, native platform behavior, installed dependencies, and the smallest working diff—in that order.
-- The PRD, `CONTEXT.md`, architecture, ADRs, Implementation Spec, current Ticket, test plan, and this protocol remain authoritative over both skills. Minimalism may remove speculative structure, but it may not remove an acceptance criterion, required test evidence, trust-boundary validation, data-loss protection, security control, accessibility requirement, or explicit Owner instruction.
-- `implement` does not authorize work on `main`, bypass the checks below, push a commit, clear an execution hold, or continue into another Ticket.
+### Implementation and validation
 
-### 1. Read and bound the Ticket
-
-Before editing implementation files, read in full:
-
-1. This `AGENTS.md`.
-2. The current Ticket and its referenced Implementation Spec.
-3. `docs/PRD-evalbase-v1.md` and `CONTEXT.md`.
-4. `docs/reviews/phase1a-solo-owner-decision-record.md`.
-5. `docs/architecture/phase1a-architecture.md`.
-6. Every ADR referenced by the Ticket or governing its affected seam.
-7. `docs/test-plan-phase1a.md`.
-
-Follow any additional required-reading links in the Ticket. For Web work or reuse from `frontend-v1/`, also follow the frontend-reuse rule in **Sources of truth** above.
-
-The implementation boundary is the current Ticket's smallest accepted Phase 1A vertical slice. Use only approved data classifications. Keep Phase 1B capabilities, future-Ticket behavior, real sensitive data, and speculative abstractions outside the change.
-
-### 2. Establish the start state
-
-Before the first test or implementation edit:
-
-1. Report `git status --short`, the current branch, and the baseline commit. Preserve existing user changes; stop if an unaccounted change overlaps the Ticket.
-2. Confirm the current Ticket's dependencies are complete and that the Project Owner has authorized execution.
-3. Confirm that the required `implement` + `ponytail full` pair is active.
-4. Create a Ticket-specific working branch from the approved baseline. Implementation work must not run directly on `main`.
-5. Name the public test seam for this Ticket and identify the acceptance criterion exercised by the first slice.
-6. Show the first planned red → green behavior: the public observation that will fail, why it should fail, and the smallest expected green outcome.
-7. Inventory every affected public route and current caller. Mark each route `reused`, `narrowed`, or `retired` under Architecture §5.0; a historical frontend, Ticket, or test is not a current compatibility requirement.
-
-If the Ticket, Implementation Spec, ADR, PRD, or `CONTEXT.md` disagree on behavior, scope, domain meaning, capacity, permissions, or allowed data, stop before implementation and ask the Project Owner to resolve the conflict.
-
-The start state is complete only when the skill pair, branch, dependency/authorization state, public seam, target AC, and first red → green behavior are all explicit.
-
-### 3. Implement one behavior at a time
-
-- Use TDD: make one public behavior fail for the intended reason, add only the code required to make it pass, then refactor within the same proven behavior if needed.
-- Complete one vertical red → green slice before starting another. Test observable contracts rather than private tables, keys, call order, or implementation structure.
-- Make each affected HTTP request, response and action no wider than the frozen prototype. Prefer narrowing an existing route; add a thin task route only when the existing deep module is reusable but its public contract cannot be narrowed in place. Remove the superseded route from public registration within the owning Ticket.
-- Run the narrow relevant test after each change. Add integration or static checks only when the current behavior crosses those seams.
-- Keep the diff within the current Ticket. Leave unrelated cleanup and refactoring untouched.
-- Preserve the confirmed product scope. Stop and request a decision before changing product behavior, domain meaning, ADRs, capacity, permissions, or allowed data.
-
-### 4. Verify and review before commit
-
-After the Ticket's final green behavior:
-
-1. Select the **necessary validation set** from the actual diff and public seam. By default it contains the directly affected normal path, one applicable critical failure/boundary path, and static/build/document checks for affected files.
-2. Do not run the complete repository unit, integration, E2E, performance, security, or persistence suite by default. Expand only for a database migration/persistence change, shared request/security boundary, publication/version allocator, permanent deletion, shared parser/CSV contract, frontend deployment cutover, formal release/Owner acceptance, or explicit Project Owner instruction.
-3. Use the `code-review` skill once on the final diff for **Standards** and **Spec**. Fix every P0/P1 finding and rerun only the finding's regression test and directly affected checks. An unresolved P0/P1 blocks completion and commit.
-4. Review the final diff for accidental Phase 1B behavior, future-Ticket implementation, unrelated refactoring, and changes outside the approved data/environment boundary.
-5. Create the local implementation commit only after the selected necessary checks pass. Do not push unless the Project Owner explicitly requests it.
-6. A separate Ticket Closure Review under [`docs/agents/ticket-review-protocol.md`](docs/agents/ticket-review-protocol.md) is required only for a high-risk Ticket, formal frontend/deployment cutover, release acceptance, or explicit Project Owner request. Otherwise the Standards/Spec review plus targeted P0/P1 recheck is the closure evidence.
-7. Update the Ticket's `Implementation:` line, `Comments`, and progress ledger when completion changes. Record the implementation SHA, `reused` / `narrowed` / `retired` route list, actual validation commands, review result, next-Ticket dependency, omitted broad suites, and why the selected evidence is sufficient. Run `npm run docs:check` for those documentation changes; a separate progress-only commit is optional rather than mandatory.
-
-### 5. Report and stop
-
-The final Ticket report must state:
-
-- What was implemented and which acceptance criteria it satisfies.
-- Test and validation evidence, including exact commands, outcomes, why the selected set is sufficient, and which broader suites were not run.
-- Standards/Spec code-review results and any unresolved risks.
-- The fixed `HEAD`; if a Closure Review was triggered, include its conclusion, accepted P2 findings, and untested claims. For an intermediate Ticket in a combined batch, provide automated evidence and identify the later checkpoint batch.
-- The local commit SHA.
-- Which next Ticket, if any, is now unblocked.
-
-Stop after the report. Never start the next Ticket without a separate Project Owner instruction.
+1. Establish the baseline, approved scope and branch once. Test boundaries already defined by the approved Ticket/Spec are agreed; choose routine tests at existing public interfaces without another confirmation. Ask only about an unresolved material change in product contract, data use, permissions or cost. Preserve overlapping user changes and resolve ambiguous ownership before editing them.
+2. Implement one observable behavior at a time using red → green checks for new logic or meaningful regressions. Refactor within the same proven behavior when necessary. Trace affected callers; inventory routes only when their public contracts actually change. Keep unrelated cleanup and future capabilities out of the diff.
+3. Validate the affected normal path, applicable critical failure/boundary paths and relevant static/build/document checks. Migration, shared security, publication, deletion, parser or cutover changes require evidence for those risks, not an automatic full-suite run.
+4. Review the final implementation diff once for Standards and Spec using `code-review`, including uncommitted changes when reviewing before commit. Apply the bounded risk matrix in [Ticket review protocol](docs/agents/ticket-review-protocol.md) to that same review when needed. Fix P0/P1 findings; recheck their regression and directly affected behavior. Do not repeat a complete review just because HEAD changes through a documentation commit.
+5. Commit only this task's intended files on the authorized branch after necessary checks pass. Update the current Ticket/ledger when lifecycle state changes. Store detailed commands, baseline, code SHA, findings and results once in a Ticket or evidence record; other records link to it. A separate progress-only commit is optional.
+6. Report the result, relevant checks/limits, commit and checkpoint instructions briefly. Continue within an already authorized Ticket batch when dependencies permit; stop at an agreed checkpoint or the end of authorized scope. A single-Ticket instruction authorizes only that Ticket. Acceptance alone does not grant new scope.
 
 ### Owner browser checkpoint environment
 
-Use the checkpoint cadence in [Test Plan §H.3](docs/test-plan-phase1a.md#h3-切换与验收规则) for the incremental-storage iteration. An intermediate Ticket in a combined batch closes with automated evidence and its own report, then waits for separate Owner authorization for the next Ticket; its batch checkpoint is created at the final Ticket's fixed `HEAD`. Other Tickets retain their own checkpoint after the local implementation commit. A checkpoint is a verification environment, not a production deployment.
-
-1. Give the Compose project, edge/internal networks, PostgreSQL volume, MinIO volume, database and bucket a checkpoint-batch-specific `owner-checkpoint` name. Bind Web only to a free loopback port unless the Project Owner explicitly authorizes an already approved access path. Never restart, replace, or reuse another checkpoint or project's running resources.
-2. At initial checkpoint creation, start the Ticket's backend, Worker and `frontend-v3` together. For a follow-up to an existing checkpoint, rebuild only changed services as described in **Proportional changes**. Point the frontend API proxy only at that checkpoint backend. Do not leave the Owner testing stale changed code.
-3. Set `GIT_SHA` from the fixed commit, verify `/health.git_sha` and `/health/ready`, then verify one frontend API request reaches that same backend. Report any unavailable prerequisite as a blocked checkpoint; do not describe it as ready.
-4. Before handoff, seed the isolated checkpoint with small, allowed synthetic test data for its Ticket/batch. Verify the seeded records through the same frontend API the Owner will use. In the report give the browser URL, SSH tunnel command when needed, test-set/version identifiers, setup data, short browser actions, expected results and any behavior supported only by automated evidence. The Owner should be able to open the page and start testing without preparing the fixture.
-5. Keep the checkpoint running for feedback. After explicit Owner acceptance, record the accepted SHA, result and evidence in the Ticket Comments and progress ledger, then stop and remove only that checkpoint's containers, networks, PostgreSQL/MinIO volumes, seeded test data and port binding. Verify the exact Compose project and resource names before removal; preserve acceptance logs and hashes outside the disposable volumes, and report cleanup completion or any failed removal. Acceptance releases only the dependency stated in the tracker and never authorizes the next Ticket automatically.
-
-For a Ticket with no browser-observable behavior, still switch the checkpoint to its fixed `HEAD`, report that no new browser assertion exists, and give the smallest Owner-visible health or workflow verification that proves the changed seam is active.
+- Follow the current Spec's agreed checkpoint batches. For incremental storage, see [Test Plan §H.3](docs/test-plan-phase1a.md#h3-切换与验收规则). Intermediate Tickets in an authorized batch can continue with automated evidence; do not request the same authorization per Ticket.
+- Keep checkpoints isolated from production and other projects. Reuse the designated Owner environment; create new resources only when isolation requires them. Check exact Compose project, paths, networks, database, bucket and port before changing resources. Bind Web to loopback unless an alternative access path is explicitly authorized.
+- Build changed services at a fixed code commit. Verify their code identity, `/health`, `/health/ready` and one frontend request to the intended backend. Unchanged services may retain their recorded code SHA; a later documentation-only HEAD does not require rebuilding them. Do not claim readiness when a prerequisite failed.
+- Keep setup small and understandable: normally one synthetic acceptance project and two accounts (administrator and edit role). Preserve existing Owner-created projects, accounts and data; this default limits new fixtures, not existing user data. Extra test identities/resources must be temporary and isolated. Provide the URL/tunnel and short acceptance steps, with automated-only claims identified.
+- After explicit acceptance, record the accepted code SHA and result. Release resources known to be exclusive and disposable for that batch, after verifying their identities and preserving evidence. Shared/reused Owner environments and user data are retained. Stopping compute is separate from deleting databases, volumes, buckets or files; acceptance is not blanket deletion authorization. If resource ownership or disposability is unclear, retain it and report the issue.
+- Backend-only changes need targeted runtime verification when required by the checkpoint, not invented browser assertions. Documentation-only work has no runtime checkpoint.
 
 ## Editing rules
 
-- Write Markdown in UTF-8 and use the established Chinese product terminology from `CONTEXT.md`.
-- Preserve confirmed Phase 1A boundaries unless the user explicitly changes them; record future capabilities as backlog rather than silently expanding P0.
-- Keep each requirement in one authoritative place. Link to supporting documents instead of duplicating long explanations.
-- When the main flow changes, keep the first Mermaid block in `docs/system-flow-v2.md` identical to `docs/system-flow-v2.mmd`, then regenerate the PNG.
+- Write Markdown in UTF-8 and use the current Chinese product terminology. Keep each requirement in one authoritative place and link supporting evidence.
+- Preserve confirmed scope and frozen history unless explicitly changed. Do not access or modify other server projects. Keep credentials out of logs, reports and commits; use only the data and environments authorized for the task.
+- When the main flow changes, keep the first Mermaid block in `docs/system-flow-v2.md` identical to `docs/system-flow-v2.mmd`, then regenerate its PNG. Do not regenerate diagrams for unrelated changes.
 
 ## Validation
 
-- Check changed Markdown for broken links, malformed tables, and unclosed fences.
-- Parse every changed JSON example.
-- Render every changed Mermaid diagram. Regenerate the main PNG with:
+Check changed Markdown links, tables and fences; parse changed JSON examples; render changed Mermaid diagrams. Run document/lifecycle validation once for the final affected document set. Regenerate the main diagram only when changed:
 
-  `npx -y @mermaid-js/mermaid-cli@11.12.0 -i docs/system-flow-v2.mmd -o docs/system-flow-v2.png -b white -w 5600 -H 1800 -s 1`
+`npx -y @mermaid-js/mermaid-cli@11.12.0 -i docs/system-flow-v2.mmd -o docs/system-flow-v2.png -b white -w 5600 -H 1800 -s 1`
 
-- For deployed Web/Worker validation, set `GIT_SHA=$(git rev-parse --short HEAD)` when running Compose, then verify `/health.git_sha` matches that commit. Ignored `dist/`, `playwright-report/`, and `test-results/` are never progress or deployment evidence.
+For actual checkpoint builds, set `GIT_SHA` to the fixed code commit and verify deployed identity as above. Ignored `dist/`, `playwright-report/` and `test-results/` alone are not progress or deployment evidence.

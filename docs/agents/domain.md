@@ -2,10 +2,10 @@
 
 How engineering skills consume this repository's domain documentation.
 
-## Before exploring
+## Read when relevant
 
-- Read the root `CONTEXT.md`.
-- Read ADRs under `docs/adr/` that affect the area being changed.
+- Read affected sections of the root `CONTEXT.md` when domain meaning, behavior, formats or permissions are involved. Reuse already-read unchanged context; copy/style-only work does not require a full glossary read.
+- Read ADRs under `docs/adr/` that constrain the actual change; a documentation edit does not require unrelated architecture reading.
 - If `docs/adr/` does not exist or contains no relevant ADR, proceed silently.
 
 ## Layout
