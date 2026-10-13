@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Arrow as TooltipArrow } from "@radix-ui/react-tooltip";
 import {
   Sheet,
   SheetContent,
@@ -1398,21 +1399,24 @@ function ProcessingForm({
                               </button>
                             </TooltipTrigger>
                             <TooltipContent
-                              side="bottom"
+                              side="top"
                               align="end"
-                              className="max-w-[min(20rem,calc(100vw-2rem))] space-y-2 p-3 leading-relaxed"
+                              sideOffset={8}
+                              collisionPadding={16}
+                              className="max-w-[min(20rem,calc(100vw-2rem))] space-y-2 overflow-visible rounded-md border border-border bg-popover/95 p-3 leading-relaxed text-popover-foreground shadow-md backdrop-blur-sm"
                             >
-                              <p className="font-medium">什么时候适合用{label}？</p>
+                              <p className="font-semibold">什么时候适合用{label}？</p>
                               <ul className="list-disc space-y-1 pl-4">
                                 {operationScenarios[kind].map((scenario) => (
                                   <li key={scenario}>{scenario}</li>
                                 ))}
                               </ul>
                               {kind === "clean" && (
-                                <p className="border-t border-primary-foreground/20 pt-2">
+                                <p className="border-t border-border pt-2 text-xs text-muted-foreground">
                                   纠错和统一格式需填写补充要求；重复检查不会自动删除记录。
                                 </p>
                               )}
+                              <TooltipArrow width={12} height={6} className="fill-popover/95 stroke-border" />
                             </TooltipContent>
                           </Tooltip>
                         </div>
