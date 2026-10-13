@@ -1091,6 +1091,7 @@ export async function listProcessingTasks(
     )
   ).rows;
   const recent = [];
+  const currentRefs = new Map<string, TaskRef[]>();
   for (const { id } of ids) {
     try {
       const { task, runs, latest } = await taskState(db, artifacts, scope, id);
@@ -1106,32 +1107,7 @@ export async function listProcessingTasks(
           [latest.actor_id],
         )
       ).rows[0];
-      let savedCount = 0;
-      for (const group of groupRefs(task.current_refs)) {
-        const refs = task.current_refs.filter(
-          (ref) => ref.runId === group.runId && !ref.inputId,
-        );
-        const keys = await adoptedCandidateKeys(
-          db,
-          artifacts,
-          scope,
-          [
-            {
-              run: { id: group.runId },
-              records: refs.map((ref) => ({
-                id: ref.resultId,
-                candidateOrigin: ref.origin ?? {
-                  runId: ref.runId,
-                  resultId: ref.resultId,
-                },
-              })),
-            },
-          ],
-          undefined,
-          true,
-        );
-        savedCount += keys.size;
-      }
+      currentRefs.set(task.id, task.current_refs);
       recent.push({
         status: run.status,
         progress: run.progress,
@@ -1156,8 +1132,6 @@ export async function listProcessingTasks(
         roundCount: runs.length,
         currentCount: task.current_refs.length,
         incomplete: task.incomplete,
-        savedCount,
-        unsavedCount: task.current_refs.length - savedCount,
       });
       if (recent.length === 100) break;
     } catch (error) {
@@ -1186,8 +1160,49 @@ export async function listProcessingTasks(
               ? run.status === "cancelled"
               : run.status === "failed" || run.incomplete)),
   );
+  const page = [];
+  const adoptedReads = new Map<
+    string,
+    Awaited<ReturnType<typeof readProcessingRun>>
+  >();
+  for (const row of matched.slice(offset, offset + limit)) {
+    const refs = currentRefs.get(row.id)!;
+    let savedCount = 0;
+    for (const group of groupRefs(refs)) {
+      const candidates = refs.filter(
+        (ref) => ref.runId === group.runId && !ref.inputId,
+      );
+      const keys = await adoptedCandidateKeys(
+        db,
+        artifacts,
+        scope,
+        [
+          {
+            run: { id: group.runId },
+            records: candidates.map((ref) => ({
+              id: ref.resultId,
+              candidateOrigin: ref.origin ?? {
+                runId: ref.runId,
+                resultId: ref.resultId,
+              },
+            })),
+          },
+        ],
+        undefined,
+        true,
+        [],
+        adoptedReads,
+      );
+      savedCount += keys.size;
+    }
+    page.push({
+      ...row,
+      savedCount,
+      unsavedCount: row.currentCount - savedCount,
+    });
+  }
   return {
-    runs: matched.slice(offset, offset + limit),
+    runs: page,
     pagination: { total: matched.length, offset, limit },
     recentLimit: 100,
     hasActive: recent.some((run) => !terminal(run.status)),

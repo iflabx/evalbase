@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
 import { createPool } from "../../src/db/pool.js";
 import { migrate } from "../../src/db/migrate.js";
@@ -302,6 +302,90 @@ describe("single processing task with durable rounds", () => {
       await root.query(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
     } finally {
       await root.end();
+    }
+  });
+  it("loads saved counts only for the current page and resolves each legacy receipt once per request", async () => {
+    const ids: string[] = [];
+    for (let index = 0; index < 4; index++) {
+      const created = await post(runs(), {
+        source: {
+          ...source,
+          recordIds: source.recordIds.slice(index, index + 1),
+        },
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      await finish(created.json().run);
+      ids.push(created.json().run.id);
+      const current = await get(`${tasks()}/${ids[index]}?limit=100`);
+      if (index === 0) {
+        const accepted = await post(`${tasks()}/${ids[index]}/accept`, {
+          expectedRevision: current.task.revision,
+          resultIds: current.allIds,
+          target: { kind: "newDraft", name: "分页保存状态", purpose: "" },
+        });
+        expect(accepted.statusCode, accepted.body).toBe(200);
+      }
+    }
+    const db = createPool(databaseUrl);
+    let legacyRefs: string[];
+    try {
+      await db.query(
+        "UPDATE processing_acceptance SET receipt=receipt-'candidateOrigins' WHERE run_id=$1",
+        [ids[0]],
+      );
+      legacyRefs = (
+        await db.query(
+          "SELECT input_ref ref FROM processing_run WHERE id=$1 UNION SELECT result_ref ref FROM processing_batch WHERE run_id=$1 AND result_ref IS NOT NULL",
+          [ids[0]],
+        )
+      ).rows.map((row) => row.ref);
+    } finally {
+      await db.end();
+    }
+    const reads = vi.spyOn(ArtifactRepository.prototype, "readBytes");
+    try {
+      const first = await get(`${tasks()}?limit=2&offset=0`);
+      expect(first.pagination.total).toBe(4);
+      expect(first.runs.map((row: any) => row.id)).toEqual(
+        ids.slice(2).reverse(),
+      );
+      expect(
+        first.runs.map((row: any) => [row.savedCount, row.unsavedCount]),
+      ).toEqual([
+        [0, 1],
+        [0, 1],
+      ]);
+      for (const ref of legacyRefs)
+        expect(
+          reads.mock.calls.filter(([objectRef]) => objectRef === ref),
+        ).toHaveLength(1);
+      reads.mockClear();
+      const second = await get(`${tasks()}?limit=2&offset=2`);
+      expect(second.runs.map((row: any) => row.id)).toEqual(
+        ids.slice(0, 2).reverse(),
+      );
+      expect(
+        second.runs.map((row: any) => [row.savedCount, row.unsavedCount]),
+      ).toEqual([
+        [0, 1],
+        [1, 0],
+      ]);
+      for (const ref of legacyRefs)
+        expect(
+          reads.mock.calls.filter(([objectRef]) => objectRef === ref),
+        ).toHaveLength(1);
+      reads.mockClear();
+      const search = await get(`${tasks()}?limit=2&search=no-matching-task`);
+      expect(search.runs).toHaveLength(0);
+      expect(search.pagination.total).toBe(0);
+      expect(reads).not.toHaveBeenCalled();
+    } finally {
+      reads.mockRestore();
     }
   });
   it("OPT18 recovers temporary and JSON failures inside one persisted budget", async () => {

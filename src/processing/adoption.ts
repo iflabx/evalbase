@@ -23,6 +23,7 @@ export async function adoptedCandidateKeys(
   draftId?: string,
   shared = false,
   excludeRunIds: string[] = [],
+  cached = new Map<string, Awaited<ReturnType<typeof readProcessingRun>>>(),
 ) {
   const receipts = (
     await db.query(
@@ -31,10 +32,6 @@ export async function adoptedCandidateKeys(
     )
   ).rows;
   const identities = new Set<string>();
-  const cached = new Map<
-    string,
-    Awaited<ReturnType<typeof readProcessingRun>>
-  >();
   for (const receipt of receipts) {
     for (const id of receipt.result_ids as string[])
       identities.add(candidateKey({ runId: receipt.run_id, resultId: id }));
