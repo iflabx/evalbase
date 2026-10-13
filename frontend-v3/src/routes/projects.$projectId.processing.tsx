@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Plus, Search, MoreHorizontal, RefreshCw } from "lucide-react";
+import { FileText, Plus, Search, MoreHorizontal, RefreshCw, CircleHelp } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sheet,
   SheetContent,
@@ -184,6 +185,26 @@ type ResultPage = {
   issues: { code: string; count?: number }[];
 };
 const labels = { clean: "清洗", rewrite: "改写", augment: "扩充" };
+const operationScenarios = {
+  clean: [
+    "导入的数据前后有多余空格。",
+    "文本有明显错别字，希望按补充要求纠正。",
+    "标点或格式不统一，希望规范整理。",
+    "希望检查空问题、重复内容。",
+  ],
+  rewrite: [
+    "问题表达不清楚，希望改得更自然、易懂。",
+    "希望调整措辞、语气或表达方式。",
+    "期望输出不准确，需要修改答案或分类标签。",
+    "希望补充或调整 Metadata 中的分类、场景等信息。",
+  ],
+  augment: [
+    "现有测试数据不足，希望增加新题目。",
+    "希望围绕同一意图，增加不同的问法。",
+    "希望补充不同场景、难度或边界情况。",
+    "希望参考已有数据，生成指定数量的新记录。",
+  ],
+};
 const HISTORY_COLUMN_WIDTHS = ["40%", "10%", "15%", "22%", "13%"];
 const statuses: Record<string, string> = {
   queued: "等待中",
@@ -706,6 +727,8 @@ function ProcessingForm({
   const pendingSubmission = useRef(saved?.pendingSubmission);
   const [unknownSubmit, setUnknownSubmit] = useState(Boolean(saved?.pendingSubmission));
   const [scopeChanged, setScopeChanged] = useState(false);
+  const [operationHelp, setOperationHelp] = useState<keyof typeof labels | null>(null);
+  const helpOpenOnPointerDown = useRef(false);
   const [page, setPage] = useState(saved?.page ?? 1),
     [selected, setSelected] = useState<Set<string>>(new Set(saved?.selected)),
     [operation, setOperation] = useState<"clean" | "rewrite" | "augment">(
@@ -1330,21 +1353,73 @@ function ProcessingForm({
             </CardHeader>
             <CardContent className="space-y-5 p-4">
               <div className="space-y-2 text-sm">
-                <div className="flex gap-2" role="group" aria-label="处理方式">
-                  {Object.entries(labels).map(([value, label]) => (
-                    <Button
-                      key={value}
-                      size="sm"
-                      className="flex-1"
-                      variant={operation === value ? "default" : "outline"}
-                      aria-pressed={operation === value}
-                      disabled={busy}
-                      onClick={() => switchOperation(value as typeof operation)}
-                    >
-                      {label}
-                    </Button>
-                  ))}
-                </div>
+                <TooltipProvider delayDuration={250}>
+                  <div className="flex gap-2" role="group" aria-label="处理方式">
+                    {Object.entries(labels).map(([value, label]) => {
+                      const kind = value as keyof typeof labels;
+                      return (
+                        <div key={value} className="relative min-w-0 flex-1">
+                          <Button
+                            size="sm"
+                            className="w-full pr-8"
+                            variant={operation === value ? "default" : "outline"}
+                            aria-pressed={operation === value}
+                            disabled={busy}
+                            onClick={() => switchOperation(kind)}
+                          >
+                            {label}
+                          </Button>
+                          <Tooltip
+                            open={operationHelp === kind}
+                            onOpenChange={(open) =>
+                              setOperationHelp((current) =>
+                                open ? kind : current === kind ? null : current,
+                              )
+                            }
+                          >
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={`${label}适用场景`}
+                                className={`absolute right-1 top-1 inline-flex size-6 items-center justify-center rounded-sm cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${operation === value ? "text-primary-foreground/80 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                                onPointerDown={() => {
+                                  helpOpenOnPointerDown.current = operationHelp === kind;
+                                }}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  const wasOpen =
+                                    event.detail === 0
+                                      ? operationHelp === kind
+                                      : helpOpenOnPointerDown.current;
+                                  setOperationHelp(wasOpen ? null : kind);
+                                }}
+                              >
+                                <CircleHelp className="size-3.5" aria-hidden="true" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="bottom"
+                              align="end"
+                              className="max-w-[min(20rem,calc(100vw-2rem))] space-y-2 p-3 leading-relaxed"
+                            >
+                              <p className="font-medium">什么时候适合用{label}？</p>
+                              <ul className="list-disc space-y-1 pl-4">
+                                {operationScenarios[kind].map((scenario) => (
+                                  <li key={scenario}>{scenario}</li>
+                                ))}
+                              </ul>
+                              {kind === "clean" && (
+                                <p className="border-t border-primary-foreground/20 pt-2">
+                                  纠错和统一格式需填写补充要求；重复检查不会自动删除记录。
+                                </p>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </TooltipProvider>
                 <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
