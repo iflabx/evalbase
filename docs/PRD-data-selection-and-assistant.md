@@ -139,6 +139,10 @@ Owner 确认将页面文案审查整理为 [OPT-15](../.scratch/assistant-optimi
 
 Owner 授权实施 [OPT-17](../.scratch/assistant-optimization/issues/17-processing-task-rounds.md)。同一连续处理在列表中保留一项和稳定工作区，当前结果按身份汇总，历史按需只读；本张覆盖 §6.5 中每轮独立列表项的交互，保留底层运行、来源、权限、字段保护、预算及保存回执。跨轮增改删、部分失败、重新运行与已保存草稿继续的合同和验收集中于 Ticket，不增加正式版本树；UI 严格复用 frontend-v1。
 
+### 6.9 处理恢复与操作配置增补（2026-10-13）
+
+Owner 确认将失败诊断及清洗、扩写字段配置建议整理为 [OPT-18](../.scratch/assistant-optimization/issues/18-processing-recovery-and-operation-settings.md)。按操作用途呈现清洗范围、改写字段及扩写生成设置，默认继续保护期望输出和 Metadata；统一错误分类、预算内恢复、去重补齐反馈及部分完成展示，阻止预算耗尽后的无效重试。具体合同和验收集中于 Ticket，覆盖 §6.1/6.3 的通用常驻字段区及原无条件重试交互，保留权限、固定范围、真实来源和采用/发布确认。UI 严格对齐 frontend-v1；当前仅文档授权，尚未实施，既有运行和验收记录保持。
+
 ## 7. AI-04 项目助手
 
 本节为当前整改目标，实施状态见 [台账](../.scratch/assistant-optimization/spec.md)。通用数据任务沿用 §6 的三字段、来源和字段保护合同；不得将安全风险分类或某个样例数量设为产品默认。

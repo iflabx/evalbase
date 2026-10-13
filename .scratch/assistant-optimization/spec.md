@@ -1,5 +1,7 @@
 # 项目助手实测优化实施规格
 
+2026-10-13 最新待实施：[OPT-18 数据处理失败恢复与清洗、扩写配置优化](issues/18-processing-recovery-and-operation-settings.md) 已按 Owner 要求建立。整合按操作配置、结构化诊断、预算内恢复、去重补齐反馈和部分完成展示；UI 严格对齐 frontend-v1。Implementation not-started，当前仅文档授权，4217 与已有验收记录保持。
+
 2026-10-13 最新实施：[OPT-17 单任务工作区与轻量处理轮次历史](issues/17-processing-task-rounds.md) 已按 Owner 后续开发指令完成，Implementation completed，Owner pending。连续处理在同一任务汇总当前成果，按需查看只读轮次历史，UI 严格对齐 frontend-v1；固定应用 `6c1dafe`、定向验证和同一 4217 切换见 [验证记录](opt17-verification.md)。以下旧实施及验收记录保留。
 
 2026-10-13 既有实施：[OPT-16 数据处理去重补齐、来源说明与列表体验优化](issues/16-processing-deduplication-and-list-ux.md) 已完成实现及定向审阅，Implementation completed，Owner pending。应用固定版本与同一 4217 的切换、去重删除边界、浏览器验证及限制集中见 [实施记录](opt16-verification.md)。当时的 OPT-17 文档限制已由后续明确开发指令解除；旧验收状态保留。
@@ -59,6 +61,7 @@ Implementation: in-progress
 | [OPT-15](issues/15-ui-copy-and-information-hierarchy.md) | 页面文案精简、重复统计合并、辅助说明按需展示 | 现有 OPT-14 实现；Owner 已授权开发 | completed | [实施记录](opt15-verification.md)；同一 4217、一次 checkpoint，Owner pending |
 | [OPT-16](issues/16-processing-deduplication-and-list-ux.md) | 去重与有界补齐、真实参考范围、紧凑分页及五类执行筛选 | 现有 OPT-13–15；Owner 已授权本张开发 | completed | 同一 4217、一次 checkpoint，Owner pending；见 [验证记录](opt16-verification.md) |
 | [OPT-17](issues/17-processing-task-rounds.md) | 单任务工作区、当前成果汇总、轮次历史与跨轮保存 | OPT-16 已满足；Owner 已授权开发 | completed | 同一 4217；应用 6c1dafe；Owner pending；证据见 opt17-verification.md |
+| [OPT-18](issues/18-processing-recovery-and-operation-settings.md) | 清洗/扩写配置、失败诊断、有界恢复及部分完成反馈 | 现有 OPT-16/17 实现；仅文档授权 | not-started | 已完成问题定位，实施和验收尚未开始；不切换 4217 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
