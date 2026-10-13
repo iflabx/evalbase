@@ -1,6 +1,6 @@
 # 项目助手实测优化实施规格
 
-2026-10-13 新增待开发：[OPT-19 数据处理任务列表查询与加载性能优化](issues/19-processing-list-query-performance.md)。基于原始数据、测试集后端对照及 59 项任务实测，采用批量摘要、按变化同步和合并保存统计；保留权限、最近范围与分页合同。本次仅文档，Implementation not-started，尚未授权本张开发，不切换 4217。
+2026-10-13 最新实施：[OPT-19 数据处理任务列表查询与加载性能优化](issues/19-processing-list-query-performance.md) 已按后续明确授权完成。采用批量摘要、按变化同步和合并保存统计，保留权限、最近范围与分页合同；Implementation completed，Owner pending。同一 4217 Web 固定 `34a0711`；实测、审阅修复和限制见 [验证记录](opt19-verification.md)。
 
 2026-10-13 当前实施：[OPT-18 数据处理失败恢复与清洗、扩写配置优化](issues/18-processing-recovery-and-operation-settings.md) 已按 Owner 要求建立。整合按操作配置、结构化诊断、预算内恢复、去重补齐反馈和部分完成展示；UI 严格对齐 frontend-v1。Implementation completed，Owner pending；同一 4217 已固定 `4af93ad`，检查与限制见 [验证记录](opt18-verification.md)。已有验收记录保持。
 
@@ -64,7 +64,7 @@ Implementation: in-progress
 | [OPT-16](issues/16-processing-deduplication-and-list-ux.md) | 去重与有界补齐、真实参考范围、紧凑分页及五类执行筛选 | 现有 OPT-13–15；Owner 已授权本张开发 | completed | 同一 4217、一次 checkpoint，Owner pending；见 [验证记录](opt16-verification.md) |
 | [OPT-17](issues/17-processing-task-rounds.md) | 单任务工作区、当前成果汇总、轮次历史与跨轮保存 | OPT-16 已满足；Owner 已授权开发 | completed | 同一 4217；应用 6c1dafe；Owner pending；证据见 opt17-verification.md |
 | [OPT-18](issues/18-processing-recovery-and-operation-settings.md) | 清洗/扩写配置、失败诊断、有界恢复及部分完成反馈 | 现有 OPT-16/17 实现；Owner 已授权开发 | completed | 同一 4217 已更新；Owner pending；见 [验证记录](opt18-verification.md) |
-| [OPT-19](issues/19-processing-list-query-performance.md) | 列表批量摘要、按变化同步及保存统计减量 | 现有 OPT-14/17/18 及列表补修；本次仅文档授权 | not-started | 基线 `65ed330`；实测、性能目标及 R19-1–6 见 Ticket；4217 保持现状 |
+| [OPT-19](issues/19-processing-list-query-performance.md) | 列表批量摘要、按变化同步及保存统计减量 | 现有 OPT-14/17/18 及列表补修；Owner 已授权开发 | completed | 同一 4217 Web `34a0711`；Owner pending；见 [验证记录](opt19-verification.md) |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

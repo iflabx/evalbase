@@ -222,3 +222,11 @@ Owner 批准的产品边界以 [OPT-16](../../.scratch/assistant-optimization/is
 - 前端按操作保存独立配置；浏览器会话内仅保存按账号、项目和输入范围隔离的操作设置，刷新不自动提交。旧运行真实字段及 Metadata 键约束保持。选择、来源修订、未知响应对账继续走既有状态；清洗/生成设置折叠，恢复详情放入现有摘要卡。
 
 命令、兼容性和 checkpoint 证据见 [验证记录](../../.scratch/assistant-optimization/opt18-verification.md)。
+
+## 13. OPT-19 处理列表摘要读取
+
+产品和验收边界见 [OPT-19](../../.scratch/assistant-optimization/issues/19-processing-list-query-performance.md)。列表批量读取任务摘要、全部轮次的来源/个人背景访问依据和最新批次事实；来源批量入口与原单来源入口共用可用性规则。完整任务权限过滤后仍限制最近 100 项，再搜索、分类、统计和分页。
+
+稳定任务复用现有 `applied_run_id`、`applied_hash`，不进入任务写锁或读取结果正文；变化任务仍由原锁内汇总重读。当前页引用按任务修订读取，遇到并发变更最多重新读取一次，避免混用新引用与旧摘要。
+
+当前页一次查询授权范围内的采用回执，按稳定候选身份计算保存数量。旧回执仅对未解决身份及真实祖先链回读必要运行，请求内复用；混合轮次中不能因同页仍含回执所属运行的其他记录而跳过解析。不新增表、索引、公共 API、缓存服务或 Worker 行为；证据见 [验证记录](../../.scratch/assistant-optimization/opt19-verification.md)。
