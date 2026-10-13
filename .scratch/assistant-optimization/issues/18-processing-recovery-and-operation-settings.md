@@ -1,7 +1,7 @@
 # OPT-18 数据处理失败恢复与清洗、扩写配置优化
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 Blocked by: none
 
 优先级：P1（无效重试与错误原因丢失）；配置和状态展示随同交付。2026-10-13 Owner 授权将失败诊断及此前清洗、扩写的配置建议合为一张 Ticket；2026-10-13 Owner 已授权开发。依赖 OPT-16/17 已有实现，不等待其最终人工验收；保留历史实施与验收记录。
@@ -98,3 +98,5 @@ Blocked by: none
 ## Comments
 
 - 2026-10-13：Owner 要求把失败诊断及此前清洗、扩写的字段配置建议合为一张 Ticket。建立 OPT-18，Implementation not-started；UI 严格对齐 frontend-v1，精简流程，保留必要权限与数据安全约束。
+
+- 2026-10-13：OPT-18 已实施，Standards/Spec 发现已修复并定向复核；同一 4217 固定代码 `4af93ad`，Owner pending。范围、检查、限制及数据保持见 [验证记录](../opt18-verification.md)。
