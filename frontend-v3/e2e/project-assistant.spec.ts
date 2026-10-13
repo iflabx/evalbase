@@ -157,21 +157,126 @@ test("distinguishes a failed model reply from retained processing and keeps the 
     task.getByText("下一步：核对已保留的候选，回复失败不会重新生成数据。", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "候选结果" }).getByText(/内容待你审核/),
+    page.getByRole("region", { name: "候选结果" }).getByText(/内容待审核/),
   ).toBeVisible();
   const retry = task.getByRole("button", { name: "重试未完成步骤" });
   await expect(retry).toBeEnabled();
   await retry.focus();
   await expect(retry).toBeFocused();
   await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("接下来保留原答案");
-  await page.screenshot({ path: "test-results/opt08-recovery-desktop.png", fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath("opt08-recovery-desktop.png"),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 420, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
   await task.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "test-results/opt08-recovery-narrow.png", fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath("opt08-recovery-narrow.png"),
+    fullPage: true,
+  });
 });
+
+for (const scenario of ["exhausted", "available", "mixed"] as const) {
+  test(`assistant processing retry follows server recovery: ${scenario}`, async ({ page }) => {
+    let retries = 0;
+    const runIds =
+      scenario === "mixed"
+        ? ["available", "spent"]
+        : [scenario === "available" ? "available" : "spent"];
+    const latest = runIds.at(-1)!;
+    await assistantPage(page, async (route, path) => {
+      if (path === `${assistantBase}/sessions`)
+        return route.fulfill({
+          json: {
+            sessions: [
+              { id: "budget", title: "预算校验", ordinal: 1, updated_at: "2026-10-14T09:00:00Z" },
+            ],
+          },
+        });
+      if (path.endsWith("/sessions/budget"))
+        return route.fulfill({
+          json: {
+            sessionId: "budget",
+            task: {
+              title: "预算校验",
+              goal: "新增两条问题",
+              stage: "awaiting_review",
+              runId: latest,
+              runIds,
+              checkedStatus: "failed",
+              review: { missingCount: 1 },
+            },
+            turns: [],
+            proposals: [],
+          },
+        });
+      if (path.endsWith("/sessions/budget/retry")) {
+        retries++;
+        return route.fulfill({ json: { accepted: true } });
+      }
+      if (path.endsWith("/status")) {
+        const canRetry = path.includes("/available/");
+        return route.fulfill({
+          json: {
+            recovery: {
+              canRetry,
+              canContinue: !canRetry,
+              reason: canRetry ? "remaining_budget" : "budget_exhausted",
+            },
+            run: {
+              status: "failed",
+              progress: 100,
+              inputCount: 1,
+              missingCount: 1,
+              options: { operation: "augment", outputCount: 2 },
+            },
+            total: 1,
+          },
+        });
+      }
+      if (path.endsWith("/candidates"))
+        return route.fulfill({
+          json: {
+            total: 1,
+            records: [
+              {
+                id: "0:0",
+                original: { question: "原问题", expectedOutput: "答复", metadata: [] },
+                result: { question: "已保留候选", expectedOutput: "答复", metadata: [] },
+              },
+            ],
+          },
+        });
+      return route.fulfill({ status: 404, json: {} });
+    });
+    const task = page.getByRole("region", { name: "当前任务" });
+    await expect(
+      task.getByText("扩充 · 部分完成 · 1 条结果，尚缺 1 条", { exact: true }),
+    ).toBeVisible();
+    const retry = task.getByRole("button", { name: "重试未完成步骤" });
+    await page.getByLabel("向项目助手发送消息").fill("保留原答案");
+    if (scenario === "exhausted") {
+      await expect(task.getByText("本轮重试额度已用完，已有候选保留。")).toBeVisible();
+      await expect(retry).toHaveCount(0);
+      await expect(task.getByRole("link", { name: "查看处理任务与恢复操作" })).toHaveAttribute(
+        "href",
+        /processing\?run=spent/,
+      );
+      expect(retries).toBe(0);
+    } else {
+      await expect(retry).toBeEnabled();
+      await retry.click();
+      await expect.poll(() => retries).toBe(1);
+    }
+    await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("保留原答案");
+    await expect(
+      page.getByRole("region", { name: "候选结果" }).getByText("已保留候选", { exact: true }),
+    ).toBeVisible();
+  });
+}
 
 test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
   page,

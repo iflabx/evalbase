@@ -2568,6 +2568,10 @@ describe("assistant continuous task public contract", () => {
           ]);
         } else {
           expect(review.complete).toBe(false);
+          await db.query(
+            'UPDATE processing_run SET execution_config=execution_config||\'{"recipeVersion":"processing-v5"}\'::jsonb WHERE id=$1',
+            [id],
+          );
           const legacySession = (
             await app.inject({
               method: "POST",
@@ -2612,6 +2616,165 @@ describe("assistant continuous task public contract", () => {
       }
     } finally {
       repairPattern = null;
+      await db.end();
+    }
+  });
+  it("checks the shared processing budget before assistant retries and preserves retained candidates", async () => {
+    const db = createPool(databaseUrl),
+      artifacts = new ArtifactRepository(loadConfig().minio),
+      path = `/api/projects/${projectId}/processing-runs`;
+    try {
+      const draft = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "重试预算回归" },
+        })
+      ).json().draft.id;
+      const seed = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+          headers,
+          payload: {
+            question: "原始问题",
+            expectedOutput: "保留",
+            metadata: [],
+          },
+        })
+      ).json().record;
+      const retained = {
+        sourceId: seed.id,
+        question: "已保留的候选",
+        expectedOutput: "保留",
+        metadata: [],
+      };
+      async function fixture(kind: string) {
+        const created = await app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "draft", id: draft, recordIds: [seed.id] },
+            options: {
+              operation: "augment",
+              instructions: "新增两条不同的问题",
+              outputCount: 2,
+              allowedFields: ["question"],
+            },
+          },
+        });
+        expect(created.statusCode, created.body).toBe(201);
+        const run = created.json().run;
+        const stored = await artifacts.storeProcessing(
+          Buffer.from(JSON.stringify({ records: [retained], issues: [] })),
+          run.id,
+          "batch-0",
+        );
+        await db.query(
+          `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,result_indices,issues,model_attempts,model_started_at,diagnostics)
+           VALUES($1,0,$2,1,ARRAY[0],'[{"code":"missing_output"}]'::jsonb,$3,$4,$5)`,
+          [
+            run.id,
+            stored.objectRef,
+            kind === "exhausted" || kind === "legacy" ? 3 : 1,
+            new Date(Date.now() - (kind === "expired" ? 120000 : 0)),
+            kind === "rejected" ? { stopReason: "provider_rejected" } : {},
+          ],
+        );
+        await db.query(
+          "UPDATE job SET status='failed',error_code='processing_batch_failed',counts=$2 WHERE id=$1",
+          [run.jobId, { processingBatches: 1 }],
+        );
+        if (kind === "legacy")
+          await db.query(
+            'UPDATE processing_run SET execution_config=execution_config||\'{"recipeVersion":"processing-v5"}\'::jsonb WHERE id=$1',
+            [run.id],
+          );
+        return run.id;
+      }
+      async function sessionFor(ids: string[]) {
+        const id = (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions`,
+            headers,
+            payload: {},
+          })
+        ).json().sessionId;
+        await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+          id,
+          {
+            stage: "awaiting_review",
+            runId: ids.at(-1),
+            runIds: ids,
+            checkedStatus: "failed",
+            review: { missingCount: 1 },
+          },
+        ]);
+        return id;
+      }
+      async function status(id: string) {
+        return (
+          await app.inject({
+            method: "GET",
+            url: `${path}/${id}/status`,
+            headers,
+          })
+        ).json();
+      }
+      for (const kind of [
+        "exhausted",
+        "expired",
+        "rejected",
+        "remaining",
+        "legacy",
+      ]) {
+        const id = await fixture(kind),
+          session = await sessionFor([id]);
+        const allowed = ["remaining", "legacy"].includes(kind);
+        expect((await status(id)).recovery.canRetry).toBe(allowed);
+        const result = await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${session}/retry`,
+          headers,
+          payload: {},
+        });
+        expect(result.statusCode, result.body).toBe(allowed ? 200 : 409);
+        if (!allowed)
+          expect(result.json().error.code).toBe("processing_retry_unavailable");
+        expect((await status(id)).run.status).toBe(
+          allowed ? "queued" : "failed",
+        );
+        const candidates = (
+          await app.inject({ method: "GET", url: `${path}/${id}`, headers })
+        ).json();
+        expect(candidates.total).toBe(1);
+        expect(candidates.records[0].result).toEqual(retained);
+      }
+      // A mixed task retries only the run with remaining budget, even when the latest run is exhausted.
+      const available = await fixture("remaining"),
+        exhausted = await fixture("exhausted");
+      const session = await sessionFor([available, exhausted]);
+      const retried = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${session}/retry`,
+        headers,
+        payload: {},
+      });
+      expect(retried.statusCode, retried.body).toBe(200);
+      expect((await status(available)).run.status).toBe("queued");
+      expect((await status(exhausted)).run.status).toBe("failed");
+      const original = (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/collaborative-drafts/${draft}`,
+          headers,
+        })
+      ).json();
+      expect(original.records[0].question).toBe(seed.question);
+    } finally {
       await db.end();
     }
   });

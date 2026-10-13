@@ -2,7 +2,7 @@ import { AssistantCandidates, type CandidateSelection } from "./assistant-candid
 import { AssistantBackground, type BackgroundDocument } from "./assistant-background";
 import { AssistantSessionActions } from "./assistant-session-actions";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { MessageSquare, Plus, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -222,6 +222,7 @@ const messages: Record<string, string> = {
   assistant_source_invalid: "缺少来源，请明确文件、草稿或版本。",
   processing_scope_invalid: "尚未确定处理记录，请明确范围。",
   processing_still_running: "处理任务仍在运行，可在任务卡中查看进度。",
+  processing_retry_unavailable: "本轮无法重试。已有结果保留，请查看处理任务中的恢复操作。",
   processing_not_found: "当前任务不可访问，或来源已被删除。",
 };
 const errorText = (error: unknown) =>
@@ -311,6 +312,14 @@ export function ProjectAssistant({
     candidateSelections.current = {};
   }, [sessionId, visible?.task?.candidateScope?.hash]);
   const taskRuns = visible?.task?.runIds ?? (visible?.task?.runId ? [visible.task.runId] : []);
+  const processingRecovery = useQueries({
+    queries: taskRuns.map((runId) => ({
+      ...processingStatusQuery(projectId, runId),
+      enabled: open && canWrite && visible?.task?.stage === "awaiting_review",
+      retry: false,
+    })),
+  });
+  const canRetryProcessing = processingRecovery.some((q) => q.data?.recovery?.canRetry === true);
   const reviewRun =
     candidateRun && taskRuns.includes(candidateRun) ? candidateRun : visible?.task?.runId;
   const pending = pendingSubmissions[sessionId ?? "new"];
@@ -426,9 +435,12 @@ export function ProjectAssistant({
     setError("");
     try {
       await post(`${base}/sessions/${sessionId}/${action}`, {});
+      await queryClient.invalidateQueries({ queryKey: ["assistant-processing-run", projectId] });
       await conversation.refetch();
     } catch (error) {
       setError(errorText(error));
+      if (action === "retry")
+        await queryClient.invalidateQueries({ queryKey: ["assistant-processing-run", projectId] });
     } finally {
       setBusy(false);
     }
@@ -895,10 +907,7 @@ export function ProjectAssistant({
                           "assistant_plan_revalidation_required",
                           "assistant_step_context_changed",
                         ].includes(visible.task.error ?? "")) ||
-                        (visible.task.stage === "awaiting_review" &&
-                          (visible.task.checkedStatus === "failed" ||
-                            visible.task.checkedStatus === "cancelled" ||
-                            Boolean(visible.task.review?.missingCount)))) && (
+                        (visible.task.stage === "awaiting_review" && canRetryProcessing)) && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1201,6 +1210,31 @@ export function ProjectAssistant({
   );
 }
 
+type ProcessingStatus = {
+  recovery?: { canRetry: boolean; canContinue: boolean; reason: string | null };
+  run: {
+    status: string;
+    inputCount: number;
+    progress: number;
+    partial?: boolean;
+    executionComplete?: boolean;
+    missingCount?: number;
+    errorCode?: string;
+    options: { operation: string; outputCount?: number };
+  };
+  total: number;
+};
+
+function processingStatusQuery(projectId: string, runId: string) {
+  return {
+    queryKey: ["assistant-processing-run", projectId, runId],
+    queryFn: () =>
+      request<ProcessingStatus>(
+        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}/status`,
+      ),
+  };
+}
+
 function ProcessingTaskCard({
   projectId,
   runId,
@@ -1213,23 +1247,7 @@ function ProcessingTaskCard({
   onReview: () => void;
 }) {
   const task = useQuery({
-    queryKey: ["assistant-processing-run", projectId, runId],
-    queryFn: () =>
-      request<{
-        run: {
-          status: string;
-          inputCount: number;
-          progress: number;
-          partial?: boolean;
-          executionComplete?: boolean;
-          missingCount?: number;
-          errorCode?: string;
-          options: { operation: string; outputCount?: number };
-        };
-        total: number;
-      }>(
-        `/api/projects/${encodeURIComponent(projectId)}/processing-runs/${encodeURIComponent(runId)}/status`,
-      ),
+    ...processingStatusQuery(projectId, runId),
     enabled: open,
     retry: false,
     refetchInterval: (q) =>
@@ -1277,14 +1295,19 @@ function ProcessingTaskCard({
         </Button>
       )}
       {done && Boolean(run.missingCount) && (
-        <Link
-          className="inline-block text-sm text-primary hover:underline"
-          to="/projects/$projectId/processing"
-          params={{ projectId }}
-          search={{ run: runId }}
-        >
-          查看处理任务与恢复操作
-        </Link>
+        <>
+          {task.data?.recovery?.reason === "budget_exhausted" && (
+            <p className="text-xs text-muted-foreground">本轮重试额度已用完，已有候选保留。</p>
+          )}
+          <Link
+            className="inline-block text-sm text-primary hover:underline"
+            to="/projects/$projectId/processing"
+            params={{ projectId }}
+            search={{ run: runId }}
+          >
+            查看处理任务与恢复操作
+          </Link>
+        </>
       )}
     </div>
   );

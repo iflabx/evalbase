@@ -1,6 +1,8 @@
 import type { Database } from "../db/pool.js";
 import { opaqueId } from "../server/support.js";
 import { sha256 } from "../package/contract.js";
+import { getProcessingRun } from "../processing/store.js";
+import { processingRecovery } from "../processing/recovery.js";
 import {
   ASSISTANT_SESSION_TURN_LIMIT,
   assistantAccess,
@@ -392,19 +394,14 @@ export async function controlAssistantTask(
             Number(session.task.review?.missingCount) > 0)) &&
         job
       ) {
-        const missingRuns = (
-          await client.query(
-            'SELECT DISTINCT run_id FROM processing_batch WHERE run_id=ANY($1::text[]) AND issues @> \'[{"code":"missing_output"}]\'::jsonb',
-            [observedRunIds],
-          )
-        ).rows.map((row) => row.run_id);
-        const recoverable = jobs.filter(
-          (item) =>
-            ["failed", "cancelled"].includes(item.status) ||
-            (item.status === "succeeded" && missingRuns.includes(item.run_id)),
-        );
+        const recoverable = [];
+        for (const item of jobs) {
+          const run = await getProcessingRun(client, scope, item.run_id);
+          if ((await processingRecovery(client, run)).canRetry)
+            recoverable.push(item);
+        }
         if (!recoverable.length)
-          throw new AssistantError(409, "processing_still_running");
+          throw new AssistantError(409, "processing_retry_unavailable");
         await dependenciesAvailable(
           client,
           scope,
