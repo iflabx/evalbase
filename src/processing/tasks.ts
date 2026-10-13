@@ -19,10 +19,14 @@ import {
   getProcessingRun,
   readProcessingRun,
   processingRunSummary,
+  processingSourceRows,
+  runStatusColumns,
   createProcessingRun,
   ProcessingError,
   type ProcessingScope,
   type InputSnapshot,
+  type ProcessingRun,
+  type ProcessingSource,
 } from "./store.js";
 import { guardProcessingTask, type TaskRef } from "./task-state.js";
 
@@ -1050,7 +1054,7 @@ export async function processingTaskHistory(
   return { taskId: task.id, rounds, total: runs.length, offset, limit };
 }
 
-export async function listProcessingTasks(
+async function processingTaskListPage(
   db: Database,
   artifacts: ArtifactRepository,
   scope: ProcessingScope,
@@ -1082,32 +1086,134 @@ export async function listProcessingTasks(
     ].includes(query.status)
   )
     throw new ProcessingError(422, "query_parameter_invalid");
-  const ids = (
-    await db.query(
-      `SELECT t.id FROM processing_task t WHERE t.project_id=$1
+  const summaries = (
+    await db.query<
+      ProcessingRun & {
+        task_id: string;
+        applied_run_id: string | null;
+        applied_hash: string | null;
+        incomplete: boolean;
+        current_count: number;
+        round_count: number;
+        root_source: ProcessingSource;
+        actor_name: string | null;
+        revision: number;
+      }
+    >(
+      `SELECT t.id AS task_id,t.revision,t.applied_run_id,t.applied_hash,t.incomplete,
+      jsonb_array_length(t.current_refs) AS current_count,
+      (SELECT count(*)::int FROM processing_run WHERE task_id=t.id) AS round_count,
+      root.source AS root_source,r.id,r.source,r.options,r.input_count,r.created_at,
+      r.actor_id,j.result,${runStatusColumns},coalesce(u.display_name,u.username) AS actor_name
+      FROM processing_task t JOIN processing_run root ON root.id=t.root_run_id
+      JOIN processing_run r ON r.id=t.latest_run_id JOIN job j ON j.id=r.job_id
+      LEFT JOIN app_user u ON u.id=r.actor_id WHERE t.project_id=$1
     AND NOT EXISTS(SELECT 1 FROM processing_run r WHERE r.task_id=t.id AND (r.input_ref IS NULL OR (cardinality(r.background_document_ids)>0 AND r.actor_id<>$2)))
     ORDER BY t.updated_at DESC,t.id DESC`,
       [scope.projectId, scope.actorId],
     )
   ).rows;
+  const sources = summaries.length
+    ? (
+        await db.query<{
+          task_id: string;
+          project_id: string;
+          source: ProcessingSource;
+          input_ref: string | null;
+          actor_id: string;
+          background_document_ids: string[];
+        }>(
+          "SELECT task_id,project_id,source,input_ref,actor_id,background_document_ids FROM processing_run WHERE task_id=ANY($1::text[])",
+          [summaries.map((row) => row.task_id)],
+        )
+      ).rows
+    : [];
+  const available = await processingSourceRows(
+    db,
+    scope.projectId,
+    sources.map((row) => row.source),
+  );
+  const sourceMaps = {
+    assets: new Map(available.assets.map((row) => [row.id as string, row])),
+    version: new Map(available.version.map((row) => [row.id as string, row])),
+    draft: new Map(available.draft.map((row) => [row.id as string, row])),
+  };
+  const unavailable = new Set(
+    sources
+      .filter(
+        (row) =>
+          row.project_id !== scope.projectId ||
+          !row.input_ref ||
+          (row.background_document_ids.length > 0 &&
+            row.actor_id !== scope.actorId) ||
+          (row.source.kind === "assets"
+            ? row.source.assetIds.some((id) => !sourceMaps.assets.has(id))
+            : !sourceMaps[row.source.kind].has(row.source.id)),
+      )
+      .map((row) => row.task_id),
+  );
+  const eligible = summaries.filter((row) => !unavailable.has(row.task_id));
+  const batchRows = eligible.length
+    ? (
+        await db.query(
+          "SELECT run_id,result_ref,result_indices,issues FROM processing_batch WHERE run_id=ANY($1::text[]) ORDER BY run_id,ordinal",
+          [eligible.map((row) => row.id)],
+        )
+      ).rows
+    : [];
+  const batches = new Map<
+    string,
+    { result_ref: unknown; result_indices: unknown; issues: unknown }[]
+  >();
+  for (const { run_id, ...batch } of batchRows) {
+    const group = batches.get(run_id) ?? [];
+    group.push(batch);
+    batches.set(run_id, group);
+  }
   const recent = [];
-  const currentRefs = new Map<string, TaskRef[]>();
-  for (const { id } of ids) {
+  const taskRevisions = new Map<string, number>();
+  for (const row of eligible) {
     try {
-      const { task, runs, latest } = await taskState(db, artifacts, scope, id);
-      const run = processingRunSummary(latest),
+      const hash = sha256(
+        canonicalJson({
+          status: row.status,
+          batches: batches.get(row.id) ?? [],
+        }),
+      );
+      const changed = terminal(row.status)
+        ? row.applied_run_id !== row.id || row.applied_hash !== hash
+        : !row.applied_run_id && row.applied_hash !== hash;
+      // A changed task is rechecked under the existing lock; this snapshot never writes state.
+      const synced = changed
+        ? await taskState(db, artifacts, scope, row.task_id)
+        : null;
+      const rootSource: ProcessingSource =
+        synced?.runs[0]?.source ?? row.root_source;
+      const rootRows =
+        rootSource.kind === "assets"
+          ? available.assets.filter((asset) =>
+              rootSource.assetIds.includes(asset.id),
+            )
+          : available[rootSource.kind].filter(
+              (source) => source.id === rootSource.id,
+            );
+      const run = processingRunSummary(synced?.latest ?? row),
         sourceSummary = await processingSourceSummary(
           db,
           scope,
-          runs[0]!.source,
+          rootSource,
+          rootRows,
         );
-      const actor = (
-        await db.query(
-          "SELECT coalesce(display_name,username) name FROM app_user WHERE id=$1",
-          [latest.actor_id],
-        )
-      ).rows[0];
-      currentRefs.set(task.id, task.current_refs);
+      const actorName =
+        synced && synced.latest.actor_id !== row.actor_id
+          ? (
+              await db.query(
+                "SELECT coalesce(display_name,username) name FROM app_user WHERE id=$1",
+                [synced.latest.actor_id],
+              )
+            ).rows[0]?.name
+          : row.actor_name;
+      taskRevisions.set(row.task_id, synced?.task.revision ?? row.revision);
       recent.push({
         status: run.status,
         progress: run.progress,
@@ -1125,13 +1231,13 @@ export async function listProcessingTasks(
           operation: run.options.operation,
           instructions: run.options.instructions.slice(0, 240),
         },
-        id: task.id,
+        id: row.task_id,
         sourceSummary,
-        actorName: actor?.name ?? "未记录",
+        actorName: actorName ?? "未记录",
         title: `${sourceSummary.name} · 数据处理`,
-        roundCount: runs.length,
-        currentCount: task.current_refs.length,
-        incomplete: task.incomplete,
+        roundCount: synced?.runs.length ?? row.round_count,
+        currentCount: synced?.task.current_refs.length ?? row.current_count,
+        incomplete: synced?.task.incomplete ?? row.incomplete,
       });
       if (recent.length === 100) break;
     } catch (error) {
@@ -1160,45 +1266,80 @@ export async function listProcessingTasks(
               ? run.status === "cancelled"
               : run.status === "failed" || run.incomplete)),
   );
+  const selected = matched.slice(offset, offset + limit);
+  const currentRefs = new Map<string, TaskRef[]>(
+    (selected.length
+      ? (
+          await db.query<{ id: string; current_refs: TaskRef[] }>(
+            `SELECT t.id,t.current_refs FROM processing_task t
+            JOIN jsonb_to_recordset($2::jsonb) AS expected(id text,revision int) ON t.id=expected.id AND t.revision=expected.revision
+            WHERE t.project_id=$1`,
+            [
+              scope.projectId,
+              JSON.stringify(
+                selected.map((row) => ({
+                  id: row.id,
+                  revision: taskRevisions.get(row.id),
+                })),
+              ),
+            ],
+          )
+        ).rows
+      : []
+    ).map((row) => [row.id, row.current_refs]),
+  );
+  // A new round or source cleanup may have changed both visibility and references during this read.
+  if (currentRefs.size !== selected.length) {
+    throw new ProcessingError(409, "processing_task_changed");
+  }
   const page = [];
   const adoptedReads = new Map<
     string,
     Awaited<ReturnType<typeof readProcessingRun>>
   >();
-  for (const row of matched.slice(offset, offset + limit)) {
+  const candidateRuns = selected.flatMap((row) =>
+    groupRefs(currentRefs.get(row.id) ?? []).map((group) => ({
+      run: { id: group.runId },
+      records: (currentRefs.get(row.id) ?? [])
+        .filter((ref) => ref.runId === group.runId && !ref.inputId)
+        .map((ref) => ({
+          id: ref.resultId,
+          candidateOrigin: ref.origin ?? {
+            runId: ref.runId,
+            resultId: ref.resultId,
+          },
+        })),
+    })),
+  );
+  const adopted = candidateRuns.length
+    ? await adoptedCandidateKeys(
+        db,
+        artifacts,
+        scope,
+        candidateRuns,
+        undefined,
+        true,
+        [],
+        adoptedReads,
+        true,
+      )
+    : new Set<string>();
+  for (const row of selected) {
     const refs = currentRefs.get(row.id)!;
     let savedCount = 0;
     for (const group of groupRefs(refs)) {
       const candidates = refs.filter(
         (ref) => ref.runId === group.runId && !ref.inputId,
       );
-      const keys = await adoptedCandidateKeys(
-        db,
-        artifacts,
-        scope,
-        [
-          {
-            run: { id: group.runId },
-            records: candidates.map((ref) => ({
-              id: ref.resultId,
-              candidateOrigin: ref.origin ?? {
-                runId: ref.runId,
-                resultId: ref.resultId,
-              },
-            })),
-          },
-        ],
-        undefined,
-        true,
-        [],
-        adoptedReads,
-      );
-      savedCount += keys.size;
+      savedCount += candidates.filter((ref) =>
+        adopted.has(candidateKey({ runId: ref.runId, resultId: ref.resultId })),
+      ).length;
     }
     page.push({
       ...row,
       savedCount,
-      unsavedCount: row.currentCount - savedCount,
+      currentCount: refs.length,
+      unsavedCount: refs.length - savedCount,
     });
   }
   return {
@@ -1207,4 +1348,22 @@ export async function listProcessingTasks(
     recentLimit: 100,
     hasActive: recent.some((run) => !terminal(run.status)),
   };
+}
+
+export async function listProcessingTasks(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  query: Parameters<typeof processingTaskListPage>[3] = {},
+) {
+  try {
+    return await processingTaskListPage(db, artifacts, scope, query);
+  } catch (error) {
+    if (
+      !(error instanceof ProcessingError) ||
+      error.code !== "processing_task_changed"
+    )
+      throw error;
+    return processingTaskListPage(db, artifacts, scope, query);
+  }
 }

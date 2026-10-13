@@ -1,5 +1,6 @@
 import { deduplicate } from "./deduplication.js";
 import type { Database } from "../db/pool.js";
+import type { QueryResultRow } from "pg";
 import { selectRecords } from "../selection/index.js";
 import type { ProcessingInput } from "./protocol.js";
 import type {
@@ -58,14 +59,19 @@ export async function processingSourceSummary(
   db: Pick<Database, "query">,
   scope: ProcessingScope,
   source: ProcessingSource,
+  sourceRows?: QueryResultRow[],
 ) {
   const base = `/projects/${encodeURIComponent(scope.projectId)}`;
   if (source.kind === "assets") {
-    const assets = await db.query(
-      "SELECT id,file_name,collection_id FROM data_asset WHERE project_id=$1 AND id=ANY($2::text[]) AND status='stored'",
-      [scope.projectId, source.assetIds],
-    );
-    const files = assets.rows.map((row) => ({
+    const assets =
+      sourceRows ??
+      (
+        await db.query(
+          "SELECT id,file_name,collection_id FROM data_asset WHERE project_id=$1 AND id=ANY($2::text[]) AND status='stored'",
+          [scope.projectId, source.assetIds],
+        )
+      ).rows;
+    const files = assets.map((row) => ({
       name: String(row.file_name),
       href: `${base}/datasets/${encodeURIComponent(row.collection_id)}/files/${encodeURIComponent(row.id)}`,
     }));
@@ -77,16 +83,18 @@ export async function processingSourceSummary(
     };
   }
   const rows =
-    source.kind === "draft"
+    sourceRows ??
+    (source.kind === "draft"
       ? await db.query(
           "SELECT name FROM collaborative_draft WHERE project_id=$1 AND id=$2",
           [scope.projectId, source.id],
         )
       : await db.query(
-          "SELECT t.id,t.name,v.version_label FROM test_set_version v JOIN test_set t ON t.id=v.test_set_id WHERE t.project_id=$1 AND v.id=$2",
+          "SELECT t.id AS test_set_id,t.name,v.version_label FROM test_set_version v JOIN test_set t ON t.id=v.test_set_id WHERE t.project_id=$1 AND v.id=$2",
           [scope.projectId, source.id],
-        );
-  const row = rows.rows[0];
+        )
+    ).rows;
+  const row = rows[0];
   return {
     name: String(row?.name || "未命名测试集"),
     kindLabel:
@@ -97,7 +105,7 @@ export async function processingSourceSummary(
     href:
       source.kind === "draft"
         ? `${base}/test-sets/drafts/${encodeURIComponent(source.id)}`
-        : `${base}/test-sets/${encodeURIComponent(row?.id ?? "")}?version=${encodeURIComponent(source.id)}`,
+        : `${base}/test-sets/${encodeURIComponent(row?.test_set_id ?? "")}?version=${encodeURIComponent(source.id)}`,
   };
 }
 

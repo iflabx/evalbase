@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { createServer, type Server } from "node:http";
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
@@ -95,6 +96,7 @@ describe("single processing task with durable rounds", () => {
         appOrigin: origin,
         soloOwnerMode: false,
         allowTestIdentity: false,
+        runtimeMetricsEnabled: false,
         modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
       },
       { disableLegacyTestBootstrap: true },
@@ -331,6 +333,24 @@ describe("single processing task with durable rounds", () => {
         expect(accepted.statusCode, accepted.body).toBe(200);
       }
     }
+    const queries = vi.spyOn(pg.Client.prototype, "query");
+    const stableReads = vi.spyOn(ArtifactRepository.prototype, "readBytes");
+    try {
+      const stable = await get(`${tasks()}?limit=2&offset=0`);
+      expect(stable.pagination.total).toBe(4);
+      const sql = queries.mock.calls.map(([query]) => String(query));
+      expect(sql.filter((query) => /FOR UPDATE OF t/.test(query))).toHaveLength(
+        0,
+      );
+      expect(sql.length).toBeLessThanOrEqual(15);
+      expect(
+        sql.filter((query) => /FROM processing_acceptance/.test(query)),
+      ).toHaveLength(1);
+      expect(stableReads).not.toHaveBeenCalled();
+    } finally {
+      queries.mockRestore();
+      stableReads.mockRestore();
+    }
     const db = createPool(databaseUrl);
     let legacyRefs: string[];
     try {
@@ -363,7 +383,7 @@ describe("single processing task with durable rounds", () => {
       for (const ref of legacyRefs)
         expect(
           reads.mock.calls.filter(([objectRef]) => objectRef === ref),
-        ).toHaveLength(1);
+        ).toHaveLength(0);
       reads.mockClear();
       const second = await get(`${tasks()}?limit=2&offset=2`);
       expect(second.runs.map((row: any) => row.id)).toEqual(
@@ -378,7 +398,7 @@ describe("single processing task with durable rounds", () => {
       for (const ref of legacyRefs)
         expect(
           reads.mock.calls.filter(([objectRef]) => objectRef === ref),
-        ).toHaveLength(1);
+        ).toHaveLength(0);
       reads.mockClear();
       const search = await get(`${tasks()}?limit=2&search=no-matching-task`);
       expect(search.runs).toHaveLength(0);
@@ -412,6 +432,84 @@ describe("single processing task with durable rounds", () => {
     expect(JSON.stringify(data.diagnostics)).not.toContain("private-");
     expect(requests.at(-1).lastFailure).toBe("invalid_json");
     expect(data.records[0].result.expectedOutput).toBe(" A0 ");
+  });
+  it("OPT19 resolves a relevant legacy adoption across rounds once and keeps partial saved counts", async () => {
+    const options = {
+      operation: "clean",
+      instructions: "",
+      allowedFields: ["question"],
+    };
+    const start = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 3) },
+      options,
+    });
+    expect(start.statusCode, start.body).toBe(201);
+    await finish(start.json().run);
+    const id = start.json().run.id;
+    const root = await get(`${tasks()}/${id}`);
+    const child = await post(`${tasks()}/${id}/rounds`, {
+      mode: "continue",
+      expectedRevision: root.task.revision,
+      resultIds: root.allIds,
+      options,
+    });
+    expect(child.statusCode, child.body).toBe(201);
+    await finish(child.json().run);
+    const current = await get(`${tasks()}/${id}`);
+    const next = await post(`${tasks()}/${id}/rounds`, {
+      mode: "continue",
+      expectedRevision: current.task.revision,
+      resultIds: current.allIds.slice(0, 1),
+      options,
+    });
+    expect(next.statusCode, next.body).toBe(201);
+    await finish(next.json().run);
+    await get(`${tasks()}/${id}`);
+    const historical = await get(`${runs()}/${child.json().run.id}`);
+    const adopted = await post(`${runs()}/${child.json().run.id}/accept`, {
+      resultIds: historical.records.slice(0, 2).map((row: any) => row.id),
+      target: { kind: "newDraft", name: "旧回执跨轮", purpose: "" },
+    });
+    expect(adopted.statusCode, adopted.body).toBe(201);
+    const db = createPool(databaseUrl);
+    let refs: string[];
+    try {
+      await db.query(
+        "UPDATE processing_acceptance SET receipt=receipt-'candidateOrigins' WHERE run_id=$1",
+        [child.json().run.id],
+      );
+      refs = (
+        await db.query(
+          "SELECT input_ref AS ref FROM processing_run WHERE id=$1 UNION SELECT result_ref AS ref FROM processing_batch WHERE run_id=$1 AND result_ref IS NOT NULL",
+          [child.json().run.id],
+        )
+      ).rows.map((row) => row.ref);
+    } finally {
+      await db.end();
+    }
+    const reads = vi.spyOn(ArtifactRepository.prototype, "readBytes");
+    const queries = vi.spyOn(pg.Client.prototype, "query");
+    try {
+      const result = await get(`${tasks()}?limit=20`);
+      expect(result.runs.find((row: any) => row.id === id)).toMatchObject({
+        roundCount: 3,
+        currentCount: 3,
+        savedCount: 2,
+        unsavedCount: 1,
+      });
+      for (const ref of refs)
+        expect(
+          reads.mock.calls.filter(([objectRef]) => objectRef === ref),
+        ).toHaveLength(1);
+      expect(
+        queries.mock.calls.filter(([query]) =>
+          /FROM processing_acceptance/.test(String(query)),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      reads.mockRestore();
+      queries.mockRestore();
+    }
   });
   it("OPT18 identifies truncation and identity errors and rejects exhausted retries", async () => {
     replies = ["truncated", "identity", "empty"];
@@ -699,6 +797,7 @@ describe("single processing task with durable rounds", () => {
     expect(resaved.statusCode, resaved.body).toBe(200);
     expect(resaved.json().receipt).toMatchObject({ updated: 30, added: 0 });
     const settled = await get(`${tasks()}/${id}?limit=100`);
+    const listing = app.inject({ method: "GET", url: tasks(), headers });
     const competing = await Promise.all([
       post(`${tasks()}/${id}/rounds`, {
         mode: "saved",
@@ -722,6 +821,10 @@ describe("single processing task with durable rounds", () => {
     expect(competing.filter((r) => r.statusCode === 409)).toHaveLength(1);
     if (competing[0]!.statusCode === 201)
       await finish(competing[0]!.json().run);
+    expect([200, 409]).toContain((await listing).statusCode);
+    const listed = (await get(tasks())).runs.find((row: any) => row.id === id);
+    expect(listed.currentCount).toBe(30);
+    expect(listed.savedCount + listed.unsavedCount).toBe(30);
   });
   it("keeps unselected records, a stable workspace and read-only round outputs", async () => {
     const initial = await post(runs(), {
@@ -1035,6 +1138,147 @@ describe("single processing task with durable rounds", () => {
         .statusCode,
     ).toBe(404);
   });
+  it("OPT19 keeps the latest 100 visible tasks before filtering and batches larger stable lists", async () => {
+    const options = {
+      operation: "clean",
+      instructions: "",
+      allowedFields: ["question"],
+    };
+    const ids: string[] = [];
+    for (let index = 0; index < 104; index++) {
+      const created = await post(runs(), {
+        source: { ...source, recordIds: source.recordIds.slice(0, 1) },
+        options,
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      await finish(created.json().run);
+      ids.push(created.json().run.id);
+      await get(`${tasks()}/${ids[index]}`);
+    }
+    const last = await get(`${tasks()}/${ids[103]}`);
+    const child = await post(`${tasks()}/${ids[103]}/rounds`, {
+      mode: "continue",
+      expectedRevision: last.task.revision,
+      resultIds: last.allIds,
+      options,
+    });
+    expect(child.statusCode, child.body).toBe(201);
+    await finish(child.json().run);
+    await get(`${tasks()}/${ids[103]}`);
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE processing_run SET background_document_ids=ARRAY['private-fixture'] WHERE id=$1",
+        [ids[103]],
+      );
+      await db.query(
+        "UPDATE processing_run SET source=jsonb_set(source,'{assetIds}','[\"unavailable-fixture\"]') WHERE id=$1",
+        [ids[102]],
+      );
+      await db.query("UPDATE processing_run SET input_ref=NULL WHERE id=$1", [
+        ids[101],
+      ]);
+      await db.query(
+        "UPDATE processing_run SET options=jsonb_set(options,'{instructions}','\"beyond-recent-marker\"') WHERE id=$1",
+        [ids[0]],
+      );
+      await db.query(
+        "UPDATE job SET status='queued' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [ids[100]],
+      );
+      await db.query(
+        "UPDATE job SET status='cancelled' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [ids[99]],
+      );
+      await db.query(
+        "UPDATE job SET status='failed' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [ids[98]],
+      );
+      // Settle the changed terminal rounds once, then measure the stable read.
+      await get(`${tasks()}?limit=20`);
+      const queries = vi.spyOn(pg.Client.prototype, "query");
+      const reads = vi.spyOn(ArtifactRepository.prototype, "readBytes");
+      try {
+        const list = await get(`${tasks()}?limit=100`);
+        expect(list.pagination.total).toBe(100);
+        expect(list.runs).toHaveLength(100);
+        expect(list.runs[0]).toMatchObject({ id: ids[103], roundCount: 2 });
+        expect(
+          list.runs.some((row: any) =>
+            [ids[102], ids[101], ids[0]].includes(row.id),
+          ),
+        ).toBe(false);
+        expect(list.hasActive).toBe(true);
+        const sql = queries.mock.calls.map(([query]) => String(query));
+        expect(sql.length).toBeLessThanOrEqual(15);
+        expect(
+          sql.filter((query) => /FOR UPDATE OF t/.test(query)),
+        ).toHaveLength(0);
+        expect(
+          sql.filter((query) => /FROM processing_acceptance/.test(query)),
+        ).toHaveLength(1);
+        expect(reads).not.toHaveBeenCalled();
+      } finally {
+        queries.mockRestore();
+        reads.mockRestore();
+      }
+      const editList = await app.inject({
+        method: "GET",
+        url: `${tasks()}?limit=100`,
+        headers: editorHeaders,
+      });
+      expect(editList.statusCode, editList.body).toBe(200);
+      expect(editList.json().pagination.total).toBe(100);
+      expect(
+        editList
+          .json()
+          .runs.some((row: any) =>
+            [ids[103], ids[102], ids[101], ids[0]].includes(row.id),
+          ),
+      ).toBe(false);
+      expect(
+        (await get(`${tasks()}?search=beyond-recent-marker`)).pagination.total,
+      ).toBe(0);
+      expect(
+        (await get(`${tasks()}?status=active`)).runs.map((row: any) => row.id),
+      ).toEqual([ids[100]]);
+      expect(
+        (await get(`${tasks()}?status=cancelled`)).runs.map(
+          (row: any) => row.id,
+        ),
+      ).toEqual([ids[99]]);
+      expect(
+        (await get(`${tasks()}?status=attention`)).runs.map(
+          (row: any) => row.id,
+        ),
+      ).toEqual([ids[99], ids[98]]);
+      expect((await get(`${tasks()}?status=complete`)).pagination.total).toBe(
+        97,
+      );
+      expect((await get(`${tasks()}?offset=90&limit=20`)).runs).toHaveLength(
+        10,
+      );
+      await db.query(
+        "UPDATE project_member SET role='viewer' WHERE project_id=$1 AND user_id=(SELECT id FROM app_user WHERE email='round-editor@example.test')",
+        [projectId],
+      );
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: tasks(),
+            headers: editorHeaders,
+          })
+        ).statusCode,
+      ).toBe(404);
+    } finally {
+      await db.query(
+        "UPDATE project_member SET role='editor' WHERE project_id=$1 AND user_id=(SELECT id FROM app_user WHERE email='round-editor@example.test')",
+        [projectId],
+      );
+      await db.end();
+    }
+  }, 120000);
   it("backfills only proven chains in parent order and leaves forked history independent", async () => {
     const options = {
       operation: "clean",
@@ -1130,10 +1374,15 @@ describe("single processing task with durable rounds", () => {
         url: `${tasks()}/${root}`,
         headers,
       });
+      const listing = app.inject({ method: "GET", url: tasks(), headers });
       await db.query("UPDATE processing_run SET input_ref=NULL WHERE id=$1", [
         root,
       ]);
       expect([200, 404, 409]).toContain((await read).statusCode);
+      expect([200, 409]).toContain((await listing).statusCode);
+      expect(
+        (await get(tasks())).runs.some((row: any) => row.id === root),
+      ).toBe(false);
       expect(
         (
           await db.query(

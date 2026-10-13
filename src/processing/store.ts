@@ -193,6 +193,73 @@ function parseSource(value: unknown): ProcessingSource {
   throw new ProcessingError(422, "processing_scope_invalid");
 }
 
+/** Batch metadata only; these are the same source guards used for body access. */
+export async function processingSourceRows(
+  db: Pick<Database, "query">,
+  projectId: string,
+  sources: ProcessingSource[],
+  lock = false,
+) {
+  const assets = [
+    ...new Set(
+      sources.flatMap((source) =>
+        source.kind === "assets" ? source.assetIds : [],
+      ),
+    ),
+  ];
+  const versions = [
+    ...new Set(
+      sources.flatMap((source) =>
+        source.kind === "version" ? [source.id] : [],
+      ),
+    ),
+  ];
+  const drafts = [
+    ...new Set(
+      sources.flatMap((source) => (source.kind === "draft" ? [source.id] : [])),
+    ),
+  ];
+  const assetRows = assets.length
+    ? (
+        await db.query(
+          `SELECT da.id,da.file_name,da.collection_id FROM data_asset da WHERE da.project_id=$1 AND da.id=ANY($2::text[])
+      AND da.status='stored' AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id=da.id)
+      ${lock ? "FOR SHARE OF da" : ""}`,
+          [projectId, assets],
+        )
+      ).rows
+    : [];
+  const versionRows = versions.length
+    ? (
+        await db.query(
+          `SELECT v.id,ts.id AS test_set_id,ts.name,v.version_label FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id
+      WHERE v.id=ANY($2::text[]) AND ts.project_id=$1 AND v.status='published' AND ts.status='available'
+      AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(v.id,ts.id))
+      ${lock ? "FOR SHARE OF ts,v" : ""}`,
+          [projectId, versions],
+        )
+      ).rows
+    : [];
+  if (drafts.length && lock)
+    await db.query(
+      "SELECT id FROM collaborative_draft WHERE id=ANY($1::text[]) AND project_id=$2 FOR SHARE",
+      [drafts, projectId],
+    );
+  const draftRows = drafts.length
+    ? (
+        await db.query(
+          `SELECT d.id,d.name FROM collaborative_draft d LEFT JOIN test_set ts ON ts.id=d.test_set_id
+      LEFT JOIN test_set_version v ON v.id=d.parent_version_id LEFT JOIN test_set_version published ON published.id=d.published_version_id
+      WHERE d.id=ANY($2::text[]) AND d.project_id=$1 AND (d.status='editing' OR (d.status='published' AND published.status='published'))
+      AND (ts.id IS NULL OR ts.status='available') AND (v.id IS NULL OR v.status='published')
+      AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(d.id,ts.id,v.id))`,
+          [projectId, drafts],
+        )
+      ).rows
+    : [];
+  return { assets: assetRows, version: versionRows, draft: draftRows };
+}
+
 // Read availability on every body access; a saved snapshot does not bypass recycling or deletion.
 export async function processingSourceAvailable(
   db: Pick<Database, "query">,
@@ -200,42 +267,15 @@ export async function processingSourceAvailable(
   source: ProcessingSource,
   lock = false,
 ) {
-  if (source.kind === "assets") {
-    const rows = await db.query(
-      `SELECT da.id FROM data_asset da WHERE da.project_id=$1 AND da.id=ANY($2::text[])
-      AND da.status='stored' AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id=da.id)
-      ${lock ? "FOR SHARE OF da" : ""}`,
-      [projectId, source.assetIds],
-    );
-    if (rows.rowCount !== source.assetIds.length)
-      throw new ProcessingError(409, "processing_source_unavailable");
-  } else if (source.kind === "version") {
-    const rows = await db.query(
-      `SELECT v.id FROM test_set_version v JOIN test_set ts ON ts.id=v.test_set_id
-      WHERE v.id=$2 AND ts.project_id=$1 AND v.status='published' AND ts.status='available'
-      AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(v.id,ts.id))
-      ${lock ? "FOR SHARE OF ts,v" : ""}`,
-      [projectId, source.id],
-    );
-    if (!rows.rowCount)
-      throw new ProcessingError(409, "processing_source_unavailable");
-  } else {
-    if (lock)
-      await db.query(
-        "SELECT id FROM collaborative_draft WHERE id=$1 AND project_id=$2 FOR SHARE",
-        [source.id, projectId],
-      );
-    const rows = await db.query(
-      `SELECT d.id FROM collaborative_draft d LEFT JOIN test_set ts ON ts.id=d.test_set_id
-      LEFT JOIN test_set_version v ON v.id=d.parent_version_id LEFT JOIN test_set_version published ON published.id=d.published_version_id
-      WHERE d.id=$2 AND d.project_id=$1 AND (d.status='editing' OR (d.status='published' AND published.status='published'))
-      AND (ts.id IS NULL OR ts.status='available') AND (v.id IS NULL OR v.status='published')
-      AND NOT EXISTS(SELECT 1 FROM deletion_lock dl WHERE dl.project_id=$1 AND dl.object_id IN(d.id,ts.id,v.id))`,
-      [projectId, source.id],
-    );
-    if (!rows.rowCount)
-      throw new ProcessingError(409, "processing_source_unavailable");
-  }
+  const rows = (await processingSourceRows(db, projectId, [source], lock))[
+    source.kind
+  ];
+  if (
+    source.kind === "assets"
+      ? rows.length !== source.assetIds.length
+      : !rows.length
+  )
+    throw new ProcessingError(409, "processing_source_unavailable");
 }
 
 async function snapshot(
@@ -376,7 +416,7 @@ export function processingRunSummary(row: ProcessingRun) {
   };
 }
 const summary = processingRunSummary;
-const runStatusColumns =
+export const runStatusColumns =
   "j.payload->>'continuationKind' AS continuation_kind,j.status,j.progress,j.error_code,(SELECT coalesce(sum(output_count),0) FROM processing_batch WHERE run_id=r.id AND result_ref IS NOT NULL) AS output_count,(SELECT coalesce(sum(jsonb_array_length(issues)),0) FROM processing_batch WHERE run_id=r.id) AS issue_count,EXISTS(SELECT 1 FROM processing_batch pb CROSS JOIN LATERAL jsonb_array_elements(pb.issues) issue WHERE pb.run_id=r.id AND issue->>'code' NOT IN('empty_question','duplicate_content')) AS has_execution_issues";
 const selectRun = `SELECT r.*,j.result,${runStatusColumns} FROM processing_run r JOIN job j ON j.id=r.job_id`;
 export async function getProcessingRun(
