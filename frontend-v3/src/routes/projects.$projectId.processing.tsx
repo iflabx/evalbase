@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Arrow as TooltipArrow } from "@radix-ui/react-tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Sheet,
   SheetContent,
@@ -805,6 +806,8 @@ function ProcessingForm({
     operation === "augment"
       ? `生成${allowedFields.map((field) => fieldNames[field]).join("、")}${protectedFields ? ` · ${protectedFields}沿用参考值` : ""}`
       : `${operation === "clean" ? "清洗" : "改写"}${allowedFields.map((field) => fieldNames[field]).join("、") || "范围未选择"}${protectedFields ? ` · ${protectedFields}保持原值` : ""}`;
+  const customFields =
+    allowedFields.length !== 1 || allowedFields[0] !== "question" || Boolean(metadataKeys?.length);
   const [operationKey, setOperationKey] = useState(saved?.operationKey ?? crypto.randomUUID());
   const input = useQuery({
     queryKey: [
@@ -1019,19 +1022,40 @@ function ProcessingForm({
     }
   }
   const description = {
-    clean: "留空要求：整理首尾空白，检查空值和重复，不删除记录。",
-    rewrite: "保留原意，按要求修改表达。",
-    augment: "参考选中数据生成新记录，不覆盖原始输入。",
+    clean: "整理空白，检查空值与重复。",
+    rewrite: "按要求修改所选内容。",
+    augment: "参考所选记录，生成新记录。",
   }[operation];
   const hidden = [...selected].filter((id) => !input.data?.allIds.includes(id)).length;
   const visibleInput = canRetainReadResult(input.error) ? input.data : undefined;
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title={`处理 ${visibleInput?.sourceSummary?.name ?? "数据"}`}
-        description={`${visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · 共 ${visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条${followup && visibleInput?.parent ? ` · ${labels[visibleInput.parent.options.operation]} · ${new Date(visibleInput.parent.createdAt).toLocaleString()}` : ""}`}
-        actions={
-          <>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="max-w-full break-words text-xl font-semibold tracking-tight text-foreground">
+            处理 {visibleInput?.sourceSummary?.name ?? "数据"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · {visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条
+          </p>
+        </div>
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+            {followup && visibleInput?.parent && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost">上一轮要求</Button>
+                </PopoverTrigger>
+                <PopoverContent aria-label="上一轮处理要求" align="end" className="max-h-[60vh] w-[min(24rem,calc(100vw-2rem))] space-y-2 overflow-y-auto">
+                  <h2 className="text-sm font-semibold">上一轮处理要求</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {labels[visibleInput.parent.options.operation]} · {new Date(visibleInput.parent.createdAt).toLocaleString()}
+                  </p>
+                  <p className="whitespace-pre-wrap break-words border-t pt-2 text-sm">
+                    {visibleInput.parent.options.instructions || "未填写要求"}
+                  </p>
+                </PopoverContent>
+              </Popover>
+            )}
             <Button variant="ghost" asChild>
               <Link
                 to="/projects/$projectId/processing"
@@ -1052,26 +1076,8 @@ function ProcessingForm({
                 </a>
               </Button>
             )}
-          </>
-        }
-      />
-      {followup && (
-        <p className="text-sm text-muted-foreground">
-          {rerun
-            ? "使用上次提交的完整输入重新处理；不会读取来源的最新内容。"
-            : taskMode === "saved"
-              ? "读取已保存范围的草稿当前值，其他草稿记录不加入本任务。"
-              : "本轮只处理所选记录，未选记录保留在当前成果中。"}
-        </p>
-      )}
-      {followup && visibleInput?.parent && (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground">查看上一轮处理要求</summary>
-          <p className="mt-2 whitespace-pre-wrap break-words">
-            {visibleInput.parent.options.instructions || "未填写要求"}
-          </p>
-        </details>
-      )}
+        </div>
+      </div>
       {unknownSubmit && (
         <div role="alert" className="rounded-lg border p-4 text-sm">
           提交结果尚未确认，请用同一次请求核对，避免重复创建。
@@ -1210,6 +1216,9 @@ function ProcessingForm({
                   匹配 {visibleInput?.matchedTotal ?? visibleInput?.total ?? 0} 条 / 已选{" "}
                   {selected.size} 条
                   {hidden > 0 && visibleInput ? `（含筛选外 ${hidden} 条，也会提交）` : ""}
+                  {followup && (
+                    <span> · {rerun ? "沿用上次完整输入" : taskMode === "saved" ? "仅限草稿已保存范围" : "未选记录保留"}</span>
+                  )}
                 </p>
               </div>
               <div className="px-4">
@@ -1352,7 +1361,7 @@ function ProcessingForm({
             <CardHeader className="border-b bg-muted/60 px-4 py-3">
               <h2 className="font-semibold">处理要求</h2>
             </CardHeader>
-            <CardContent className="space-y-5 p-4">
+            <CardContent className="space-y-4 p-4">
               <div className="space-y-2 text-sm">
                 <TooltipProvider delayDuration={250}>
                   <div className="flex gap-2" role="group" aria-label="处理方式">
@@ -1426,20 +1435,27 @@ function ProcessingForm({
                 </TooltipProvider>
                 <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
-                {configSummary}
-                {allowedFields.includes("metadata") && metadataKeys?.length
-                  ? `（Metadata 仅 ${metadataKeys.join("、")}）`
-                  : ""}
-              </p>
+              {customFields && (
+                <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                  已调整处理字段：{allowedFields.map((field) => fieldNames[field]).join("、") || "未选择"}
+                  {allowedFields.includes("metadata") && metadataKeys?.length
+                    ? `（Metadata 仅 ${metadataKeys.join("、")}）`
+                    : ""}
+                </p>
+              )}
               {operation === "rewrite" ? (
-                <fieldset className="space-y-2">
-                  <legend className="mb-2 text-sm font-medium">改写哪些内容</legend>
-                  {fieldChoices}
-                </fieldset>
+                <details key="rewrite-settings" className="space-y-3 text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">高级设置</summary>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{configSummary}</p>
+                  <fieldset className="space-y-2">
+                    <legend className="mb-2 font-medium">改写哪些内容</legend>
+                    {fieldChoices}
+                  </fieldset>
+                </details>
               ) : operation === "clean" ? (
                 <details key="clean-settings" className="space-y-3 text-sm">
                   <summary className="cursor-pointer text-muted-foreground">高级设置</summary>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{configSummary}</p>
                   <fieldset className="space-y-2">
                     <legend className="mb-2 font-medium">清洗范围</legend>
                     {fieldChoices}
@@ -1450,7 +1466,8 @@ function ProcessingForm({
                 </details>
               ) : (
                 <details key="generation-settings" className="space-y-3 text-sm">
-                  <summary className="cursor-pointer text-muted-foreground">生成设置</summary>
+                  <summary className="cursor-pointer text-muted-foreground">高级设置</summary>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{configSummary}</p>
                   {!allowedFields.includes("question") && (
                     <label className="flex items-center gap-2">
                       <Checkbox
@@ -1499,9 +1516,9 @@ function ProcessingForm({
                   rows={4}
                   placeholder={
                     {
-                      clean: "例如：统一标点，保留原意。留空则只整理首尾空白。",
-                      rewrite: "例如：保留原意，改写为清晰、独立的问题。",
-                      augment: "例如：围绕相同意图增加不同措辞和场景。",
+                      clean: "例如：统一标点，纠正错别字。",
+                      rewrite: "例如：改为自然、口语化的提问。",
+                      augment: "例如：增加不同场景的同类问题。",
                     }[operation]
                   }
                   onChange={(event) => {

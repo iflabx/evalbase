@@ -37,14 +37,16 @@ test("operation settings protect defaults and retain separate configurations", a
   await page.getByText("高级设置", { exact: true }).click();
   await page.getByRole("checkbox", { name: "期望输出", exact: true }).check();
   await page.getByRole("button", { name: "改写", exact: true }).click();
+  await expect(page.getByText("改写哪些内容", { exact: true })).not.toBeVisible();
+  await page.getByText("高级设置", { exact: true }).click();
   await expect(page.getByText("改写哪些内容", { exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "期望输出", exact: true })).not.toBeChecked();
   await page.getByRole("textbox", { name: "具体要求", exact: true }).fill("保留原意改写");
   await page.getByRole("button", { name: "扩充", exact: true }).click();
+  await page.getByText("高级设置", { exact: true }).click();
   await expect(
     page.getByText("生成问题 · 期望输出、Metadata沿用参考值", { exact: true }),
   ).toBeVisible();
-  await page.getByText("生成设置", { exact: true }).click();
   await page.getByRole("combobox", { name: "期望输出生成方式" }).click();
   await page.getByRole("option", { name: "由模型生成", exact: true }).click();
   await page.getByRole("textbox", { name: "生成要求", exact: true }).fill("增加新场景");
