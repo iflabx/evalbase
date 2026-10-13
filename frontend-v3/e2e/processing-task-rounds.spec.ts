@@ -163,6 +163,11 @@ test("selects results after the first terminal read and refreshes a missing-outp
             result: { question: `问题${i}`, expectedOutput: "A", metadata: [] },
             issues: [],
           })),
+          recovery: {
+            canRetry: false,
+            canContinue: !running,
+            reason: running ? null : "budget_exhausted",
+          },
           unprocessedIds: running ? ids : [],
           unsavedIds: running ? [] : ids,
           adoptedIds: [],

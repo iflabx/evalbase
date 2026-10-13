@@ -141,7 +141,7 @@ Owner 授权实施 [OPT-17](../.scratch/assistant-optimization/issues/17-process
 
 ### 6.9 处理恢复与操作配置增补（2026-10-13）
 
-Owner 确认将失败诊断及清洗、扩写字段配置建议整理为 [OPT-18](../.scratch/assistant-optimization/issues/18-processing-recovery-and-operation-settings.md)。按操作用途呈现清洗范围、改写字段及扩写生成设置，默认继续保护期望输出和 Metadata；统一错误分类、预算内恢复、去重补齐反馈及部分完成展示，阻止预算耗尽后的无效重试。具体合同和验收集中于 Ticket，覆盖 §6.1/6.3 的通用常驻字段区及原无条件重试交互，保留权限、固定范围、真实来源和采用/发布确认。UI 严格对齐 frontend-v1；当前仅文档授权，尚未实施，既有运行和验收记录保持。
+Owner 确认将失败诊断及清洗、扩写字段配置建议整理为 [OPT-18](../.scratch/assistant-optimization/issues/18-processing-recovery-and-operation-settings.md)。按操作用途呈现清洗范围、改写字段及扩写生成设置，默认继续保护期望输出和 Metadata；统一错误分类、预算内恢复、去重补齐反馈及部分完成展示，阻止预算耗尽后的无效重试。具体合同和验收集中于 Ticket，覆盖 §6.1/6.3 的通用常驻字段区及原无条件重试交互，保留权限、固定范围、真实来源和采用/发布确认。UI 严格对齐 frontend-v1；2026-10-13 Owner 授权实施，既有运行和验收记录保持。实现与检查见 [OPT-18 验证](../.scratch/assistant-optimization/opt18-verification.md)。
 
 ## 7. AI-04 项目助手
 

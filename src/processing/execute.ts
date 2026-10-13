@@ -1,3 +1,10 @@
+import {
+  modelFailure,
+  processingRecovery,
+  type BatchDiagnostic,
+  type CallDiagnostic,
+  type FailureCode,
+} from "./recovery.js";
 import { generateText } from "ai";
 import { contentKey } from "./deduplication.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
@@ -54,6 +61,10 @@ function modelRequest(
   dataOnly = false,
   distinctBatches = false,
   previous: ProcessingResult["records"] = [],
+  feedback?: {
+    lastFailure?: FailureCode;
+    rejectedDuplicates: { question: string; expectedOutput: string }[];
+  },
 ) {
   const base = processingPrompt(
     inputs,
@@ -65,6 +76,12 @@ function modelRequest(
   );
   const correction = {
     ...JSON.parse(base.prompt),
+    ...(feedback
+      ? {
+          lastFailure: feedback.lastFailure,
+          rejectedDuplicates: feedback.rejectedDuplicates.slice(-5),
+        }
+      : {}),
     ...(distinctBatches && options.operation === "augment" && batch
       ? {
           augmentationBatch: { ...batch, count: expected },
@@ -96,10 +113,13 @@ function modelRequest(
   while (
     Buffer.byteLength(base.system + prompt) >
       PROCESSING_EXECUTION.maxInputBytesPerBatch &&
-    (correction.alreadyAccepted.length ||
+    (correction.rejectedDuplicates?.length ||
+      correction.alreadyAccepted.length ||
       correction.previousBatchExamples?.length)
   ) {
-    if (correction.previousBatchExamples?.length)
+    if (correction.rejectedDuplicates?.length)
+      correction.rejectedDuplicates.shift();
+    else if (correction.previousBatchExamples?.length)
       correction.previousBatchExamples.shift();
     else correction.alreadyAccepted.shift();
     prompt = JSON.stringify(correction);
@@ -202,15 +222,20 @@ export async function runProcessing(
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
   const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
-  const distinctBatches = ["processing-v5", "processing-v6"].includes(
-    run.execution_config.recipeVersion,
-  );
-  const deduplication = run.execution_config.recipeVersion === "processing-v6";
+  const distinctBatches = [
+    "processing-v5",
+    "processing-v6",
+    "processing-v7",
+  ].includes(run.execution_config.recipeVersion);
+  const recovery = run.execution_config.recipeVersion === "processing-v7";
+  const deduplication =
+    recovery || run.execution_config.recipeVersion === "processing-v6";
   const dataOnly = [
     "processing-v3",
     "processing-v4",
     "processing-v5",
     "processing-v6",
+    "processing-v7",
   ].includes(run.execution_config.recipeVersion);
   if (
     ![
@@ -220,6 +245,7 @@ export async function runProcessing(
       "processing-v4",
       "processing-v5",
       "processing-v6",
+      "processing-v7",
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
       ...run.execution_config,
@@ -240,6 +266,10 @@ export async function runProcessing(
     quotaInput,
     dataOnly,
     distinctBatches,
+  );
+  await db.query(
+    "UPDATE job SET counts=coalesce(counts,'{}'::jsonb)||jsonb_build_object('processingBatches',$2::int) WHERE id=$1 AND status='running' AND lease_owner=$3 AND attempt=$4 AND lease_expires_at>now()",
+    [job.id, groups.length, job.lease_owner, job.attempt],
   );
   let model: Awaited<ReturnType<typeof configuredModel>> | undefined;
   if (run.model_revision !== null)
@@ -280,7 +310,7 @@ export async function runProcessing(
     await processingSourceAvailable(db, job.project_id, run.source);
     const prior = (
       await db.query(
-        "SELECT result_ref,output_count,issues,error_code,result_indices,model_attempts,model_started_at FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
+        "SELECT result_ref,output_count,issues,error_code,result_indices,model_attempts,model_started_at,diagnostics FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
         [run.id, index],
       )
     ).rows[0];
@@ -305,6 +335,15 @@ export async function runProcessing(
     let issues: unknown[] = [];
     let resultIndices: number[] = [];
     let priorResult: ProcessingResult | undefined;
+    const trace: BatchDiagnostic = prior?.diagnostics ?? {
+      calls: [],
+      accepted: 0,
+      missing: group.count,
+    };
+    const feedback: {
+      lastFailure?: FailureCode;
+      rejectedDuplicates: { question: string; expectedOutput: string }[];
+    } = { rejectedDuplicates: [] };
     try {
       let result;
       if (!model) result = cleanRecords(group.inputs, run.options);
@@ -386,12 +425,24 @@ export async function runProcessing(
             dataOnly,
             distinctBatches,
             deduplication ? acceptedRows : [],
+            recovery ? feedback : undefined,
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >
             run.execution_config.maxInputBytesPerBatch
           )
             throw new ProcessingError(422, "processing_record_too_large");
+          const call: CallDiagnostic = {
+            attempt: attempt + 1,
+            durationMs: 0,
+            code: "ok",
+            generated: 0,
+            validated: 0,
+            duplicates: 0,
+            invalid: 0,
+            accepted: 0,
+          };
+          let calledAt: number | undefined;
           try {
             if (deduplication) {
               // Reserve before calling the model; a crash/retry cannot reset the call or time budget.
@@ -413,11 +464,15 @@ export async function runProcessing(
               );
               if (!reserved.rowCount) break;
             }
+            calledAt = Date.now();
             const extra = await generateText({
               model: model.model,
-              ...(["processing-v4", "processing-v5", "processing-v6"].includes(
-                run.execution_config.recipeVersion,
-              )
+              ...([
+                "processing-v4",
+                "processing-v5",
+                "processing-v6",
+                "processing-v7",
+              ].includes(run.execution_config.recipeVersion)
                 ? { temperature: 0.2 }
                 : {}),
               system: prompt.system,
@@ -427,17 +482,38 @@ export async function runProcessing(
               abortSignal: batchSignal,
               experimental_telemetry: { isEnabled: false },
             });
+            call.finishReason = [
+              "stop",
+              "length",
+              "content-filter",
+              "tool-calls",
+              "error",
+              "other",
+              "unknown",
+            ].includes(extra.finishReason)
+              ? extra.finishReason
+              : "unknown";
+            if (recovery && extra.finishReason === "length") {
+              call.code = "output_truncated";
+              throw new Error("output_truncated");
+            }
+            const value = JSON.parse(
+              extra.text
+                .trim()
+                .replace(/^```(?:json)?\s*/u, "")
+                .replace(/\s*```$/u, ""),
+            );
+            call.generated = Array.isArray(value?.records)
+              ? value.records.length
+              : 0;
             const validated = validateModelRows(
-              JSON.parse(
-                extra.text
-                  .trim()
-                  .replace(/^```(?:json)?\s*/u, "")
-                  .replace(/\s*```$/u, ""),
-              ),
+              value,
               remaining,
               run.options,
               missing,
             );
+            call.validated = validated.records.length;
+            call.invalid = call.generated - call.validated;
             diagnostics.push(
               ...validated.issues.filter((issue) =>
                 [
@@ -459,13 +535,31 @@ export async function runProcessing(
                   code: "empty_question",
                   sourceId: row.sourceId,
                 });
+                call.invalid++;
                 return false;
               }
               const key = contentKey(row);
-              if (seen.has(key)) return false;
+              if (seen.has(key)) {
+                call.duplicates++;
+                feedback.rejectedDuplicates.push({
+                  question: row.question.slice(0, 300),
+                  expectedOutput: row.expectedOutput.slice(0, 300),
+                });
+                feedback.rejectedDuplicates =
+                  feedback.rejectedDuplicates.slice(-5);
+                return false;
+              }
               seen.add(key);
               return true;
             });
+            call.accepted = added.length;
+            call.code = call.invalid
+              ? "invalid_fields"
+              : call.duplicates
+                ? "duplicate_content"
+                : added.length < missing
+                  ? "insufficient_output"
+                  : "ok";
             result = validateModelRows(
               { records: [...result.records, ...added] },
               modelInputs,
@@ -473,12 +567,48 @@ export async function runProcessing(
               expected,
             );
           } catch (error) {
-            if (!result.records.length) throw error;
-            // A failed correction must not discard valid output already persisted or generated.
-            break;
+            if (!recovery) {
+              if (!result.records.length) throw error;
+              break;
+            }
+            if (call.code === "ok")
+              call.code = modelFailure(error, Date.now() >= deadline);
+          } finally {
+            if (recovery && calledAt !== undefined) {
+              call.durationMs = Date.now() - calledAt;
+              trace.calls.push(call);
+              trace.calls = trace.calls.slice(
+                -run.execution_config.maxAttempts,
+              );
+              trace.accepted = result.records.length;
+              trace.missing = Math.max(0, expected - trace.accepted);
+              feedback.lastFailure = call.code;
+              await fence(db, job);
+              await db.query(
+                `UPDATE processing_batch SET diagnostics=$3 WHERE run_id=$1 AND ordinal=$2
+                AND EXISTS(SELECT 1 FROM job WHERE id=$4 AND lease_owner=$5 AND attempt=$6 AND status='running' AND lease_expires_at>now())`,
+                [
+                  run.id,
+                  index,
+                  JSON.stringify(trace),
+                  job.id,
+                  job.lease_owner,
+                  job.attempt,
+                ],
+              );
+            }
           }
+          if (recovery && call.code === "provider_rejected") break;
         }
-        result.issues.push(...diagnostics);
+        if (recovery) {
+          trace.accepted = result.records.length;
+          trace.missing = Math.max(0, expected - trace.accepted);
+          trace.stopReason = trace.missing
+            ? feedback.lastFailure === "provider_rejected"
+              ? "provider_rejected"
+              : "budget_exhausted"
+            : undefined;
+        } else result.issues.push(...diagnostics);
       }
       if (input.refinement && modelInputs.length) {
         const changed = new Map(
@@ -580,9 +710,9 @@ export async function runProcessing(
           `batch-${index}`,
         );
       await client.query(
-        `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes,result_indices)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(run_id,ordinal) DO UPDATE SET result_ref=excluded.result_ref,
-        output_count=excluded.output_count,issues=excluded.issues,error_code=excluded.error_code,output_bytes=excluded.output_bytes,result_indices=excluded.result_indices
+        `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes,result_indices,diagnostics)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(run_id,ordinal) DO UPDATE SET result_ref=excluded.result_ref,
+        output_count=excluded.output_count,issues=excluded.issues,error_code=excluded.error_code,output_bytes=excluded.output_bytes,result_indices=excluded.result_indices,diagnostics=excluded.diagnostics
         WHERE processing_batch.result_ref IS NULL OR processing_batch.error_code IS NOT NULL
         OR processing_batch.issues @> '[{"code":"missing_output"}]'::jsonb`,
         [
@@ -594,6 +724,9 @@ export async function runProcessing(
           errorCode,
           outputBytes,
           resultIndices,
+          recovery && model
+            ? JSON.stringify(trace)
+            : (prior?.diagnostics ?? null),
         ],
       );
       await client.query(
@@ -631,7 +764,16 @@ export async function runProcessing(
     warningCount += issues.length;
   }
   await fence(db, job);
-  if (failed) throw new Error("processing_batch_failed");
+  if (failed) {
+    const state = await processingRecovery(db, {
+      ...run,
+      status: "failed",
+      output_count: output,
+    });
+    if (!state.canRetry)
+      throw new ProcessingError(422, "processing_batch_failed");
+    throw new Error("processing_batch_failed");
+  }
   return {
     runId: run.id,
     partial: warningCount > 0,

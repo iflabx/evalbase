@@ -1875,7 +1875,8 @@ export async function migrate(
             OR v.status IN ('permanently_deleted','tombstoned'))`);
     }
     await client.query(`ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_attempts integer NOT NULL DEFAULT 0;
-      ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_started_at timestamptz`);
+      ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS model_started_at timestamptz;
+      ALTER TABLE processing_batch ADD COLUMN IF NOT EXISTS diagnostics jsonb`);
     await client.query(`CREATE TABLE IF NOT EXISTS processing_task (
       id text PRIMARY KEY, project_id text NOT NULL REFERENCES project(id),
       root_run_id text NOT NULL REFERENCES processing_run(id),

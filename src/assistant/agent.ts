@@ -347,6 +347,9 @@ export async function executeAssistantTurn(
   let stepMessages: ModelMessage[] = [];
   let recoveredProcessingKey: string | undefined;
   let processingEventRunId: string | undefined;
+  let exhaustedProcessing:
+    | { runId: string; total: number; missing: number }
+    | undefined;
   const startedAt = Date.now();
   let finishReason = "not_returned";
   const restoring = Number(turn.execution_attempt) > 1 || turn.resuming;
@@ -678,6 +681,11 @@ export async function executeAssistantTurn(
               "assistant_tool_input_invalid",
             );
           await turnFence(db, scope, turn.id, turn.execution_token);
+          if (exhaustedProcessing)
+            return {
+              status: "deferred",
+              message: "本批次预算已耗尽，请由用户显式继续未完成部分。",
+            };
           if (noProgress || budgetBoundary)
             return {
               status: "deferred",
@@ -2363,27 +2371,29 @@ export async function executeAssistantTurn(
     ),
     retry_processing: businessTool(
       "retry_processing",
-      "按用户明确要求重试已提交处理运行中的失败部分，保留已成功批次。不得重新生成成功结果。",
+      "按用户明确要求且read_processing返回recovery.canRetry为true时，重试失败部分，保留已成功批次。预算耗尽时停止重试，说明实际缺额并给出处理页面链接，由用户显式继续未完成部分；不得重新生成成功结果。",
       { runId: string },
       ["runId"],
       async (input) => {
-        const result = await controlProcessingRun(
+        const current = await readProcessingRun(
           db,
-          executionScope,
+          artifacts,
+          scope,
           input.runId,
-          "retry",
+          { offset: "0", limit: "10000" },
+          true,
         );
-        const queued = result.run.status === "queued";
-        const data = queued
-          ? null
-          : await readProcessingRun(
+        // Reconcile an already completed task without queueing or resetting its budget.
+        const result = current.run.executionComplete
+          ? { run: current.run }
+          : await controlProcessingRun(
               db,
-              artifacts,
-              scope,
+              executionScope,
               input.runId,
-              { offset: "0", limit: "10000" },
-              true,
+              "retry",
             );
+        const queued = result.run.status === "queued";
+        const data = queued ? null : current;
         const task = (
           await db.query("SELECT task FROM assistant_session WHERE id=$1", [
             turn.session_id,
@@ -2417,7 +2427,7 @@ export async function executeAssistantTurn(
     ),
     read_processing: businessTool(
       "read_processing",
-      "查询后台处理状态、全部候选的真实统计和最多10条内容预览。review已核对全部候选，不是当前页统计；labels仅预览前10种期望输出，labelKinds为完整种数，labelsTruncated说明还有未展示种类，不能把预览当全部类别。无需翻完所有预览页才能报告数量和分类核对。语义正确性由用户审核，不自行改写。数量不足且用户已授权补足并让你定方案时，在同一轮plan_task并submit_processing提交剩余任务，不能只说会继续；信息缺失才澄清。refine_candidates不能增加数量。后台仍运行时提供任务链接，不反复轮询耗尽工具步骤。",
+      "查询后台处理状态、全部候选的真实统计和最多10条内容预览。review已核对全部候选，不是当前页统计；labels仅预览前10种期望输出，labelKinds为完整种数，labelsTruncated说明还有未展示种类，不能把预览当全部类别。无需翻完所有预览页才能报告数量和分类核对。语义正确性由用户审核，不自行改写。先读取recovery判断恢复能力；本批次预算耗尽时保留成功结果，说明缺额并给出处理页面链接，由用户显式继续未完成部分。自动完成事件不授权新一轮模型预算，不得重新submit_processing绕过限制。refine_candidates不能增加数量。后台仍运行时提供任务链接，不反复轮询耗尽工具步骤。",
       { runId: string, offset: { type: "integer", minimum: 0 } },
       ["runId"],
       async (input) => {
@@ -2462,12 +2472,23 @@ export async function executeAssistantTurn(
             checkedStatus: null,
           });
         processingEventRunId = undefined;
+        if (
+          turn.event !== "user" &&
+          data.recovery.reason === "budget_exhausted"
+        )
+          exhaustedProcessing = {
+            runId: input.runId,
+            total: data.total,
+            missing: data.run.missingCount,
+          };
         return {
           runId: input.runId,
           status: data.run.status,
           partial: data.run.partial,
           missingCount: data.run.missingCount ?? 0,
           total: visible.total,
+          recovery: data.recovery,
+          diagnostics: data.diagnostics.slice(-5),
           ...(task?.candidateScope ? { sourceTotal: data.total } : {}),
           taskTotal: review.total,
           taskRuns: runs.map((item) => ({
@@ -2825,6 +2846,26 @@ export async function executeAssistantTurn(
   };
   // Consume already fixed parameters through the same guarded tools; the model
   // supplies only missing parameters or genuine business choices. Confirmation stays manual.
+  async function finishExhaustedProcessing() {
+    if (!exhaustedProcessing) return false;
+    // A background completion never grants another generation budget.
+    await updateTask(db, turn, {
+      stage: "awaiting_review",
+      nextAction: null,
+      question: null,
+    });
+    finishReason = "processing_budget_exhausted";
+    await saveDiagnostics();
+    await updateTurn(
+      "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
+      [
+        turn.id,
+        `本轮保留 ${exhaustedProcessing.total} 条结果，尚缺 ${exhaustedProcessing.missing} 条；已达到本批次处理上限。请在处理任务中选择“继续未完成部分”，已有结果会保留。`,
+      ],
+    );
+    return true;
+  }
+
   async function continueFixedSteps(messages: ModelMessage[]) {
     for (
       let count = 0;
@@ -2833,6 +2874,7 @@ export async function executeAssistantTurn(
       !waitingForInput &&
       !noProgress &&
       !budgetBoundary &&
+      !exhaustedProcessing &&
       toolCalls < 10;
       count++
     ) {
@@ -3197,7 +3239,8 @@ export async function executeAssistantTurn(
           modelSteps >= 10 ||
           yieldToProcessing ||
           budgetBoundary ||
-          waitingForInput,
+          waitingForInput ||
+          Boolean(exhaustedProcessing),
       ],
       prepareStep: async ({ instructions, responseMessages }) => {
         await turnFence(db, scope, turn.id, turn.execution_token);
@@ -3334,6 +3377,7 @@ export async function executeAssistantTurn(
       )
         yieldToProcessing = true;
     }
+    if (await finishExhaustedProcessing()) return;
     if (
       ["processing_completed", "budget_yield"].includes(turn.event) ||
       restoring
@@ -3341,6 +3385,7 @@ export async function executeAssistantTurn(
       await continueFixedSteps(messages);
       messages.push(...fixedReceipts.splice(0));
     }
+    if (await finishExhaustedProcessing()) return;
     const abortSignal = AbortSignal.timeout(80000);
     // A provider may emit its tool template as text. Request native calls once;
     // never execute the text as commands or expose it as a completed reply.
@@ -3392,6 +3437,7 @@ export async function executeAssistantTurn(
     }
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
+    if (await finishExhaustedProcessing()) return;
     if (textualCall(response.text))
       throw new AssistantError(422, "assistant_result_incomplete");
     if (

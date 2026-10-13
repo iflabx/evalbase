@@ -110,6 +110,7 @@ type Run = {
     operation: "clean" | "rewrite" | "augment";
     instructions: string;
     allowedFields?: string[];
+    metadataKeys?: string[];
     outputCount?: number;
   };
   status: string;
@@ -132,6 +133,24 @@ type Deduplication = {
   inspected: number;
 };
 type ResultPage = {
+  recovery?: { canRetry: boolean; canContinue: boolean; reason: string | null };
+  diagnostics?: {
+    batch: number;
+    attempts: number;
+    accepted: number;
+    missing: number;
+    calls: {
+      attempt: number;
+      durationMs: number;
+      code: string;
+      finishReason?: string;
+      generated: number;
+      validated: number;
+      duplicates: number;
+      invalid: number;
+      accepted: number;
+    }[];
+  }[];
   task?: {
     id: string;
     revision: number;
@@ -176,7 +195,9 @@ const statuses: Record<string, string> = {
   cancelled: "已取消",
 };
 function ProcessingStatus({ run }: { run: Run }) {
-  const partial = run.status === "succeeded" && run.executionComplete === false;
+  const partial =
+    (run.status === "failed" && (run.outputCount ?? 0) > 0) ||
+    (run.status === "succeeded" && run.executionComplete === false);
   return (
     <Badge
       variant="outline"
@@ -192,11 +213,28 @@ function ProcessingStatus({ run }: { run: Run }) {
                 : "bg-muted text-muted-foreground"
       }
     >
-      {partial ? "部分完成，需核对执行" : statuses[run.status]}
+      {partial ? "部分完成" : statuses[run.status]}
     </Badge>
   );
 }
+const diagnosticLabels: Record<string, string> = {
+  temporary_service: "模型服务暂不可用或限流",
+  network_error: "模型连接中断",
+  timeout: "模型调用超时",
+  provider_rejected: "模型服务拒绝请求，请检查连接配置",
+  output_truncated: "模型输出被长度截断",
+  invalid_json: "模型未返回有效 JSON",
+  invalid_fields: "来源或字段格式不符合要求",
+  duplicate_content: "重复内容已剔除",
+  insufficient_output: "模型返回数量不足",
+  budget_exhausted: "本轮调用或时间额度已用完",
+  remaining_budget: "本轮仍可重试未完成部分",
+  source_or_configuration: "请先核对来源或配置",
+  ok: "已校验",
+};
 const errors: Record<string, string> = {
+  processing_retry_unavailable: "本轮已无法重试，请刷新后继续未完成部分。已有结果已保留。",
+  processing_completion_unavailable: "当前没有可继续的缺失记录，请刷新后核对。",
   processing_task_changed: "任务已变化，输入已保留，请刷新当前成果后重新核对。",
   processing_task_not_found: "当前任务不可访问，或来源已被删除。",
   processing_saved_range_unavailable: "保存范围无法确认，请从已保存的草稿继续处理。",
@@ -622,6 +660,23 @@ function ProcessingForm({
   const rerun = source["kind"] === "rerun";
   queryClient.setQueryDefaults(["processing-config"], { gcTime: Infinity });
   queryClient.setQueryDefaults(["processing-followup-selection"], { gcTime: Infinity });
+  const settingsKey = `processing-settings:${actorId}:${projectId}:${JSON.stringify(source)}`;
+  const restoredSettings = useRef<
+    Partial<
+      Record<
+        Run["options"]["operation"],
+        { instructions: string; allowedFields: string[]; count: string; metadataKeys?: string[] }
+      >
+    >
+  >(
+    (() => {
+      try {
+        return JSON.parse(sessionStorage.getItem(settingsKey) ?? "{}") ?? {};
+      } catch {
+        return {};
+      }
+    })(),
+  );
   const saved = useRef(
     queryClient.getQueryData<{
       page: number;
@@ -632,7 +687,14 @@ function ProcessingForm({
       selectedOnly: boolean;
       instructions: string;
       allowedFields: string[];
+      metadataKeys?: string[];
       count: string;
+      operationConfigs?: Partial<
+        Record<
+          Run["options"]["operation"],
+          { instructions: string; allowedFields: string[]; count: string; metadataKeys?: string[] }
+        >
+      >;
       sourceRevision?: string;
       operationKey: string;
       pendingSubmission?: { key: string; body: unknown };
@@ -652,11 +714,73 @@ function ProcessingForm({
   const [search, setSearch] = useState(saved?.search ?? ""),
     [conditions, setConditions] = useState<SelectionCondition[]>(saved?.conditions ?? []),
     [selectedOnly, setSelectedOnly] = useState(saved?.selectedOnly ?? false);
-  const [instructions, setInstructions] = useState(saved?.instructions ?? ""),
-    [allowedFields, setAllowedFields] = useState(saved?.allowedFields ?? ["question"]),
-    [count, setCount] = useState(saved?.count ?? "20"),
+  const restored = restoredSettings.current[saved?.operation ?? "clean"];
+  const [metadataKeys, setMetadataKeys] = useState<string[] | undefined>(
+    saved?.metadataKeys ?? restored?.metadataKeys,
+  );
+  const [instructions, setInstructions] = useState(
+      saved?.instructions ?? restored?.instructions ?? "",
+    ),
+    [allowedFields, setAllowedFields] = useState(
+      saved?.allowedFields ?? restored?.allowedFields ?? ["question"],
+    ),
+    [count, setCount] = useState(saved?.count ?? restored?.count ?? "20"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const operationConfigs = useRef(saved?.operationConfigs ?? restoredSettings.current);
+  function switchOperation(next: Run["options"]["operation"]) {
+    if (next === operation) return;
+    operationConfigs.current[operation] = {
+      instructions,
+      allowedFields,
+      count,
+      ...(metadataKeys ? { metadataKeys } : {}),
+    };
+    const config = operationConfigs.current[next] ?? {
+      instructions: "",
+      allowedFields: ["question"],
+      count: "20",
+    };
+    setOperation(next);
+    setInstructions(config.instructions);
+    setAllowedFields(config.allowedFields);
+    setCount(config.count);
+    setMetadataKeys(config.metadataKeys);
+    change();
+  }
+  function setField(field: string, yes: boolean) {
+    setAllowedFields((old) =>
+      yes ? [...new Set([...old, field])] : old.filter((value) => value !== field),
+    );
+    change();
+  }
+  const fieldNames: Record<string, string> = {
+    question: "问题",
+    expectedOutput: "期望输出",
+    metadata: "Metadata",
+  };
+  const fieldChoices = (
+    <div className="flex flex-wrap gap-4">
+      {Object.entries(fieldNames).map(([field, label]) => (
+        <label key={field} className="flex items-center gap-2 text-sm">
+          <Checkbox
+            disabled={busy}
+            checked={allowedFields.includes(field)}
+            onCheckedChange={(yes) => setField(field, yes === true)}
+          />
+          {label}
+        </label>
+      ))}
+    </div>
+  );
+  const protectedFields = Object.keys(fieldNames)
+    .filter((field) => !allowedFields.includes(field))
+    .map((field) => fieldNames[field])
+    .join("、");
+  const configSummary =
+    operation === "augment"
+      ? `生成${allowedFields.map((field) => fieldNames[field]).join("、")}${protectedFields ? ` · ${protectedFields}沿用参考值` : ""}`
+      : `${operation === "clean" ? "清洗" : "改写"}${allowedFields.map((field) => fieldNames[field]).join("、") || "范围未选择"}${protectedFields ? ` · ${protectedFields}保持原值` : ""}`;
   const [operationKey, setOperationKey] = useState(saved?.operationKey ?? crypto.randomUUID());
   const input = useQuery({
     queryKey: [
@@ -726,6 +850,7 @@ function ProcessingForm({
       setOperation(options.operation);
       setInstructions(options.instructions);
       setAllowedFields(options.allowedFields ?? ["question"]);
+      setMetadataKeys(options.metadataKeys);
       setCount(String(options.outputCount ?? 20));
     }
   }, [followup, rerun, input.data, input.isPlaceholderData]);
@@ -744,6 +869,17 @@ function ProcessingForm({
   }, [input.data?.sourceRevision]);
   useEffect(() => {
     if (submittedConfig.current) return;
+    operationConfigs.current[operation] = {
+      instructions,
+      allowedFields,
+      count,
+      ...(metadataKeys ? { metadataKeys } : {}),
+    };
+    try {
+      sessionStorage.setItem(settingsKey, JSON.stringify(operationConfigs.current));
+    } catch {
+      /* In-memory form remains usable if browser storage is full/disabled. */
+    }
     queryClient.setQueryData(cacheKey, {
       page,
       selected: [...selected],
@@ -753,7 +889,17 @@ function ProcessingForm({
       selectedOnly,
       instructions,
       allowedFields,
+      ...(metadataKeys ? { metadataKeys } : {}),
       count,
+      operationConfigs: {
+        ...operationConfigs.current,
+        [operation]: {
+          instructions,
+          allowedFields,
+          count,
+          ...(metadataKeys ? { metadataKeys } : {}),
+        },
+      },
       sourceRevision: sourceRevision.current,
       operationKey,
       pendingSubmission: pendingSubmission.current,
@@ -770,7 +916,7 @@ function ProcessingForm({
   const reason = !selected.size
     ? "请先勾选输入记录。"
     : !allowedFields.length
-      ? "请至少选择一个允许修改的字段。"
+      ? "请至少选择一项处理内容。"
       : invalidCount
         ? "新增数量须为 1–10,000 的整数。"
         : operation !== "clean" && !instructions.trim()
@@ -796,6 +942,7 @@ function ProcessingForm({
               operation,
               instructions,
               allowedFields,
+              ...(allowedFields.includes("metadata") && metadataKeys ? { metadataKeys } : {}),
               ...(operation === "augment" ? { outputCount: Number(count) } : {}),
             },
           }
@@ -805,6 +952,7 @@ function ProcessingForm({
               operation,
               instructions,
               allowedFields,
+              ...(allowedFields.includes("metadata") && metadataKeys ? { metadataKeys } : {}),
               ...(operation === "augment" ? { outputCount: Number(count) } : {}),
             },
           };
@@ -822,6 +970,11 @@ function ProcessingForm({
       );
       submittedConfig.current = true;
       queryClient.removeQueries({ queryKey: cacheKey, exact: true });
+      try {
+        sessionStorage.removeItem(settingsKey);
+      } catch {
+        // Settings persistence is optional; a created task must still open.
+      }
       await onCreated(followup ? (result.run.taskId ?? String(source["id"])) : result.run.id);
     } catch (e) {
       setError(errorText(e));
@@ -1186,52 +1339,80 @@ function ProcessingForm({
                       variant={operation === value ? "default" : "outline"}
                       aria-pressed={operation === value}
                       disabled={busy}
-                      onClick={() => {
-                        setOperation(value as typeof operation);
-                        change();
-                      }}
+                      onClick={() => switchOperation(value as typeof operation)}
                     >
                       {label}
                     </Button>
                   ))}
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
-                {operation === "clean" && (
-                  <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer">清洗说明</summary>
-                    <p className="mt-2 leading-relaxed">
-                      填写要求时使用模型清洗；未勾选的字段保留原值。
-                    </p>
-                  </details>
-                )}
               </div>
-              <fieldset className="space-y-2">
-                <legend className="mb-2 text-sm font-medium">允许修改的字段</legend>
-                <div className="flex flex-wrap gap-4">
-                  {[
-                    ["question", "问题"],
-                    ["expectedOutput", "期望输出"],
-                    ["metadata", "Metadata"],
-                  ].map(([field, label]) => (
-                    <label key={field} className="flex items-center gap-2 text-sm">
+              <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                {configSummary}
+                {allowedFields.includes("metadata") && metadataKeys?.length
+                  ? `（Metadata 仅 ${metadataKeys.join("、")}）`
+                  : ""}
+              </p>
+              {operation === "rewrite" ? (
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-sm font-medium">改写哪些内容</legend>
+                  {fieldChoices}
+                </fieldset>
+              ) : operation === "clean" ? (
+                <details key="clean-settings" className="space-y-3 text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">高级设置</summary>
+                  <fieldset className="space-y-2">
+                    <legend className="mb-2 font-medium">清洗范围</legend>
+                    {fieldChoices}
+                  </fieldset>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    未填补充要求时，仅整理所选字段的首尾空白；检查空值和重复，不删除记录。
+                  </p>
+                </details>
+              ) : (
+                <details key="generation-settings" className="space-y-3 text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">生成设置</summary>
+                  {!allowedFields.includes("question") && (
+                    <label className="flex items-center gap-2">
                       <Checkbox
+                        checked={false}
                         disabled={busy}
-                        checked={allowedFields.includes(field!)}
-                        onCheckedChange={(yes) => {
-                          setAllowedFields((old) =>
-                            yes ? [...old, field!] : old.filter((value) => value !== field),
-                          );
-                          change();
-                        }}
+                        onCheckedChange={(yes) => setField("question", yes === true)}
                       />
-                      {label}
+                      生成问题（原配置沿用参考值）
                     </label>
+                  )}
+                  {["expectedOutput", "metadata"].map((field) => (
+                    <div key={field} className="space-y-2">
+                      <span>{fieldNames[field]}</span>
+                      <Select
+                        disabled={busy}
+                        value={allowedFields.includes(field) ? "generate" : "inherit"}
+                        onValueChange={(value) => setField(field, value === "generate")}
+                      >
+                        <SelectTrigger aria-label={`${fieldNames[field]}生成方式`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">沿用参考值</SelectItem>
+                          <SelectItem value="generate">由模型生成</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   ))}
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">仅修改勾选字段。</p>
-              </fieldset>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    类别标签可沿用；具体答案建议随新问题生成。沿用值来自对应参考记录。
+                  </p>
+                </details>
+              )}
               <label className="block space-y-2 text-sm">
-                <span>{operation === "clean" ? "补充要求（选填）" : "具体要求"}</span>
+                <span>
+                  {operation === "clean"
+                    ? "补充要求（选填）"
+                    : operation === "augment"
+                      ? "生成要求"
+                      : "具体要求"}
+                </span>
                 <Textarea
                   disabled={busy}
                   value={instructions}
@@ -1793,13 +1974,15 @@ function ProcessingResults({
                   基于已保存草稿继续
                 </Button>
               )}
-              {terminal && run.options.operation === "augment" && completionMissing > 0 && (
+              {terminal && value.recovery?.canContinue && (
                 <Button
                   variant="outline"
                   disabled={busy || unknownSave || stale || data.isError}
                   onClick={() => void completeMissing()}
                 >
-                  补齐剩余 {completionMissing} 条
+                  {run.options.operation === "augment"
+                    ? `补齐剩余 ${completionMissing} 条`
+                    : "继续处理未完成部分"}
                 </Button>
               )}
               {terminal && (
@@ -1830,14 +2013,48 @@ function ProcessingResults({
                   取消任务
                 </Button>
               ) : (
-                (run.status !== "succeeded" || Boolean(run.missingCount)) && (
+                value.recovery?.canRetry && (
                   <Button variant="outline" disabled={busy} onClick={() => void action("retry")}>
-                    重试未完成批次
+                    重试未完成部分
                   </Button>
                 )
               )}
             </div>
           </div>
+          {terminal && ((run.missingCount ?? 0) > 0 || run.status === "failed") && (
+            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+              <p>
+                {diagnosticLabels[value.recovery?.reason ?? ""] ?? "本轮未全部完成，已有结果保留。"}
+              </p>
+              <details>
+                <summary className="cursor-pointer">查看执行说明</summary>
+                {value.diagnostics?.length ? (
+                  <div className="mt-2 space-y-3">
+                    {value.diagnostics.map((batch) => (
+                      <div key={batch.batch}>
+                        <p>
+                          批次 {batch.batch + 1} · 最终有效 {batch.accepted} 条 · 缺少{" "}
+                          {batch.missing} 条 · 已调用 {batch.attempts} 次
+                        </p>
+                        <ul className="mt-1 space-y-1">
+                          {batch.calls.map((call) => (
+                            <li key={call.attempt} className="break-words">
+                              第 {call.attempt} 次：{diagnosticLabels[call.code] ?? "未记录"} ·{" "}
+                              {(call.durationMs / 1000).toFixed(1)} 秒 · 返回 {call.generated} /
+                              校验通过 {call.validated} / 重复剔除 {call.duplicates} / 其他无效{" "}
+                              {call.invalid} / 接受 {call.accepted}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2">历史任务未记录具体原因。</p>
+                )}
+              </details>
+            </div>
+          )}
           {!value.task && run.parentRunId && (
             <Link
               className="mt-2 inline-block text-sm text-primary hover:underline"
@@ -2154,7 +2371,13 @@ function ProcessingResults({
               ) : !terminal ? (
                 "任务结束后可继续处理。"
               ) : value.total === 0 ? (
-                "暂无可用结果；可重试未完成批次。"
+                value.recovery?.canRetry ? (
+                  "暂无可用结果；可重试未完成部分。"
+                ) : value.recovery?.canContinue ? (
+                  "暂无可用结果；可继续未完成部分。"
+                ) : (
+                  "暂无可用结果。"
+                )
               ) : (
                 "请先选择要继续处理的结果。"
               )}

@@ -209,3 +209,16 @@ Owner 批准的产品边界以 [OPT-16](../../.scratch/assistant-optimization/is
 - 一次迁移只按可证父子单链归组，轮次顺序由关联而非时间/名称决定；分叉保持独立历史，不重写输入正文、身份或回执。来源清理同步清空有效/排除引用；每次读取继续校验全部相关来源及个人背景权限。
 
 实现、定向回归、已关闭的审阅项及同一 4217 固定版本见 [验证记录](../../.scratch/assistant-optimization/opt17-verification.md)。
+
+
+## 12. OPT-18 操作配置与有界恢复
+
+产品合同集中于 [OPT-18](../../.scratch/assistant-optimization/issues/18-processing-recovery-and-operation-settings.md)。复用原 Worker、批次及任务轮次；不更换模型接口、调度器或调用预算。
+
+- `processing-v7` 延续 v6 分批、字段保护和完全重复校验。单次调用的临时服务错误、格式/来源错误、截断与不足在原批次剩余额度内纠正；补生成只发缺额及受 40 KB 完整请求上限约束的简短避重反馈。v1–v6 保留原冻结配方，不改成功结果身份。
+- `processing_batch.diagnostics` 为可空 JSON，按次保存白名单类别、耗时、结束原因和数量，最多三次；最终接受和缺额独立于尝试计数。旧批次为空，不能推测历史原因。不保存原始模型正文、密钥、提示词或背景资料。
+- `processing/recovery.ts` 共用持久调用次数、首次调用时间及现有 `job.counts.processingBatches` 判断剩余能力；读详情/状态、助手和重试入口一致。预算耗尽由 Worker 作为不可自动重试的本轮失败终止；HTTP 手动重试再次校验并返回稳定错误。
+- `processing-tasks/:id/rounds` 的既有 `complete` 模式扩展到清洗/改写：固定原未成功输入及选项，保留 taskRecordKey、候选身份和字段基线。扩写只补实际缺额，并沿用原参考输入。用户显式提交才产生新预算，幂等、任务修订和单活动轮次沿用 OPT-17。
+- 前端按操作保存独立配置；浏览器会话内仅保存按账号、项目和输入范围隔离的操作设置，刷新不自动提交。旧运行真实字段及 Metadata 键约束保持。选择、来源修订、未知响应对账继续走既有状态；清洗/生成设置折叠，恢复详情放入现有摘要卡。
+
+命令、兼容性和 checkpoint 证据见 [验证记录](../../.scratch/assistant-optimization/opt18-verification.md)。

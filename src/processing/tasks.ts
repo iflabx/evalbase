@@ -1,3 +1,4 @@
+import { processingRecovery } from "./recovery.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -406,21 +407,48 @@ export async function readProcessingTask(
   const unsavedIds = rows
     .filter((row) => row.localId && !adoptedIds.has(row.id))
     .map((row) => row.id);
-  const latestReview = terminal(latest.status)
-    ? processingReviewPage(
-        await readProcessingRun(
-          db,
-          artifacts,
-          scope,
-          latest.id,
-          { limit: "10000" },
-          true,
-        ),
-        {},
+  const latestData = terminal(latest.status)
+    ? await readProcessingRun(
+        db,
+        artifacts,
+        scope,
+        latest.id,
+        { limit: "10000" },
+        true,
       )
     : null;
+  const latestReview = latestData ? processingReviewPage(latestData, {}) : null;
+  const unprocessed = new Set(
+    rows.filter((row) => !row.localId).map((row) => row.id),
+  );
+  if (
+    latestData &&
+    latest.options.operation !== "augment" &&
+    !latestData.run.executionComplete
+  ) {
+    const inputs = await frozen(artifacts, latest);
+    const succeeded = new Set(
+      latestData.records.map((row) => row.result.sourceId),
+    );
+    inputs.records.forEach((row, index) => {
+      if (succeeded.has(row.id)) return;
+      const previous = (latest.task_before as TaskRef[] | null)?.find(
+        (ref) =>
+          ref.runId === latest.parent_run_id &&
+          `candidate:${ref.resultId}` === row.id,
+      );
+      unprocessed.add(
+        row.taskRecordKey ??
+          previous?.key ??
+          `${latest.round_number}:${index + 1}`,
+      );
+    });
+  }
+  const { diagnostics, ...recovery } = await processingRecovery(db, latest);
   return {
     ...page,
+    diagnostics,
+    recovery,
     run: data.run,
     task: {
       id: task.id,
@@ -471,10 +499,10 @@ export async function readProcessingTask(
           .map((row) => row.originalId),
       ).size,
     },
-    unprocessedIds: rows.filter((r) => !r.localId).map((r) => r.id),
+    unprocessedIds: rows.filter((r) => unprocessed.has(r.id)).map((r) => r.id),
     records: page.records.map((row) => ({
       ...row,
-      unprocessed: !(row as unknown as { localId: string }).localId,
+      unprocessed: unprocessed.has(row.id),
       sourcePresentation: presentations.get(row.id),
       sourceLabel: (presentations.get(row.id) as { label?: string })?.label,
     })),
@@ -575,6 +603,11 @@ export async function createProcessingTaskRound(
   if (task.revision !== body.expectedRevision && !prior)
     throw new ProcessingError(409, "processing_task_changed");
   const mode = body.mode as "continue" | "rerun" | "complete" | "saved";
+  if (
+    mode === "complete" &&
+    (body.options !== undefined || body.resultIds !== undefined)
+  )
+    throw new ProcessingError(422, "processing_scope_invalid");
   let options: ProcessingOptions;
   try {
     options = processingOptions(body.options ?? latest.options);
@@ -607,6 +640,7 @@ export async function createProcessingTaskRound(
     const run = await getProcessingRun(db, scope, prior.id);
     const input = await frozen(artifacts, run);
     records = input.records;
+    if (mode === "complete") options = run.options;
     parentId = run.parent_run_id ?? latest.id;
     const existing = (
       await db.query(
@@ -616,6 +650,48 @@ export async function createProcessingTaskRound(
     ).rows[0];
     if (!existing) throw new ProcessingError(409, "idempotency_conflict");
     before = existing.task_before;
+  } else if (mode === "complete") {
+    if (!(await processingRecovery(db, latest)).canContinue)
+      throw new ProcessingError(409, "processing_completion_unavailable");
+    const input = await frozen(artifacts, latest);
+    options = latest.options;
+    if (options.operation === "augment") {
+      records = input.records;
+      options = {
+        ...options,
+        outputCount: Math.max(
+          0,
+          (options.outputCount ?? latest.input_count) -
+            Number(latest.output_count ?? 0),
+        ),
+      };
+    } else {
+      const data = await readProcessingRun(
+        db,
+        artifacts,
+        scope,
+        latest.id,
+        { limit: "10000" },
+        true,
+      );
+      const succeeded = new Set(data.records.map((row) => row.result.sourceId));
+      records = input.records
+        .filter((row) => !succeeded.has(row.id))
+        .map((row) => ({
+          ...row,
+          taskRecordKey:
+            row.taskRecordKey ??
+            task.current_refs.find(
+              (ref) => ref.inputId === row.id && ref.runId === latest.id,
+            )?.key,
+        }));
+      if (!records.length || records.some((row) => !row.taskRecordKey))
+        throw new ProcessingError(409, "processing_completion_unavailable");
+      const rows = await currentRows(db, artifacts, scope, task),
+        saved = await adopted(db, artifacts, scope, rows);
+      if (records.some((row) => saved.has(row.taskRecordKey!)))
+        throw new ProcessingError(409, "processing_already_adopted");
+    }
   } else if (mode === "rerun") {
     const current = await currentRows(db, artifacts, scope, task);
     const saved = await adopted(db, artifacts, scope, current);
@@ -630,10 +706,7 @@ export async function createProcessingTaskRound(
         ])
       ).rows[0].task_before ?? [];
   } else {
-    const ids =
-      mode === "complete"
-        ? task.current_refs.map((r) => r.key)
-        : idsOf(body.resultIds);
+    const ids = idsOf(body.resultIds);
     const rows = await currentRows(db, artifacts, scope, task),
       saved = await adopted(db, artifacts, scope, rows);
     if (ids.some((id) => !rows.some((r) => r.id === id)))
@@ -666,19 +739,6 @@ export async function createProcessingTaskRound(
           ...new Set([...r.adoptionFields, ...options.allowedFields]),
         ],
       }));
-    if (mode === "complete") {
-      if (latest.options.operation !== "augment")
-        throw new ProcessingError(422, "processing_completion_unavailable");
-      const generated = task.current_refs.filter((r) => r.runId === latest.id);
-      const missing = Math.max(
-        0,
-        (latest.options.outputCount ?? latest.input_count) - generated.length,
-      );
-      if (!missing)
-        throw new ProcessingError(409, "processing_completion_unavailable");
-      options = { ...latest.options, outputCount: missing };
-      if (!records.length) records = (await frozen(artifacts, latest)).records;
-    }
   }
   if (!terminal(latest.status) && !prior)
     throw new ProcessingError(409, "processing_still_running");

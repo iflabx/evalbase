@@ -1,3 +1,4 @@
+import { processingRecovery } from "./recovery.js";
 import {
   guardAssistantCommit,
   linkAssistantProcessing,
@@ -597,7 +598,9 @@ export async function readProcessingStatus(
   id: string,
 ) {
   const run = await getProcessingRun(db, scope, id);
+  const { canRetry, canContinue, reason } = await processingRecovery(db, run);
   return {
+    recovery: { canRetry, canContinue, reason },
     run: {
       id: run.id,
       status: run.status,
@@ -858,7 +861,10 @@ export async function readProcessingRun(
     current.input_hash !== run.input_hash
   )
     throw new ProcessingError(409, "processing_source_unavailable");
+  const { diagnostics, ...recovery } = await processingRecovery(db, run);
   return {
+    recovery,
+    diagnostics,
     run: summary(run),
     usableCount: all
       ? deduplicate(
@@ -971,16 +977,12 @@ export async function controlProcessingRun(
     else {
       if (!["failed", "cancelled", "succeeded"].includes(run.status))
         throw new ProcessingError(409, "processing_still_running");
-      const incomplete = await client.query(
-        `SELECT 1 FROM processing_batch WHERE run_id=$1 AND (result_ref IS NULL OR error_code IS NOT NULL
-        OR issues @> '[{"code":"missing_output"}]'::jsonb) LIMIT 1`,
-        [runId],
+      if (!(await processingRecovery(client, run)).canRetry)
+        throw new ProcessingError(409, "processing_retry_unavailable");
+      await client.query(
+        "UPDATE job SET status='queued',stage='queued',attempt=0,next_run_at=now(),error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1",
+        [run.job_id],
       );
-      if (run.status !== "succeeded" || incomplete.rowCount)
-        await client.query(
-          "UPDATE job SET status='queued',stage='queued',attempt=0,next_run_at=now(),error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1",
-          [run.job_id],
-        );
     }
     const updated = (
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])

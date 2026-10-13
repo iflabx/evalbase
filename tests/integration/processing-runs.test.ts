@@ -790,7 +790,7 @@ describe("durable data processing", () => {
     }
   });
 
-  it("uses the configured model, preserves protected fields, retries only failed batches, and rejects stale-field adoption", async () => {
+  it("preserves legacy v6 field protection, failed-batch recovery and stale-field adoption", async () => {
     const draft = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/collaborative-drafts`,
@@ -919,6 +919,11 @@ describe("durable data processing", () => {
       expect(preview.json().records).toHaveLength(1);
       expect(preview.json().allIds).toHaveLength(21);
       const run = created.json().run;
+      // Frozen pre-OPT18 runs keep their original correction behavior.
+      await db.query(
+        "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}','\"processing-v6\"') WHERE id=$1",
+        [run.id],
+      );
       let job = (
         await db.query(
           "UPDATE job SET status='running',attempt=1,lease_owner='model-test',lease_expires_at=now()+interval '60 seconds' WHERE id=$1 RETURNING *",

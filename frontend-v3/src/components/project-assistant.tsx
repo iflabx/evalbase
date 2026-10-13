@@ -1221,6 +1221,8 @@ function ProcessingTaskCard({
           inputCount: number;
           progress: number;
           partial?: boolean;
+          executionComplete?: boolean;
+          missingCount?: number;
           errorCode?: string;
           options: { operation: string; outputCount?: number };
         };
@@ -1253,7 +1255,7 @@ function ProcessingTaskCard({
     <div className="space-y-2 rounded-md border bg-card px-3 py-3">
       <p>
         {run
-          ? `${operations[run.options.operation] ?? "数据处理"} · ${run.partial ? "部分成功" : (statuses[run.status] ?? run.status)} · ${done ? `${task.data!.total} 条结果` : `${run.inputCount} 条输入`}`
+          ? `${operations[run.options.operation] ?? "数据处理"} · ${(run.status === "failed" && task.data!.total > 0) || (run.status === "succeeded" && run.executionComplete === false) ? "部分完成" : (statuses[run.status] ?? run.status)} · ${done ? `${task.data!.total} 条结果${run.missingCount ? `，尚缺 ${run.missingCount} 条` : ""}` : `${run.inputCount} 条输入`}`
           : "处理任务已提交，正在读取进度…"}
       </p>
       {run?.status === "running" && (
@@ -1273,6 +1275,16 @@ function ProcessingTaskCard({
         <Button variant="ghost" size="sm" className="h-auto px-0 text-primary" onClick={onReview}>
           预览本任务候选
         </Button>
+      )}
+      {done && Boolean(run.missingCount) && (
+        <Link
+          className="inline-block text-sm text-primary hover:underline"
+          to="/projects/$projectId/processing"
+          params={{ projectId }}
+          search={{ run: runId }}
+        >
+          查看处理任务与恢复操作
+        </Link>
       )}
     </div>
   );

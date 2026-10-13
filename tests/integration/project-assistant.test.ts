@@ -10999,6 +10999,114 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT18 stops automatic continuation when the processing budget is exhausted", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const draft = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: { name: "预算停止" },
+        })
+      ).json().draft.id;
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+        headers,
+        payload: { question: "原问题", expectedOutput: "分类", metadata: [] },
+      });
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "draft", id: draft },
+          allRecords: true,
+          selection: null,
+          operation: "rewrite",
+          instructions: "改写",
+          allowedFields: ["question"],
+        },
+      };
+      const submitted = (await send("改写此问题")).json(),
+        runId = submitted.task.runId;
+      expect(runId).toBeTruthy();
+      const before = calls.length;
+      // The model would try to submit again if the completion event reached it.
+      await db.query(
+        "INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at) VALUES($1,0,3,now())",
+        [runId],
+      );
+      await db.query(
+        "UPDATE job SET status='failed',error_code='processing_batch_failed',counts=jsonb_build_object('processingBatches',1),updated_at=now() WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [runId],
+      );
+      await expect
+        .poll(
+          async () => {
+            const turn = (await read()).json().turns.at(-1);
+            return (
+              turn?.event === "processing_completed" &&
+              turn.status === "succeeded"
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const done = (await read()).json();
+      expect(done.turns.at(-1).assistantText).toContain("已达到本批次处理上限");
+      expect(done.task.runId).toBe(runId);
+      expect(done.task.stage).toBe("awaiting_review");
+      expect(calls.length).toBe(before);
+      const submitAgain = {
+        name: "submit_processing",
+        input: {
+          source: { kind: "draft", id: draft },
+          allRecords: true,
+          selection: null,
+          operation: "rewrite",
+          instructions: "改写",
+          allowedFields: ["question"],
+        },
+      };
+      toolBatch = [{ name: "read_processing", input: { runId } }, submitAgain];
+      requestedTool = undefined;
+      // Reuse the public recovery path with an automatic yield that has no eager processing read.
+      await db.query(
+        "UPDATE assistant_turn SET status='running',event='budget_yield',tool_results='[]',execution_attempt=1,expires_at=now()-interval '1 second' WHERE id=$1",
+        [done.turns.at(-1).id],
+      );
+      await expect
+        .poll(async () => (await read()).json().turns.at(-1).status, {
+          timeout: 15000,
+        })
+        .toBe("succeeded");
+      const late = (await read()).json();
+      expect(late.turns.at(-1).assistantText).toContain("已达到本批次处理上限");
+      expect(late.task.runId).toBe(runId);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM processing_run WHERE project_id=$1 AND source->>'id'=$2",
+            [projectId, draft],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    } finally {
+      requestedTool = undefined;
+      toolBatch = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
   it("keeps clarification paused when its processing run completes", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl),

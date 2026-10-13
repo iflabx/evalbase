@@ -22,6 +22,8 @@ describe("single processing task with durable rounds", () => {
   let model: Server;
   let generation = 0;
   let partialGeneration = false;
+  let replies: string[] = [];
+  const requests: any[] = [];
   const config = {
     ...loadConfig(),
     databaseUrl,
@@ -212,6 +214,15 @@ describe("single processing task with durable rounds", () => {
       let text = "";
       for await (const chunk of req) text += chunk;
       const instruction = JSON.parse(JSON.parse(text).messages.at(-1).content);
+      requests.push(instruction);
+      const reply = replies.shift();
+      if (reply === "temporary") {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ error: { message: "private-provider-detail" } }),
+        );
+        return;
+      }
       const inputs =
         instruction.operation === "augment"
           ? Array.from(
@@ -232,6 +243,13 @@ describe("single processing task with durable rounds", () => {
         expectedOutput: r.expectedOutput,
         metadata: r.metadata,
       }));
+      if (reply === "partial") records.splice(1);
+      if (reply === "empty") records.splice(0);
+      if (reply === "identity" && records[0])
+        records[0].sourceId = "invalid-source";
+      if (reply === "duplicate")
+        for (const row of records)
+          row.question = instruction.records[0].question;
       generation++;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
@@ -245,9 +263,12 @@ describe("single processing task with durable rounds", () => {
               index: 0,
               message: {
                 role: "assistant",
-                content: JSON.stringify({ records }),
+                content:
+                  reply === "json"
+                    ? "private-invalid-json"
+                    : JSON.stringify({ records }),
               },
-              finish_reason: "stop",
+              finish_reason: reply === "truncated" ? "length" : "stop",
             },
           ],
           usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -282,6 +303,230 @@ describe("single processing task with durable rounds", () => {
     } finally {
       await root.end();
     }
+  });
+  it("OPT18 recovers temporary and JSON failures inside one persisted budget", async () => {
+    replies = ["temporary", "json"];
+    const start = requests.length;
+    const created = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 2) },
+      options: {
+        operation: "rewrite",
+        instructions: "rewrite",
+        allowedFields: ["question"],
+      },
+    });
+    await finish(created.json().run);
+    const data = await get(`${runs()}/${created.json().run.id}`);
+    expect(data.run.executionComplete).toBe(true);
+    expect(requests.length - start).toBe(3);
+    expect(data.diagnostics[0].calls.map((c: any) => c.code)).toEqual([
+      "temporary_service",
+      "invalid_json",
+      "ok",
+    ]);
+    expect(data.diagnostics[0].accepted).toBe(2);
+    expect(JSON.stringify(data.diagnostics)).not.toContain("private-");
+    expect(requests.at(-1).lastFailure).toBe("invalid_json");
+    expect(data.records[0].result.expectedOutput).toBe(" A0 ");
+  });
+  it("OPT18 identifies truncation and identity errors and rejects exhausted retries", async () => {
+    replies = ["truncated", "identity", "empty"];
+    const created = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 1) },
+      options: {
+        operation: "rewrite",
+        instructions: "rewrite",
+        allowedFields: ["question"],
+      },
+    });
+    await finish(created.json().run, true);
+    const data = await get(`${runs()}/${created.json().run.id}`);
+    expect(data.run.outputCount).toBe(0);
+    expect(data.diagnostics[0].calls.map((c: any) => c.code)).toEqual([
+      "output_truncated",
+      "invalid_fields",
+      "insufficient_output",
+    ]);
+    expect(data.recovery).toMatchObject({
+      canRetry: false,
+      canContinue: true,
+      reason: "budget_exhausted",
+    });
+    const retry = await post(`${runs()}/${created.json().run.id}/retry`, {});
+    expect(retry.statusCode, retry.body).toBe(409);
+    expect(retry.json().error.code).toBe("processing_retry_unavailable");
+  });
+  it("OPT18 continues only missing rewrite inputs and preserves successful identities", async () => {
+    replies = ["partial", "empty", "empty"];
+    const created = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 3) },
+      options: {
+        operation: "rewrite",
+        instructions: "rewrite",
+        allowedFields: ["question"],
+      },
+    });
+    await finish(created.json().run, true);
+    const id = created.json().run.id;
+    const before = await get(`${tasks()}/${id}`);
+    expect(before.run.partial).toBe(true);
+    const successful = before.records.find((r: any) =>
+      r.result.question.startsWith("Changed"),
+    );
+    const payload = {
+      expectedRevision: before.task.revision,
+      mode: "complete",
+    };
+    const key = randomUUID();
+    const next = await post(`${tasks()}/${id}/rounds`, payload, key);
+    expect(next.statusCode, next.body).toBe(201);
+    expect(next.json().run.inputCount).toBe(2);
+    expect(
+      (await post(`${tasks()}/${id}/rounds`, payload, key)).json().run.id,
+    ).toBe(next.json().run.id);
+    expect((await post(`${tasks()}/${id}/rounds`, payload)).statusCode).toBe(
+      409,
+    );
+    const start = requests.length;
+    await finish(next.json().run);
+    const after = await get(`${tasks()}/${id}`);
+    expect(after.task.currentCount).toBe(3);
+    expect(
+      after.records.find((r: any) => r.id === successful.id),
+    ).toMatchObject({ runId: successful.runId, result: successful.result });
+    expect(requests[start].records.map((r: any) => r.id)).toEqual(
+      source.recordIds.slice(1, 3),
+    );
+    expect(
+      after.records.every((r: any) => r.result.question.startsWith("Changed")),
+    ).toBe(true);
+  });
+  it("OPT18 retains budget-aware recovery after infrastructure and lease failures", async () => {
+    for (const code of ["infrastructure_unavailable", "job_lease_expired"]) {
+      const created = await post(runs(), {
+        source: { ...source, recordIds: source.recordIds.slice(0, 1) },
+        options: {
+          operation: "rewrite",
+          instructions: "rewrite",
+          allowedFields: ["question"],
+        },
+      });
+      const db = createPool(databaseUrl);
+      try {
+        await db.query(
+          "UPDATE job SET status='failed',error_code=$2 WHERE id=$1",
+          [created.json().run.jobId, code],
+        );
+      } finally {
+        await db.end();
+      }
+      const data = await get(`${runs()}/${created.json().run.id}`);
+      expect(data.recovery).toMatchObject({
+        canRetry: true,
+        reason: "remaining_budget",
+      });
+      expect(
+        (await post(`${runs()}/${created.json().run.id}/retry`, {})).statusCode,
+      ).toBe(200);
+      await finish(created.json().run);
+      expect(
+        (await get(`${runs()}/${created.json().run.id}`)).run.executionComplete,
+      ).toBe(true);
+    }
+  });
+  it("OPT18 marks only missing rewrites of previous candidates unfinished", async () => {
+    const created = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 3) },
+      options: {
+        operation: "clean",
+        instructions: "",
+        allowedFields: ["question"],
+      },
+    });
+    await finish(created.json().run);
+    const id = created.json().run.id,
+      initial = await get(`${tasks()}/${id}`);
+    const round = await post(`${tasks()}/${id}/rounds`, {
+      mode: "continue",
+      expectedRevision: initial.task.revision,
+      resultIds: initial.allIds,
+      options: {
+        operation: "rewrite",
+        instructions: "rewrite",
+        allowedFields: ["question"],
+      },
+    });
+    replies = ["partial", "empty", "empty"];
+    await finish(round.json().run, true);
+    const partial = await get(`${tasks()}/${id}`);
+    expect(partial.unprocessedIds).toEqual(initial.allIds.slice(1));
+    expect(partial.records.slice(1).map((r: any) => r.result)).toEqual(
+      initial.records.slice(1).map((r: any) => r.result),
+    );
+    expect(partial.records.map((r: any) => r.unprocessed)).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    const completion = await post(`${tasks()}/${id}/rounds`, {
+      mode: "complete",
+      expectedRevision: partial.task.revision,
+    });
+    expect(completion.statusCode, completion.body).toBe(201);
+    await finish(completion.json().run);
+    const final = await get(`${tasks()}/${id}`);
+    expect(final.unprocessedIds).toEqual([]);
+    expect(final.records[0].result).toEqual(partial.records[0].result);
+    expect(final.task.currentCount).toBe(3);
+  });
+  it("OPT18 supplies bounded duplicate feedback and refuses an expired time budget", async () => {
+    replies = ["duplicate"];
+    const created = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 1) },
+      options: {
+        operation: "augment",
+        instructions: "generate",
+        outputCount: 2,
+        allowedFields: ["question"],
+      },
+    });
+    await finish(created.json().run);
+    const data = await get(`${runs()}/${created.json().run.id}`);
+    expect(data.run.outputCount).toBe(2);
+    expect(data.diagnostics[0].calls[0].duplicates).toBe(2);
+    expect(requests.at(-1).rejectedDuplicates[0].question).toBe(" Q0 ");
+    expect(Buffer.byteLength(JSON.stringify(requests.at(-1)))).toBeLessThan(
+      40000,
+    );
+    const stale = await post(runs(), {
+      source: { ...source, recordIds: source.recordIds.slice(0, 1) },
+      options: {
+        operation: "rewrite",
+        instructions: "rewrite",
+        allowedFields: ["question"],
+      },
+    });
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at) VALUES($1,0,1,now()-interval '2 minutes')",
+        [stale.json().run.id],
+      );
+      await db.query(
+        "UPDATE job SET status='failed',counts=jsonb_build_object('processingBatches',1) WHERE id=$1",
+        [stale.json().run.jobId],
+      );
+    } finally {
+      await db.end();
+    }
+    const state = await get(`${runs()}/${stale.json().run.id}`);
+    expect(state.recovery).toMatchObject({
+      canRetry: false,
+      reason: "budget_exhausted",
+    });
+    expect(
+      (await post(`${runs()}/${stale.json().run.id}/retry`, {})).statusCode,
+    ).toBe(409);
   });
   it("appends augmentation once, reruns only the last effect and saves the aggregate", async () => {
     const initial = await post(runs(), {
