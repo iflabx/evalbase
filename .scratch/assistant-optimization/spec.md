@@ -1,6 +1,8 @@
 # 项目助手实测优化实施规格
 
-2026-10-14 最新文档：[项目助手稳定性与独立工作页面方案](../../docs/assistant-workspace-reliability-plan.md) 已完成，拆为 OPT-20–25 六张。当前均 `Implementation: not-started`；Owner 仅授权方案和 Tickets，不自动开始开发。基线 `f261a79437247349fd8f3e25b49819229ee5741e`，沿用当前工作区；本次未修改应用、切换 4217 或改动验收数据。此前分支合并/推送等授权不自动扩展到新批次。
+2026-10-14 最新实施：[OPT-20](issues/20-assistant-diagnostics-and-baseline.md) 已按 Owner 后续单张开发授权完成，代码 `f566909`；失败分类、可行动反馈、旧会话兼容及 A1–A10 统一脚本的实际证据见 [验证记录](opt20-verification.md)。沿用当前分支和同一 4217，保留 Owner 数据，Implementation completed、Owner pending。其余 OPT-21–25 尚未获开发授权，保持 not-started；此前分支合并/推送等授权不自动扩展到新批次。
+
+2026-10-14 方案起点：[项目助手稳定性与独立工作页面方案](../../docs/assistant-workspace-reliability-plan.md) 拆为 OPT-20–25 六张，文档基线 `f261a79437247349fd8f3e25b49819229ee5741e`。方案创建时未修改应用；后续实际实施以开头记录和台账为准。
 
 新增批次的产品细化、依赖、预算与一次最终人工验收统一见 [方案 §10](../../docs/assistant-workspace-reliability-plan.md#10-tickets依赖与交付)。推荐 OPT-20 → 21 → 22 → 23 → 24 → 25；旧 OPT-05/09 及各 Ticket 的 Owner 状态保留，不能由新方案代签。
 
@@ -69,7 +71,7 @@ Implementation: in-progress
 | [OPT-17](issues/17-processing-task-rounds.md) | 单任务工作区、当前成果汇总、轮次历史与跨轮保存 | OPT-16 已满足；Owner 已授权开发 | completed | 同一 4217；应用 6c1dafe；Owner pending；证据见 opt17-verification.md |
 | [OPT-18](issues/18-processing-recovery-and-operation-settings.md) | 清洗/扩写配置、失败诊断、有界恢复及部分完成反馈 | 现有 OPT-16/17 实现；Owner 已授权开发 | completed | 同一 4217 已更新；Owner pending；见 [验证记录](opt18-verification.md) |
 | [OPT-19](issues/19-processing-list-query-performance.md) | 列表批量摘要、按变化同步及保存统计减量 | 现有 OPT-14/17/18 及列表补修；Owner 已授权开发 | completed | 同一 4217 Web `34a0711`；Owner pending；见 [验证记录](opt19-verification.md) |
-| [OPT-20](issues/20-assistant-diagnostics-and-baseline.md) | 对话失败分类、可行动反馈及固定短请求基线 | 现有实现；仅文档授权 | not-started | 待实现及修复前基线；不以历史错误频率代替当前完成率 |
+| [OPT-20](issues/20-assistant-diagnostics-and-baseline.md) | 对话失败分类、可行动反馈及固定短请求基线 | 现有实现；Owner 已授权本张开发 | completed | [验证与基线](opt20-verification.md)；固定 Web `f566909`，Owner pending |
 | [OPT-21](issues/21-assistant-bounded-recovery.md) | 模型请求有限恢复、未知写对账与累计预算 | OPT-20 | not-started | 待定向故障与真实回执验证 |
 | [OPT-22](issues/22-assistant-tool-and-plan-contract.md) | 工具按阶段提供、参数减负与要求顺序稳定性 | OPT-20/21 | not-started | 待参数、计划失效与短请求验证 |
 | [OPT-23](issues/23-assistant-context-and-background-refs.md) | 当前事实摘要、长会话续用及已验证背景引用 | OPT-22 | not-started | 待长会话、引用真实性及旧数据兼容验证 |

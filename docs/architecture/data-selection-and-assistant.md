@@ -2,7 +2,7 @@
 
 2026-10-08 修订。范围以 [PRD](../PRD-data-selection-and-assistant.md) 为准；框架选择依据保留在 [调研](../research/project-agent-framework-and-architecture-2026-10-04.md)。§9 的要求管理和执行恢复已由 OPT-06/07 实施；完整候选审核体验与综合交付仍由 OPT-08 承接。其他章节描述复用基础及既有约束。整改顺序与状态见 [Spec](../../.scratch/assistant-optimization/spec.md)。
 
-2026-10-14 新增设计：独立助手页面与稳定性改进已形成 [详细方案](../assistant-workspace-reliability-plan.md) 和 OPT-20–25，尚未实施；§14 说明本次与既有架构的关系。以下实施记录保留原时间，不作为新改进已完成的证据。
+2026-10-14 最新实施：OPT-20 已完成对话失败诊断和短请求基线；OPT-21–25 仍为后续设计。范围、可选诊断兼容与实际证据见 §14 和 [验证记录](../../.scratch/assistant-optimization/opt20-verification.md)。以下实施记录保留原时间。
 
 ## 1. 模块与依赖
 
@@ -233,9 +233,13 @@ Owner 批准的产品边界以 [OPT-16](../../.scratch/assistant-optimization/is
 
 当前页一次查询授权范围内的采用回执，按稳定候选身份计算保存数量。旧回执仅对未解决身份及真实祖先链回读必要运行，请求内复用；混合轮次中不能因同页仍含回执所属运行的其他记录而跳过解析。不新增表、索引、公共 API、缓存服务或 Worker 行为；证据见 [验证记录](../../.scratch/assistant-optimization/opt19-verification.md)。
 
-## 14. OPT-20–25 助手稳定性与独立页面设计（待实施）
+## 14. OPT-20–25 助手稳定性与独立页面
 
-技术细节集中于 [总方案 §3–8](../assistant-workspace-reliability-plan.md)，本节只说明与现有结构的关系，不代表代码已改变：
+OPT-20 已在 `configuredModel` 的 fetch 边界记录安全 HTTP 状态和响应头等待时间，在 Agent 终结边界按真实模型来源、工具回执及领域错误归类；未知应用异常保持应用分类。诊断继续保存到现有任务 JSON/回合 observations，使用现有回合 ID，按可选字段兼容旧会话。只保存版本、计数、时间及白名单分类，不保存异常正文、密钥或提示词。保留数据操作数来自已完成且无需用户确认的真实回执；无法确认的候选数量为 null。
+
+独立诊断函数复用现有处理错误分类；测试脚本复用公开 HTTP、隔离数据库/桶和既有 Worker 执行器。实际验证及版本集中于 [OPT-20 记录](../../.scratch/assistant-optimization/opt20-verification.md)。
+
+后续 OPT-21–25 的技术细节集中于 [总方案 §3–8](../assistant-workspace-reliability-plan.md)，以下仍为待实施设计：
 
 - 保留 AI SDK、当前工具/步骤执行器和 PostgreSQL 作业；在对话请求边界补有界传输恢复，沿用现有任务修订、停止令牌、未知操作对账和 Worker 累计恢复预算。具体上限只在总方案 §4 定义。
 - 统一规范化后的生效约束，由服务端绑定当前来源/固定选择/回执；模型侧参数按阶段投影。上下文由持久事实和有界成对历史生成，背景引用继续解析到已验证原文；不迁移到新的工作流或记忆平台。

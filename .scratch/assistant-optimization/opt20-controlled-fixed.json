@@ -1,0 +1,133 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "6b2737e0451c96664e027fc7327c80a8062a6fa56e9f6df60003d9af50b8e718",
+  "mode": "controlled",
+  "codeVersion": "f56690915672a3f8b45bee6822c36498d10b6115",
+  "fixtureVersion": "public-contract-fixtures-v1",
+  "promptVersion": "assistant-prompt-v1",
+  "toolsVersion": "assistant-tools-v1",
+  "startedAt": "2026-10-14T07:44:56.462Z",
+  "results": [
+    {
+      "id": "A1",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 6732,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A2",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 5795,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A3",
+      "contractPassed": true,
+      "assertions": 3,
+      "goalCompleted": null,
+      "durationMs": 19570,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A4",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 5664,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A5",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 6540,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A6",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 5945,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A7",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 5349,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A8",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 11981,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A9",
+      "contractPassed": true,
+      "assertions": 11,
+      "goalCompleted": null,
+      "durationMs": 8664,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A10",
+      "contractPassed": true,
+      "assertions": 2,
+      "goalCompleted": null,
+      "durationMs": 6688,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    }
+  ],
+  "inputHash": "a997b798c29de58ff769a7b43566be14a490935ddaaefb893524b4cf684c3c8c"
+}

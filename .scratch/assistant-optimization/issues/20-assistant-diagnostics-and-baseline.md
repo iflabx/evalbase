@@ -1,10 +1,10 @@
 # OPT-20 项目助手失败诊断与短请求测试基线
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。2026-10-14 Owner 授权详细方案与 Tickets；本张未获开发授权。依赖现有 OPT-19 后的实现，不等待旧 Ticket 人工验收。完整范围以 [总方案 §4、§9](../../../docs/assistant-workspace-reliability-plan.md) 为准；产品继承 [PRD §7](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)。
+优先级：P1。2026-10-14 Owner 已单独授权本张开发。依赖现有 OPT-19 后的实现，不等待旧 Ticket 人工验收。完整范围以 [总方案 §4、§9](../../../docs/assistant-workspace-reliability-plan.md) 为准；产品继承 [PRD §7](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)。
 
 ## 目标
 
@@ -39,3 +39,8 @@ UI 复用 frontend-v1 的现有错误区、按钮和折叠明细；不新增常�
 ## Comments
 
 - 2026-10-14：创建文档；实现与验证均未开始。研究发现和原失败数据不当作本张已通过证据。
+- 2026-10-14：按后续开发授权完成，代码 `f56690915672a3f8b45bee6822c36498d10b6115`。原因、成果及动作使用白名单诊断，兼容旧会话；A1–A10 统一入口区分可控合同与真实模型目标。定向验证、修复前样本、审阅及同一 4217 数据保留证据见 [OPT-20 验证记录](../opt20-verification.md)，Owner 验收 pending。
+
+## 受影响 UI 对齐
+
+沿用项目助手原消息/错误区、frontend-v1 的文字颜色与间距、现有原生折叠明细。失败消息显示简短原因和下一动作；“诊断详情”按需展开步骤、保留数量及编号。旧无诊断回合显示无详细诊断说明；正常消息、卡片顺序、确认按钮和页面入口保持既有布局。桌面与 860px 浏览器检查通过；详细命令与限制统一见验证记录。

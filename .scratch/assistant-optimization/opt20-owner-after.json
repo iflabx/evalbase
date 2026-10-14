@@ -1,0 +1,66 @@
+{
+  "app_user": {
+    "count": 2,
+    "hash": "e11bf3f686daad32a066dbac4ffae303"
+  },
+  "project": {
+    "count": 2,
+    "hash": "130a11b4fa561b220fd7be70996de417"
+  },
+  "project_member": {
+    "count": 1,
+    "hash": "2b6aea9c8dc6feaf00904a1a672fab14"
+  },
+  "raw_material_collection": {
+    "count": 3,
+    "hash": "841611cff0ecbfb399c1ecedcce5b596"
+  },
+  "data_asset": {
+    "count": 18,
+    "hash": "56de85d0bbf486e9b6606b1dd800f0b5"
+  },
+  "test_set": {
+    "count": 6,
+    "hash": "b58d7550179311e7915e4fb8735d7873"
+  },
+  "test_set_version": {
+    "count": 8,
+    "hash": "5a40e138e67601d75c11dd4d95dee592"
+  },
+  "collaborative_draft": {
+    "count": 17,
+    "hash": "e5e7b4ba07d39eacb83e2e16bab63994"
+  },
+  "collaborative_draft_record": {
+    "count": 1548,
+    "hash": "ff39d461d73f8343021b8cfca12d34ce"
+  },
+  "processing_task": {
+    "count": 62,
+    "hash": "68cd09292fb8626f20ff10487cf4cd31"
+  },
+  "processing_run": {
+    "count": 82,
+    "hash": "8303ae765b64468cecb0bb9448a95b18"
+  },
+  "processing_batch": {
+    "count": 784,
+    "hash": "b5f8e88b15b20355d4216a91993331d1"
+  },
+  "processing_acceptance": {
+    "count": 19,
+    "hash": "d69fbac4d7124235a4590bfa30efd4e7"
+  },
+  "assistant_session": {
+    "count": 14,
+    "hash": "979502fa51f65e9c837a949c50ee8ba4"
+  },
+  "assistant_turn": {
+    "count": 107,
+    "hash": "86f91fac1754ba9e537d8fc449e6849a"
+  },
+  "assistant_proposal": {
+    "count": 4,
+    "hash": "591000f52c3b44a554b3618c924f3ca1"
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "format": "assistant-baseline-v1",
+  "mode": "real",
+  "codeVersion": "16c63a76d9a022acbeceb46e15ec832d64ad0ebd",
+  "fixtureVersion": "synthetic-eight-v1",
+  "promptVersion": "assistant-prompt-v1",
+  "toolsVersion": "assistant-tools-v1",
+  "startedAt": "2026-10-14T07:21:29.101Z",
+  "results": [
+    {
+      "id": "A1",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "waiting_input",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 6709,
+      "turns": [
+        {
+          "id": "turn_cc83a9913e994bc4b87fd72237bf0ae9",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "stop",
+            "requestAttempts": null,
+            "durationMs": 4571,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "awaiting_confirmation",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "userClarifications": 1,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 44079,
+      "turns": [
+        {
+          "id": "turn_07062904f71e4edcbcfc743aed43ea40",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "tool-calls",
+            "requestAttempts": null,
+            "durationMs": 5812,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_e392906bd24b45ad9a60feeb37d2908b",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "tool-calls",
+            "requestAttempts": null,
+            "durationMs": 21115,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_016776ccbbb44bcca409733121eb8124",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "stop",
+            "requestAttempts": null,
+            "durationMs": 3720,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 19405,
+      "turns": [
+        {
+          "id": "turn_fd3bfe4010294a5987ec5ba1fa779a64",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "tool-calls",
+            "requestAttempts": null,
+            "durationMs": 6834,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_1f9e23dc5ac34de38150c34c0a456aab",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "not_returned",
+            "requestAttempts": null,
+            "durationMs": 340,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "goalCompleted": false,
+      "reason": "goal_not_reached",
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 26544,
+      "turns": [
+        {
+          "id": "turn_36fe6801198647368cdf820dc5e3b01f",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "tool-calls",
+            "requestAttempts": null,
+            "durationMs": 4513,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_992acafc3028461890ade56ed569fa59",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "not_returned",
+            "requestAttempts": null,
+            "durationMs": 241,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_db234e1f3d014e23a14aa7a9d51525d5",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "tool-calls",
+            "requestAttempts": null,
+            "durationMs": 5203,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_d1ba196dd1d142cf81a5ca95bb7b2a49",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": null,
+            "finishReason": "not_returned",
+            "requestAttempts": null,
+            "durationMs": 204,
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "a3ffe00d2eb1a46b977d8edad88e1b2348c542de077e97f9ff6bbba2dce182b1"
+}

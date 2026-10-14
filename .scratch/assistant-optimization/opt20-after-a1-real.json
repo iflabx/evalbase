@@ -1,0 +1,43 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "6b2737e0451c96664e027fc7327c80a8062a6fa56e9f6df60003d9af50b8e718",
+  "mode": "real",
+  "codeVersion": "f56690915672a3f8b45bee6822c36498d10b6115",
+  "fixtureVersion": "synthetic-eight-v1",
+  "promptVersion": "assistant-prompt-v1",
+  "toolsVersion": "assistant-tools-v1",
+  "startedAt": "2026-10-14T07:46:49.203Z",
+  "results": [
+    {
+      "id": "A1",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "waiting_input",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 4591,
+      "turns": [
+        {
+          "id": "turn_f7520891d6c64a84be771b810bc35cfc",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_f7520891d6c64a84be771b810bc35cfc",
+            "finishReason": "stop",
+            "requestAttempts": 2,
+            "durationMs": 2850,
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "a3ffe00d2eb1a46b977d8edad88e1b2348c542de077e97f9ff6bbba2dce182b1"
+}
