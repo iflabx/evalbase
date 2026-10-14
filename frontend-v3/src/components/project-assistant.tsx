@@ -1774,9 +1774,13 @@ export function ProjectAssistant({
                   sessionId &&
                   reviewRun &&
                   visible?.task &&
-                  ["awaiting_review", "awaiting_confirmation", "failed", "stopped"].includes(
-                    visible.task.stage,
-                  ) && (
+                  [
+                    "awaiting_review",
+                    "awaiting_confirmation",
+                    "failed",
+                    "stopped",
+                    "complete",
+                  ].includes(visible.task.stage) && (
                     <AssistantCandidates
                       key={sessionId}
                       actorId={actorId}
@@ -1788,9 +1792,14 @@ export function ProjectAssistant({
                         String(visible.taskRevision ?? 0) +
                         (visible.task.candidateScope?.hash ?? "")
                       }
-                      selected={picked}
+                      readOnly={visible.task.stage === "complete"}
+                      selected={visible.task.stage === "complete" ? undefined : picked}
                       onSelect={setPicked}
-                      onSave={running || busy ? undefined : (text) => void send(undefined, text)}
+                      onSave={
+                        running || busy || visible.task.stage === "complete"
+                          ? undefined
+                          : (text) => void send(undefined, text)
+                      }
                     />
                   )}
               </div>

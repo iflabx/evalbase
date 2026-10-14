@@ -761,7 +761,10 @@ export async function startTurn(
     ).rows[0];
     const continuing =
       session.task?.goal &&
-      !["complete", "stopped"].includes(session.task.stage);
+      (!["complete", "stopped"].includes(session.task.stage) ||
+        (session.task.stage === "stopped" &&
+          Array.isArray(candidateSelection?.resultIds) &&
+          candidateSelection.resultIds.length > 0));
     const task: Record<string, any> = continuing
       ? {
           ...session.task,

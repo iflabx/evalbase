@@ -237,7 +237,8 @@ export async function acceptProcessingResults(
   })) ?? [{ runId, resultIds: ids }];
   if (
     !groups.length ||
-    groups.length > (scope.taskSave ? 10000 : 12) ||
+    groups.length >
+      (scope.taskSave || scope.assistantResultsGuard ? 10000 : 12) ||
     new Set(groups.map((group) => group.runId)).size !== groups.length ||
     groups.some(
       (group) =>

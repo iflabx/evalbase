@@ -112,7 +112,7 @@ export async function processingSourceSummary(
 export function processingReviewPage(
   data: Awaited<ReturnType<typeof readProcessingRun>>,
   query: { offset?: string; limit?: string; view?: string; search?: string },
-  runIssues?: ReadonlyMap<string, typeof data.issues>,
+  runData?: ReadonlyMap<string, Pick<typeof data, "issues" | "rootOperation">>,
 ) {
   const offset = Number(query.offset ?? 0),
     limit = Number(query.limit ?? 20),
@@ -138,8 +138,11 @@ export function processingReviewPage(
     (row) => keptIds.has(row.id) && row.result.question.trim(),
   ).length;
   const rows = data.records.map((row) => {
+    const ref = (row as typeof row & { resultRef?: { runId: string } })
+      .resultRef;
+    const actual = (ref && runData?.get(ref.runId)) || data;
     const added =
-      (row.original?.adoptionOperation ?? data.rootOperation) === "augment" ||
+      (row.original?.adoptionOperation ?? actual.rootOperation) === "augment" ||
       !row.original;
     const changedFields = added
       ? ["new"]
@@ -148,11 +151,7 @@ export function processingReviewPage(
             JSON.stringify(row.original![field]) !==
             JSON.stringify(row.result[field]),
         );
-    const ref = (row as typeof row & { resultRef?: { runId: string } })
-      .resultRef;
-    const issues = (
-      ref && runIssues ? (runIssues.get(ref.runId) ?? []) : data.issues
-    ).filter(
+    const issues = actual.issues.filter(
       (issue) =>
         !["empty_question", "duplicate_content", "missing_output"].includes(
           issue.code,
@@ -249,7 +248,7 @@ export async function presentProcessingReview(
         }
       : data,
     query,
-    new Map(taskRuns.map((item) => [item.run.id, item.issues])),
+    runData,
   );
   const sourceById = searchable
     ? new Map(data.records.map((row, index) => [row.id, searchable[index]!]))

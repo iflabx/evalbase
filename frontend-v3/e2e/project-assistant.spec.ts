@@ -214,6 +214,58 @@ async function overflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
 
+test("OPT-25 completed tasks retain read-only results and history after refresh", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    task: { goal: "已交付成果", stage: "complete", runId: "run", runIds: ["run"] },
+    intercept: async (route) => {
+      if (!new URL(route.request().url()).pathname.endsWith("/candidates")) return false;
+      await route.fulfill({
+        json: {
+          scope: "task",
+          reviewRevision: "a".repeat(64),
+          taskTotal: 1,
+          savedCount: 1,
+          savedIds: ["r1"],
+          records: [
+            {
+              id: "r1",
+              result: { question: "完成后保留的成果", expectedOutput: "保留答案", metadata: [] },
+              changedFields: ["new"],
+            },
+          ],
+          allIds: ["r1"],
+          total: 1,
+          stats: { all: 1, changed: 1, needsReview: 0 },
+          history: [
+            { runId: "run", round: 1, operation: "augment", status: "succeeded", count: 1 },
+          ],
+        },
+      });
+      return true;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByRole("button", { name: /^(工作区|打开工作区)$/ }).click();
+  const results = page.getByRole("region", { name: "候选结果" });
+  await expect(results).toContainText("完成后保留的成果");
+  await expect(results).toContainText("已保存 1 条");
+  await expect(results.getByRole("button", { name: "勾选本页", exact: true })).toBeDisabled();
+  await expect(results.getByLabel("选择结果 1", { exact: true })).toBeDisabled();
+  await expect(results.getByRole("button", { name: /保存所选/ })).toHaveCount(0);
+  await results.getByText("处理历史", { exact: false }).click();
+  await expect(results).toContainText("扩充");
+  await page.reload();
+  await page.getByRole("button", { name: /^(工作区|打开工作区)$/ }).click();
+  await expect(results).toContainText("完成后保留的成果");
+  await page.setViewportSize({ width: 420, height: 900 });
+  await page.getByRole("button", { name: "工作区", exact: true }).click();
+  await expect(results).toContainText("完成后保留的成果");
+  await overflow(page);
+  expect(state.posts).toHaveLength(0);
+});
+
 test("OPT-25 cross-page selection survives refresh and saves the fixed task scope", async ({
   page,
 }, info) => {
@@ -293,6 +345,7 @@ test("OPT-25 cross-page selection survives refresh and saves the fixed task scop
 test("OPT-25 a rejected stale submission refreshes results and uses a new key after reselecting", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   let revision = "a".repeat(64);
   const keys: string[] = [];
   const state = await fixture(page, {
@@ -349,6 +402,7 @@ test("OPT-25 a rejected stale submission refreshes results and uses a new key af
 test("OPT-25 clearing selection clears the persisted server range on the next request", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   const state = await fixture(page, {
     task: { goal: "整理资料", stage: "awaiting_review", runId: "run" },
   });

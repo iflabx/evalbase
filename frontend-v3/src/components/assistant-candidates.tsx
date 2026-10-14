@@ -42,6 +42,7 @@ export function AssistantCandidates({
   scopeHash,
   actorId = "",
   active = true,
+  readOnly = false,
   selected,
   onSelect,
   onSave,
@@ -52,6 +53,7 @@ export function AssistantCandidates({
   scopeHash?: string | undefined;
   actorId?: string;
   active?: boolean;
+  readOnly?: boolean;
   selected?: CandidateSelection | undefined;
   onSelect: (value: CandidateSelection) => void;
   onSave?: ((message: string) => void) | undefined;
@@ -122,6 +124,7 @@ export function AssistantCandidates({
   const renewal = value?.selection;
   useEffect(() => {
     if (
+      !readOnly &&
       selected &&
       "scope" in selected &&
       renewal &&
@@ -135,7 +138,7 @@ export function AssistantCandidates({
         resultIds: selected.resultIds,
       });
     }
-  }, [selected, renewal, onSelect]);
+  }, [selected, renewal, onSelect, readOnly]);
   const chosen = new Set(selected?.resultIds ?? []);
   const canRenew =
     selected &&
@@ -149,7 +152,7 @@ export function AssistantCandidates({
   );
   const saved = new Set(value?.savedIds ?? []);
   const toggle = (ids: string[], checked: boolean) => {
-    if (!revision || stale) return;
+    if (readOnly || !revision || stale) return;
     const next = new Set(chosen);
     for (const id of ids)
       if (checked && !saved.has(id)) next.add(id);
@@ -172,9 +175,11 @@ export function AssistantCandidates({
             ? `共 ${data.data.taskTotal ?? data.data.total} 条 · 已保存 ${data.data.savedCount ?? 0} 条 · 待保存 ${(data.data.taskTotal ?? data.data.total) - (data.data.savedCount ?? 0)} 条`
             : "候选数量读取后显示；已有成果保留。"}
         </p>
-        <p className="text-xs text-muted-foreground">
-          内容待审核；勾选后可在对话中调整或确认采用。
-        </p>
+        {!readOnly && (
+          <p className="text-xs text-muted-foreground">
+            内容待审核；勾选后可在对话中调整或确认采用。
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap gap-2 p-3">
         <Input
@@ -225,7 +230,12 @@ export function AssistantCandidates({
           size="sm"
           variant="outline"
           disabled={
-            stale || !rows.length || !data.isSuccess || data.isFetching || data.isPlaceholderData
+            readOnly ||
+            stale ||
+            !rows.length ||
+            !data.isSuccess ||
+            data.isFetching ||
+            data.isPlaceholderData
           }
           onClick={() =>
             toggle(
@@ -240,6 +250,7 @@ export function AssistantCandidates({
           size="sm"
           variant="outline"
           disabled={
+            readOnly ||
             !data.isSuccess ||
             stale ||
             !data.data?.allIds?.length ||
@@ -253,7 +264,7 @@ export function AssistantCandidates({
         <Button
           size="sm"
           variant="ghost"
-          disabled={!chosen.size}
+          disabled={readOnly || !chosen.size}
           onClick={() => onSelect({ scope: "task", reviewRevision: revision ?? "", resultIds: [] })}
         >
           清空选择
@@ -264,7 +275,7 @@ export function AssistantCandidates({
           成果已更新，原勾选范围已失效。请清空选择后重新核对。
         </p>
       )}
-      {onSave && (
+      {!readOnly && onSave && (
         <div className="flex flex-wrap gap-2 border-t p-3">
           <Button
             size="sm"
@@ -343,7 +354,9 @@ export function AssistantCandidates({
             error={data.isError}
             onRetry={() => void data.refetch()}
             generated={value.rootOperation === "augment"}
-            disabled={stale || data.isError || data.isFetching || data.isPlaceholderData}
+            disabled={
+              readOnly || stale || data.isError || data.isFetching || data.isPlaceholderData
+            }
             disabledIds={saved}
           />
           {Boolean(value.issues?.length) && (
