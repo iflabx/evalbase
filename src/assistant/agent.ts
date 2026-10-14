@@ -1437,7 +1437,22 @@ export async function executeAssistantTurn(
                 type: "object",
                 maxProperties: 20,
                 properties: {
-                  instructions: { type: "string", maxLength: 8000 },
+                  instructions: {
+                    type: "string",
+                    maxLength: 8000,
+                    description:
+                      "仅submit_processing/refine_candidates的处理文字要求；select_candidates使用selection，request_processing_apply使用target，不传instructions。",
+                  },
+                  operation: {
+                    enum: ["clean", "rewrite", "augment"],
+                    description: "仅处理/改写步骤；清理空白用clean。",
+                  },
+                  allRecords: {
+                    type: "boolean",
+                    description:
+                      "submit_processing：用户明确全部当前来源记录时true；与recordIds或selection二选一，不用outputCount表达输入数量。",
+                  },
+                  recordIds: ids,
                 },
                 description:
                   "当前步骤已知的业务工具参数；处理步骤使用operation、instructions（复数，单个字符串不是数组）、allowedFields及allRecords/selection；select_candidates使用runId及selection:{method,conditions,mode,value}，不能用submit_processing的operation:select；仅启用已有方案应省略steps，不重填input。后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",

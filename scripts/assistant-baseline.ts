@@ -389,6 +389,40 @@ if (mode === "controlled") {
         userPrompts++;
         await call("POST", `${path}/turns`, { message, ...extra });
         await drive();
+        const failed = state.turns.at(-1);
+        const failedTools =
+          failed?.tools.filter((tool: any) => tool.status === "failed") ?? [];
+        if (
+          manualTurnRetries === 0 &&
+          !state.task?.runId &&
+          failed?.status === "failed" &&
+          failedTools.length &&
+          failedTools.every(
+            (tool: any) =>
+              tool.effect === "none" &&
+              [
+                "processing_scope_invalid",
+                "processing_configuration_invalid",
+                "assistant_tool_input_invalid",
+              ].includes(tool.error?.code),
+          ) &&
+          failed.tools.every(
+            (tool: any) =>
+              [
+                "plan_task",
+                "read_records",
+                "read_background",
+                "query_project",
+              ].includes(tool.name) ||
+              (tool.status === "failed" && tool.effect === "none"),
+          )
+        ) {
+          // Simulate one explicit click on the existing retry action; never silently reset a failed turn's budget.
+          retriedNoEffectTurns.add(failed.id);
+          manualTurnRetries++;
+          await call("POST", `${path}/retry`, {});
+          await drive();
+        }
       }
       const candidates = async () => {
         const rows = [];
@@ -403,7 +437,8 @@ if (mode === "controlled") {
       };
       let businessReplies = 0;
       let manualContinuations = 0;
-      let retriedNoEffectTurn: string | undefined;
+      let manualTurnRetries = 0;
+      const retriedNoEffectTurns = new Set<string>();
       let recoveredParameterTurn: string | undefined;
       let userRecoveredParameterTurns = 0;
       let approvedFields: string[] | undefined;
@@ -669,7 +704,7 @@ if (mode === "controlled") {
                   tool.effect === "none",
               )
             ) {
-              retriedNoEffectTurn = failed.id;
+              retriedNoEffectTurns.add(failed.id);
               businessReplies++;
               await send("参考当前草稿的全部问题扩写8条，保持已有分类。");
             }
@@ -989,7 +1024,7 @@ if (mode === "controlled") {
           state.turns.some(
             (t: any) =>
               t.status === "failed" &&
-              t.id !== retriedNoEffectTurn &&
+              !retriedNoEffectTurns.has(t.id) &&
               !(userRecoveredParameterTurns && t.id === recoveredParameterTurn),
           )
         ) {
@@ -1074,7 +1109,8 @@ if (mode === "controlled") {
         userClarifications: clarifications,
         extraBusinessPrompts: businessReplies,
         manualContinuations,
-        userRetriedNoEffectTurns: retriedNoEffectTurn ? 1 : 0,
+        manualTurnRetries,
+        userRetriedNoEffectTurns: retriedNoEffectTurns.size,
         userRecoveredParameterTurns,
         semanticCorrections: null,
         semanticReview: "pending_human_review",
