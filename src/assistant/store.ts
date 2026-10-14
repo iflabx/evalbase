@@ -201,7 +201,7 @@ export async function readSession(
   await reconcileReceipts(db, scope, turns);
   const pending = (
     await db.query(
-      "SELECT id FROM assistant_proposal WHERE session_id=$1 AND status IN('pending','executing') AND (lease_until IS NULL OR lease_until<=now())",
+      "SELECT id FROM assistant_proposal WHERE session_id=$1 AND (status IN('pending','executing') OR (status='invalid' AND lease_token IS NOT NULL)) AND (lease_until IS NULL OR lease_until<=now())",
       [id],
     )
   ).rows;
@@ -687,11 +687,12 @@ export async function recoverProposalReceipt(
   // Selection and publication still require this proposal's own confirmation lease.
   if (!proposal.lease_token && proposal.action !== "processing") return;
   if (
-    !["pending", "executing"].includes(proposal.status) ||
+    !["pending", "executing", "invalid"].includes(proposal.status) ||
     (proposal.lease_until &&
       new Date(proposal.lease_until).getTime() > Date.now())
   )
     return;
+  if (proposal.status === "invalid" && !proposal.lease_token) return;
   if (
     sha256(
       canonicalJson({
@@ -714,7 +715,7 @@ export async function recoverProposalReceipt(
           )
         ).rows[0]
       : undefined;
-    if (!row) {
+    if (!row && proposal.status !== "invalid") {
       const ids = [...p.resultIds].sort(
         (a: string, b: string) =>
           Number(a.split(":")[0]) - Number(b.split(":")[0]) ||
@@ -787,7 +788,15 @@ export async function recoverProposalReceipt(
       refs.push({ kind: "version", id: row.id });
     }
   }
-  if (!receipt) return;
+  if (!receipt) {
+    // The revoked lease cannot commit later; avoid repeatedly looking up an absent receipt.
+    if (proposal.status === "invalid")
+      await db.query(
+        "UPDATE assistant_proposal SET lease_token=NULL WHERE id=$1 AND status='invalid'",
+        [proposal.id],
+      );
+    return;
+  }
   for (const ref of refs)
     await processingSourceAvailable(
       db,
@@ -802,7 +811,7 @@ export async function recoverProposalReceipt(
     [proposal.turn_id, JSON.stringify(refs)],
   );
   await db.query(
-    "UPDATE assistant_proposal SET status='succeeded',receipt=$2,lease_until=NULL WHERE id=$1 AND status IN('pending','executing')",
+    "UPDATE assistant_proposal SET status='succeeded',receipt=$2,lease_until=NULL WHERE id=$1 AND status IN('pending','executing','invalid')",
     [proposal.id, receipt],
   );
   return receipt;

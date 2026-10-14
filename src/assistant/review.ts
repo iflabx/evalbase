@@ -8,7 +8,11 @@ import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys, candidateKey } from "../processing/adoption.js";
 import { canonicalJson } from "../package/contract.js";
 import { planRequirementsKey } from "./plan.js";
-import { requirementSummary, validateRules } from "./requirements.js";
+import {
+  requirementSummary,
+  validateRules,
+  normalizedRequirements,
+} from "./requirements.js";
 import { AssistantError, type AssistantScope } from "./store.js";
 import {
   scopeCandidateRun,
@@ -427,8 +431,10 @@ export function taskCompatibilityProblem(
       }[];
       if (item.backgroundGoal) {
         if (
-          canonicalJson(item.backgroundGoal.requirements ?? []) !==
-            canonicalJson(requirementSummary(task)) ||
+          canonicalJson(
+            normalizedRequirements(item.backgroundGoal.requirements),
+          ) !==
+            canonicalJson(normalizedRequirements(requirementSummary(task))) ||
           canonicalJson(item.backgroundGoal.classifications ?? []) !==
             canonicalJson(validateRules(task))
         )

@@ -1,5 +1,6 @@
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId } from "../server/support.js";
+import { normalizedRequirements } from "./requirements.js";
 
 export const PLAN_ACTIONS = [
   "query_project",
@@ -41,17 +42,36 @@ export type ExecutionPlan = {
   current: number;
   requirementsKey?: string;
   needsReview?: boolean;
-  target?: Record<string, any>;
+  target?: Record<string, any> | null;
 };
 
 /** Asset-page context and processing sources refer to the same real asset. */
-export function planSource(source: Record<string, any> | undefined) {
+export function planSource(source: Record<string, any> | null | undefined) {
   return source?.kind === "asset"
     ? { kind: "assets", assetIds: [source.id] }
-    : source;
+    : source?.kind === "assets"
+      ? {
+          ...source,
+          assetIds: [...new Set(source.assetIds as string[])].sort(),
+        }
+      : source;
 }
 
-export function planRequirementsKey(task: Record<string, any>) {
+export function sourceWithinTask(
+  source: Record<string, any>,
+  target: Record<string, any>,
+) {
+  const actual = planSource(source)!,
+    allowed = planSource(target)!;
+  return (
+    canonicalJson(actual) === canonicalJson(allowed) ||
+    (actual.kind === "assets" &&
+      allowed.kind === "assets" &&
+      actual.assetIds.every((id: string) => allowed.assetIds.includes(id)))
+  );
+}
+
+export function planRequirementsKey(task: Record<string, any>, legacy = false) {
   return sha256(
     canonicalJson(
       Object.fromEntries(
@@ -67,8 +87,30 @@ export function planRequirementsKey(task: Record<string, any>) {
           "requirements",
           "backgroundEvidence",
         ]
-          .filter((field) => task[field] !== undefined)
-          .map((field) => [field, task[field]]),
+          .filter(
+            (field) =>
+              task[field] !== undefined &&
+              (legacy ||
+                (task[field] !== null &&
+                  !(
+                    [
+                      "requirements",
+                      "classifications",
+                      "allowedLabels",
+                      "backgroundEvidence",
+                    ].includes(field) &&
+                    Array.isArray(task[field]) &&
+                    !task[field].length
+                  ))),
+          )
+          .map((field) => [
+            field,
+            field === "requirements" && !legacy
+              ? normalizedRequirements(task[field])
+              : field === "target" && !legacy
+                ? planSource(task[field])
+                : task[field],
+          ]),
       ),
     ),
   );
@@ -87,10 +129,15 @@ export function revisePlan(
     }[];
   },
   revision?: number,
-  target?: Record<string, any>,
+  target?: Record<string, any> | null,
   requirementsKey?: string,
 ): ExecutionPlan | undefined {
-  if (!input.executionMode && !input.steps) return previous;
+  if (
+    !input.executionMode &&
+    !input.steps &&
+    (!previous || previous.requirementsKey === requirementsKey)
+  )
+    return previous;
   if (!previous && !input.steps && input.executionMode === "execute") return;
   let prefix = previous?.requirementsKey === requirementsKey;
   const steps =
@@ -102,8 +149,10 @@ export function revisePlan(
         step.input?.source &&
         canonicalJson(planSource(step.input.source)) ===
           canonicalJson(planSource(previous.target)) &&
-        target
-          ? { ...step.input, source: planSource(target) }
+        target !== undefined
+          ? target
+            ? { ...step.input, source: planSource(target) }
+            : (({ source: _source, ...rest }) => rest)(step.input)
           : step.input;
       let parameters =
         (inherited?.source
@@ -129,8 +178,11 @@ export function revisePlan(
         prefix &&
         prior?.action === step.action &&
         prior?.scope === step.scope &&
-        canonicalJson(prior?.input ?? null) ===
-          canonicalJson(parameters ?? null);
+        canonicalJson(
+          prior?.input?.source
+            ? { ...prior.input, source: planSource(prior.input.source) }
+            : (prior?.input ?? null),
+        ) === canonicalJson(parameters ?? null);
       // A committed adoption/publication is an immutable fact, not a new eligibility claim.
       // Later adoption/publication still rechecks the current goal against actual content.
       const committed =
@@ -144,8 +196,11 @@ export function revisePlan(
             "retry_processing",
           ].includes(prior.action) &&
             prior.receipt?.runId)) &&
-        canonicalJson(prior.input ?? null) ===
-          canonicalJson(parameters ?? null);
+        canonicalJson(
+          prior.input?.source
+            ? { ...prior.input, source: planSource(prior.input.source) }
+            : (prior.input ?? null),
+        ) === canonicalJson(parameters ?? null);
       return prefix || committed
         ? { ...prior!, title: step.title, revision }
         : {
@@ -415,4 +470,122 @@ export function missingStepDependency(plan: ExecutionPlan) {
           ? ["runId"]
           : [];
   return fields.find((field) => !input[field]);
+}
+
+/** Model omissions reuse current facts; explicit changes still pass the same domain guards. */
+export function bindTaskInput(
+  name: string,
+  supplied: Record<string, any>,
+  task: Record<string, any>,
+  pageObject?: Record<string, any>,
+  selection?: Record<string, any> | null,
+) {
+  const plan = task.executionPlan;
+  const input =
+    plan?.steps[plan.current]?.action === name
+      ? resolvedStepInput(plan, supplied)
+      : { ...supplied };
+  const target = Object.hasOwn(task, "target") ? task.target : pageObject;
+  if (
+    name === "submit_processing" &&
+    !input.source &&
+    target !== null &&
+    task.processingScope?.source &&
+    (!target || sourceWithinTask(task.processingScope.source, target))
+  )
+    input.source = task.processingScope.source;
+  if (["read_records", "submit_processing"].includes(name) && target)
+    input.source ??= planSource(target);
+  if (
+    [
+      "read_processing",
+      "select_candidates",
+      "refine_candidates",
+      "retry_processing",
+      "request_processing_apply",
+    ].includes(name)
+  )
+    input.runId ??=
+      name === "refine_candidates" && selection?.runId
+        ? selection.runId
+        : task.runId;
+  const draftId =
+    task.targetDraftId ??
+    (target?.kind === "draft" ? target.id : task.createdDraftId);
+  if (["preview_selection", "request_publish"].includes(name))
+    input.draftId ??= draftId;
+  if (name === "request_processing_apply" && draftId) {
+    input.target ??= { kind: "draft", id: draftId };
+    if (input.target.kind === "draft") input.target.id ??= draftId;
+  }
+  if (["submit_processing", "refine_candidates"].includes(name)) {
+    input.allowedFields ??= task.allowedFields ?? ["question"];
+    if (
+      name === "submit_processing" &&
+      input.allowedFields.includes("metadata") &&
+      task.metadataKeys
+    )
+      input.metadataKeys ??= task.metadataKeys;
+    if (
+      name === "submit_processing" &&
+      input.operation === "augment" &&
+      task.countKind !== "final"
+    )
+      input.outputCount ??= task.targetCount ?? undefined;
+  }
+  if (name === "plan_task" && input.countKind === "final")
+    input.targetDraftId ??=
+      task.targetDraftId ?? (target?.kind === "draft" ? target.id : undefined);
+  if (name === "request_selection_apply" && task.selectionPreview) {
+    input.previewId ??= task.selectionPreview.previewId;
+    input.draftId ??= task.selectionPreview.draftId;
+  }
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  );
+}
+
+/** Projection is a convenience, not an authorization boundary. Reads and correction stay available. */
+export function availableTaskTools(
+  task: Record<string, any>,
+  write: boolean,
+): string[] {
+  if (!write) return ["query_project", "read_records"];
+  const reads = [
+    "query_project",
+    "read_records",
+    "read_background",
+    "plan_task",
+  ];
+  if (task.runId) reads.push("read_processing");
+  if (
+    task.executionPlan?.mode === "plan" ||
+    task.question ||
+    ["processing", "awaiting_confirmation"].includes(task.stage)
+  )
+    return reads;
+  if (task.executionPlan?.needsReview || task.planValidationRequired)
+    return reads;
+  const action = pendingPlanAction(task.executionPlan) ?? task.nextAction;
+  if (action && !["any", "none", "plan_task"].includes(action))
+    return [...new Set([...reads, action])];
+  if (task.runId && task.stage === "awaiting_review")
+    return [
+      ...reads,
+      "select_candidates",
+      "refine_candidates",
+      "retry_processing",
+      "request_processing_apply",
+      "request_publish",
+    ];
+  return [
+    ...reads,
+    "create_draft",
+    "preview_selection",
+    "submit_processing",
+    ...(task.selectionPreview ? ["request_selection_apply"] : []),
+    ...(task.target?.kind === "draft" || task.createdDraftId
+      ? ["request_publish"]
+      : []),
+  ];
 }

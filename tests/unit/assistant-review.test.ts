@@ -8,6 +8,34 @@ import { planRequirementsKey } from "../../src/assistant/plan.js";
 import { requirementSummary } from "../../src/assistant/requirements.js";
 
 describe("current task result compatibility", () => {
+  it("OPT-22 reuses background outputs after exact independent requirement reorder but detects real edits", () => {
+    const task = {
+      requirements: ["保留答案", "保留问题"],
+      backgroundEvidence: [
+        { documentId: "doc", fragmentIndex: 1, sha256: "hash" },
+      ],
+    };
+    const data: any = {
+      run: { source: { kind: "assets", assetIds: ["A"], recordIds: ["A:1"] } },
+      backgroundEvidence: task.backgroundEvidence,
+      backgroundGoal: {
+        requirements: requirementSummary(task),
+        classifications: [],
+      },
+    };
+    expect(
+      taskCompatibilityProblem(
+        { ...task, requirements: [" 保留问题 ", "保留答案", "保留答案"] },
+        [data],
+      ),
+    ).toBeNull();
+    expect(
+      taskCompatibilityProblem(
+        { ...task, requirements: ["改写问题", "保留答案"] },
+        [data],
+      ),
+    ).not.toBeNull();
+  });
   it("OPT-10 retains an unfinished run with partially superseded output", () => {
     const source = { kind: "assets", assetIds: ["A"] };
     const row = {

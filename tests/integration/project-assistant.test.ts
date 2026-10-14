@@ -5,6 +5,8 @@ import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as contextModule from "../../src/assistant/context.js";
 import * as draftCreateModule from "../../src/drafts/create.js";
+import * as taskModule from "../../src/assistant/tasks.js";
+import * as fenceModule from "../../src/assistant/fence.js";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
 import { createPool } from "../../src/db/pool.js";
 import { migrate } from "../../src/db/migrate.js";
@@ -1927,10 +1929,10 @@ describe("project assistant public contract", () => {
             message.content.includes("assistant_plan_count_conflict"),
         );
       expect(JSON.parse(correctionFeedback.content).error.hint).toContain(
-        "省略classifications会沿用旧配额",
+        "省略保持原规则",
       );
       expect(JSON.parse(correctionFeedback.content).error.hint).toContain(
-        "重新提交classifications及修正后的quotas",
+        "用plan_task仅纠正冲突字段",
       );
       expect(rejected.task.targetCount).toBe(200);
       expect(rejected.task.classifications).toEqual([rule]);
@@ -4224,9 +4226,27 @@ describe("project assistant public contract", () => {
         { name: "create_draft", input: { name: "不应被建立的草稿" } },
       ];
       const readOnly = (await send("只查看当前方案")).json();
-      expect(readOnly.turns.at(-1).tools[0].error.code).toBe(
-        "assistant_plan_only",
-      );
+      expect(
+        readOnly.turns
+          .at(-1)
+          .tools.some(
+            (tool: any) =>
+              tool.name === "create_draft" && tool.status === "succeeded",
+          ),
+      ).toBe(false);
+      const db = createPool(databaseUrl);
+      try {
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int AS n FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+              [projectId, "不应被建立的草稿"],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+      } finally {
+        await db.end();
+      }
       expect(readOnly.task.executionPlan.steps[0].status).toBe("pending");
       toolSequence = [
         {
@@ -10804,7 +10824,8 @@ describe("project assistant public contract", () => {
         .at(-1)!
         .tools.find((t: any) => t.function.name === "plan_task");
       expect(wirePlan.function.parameters.allOf).toBeUndefined();
-      expect(wirePlan.function.parameters.anyOf).toHaveLength(2);
+      expect(wirePlan.function.parameters.anyOf).toBeUndefined();
+      expect(wirePlan.function.parameters.required).toEqual([]);
       const acceptsPlan = new Ajv({ strict: false }).compile(
         wirePlan.function.parameters,
       );
@@ -10819,14 +10840,10 @@ describe("project assistant public contract", () => {
           nextAction: "none",
         }),
       ).toBe(true);
-      expect(
-        acceptsPlan({
-          ...validPlan,
-          question: "选取方式？",
-          nextAction: "read_processing",
-        }),
-      ).toBe(false);
-      expect(acceptsPlan({ ...validPlan, question: "选取方式？" })).toBe(false);
+      // The thin wire schema describes values; the actual tool below rejected
+      // question plus an execution action before saving any contradictory plan.
+      expect(acceptsPlan({ nextAction: "read_processing" })).toBe(true);
+      expect(acceptsPlan({ targetCount: 4 })).toBe(true);
     } finally {
       requestedTool = undefined;
       toolSequence = [];
@@ -10848,8 +10865,8 @@ describe("project assistant public contract", () => {
           })
         ).json().sessionId;
         toolSequence = [
-          { name: "plan_task", input: { title: "缺必填字段" } },
-          { name: "plan_task", input: { title: "仍缺必填字段" } },
+          { name: "plan_task", input: { title: 1 } },
+          { name: "plan_task", input: { title: 2 } },
           { name: "create_draft", input: { name: "不得执行的草稿" } },
         ];
         if (sameBatch) {
@@ -10863,7 +10880,7 @@ describe("project assistant public contract", () => {
         expect(results.filter((t: any) => t.name === "plan_task")).toHaveLength(
           2,
         );
-        expect(results[0].error.hint).toContain("requirements");
+        expect(results[0].error.hint).toContain("title");
         expect(
           results.some(
             (t: any) => t.name === "create_draft" && t.status === "succeeded",
@@ -12093,6 +12110,563 @@ describe("project assistant public contract", () => {
         ).statusCode,
       ).toBe(409);
     } finally {
+      await db.end();
+    }
+  });
+  async function opt22Draft(label: string) {
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts`,
+      headers,
+      payload: { name: label },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().draft.id;
+    for (const question of ["  甲问题  ", "  乙问题  ", "  丙问题  "]) {
+      const record = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${id}/records`,
+        headers,
+        payload: {
+          question,
+          expectedOutput: "保留答案",
+          metadata: [{ key: "类别", value: "原类别" }],
+        },
+      });
+      expect(record.statusCode, record.body).toBe(201);
+    }
+    return id;
+  }
+  it("OPT-22 keeps real read receipts through partial plan updates and reordered requirements", async () => {
+    const draft = await opt22Draft("要求顺序核对");
+    await opt21Session();
+    const before = calls.length;
+    toolSequence = [
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          requirements: ["保留答案", "整理问题"],
+          targetCount: 8,
+          steps: [
+            { title: "读取", action: "read_records", scope: "all" },
+            {
+              title: "核对资料",
+              action: "query_project",
+              input: { kind: "project" },
+            },
+          ],
+        },
+      },
+      { name: "read_records", input: {} },
+      { name: "plan_task", input: { executionMode: "plan" } },
+    ];
+    const initial = await opt21End(
+      await opt21Submit("先读取再保留方案", { kind: "draft", id: draft }),
+    );
+    expect(initial.task.executionPlan.current).toBe(1);
+    const receipt = initial.task.executionPlan.steps[0];
+    expect(receipt.status).toBe("executed");
+    expect(
+      calls
+        .slice(before)
+        .some(
+          (call) =>
+            !call.tools.some(
+              (tool: any) => tool.function.name === "submit_processing",
+            ),
+        ),
+    ).toBe(true);
+    const afterReads = calls.length;
+    requestedTool = {
+      name: "plan_task",
+      input: {
+        requirements: [" 整理问题 ", "保留答案", "保留答案  "],
+        executionMode: "plan",
+      },
+    };
+    const reordered = await opt21End(
+      await opt21Submit("只整理要求顺序，不执行"),
+    );
+    expect(reordered.turns.at(-1).status).toBe("succeeded");
+    expect(reordered.task.executionPlan.current).toBe(1);
+    expect(reordered.task.executionPlan.steps[0]).toMatchObject({
+      id: receipt.id,
+      status: "executed",
+    });
+    expect(
+      calls
+        .slice(afterReads)
+        .every((call) =>
+          call.tools.every((tool: any) =>
+            [
+              "plan_task",
+              "read_records",
+              "query_project",
+              "read_background",
+            ].includes(tool.function.name),
+          ),
+        ),
+    ).toBe(true);
+    requestedTool = {
+      name: "plan_task",
+      input: { targetCount: 4, executionMode: "plan" },
+    };
+    const changed = await opt21End(
+      await opt21Submit("数量改为4条，仍只给方案"),
+    );
+    expect(changed.task.requirements).toEqual(["整理问题", "保留答案"]);
+    expect(changed.task.targetCount).toBe(4);
+    expect(changed.task.executionPlan.current).toBe(0);
+    requestedTool = {
+      name: "plan_task",
+      input: { requirements: [], targetCount: null, executionMode: "plan" },
+    };
+    const cleared = await opt21End(await opt21Submit("撤销文字和数量要求"));
+    expect(cleared.task.requirements).toEqual([]);
+    expect(cleared.task.targetCount).toBeNull();
+  });
+  it("OPT-22 submits short actions using the same fixed input and rejects an unbound new source", async () => {
+    const draft = await opt22Draft("短参数固定范围");
+    await opt21Session();
+    toolSequence = [
+      {
+        name: "plan_task",
+        input: { allowedFields: ["question"], nextAction: "submit_processing" },
+      },
+      {
+        name: "submit_processing",
+        input: {
+          operation: "clean",
+          instructions: "",
+          selection: {
+            method: "random",
+            conditions: [],
+            mode: "count",
+            value: 1,
+            seed: "opt22",
+          },
+        },
+      },
+    ];
+    const state = await opt21End(
+      await opt21Submit("清洗选中的一条", { kind: "draft", id: draft }),
+    );
+    expect(state.task.processingScope.count).toBe(1);
+    expect(
+      state.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "submit_processing").status,
+    ).toBe("succeeded");
+    const first = state.task.runId;
+    const db = createPool(databaseUrl);
+    try {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',lease_owner='opt22',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [first],
+        )
+      ).rows[0];
+      const cfg = { ...loadConfig(), databaseUrl };
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(cfg.minio),
+        cfg,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      await expect
+        .poll(async () => (await read()).json().task.stage, { timeout: 10000 })
+        .toBe("awaiting_review");
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 10000 },
+        )
+        .toBe(false);
+      requestedTool = {
+        name: "submit_processing",
+        input: { operation: "clean", instructions: "" },
+      };
+      const second = await opt21End(await opt21Submit("同一条再清洗一次"));
+      expect(second.task.processingScope.count).toBe(1);
+      expect(second.task.processingScope.hash).toBe(
+        state.task.processingScope.hash,
+      );
+      expect(second.task.runId).not.toBe(first);
+      const run = (
+        await db.query(
+          "SELECT input_count,options FROM processing_run WHERE id=$1",
+          [second.task.runId],
+        )
+      ).rows[0];
+      expect(run.input_count).toBe(1);
+      expect(run.options.allowedFields).toEqual(["question"]);
+      const other = await opt22Draft("新范围必须重选");
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            target: { kind: "draft", id: other },
+            nextAction: "submit_processing",
+          },
+        },
+        {
+          name: "submit_processing",
+          input: { operation: "clean", instructions: "" },
+        },
+      ];
+      const changed = await opt21End(
+        await opt21Submit("更换来源，但尚未指定新范围"),
+      );
+      expect(
+        changed.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "submit_processing").error
+          .code,
+      ).toBe("processing_scope_invalid");
+      expect(changed.task.processingScope).toBeNull();
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM processing_run WHERE id=ANY($1::text[])",
+            [[first, second.task.runId]],
+          )
+        ).rows[0].n,
+      ).toBe(2);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+  it("OPT-22 returns field conflicts as failed plans without changing current rules", async () => {
+    await opt21Session();
+    requestedTool = {
+      name: "plan_task",
+      input: {
+        targetCount: 4,
+        classifications: [
+          {
+            field: "expectedOutput",
+            allowedValues: ["A"],
+            quotas: [{ value: "A", count: 2 }],
+          },
+        ],
+        question: "是否确认？",
+        nextAction: "none",
+      },
+    };
+    const state = await opt21End(await opt21Submit("按固定配额设计方案"));
+    const tool = state.turns
+      .at(-1)
+      .tools.find((t: any) => t.name === "plan_task");
+    expect(tool.status).toBe("failed");
+    expect(tool.error.code).toBe("assistant_plan_count_conflict");
+    expect(tool.error.hint).toContain("期望输出");
+    expect(state.task.targetCount).toBeUndefined();
+    expect(state.task.classifications).toEqual([]);
+  });
+  it("OPT-22 invalidates an existing confirmation atomically when effective constraints change", async () => {
+    const draft = await opt22Draft("同回合确认失效");
+    await opt21Session();
+    toolBatch = [
+      { name: "request_publish", input: {} },
+      {
+        name: "plan_task",
+        input: { requirements: ["先重新核对"], targetCount: 4 },
+      },
+    ];
+    const state = await opt21End(
+      await opt21Submit("准备发布后补充要求", { kind: "draft", id: draft }),
+    );
+    const proposal = state.proposals[0];
+    expect(proposal.status).toBe("invalid");
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `${base()}/proposals/${proposal.id}/confirm`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {},
+    });
+    expect(confirmed.statusCode).toBe(409);
+    const db = createPool(databaseUrl);
+    try {
+      expect(
+        (
+          await db.query("SELECT status FROM collaborative_draft WHERE id=$1", [
+            draft,
+          ])
+        ).rows[0].status,
+      ).toBe("editing");
+    } finally {
+      await db.end();
+    }
+  });
+  it.each([false, true])(
+    "OPT-22 revokes a claimed confirmation while keeping committed receipts: %s",
+    async (committed) => {
+      const draft = await opt22Draft("确认竞争" + committed);
+      await opt21Session();
+      let releasePlan!: () => void,
+        enteredPlan!: () => void,
+        releasePublish!: () => void,
+        enteredPublish!: () => void;
+      const waitingPlan = new Promise<void>(
+          (resolve) => (enteredPlan = resolve),
+        ),
+        planGate = new Promise<void>((resolve) => (releasePlan = resolve));
+      const waitingPublish = new Promise<void>(
+          (resolve) => (enteredPublish = resolve),
+        ),
+        publishGate = new Promise<void>(
+          (resolve) => (releasePublish = resolve),
+        );
+      const update = taskModule.updateTask,
+        publish = fenceModule.guardAssistantCommit;
+      const pausePlan = vi
+        .spyOn(taskModule, "updateTask")
+        .mockImplementation(async (...args) => {
+          if ((args[2].requirements as string[])?.includes("领取后更正要求")) {
+            enteredPlan();
+            await planGate;
+          }
+          return update(...args);
+        });
+      const pausePublish = vi
+        .spyOn(fenceModule, "guardAssistantCommit")
+        .mockImplementation(async (...args) => {
+          if (!committed && args[1].assistantGuard?.proposalId) {
+            enteredPublish();
+            await publishGate;
+          }
+          return publish(...args);
+        });
+      let confirmation: Promise<Awaited<ReturnType<typeof read>>> | undefined;
+      try {
+        toolBatch = [
+          { name: "request_publish", input: {} },
+          {
+            name: "plan_task",
+            input: { requirements: ["领取后更正要求"], targetCount: 4 },
+          },
+        ];
+        const turnId = await opt21Submit("准备发布并补充条件", {
+          kind: "draft",
+          id: draft,
+        });
+        await waitingPlan;
+        const proposal = (await read()).json().proposals[0];
+        confirmation = app.inject({
+          method: "POST",
+          url: `${base()}/proposals/${proposal.id}/confirm`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {},
+        });
+        const done = confirmation!;
+        if (committed) {
+          expect((await done).statusCode).toBe(200);
+          // Only the test DB loses the acknowledgement after the real domain commit.
+          const db = createPool(databaseUrl);
+          try {
+            await db.query(
+              "UPDATE assistant_proposal SET status='executing',receipt=NULL,lease_until=now()+interval '60 seconds' WHERE id=$1",
+              [proposal.id],
+            );
+          } finally {
+            await db.end();
+          }
+        } else await waitingPublish;
+        releasePlan();
+        await opt21End(turnId);
+        releasePublish();
+        expect((await done).statusCode).toBe(committed ? 200 : 409);
+        const state = (await read()).json(),
+          stored = state.proposals.find((p: any) => p.id === proposal.id);
+        expect(stored.status).toBe(committed ? "succeeded" : "invalid");
+        const db = createPool(databaseUrl);
+        try {
+          expect(
+            (
+              await db.query(
+                "SELECT status FROM collaborative_draft WHERE id=$1",
+                [draft],
+              )
+            ).rows[0].status,
+          ).toBe(committed ? "published" : "editing");
+        } finally {
+          await db.end();
+        }
+        if (committed) {
+          expect(stored.receipt).toBeTruthy();
+          const replay = await app.inject({
+            method: "POST",
+            url: `${base()}/proposals/${proposal.id}/confirm`,
+            headers,
+            payload: {},
+          });
+          expect(replay.statusCode, replay.body).toBe(200);
+          expect(replay.json().replayed).toBe(true);
+          await expect
+            .poll(
+              async () =>
+                (await read())
+                  .json()
+                  .turns.some((t: any) =>
+                    ["queued", "running"].includes(t.status),
+                  ),
+              { timeout: 10000 },
+            )
+            .toBe(false);
+        }
+      } finally {
+        releasePlan();
+        releasePublish();
+        await confirmation;
+        pausePlan.mockRestore();
+        pausePublish.mockRestore();
+        toolBatch = undefined;
+      }
+    },
+  );
+  it("OPT-22 binds selected older metadata candidates and keeps key protection without unsupported parameters", async () => {
+    const draft = await opt22Draft("选中旧批次 Metadata");
+    await opt21Session();
+    const db = createPool(databaseUrl);
+    async function finish(id: string) {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',lease_owner='opt22',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [id],
+        )
+      ).rows[0];
+      const cfg = { ...loadConfig(), databaseUrl },
+        result = await runProcessing(
+          db,
+          new ArtifactRepository(cfg.minio),
+          cfg,
+          job,
+        );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      await expect
+        .poll(async () => (await read()).json().task.stage, { timeout: 10000 })
+        .toBe("awaiting_review");
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 10000 },
+        )
+        .toBe(false);
+    }
+    async function selectedTurn(message: string, runId: string) {
+      const r = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message, candidates: { runId, resultIds: ["0:0"] } },
+      });
+      expect(r.statusCode, r.body).toBe(202);
+      return opt21End(r.json().turnId);
+    }
+    try {
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          operation: "clean",
+          instructions: "",
+          selection: {
+            method: "all",
+            conditions: [
+              { field: "question", operator: "contains", value: "甲" },
+            ],
+          },
+        },
+      };
+      const first = (
+        await opt21End(
+          await opt21Submit("清洗甲问题", { kind: "draft", id: draft }),
+        )
+      ).task.runId;
+      await finish(first);
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          operation: "clean",
+          instructions: "",
+          selection: {
+            method: "all",
+            conditions: [
+              { field: "question", operator: "contains", value: "乙" },
+            ],
+          },
+        },
+      };
+      const second = (await opt21End(await opt21Submit("再清洗乙问题"))).task
+        .runId;
+      await finish(second);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            allowedFields: ["question", "metadata"],
+            metadataKeys: ["类别"],
+            nextAction: "refine_candidates",
+          },
+        },
+        {
+          name: "refine_candidates",
+          input: {
+            runId: second,
+            allSelected: true,
+            instructions: "改类别",
+            allowedFields: ["metadata"],
+          },
+        },
+      ];
+      const wrong = await selectedTurn("只修改勾选甲问题的类别", first);
+      expect(
+        wrong.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "refine_candidates").status,
+      ).toBe("failed");
+      requestedTool = {
+        name: "refine_candidates",
+        input: {
+          allSelected: true,
+          instructions: "只改类别",
+          allowedFields: ["metadata"],
+        },
+      };
+      const fixed = await selectedTurn("沿用刚才勾选的甲问题", first);
+      expect(
+        fixed.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "refine_candidates").status,
+      ).toBe("succeeded");
+      const child = (
+        await db.query(
+          "SELECT parent_run_id,input_count,options FROM processing_run WHERE id=$1",
+          [fixed.task.runId],
+        )
+      ).rows[0];
+      expect(child.parent_run_id).toBe(first);
+      expect(child.input_count).toBe(1);
+      expect(child.options.metadataKeys).toEqual(["类别"]);
+      expect(child.options.allowedFields).toContain("metadata");
+    } finally {
+      toolSequence = [];
+      requestedTool = undefined;
       await db.end();
     }
   });

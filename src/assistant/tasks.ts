@@ -19,12 +19,15 @@ export async function updateTask(
   db: Database,
   turn: Record<string, any>,
   patch: Record<string, unknown>,
+  invalidateProposals = false,
 ) {
   const result = await db.query(
-    `UPDATE assistant_session s SET task=s.task||$2::jsonb,title=coalesce($2::jsonb->>'title',s.title),updated_at=now()
+    `WITH changed AS (UPDATE assistant_session s SET task=s.task||$2::jsonb,title=coalesce($2::jsonb->>'title',s.title),updated_at=now()
     FROM assistant_turn t WHERE t.id=$1 AND t.session_id=s.id AND t.task_revision=s.task_revision
-    AND t.execution_token=$3 AND t.status='running' AND t.expires_at>now() RETURNING s.task`,
-    [turn.id, JSON.stringify(patch), turn.execution_token],
+    AND t.execution_token=$3 AND t.status='running' AND t.expires_at>now() RETURNING s.id,s.task),
+    invalidated AS (UPDATE assistant_proposal SET status='invalid',lease_until=NULL WHERE $4::boolean AND session_id=(SELECT id FROM changed) AND status IN('pending','executing'))
+    SELECT task FROM changed`,
+    [turn.id, JSON.stringify(patch), turn.execution_token, invalidateProposals],
   );
   if (!result.rowCount) throw new AssistantError(409, "assistant_interrupted");
   return result.rows[0].task;

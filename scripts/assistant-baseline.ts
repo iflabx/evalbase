@@ -47,7 +47,7 @@ const cases = [
   [
     "A9",
     "查询资料。",
-    "OPT-21|OPT-20 classifies provider failure|OPT-20 preserves completed operations|repairs missing prerequisites and a no-effect scope failure|keeps an unknown write bound when replanning|stops budget continuation when new query arguments",
+    "OPT-22|OPT-21|OPT-20 classifies provider failure|OPT-20 preserves completed operations|repairs missing prerequisites and a no-effect scope failure|keeps an unknown write bound when replanning|stops budget continuation when new query arguments",
   ],
   ["A10", "采用全部结果，准备发布。", "requires a bound explicit confirmation"],
 ] as const;
@@ -82,8 +82,8 @@ const report: any = {
   codeVersion: version,
   fixtureVersion:
     mode === "real" ? "synthetic-eight-v1" : "public-contract-fixtures-v1",
-  promptVersion: "assistant-prompt-v1",
-  toolsVersion: "assistant-tools-v1",
+  promptVersion: "assistant-prompt-v2",
+  toolsVersion: "assistant-tools-v2",
   startedAt: new Date().toISOString(),
   results: [],
 };
@@ -626,9 +626,51 @@ if (mode === "controlled") {
             : "baseline_execution_incomplete";
       }
       const turns = state?.turns ?? [];
+      const parameterCodes = new Set([
+        "assistant_tool_input_invalid",
+        "processing_scope_invalid",
+        "processing_configuration_invalid",
+        "assistant_plan_count_conflict",
+        "assistant_requirement_conflict",
+        "assistant_plan_prerequisite_missing",
+        "assistant_reference_invalid",
+        "assistant_candidate_selection_invalid",
+      ]);
+      const toolParameterFailures = state?.turns
+        ? state.turns.reduce(
+            (total: number, t: any) =>
+              total +
+              t.tools.filter(
+                (r: any) =>
+                  r.status === "failed" && parameterCodes.has(r.error?.code),
+              ).length,
+            0,
+          )
+        : null;
+      const toolParameterRecoveries = state?.turns
+        ? state.turns.reduce(
+            (total: number, t: any) =>
+              total +
+              t.tools.filter(
+                (r: any, index: number) =>
+                  r.status === "succeeded" &&
+                  t.tools
+                    .slice(0, index)
+                    .some(
+                      (prior: any) =>
+                        prior.name === r.name &&
+                        prior.status === "failed" &&
+                        parameterCodes.has(prior.error?.code),
+                    ),
+              ).length,
+            0,
+          )
+        : null;
       report.results.push({
         id,
         goalCompleted,
+        toolParameterFailures,
+        toolParameterRecoveries,
         reason,
         stage: state?.task?.stage ?? null,
         userPrompts,

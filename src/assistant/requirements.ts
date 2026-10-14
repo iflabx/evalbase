@@ -13,6 +13,10 @@ type Requirements = CandidateGoal & {
   metadataKeys?: string[] | null;
 };
 
+/** Exact independent constraints, never semantic paraphrase equivalence. */
+export const normalizedRequirements = (values: string[] = []) =>
+  [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
+
 export class RequirementError extends Error {
   readonly status = 422;
   constructor(
