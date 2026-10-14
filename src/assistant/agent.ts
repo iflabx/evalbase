@@ -1427,7 +1427,7 @@ export async function executeAssistantTurn(
                 type: "object",
                 maxProperties: 20,
                 description:
-                  "当前步骤已知的业务工具参数；处理步骤使用operation、instructions（复数）、allowedFields及allRecords/selection；select_candidates使用runId及selection:{method,conditions,mode,value}，不能用submit_processing的operation:select；仅启用已有方案应省略steps，不重填input。后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
+                  "当前步骤已知的业务工具参数；处理步骤使用operation、instructions（复数，单个字符串不是数组）、allowedFields及allRecords/selection；select_candidates使用runId及selection:{method,conditions,mode,value}，不能用submit_processing的operation:select；仅启用已有方案应省略steps，不重填input。后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
               },
               scope: {
                 enum: ["preview", "all"],
@@ -1643,7 +1643,7 @@ export async function executeAssistantTurn(
             throw new AssistantError(
               422,
               "assistant_tool_input_invalid",
-              "当前勾选的是处理候选；局部修改步骤应为refine_candidates，使用allSelected:true及instructions，不能使用submit_processing。",
+              "当前勾选的是处理候选；局部修改步骤应为refine_candidates，input示例:{allSelected:true,instructions:'仅将选中题目改得自然且答案不变',allowedFields:['question']}；instructions必须为单个字符串，不是数组。不能使用submit_processing。",
             );
           const parameters = { ...(step.input ?? {}) };
           if (
@@ -2357,7 +2357,7 @@ export async function executeAssistantTurn(
     ),
     submit_processing: businessTool(
       "submit_processing",
-      "提交当前原始输入的清洗、改写或扩充，不采用或发布。勾选当前候选后改写应调用refine_candidates与allSelected:true，不能调用本工具。省略来源、字段和已有步骤参数时复用当前任务事实；省略范围只复用同来源固定选择。首次处理必须给selection/recordIds或明确allRecords，不能默认全量。clean/rewrite一条输入对应一条候选；augment的outputCount为新增数量，默认继承当前新增目标。切换来源先更新plan_task并重新选取。",
+      "提交当前原始输入的清洗、改写或扩充，不采用或发布。勾选当前候选后改写应调用refine_candidates与allSelected:true，不能调用本工具。省略来源、字段和已有步骤参数时复用当前任务事实；省略范围只复用同来源固定选择。首次处理必须给selection/recordIds或明确allRecords，不能默认全量。参考资料扩写时也须确定参考输入：在用户指定来源内选读出的真实recordIds，或用户已指明全部当前资料时allRecords:true；outputCount不定义参考范围。clean/rewrite一条输入对应一条候选；augment的outputCount为新增数量，默认继承当前新增目标。切换来源先更新plan_task并重新选取。",
       {
         source: sourceSchema,
         recordIds: ids,
@@ -3415,6 +3415,15 @@ export async function executeAssistantTurn(
         turn.candidate_selection ?? current.selectedCandidates,
       );
       if (
+        (step.action === "submit_processing" &&
+          !input.recordIds &&
+          input.allRecords !== true &&
+          !input.selection &&
+          !(
+            current.processingScope &&
+            canonicalJson(planSource(current.processingScope.source)) ===
+              canonicalJson(planSource(input.source))
+          )) ||
         (step.action === "select_candidates" &&
           !input.groups &&
           !input.selection) ||

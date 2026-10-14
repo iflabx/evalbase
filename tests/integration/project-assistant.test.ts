@@ -14024,6 +14024,54 @@ describe("project assistant public contract", () => {
       await f.db.end();
     }
   });
+  it("OPT-25 leaves an unbound planned input scope for the model to complete before registered execution", async () => {
+    const previous = sessionId,
+      source = await opt22Draft("R25 待补范围");
+    await opt21Session();
+    try {
+      const parameters = {
+        operation: "clean",
+        instructions: "",
+        allowedFields: ["question"],
+      };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            target: { kind: "draft", id: source },
+            executionMode: "execute",
+            steps: [
+              { title: "清洗", action: "submit_processing", input: parameters },
+            ],
+          },
+        },
+        {
+          name: "submit_processing",
+          input: { ...parameters, allRecords: true },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("清理当前草稿"));
+      const receipts = state.turns
+        .at(-1)
+        .tools.filter((tool: any) => tool.name === "submit_processing");
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({
+        status: "succeeded",
+        input: { allRecords: true },
+      });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+    }
+  });
   it("OPT-25 rejects a random selection without its unit before writes and accepts short deterministic cleanup", async () => {
     const previous = sessionId,
       f = await opt25Results();

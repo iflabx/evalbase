@@ -402,6 +402,7 @@ if (mode === "controlled") {
         }
       };
       let businessReplies = 0;
+      let retriedNoEffectTurn: string | undefined;
       let approvedFields: string[] | undefined;
       let goalCompleted = false,
         reason = "goal_not_reached";
@@ -435,6 +436,10 @@ if (mode === "controlled") {
               resultIds: before.slice(0, 2).map((r: any) => r.id),
             },
           });
+          if (state.task?.question) {
+            businessReplies++;
+            await send("我已勾选两条，按日常说话的方式改写，答案和分类不变。");
+          }
           const after = await candidates();
           goalCompleted =
             after.length === 8 &&
@@ -565,6 +570,15 @@ if (mode === "controlled") {
               ).rows[0].count,
             ) === 1;
         } else {
+          const runsBeforePlanning =
+            id === "A2"
+              ? (
+                  await db.query(
+                    "SELECT count(*) FROM processing_run WHERE project_id=$1",
+                    [projectId],
+                  )
+                ).rows[0].count
+              : undefined;
           await send(prompt, { context });
           if (id === "A2") {
             if (
@@ -592,7 +606,7 @@ if (mode === "controlled") {
                   [projectId],
                 )
               ).rows[0].count,
-              "0",
+              runsBeforePlanning,
               "plan_executed_early",
             );
             approvedFields = [...(state.task?.allowedFields ?? ["question"])];
@@ -608,6 +622,21 @@ if (mode === "controlled") {
           ) {
             businessReplies++;
             await send("随机从已有候选中保留4条，其他内容不要改。");
+          }
+          if (id === "A4" && state.task?.error === "processing_scope_invalid") {
+            const failed = state.turns.at(-1);
+            if (
+              failed?.tools.some(
+                (tool: any) =>
+                  tool.status === "failed" &&
+                  tool.error?.code === "processing_scope_invalid" &&
+                  tool.effect === "none",
+              )
+            ) {
+              retriedNoEffectTurn = failed.id;
+              businessReplies++;
+              await send("参考当前草稿的全部问题扩写8条，保持已有分类。");
+            }
           }
           if (id === "A1") {
             const receipts = state.turns
@@ -867,7 +896,11 @@ if (mode === "controlled") {
             sourceReferencesChecked: 200,
           };
         }
-        if (state.turns.some((t: any) => t.status === "failed")) {
+        if (
+          state.turns.some(
+            (t: any) => t.status === "failed" && t.id !== retriedNoEffectTurn,
+          )
+        ) {
           goalCompleted = false;
           reason = "turn_failed";
         } else
@@ -942,6 +975,7 @@ if (mode === "controlled") {
           : null,
         userClarifications: clarifications,
         extraBusinessPrompts: businessReplies,
+        userRetriedNoEffectTurns: retriedNoEffectTurn ? 1 : 0,
         semanticCorrections: null,
         semanticReview: "pending_human_review",
         durationMs: Date.now() - started,
