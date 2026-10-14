@@ -1,0 +1,61 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "0557d1e4ccf28fa7114da97df238d8402949c798e7fd5227af5094b9d20cfd1d",
+  "mode": "controlled",
+  "codeVersion": "25c71b8351edc814bea6e62263ac5e0e1fb2f188",
+  "fixtureVersion": "public-contract-fixtures-v1",
+  "promptVersion": "assistant-prompt-v1",
+  "toolsVersion": "assistant-tools-v1",
+  "startedAt": "2026-10-14T08:34:54.077Z",
+  "results": [
+    {
+      "id": "A2",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 5870,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A3",
+      "contractPassed": true,
+      "assertions": 3,
+      "goalCompleted": null,
+      "durationMs": 20300,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A9",
+      "contractPassed": true,
+      "assertions": 23,
+      "goalCompleted": null,
+      "durationMs": 34359,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A10",
+      "contractPassed": true,
+      "assertions": 2,
+      "goalCompleted": null,
+      "durationMs": 7815,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    }
+  ],
+  "inputHash": "0d6af9a64cad7dba7d835f4f4ef6ef3006557786c8bad558808a9d5eca18c23a"
+}

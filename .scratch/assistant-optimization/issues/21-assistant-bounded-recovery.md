@@ -1,10 +1,10 @@
 # OPT-21 项目助手模型请求与执行有界恢复
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-20
+Implementation: completed
+Blocked by: none
 
-优先级：P1。2026-10-14 仅授权方案与 Tickets。详细合同见 [总方案 §4](../../../docs/assistant-workspace-reliability-plan.md#4-失败如何恢复)，技术边界继承 [现有架构 §9](../../../docs/architecture/data-selection-and-assistant.md#9-方案执行与预算续做) 和 [ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。
+优先级：P1。2026-10-14 Owner 后续单独授权本张开发。详细合同见 [总方案 §4](../../../docs/assistant-workspace-reliability-plan.md#4-失败如何恢复)，技术边界继承 [现有架构 §9](../../../docs/architecture/data-selection-and-assistant.md#9-方案执行与预算续做) 和 [ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。
 
 ## 目标与范围
 
@@ -36,3 +36,9 @@ Blocked by: OPT-20
 ## Comments
 
 - 2026-10-14：文档就绪，依赖 OPT-20 的错误合同；尚未开发。
+
+- 2026-10-14：按单张授权完成实现及定向回归；预算内传输恢复、未知写入对账、取消及有效成果保留见 [验证记录](../opt21-verification.md)。沿用当前分支和同一 4217，Owner 验收 pending。
+
+## UI 对齐记录
+
+复用 frontend-v1 的当前反馈文字、折叠区域和按钮样式。原有消息→操作记录→任务/候选的顺序保持；只在现有任务区短暂显示模型恢复提示，重试能力由服务端预算决定。未新增页面、常驻卡片或动画；独立工作页仍由 OPT-24 承接。定向检查覆盖旧无诊断会话、输入/候选保留及窄窗口。

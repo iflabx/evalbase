@@ -2,7 +2,7 @@
 
 2026-10-08 修订。范围以 [PRD](../PRD-data-selection-and-assistant.md) 为准；框架选择依据保留在 [调研](../research/project-agent-framework-and-architecture-2026-10-04.md)。§9 的要求管理和执行恢复已由 OPT-06/07 实施；完整候选审核体验与综合交付仍由 OPT-08 承接。其他章节描述复用基础及既有约束。整改顺序与状态见 [Spec](../../.scratch/assistant-optimization/spec.md)。
 
-2026-10-14 最新实施：OPT-20 已完成对话失败诊断和短请求基线；OPT-21–25 仍为后续设计。范围、可选诊断兼容与实际证据见 §14 和 [验证记录](../../.scratch/assistant-optimization/opt20-verification.md)。以下实施记录保留原时间。
+2026-10-14 最新实施：OPT-20 已完成对话失败诊断和短请求基线；OPT-21 已完成有界恢复；OPT-22–25 仍为后续设计。范围、可选诊断兼容与实际证据见 §14 和 [验证记录](../../.scratch/assistant-optimization/opt20-verification.md)。以下实施记录保留原时间。
 
 ## 1. 模块与依赖
 
@@ -239,9 +239,10 @@ OPT-20 已在 `configuredModel` 的 fetch 边界记录安全 HTTP 状态和响�
 
 独立诊断函数复用现有处理错误分类；测试脚本复用公开 HTTP、隔离数据库/桶和既有 Worker 执行器。实际验证及版本集中于 [OPT-20 记录](../../.scratch/assistant-optimization/opt20-verification.md)。
 
-后续 OPT-21–25 的技术细节集中于 [总方案 §3–8](../assistant-workspace-reliability-plan.md)，以下仍为待实施设计：
+OPT-21 在现有 model fetch 外复用一个回合级传输包装器，SDK 重试保持关闭。原截止时间、模型/工具计数及传输尝试持久到可选 task.turnBudget，恢复先读原预算再检查执行令牌；旧任务按可用计数兼容。取消使用现有 dispatcher 检查和 AbortSignal，写入继续复检事务 fence。未知操作只查原键回执；处理成功而说明失败保留审核入口，成功说明或合法 Worker 恢复清除旧恢复标志。后台批次的累计 model_attempts 和截止时间不重置，不重写 Worker。额度定义仍见 [总方案 §4](../assistant-workspace-reliability-plan.md#4-失败如何恢复)，证据见 [OPT-21 记录](../../.scratch/assistant-optimization/opt21-verification.md)。
 
-- 保留 AI SDK、当前工具/步骤执行器和 PostgreSQL 作业；在对话请求边界补有界传输恢复，沿用现有任务修订、停止令牌、未知操作对账和 Worker 累计恢复预算。具体上限只在总方案 §4 定义。
+后续 OPT-22–25 的技术细节集中于 [总方案 §3–8](../assistant-workspace-reliability-plan.md)，以下仍为待实施设计：
+
 - 统一规范化后的生效约束，由服务端绑定当前来源/固定选择/回执；模型侧参数按阶段投影。上下文由持久事实和有界成对历史生成，背景引用继续解析到已验证原文；不迁移到新的工作流或记忆平台。
 - frontend-v3 增加独立个人会话路由并退出完整抽屉入口，复用当前 status、消息、背景、确认及处理组件。现有会话清单可补名称过滤；结果读取必要时扩展既有候选接口的任务范围和派生审核修订，批次读取保留。新增读取能力仍复检用户、项目和完整来源权限。
 - 不增加数据表或服务；必要的任务/规则/诊断字段按可选读取兼容旧任务。整体主业务顺序仍是资料→处理→审核→确认采用/发布，因此不改写历史 v2 主流程图或 ADR 的技术选型。实施状态与证据见 [OPT-20–25 台账](../../.scratch/assistant-optimization/spec.md)。

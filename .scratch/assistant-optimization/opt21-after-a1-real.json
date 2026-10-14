@@ -1,0 +1,43 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "0557d1e4ccf28fa7114da97df238d8402949c798e7fd5227af5094b9d20cfd1d",
+  "mode": "real",
+  "codeVersion": "25c71b8351edc814bea6e62263ac5e0e1fb2f188",
+  "fixtureVersion": "synthetic-eight-v1",
+  "promptVersion": "assistant-prompt-v1",
+  "toolsVersion": "assistant-tools-v1",
+  "startedAt": "2026-10-14T08:34:54.929Z",
+  "results": [
+    {
+      "id": "A1",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "waiting_input",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 5773,
+      "turns": [
+        {
+          "id": "turn_4caab8c1b3d549fbbac17d108543ca7b",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_4caab8c1b3d549fbbac17d108543ca7b",
+            "finishReason": "stop",
+            "requestAttempts": 2,
+            "durationMs": 3547,
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "a3ffe00d2eb1a46b977d8edad88e1b2348c542de077e97f9ff6bbba2dce182b1"
+}
