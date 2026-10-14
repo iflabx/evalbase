@@ -41,7 +41,7 @@ import {
   InvalidToolInputError,
   type ModelMessage,
 } from "ai";
-import { Ajv } from "ajv";
+import { Ajv, type ErrorObject } from "ajv";
 import type { Database } from "../db/pool.js";
 import type { Config } from "../config.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -188,6 +188,19 @@ const sourceSchema = {
   additionalProperties: false,
 };
 const ajv = new Ajv({ strict: false });
+function inputHint(errors: ErrorObject[] | null | undefined) {
+  return (errors ?? [])
+    .slice(0, 3)
+    .map((error) => {
+      const path = error.instancePath || "参数";
+      if (error.keyword === "additionalProperties")
+        return `${path} 不支持字段：${String(error.params.additionalProperty).slice(0, 80)}；请删除该字段，按工具声明的结构提供参数。`;
+      if (error.keyword === "required")
+        return `${path} 缺少字段：${error.params.missingProperty}；当前没有可复用事实，请读取对象或补充该字段。`;
+      return `${path} ${error.message ?? "不合法"}`;
+    })
+    .join("；");
+}
 function schema(
   properties: Record<string, unknown>,
   required: string[],
@@ -215,13 +228,7 @@ function schema(
       validate: (value) => {
         if (validate(value))
           return { success: true, value: value as Record<string, any> };
-        const hint = (validate.errors ?? [])
-          .slice(0, 3)
-          .map(
-            (e) =>
-              `${e.instancePath || "参数"} ${e.message ?? "不合法"}${e.params.missingProperty ? `：${e.params.missingProperty}` : ""}`,
-          )
-          .join("；");
+        const hint = inputHint(validate.errors);
         invalid?.(hint);
         return {
           success: false,
@@ -773,13 +780,7 @@ export async function executeAssistantTurn(
             referenceError = new AssistantError(
               422,
               "assistant_tool_input_invalid",
-              (validateInput.errors ?? [])
-                .map(
-                  (error) =>
-                    `${error.instancePath || "参数"} ${error.message}${error.params.missingProperty ? `：${error.params.missingProperty}` : ""}`,
-                )
-                .join("；") +
-                "。省略的参数没有可复用事实，请读取当前对象或补充该字段。",
+              inputHint(validateInput.errors),
             );
           await turnFence(db, scope, turn.id, turn.execution_token);
           if (exhaustedProcessing)

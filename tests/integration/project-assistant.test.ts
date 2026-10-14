@@ -1241,7 +1241,20 @@ describe("project assistant public contract", () => {
           { timeout: 15000 },
         )
         .toBe(false);
-      requestedTool = { name, input };
+      if (
+        ![
+          "query_project",
+          "read_records",
+          "read_processing",
+          "plan_task",
+        ].includes(name)
+      ) {
+        requestedTool = undefined;
+        toolSequence = [
+          { name: "plan_task", input: { nextAction: name } },
+          { name, input },
+        ];
+      } else requestedTool = { name, input };
       const state = (await send(`执行已明确范围的 ${name}`)).json();
       const tool = state.turns.at(-1).tools.find((t: any) => t.name === name);
       expect(tool.status, JSON.stringify(tool)).toBe("succeeded");
@@ -1372,16 +1385,29 @@ describe("project assistant public contract", () => {
         runId: submitted.runId,
       });
       expect(output.records[0].question).toBe("Synthetic");
-      requestedTool = {
-        name: "request_processing_apply",
-        input: {
-          runId: submitted.runId,
-          allValid: true,
-          target: { kind: "newDraft" },
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { nextAction: "request_processing_apply" },
         },
-      };
-      const invalid = (await send("将结果加入新草稿")).json();
-      expect(invalid.turns.at(-1).tools[0].status).toBe("failed");
+        {
+          name: "request_processing_apply",
+          input: {
+            runId: submitted.runId,
+            allValid: true,
+            target: { kind: "newDraft" },
+          },
+        },
+      ];
+      const invalid = (
+        await send("将结果加入新草稿", undefined, "failed")
+      ).json();
+      expect(
+        invalid.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "request_processing_apply").status,
+      ).toBe("failed");
       expect(invalid.proposals).toHaveLength(0);
       await invoke("request_processing_apply", {
         runId: submitted.runId,
@@ -1551,6 +1577,7 @@ describe("project assistant public contract", () => {
       ).toBe(true);
     } finally {
       requestedTool = undefined;
+      toolSequence = [];
       sessionId = originalSession;
       await db.end();
     }
@@ -8713,7 +8740,7 @@ describe("project assistant public contract", () => {
       const tool = calls[firstScopeCall].tools.find(
         (t: any) => t.function.name === "submit_processing",
       ).function;
-      expect(tool.parameters.required).toContain("selection");
+      expect(tool.parameters.required).not.toContain("selection");
       expect(tool.parameters.properties.selection.anyOf).toContainEqual({
         type: "null",
       });
@@ -12137,6 +12164,35 @@ describe("project assistant public contract", () => {
     }
     return id;
   }
+  it("OPT-22 identifies unsupported argument fields before a valid correction", async () => {
+    const previous = sessionId;
+    try {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      requestedTool = undefined;
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "none", count: 4 } },
+        { name: "plan_task", input: { nextAction: "none" } },
+      ];
+      const state = (await send("修正参数并保留原要求")).json();
+      const records = state.turns.at(-1).tools;
+      expect(records[0].status).toBe("failed");
+      expect(records[0].error.hint).toContain("count");
+      expect(records[0].error.hint).not.toContain("省略");
+      expect(records[1].status).toBe("succeeded");
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+
   it("OPT-22 keeps real read receipts through partial plan updates and reordered requirements", async () => {
     const draft = await opt22Draft("要求顺序核对");
     await opt21Session();
