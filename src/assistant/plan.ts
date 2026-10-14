@@ -558,7 +558,8 @@ export function bindTaskInput(
     input.draftId ??= draftId;
   if (name === "request_processing_apply" && draftId) {
     input.target ??= { kind: "draft", id: draftId };
-    if (input.target.kind === "draft") input.target.id ??= draftId;
+    if (input.target.kind === "draft")
+      input.target = { ...input.target, id: input.target.id ?? draftId };
   }
   if (name === "request_processing_apply") {
     if (selection?.scope === "task" && input.resultIds === undefined)

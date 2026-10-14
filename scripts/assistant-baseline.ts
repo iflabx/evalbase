@@ -343,7 +343,7 @@ if (mode === "controlled") {
             (state.task?.runId ? [state.task.runId] : [])) {
             const job = (
               await db.query(
-                "UPDATE job SET status='running',attempt=attempt+1,lease_owner='opt20-baseline',lease_expires_at=now()+interval '5 minutes' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) AND status IN('queued','retry_wait') RETURNING *",
+                "UPDATE job SET status='running',attempt=attempt+1,lease_owner='opt20-baseline',lease_expires_at=now()+interval '5 minutes' WHERE id=(SELECT job_id FROM processing_run WHERE id=COALESCE((SELECT latest_run_id FROM processing_task WHERE id=(SELECT task_id FROM processing_run WHERE id=$1)),$1)) AND status IN('queued','retry_wait') RETURNING *",
                 [runId],
               )
             ).rows[0];
@@ -404,6 +404,8 @@ if (mode === "controlled") {
       let businessReplies = 0;
       let manualContinuations = 0;
       let retriedNoEffectTurn: string | undefined;
+      let recoveredParameterTurn: string | undefined;
+      let userRecoveredParameterTurns = 0;
       let approvedFields: string[] | undefined;
       let assertionCode: string | null = null;
       let goalCompleted = false,
@@ -639,6 +641,21 @@ if (mode === "controlled") {
             id === "A6" &&
             (state.task?.question || (await candidates()).length !== 4)
           ) {
+            const failed = state.turns.at(-1);
+            const failures =
+              failed?.tools.filter((tool: any) => tool.status === "failed") ??
+              [];
+            if (
+              failed?.status === "failed" &&
+              failed.errorCode === "assistant_tool_input_invalid" &&
+              failures.length &&
+              failures.every(
+                (tool: any) =>
+                  tool.name === "plan_task" &&
+                  tool.error?.code === "assistant_tool_input_invalid",
+              )
+            )
+              recoveredParameterTurn = failed.id;
             businessReplies++;
             await send("随机从已有候选中保留4条，其他内容不要改。");
           }
@@ -735,6 +752,22 @@ if (mode === "controlled") {
             }
             const expected = id === "A6" ? 4 : rows.length;
             goalCompleted = outputRows.length === expected;
+            if (id === "A6") {
+              goalCompleted &&=
+                !state.task?.question &&
+                outputRows.every((row: any) => {
+                  const original = originalRows.get(
+                    row.original?.baseline?.id ?? row.original?.id,
+                  );
+                  return (
+                    original &&
+                    original.question.trim() === row.result.question &&
+                    original.expectedOutput === row.result.expectedOutput &&
+                    JSON.stringify(original.metadata) ===
+                      JSON.stringify(row.result.metadata)
+                  );
+                });
+            }
             if (id === "A2") {
               // "Design a tidy-up plan" may include a proposed classification.
               // Check the approved field contract, not a hidden trim-only plan.
@@ -943,9 +976,21 @@ if (mode === "controlled") {
             sourceReferencesChecked: 200,
           };
         }
+        // A verified final result after an explicit business retry is distinct from a clean first attempt.
+        // Only malformed plan validation is eligible; unknown writes/other failures remain failures.
+        userRecoveredParameterTurns =
+          goalCompleted &&
+          id === "A6" &&
+          !state.task?.error &&
+          recoveredParameterTurn
+            ? 1
+            : 0;
         if (
           state.turns.some(
-            (t: any) => t.status === "failed" && t.id !== retriedNoEffectTurn,
+            (t: any) =>
+              t.status === "failed" &&
+              t.id !== retriedNoEffectTurn &&
+              !(userRecoveredParameterTurns && t.id === recoveredParameterTurn),
           )
         ) {
           goalCompleted = false;
@@ -1030,6 +1075,7 @@ if (mode === "controlled") {
         extraBusinessPrompts: businessReplies,
         manualContinuations,
         userRetriedNoEffectTurns: retriedNoEffectTurn ? 1 : 0,
+        userRecoveredParameterTurns,
         semanticCorrections: null,
         semanticReview: "pending_human_review",
         durationMs: Date.now() - started,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   advancePlan,
+  bindTaskInput,
   revisePlan,
   planRequirementsKey,
   resolvedStepInput,
@@ -147,6 +148,36 @@ describe("restored execution plan boundaries", () => {
       "changed",
     )!;
     expect(resolvedStepInput(changed).instructions).toBeUndefined();
+  });
+  it("binds an omitted original draft id without mutating approved parameters or overriding explicit targets", () => {
+    const input = { target: { kind: "draft" }, allValid: true };
+    const task = {
+      target: { kind: "draft", id: "original" },
+      runId: "run",
+      executionPlan: {
+        mode: "execute",
+        current: 0,
+        steps: [{ action: "request_processing_apply", input }],
+      },
+    };
+    expect(
+      bindTaskInput("request_processing_apply", input, task).target,
+    ).toEqual({ kind: "draft", id: "original" });
+    expect(input.target).toEqual({ kind: "draft" });
+    expect(
+      bindTaskInput(
+        "request_processing_apply",
+        { target: { kind: "draft", id: "other" } },
+        task,
+      ).target.id,
+    ).toBe("other");
+    expect(
+      bindTaskInput(
+        "request_processing_apply",
+        { target: { kind: "newDraft", name: "new" } },
+        task,
+      ).target,
+    ).toEqual({ kind: "newDraft", name: "new" });
   });
   it("binds a preview and its draft as a pair and carries a confirmed new draft forward", () => {
     const plan: ExecutionPlan = {

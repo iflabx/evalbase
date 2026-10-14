@@ -1020,7 +1020,17 @@ export async function executeAssistantTurn(
                     canonicalJson(
                       field === "source"
                         ? planSource(expected as Record<string, any>)
-                        : expected,
+                        : field === "target" &&
+                            name === "request_processing_apply"
+                          ? bindTaskInput(
+                              name,
+                              { target: expected },
+                              currentTask,
+                              undefined,
+                              turn.candidate_selection ??
+                                currentTask.selectedCandidates,
+                            ).target
+                          : expected,
                     ) !==
                       canonicalJson(
                         (field === "source"

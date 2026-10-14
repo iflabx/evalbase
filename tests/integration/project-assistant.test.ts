@@ -14130,6 +14130,129 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("OPT-25 normalizes an approved omitted original draft id before context comparison", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "保存回原草稿",
+                action: "request_processing_apply",
+                input: {
+                  runId: f.runs[1],
+                  target: { kind: "draft" },
+                  allValid: true,
+                },
+              },
+            ],
+          },
+        },
+        {
+          name: "request_processing_apply",
+          input: {
+            runId: f.runs[1],
+            target: { kind: "draft" },
+            allValid: true,
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("保存全部成果回原草稿"));
+      expect(
+        state.turns.at(-1).tools.some((tool: any) => tool.status === "failed"),
+      ).toBe(false);
+      const proposal = state.proposals.find(
+        (p: any) => p.status === "pending" && p.action === "processing",
+      );
+      expect(proposal).toBeTruthy();
+      const confirmed = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      expect(confirmed.json().receipt.receipt).toMatchObject({
+        draftId: f.source,
+        adopted: 14,
+      });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+  it("OPT-25 rejects a different draft after binding an approved omitted original id", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      const other = await opt22Draft("R25 另一草稿");
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "保存回原草稿",
+                action: "request_processing_apply",
+                input: {
+                  runId: f.runs[1],
+                  target: { kind: "draft" },
+                  allValid: true,
+                },
+              },
+            ],
+          },
+        },
+        {
+          name: "request_processing_apply",
+          input: {
+            runId: f.runs[1],
+            target: { kind: "draft", id: other },
+            allValid: true,
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("保存全部成果回原草稿"));
+      expect(
+        state.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "request_processing_apply"),
+      ).toMatchObject({
+        status: "failed",
+        effect: "none",
+        error: { code: "assistant_step_context_changed" },
+      });
+      expect(
+        state.proposals.some((proposal: any) => proposal.status === "pending"),
+      ).toBe(false);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
   it("OPT-25 executes approved read parameters before processing without model reconstruction", async () => {
     const previous = sessionId,
       source = await opt22Draft("R25 固定读取");
