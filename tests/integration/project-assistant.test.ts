@@ -14140,7 +14140,7 @@ describe("project assistant public contract", () => {
           name: "plan_task",
           input: {
             target: { kind: "draft", id: source },
-            executionMode: "execute",
+            executionMode: "plan",
             steps: [
               {
                 title: "核对三条",
@@ -14162,7 +14162,38 @@ describe("project assistant public contract", () => {
         },
       ];
       requestedTool = undefined;
-      const state = await opt21End(await opt21Submit("清理这份草稿"));
+      const planned = await opt21End(await opt21Submit("先规划清理这份草稿"));
+      expect(planned.task.executionPlan.mode).toBe("plan");
+      expect(
+        planned.turns
+          .at(-1)
+          .tools.some((t: any) => t.name === "submit_processing"),
+      ).toBe(false);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "核对三条",
+                action: "read_records",
+                input: { limit: 20 },
+              },
+              {
+                title: "清理空白",
+                action: "submit_processing",
+                input: {
+                  operation: "rewrite",
+                  instructions: "重新改写",
+                  recordIds: ["other"],
+                },
+              },
+            ],
+          },
+        },
+      ];
+      const state = await opt21End(await opt21Submit("按刚才方案执行"));
       const receipts = state.turns.at(-1).tools;
       expect(
         receipts.find((tool: any) => tool.name === "read_records"),
@@ -14173,7 +14204,11 @@ describe("project assistant public contract", () => {
       });
       expect(
         receipts.find((tool: any) => tool.name === "submit_processing"),
-      ).toMatchObject({ status: "succeeded", result: { inputCount: 3 } });
+      ).toMatchObject({
+        status: "succeeded",
+        input: { operation: "clean", allRecords: true },
+        result: { inputCount: 3 },
+      });
       expect(receipts.some((tool: any) => tool.status === "failed")).toBe(
         false,
       );

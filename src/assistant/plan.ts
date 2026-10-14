@@ -167,9 +167,9 @@ export function revisePlan(
           ? target
             ? { ...step.input, source: planSource(target) }
             : (({ source: _source, ...rest }) => rest)(step.input)
-          : (!step.input || Object.keys(step.input).length === 0) &&
-              approved.length === 1
-            ? approved[0]!.input
+          : approved.length === 1 && approved[0]!.input
+            ? // Enabling the same approved plan reuses its input; unresolved holes bind through guarded tools later.
+              approved[0]!.input
             : step.input;
       let parameters =
         (inherited?.source

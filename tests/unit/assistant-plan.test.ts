@@ -76,6 +76,52 @@ describe("restored execution plan boundaries", () => {
         )!,
       ),
     ).toEqual(steps[0].input);
+    expect(
+      resolvedStepInput(
+        revisePlan(
+          prior,
+          {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "清理空白",
+                action: "submit_processing",
+                input: {
+                  operation: "rewrite",
+                  instructions: "重新改写",
+                  allowedFields: ["metadata"],
+                  recordIds: ["other"],
+                  selection: { method: "all" },
+                },
+              },
+            ],
+          },
+          2,
+          target,
+          "same",
+        )!,
+      ),
+    ).toEqual(steps[0].input);
+    expect(
+      resolvedStepInput(
+        revisePlan(
+          prior,
+          {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "清理空白",
+                action: "submit_processing",
+                input: { operation: "rewrite", instructions: "新要求" },
+              },
+            ],
+          },
+          2,
+          target,
+          "changed",
+        )!,
+      ),
+    ).toMatchObject({ operation: "rewrite", instructions: "新要求" });
     const duplicated = revisePlan(
       withRead,
       {
