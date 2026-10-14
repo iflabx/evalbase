@@ -86,7 +86,7 @@ Implementation: in-progress
 | [OPT-22](issues/22-assistant-tool-and-plan-contract.md)           | 工具按阶段提供、参数减负与要求顺序稳定性                       | OPT-20/21 已完成                                      | completed      | [实施与验证](opt22-verification.md)；同一 4217、Owner pending                                           |
 | [OPT-23](issues/23-assistant-context-and-background-refs.md)      | 当前事实摘要、长会话续用及已验证背景引用                       | OPT-22 已完成                                         | completed      | [实施与验证](opt23-verification.md)；同一 4217、Owner pending                                           |
 | [OPT-24](issues/24-assistant-independent-workspace.md)            | 独立助手页面、个人会话、上下文及既有能力迁移                   | OPT-20；OPT-23 已完成                                 | completed      | [实施与验证](opt24-verification.md)；同一 4217、Owner pending                                           |
-| [OPT-25](issues/25-assistant-task-results-and-delivery.md)        | 整任务成果审核、局部调整与确认交付闭环                         | OPT-21/22/23/24                                       | completed      | [最终范围/样本/4217记录](opt25-verification.md)；Owner集中验收pending                                   |
+| [OPT-25](issues/25-assistant-task-results-and-delivery.md)        | 整任务成果审核、局部调整与确认交付闭环                         | OPT-21/22/23/24                                       | completed      | [原验证](opt25-verification.md)、[审阅补修及最新4217](opt20-25-review-fixes.md)；Owner集中验收pending   |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
