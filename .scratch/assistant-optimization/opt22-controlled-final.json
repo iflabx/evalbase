@@ -1,0 +1,85 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "3af98df95b585f6a7a706ca0d9d01c3c28b125fdd2ef914ed1ec05e35bb32f62",
+  "mode": "controlled",
+  "codeVersion": "b59f3cbe73ad1c361f7a0314469c5669ea11ce85",
+  "fixtureVersion": "public-contract-fixtures-v1",
+  "promptVersion": "assistant-prompt-v2",
+  "toolsVersion": "assistant-tools-v2",
+  "startedAt": "2026-10-14T09:40:47.927Z",
+  "results": [
+    {
+      "id": "A2",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 6000,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A3",
+      "contractPassed": true,
+      "assertions": 3,
+      "goalCompleted": null,
+      "durationMs": 19070,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A4",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 6599,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A6",
+      "contractPassed": true,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 6719,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A9",
+      "contractPassed": true,
+      "assertions": 31,
+      "goalCompleted": null,
+      "durationMs": 44540,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A10",
+      "contractPassed": true,
+      "assertions": 2,
+      "goalCompleted": null,
+      "durationMs": 7665,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    }
+  ],
+  "inputHash": "3945f698158c07d5fb23e7261d5e07815084d1ceac86dfbd50fe49db344f9fde"
+}

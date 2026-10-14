@@ -1,10 +1,10 @@
 # OPT-22 项目助手工具参数与计划稳定性简化
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-20, OPT-21
+Implementation: completed
+Blocked by: none
 
-优先级：P1。当前仅方案与 Ticket 授权。详细范围见 [总方案 §3.2](../../../docs/assistant-workspace-reliability-plan.md#32-轻量工具与要求合同)，继承 [PRD §7.1–7.3](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手) 的自主规划和真实步骤完成约束。
+优先级：P1。Owner 已于 2026-10-14 单张授权开发，Implementation completed、Owner pending。详细范围见 [总方案 §3.2](../../../docs/assistant-workspace-reliability-plan.md#32-轻量工具与要求合同)，继承 [PRD §7.1–7.3](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手) 的自主规划和真实步骤完成约束。
 
 ## 目标
 
@@ -38,3 +38,9 @@ Blocked by: OPT-20, OPT-21
 ## Comments
 
 - 2026-10-14：已记录实际复现的重排问题及接口减负方案；尚未开发，未承诺真实模型成功率。
+
+- 2026-10-14：已完成阶段工具投影、薄参数绑定、要求精确归一及确认竞争修复；定向回归、短请求结果和同一 4217 数据保留见 [验证记录](../opt22-verification.md)。Owner 验收 pending。
+
+## UI 对齐记录
+
+沿用当前消息、操作记录、要求和候选区域及 frontend-v1 样式，本张无前端结构或视觉修改。阶段工具和错误提示来自服务端当前事实；独立工作页仍由 OPT-24 实施。

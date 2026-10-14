@@ -1,0 +1,205 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "0557d1e4ccf28fa7114da97df238d8402949c798e7fd5227af5094b9d20cfd1d",
+  "mode": "real",
+  "codeVersion": "1e8ec1417ee8f77d982e6068d2c652c178e3b513",
+  "fixtureVersion": "synthetic-eight-v1",
+  "promptVersion": "assistant-prompt-v1",
+  "toolsVersion": "assistant-tools-v1",
+  "startedAt": "2026-10-14T09:02:53.893Z",
+  "results": [
+    {
+      "id": "A2",
+      "goalCompleted": false,
+      "reason": "turn_failed",
+      "stage": "failed",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 37634,
+      "turns": [
+        {
+          "id": "turn_055894354d2845199d14366bf51b6dc4",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_055894354d2845199d14366bf51b6dc4",
+            "finishReason": "stop",
+            "requestAttempts": 3,
+            "durationMs": 8533,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_9fb6175aaedd41c5b73f3b27ba689ae3",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_9fb6175aaedd41c5b73f3b27ba689ae3",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 9714,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_f09c7122f50545738a2f9ea2f5db0dad",
+          "event": "processing_completed",
+          "status": "failed",
+          "errorCode": "processing_result_invalid",
+          "diagnostics": {
+            "diagnosticId": "turn_f09c7122f50545738a2f9ea2f5db0dad",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 3918,
+            "category": "parameter_invalid"
+          }
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 16760,
+      "turns": [
+        {
+          "id": "turn_508c080b952b4d2d8a8a90bdf7e7004d",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_508c080b952b4d2d8a8a90bdf7e7004d",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 4317,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_e251f7ae9eb74c65ba8a45758c439d43",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_e251f7ae9eb74c65ba8a45758c439d43",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 296,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 20059,
+      "turns": [
+        {
+          "id": "turn_6483537017764b829c9aa7ee73297099",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_6483537017764b829c9aa7ee73297099",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 7495,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_1095154d73a74b7c8555e962bec42cdc",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_1095154d73a74b7c8555e962bec42cdc",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 386,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A6",
+      "goalCompleted": true,
+      "reason": "goal_assertions_passed",
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 32999,
+      "turns": [
+        {
+          "id": "turn_d0f898bff5974bea9d27c6474184341e",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_d0f898bff5974bea9d27c6474184341e",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 4117,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_bc93cc3c0b2945638510541b535d091a",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_bc93cc3c0b2945638510541b535d091a",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 235,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_46d8ee06dc88451cb8d021e3411a62e8",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_46d8ee06dc88451cb8d021e3411a62e8",
+            "finishReason": "stop",
+            "requestAttempts": 6,
+            "durationMs": 13917,
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "a3ffe00d2eb1a46b977d8edad88e1b2348c542de077e97f9ff6bbba2dce182b1"
+}

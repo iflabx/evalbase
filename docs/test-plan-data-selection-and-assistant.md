@@ -214,4 +214,4 @@ OPT-07 已记录错误来源/过滤范围、冻结参数、回包丢失、后台
 
 默认使用现有假模型与隔离持久化验证确定性边界，真实模型只执行有界样例；同一固定 HEAD 的有效证据直接复用。暂时故障恢复不等于首次成功，结构通过不等于内容合格，人工修正单独记账。保留 4217 的 Owner 数据，不加入 5/10 人压测、两小时试验或服务器重启检查；最终页面闭环集中一次人工验收，不替旧 Ticket 签署通过。
 
-OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，并保存修复前真实模型小样本；统一入口为 `scripts/assistant-baseline.ts`。可控模式只报告合同断言，真实模式核对持久成果和范围；未知恢复/人工纠错计数保持 null。命令、样本、复审及同一 4217 版本见 [OPT-20 验证记录](../.scratch/assistant-optimization/opt20-verification.md)。OPT-21 已完成共享重试预算、故障/退避、停止/撤权、原回执与未知写入、过期重领、总结失败后的成果保留和 Worker 累计额度回归；实际命令与 A9/A10 结果见 [验证记录](../.scratch/assistant-optimization/opt21-verification.md)。后续 Ticket 的验证待对应开发授权。
+OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，并保存修复前真实模型小样本；统一入口为 `scripts/assistant-baseline.ts`。可控模式只报告合同断言，真实模式核对持久成果和范围；未知恢复/人工纠错计数保持 null。命令、样本、复审及同一 4217 版本见 [OPT-20 验证记录](../.scratch/assistant-optimization/opt20-verification.md)。OPT-21 已完成共享重试预算、故障/退避、停止/撤权、原回执与未知写入、过期重领、总结失败后的成果保留和 Worker 累计额度回归；实际命令与 A9/A10 结果见 [验证记录](../.scratch/assistant-optimization/opt21-verification.md)。OPT-22 已完成要求精确归一、薄参数绑定、阶段能力、固定选取及规则变更确认竞争的定向回归；原回执、Metadata 键限制、旧批次选择和背景要求重排均有覆盖，A2/A3/A4/A6/A9/A10 实际结果见 [验证记录](../.scratch/assistant-optimization/opt22-verification.md)。后续 OPT-23–25 的验证待对应开发授权。

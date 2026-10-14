@@ -1,0 +1,157 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "3af98df95b585f6a7a706ca0d9d01c3c28b125fdd2ef914ed1ec05e35bb32f62",
+  "mode": "real",
+  "codeVersion": "5343e34fa3c004e388a7ae41661e0ab35385ce97",
+  "fixtureVersion": "synthetic-eight-v1",
+  "promptVersion": "assistant-prompt-v2",
+  "toolsVersion": "assistant-tools-v2",
+  "startedAt": "2026-10-14T09:36:08.755Z",
+  "results": [
+    {
+      "id": "A2",
+      "goalCompleted": false,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_or_precondition_assertion_failed",
+      "stage": "failed",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 1,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 33009,
+      "turns": [
+        {
+          "id": "turn_a970a7c6eaab4f399f50b9a648c17786",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_a970a7c6eaab4f399f50b9a648c17786",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 6168,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_64bfaa45a8104d8eaf02aa1a37a35fa2",
+          "event": "user",
+          "status": "failed",
+          "errorCode": "selection_not_found",
+          "diagnostics": {
+            "diagnosticId": "turn_64bfaa45a8104d8eaf02aa1a37a35fa2",
+            "finishReason": "tool-calls",
+            "requestAttempts": 3,
+            "durationMs": 22615,
+            "category": "permission_or_source"
+          }
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "goalCompleted": true,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 24168,
+      "turns": [
+        {
+          "id": "turn_6e9aa128e70f442895a96366abc65c61",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_6e9aa128e70f442895a96366abc65c61",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 8716,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_7dbcf53c3e5a48fa8a6283f921ab1a74",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_7dbcf53c3e5a48fa8a6283f921ab1a74",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 431,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A6",
+      "goalCompleted": false,
+      "toolParameterFailures": 1,
+      "toolParameterRecoveries": 0,
+      "reason": "turn_failed",
+      "stage": "failed",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 29791,
+      "turns": [
+        {
+          "id": "turn_69463aef376e445d87f0df8eacec7c20",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_69463aef376e445d87f0df8eacec7c20",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 2976,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_15545fe0d08a4500874ba939cde8bab2",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_15545fe0d08a4500874ba939cde8bab2",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 318,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_e0fb9a22184a47bd904264b9c73e9103",
+          "event": "user",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "diagnostics": {
+            "diagnosticId": "turn_e0fb9a22184a47bd904264b9c73e9103",
+            "finishReason": "tool-calls",
+            "requestAttempts": 3,
+            "durationMs": 12293,
+            "category": "parameter_invalid"
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "a3ffe00d2eb1a46b977d8edad88e1b2348c542de077e97f9ff6bbba2dce182b1"
+}
