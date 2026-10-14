@@ -184,19 +184,46 @@ export async function readSession(
   scope: AssistantScope,
   id: string,
   readContext?: () => Promise<unknown>,
+  view?: { mode: "status" | "messages"; before?: string; limit: number },
 ) {
   const session = await sessionRow(db, scope, id);
   await db.query(
     "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
     [id],
   );
+  const metadata = view
+    ? (
+        await db.query(
+          "SELECT id,status,requires_write,dependencies,xmin::text AS revision FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT $2",
+          [id, ASSISTANT_SESSION_TURN_LIMIT],
+        )
+      ).rows
+    : undefined;
+  const end = view?.before
+    ? metadata!.findIndex((turn) => turn.id === view.before)
+    : metadata?.length;
+  if (view?.before && end === -1)
+    throw new AssistantError(422, "assistant_message_page_invalid");
+  const ids = metadata
+    ?.slice(Math.max(0, end! - view!.limit), end)
+    .map((turn) => turn.id);
   const turns = (
     await db.query(
-      "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT $2",
-      [id, ASSISTANT_SESSION_TURN_LIMIT],
+      view
+        ? "SELECT * FROM assistant_turn WHERE session_id=$1 AND id=ANY($2::text[]) ORDER BY created_at,id"
+        : "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT $2",
+      [
+        id,
+        view
+          ? view.mode === "status"
+            ? metadata!.slice(-1).map((turn) => turn.id)
+            : ids
+          : ASSISTANT_SESSION_TURN_LIMIT,
+      ],
     )
   ).rows;
-  for (const turn of turns) {
+  const checkedTurns = metadata ?? turns;
+  for (const turn of checkedTurns) {
     if (turn.requires_write) await assistantAccess(db, scope, true);
     await dependenciesAvailable(db, scope, turn.dependencies);
   }
@@ -229,16 +256,22 @@ export async function readSession(
   }
   const proposals = (
     await db.query(
-      "SELECT id,turn_id,action,summary,status,receipt,expires_at FROM assistant_proposal WHERE session_id=$1 AND actor_id=$2 ORDER BY created_at,id",
-      [id, scope.actorId],
+      `SELECT id,turn_id,action,summary,status,receipt,expires_at FROM assistant_proposal WHERE session_id=$1 AND actor_id=$2 ${view ? (view.mode === "status" ? "AND task_revision=$3" : "AND turn_id=ANY($3::text[])") : ""} ORDER BY created_at,id`,
+      view
+        ? [
+            id,
+            scope.actorId,
+            view.mode === "status" ? session.task_revision : ids,
+          ]
+        : [id, scope.actorId],
     )
   ).rows;
-  const context = await readContext?.();
+  const context = !view ? await readContext?.() : undefined;
   const backgroundDocuments = await backgroundCatalog(db, scope, id);
   await assistantAccess(
     db,
     scope,
-    turns.some((t) => t.requires_write),
+    checkedTurns.some((t) => t.requires_write),
   );
   // The confirmed publication is the completion fact, even when the model only rereads candidates.
   // A later request has a new task revision and cannot inherit this completion.
@@ -286,39 +319,93 @@ export async function readSession(
       ? processing
       : undefined,
   );
+  if (view && presentedTask) {
+    delete presentedTask.observations;
+    delete presentedTask.turnBudget;
+    delete presentedTask.retryOperations;
+    delete presentedTask.supplements;
+    delete presentedTask.classifications;
+    delete presentedTask.diagnostics;
+    if (presentedTask.executionPlan)
+      presentedTask.executionPlan.steps = presentedTask.executionPlan.steps.map(
+        ({
+          input: _input,
+          backgroundRead: _backgroundRead,
+          ...step
+        }: Record<string, any>) => step,
+      );
+    if (presentedTask.processingScope?.source) {
+      presentedTask.processingScope.source = {
+        ...presentedTask.processingScope.source,
+      };
+      delete presentedTask.processingScope.source.recordIds;
+    }
+  }
   return {
     sessionId: id,
+    ...(view
+      ? {
+          taskRevision: Number(current.task_revision),
+          latestTurn: metadata!.length
+            ? { id: metadata!.at(-1)!.id, status: metadata!.at(-1)!.status }
+            : null,
+          active: metadata!.some((turn) =>
+            ["queued", "running"].includes(turn.status),
+          ),
+          messageRevision: sha256(
+            canonicalJson(
+              metadata!.map(({ id, revision }) => ({ id, revision })),
+            ),
+          ),
+        }
+      : {}),
     task: presentedTask ? { ...presentedTask, canRetryTurn } : presentedTask,
     title: current.custom_title ?? presentedTask?.title ?? current.title,
-    turns: turns.map((t) => ({
-      id: t.id,
-      event: t.event,
-      userText: t.user_text,
-      assistantText: t.assistant_text,
-      status: t.status,
-      errorCode: t.error_code,
-      diagnostics: current.task?.observations?.find(
-        (observation: { turnId: string }) => observation.turnId === t.id,
-      ),
-      tools: t.tool_results,
-      createdAt: t.created_at,
-    })),
+    ...(view?.mode === "status"
+      ? {}
+      : {
+          turns: turns.map((t) => ({
+            id: t.id,
+            event: t.event,
+            userText: t.user_text,
+            assistantText: t.assistant_text,
+            status: t.status,
+            errorCode: t.error_code,
+            diagnostics: current.task?.observations?.find(
+              (observation: { turnId: string }) => observation.turnId === t.id,
+            ),
+            tools: t.tool_results,
+            createdAt: t.created_at,
+          })),
+          ...(view
+            ? {
+                pagination: {
+                  total: metadata!.length,
+                  nextBefore: end! > view.limit ? ids![0] : null,
+                },
+              }
+            : {}),
+        }),
     proposals,
     context,
     backgroundDocuments,
   };
 }
 /** Apply the same historical-content boundary as the detail route, without receipt mutations. */
-export async function listSessions(db: Database, scope: AssistantScope) {
+export async function listSessions(
+  db: Database,
+  scope: AssistantScope,
+  page?: { search: string; offset: number; limit: number },
+) {
   await assistantAccess(db, scope);
   const sessions = (
     await db.query(
-      `SELECT s.id,s.title,s.custom_title,s.task,s.content_revision,s.created_at,s.updated_at,
+      `SELECT s.id,s.title,s.custom_title,CASE WHEN $3::boolean THEN jsonb_build_object('title',s.task->'title') ELSE s.task END AS task,s.content_revision,s.created_at,s.updated_at,
     (row_number() OVER(ORDER BY s.created_at,s.id))::int AS ordinal,
     coalesce((SELECT bool_or(t.requires_write) FROM assistant_turn t WHERE t.session_id=s.id),false) AS requires_write,
     coalesce((SELECT jsonb_agg(t.dependencies) FROM assistant_turn t WHERE t.session_id=s.id),'[]'::jsonb) AS dependencies
-    FROM assistant_session s WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC LIMIT 50`,
-      [scope.projectId, scope.actorId],
+    FROM assistant_session s WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC ${page ? "" : "LIMIT 50"}`,
+      [scope.projectId, scope.actorId, Boolean(page)],
     )
   ).rows;
   const writable = await hasProjectCapability(
@@ -353,7 +440,7 @@ export async function listSessions(db: Database, scope: AssistantScope) {
       )
     ).rows.map((s) => [s.id, s.content_revision]),
   );
-  return visible
+  const result = visible
     .filter((s) => current.get(s.id) === s.content_revision)
     .map((row) => {
       const session = { ...row };
@@ -364,6 +451,27 @@ export async function listSessions(db: Database, scope: AssistantScope) {
       delete session.content_revision;
       return session;
     });
+  if (!page) return result;
+  const matches = result.filter((session) =>
+    (session.title || `会话 ${session.ordinal}`)
+      .toLocaleLowerCase()
+      .includes(page.search.toLocaleLowerCase()),
+  );
+  return {
+    sessions: matches
+      .slice(page.offset, page.offset + page.limit)
+      .map(({ id, title, ordinal, updated_at }) => ({
+        id,
+        title,
+        ordinal,
+        updated_at,
+      })),
+    pagination: {
+      total: matches.length,
+      offset: page.offset,
+      limit: page.limit,
+    },
+  };
 }
 export async function renameSession(
   db: Database,
@@ -395,7 +503,14 @@ export async function startTurn(
   text: unknown,
   pageContext?: unknown,
   candidateSelection?: unknown,
+  expectedTaskRevision?: unknown,
 ) {
+  if (
+    expectedTaskRevision !== undefined &&
+    (!Number.isSafeInteger(expectedTaskRevision) ||
+      Number(expectedTaskRevision) < 0)
+  )
+    throw new AssistantError(422, "assistant_message_invalid");
   if (
     typeof key !== "string" ||
     !key.trim() ||
@@ -443,7 +558,7 @@ export async function startTurn(
         candidateSelection.resultIds.length)
   )
     throw new AssistantError(422, "assistant_candidate_selection_invalid");
-  const requestHash = candidateSelection
+  const legacyRequestHash = candidateSelection
     ? sha256(
         canonicalJson({
           message: text,
@@ -459,6 +574,10 @@ export async function startTurn(
           }),
         )
       : sha256(text);
+  const requestHash =
+    expectedTaskRevision === undefined
+      ? legacyRequestHash
+      : sha256(canonicalJson({ legacyRequestHash, expectedTaskRevision }));
   await readSession(db, scope, sessionId);
   const client = await db.connect();
   try {
@@ -483,6 +602,11 @@ export async function startTurn(
       "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
       [sessionId],
     );
+    if (
+      expectedTaskRevision !== undefined &&
+      Number(session.task_revision) !== expectedTaskRevision
+    )
+      throw new AssistantError(409, "assistant_plan_revalidation_required");
     if (
       (
         await client.query(

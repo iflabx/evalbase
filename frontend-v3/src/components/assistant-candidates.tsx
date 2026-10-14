@@ -6,11 +6,23 @@ import { request, canRetainReadResult } from "@/services/workspace";
 import { ProcessingReview, issueLabels, type ReviewRow } from "@/components/processing-review";
 
 export type CandidateSelection = { runId: string; resultIds: string[] };
+type CandidatePage = {
+  records: ReviewRow[];
+  total: number;
+  offset?: number;
+  allIds?: string[];
+  taskTotal?: number;
+  rootOperation?: string;
+  stats?: { all: number; changed: number; needsReview: number };
+  issues?: { code: string; count?: number; inputOrdinal?: number }[];
+};
 export function AssistantCandidates({
   base,
   sessionId,
   runId,
   scopeHash,
+  actorId = "",
+  active = true,
   selected,
   onSelect,
 }: {
@@ -18,6 +30,8 @@ export function AssistantCandidates({
   sessionId: string;
   runId: string;
   scopeHash?: string | undefined;
+  actorId?: string;
+  active?: boolean;
   selected?: CandidateSelection | undefined;
   onSelect: (value: CandidateSelection) => void;
 }) {
@@ -25,8 +39,18 @@ export function AssistantCandidates({
   const [text, setText] = useState("");
   const [offset, setOffset] = useState(0),
     [view, setView] = useState("all");
-  const data = useQuery({
-    queryKey: ["assistant-candidates", base, sessionId, runId, scopeHash, offset, view, text],
+  const data = useQuery<CandidatePage>({
+    queryKey: [
+      "assistant-candidates",
+      base,
+      sessionId,
+      runId,
+      scopeHash,
+      offset,
+      view,
+      text,
+      actorId,
+    ],
     placeholderData: (previous, query) =>
       query?.queryKey[2] === sessionId &&
       query?.queryKey[3] === runId &&
@@ -34,7 +58,7 @@ export function AssistantCandidates({
       canRetainReadResult(query?.state.error)
         ? previous
         : undefined,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       request<{
         records: ReviewRow[];
         total: number;
@@ -46,7 +70,9 @@ export function AssistantCandidates({
         issues?: { code: string; count?: number; inputOrdinal?: number }[];
       }>(
         `${base}/sessions/${encodeURIComponent(sessionId)}/candidates?run=${encodeURIComponent(runId)}&offset=${offset}&limit=10&view=${view}&search=${encodeURIComponent(text)}`,
+        { signal },
       ),
+    enabled: active,
     retry: false,
   });
   const scope = JSON.stringify([base, sessionId, runId, scopeHash]);

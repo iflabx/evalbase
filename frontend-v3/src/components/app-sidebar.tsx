@@ -1,6 +1,6 @@
 import { useProjectAccess } from "@/hooks/use-project-access";
 import { useState } from "react";
-import { Activity, ChevronDown, Database, FileText, Settings } from "lucide-react";
+import { Activity, ChevronDown, Database, FileText, MessageSquare, Settings } from "lucide-react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -146,6 +146,18 @@ export function AppSidebar() {
                       <Link to="/projects/$projectId/test-sets" params={{ projectId }}>
                         <FileText className="size-4" />
                         {!collapsed && <span>测试集</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={pathname.includes("/assistant")}>
+                      <Link
+                        to="/projects/$projectId/assistant"
+                        params={{ projectId }}
+                        search={{ sourceKind: undefined, sourceId: undefined }}
+                      >
+                        <MessageSquare className="size-4" />
+                        {!collapsed && <span>项目助手</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

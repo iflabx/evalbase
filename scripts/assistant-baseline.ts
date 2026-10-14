@@ -86,7 +86,7 @@ const report: any = {
   codeVersion: version,
   fixtureVersion:
     mode === "real" ? "synthetic-eight-v1" : "public-contract-fixtures-v1",
-  promptVersion: "assistant-prompt-v3",
+  promptVersion: "assistant-prompt-v4",
   toolsVersion: "assistant-tools-v3",
   startedAt: new Date().toISOString(),
   results: [],

@@ -29,12 +29,16 @@ export function ProcessingSourcePicker({
   projectId,
   onClose,
   onChoose,
+  canWrite = true,
+  title = "新建处理",
 }: {
   projectId: string;
   onClose: () => void;
   onChoose: (kind: "assets" | "version" | "draft", id: string) => void;
+  canWrite?: boolean;
+  title?: string;
 }) {
-  const [kind, setKind] = useState<"assets" | "version" | "draft">("assets");
+  const [kind, setKind] = useState<"assets" | "version" | "draft">(canWrite ? "assets" : "version");
   const [parent, setParent] = useState("");
   const [text, setText] = useState("");
   const [page, setPage] = useState(1);
@@ -110,7 +114,7 @@ export function ProcessingSourcePicker({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>新建处理</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">选择处理来源。</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -128,9 +132,13 @@ export function ProcessingSourcePicker({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="assets">原始文件</SelectItem>
+              <SelectItem value="assets" disabled={!canWrite}>
+                原始文件
+              </SelectItem>
               <SelectItem value="version">测试集版本</SelectItem>
-              <SelectItem value="draft">测试集草稿</SelectItem>
+              <SelectItem value="draft" disabled={!canWrite}>
+                测试集草稿
+              </SelectItem>
             </SelectContent>
           </Select>
           {kind !== "draft" && (

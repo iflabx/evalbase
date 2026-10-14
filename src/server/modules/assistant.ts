@@ -230,14 +230,90 @@ export function registerAssistant({
       });
     },
   );
-  app.get<{ Params: Params }>(
-    `${path}/sessions`,
-    { preHandler: authenticate },
-    async (request, reply) =>
-      respond(reply, async () => {
-        const context = scope(request);
-        return { sessions: await listSessions(db, context) };
-      }),
+  app.get<{
+    Params: Params;
+    Querystring: {
+      search?: string;
+      offset?: string;
+      limit?: string;
+      sourceKind?: string;
+      sourceId?: string;
+    };
+  }>(`${path}/sessions`, { preHandler: authenticate }, async (request, reply) =>
+    respond(reply, async () => {
+      const context = scope(request);
+      const { search = "", offset = "0", limit = "20" } = request.query;
+      if (
+        Object.keys(request.query).some(
+          (key) =>
+            !["search", "offset", "limit", "sourceKind", "sourceId"].includes(
+              key,
+            ),
+        ) ||
+        search.length > 100 ||
+        !/^\d+$/u.test(offset) ||
+        !/^\d+$/u.test(limit) ||
+        Number(limit) < 1 ||
+        Number(limit) > 50 ||
+        !Number.isSafeInteger(Number(offset))
+      )
+        throw new AssistantError(422, "assistant_request_invalid");
+      let pageContext: { kind: string; id: string; name: string } | undefined;
+      const { sourceKind, sourceId } = request.query;
+      if (sourceKind !== undefined || sourceId !== undefined) {
+        if (
+          !sourceKind ||
+          !["asset", "draft", "version", "testSet"].includes(sourceKind) ||
+          !sourceId ||
+          sourceId.length > 250
+        )
+          throw new AssistantError(422, "assistant_source_invalid");
+        await assistantAccess(
+          db,
+          context,
+          ["asset", "draft"].includes(sourceKind),
+        );
+        await dependenciesAvailable(db, context, [
+          {
+            kind: sourceKind as "asset" | "draft" | "version" | "testSet",
+            id: sourceId,
+          },
+        ]);
+        const queries: Record<string, string> = {
+          asset:
+            "SELECT file_name AS name FROM data_asset WHERE id=$1 AND project_id=$2",
+          draft:
+            "SELECT name FROM collaborative_draft WHERE id=$1 AND project_id=$2",
+          version:
+            "SELECT t.name||' · '||v.version_label AS name FROM test_set_version v JOIN test_set t ON t.id=v.test_set_id WHERE v.id=$1 AND t.project_id=$2",
+          testSet: "SELECT name FROM test_set WHERE id=$1 AND project_id=$2",
+        };
+        const found = (
+          await db.query(queries[sourceKind]!, [sourceId, context.projectId])
+        ).rows[0];
+        if (!found) throw new AssistantError(404, "assistant_source_invalid");
+        await assistantAccess(
+          db,
+          context,
+          ["asset", "draft"].includes(sourceKind),
+        );
+        pageContext = {
+          kind: sourceKind,
+          id: sourceId,
+          name: found.name || "未命名资料",
+        };
+      }
+      return Object.keys(request.query).length
+        ? {
+            ...(await listSessions(db, context, {
+              search: search.trim(),
+              offset: Number(offset),
+              limit: Number(limit),
+            })),
+            ...(pageContext ? { pageContext } : {}),
+          }
+        : { sessions: await listSessions(db, context) };
+    }),
   );
   app.post<{ Params: Params; Body: unknown }>(
     `${path}/sessions`,
@@ -259,12 +335,29 @@ export function registerAssistant({
       });
     },
   );
-  app.get<{ Params: Params }>(
+  app.get<{
+    Params: Params;
+    Querystring: { view?: string; before?: string; limit?: string };
+  }>(
     `${path}/sessions/:sessionId`,
     { preHandler: authenticate },
     async (request, reply) =>
       respond(reply, async () => {
         const currentScope = scope(request);
+        const { view, before, limit = "20" } = request.query;
+        if (
+          Object.keys(request.query).some(
+            (key) => !["view", "before", "limit"].includes(key),
+          ) ||
+          (view !== undefined && !["status", "messages"].includes(view)) ||
+          (before !== undefined &&
+            (view !== "messages" || !before || before.length > 250)) ||
+          !/^\d+$/u.test(limit) ||
+          Number(limit) < 1 ||
+          Number(limit) > 50 ||
+          (!view && Object.keys(request.query).length)
+        )
+          throw new AssistantError(422, "assistant_request_invalid");
         return readSession(
           db,
           currentScope,
@@ -279,6 +372,13 @@ export function registerAssistant({
             await dependenciesAvailable(db, currentScope, context.dependencies);
             return context.state;
           },
+          view
+            ? {
+                mode: view as "status" | "messages",
+                ...(before ? { before } : {}),
+                limit: Number(limit),
+              }
+            : undefined,
         );
       }),
   );
@@ -363,7 +463,13 @@ export function registerAssistant({
         if (
           !isPlainObject(request.body) ||
           Object.keys(request.body).some(
-            (k) => !["message", "context", "candidates"].includes(k),
+            (k) =>
+              ![
+                "message",
+                "context",
+                "candidates",
+                "expectedTaskRevision",
+              ].includes(k),
           )
         )
           throw new AssistantError(422, "assistant_message_invalid");
@@ -376,6 +482,7 @@ export function registerAssistant({
             request.body.message,
             request.body.context,
             request.body.candidates,
+            request.body.expectedTaskRevision,
           );
         if (!started.replayed)
           void dispatch().catch((error) => app.log.error(error));

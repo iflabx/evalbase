@@ -43,6 +43,8 @@ export function AssistantBackground({
   canWrite,
   setBusy,
   onError,
+  actorId = "",
+  active = true,
 }: {
   base: string;
   projectId: string;
@@ -53,6 +55,8 @@ export function AssistantBackground({
   canWrite: boolean;
   setBusy: (busy: boolean) => void;
   onError: (error: unknown) => void;
+  actorId?: string;
+  active?: boolean;
 }) {
   const [view, setView] = useState<BackgroundDocument>(),
     [removing, setRemoving] = useState<BackgroundDocument>(),
@@ -62,10 +66,12 @@ export function AssistantBackground({
     queryClient = useQueryClient();
   const documentPath = `${base}/sessions/${encodeURIComponent(sessionId ?? "")}/background-documents`;
   const excerpt = useQuery({
-    queryKey: ["assistant-background", base, sessionId, view?.id, from],
-    queryFn: () =>
-      request<Excerpt>(`${documentPath}/${encodeURIComponent(view!.id)}?from=${from}&limit=3`),
-    enabled: Boolean(sessionId && view),
+    queryKey: ["assistant-background", base, sessionId, view?.id, from, actorId],
+    queryFn: ({ signal }) =>
+      request<Excerpt>(`${documentPath}/${encodeURIComponent(view!.id)}?from=${from}&limit=3`, {
+        signal,
+      }),
+    enabled: active && Boolean(sessionId && view),
     retry: false,
   });
   async function refresh(id: string) {
@@ -257,7 +263,7 @@ export function AssistantBackground({
           <AlertDialogHeader>
             <AlertDialogTitle>移除背景文档？</AlertDialogTitle>
             <AlertDialogDescription>
-              移除后将清除本会话正文和引用该背景的未采用任务正文，旧确认会失效。已采用的数据保留。此操作不能撤销。
+              移除后，该附件的定义引用将失效。历史会话和已生成、已采用的数据保留。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

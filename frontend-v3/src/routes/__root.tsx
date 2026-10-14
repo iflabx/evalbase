@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
+  Link,
   HeadContent,
   Outlet,
   createRootRouteWithContext,
   useRouterState,
 } from "@tanstack/react-router";
 
-import { ProjectAssistant, type AssistantPageContext } from "@/components/project-assistant";
+import { type AssistantPageContext } from "@/components/project-assistant";
 import { AccountGate } from "@/components/account-gate";
 import { useProjectAccess } from "@/hooks/use-project-access";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -23,7 +24,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { currentSession, installation, logout, myAccount } from "@/services/account";
 import { LoadingBlock } from "@/components/state-view";
-import { Activity } from "lucide-react";
+import { Activity, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { canRetainReadResult } from "@/services/workspace";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -185,12 +187,17 @@ function AuthenticatedApp() {
                 </button>
               )}
               {projectId && access.canRead && (
-                <ProjectAssistant
-                  key={`${projectId}:${actor.id}:${access.canWrite}`}
-                  projectId={projectId}
-                  pageContext={pageContext}
-                  canWrite={access.canWrite}
-                />
+                <Button variant="ghost" size="sm" asChild>
+                  <Link
+                    to="/projects/$projectId/assistant"
+                    params={{ projectId }}
+                    search={{ sourceKind: pageContext?.kind, sourceId: pageContext?.id }}
+                    aria-label="打开项目助手"
+                  >
+                    <MessageSquare className="size-4" />
+                    <span className="hidden sm:inline">项目助手</span>
+                  </Link>
+                </Button>
               )}
               <OnlineAvatars users={users} selfId={actor.id} className="ml-auto" />
               <button

@@ -13188,4 +13188,176 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+  it("OPT-24 paginates authorized history and rejects a stale plan execution revision", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      await db.query(
+        "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,assistant_text,status,expires_at,created_at) SELECT 'turn_'||md5($1||i::text),$1,'history-'||i,'fixture',$2,$2,'succeeded',now()+interval '90 seconds',now()+i*interval '1 millisecond' FROM generate_series(1,12) i",
+        [sessionId, "历史原文".repeat(500)],
+      );
+      const status = await app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}?view=status`,
+        headers,
+      });
+      expect(status.statusCode, status.body).toBe(200);
+      expect(status.json().turns).toBeUndefined();
+      expect(status.body).not.toContain("历史原文");
+      expect(status.json().messageRevision).toMatch(/^[0-9a-f]{64}$/);
+      expect(status.json().active).toBe(false);
+      const latest = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}?view=messages&limit=5`,
+          headers,
+        })
+      ).json();
+      expect(latest.turns).toHaveLength(5);
+      expect(latest.pagination.total).toBe(12);
+      const older = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}?view=messages&limit=5&before=${latest.pagination.nextBefore}`,
+          headers,
+        })
+      ).json();
+      expect(older.turns).toHaveLength(5);
+      expect(
+        new Set([...latest.turns, ...older.turns].map((t) => t.id)).size,
+      ).toBe(10);
+      const key = randomUUID(),
+        revision = status.json().taskRevision;
+      const stale = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": key },
+        payload: { message: "按方案执行", expectedTaskRevision: revision + 1 },
+      });
+      expect(stale.statusCode, stale.body).toBe(409);
+      expect(stale.json().error.code).toBe(
+        "assistant_plan_revalidation_required",
+      );
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM assistant_turn WHERE session_id=$1",
+            [sessionId],
+          )
+        ).rows[0].n,
+      ).toBe(12);
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      const payload = {
+        message: "查询项目信息",
+        expectedTaskRevision: revision,
+      };
+      const accepted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": key },
+        payload,
+      });
+      expect(accepted.statusCode, accepted.body).toBe(202);
+      const finished = await opt21End(accepted.json().turnId);
+      expect(finished.turns.at(-1).status).toBe("succeeded");
+      const replay = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": key },
+        payload,
+      });
+      expect(replay.statusCode, replay.body).toBe(200);
+      expect(replay.json().turnId).toBe(accepted.json().turnId);
+      const invalid = await app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}?view=messages&before=unknown`,
+        headers,
+      });
+      expect(invalid.statusCode).toBe(422);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      await db.end();
+    }
+  });
+  it("OPT-24 searches only visible personal sessions and checks incoming object context without changing tasks", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = await opt22Draft("R24 来源草稿");
+      await opt21Session();
+      const renamed = await app.inject({
+        method: "PATCH",
+        url: `${base()}/sessions/${sessionId}`,
+        headers,
+        payload: { title: "R24目标会话" },
+      });
+      expect(renamed.statusCode).toBe(200);
+      const list = await app.inject({
+        method: "GET",
+        url: `${base()}/sessions?search=R24目标&offset=0&limit=1&sourceKind=draft&sourceId=${source}`,
+        headers,
+      });
+      expect(list.statusCode, list.body).toBe(200);
+      expect(list.json().sessions.map((s: any) => s.id)).toEqual([sessionId]);
+      expect(list.json().sessions[0].task).toBeUndefined();
+      expect(list.json().pagination.total).toBe(1);
+      expect(list.json().pageContext.name).toBe("R24 来源草稿");
+      expect(
+        (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task,
+      ).toEqual({});
+      const actor = (
+        await db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].actor_id;
+      await db.query(
+        "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,requires_write,dependencies,expires_at) VALUES($1,$2,'private','private','私有草稿正文','succeeded',true,$3,now()+interval '90 seconds')",
+        [
+          `turn_${randomUUID().replaceAll("-", "")}`,
+          sessionId,
+          JSON.stringify([{ kind: "draft", id: source }]),
+        ],
+      );
+      await db.query("UPDATE app_user SET role='user' WHERE id=$1", [actor]);
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'viewer') ON CONFLICT(project_id,user_id) DO UPDATE SET role='viewer'",
+        [projectId, actor],
+      );
+      try {
+        for (const view of ["status", "messages"]) {
+          const denied = await app.inject({
+            method: "GET",
+            url: `${base()}/sessions/${sessionId}?view=${view}`,
+            headers,
+          });
+          expect(denied.statusCode).toBe(404);
+          expect(denied.body).not.toContain("私有草稿正文");
+        }
+        const hidden = (
+          await app.inject({
+            method: "GET",
+            url: `${base()}/sessions?search=R24目标&limit=20`,
+            headers,
+          })
+        ).json();
+        expect(hidden.sessions).toEqual([]);
+        expect(hidden.pagination.total).toBe(0);
+      } finally {
+        await db.query("UPDATE app_user SET role='admin' WHERE id=$1", [actor]);
+        await db.query(
+          "UPDATE project_member SET role='owner' WHERE project_id=$1 AND user_id=$2",
+          [projectId, actor],
+        );
+      }
+    } finally {
+      sessionId = previous;
+      await db.end();
+    }
+  });
 });

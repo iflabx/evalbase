@@ -1,1653 +1,759 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAccountRoute } from "./mock-account";
 
-test("OPT-20 explains retained results and supports legacy failures without invented diagnostics", async ({
-  page,
-}) => {
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "four", title: "失败诊断", ordinal: 4, updated_at: "2026-10-14T08:00:00Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/four"))
-      return route.fulfill({
-        json: {
-          sessionId: "four",
-          proposals: [],
-          turns: [
-            {
-              id: "diagnosed",
-              userText: "扩写",
-              assistantText: "",
-              status: "failed",
-              errorCode: "assistant_model_failed",
-              tools: [],
-              diagnostics: {
-                diagnosticId: "diagnosed",
-                currentStep: { id: "review", action: "read_processing" },
-                retainedOperations: 1,
-                retainedCandidates: 8,
-                failure: {
-                  reason: "模型服务暂时不可用，本轮回复未完成。",
-                  nextAction: "稍后重试未完成步骤。",
-                },
-              },
-            },
-            {
-              id: "legacy",
-              userText: "旧失败",
-              assistantText: "",
-              status: "failed",
-              errorCode: "assistant_model_failed",
-              tools: [],
-            },
-          ],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await expect(
-    page.getByText("模型服务暂时不可用，本轮回复未完成。", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("稍后重试未完成步骤。", { exact: true })).toBeVisible();
-  const details = page
-    .locator("details")
-    .filter({ has: page.getByText("诊断详情", { exact: true }) });
-  await details.nth(0).locator("summary").click();
-  await expect(
-    page.getByText("已完成数据操作 1 项 · 保留候选 8 条", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("诊断编号：diagnosed", { exact: true })).toBeVisible();
-  await details.nth(1).locator("summary").click();
-  await expect(
-    page.getByText("没有详细诊断，已执行操作可在下方核对。", { exact: true }),
-  ).toBeVisible();
-  await page.setViewportSize({ width: 860, height: 740 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+const base = "/api/projects/assistant_project/assistant";
+const url = "/projects/assistant_project/assistant";
+const turn = (id: string, text = "已有回复") => ({
+  id,
+  event: "user",
+  userText: `要求 ${id}`,
+  assistantText: text,
+  status: "succeeded",
+  tools: [],
 });
-
-test("shows only the current effective requirements and retains a field conflict after reload", async ({
-  page,
-}) => {
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "rules", title: "分类要求", ordinal: 1, updated_at: "2026-10-08T08:00:00.000Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/rules"))
-      return route.fulfill({
-        json: {
-          sessionId: "rules",
-          task: {
-            title: "分类要求",
-            goal: "按背景选2条",
-            stage: "waiting_input",
-            target: { kind: "draft" },
-            targetName: "合成资料",
-            requirements: ["保留原题与答案"],
-            requirementSummary: [
-              "新增候选：2 条",
-              "期望输出：允许 原标签",
-              "Metadata「风险」：允许 A、B",
-              "保留原题与答案",
-            ],
-            requirementProblem: "期望输出受保护，来源值无法满足当前类别要求",
-          },
-          turns: [
-            {
-              id: "old",
-              userText: "风险用旧类别",
-              assistantText: "之前的要求已被更正",
-              status: "succeeded",
-              tools: [],
-            },
-          ],
-          proposals: [],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
-  });
-  const task = page.getByRole("region", { name: "当前任务" });
-  const summary = task.locator("summary");
-  await expect(summary).toHaveText("当前生效要求（4）");
-  await summary.focus();
-  await page.keyboard.press("Enter");
-  await expect(task.getByText("期望输出：允许 原标签", { exact: true })).toBeVisible();
-  await expect(task.getByText("Metadata「风险」：允许 A、B", { exact: true })).toBeVisible();
-  await expect(task).not.toContainText("旧类别");
-  await expect(page.getByRole("log")).toContainText("旧类别");
-  await expect(task.getByRole("alert")).toContainText("期望输出受保护");
-  await page.getByLabel("向项目助手发送消息").fill("请保留原答案，纠正方案");
-  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("请保留原答案，纠正方案");
-  await page.screenshot({ path: "test-results/opt06-requirements-desktop.png", fullPage: true });
-  await page.setViewportSize({ width: 420, height: 800 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-  await task.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "test-results/opt06-requirements-narrow.png", fullPage: true });
-  await page.reload();
-  await page.getByRole("button", { name: "打开项目助手", exact: true }).click();
-  await expect(page.getByRole("region", { name: "当前任务" }).getByRole("alert")).toContainText(
-    "期望输出受保护",
-  );
-});
-
-test("distinguishes a failed model reply from retained processing and keeps the next input", async ({
-  page,
-}) => {
-  let failed = false;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "recover", title: "可靠执行", ordinal: 1, updated_at: "2026-10-08T09:00:00Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/recover"))
-      return route.fulfill({
-        json: {
-          sessionId: "recover",
-          task: {
-            title: "可靠执行",
-            goal: "清洗两条问题",
-            stage: failed ? "failed" : "processing",
-            canRetryTurn: failed,
-            runId: "kept",
-            checkedStatus: failed ? "succeeded" : "queued",
-            error: failed ? "assistant_model_failed" : null,
-            recovery: failed
-              ? {
-                  kind: "model_reply",
-                  message: "模型回复未完成。已提交的任务和已保存的成果保留；重试会先核对真实回执。",
-                }
-              : null,
-            executionPlan: {
-              mode: "execute",
-              current: 0,
-              steps: [
-                {
-                  id: "fixed",
-                  title: "处理完整资料",
-                  action: "submit_processing",
-                  status: "waiting",
-                },
-              ],
-            },
-          },
-          turns: [],
-          proposals: [],
-        },
-      });
-    if (path.endsWith("/processing-runs/kept/status"))
-      return route.fulfill({
-        json: {
-          run: {
-            status: failed ? "succeeded" : "queued",
-            inputCount: 2,
-            options: { operation: "clean" },
-            partial: false,
-          },
-          total: failed ? 2 : 0,
-        },
-      });
-    if (path.endsWith("/candidates"))
-      return route.fulfill({
-        json: {
-          total: 2,
-          records: [
-            {
-              id: "0:0",
-              original: { question: " 原问题 ", expectedOutput: "答复", metadata: [] },
-              result: { question: "原问题", expectedOutput: "答复", metadata: [] },
-            },
-          ],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
-  });
-  const task = page.getByRole("region", { name: "当前任务" });
-  await expect(task.getByText("等待结果", { exact: true })).toBeVisible();
-  await expect(page.getByText("清洗 · 等待中 · 2 条输入", { exact: true })).toBeVisible();
-  await page.getByLabel("向项目助手发送消息").fill("接下来保留原答案");
-  failed = true;
-  await expect(task.getByRole("status")).toContainText("模型回复未完成");
-  await expect(task.getByRole("status")).toContainText("已保留的处理任务与候选");
-  await expect(
-    task.getByText("下一步：核对已保留的候选，回复失败不会重新生成数据。", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "候选结果" }).getByText(/内容待审核/),
-  ).toBeVisible();
-  const retry = task.getByRole("button", { name: "重试未完成步骤" });
-  await expect(retry).toBeEnabled();
-  await retry.focus();
-  await expect(retry).toBeFocused();
-  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("接下来保留原答案");
-  await page.screenshot({
-    path: test.info().outputPath("opt08-recovery-desktop.png"),
-    fullPage: true,
-  });
-  await page.setViewportSize({ width: 420, height: 800 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-  await task.scrollIntoViewIfNeeded();
-  await page.screenshot({
-    path: test.info().outputPath("opt08-recovery-narrow.png"),
-    fullPage: true,
-  });
-});
-
-for (const scenario of ["exhausted", "available", "mixed", "expired-reply"] as const) {
-  test(`assistant processing retry follows server recovery: ${scenario}`, async ({ page }) => {
-    let retries = 0;
-    const runIds =
-      scenario === "mixed"
-        ? ["available", "spent"]
-        : [scenario === "exhausted" ? "spent" : "available"];
-    const latest = runIds.at(-1)!;
-    await assistantPage(page, async (route, path) => {
-      if (path === `${assistantBase}/sessions`)
-        return route.fulfill({
-          json: {
-            sessions: [
-              { id: "budget", title: "预算校验", ordinal: 1, updated_at: "2026-10-14T09:00:00Z" },
-            ],
-          },
+async function fixture(
+  page: Page,
+  options: {
+    empty?: boolean;
+    task?: any;
+    messages?: any[];
+    docs?: any[];
+    proposals?: any[];
+    intercept?: (route: Route, state: any) => Promise<boolean>;
+  } = {},
+) {
+  const state = {
+    sessions: options.empty
+      ? []
+      : [{ id: "one", title: "整理资料", ordinal: 1, updated_at: "2026-10-14T08:00:00Z" }],
+    task: options.task ?? {},
+    messages: options.messages ?? [turn("t0")],
+    docs: options.docs ?? [],
+    proposals: options.proposals ?? [],
+    revision: 7,
+    active: false,
+    denied: false,
+    posts: [] as any[],
+    reads: [] as { view: string; bytes: number; elapsed: number }[],
+    candidates: 0,
+    excerpts: 0,
+    actor: "admin",
+  };
+  await page.route("**/api/**", async (route) => {
+    const request = route.request(),
+      parsed = new URL(request.url()),
+      path = parsed.pathname;
+    const started = Date.now();
+    const reply = (json: any, status = 200) => {
+      if (parsed.searchParams.has("view"))
+        state.reads.push({
+          view: parsed.searchParams.get("view")!,
+          bytes: JSON.stringify(json).length,
+          elapsed: Date.now() - started,
         });
-      if (path.endsWith("/sessions/budget"))
-        return route.fulfill({
-          json: {
-            sessionId: "budget",
-            task: {
-              title: "预算校验",
-              goal: "新增两条问题",
-              stage: "awaiting_review",
-              runId: latest,
-              runIds,
-              checkedStatus: "failed",
-              review: { missingCount: 1 },
-              canRetryTurn: false,
-              recovery: scenario === "expired-reply" ? { kind: "model_reply" } : null,
-            },
-            turns: [],
-            proposals: [],
-          },
+      return route.fulfill({ status, json });
+    };
+    if (options.intercept && (await options.intercept(route, state))) return;
+    if (path === "/api/session")
+      return reply({ csrfToken: "csrf", actor: { id: state.actor, role: "admin" } });
+    if (await mockAccountRoute(route)) return;
+    if (path === "/api/projects")
+      return reply({
+        projects: [{ id: "assistant_project", name: "助手验收项目" }],
+        pagination: { total: 1 },
+      });
+    if (path === `${base}/sessions`) {
+      if (request.method() === "POST") {
+        state.posts.push({ path, body: request.postDataJSON() });
+        state.sessions.push({
+          id: "new",
+          title: "新会话",
+          ordinal: 2,
+          updated_at: "2026-10-14T09:00:00Z",
         });
-      if (path.endsWith("/sessions/budget/retry")) {
-        retries++;
-        return route.fulfill({ json: { accepted: true } });
+        state.messages = [];
+        return reply({ sessionId: "new" }, 201);
       }
-      if (path.endsWith("/status")) {
-        const canRetry = path.includes("/available/");
-        return route.fulfill({
-          json: {
-            recovery: {
-              canRetry,
-              canContinue: !canRetry,
-              reason: canRetry ? "remaining_budget" : "budget_exhausted",
-            },
-            run: {
-              status: "failed",
-              progress: 100,
-              inputCount: 1,
-              missingCount: 1,
-              options: { operation: "augment", outputCount: 2 },
-            },
-            total: 1,
-          },
-        });
-      }
-      if (path.endsWith("/candidates"))
-        return route.fulfill({
-          json: {
-            total: 1,
-            records: [
-              {
-                id: "0:0",
-                original: { question: "原问题", expectedOutput: "答复", metadata: [] },
-                result: { question: "已保留候选", expectedOutput: "答复", metadata: [] },
-              },
-            ],
-          },
-        });
-      return route.fulfill({ status: 404, json: {} });
-    });
-    const task = page.getByRole("region", { name: "当前任务" });
-    await expect(
-      task.getByText("扩充 · 部分完成 · 1 条结果，尚缺 1 条", { exact: true }),
-    ).toBeVisible();
-    const retry = task.getByRole("button", { name: "重试未完成步骤" });
-    await page.getByLabel("向项目助手发送消息").fill("保留原答案");
-    if (scenario === "exhausted") {
-      await expect(task.getByText("本轮重试额度已用完，已有候选保留。")).toBeVisible();
-      await expect(retry).toHaveCount(0);
-      await expect(task.getByRole("link", { name: "查看处理任务与恢复操作" })).toHaveAttribute(
-        "href",
-        /processing\?run=spent/,
+      const matches = state.sessions.filter((s) =>
+        s.title.includes(parsed.searchParams.get("search") ?? ""),
       );
-      expect(retries).toBe(0);
-    } else {
-      await expect(retry).toBeEnabled();
-      await retry.click();
-      await expect.poll(() => retries).toBe(1);
+      const source = parsed.searchParams.get("sourceId");
+      return reply({
+        sessions: matches,
+        pagination: { total: matches.length },
+        ...(source ? { pageContext: { name: `资料 ${source}` } } : {}),
+      });
     }
-    await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("保留原答案");
-    await expect(
-      page.getByRole("region", { name: "候选结果" }).getByText("已保留候选", { exact: true }),
-    ).toBeVisible();
+    if (/\/sessions\/[^/]+\/status$/.test(path))
+      return reply({ exists: Boolean(state.sessions.length) });
+    if (/\/sessions\/[^/]+$/.test(path)) {
+      const id = path.split("/").at(-1)!;
+      if (request.method() === "PATCH") {
+        const title = request.postDataJSON().title;
+        state.sessions.find((s) => s.id === id)!.title = title;
+        return reply({ sessionId: id, title });
+      }
+      if (request.method() === "DELETE") {
+        state.posts.push({ path, method: "DELETE" });
+        state.sessions = state.sessions.filter((s) => s.id !== id);
+        state.messages = [];
+        return reply({ deleted: true });
+      }
+      if (state.denied || !state.sessions.some((s) => s.id === id))
+        return reply({ error: { code: "assistant_not_found" } }, 404);
+      const title = state.sessions.find((s) => s.id === id)!.title;
+      const status = {
+        sessionId: id,
+        title,
+        task: state.task,
+        taskRevision: state.revision,
+        messageRevision: `${state.revision}:${state.messages.length}:${state.messages.at(-1)?.status}`,
+        active: state.active,
+        latestTurn: state.messages.length
+          ? { id: state.messages.at(-1)!.id, status: state.messages.at(-1)!.status }
+          : null,
+        backgroundDocuments: state.docs,
+        proposals: state.proposals,
+      };
+      if (parsed.searchParams.get("view") === "status") return reply(status);
+      const before = parsed.searchParams.get("before"),
+        end = before ? state.messages.findIndex((t) => t.id === before) : state.messages.length;
+      const selected = state.messages.slice(Math.max(0, end - 20), end);
+      return reply({
+        ...status,
+        turns: selected,
+        pagination: { total: state.messages.length, nextBefore: end > 20 ? selected[0].id : null },
+      });
+    }
+    if (path.endsWith("/turns")) {
+      const body = request.postDataJSON();
+      state.posts.push({ path, body, key: request.headers()["idempotency-key"] });
+      state.messages.push({ ...turn("sent", "请求已记录"), userText: body.message });
+      state.revision++;
+      return reply({ turnId: "sent" }, 202);
+    }
+    if (path.endsWith("/stop") || path.endsWith("/retry")) {
+      state.posts.push({ path });
+      state.task = {
+        ...state.task,
+        stage: path.endsWith("/stop") ? "stopped" : "waiting_input",
+        canRetryTurn: false,
+      };
+      state.active = false;
+      state.messages = state.messages.map((t) => ({ ...t, status: "succeeded" }));
+      return reply({ stopped: true });
+    }
+    if (path.includes("/background-documents/")) {
+      state.excerpts++;
+      return reply({
+        ...state.docs[0],
+        fragments: [{ index: 1, page: 13, text: "附件中的真实说明" }],
+      });
+    }
+    if (path.endsWith("/background-documents") && request.method() === "POST") {
+      state.posts.push({ path, body: request.postDataJSON() });
+      state.docs.push({
+        id: "doc",
+        fileName: request.postDataJSON().fileName,
+        format: "md",
+        fileSize: 40,
+        units: 1,
+        fragmentCount: 1,
+      });
+      return reply({ document: state.docs[0] }, 201);
+    }
+    if (path.endsWith("/candidates")) {
+      state.candidates++;
+      return reply({
+        records: [0, 1].map((i) => ({
+          id: `0:${i}`,
+          result: {
+            question: `候选问题 ${i + 1}`,
+            expectedOutput: "保留答案",
+            metadata: [{ key: "类别", value: "一般" }],
+          },
+          original: { question: `原问题 ${i + 1}`, expectedOutput: "保留答案", metadata: [] },
+          changedFields: ["question"],
+          sourceLabel: "输入资料",
+        })),
+        allIds: ["0:0", "0:1"],
+        total: 2,
+        stats: { all: 2, changed: 2, needsReview: 0 },
+      });
+    }
+    if (path.includes("/processing-runs/") && path.endsWith("/status"))
+      return reply({
+        run: {
+          status: "succeeded",
+          inputCount: 2,
+          progress: 2,
+          partial: false,
+          missingCount: 0,
+          options: { operation: "rewrite" },
+        },
+        total: 2,
+        recovery: { canRetry: false },
+      });
+    if (path.includes("/proposals/") && path.endsWith("/confirm")) {
+      state.posts.push({ path });
+      state.proposals[0].status = "succeeded";
+      state.task.stage = "complete";
+      return reply({ receipt: {} });
+    }
+    if (path.endsWith("/solo-test-sets") || path.endsWith("/test-sets"))
+      return reply({ testSets: [], pagination: { total: 0 } });
+    return reply({ error: { code: "not_found" } }, 404);
   });
+  return state;
+}
+async function overflow(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
 
-test("reviews candidates inside the assistant and preserves cross-page selection for a local rewrite", async ({
-  page,
-}, info) => {
-  let sent: unknown;
-  let scopeHash = "initial-classified-selection";
-  let candidateForbidden = false;
-  let releaseDeniedAll: (() => void) | undefined;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            {
-              id: "task",
-              title: "尚未更新的旧名称",
-              ordinal: 9,
-              updated_at: "2026-10-05T08:00:00Z",
-            },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/task"))
-      return route.fulfill({
-        json: {
-          sessionId: "task",
-          task: {
-            title: "退款问题改写",
-            goal: "改写25条，保留答案",
-            stage: "awaiting_review",
-            runId: "candidate_run",
-            candidateScope: { hash: scopeHash, count: 25, sourceCount: 30, targetCount: 25 },
-            executionPlan: {
-              mode: "execute",
-              current: 1,
-              steps: [
-                { title: "后台逐条分类", action: "submit_processing", status: "executed" },
-                { title: "按类别选取", action: "select_candidates", status: "pending" },
-              ],
-            },
-            review: {
-              runId: "candidate_run",
-              total: 25,
-              expectedCount: 25,
-              countSatisfied: true,
-              emptyQuestions: 0,
-              duplicates: 0,
-              protectedFieldChanges: 0,
-              labels: [{ label: "退款", count: 25 }],
-              semanticReview: "required",
-              classifications: [
-                {
-                  field: "expectedOutput",
-                  satisfied: false,
-                  missing: 0,
-                  outsideValues: 0,
-                  quotaDifferences: [{ value: "退款", expected: 26, actual: 25 }],
-                },
-              ],
-            },
-          },
-          turns: [
-            {
-              id: "auto",
-              event: "processing_completed",
-              userText: "[processing_completed]",
-              assistantText: "已核对25条候选。",
-              status: "succeeded",
-              tools: [{ key: "read", name: "read_processing", status: "succeeded" }],
-              errorCode: null,
-            },
-          ],
-          proposals: [],
-        },
-      });
-    if (path.endsWith("/candidates")) {
-      if (candidateForbidden) {
-        if (new URL(route.request().url()).searchParams.get("view") === "all")
-          await new Promise<void>((resolve) => {
-            releaseDeniedAll = resolve;
-          });
-        return route.fulfill({ status: 403, json: { error: { code: "processing_not_found" } } });
-      }
-      const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
-      return route.fulfill({
-        json: {
-          total: 25,
-          offset,
-          limit: 10,
-          issues: [
-            {
-              code: "protected_field_changed",
-              batch: 0,
-              inputOrdinal: 11,
-              sourceQuestion: "原问题 11",
-            },
-          ],
-          records: Array.from({ length: Math.min(10, 25 - offset) }, (_, i) => ({
-            id: `0:${offset + i}`,
-            sourceLabel: `合成退款资料.csv · 第 ${offset + i + 1} 条`,
-            original: {
-              question: `原问题 ${offset + i + 1}`,
-              expectedOutput: "退款",
-              metadata: [],
-            },
-            result: { question: `新问题 ${offset + i + 1}`, expectedOutput: "退款", metadata: [] },
-          })),
-        },
-      });
-    }
-    if (path.includes("/processing-runs/"))
-      return route.fulfill({
-        json: {
-          run: {
-            status: "succeeded",
-            inputCount: 25,
-            progress: 100,
-            options: { operation: "rewrite" },
-          },
-          total: 25,
-        },
-      });
-    if (path.endsWith("/turns")) {
-      sent = route.request().postDataJSON();
-      return route.fulfill({ status: 202, json: { turnId: "next", status: "queued" } });
-    }
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("退款问题改写");
-  await expect(page.getByText("候选待审核", { exact: true })).toBeVisible();
-  await expect(page.getByText("期望输出：分类取值或配额未符合要求", { exact: true })).toBeVisible();
-  await expect(page.getByText("退款：实际 25 / 要求 26 条", { exact: true })).toBeVisible();
-  await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("后台逐条分类");
-  await expect(page.getByRole("list", { name: "执行步骤" })).toContainText("已执行");
-  await page.getByText("任务级校验说明", { exact: true }).click();
-  await expect(page.getByText("受保护字段变化 · 输入第 11 条", { exact: true })).toBeVisible();
-  await page.getByLabel("选择结果 1", { exact: true }).check();
-  await page.getByRole("button", { name: "下一页候选" }).click();
-  await page.getByLabel("选择结果 11", { exact: true }).check();
-  await expect(page.getByText("已选 2 条候选", { exact: true })).toBeVisible();
-  await page.getByRole("row", { name: "查看记录 11", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("原问题 11");
-  await expect(page.getByRole("dialog")).toContainText("新问题 11");
-  await expect(page.getByRole("dialog")).toContainText("合成退款资料.csv · 第 11 条");
-  await expect(page.getByRole("dialog")).toContainText("本次变化：问题");
-  await page.screenshot({ path: info.outputPath("opt11-candidate-desktop.png") });
-  await page.setViewportSize({ width: 420, height: 800 });
-  await page.screenshot({ path: info.outputPath("opt11-candidate-narrow.png") });
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.keyboard.press("Escape");
-  await page.getByLabel("向项目助手发送消息").fill("只把选中的问题写得更口语");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  expect(sent).toEqual({
-    message: "只把选中的问题写得更口语",
-    candidates: { runId: "candidate_run", resultIds: ["0:0", "0:10"] },
-  });
-  scopeHash = "changed-classified-selection";
-  await expect(page.getByText("已选 0 条候选", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("选择结果 1", { exact: true })).not.toBeChecked();
-  await expect(page.getByText("共 25 条匹配 · 第 1 页", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("log").getByText("[processing_completed]", { exact: true }),
-  ).toHaveCount(0);
-  await page.setViewportSize({ width: 420, height: 800 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-  await page.getByRole("button", { name: "有变化", exact: true }).click();
-  await expect(page.getByRole("row", { name: "查看记录 1", exact: true })).toBeVisible();
-  candidateForbidden = true;
-  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
-  await expect(
-    page.getByText("候选范围变化或来源不可用。已有成果保留，请核对当前任务。"),
-  ).toBeVisible();
-  await expect(page.getByRole("row", { name: "查看记录 1", exact: true })).toHaveCount(0);
-  await Promise.all([
-    page.waitForRequest(
-      (req) =>
-        req.url().includes("/candidates?") && new URL(req.url()).searchParams.get("view") === "all",
-    ),
-    page.getByRole("button", { name: "全部", exact: true }).click(),
-  ]);
-  expect(await page.getByRole("row", { name: "查看记录 1", exact: true }).count()).toBe(0);
-  releaseDeniedAll?.();
-  await expect(page.getByRole("button", { name: "重试读取候选", exact: true })).toBeVisible();
-  candidateForbidden = false;
-  await page.getByRole("button", { name: "重试读取候选", exact: true }).click();
-  await expect(page.getByRole("row", { name: "查看记录 1", exact: true })).toBeVisible();
-});
-
-test("opens the actual adopted draft from the persisted receipt", async ({ page }) => {
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: { sessions: [{ id: "adopted", title: "采用结果", ordinal: 1 }] },
-      });
-    if (path.endsWith("/sessions/adopted"))
-      return route.fulfill({
-        json: {
-          sessionId: "adopted",
-          turns: [
-            {
-              id: "turn",
-              status: "succeeded",
-              userText: "采用结果",
-              assistantText: "已采用",
-              tools: [],
-            },
-          ],
-          proposals: [
-            {
-              id: "proposal",
-              turn_id: "turn",
-              action: "processing",
-              status: "succeeded",
-              summary: {
-                title: "采用处理结果",
-                count: 2,
-                url: "/projects/assistant_project/processing?run=run",
-              },
-              receipt: { receipt: { adopted: 2, draftId: "actual_draft" } },
-            },
-          ],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await expect(page.getByRole("link", { name: "继续编辑草稿", exact: true })).toHaveAttribute(
-    "href",
-    "/projects/assistant_project/test-sets/drafts/actual_draft",
-  );
-});
-
-test("selects task batches without carrying checked rows into another batch and shows the final total", async ({
+test("OPT-24 a delayed pre-submission status cannot hide an accepted first turn", async ({
   page,
 }) => {
-  let sent: unknown;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "multi", title: "补到两条", ordinal: 1, updated_at: "2026-10-06T00:00:00Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/multi"))
-      return route.fulfill({
-        json: {
-          sessionId: "multi",
-          proposals: [],
-          turns: [],
-          task: {
-            title: "补到两条",
-            goal: "保留已有的一条",
-            stage: "awaiting_review",
-            runId: "second",
-            runIds: ["first", "second"],
-            review: {
-              runId: "second",
-              total: 2,
-              expectedCount: 2,
-              countKind: "final",
-              baseCount: 1,
-              remainingCount: 1,
-              countSatisfied: true,
-              emptyQuestions: 0,
-              duplicates: 0,
-              protectedFieldChanges: 0,
-              labels: [],
-            },
+  let first = true,
+    release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const state = await fixture(page, {
+    empty: true,
+    messages: [],
+    intercept: async (route, state) => {
+      const u = new URL(route.request().url());
+      if (
+        u.pathname === `${base}/sessions/new` &&
+        u.searchParams.get("view") === "status" &&
+        first
+      ) {
+        first = false;
+        await gate;
+        await route.fulfill({
+          json: {
+            sessionId: "new",
+            title: "新会话",
+            task: {},
+            taskRevision: 7,
+            messageRevision: "before-send",
+            active: false,
+            latestTurn: null,
+            proposals: [],
+            backgroundDocuments: [],
           },
-        },
-      });
-    if (path.endsWith("/candidates")) {
-      const run = new URL(route.request().url()).searchParams.get("run");
-      return route.fulfill({
-        json: {
-          total: 1,
-          offset: 0,
-          limit: 10,
-          records: [
-            {
-              id: "0:0",
-              original: null,
-              result: {
-                question: run === "first" ? "第一批问题" : "第二批问题",
-                expectedOutput: "正常回答",
-                metadata: [],
-              },
-            },
-          ],
-        },
-      });
-    }
-    if (path.includes("/processing-runs/"))
-      return route.fulfill({
-        json: {
-          run: {
-            status: "succeeded",
-            inputCount: 1,
-            progress: 100,
-            options: { operation: "augment" },
-          },
-          total: 1,
-        },
-      });
-    if (path.endsWith("/turns")) {
-      sent = route.request().postDataJSON();
-      return route.fulfill({ status: 202, json: { turnId: "next", status: "queued" } });
-    }
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await expect(page.getByText(/最终总数 2 \/ 目标 2 条/)).toBeVisible();
-  await expect(page.getByText("草稿已有 1 条 · 待采用 1 条")).toBeVisible();
-  await expect(page.getByText("第二批问题", { exact: true })).toBeVisible();
-  await page.getByLabel("选择结果 1", { exact: true }).check();
-  await page.getByRole("combobox", { name: "选择候选批次" }).click();
-  await page.getByRole("option", { name: "批次 1", exact: true }).click();
-  await expect(page.getByText("第一批问题", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("选择结果 1", { exact: true })).not.toBeChecked();
-  await page.getByLabel("选择结果 1", { exact: true }).check();
-  await page.getByRole("combobox", { name: "选择候选批次" }).click();
-  await page.getByRole("option", { name: "批次 2", exact: true }).click();
-  await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
-  await page.getByRole("button", { name: "预览本任务候选", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "项目助手", exact: true })).toBeVisible();
-  await page.getByRole("combobox", { name: "选择候选批次" }).click();
-  await page.getByRole("option", { name: "批次 1", exact: true }).click();
-  await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
-  await page.getByLabel("向项目助手发送消息").fill("只改选中这一条");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  expect(sent).toEqual({
-    message: "只改选中这一条",
-    candidates: { runId: "first", resultIds: ["0:0"] },
-  });
-});
-
-test("keeps the assistant conversation across close/reload and submits only an explicit bound confirmation", async ({
-  page,
-}) => {
-  const base = "/api/projects/assistant_project/assistant";
-  let session = false,
-    sent = false,
-    confirmed = false,
-    confirmCount = 0;
-  await page.route("**/api/**", async (route) => {
-    if (await mockAccountRoute(route)) return;
-    const path = new URL(route.request().url()).pathname,
-      method = route.request().method();
-    if (method === "POST")
-      expect(route.request().headers()["content-type"]).toBe("application/json");
-    if (path === "/api/projects")
-      return route.fulfill({
-        json: {
-          projects: [
-            { id: "assistant_project", name: "助手验收项目", datasetCount: 0, testSetCount: 0 },
-          ],
-          pagination: { total: 1 },
-        },
-      });
-    if (path.endsWith("/test-sets"))
-      return route.fulfill({ json: { testSets: [], pagination: { total: 0 } } });
-    if (path === `${base}/sessions`) {
-      if (method === "POST") {
-        session = true;
-        return route.fulfill({ status: 201, json: { sessionId: "session" } });
+        });
+        return true;
       }
-      return route.fulfill({
-        json: {
-          sessions: session
-            ? [{ id: "session", ordinal: 1, updated_at: "2026-10-04T08:00:00Z" }]
-            : [],
-        },
-      });
-    }
-    if (path === `${base}/sessions/session/turns`) {
-      expect(route.request().postDataJSON()).toEqual({ message: "请发布这个草稿" });
-      expect(route.request().headers()["idempotency-key"]).toBeTruthy();
-      sent = true;
-      return route.fulfill({ status: 202, json: { turnId: "turn", status: "running" } });
-    }
-    if (path === `${base}/sessions/session`)
-      return route.fulfill({
-        json: {
-          sessionId: "session",
-          turns: sent
-            ? [
-                {
-                  id: "turn",
-                  userText: "请发布这个草稿",
-                  assistantText: "已准备发布确认，请核对。",
-                  status: "succeeded",
-                  tools: [],
-                  errorCode: null,
-                },
-              ]
-            : [],
-          proposals: sent
-            ? [
-                {
-                  id: "proposal",
-                  turn_id: "turn",
-                  action: "publish",
-                  summary: {
-                    title: "发布正式版本",
-                    target: "意图识别测试集",
-                    count: 20,
-                    revision: 4,
-                    url: "/projects/assistant_project/test-sets/drafts/draft",
-                  },
-                  status: confirmed ? "succeeded" : "pending",
-                  receipt: confirmed
-                    ? {
-                        testSet: { id: "testset" },
-                        version: { id: "version", label: "v3", recordCount: 20 },
-                      }
-                    : null,
-                  expires_at: "2099-01-01T00:00:00Z",
-                },
-              ]
-            : [],
-        },
-      });
-    if (path === `${base}/proposals/proposal/confirm`) {
-      expect(route.request().postDataJSON()).toEqual({});
-      confirmed = true;
-      confirmCount++;
-      return route.fulfill({ json: { receipt: { version: { id: "version" } }, replayed: false } });
-    }
-    return route.fulfill({ status: 404, json: { error: { code: "route_not_found" } } });
-  });
-  await page.goto("/projects/assistant_project/test-sets");
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-  await expect(page.getByRole("heading", { name: "项目助手", exact: true })).toBeVisible();
-  await page.getByLabel("向项目助手发送消息").fill("请发布这个草稿");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByText("意图识别测试集 · 20 条记录 · 草稿修订 4")).toBeVisible();
-  expect(confirmCount).toBe(0);
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-  await expect(page.getByRole("button", { name: "确认发布" })).toBeVisible();
-  await page.setViewportSize({ width: 800, height: 900 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-  await page.screenshot({ path: "test-results/assistant-confirm-narrow.png", fullPage: true });
-  await page.getByRole("button", { name: "确认发布" }).click();
-  await expect.poll(() => confirmCount).toBe(1);
-  await expect(page.getByRole("button", { name: "确认发布" })).toHaveCount(0);
-  await page.reload();
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-  await expect(page.getByText("已发布 · v3", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "查看已发布版本" })).toHaveAttribute(
-    "href",
-    "/projects/assistant_project/test-sets/testset?version=version",
-  );
-  expect(confirmCount).toBe(1);
-});
-
-const assistantBase = "/api/projects/assistant_project/assistant";
-
-test("renames sessions, retains input on failure, and confirms deletion before returning to the empty state", async ({
-  page,
-}) => {
-  let title = "安全题库",
-    deleted = false,
-    renameAttempts = 0,
-    deleteAttempts = 0;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`) {
-      expect(route.request().method()).toBe("GET");
-      return route.fulfill({
-        json: {
-          sessions: deleted
-            ? []
-            : [{ id: "manage", title, ordinal: 1, updated_at: "2026-10-06T08:00:00Z" }],
-        },
-      });
-    }
-    if (path === `${assistantBase}/sessions/manage/status`)
-      return route.fulfill({ json: { exists: !deleted } });
-    if (path === `${assistantBase}/sessions/manage`) {
-      if (route.request().method() === "PATCH") {
-        renameAttempts++;
-        if (renameAttempts === 1)
-          return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
-        title = route.request().postDataJSON().title;
-        return route.fulfill({ json: { sessionId: "manage", title } });
+      if (u.pathname.endsWith("/turns")) {
+        state.posts.push({ path: u.pathname });
+        state.active = true;
+        state.revision++;
+        state.task = { goal: "实际处理", stage: "processing" };
+        state.messages.push({
+          ...turn("accepted-first", ""),
+          status: "running",
+          userText: route.request().postDataJSON().message,
+        });
+        await route.fulfill({ status: 202, json: { turnId: "accepted-first" } });
+        return true;
       }
-      if (route.request().method() === "DELETE") {
-        deleteAttempts++;
-        if (deleteAttempts === 1)
-          return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
-        deleted = true;
-        // The server committed, but its response was lost. Exact status proves removal.
-        return route.fulfill({ status: 503, json: { error: { code: "response_lost" } } });
-      }
-      return route.fulfill({
-        json: {
-          sessionId: "manage",
-          title,
-          task: { title: "自动生成标题" },
-          turns: [],
-          proposals: [],
-        },
-      });
-    }
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await page.getByLabel("向项目助手发送消息").fill("尚未发送的要求");
-  await page.getByRole("button", { name: "会话操作" }).click();
-  await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
-  const rename = page.getByRole("dialog", { name: "重命名会话", exact: true });
-  await expect(rename.getByLabel("会话名称")).toHaveValue("安全题库");
-  await rename.getByLabel("会话名称").fill("  我的安全测试  ");
-  await rename.getByRole("button", { name: "保存名称" }).click();
-  await expect(rename.getByRole("alert")).toContainText("名称已保留");
-  await expect(rename.getByLabel("会话名称")).toHaveValue("  我的安全测试  ");
-  await rename.getByRole("button", { name: "保存名称" }).click();
-  await expect(rename).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("我的安全测试");
-  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("尚未发送的要求");
-  await page.reload();
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("我的安全测试");
-  await page.getByRole("button", { name: "会话操作" }).click();
-  await page.getByRole("menuitem", { name: "删除会话", exact: true }).click();
-  const confirm = page.getByRole("alertdialog", { name: "删除会话？", exact: true });
-  await expect(confirm).toContainText("已创建的资料、草稿和正式版本保留");
-  await confirm.getByRole("button", { name: "取消", exact: true }).click();
-  expect(deleteAttempts).toBe(0);
-  await page.getByRole("button", { name: "会话操作" }).click();
-  await page.getByRole("menuitem", { name: "删除会话", exact: true }).click();
-  await confirm.getByRole("button", { name: "确认删除会话" }).click();
-  await expect(confirm.getByRole("alert")).toContainText("删除未完成");
-  await confirm.getByRole("button", { name: "确认删除会话" }).click();
-  await expect(confirm).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("新会话");
-  await expect(page.getByRole("button", { name: "会话操作" })).toBeDisabled();
-  await expect(page.getByText("从当前项目开始", { exact: true })).toBeVisible();
-  await page.setViewportSize({ width: 420, height: 800 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-});
-
-test("keeps background and task beside the conversation, with located preview and explicit removal", async ({
-  page,
-}) => {
-  let uploaded = false,
-    removed = false;
-  const document = {
-    id: "background",
-    fileName: "要求.md",
-    format: "md",
-    fileSize: 40,
-    units: 3,
-    characters: 20,
-    fragmentCount: 1,
-  };
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [{ id: "background_session", ordinal: 1, updated_at: "2026-10-06T00:00:00Z" }],
-        },
-      });
-    if (path === `${assistantBase}/sessions/background_session`)
-      return route.fulfill({
-        json: {
-          sessionId: "background_session",
-          backgroundDocuments: uploaded && !removed ? [document] : [],
-          task: {
-            title: "安全测试集",
-            goal: "创建200条",
-            stage: "waiting_input",
-            requirements: ["覆盖31类风险"],
-          },
-          turns: removed
-            ? []
-            : [
-                {
-                  id: "old",
-                  userText: "创建200条",
-                  assistantText: "请上传背景要求。",
-                  status: "succeeded",
-                  errorCode: null,
-                  tools: [],
-                },
-              ],
-          proposals: [],
-        },
-      });
-    if (path.endsWith("/background-documents")) {
-      expect(route.request().postDataJSON()).toEqual({
-        fileName: "要求.md",
-        contentBase64: Buffer.from("# 要求\n覆盖31类风险\n共200条").toString("base64"),
-      });
-      uploaded = true;
-      return route.fulfill({ status: 201, json: { document, replayed: false } });
-    }
-    if (path.endsWith("/background-documents/background")) {
-      if (route.request().method() === "DELETE") {
-        removed = true;
-        return route.fulfill({ json: { removed: true } });
-      }
-      return route.fulfill({
-        json: {
-          ...document,
-          fragments: [
-            { index: 1, startLine: 1, endLine: 3, text: "# 要求\n覆盖31类风险\n共200条" },
-          ],
-        },
-      });
-    }
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await page.getByLabel("上传背景文档").setInputFiles({
-    name: "要求.md",
-    mimeType: "text/markdown",
-    buffer: Buffer.from("# 要求\n覆盖31类风险\n共200条"),
-  });
-  await expect(page.getByText("要求.md", { exact: true })).toBeVisible();
-  const work = page.getByRole("complementary", { name: "任务与背景" });
-  await expect(work.getByRole("heading", { name: "安全测试集" })).toBeVisible();
-  await page.getByRole("button", { name: "查看背景 要求.md" }).click();
-  await expect(page.getByRole("dialog").getByText("第 1–3 行", { exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog")).toContainText("覆盖31类风险");
-  await page.keyboard.press("Escape");
-  await page.reload();
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-  await expect(page.getByText("要求.md", { exact: true })).toBeVisible();
-  await expect
-    .poll(async () => {
-      const box = await work.boundingBox();
-      return box!.x + box!.width;
-    })
-    .toBeLessThanOrEqual(1281);
-  const bounds = await work.boundingBox(),
-    log = await page.getByRole("log").boundingBox();
-  expect(bounds!.x).toBeGreaterThan(log!.x + log!.width - 1);
-  await page.screenshot({ path: "test-results/assistant-background-desktop.png", fullPage: true });
-  await page.setViewportSize({ width: 420, height: 800 });
-  await expect(page.getByRole("button", { name: "查看背景 要求.md" })).toBeVisible();
-  expect(await page.evaluate(() => window.document.documentElement.scrollWidth <= innerWidth)).toBe(
-    true,
-  );
-  await page.screenshot({ path: "test-results/assistant-background-narrow.png", fullPage: true });
-  await page.getByRole("button", { name: "移除背景 要求.md" }).click();
-  await expect(page.getByRole("alertdialog")).toContainText("清除本会话正文");
-  expect(removed).toBe(false);
-  await page.getByRole("button", { name: "确认移除" }).click();
-  await expect(page.getByText("要求.md", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("请上传背景要求。", { exact: true })).toHaveCount(0);
-});
-test("preserves a failed submission and retry identity while using another session", async ({
-  page,
-}) => {
-  const keys: string[] = [];
-  let oneSucceeded = false,
-    twoSucceeded = false;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "one", ordinal: 1, updated_at: "2026-10-04T08:00:00Z" },
-            { id: "two", ordinal: 2, updated_at: "2026-10-04T07:00:00Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/turns")) {
-      if (path.includes("/one/")) {
-        keys.push(route.request().headers()["idempotency-key"]!);
-        expect(route.request().postDataJSON()).toEqual({ message: "第一会话的原始要求" });
-        if (keys.length === 1)
-          return route.fulfill({ status: 503, json: { error: { code: "temporary" } } });
-        oneSucceeded = true;
-      } else twoSucceeded = true;
-      return route.fulfill({
-        status: 202,
-        json: { turnId: path.includes("/one/") ? "one-turn" : "two-turn" },
-      });
-    }
-    if (/\/sessions\/(one|two)$/.test(path)) {
-      const one = path.endsWith("/one"),
-        done = one ? oneSucceeded : twoSucceeded;
-      return route.fulfill({
-        json: {
-          sessionId: one ? "one" : "two",
-          proposals: [],
-          turns: done
-            ? [
-                {
-                  id: one ? "one-turn" : "two-turn",
-                  userText: one ? "第一会话的原始要求" : "第二会话要求",
-                  assistantText: "已受理",
-                  status: "succeeded",
-                  tools: [],
-                  errorCode: null,
-                },
-              ]
-            : [],
-        },
-      });
-    }
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await page.getByLabel("向项目助手发送消息").fill("第一会话的原始要求");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByRole("button", { name: "重新提交这条" })).toBeVisible();
-  await page.getByRole("combobox", { name: "选择助手会话" }).click();
-  await page.getByRole("option", { name: /会话 2/ }).click();
-  await page.getByLabel("向项目助手发送消息").fill("第二会话要求");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByRole("log").getByText("已受理", { exact: true })).toBeVisible();
-  await page.getByRole("combobox", { name: "选择助手会话" }).click();
-  await page.getByRole("option", { name: /会话 1/ }).click();
-  await expect(page.getByRole("button", { name: "重新提交这条" })).toBeVisible();
-  await page.getByRole("button", { name: "重新提交这条" }).click();
-  await expect(page.getByRole("log").getByText("已受理", { exact: true })).toBeVisible();
-  expect(keys).toHaveLength(2);
-  expect(keys[0]).toBe(keys[1]);
-});
-
-test("clears private cached history when project write access is revoked", async ({ page }) => {
-  let viewer = false,
-    reads = 0;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: { sessions: [{ id: "private", ordinal: 1, updated_at: "2026-10-04T08:00:00Z" }] },
-      });
-    if (path.endsWith("/sessions/private")) {
-      reads++;
-      return viewer
-        ? route.fulfill({ status: 404, json: { error: { code: "assistant_not_found" } } })
-        : route.fulfill({
-            json: {
-              sessionId: "private",
-              proposals: [],
-              turns: [
-                {
-                  id: "private-turn",
-                  userText: "未发布草稿的独占正文",
-                  assistantText: "私有草稿结果",
-                  status: "succeeded",
-                  tools: [],
-                  errorCode: null,
-                },
-              ],
-            },
-          });
-    }
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await expect(page.getByText("未发布草稿的独占正文", { exact: true })).toBeVisible();
-  viewer = true;
-  await page.route("**/api/projects/assistant_project/access", (route) =>
-    route.fulfill({
-      json: {
-        access: {
-          role: "viewer",
-          capabilities: { read: true, write: false, export: true, manage: false },
-        },
-      },
-    }),
-  );
-  await page.route("**/api/projects/assistant_project/presence", (route) =>
-    route.request().method() === "GET"
-      ? route.fulfill({ status: 404, json: { error: { code: "project_not_found" } } })
-      : route.fulfill({ status: 204 }),
-  );
-  await expect(page.getByText("未发布草稿的独占正文", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-  await expect(page.getByText("当前会话不可访问。", { exact: true })).toBeVisible();
-  expect(reads).toBeGreaterThan(1);
-  await expect(page.getByText("未发布草稿的独占正文", { exact: true })).toHaveCount(0);
-});
-async function assistantPage(
-  page: Page,
-  handle: (route: Route, path: string) => Promise<unknown>,
-  url = "/projects/assistant_project/test-sets",
-) {
-  await page.route("**/api/**", async (route) => {
-    if (await mockAccountRoute(route)) return;
-    const path = new URL(route.request().url()).pathname;
-    if (path === "/api/projects")
-      return route.fulfill({
-        json: {
-          projects: [{ id: "assistant_project", name: "助手验收项目" }],
-          pagination: { total: 1 },
-        },
-      });
-    if (path.endsWith("/test-sets"))
-      return route.fulfill({ json: { testSets: [], pagination: { total: 0 } } });
-    if (path.endsWith("/collaborative-drafts")) return route.fulfill({ json: { drafts: [] } });
-    return handle(route, path);
+      return false;
+    },
   });
   await page.goto(url);
-  await page.getByRole("button", { name: "打开项目助手" }).click();
-}
+  await page.getByLabel("向项目助手发送消息").fill("处理资料");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  release();
+  await expect(page.getByRole("status").first()).toHaveText("处理中");
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeDisabled();
+  state.active = false;
+  state.task.stage = "awaiting_confirmation";
+  state.messages.at(-1)!.status = "succeeded";
+  await expect(page.getByRole("status").first()).toHaveText("等待确认");
+});
 
-test("keeps the renamed title when an older in-flight conversation response arrives", async ({
+for (const code of [403, 404])
+  test(`OPT-24 unavailable remembered session ${code} falls back without creating a session`, async ({
+    page,
+  }) => {
+    const state = await fixture(page, {
+      intercept: async (route) => {
+        const u = new URL(route.request().url());
+        if (u.pathname === `${base}/sessions/old` && u.searchParams.get("view") === "status") {
+          await route.fulfill({ status: code, json: { error: { code: "assistant_not_found" } } });
+          return true;
+        }
+        return false;
+      },
+    });
+    await page.addInitScript(() =>
+      sessionStorage.setItem("evalbase:assistant:admin:assistant_project:last", "old"),
+    );
+    await page.goto(url);
+    await expect(page).toHaveURL(/\/assistant\/one$/);
+    await expect(page.getByRole("log")).toContainText("已有回复");
+    expect(state.posts).toHaveLength(0);
+  });
+
+test("OPT-24 a usable remembered session outside the first page remains the selected session", async ({
   page,
 }) => {
-  let title = "旧名称",
-    reads = 0,
-    release = () => {},
-    entered = () => {},
-    released = false;
-  const waiting = new Promise<void>((resolve) => {
+  const state = await fixture(page, {
+    intercept: async (route) => {
+      const u = new URL(route.request().url());
+      if (u.pathname === `${base}/sessions/older`) {
+        await route.fulfill({
+          json: {
+            sessionId: "older",
+            title: "较早的个人会话",
+            task: {},
+            taskRevision: 2,
+            messageRevision: "older",
+            active: false,
+            latestTurn: { id: "old-turn", status: "succeeded" },
+            backgroundDocuments: [],
+            proposals: [],
+            ...(u.searchParams.get("view") === "messages"
+              ? {
+                  turns: [turn("old-turn", "较早的回复")],
+                  pagination: { total: 1, nextBefore: null },
+                }
+              : {}),
+          },
+        });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.addInitScript(() =>
+    sessionStorage.setItem("evalbase:assistant:admin:assistant_project:last", "older"),
+  );
+  await page.goto(url);
+  await expect(page).toHaveURL(/\/assistant\/older$/);
+  await expect(page.getByRole("log")).toContainText("较早的回复");
+  expect(state.posts).toHaveLength(0);
+});
+
+test("OPT-24 acknowledged messages do not keep polling after an automatic continuation reaches confirmation", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    intercept: async (route, state) => {
+      if (!route.request().url().endsWith("/turns")) return false;
+      state.posts.push({ path: new URL(route.request().url()).pathname });
+      state.messages.push(
+        { ...turn("accepted"), userText: route.request().postDataJSON().message },
+        { ...turn("continued", "结果已就绪"), event: "processing_completed", userText: null },
+      );
+      state.revision++;
+      state.active = false;
+      state.task = { stage: "awaiting_confirmation", goal: "待采用" };
+      await route.fulfill({ status: 202, json: { turnId: "accepted" } });
+      return true;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("向项目助手发送消息").fill("处理资料");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("log")).toContainText("结果已就绪");
+  await expect(page.getByText("已受理，正在处理…", { exact: true })).toHaveCount(0);
+  const reads = state.reads.filter((r) => r.view === "status").length;
+  await page.waitForTimeout(2200);
+  expect(state.reads.filter((r) => r.view === "status").length).toBe(reads);
+});
+
+test("OPT-24 background upload keeps unsent text without executing it", async ({ page }) => {
+  const state = await fixture(page, { empty: true, messages: [] });
+  await page.goto(url);
+  await page.getByLabel("向项目助手发送消息").fill("先读文档，暂不执行");
+  await page.getByRole("button", { name: "背景附件", exact: true }).click();
+  await page.getByLabel("上传背景文档").setInputFiles({
+    name: "说明.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# 说明\n仅用于测试背景"),
+  });
+  await expect(page).toHaveURL(/\/assistant\/new/);
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("先读文档，暂不执行");
+  await page.getByRole("button", { name: "背景附件", exact: true }).click();
+  await expect(page.getByRole("button", { name: "查看背景 说明.md" })).toBeVisible();
+  expect(state.posts.filter((p) => p.path.endsWith("/turns"))).toHaveLength(0);
+});
+
+test("OPT-24 failed submissions preserve later text and replay the same request key", async ({
+  page,
+}) => {
+  let attempt = 0,
+    entered!: () => void,
+    release!: () => void;
+  const ready = new Promise<void>((resolve) => {
     entered = resolve;
   });
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [{ id: "title-race", title, ordinal: 1, updated_at: "2026-10-06T08:00:00Z" }],
-        },
-      });
-    if (path === `${assistantBase}/sessions/title-race`) {
-      if (route.request().method() === "PATCH") {
-        title = route.request().postDataJSON().title;
-        return route.fulfill({ json: { sessionId: "title-race", title } });
-      }
-      const snapshot = title;
-      reads++;
-      if (reads === 2) {
-        entered();
-        await new Promise<void>((resolve) => {
-          release = resolve;
-        });
-      }
-      await route.fulfill({
-        json: {
-          sessionId: "title-race",
-          title: snapshot,
-          turns: [
-            { id: "active", userText: "查询", assistantText: "", status: "running", tools: [] },
-          ],
-          proposals: [],
-        },
-      });
-      if (snapshot === "旧名称" && reads > 1) released = true;
-      return;
-    }
-    return route.fulfill({ status: 404, json: {} });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
   });
-  await waiting;
+  const state = await fixture(page, {
+    intercept: async (route, state) => {
+      if (route.request().url().endsWith("/turns") && ++attempt === 1) {
+        state.posts.push({
+          path: new URL(route.request().url()).pathname,
+          body: route.request().postDataJSON(),
+          key: route.request().headers()["idempotency-key"],
+        });
+        entered();
+        await gate;
+        await route.fulfill({ status: 503, json: { error: { code: "temporary" } } });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("向项目助手发送消息").fill("第一条要求");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await ready;
+  await page.getByLabel("向项目助手发送消息").fill("稍后发送的新要求");
+  release();
+  await expect(page.getByRole("button", { name: "重新提交这条", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重新提交这条", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(2);
+  const sends = state.posts.filter((p) => p.path.endsWith("/turns"));
+  expect(sends[1].key).toBe(sends[0].key);
+  expect(sends[1].body.message).toBe("第一条要求");
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("稍后发送的新要求");
+});
+
+test("OPT-24 empty page and examples create nothing; explicit first message creates one session", async ({
+  page,
+}, testInfo) => {
+  const state = await fixture(page, { empty: true, messages: [] });
+  await page.goto(url);
+  await expect(page.getByRole("heading", { name: "新会话", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "先帮我设计方案", exact: true }).click();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("先帮我设计方案");
+  expect(state.posts).toHaveLength(0);
+  await page.reload();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("先帮我设计方案");
+  expect(state.candidates).toBe(0);
+  expect(state.excerpts).toBe(0);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page).toHaveURL(/\/assistant\/new/);
+  await expect(page.getByRole("log")).toContainText("请求已记录");
+  expect(state.posts.filter((p) => p.path === `${base}/sessions`)).toHaveLength(1);
+  expect(state.posts.filter((p) => p.path.endsWith("/turns"))).toHaveLength(1);
+  await overflow(page);
+  await page.screenshot({ path: testInfo.outputPath("opt24-empty-1440.png"), fullPage: true });
+});
+
+test("OPT-24 deep links refresh and return without duplicate turns or private data on invalid links", async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  await page.goto(`${url}/one`);
+  await expect(page.getByRole("log")).toContainText("已有回复");
+  await page.getByLabel("向项目助手发送消息").fill("未发送要求");
+  await page.goto(`${url}/missing`);
+  await expect(page.getByRole("alert")).toContainText("不可访问");
+  await expect(page.getByText("已有回复", { exact: true })).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("未发送要求");
+  await page.reload();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("未发送要求");
+  expect(state.posts).toHaveLength(0);
+});
+
+for (const [kind, path, source] of [
+  ["draft", "/projects/assistant_project/test-sets/drafts/draft", "draft"],
+  ["asset", "/projects/assistant_project/datasets/collection/files/file", "file"],
+  ["version", "/projects/assistant_project/test-sets/set?version=version", "version"],
+] as const)
+  test(`OPT-24 ${kind} entry brings checked context only when a message is sent`, async ({
+    page,
+  }) => {
+    const state = await fixture(page, {
+      task: { goal: "已有任务", stage: "waiting_input", targetName: "原任务资料" },
+    });
+    await page.goto(path);
+    await page.getByRole("link", { name: "打开项目助手" }).click();
+    await expect(page).toHaveURL(new RegExp(`/assistant/one\\?.*sourceKind=${kind}`));
+    await expect(
+      page.getByText(
+        `所选${kind === "draft" ? "草稿" : kind === "asset" ? "原始数据" : "版本"}：资料 ${source}`,
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(state.posts).toHaveLength(0);
+    expect(state.task.targetName).toBe("原任务资料");
+    await page.getByLabel("向项目助手发送消息").fill("查询所选资料");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+    expect(state.posts.at(-1).body.context).toEqual({ kind, id: source });
+  });
+
+test("OPT-24 name search, rename failure and confirmed deletion retain the user's input", async ({
+  page,
+}) => {
+  let rename = 0;
+  const state = await fixture(page, {
+    intercept: async (route) => {
+      if (route.request().method() === "PATCH" && ++rename === 1) {
+        await route.fulfill({ status: 503, json: { error: { code: "temporary" } } });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("向项目助手发送消息").fill("保留此输入");
+  await page.getByLabel("搜索助手会话").fill("不匹配");
+  await expect(page.getByText("没有匹配会话", { exact: true })).toBeVisible();
+  await page.getByLabel("搜索助手会话").fill("");
   await page.getByRole("button", { name: "会话操作" }).click();
   await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
-  const rename = page.getByRole("dialog", { name: "重命名会话", exact: true });
-  await rename.getByLabel("会话名称").fill("持久的新名称");
-  await rename.getByRole("button", { name: "保存名称" }).click();
-  await expect(rename).toHaveCount(0);
-  release();
-  await expect.poll(() => released).toBe(true);
-  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("持久的新名称");
+  const dialog = page.getByRole("dialog", { name: "重命名会话" });
+  await dialog.getByLabel("会话名称").fill("我的会话");
+  await dialog.getByRole("button", { name: "保存名称" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("名称已保留");
+  await dialog.getByRole("button", { name: "保存名称" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("我的会话");
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("保留此输入");
+  await page.getByRole("button", { name: "会话操作" }).click();
+  await page.getByRole("menuitem", { name: "删除会话" }).click();
+  const remove = page.getByRole("alertdialog");
+  await expect(remove).toContainText("已创建的资料、草稿和正式版本保留");
+  await remove.getByRole("button", { name: "取消", exact: true }).click();
+  expect(state.posts).toHaveLength(0);
+  await page.getByRole("button", { name: "会话操作" }).click();
+  await page.getByRole("menuitem", { name: "删除会话" }).click();
+  await remove.getByRole("button", { name: "确认删除会话" }).click();
+  await expect(page).toHaveURL(/\/assistant$/);
+  await expect(page.getByRole("heading", { name: "新会话", exact: true })).toBeVisible();
+  expect(state.posts.filter((p) => p.method === "DELETE")).toHaveLength(1);
 });
 
-test("shows loading rather than an empty conversation and preserves the creation-order number", async ({
+test("OPT-24 safe Markdown renders lists, code and tables without HTML, embeds or invented confirmation", async ({
   page,
 }) => {
-  let release = () => {};
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "four", ordinal: 4, updated_at: "2026-10-04T08:00:00Z" },
-            { id: "one", ordinal: 1, updated_at: "2026-10-04T07:00:00Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/four")) {
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      return route.fulfill({ json: { sessionId: "four", turns: [], proposals: [] } });
-    }
-    return route.fulfill({ status: 404, json: {} });
+  await fixture(page, {
+    messages: [
+      turn(
+        "markdown",
+        "**结果**\n- 一项\n- 二项\n\n```js\n<script>window.bad=true</script>\n```\n\n| 名称 | 数量 |\n| --- | --- |\n| 候选 | 2 |\n\n<img src=https://invalid.example/a><iframe src=https://invalid.example></iframe>\n[执行](javascript:alert(1))\n确认采用",
+      ),
+    ],
   });
-  await expect(page.getByText("正在读取会话…")).toBeVisible();
-  await expect(page.getByText("从当前项目开始", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "选择助手会话" })).toContainText("会话 4");
-  release();
-  await expect(page.getByText("从当前项目开始", { exact: true })).toBeVisible();
+  await page.goto(`${url}/one`);
+  const log = page.getByRole("log");
+  await expect(log.locator("strong")).toHaveText("结果");
+  await expect(log.getByRole("listitem")).toHaveCount(2);
+  await expect(log.getByRole("table")).toContainText("候选");
+  expect(await page.evaluate(() => (window as any).bad)).toBeUndefined();
+  await expect(log.locator("img, iframe, script, a")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "确认采用", exact: true })).toHaveCount(0);
 });
 
-test("acknowledges a submitted message immediately without clearing the next message on the response", async ({
+test("OPT-24 history is paginated and initial state reads no candidate or attachment body", async ({
   page,
 }) => {
-  let sent = false,
-    release = () => {};
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: { sessions: [{ id: "four", ordinal: 4, updated_at: "2026-10-04T08:00:00Z" }] },
-      });
-    if (path.endsWith("/turns")) {
-      expect(route.request().postDataJSON()).toEqual({ message: "改写这十条问题" });
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      sent = true;
-      return route.fulfill({ status: 202, json: { turnId: "turn", status: "running" } });
-    }
-    if (path.endsWith("/sessions/four"))
-      return route.fulfill({
-        json: {
-          sessionId: "four",
-          turns: sent
-            ? [
-                {
-                  id: "turn",
-                  userText: "改写这十条问题",
-                  assistantText: "已提交。",
-                  status: "succeeded",
-                  tools: [],
-                  errorCode: null,
-                },
-              ]
-            : [],
-          proposals: [],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
+  const state = await fixture(page, {
+    messages: Array.from({ length: 37 }, (_, i) => turn(`t${i}`, `回复 ${i}`)),
+    docs: [
+      { id: "doc", fileName: "规范.md", format: "md", fileSize: 40, units: 1, fragmentCount: 1 },
+    ],
   });
-  await page.getByLabel("向项目助手发送消息").fill("改写这十条问题");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(
-    page.getByRole("log", { name: "助手消息" }).getByText("改写这十条问题", { exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("向项目助手发送消息").fill("下一步只查看结果");
-  release();
-  await expect(page.getByText("已提交。", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("下一步只查看结果");
+  await page.goto(`${url}/one`);
+  await expect(page.getByRole("log")).toContainText("回复 36");
+  await expect(page.getByText("回复 0", { exact: true })).toHaveCount(0);
+  expect(state.candidates).toBe(0);
+  expect(state.excerpts).toBe(0);
+  await page.getByRole("button", { name: "加载更早消息" }).click();
+  await expect(page.getByText("回复 0", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "背景附件", exact: true }).click();
+  await page.getByRole("button", { name: "查看背景 规范.md" }).click();
+  await expect(page.getByRole("dialog")).toContainText("附件中的真实说明");
+  expect(state.excerpts).toBe(1);
+  const status = state.reads.filter((r) => r.view === "status");
+  expect(status.length).toBeLessThan(4);
+  expect(status[0]!.bytes).toBeLessThan(2000);
+  console.log("OPT24_READ_PHASES", JSON.stringify(state.reads));
 });
 
-test("shows actual background progress, current draft scope and recoverable tool errors", async ({
+test("OPT-24 results and narrow tabs retain selection and input; only fixed selected identities are sent", async ({
   page,
-}) => {
-  let stage = "queued";
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: { sessions: [{ id: "four", ordinal: 4, updated_at: "2026-10-04T08:00:00Z" }] },
-      });
-    if (path.endsWith("/sessions/four"))
-      return route.fulfill({
-        json: {
-          sessionId: "four",
-          task: {
-            title: "改写当前问题",
-            goal: "改写当前十条问题",
-            stage: "processing",
-            runId: "processing_ten",
-          },
-          context: {
-            focusDraft: "d:ten",
-            drafts: [{ ref: "d:ten", name: "意图识别草稿", recordCount: 10 }],
-          },
-          proposals: [],
-          turns: [
-            {
-              id: "turn",
-              userText: "改写当前十条问题",
-              assistantText: "处理任务已受理。",
-              status: "succeeded",
-              errorCode: null,
-              tools: [
-                {
-                  key: "job",
-                  name: "submit_processing",
-                  status: "succeeded",
-                  result: {
-                    runId: "processing_ten",
-                    inputCount: 10,
-                    url: "/projects/assistant_project/processing?run=processing_ten",
-                  },
-                },
-                {
-                  key: "missing",
-                  name: "read_records",
-                  status: "failed",
-                  error: { code: "assistant_reference_invalid" },
-                },
-              ],
-            },
-          ],
-        },
-      });
-    if (path.endsWith("/processing-runs/processing_ten/status"))
-      return route.fulfill({
-        json: {
-          run: {
-            status: stage,
-            progress: stage === "succeeded" ? 100 : stage === "running" ? 50 : 0,
-            inputCount: 10,
-            options: { operation: "augment", outputCount: 200 },
-            partial: false,
-          },
-          total: stage === "succeeded" ? 200 : stage === "running" ? 5 : 0,
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
-  });
-  await expect(page.getByText("当前草稿：意图识别草稿 · 10 条记录")).toBeVisible();
-  await expect(page.getByText("扩充 · 等待中 · 10 条输入")).toBeVisible();
-  await page.getByText("操作记录（2）", { exact: true }).click();
-  await expect(
-    page.getByText("对象引用无效，请重新查询或明确选择目标。", { exact: true }),
-  ).toBeVisible();
-  stage = "running";
-  await expect(page.getByText("进度 50%", { exact: true })).toBeVisible();
-  await expect(page.getByText("已保存 5 / 200 条候选", { exact: true })).toBeVisible();
-  stage = "succeeded";
-  await expect(page.getByText("扩充 · 已完成 · 200 条有效结果")).toBeVisible();
-  await expect(page.getByRole("link", { name: "预览结果", exact: true })).toHaveAttribute(
-    "href",
-    "/projects/assistant_project/processing?run=processing_ten",
-  );
-});
-
-test("binds the displayed draft and retries the original submission without losing new input", async ({
-  page,
-}) => {
-  let release = () => {},
-    attempt = 0,
-    accepted = false,
-    key = "";
-  await assistantPage(
-    page,
-    async (route, path) => {
-      if (path.endsWith("/collaborative-drafts/page_draft"))
-        return route.fulfill({
-          json: {
-            draft: {
-              id: "page_draft",
-              projectId: "assistant_project",
-              testSetId: null,
-              parentVersionId: null,
-              parentVersionLabel: null,
-              name: "当前页面草稿",
-              purpose: "",
-              status: "editing",
-              suspended: false,
-              revision: 0,
-              nameRevision: 0,
-              purposeRevision: 0,
-              createdBy: "admin",
-              createdByName: "管理员",
-              createdAt: "2026-10-04T08:00:00Z",
-              updatedBy: "admin",
-              updatedByName: "管理员",
-              updatedAt: "2026-10-04T08:00:00Z",
-              publishedVersionId: null,
-            },
-            records: [],
-            total: 0,
-            authors: {},
-          },
-        });
-      if (path.endsWith("/events"))
-        return route.fulfill({ json: { events: [], nextCursor: 0, snapshotRequired: false } });
-      if (path === `${assistantBase}/sessions`)
-        return route.fulfill({
-          json: { sessions: [{ id: "four", ordinal: 4, updated_at: "2026-10-04T08:00:00Z" }] },
-        });
-      if (path.endsWith("/turns")) {
-        expect(route.request().postDataJSON()).toEqual({
-          message: "读取当前草稿",
-          context: { kind: "draft", id: "page_draft" },
-        });
-        if (attempt++ === 0) {
-          key = route.request().headers()["idempotency-key"]!;
-          await new Promise<void>((resolve) => {
-            release = resolve;
-          });
-          return route.fulfill({ status: 503, json: { error: { code: "assistant_busy" } } });
-        }
-        expect(route.request().headers()["idempotency-key"]).toBe(key);
-        accepted = true;
-        return route.fulfill({ status: 202, json: { turnId: "bound_turn", status: "running" } });
-      }
-      if (path.endsWith("/sessions/four"))
-        return route.fulfill({
-          json: {
-            sessionId: "four",
-            turns: accepted
-              ? [
-                  {
-                    id: "bound_turn",
-                    userText: "读取当前草稿",
-                    assistantText: "当前草稿没有记录。",
-                    status: "succeeded",
-                    tools: [],
-                    errorCode: null,
-                  },
-                ]
-              : [],
-            proposals: [],
-          },
-        });
-      return route.fulfill({ status: 404, json: {} });
+}, testInfo) => {
+  const state = await fixture(page, {
+    task: {
+      title: "处理结果",
+      goal: "改写",
+      stage: "awaiting_review",
+      runId: "run",
+      runIds: ["run"],
+      candidateScope: { hash: "fixed", count: 2, sourceCount: 2 },
+      targetName: "原资料",
+      requirements: ["保留答案"],
     },
-    "/projects/assistant_project/test-sets/drafts/page_draft",
-  );
-  await expect(page.getByText("当前草稿：当前页面草稿 · 0 条记录")).toBeVisible();
-  await page.getByLabel("向项目助手发送消息").fill("读取当前草稿");
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("选择结果 1").click();
+  await page.getByLabel("向项目助手发送消息").fill("只调整这条");
+  await page.getByRole("button", { name: "资料与要求", exact: true }).click();
+  await page.getByRole("button", { name: "结果", exact: true }).click();
+  await expect(page.getByLabel("选择结果 1")).toBeChecked();
+  await page.screenshot({ path: testInfo.outputPath("opt24-review-1440.png"), fullPage: true });
+  for (const width of [1280, 420]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole("button", { name: "对话", exact: true }).click();
+    await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("只调整这条");
+    await overflow(page);
+    await page.getByRole("button", { name: "工作区", exact: true }).click();
+    await expect(page.getByLabel("选择结果 1")).toBeChecked();
+  }
+  await page.screenshot({ path: testInfo.outputPath("opt24-review-420.png"), fullPage: true });
+  await page.getByRole("button", { name: "对话", exact: true }).click();
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await page.getByLabel("向项目助手发送消息").fill("新的下一条消息");
-  release();
-  await expect(page.getByRole("button", { name: "重新提交这条" })).toBeVisible();
-  await expect(page.getByRole("log").getByText("读取当前草稿", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "重新提交这条" }).click();
-  await expect(page.getByText("当前草稿没有记录。", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("新的下一条消息");
-  expect(attempt).toBe(2);
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(state.posts.at(-1).body.candidates).toEqual({ runId: "run", resultIds: ["0:0"] });
 });
 
-test("follows new results at the bottom without pulling the user away from reading history", async ({
+test("OPT-24 execute button uses current plan revision and does not substitute the selected page source", async ({
   page,
 }) => {
-  let phase = 0;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: { sessions: [{ id: "four", ordinal: 4, updated_at: "2026-10-04T08:00:00Z" }] },
-      });
-    if (path.endsWith("/sessions/four"))
-      return route.fulfill({
-        json: {
-          sessionId: "four",
-          proposals: [],
-          turns: [
-            ...Array.from({ length: 12 }, (_, i) => ({
-              id: `history_${i}`,
-              userText: `历史问题 ${i}`,
-              assistantText: "已经核对资料和记录范围。\n".repeat(10),
-              status: "succeeded",
-              tools: [],
-              errorCode: null,
-            })),
-            {
-              id: "current",
-              userText: "查询当前状态",
-              assistantText:
-                phase === 0
-                  ? "正在核对。"
-                  : phase === 1
-                    ? "第一条进度已返回。\n".repeat(15)
-                    : "最终结果已返回。\n".repeat(25),
-              status: phase === 2 ? "succeeded" : "running",
-              tools: [],
-              errorCode: null,
-            },
-          ],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
+  let first = true;
+  const state = await fixture(page, {
+    task: {
+      goal: "规划",
+      stage: "planning",
+      targetName: "原方案资料",
+      executionPlan: {
+        mode: "plan",
+        current: 0,
+        steps: [{ title: "查看资料", action: "query_project", status: "pending" }],
+      },
+    },
+    intercept: async (route, state) => {
+      if (route.request().url().includes("/turns") && first) {
+        first = false;
+        state.posts.push({
+          path: new URL(route.request().url()).pathname,
+          body: route.request().postDataJSON(),
+        });
+        state.revision++;
+        await route.fulfill({
+          status: 409,
+          json: { error: { code: "assistant_plan_revalidation_required" } },
+        });
+        return true;
+      }
+      return false;
+    },
   });
-  const log = page.getByRole("log", { name: "助手消息" });
-  await expect(page.getByText("正在核对。", { exact: true })).toHaveCount(1);
-  await expect
-    .poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
-    .toBeLessThan(5);
-  await log.evaluate((el) => {
-    el.scrollTop = 0;
-  });
-  await expect.poll(() => log.evaluate((el) => el.scrollTop)).toBeLessThan(5);
-  phase = 1;
-  await expect(page.getByText(/第一条进度已返回/)).toHaveCount(1);
-  expect(await log.evaluate((el) => el.scrollTop)).toBeLessThan(5);
-  await log.evaluate((el) => {
-    el.scrollTop = el.scrollHeight;
-  });
-  phase = 2;
-  await expect(page.getByText(/最终结果已返回/)).toHaveCount(1);
-  await expect
-    .poll(() => log.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
-    .toBeLessThan(5);
+  await page.goto(`${url}/one?sourceKind=draft&sourceId=new-source`);
+  await page.getByLabel("向项目助手发送消息").fill("稍后的新要求");
+  await page.getByRole("button", { name: "按方案执行", exact: true }).click();
+  await expect(page.getByRole("alert").last()).toContainText("重新核对");
+  expect(state.posts[0].body.expectedTaskRevision).toBe(7);
+  expect(state.posts[0].body.context).toBeUndefined();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("稍后的新要求");
+  await expect.poll(() => state.reads.filter((r) => r.view === "status").length).toBeGreaterThan(1);
+  await page.getByRole("button", { name: "按方案执行", exact: true }).click();
+  await expect.poll(() => state.posts.length).toBe(2);
+  expect(state.posts[1].body.expectedTaskRevision).toBe(8);
 });
 
-test("hides another run's diagnostics and displays model prose as readable text", async ({
+test("OPT-24 running permits editing and supports stop/recovery without sending the buffered text", async ({
   page,
 }) => {
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [{ id: "four", title: "核对", ordinal: 4, updated_at: "2026-10-05T08:00:00Z" }],
-        },
-      });
-    if (path.endsWith("/sessions/four"))
-      return route.fulfill({
-        json: {
-          sessionId: "four",
-          task: {
-            title: "已停止",
-            stage: "stopped",
-            runId: "new",
-            review: {
-              runId: "old",
-              total: 3,
-              expectedCount: 3,
-              countSatisfied: true,
-              emptyQuestions: 0,
-              duplicates: 0,
-              protectedFieldChanges: 0,
-              labels: [],
-            },
-          },
-          proposals: [],
-          turns: [
-            {
-              id: "reply",
-              userText: "核对",
-              assistantText:
-                "## 核对\n共 **100条**，`protectedFieldChanges`：0，outsideLabels：1。",
-              status: "succeeded",
-              tools: [],
-              errorCode: null,
-            },
-          ],
-        },
-      });
-    if (path.includes("/processing-runs/"))
-      return route.fulfill({
-        json: {
-          run: {
-            status: "cancelled",
-            inputCount: 20,
-            progress: 0,
-            options: { operation: "augment" },
-          },
-          total: 0,
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
+  const state = await fixture(page, {
+    task: { goal: "处理", stage: "processing" },
+    messages: [{ ...turn("working", ""), status: "running" }],
   });
-  await expect(
-    page.getByText("核对\n共 100条，受保护字段变化：0，超出类别：1。", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText(/候选 3 \/ 目标 3/)).toHaveCount(0);
-  await expect(page.getByText(/protectedFieldChanges/)).toHaveCount(0);
+  state.active = true;
+  await page.goto(`${url}/one`);
+  await page.getByLabel("向项目助手发送消息").fill("稍后发送");
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "停止任务", exact: true }).click();
+  await expect(page.getByRole("status").first()).toHaveText("已停止");
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("稍后发送");
+  expect(state.posts.filter((p) => p.path.endsWith("/turns"))).toHaveLength(0);
 });
 
-test("OPT-21 shows bounded recovery and hides an unavailable retry", async ({ page }) => {
-  let recovering = true;
-  await assistantPage(page, async (route, path) => {
-    if (path === `${assistantBase}/sessions`)
-      return route.fulfill({
-        json: {
-          sessions: [
-            { id: "bounded", title: "有限恢复", ordinal: 1, updated_at: "2026-10-14T12:00:00Z" },
-          ],
-        },
-      });
-    if (path.endsWith("/sessions/bounded"))
-      return route.fulfill({
-        json: {
-          sessionId: "bounded",
-          task: {
-            goal: "查询资料",
-            title: "有限恢复",
-            stage: recovering ? "inspecting" : "failed",
-            canRetryTurn: false,
-            transportRecovery: recovering ? { turnId: "turn", retry: 1, delayMs: 500 } : null,
-          },
-          proposals: [],
-          turns: [
-            {
-              id: "turn",
-              userText: "查询资料",
-              assistantText: "",
-              status: recovering ? "running" : "failed",
-              errorCode: recovering ? null : "assistant_budget_exhausted",
-              tools: [],
-            },
-          ],
-        },
-      });
-    return route.fulfill({ status: 404, json: {} });
+test("OPT-24 terminal and hidden states stop polling; foreground checks the current state", async ({
+  page,
+}) => {
+  const state = await fixture(page, { task: { goal: "查询", stage: "inspecting" } });
+  state.active = true;
+  await page.goto(`${url}/one`);
+  await expect.poll(() => state.reads.filter((r) => r.view === "status").length).toBeGreaterThan(1);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
   });
-  await expect(page.getByText("模型服务暂时繁忙，正在重试…", { exact: true })).toBeVisible();
-  await page.getByLabel("向项目助手发送消息").fill("保留下一条输入");
-  recovering = false;
-  await expect(page.getByText("模型服务暂时繁忙，正在重试…", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("region", { name: "当前任务" }).getByRole("button", { name: "重试未完成步骤" }),
-  ).toHaveCount(0);
-  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("保留下一条输入");
-  await page.setViewportSize({ width: 860, height: 740 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  const hidden = state.reads.filter((r) => r.view === "status").length;
+  await page.waitForTimeout(2000);
+  expect(state.reads.filter((r) => r.view === "status").length).toBe(hidden);
+  state.active = false;
+  state.task.stage = "awaiting_confirmation";
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() => state.reads.filter((r) => r.view === "status").length)
+    .toBeGreaterThan(hidden);
+  const terminal = state.reads.filter((r) => r.view === "status").length;
+  await page.waitForTimeout(2000);
+  expect(state.reads.filter((r) => r.view === "status").length).toBe(terminal);
+});
+
+test("OPT-24 permission loss removes cached messages and an open attachment body", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    task: { goal: "查看", stage: "inspecting" },
+    docs: [
+      {
+        id: "doc",
+        fileName: "私有附件.md",
+        format: "md",
+        fileSize: 40,
+        units: 1,
+        fragmentCount: 1,
+      },
+    ],
+    messages: [turn("private", "私有会话正文")],
+  });
+  state.active = true;
+  await page.goto(`${url}/one`);
+  await page.getByRole("button", { name: "背景附件", exact: true }).click();
+  await page.getByRole("button", { name: "查看背景 私有附件.md" }).click();
+  await expect(page.getByRole("dialog")).toContainText("附件中的真实说明");
+  state.denied = true;
+  await expect(page.getByRole("alert")).toContainText("不可访问");
+  await expect(page.getByText("私有会话正文", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("OPT-24 fixed confirmation cards come from server proposals and confirmation does not resubmit messages", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    task: { goal: "采用", stage: "awaiting_confirmation" },
+    proposals: [
+      {
+        id: "proposal",
+        turn_id: "t0",
+        action: "processing",
+        status: "pending",
+        summary: { title: "保存2条", target: "原草稿", count: 2 },
+        expires_at: "2099-01-01T00:00:00Z",
+      },
+    ],
+  });
+  await page.goto(`${url}/one`);
+  await page.getByRole("button", { name: "确认采用", exact: true }).click();
+  await expect(page.getByText("已采用", { exact: true })).toBeVisible();
+  expect(state.posts.filter((p) => p.path.endsWith("/confirm"))).toHaveLength(1);
+  expect(state.posts.filter((p) => p.path.endsWith("/turns"))).toHaveLength(0);
 });
