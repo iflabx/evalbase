@@ -1,7 +1,111 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { extractBackground } from "../../src/assistant/extract-background.js";
-import { validateBackgroundRules } from "../../src/assistant/background.js";
+import {
+  validateBackgroundRules,
+  backgroundDefinitionReferences,
+  resolveBackgroundDefinitions,
+} from "../../src/assistant/background.js";
+
+describe("OPT-23 verified definition references", () => {
+  const scope = { projectId: "project", actorId: "actor" },
+    sessionId = "session";
+  const documents = [
+    {
+      id: "doc",
+      sha256: "original",
+      extractorVersion: "text-v1",
+      fragments: [
+        {
+          index: 1,
+          startLine: 1,
+          endLine: 2,
+          text: "A.1.a 表示甲类问题。\nA.2.a 表示乙类问题。",
+        },
+      ],
+    },
+  ];
+  const task: any = {
+    backgroundEvidence: [
+      { documentId: "doc", fragmentIndex: 1, sha256: "original" },
+    ],
+    classifications: [
+      {
+        field: "metadata",
+        key: "risk",
+        basis: "background",
+        allowedValues: ["A.1.a"],
+        definitions: [{ value: "A.1.a", text: "表示甲类问题。" }],
+      },
+    ],
+  };
+  const patch = (reference: string, value = "A.1.a", basis = "background") => ({
+    classifications: [
+      {
+        field: "metadata",
+        key: "risk",
+        basis,
+        allowedValues: [value],
+        definitions: [{ value, reference }],
+      },
+    ],
+  });
+  it("resolves the verified original text without changing frozen classification rules", () => {
+    const backgroundDefinitions = backgroundDefinitionReferences(
+      task,
+      documents,
+      scope,
+      sessionId,
+    );
+    expect(backgroundDefinitions).toHaveLength(1);
+    const resolved = resolveBackgroundDefinitions(
+      { ...task, backgroundDefinitions },
+      patch(backgroundDefinitions[0].reference),
+      documents,
+      scope,
+      sessionId,
+    );
+    expect(resolved.classifications).toEqual(task.classifications);
+  });
+  it.each([
+    "fake",
+    "label",
+    "actor",
+    "session",
+    "removed",
+    "hash",
+    "extractor",
+    "text",
+    "location",
+    "basis",
+  ])("rejects stale or unrelated reference: %s", (kind) => {
+    const backgroundDefinitions = backgroundDefinitionReferences(
+      task,
+      documents,
+      scope,
+      sessionId,
+    );
+    const current = { ...task, backgroundDefinitions },
+      docs = structuredClone(documents);
+    if (kind === "hash") docs[0].sha256 = "changed";
+    if (kind === "extractor") docs[0].extractorVersion = "text-v2";
+    if (kind === "text") docs[0].fragments[0].text += "更改";
+    if (kind === "location") docs[0].fragments[0].startLine = 3;
+    expect(() =>
+      resolveBackgroundDefinitions(
+        current,
+        patch(
+          kind === "fake" ? "fake" : backgroundDefinitions[0].reference,
+          kind === "label" ? "A.2.a" : "A.1.a",
+          kind === "basis" ? "user" : "background",
+        ),
+        kind === "removed" ? [] : docs,
+        { ...scope, actorId: kind === "actor" ? "other" : scope.actorId },
+        kind === "session" ? "other" : sessionId,
+      ),
+    ).toThrow();
+  });
+});
 
 describe("OPT-10 document definitions", () => {
   const documents = [

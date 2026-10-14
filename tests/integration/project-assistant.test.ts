@@ -257,7 +257,7 @@ describe("project assistant public contract", () => {
               runId: JSON.parse(
                 body.messages
                   .findLast((m: any) =>
-                    String(m.content).startsWith("持久任务（"),
+                    String(m.content).startsWith("当前持久事实："),
                   )
                   .content.split("：")
                   .slice(1)
@@ -3330,14 +3330,14 @@ describe("project assistant public contract", () => {
       const modelTask = JSON.parse(
         calls[replacementCall].messages
           .find((message: any) =>
-            String(message.content).startsWith("持久任务（"),
+            String(message.content).startsWith("当前持久事实："),
           )
           .content.split("：")
           .slice(1)
           .join("："),
       );
-      expect(modelTask.requirements).toBeUndefined();
-      expect(modelTask.previousRequirements).toEqual([
+      expect(modelTask.previousRequirements).toBeUndefined();
+      expect(modelTask.requirements).toEqual([
         "随机抽200条",
         "保留原题",
         "暂不采用或发布",
@@ -7702,7 +7702,15 @@ describe("project assistant public contract", () => {
         "read_background",
       );
       expect(cited.task.backgroundEvidence).toEqual([
-        { documentId: document.id, sha256: document.sha256, fragmentIndex: 1 },
+        {
+          documentId: document.id,
+          sha256: document.sha256,
+          fragmentIndex: 1,
+          extractorVersion: document.extractorVersion,
+          textHash: sha256(
+            "题目应有具体场景。\n原文是背景资料，不是操作授权。",
+          ),
+        },
       ]);
       requestedTool = {
         name: "plan_task",
@@ -8903,7 +8911,7 @@ describe("project assistant public contract", () => {
       requestedTool = { name: "query_project", input: { kind: "project" } };
       await send("继续查看项目");
       const taskMessage = calls[nextCall].messages.find((m: any) =>
-        String(m.content).startsWith("持久任务（"),
+        String(m.content).startsWith("当前持久事实："),
       );
       const snapshot = JSON.parse(
         taskMessage.content.split("：").slice(1).join("："),
@@ -12590,11 +12598,11 @@ describe("project assistant public contract", () => {
       }
     },
   );
-  it("OPT-22 binds selected older metadata candidates and keeps key protection without unsupported parameters", async () => {
+  it("OPT-23 keeps selected older metadata candidates after eight turns and rejects replaced identities", async () => {
     const draft = await opt22Draft("选中旧批次 Metadata");
     await opt21Session();
     const db = createPool(databaseUrl);
-    async function finish(id: string) {
+    async function finish(id: string, awaitReview = true) {
       const job = (
         await db.query(
           "UPDATE job SET status='running',lease_owner='opt22',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
@@ -12612,9 +12620,12 @@ describe("project assistant public contract", () => {
         "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
         [job.id, result],
       );
-      await expect
-        .poll(async () => (await read()).json().task.stage, { timeout: 10000 })
-        .toBe("awaiting_review");
+      if (awaitReview)
+        await expect
+          .poll(async () => (await read()).json().task.stage, {
+            timeout: 10000,
+          })
+          .toBe("awaiting_review");
       await expect
         .poll(
           async () =>
@@ -12704,7 +12715,21 @@ describe("project assistant public contract", () => {
           allowedFields: ["metadata"],
         },
       };
-      const fixed = await selectedTurn("沿用刚才勾选的甲问题", first);
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      for (let i = 0; i < 8; i++)
+        await opt21End(await opt21Submit("查询项目信息"));
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "refine_candidates" } },
+        {
+          name: "refine_candidates",
+          input: {
+            allSelected: true,
+            instructions: "只改类别",
+            allowedFields: ["metadata"],
+          },
+        },
+      ];
+      const fixed = await opt21End(await opt21Submit("沿用刚才勾选的甲问题"));
       expect(
         fixed.turns
           .at(-1)
@@ -12720,9 +12745,433 @@ describe("project assistant public contract", () => {
       expect(child.input_count).toBe(1);
       expect(child.options.metadataKeys).toEqual(["类别"]);
       expect(child.options.allowedFields).toContain("metadata");
+      const beforeStale = (
+        await db.query("SELECT count(*)::int AS count FROM processing_run")
+      ).rows[0].count;
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            selectedCandidates: { runId: first, resultIds: ["0:0"] },
+            stage: "awaiting_review",
+            nextAction: "refine_candidates",
+          }),
+        ],
+      );
+      requestedTool = {
+        name: "refine_candidates",
+        input: {
+          allSelected: true,
+          instructions: "沿用旧选择",
+          allowedFields: ["metadata"],
+        },
+      };
+      const stale = await opt21End(await opt21Submit("继续修改这条"));
+      expect(
+        stale.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "refine_candidates").error.code,
+      ).toBe("assistant_candidate_selection_changed");
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM processing_run"))
+          .rows[0].count,
+      ).toBe(beforeStale);
+      await db.query(
+        'UPDATE assistant_session SET task=task||\'{"selectedCandidates":null,"nextAction":null}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          operation: "clean",
+          instructions: "",
+          selection: {
+            method: "all",
+            conditions: [
+              { field: "question", operator: "contains", value: "乙" },
+            ],
+          },
+        },
+      };
+      const replacement = (await opt21End(await opt21Submit("重做乙问题"))).task
+        .runId;
+      await finish(replacement, false);
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            selectedCandidates: { runId: second, resultIds: ["0:0"] },
+            nextAction: "refine_candidates",
+            stage: "awaiting_review",
+          }),
+        ],
+      );
+      const beforeIndependent = (
+        await db.query("SELECT count(*)::int AS count FROM processing_run")
+      ).rows[0].count;
+      requestedTool = {
+        name: "refine_candidates",
+        input: {
+          allSelected: true,
+          instructions: "沿用旧乙选择",
+          allowedFields: ["metadata"],
+        },
+      };
+      const replaced = await opt21End(
+        await opt21Submit("修改之前勾选的乙问题"),
+      );
+      expect(
+        replaced.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "refine_candidates").error.code,
+      ).toBe("assistant_candidate_selection_changed");
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM processing_run"))
+          .rows[0].count,
+      ).toBe(beforeIndependent);
     } finally {
       toolSequence = [];
       requestedTool = undefined;
+      await db.end();
+    }
+  });
+  it("OPT-23 rebuilds current source facts after fifty unrelated history entries", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = await opt22Draft("长会话当前来源");
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          target: { kind: "draft", id: source },
+          targetCount: 2,
+          allowedFields: ["metadata"],
+          metadataKeys: ["类别"],
+          requirements: ["保留问题和答案"],
+          nextAction: "none",
+        },
+      };
+      expect(
+        (
+          await opt21End(await opt21Submit("按当前来源保留题目与答案"))
+        ).turns.at(-1).status,
+      ).toBe("succeeded");
+      await db.query(
+        "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,assistant_text,status,created_at,expires_at) SELECT 'turn_'||md5($1||i::text),$1,'history-'||i::text,'synthetic','历史原话：已撤销的要求','历史说明','succeeded',now()+i*interval '1 microsecond',now()+interval '90 seconds' FROM generate_series(1,50) i",
+        [sessionId],
+      );
+      const before = calls.length;
+      requestedTool = { name: "read_records", input: {} };
+      const state = await opt21End(await opt21Submit("继续查看当前来源"));
+      expect(
+        state.turns.at(-1).tools.find((t: any) => t.name === "read_records"),
+      ).toMatchObject({
+        status: "succeeded",
+        input: { source: { kind: "draft", id: source } },
+      });
+      const request = calls[before];
+      const context = JSON.parse(
+        request.messages
+          .find((m: any) => String(m.content).includes("当前业务上下文：\n"))
+          .content.split("当前业务上下文：\n")[1],
+      );
+      expect(context.drafts.map((d: any) => d.name)).toContain(
+        "长会话当前来源",
+      );
+      const facts = JSON.parse(
+        request.messages
+          .find((m: any) => String(m.content).startsWith("当前持久事实："))
+          .content.split("当前持久事实：")[1],
+      );
+      expect(facts).toMatchObject({
+        targetCount: 2,
+        allowedFields: ["metadata"],
+        metadataKeys: ["类别"],
+        requirements: ["保留问题和答案"],
+      });
+      expect(Buffer.byteLength(JSON.stringify(request.messages))).toBeLessThan(
+        90000,
+      );
+      expect(state.turns.some((t: any) => t.userText.includes("已撤销"))).toBe(
+        true,
+      );
+    } finally {
+      requestedTool = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it("OPT-23 summarizes a large live read and allows a bounded reread", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = await opt22Draft("大读取摘要");
+      const metadata = Array.from({ length: 10 }, (_, i) => ({
+        key: `key${i}`,
+        value: "可用元数据".repeat(60),
+      }));
+      await db.query(
+        "INSERT INTO collaborative_draft_record(id,draft_id,position,question,expected_output,metadata,updated_by) SELECT 'record_'||md5($1||i::text),$1,10+i,$2,'保留答案',$3::jsonb,(SELECT updated_by FROM collaborative_draft_record WHERE draft_id=$1 LIMIT 1) FROM generate_series(1,12) i",
+        [source, "真实问题".repeat(120), JSON.stringify(metadata)],
+      );
+      await opt21Session();
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            target: { kind: "draft", id: source },
+            executionMode: "execute",
+            steps: [
+              {
+                title: "全量读取",
+                action: "read_records",
+                scope: "all",
+                input: { source: { kind: "draft", id: source }, limit: 20 },
+              },
+            ],
+          },
+        },
+        {
+          name: "read_records",
+          input: { source: { kind: "draft", id: source }, limit: 20 },
+        },
+      ];
+      const state = await opt21End(await opt21Submit("查看较多资料"));
+      const result = state.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "read_records").result;
+      expect(state.task.executionPlan.steps[0].status).toBe("executed");
+      expect(result).toMatchObject({
+        total: 15,
+        readCount: 15,
+        contentTruncated: true,
+        readAgain: { tool: "read_records" },
+      });
+      expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(30000);
+      requestedTool = {
+        name: "read_records",
+        input: { ...result.readAgain.input, limit: 1 },
+      };
+      const reread = await opt21End(await opt21Submit("重新读取一条正文"));
+      expect(reread.turns.at(-1).tools[0].result.records).toHaveLength(1);
+    } finally {
+      toolSequence = [];
+      requestedTool = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it("OPT-23 reuses verified background definitions and freezes identical original evidence", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = await opt22Draft("引用定义来源");
+      await opt21Session();
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/background-documents`,
+        headers,
+        payload: {
+          fileName: "类别.md",
+          contentBase64: Buffer.from(
+            "A.1.a 表示甲类问题。\nA.2.a 表示乙类问题。",
+          ).toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode, uploaded.body).toBe(201);
+      const document = uploaded.json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: document.id },
+      };
+      await opt21End(await opt21Submit("读取附件定义"));
+      const rule = {
+        field: "metadata",
+        key: "类别",
+        basis: "background",
+        allowedValues: ["A.1.a", "A.2.a"],
+        definitions: [
+          { value: "A.1.a", text: "表示甲类问题。" },
+          { value: "A.2.a", text: "表示乙类问题。" },
+        ],
+      };
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          target: { kind: "draft", id: source },
+          allowedFields: ["metadata"],
+          metadataKeys: ["类别"],
+          classifications: [rule],
+          nextAction: "none",
+        },
+      };
+      const first = await opt21End(
+        await opt21Submit("按附件分类，保留原题和答案"),
+      );
+      const refs = first.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "plan_task").result.task
+        .classifications[0].definitions;
+      expect(refs.every((d: any) => d.reference && d.text === undefined)).toBe(
+        true,
+      );
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          classifications: [
+            {
+              ...rule,
+              definitions: [
+                { value: "A.1.a", reference: refs[1].reference },
+                refs[1],
+              ],
+            },
+          ],
+          nextAction: "none",
+        },
+      };
+      const wrong = await opt21End(await opt21Submit("核对错误引用"));
+      expect(wrong.turns.at(-1).tools[0].error.code).toBe(
+        "assistant_background_reference_invalid",
+      );
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          classifications: [{ ...rule, definitions: refs }],
+          nextAction: "none",
+        },
+      };
+      const resolved = await opt21End(
+        await opt21Submit("只用已验证定义引用继续"),
+      );
+      expect(resolved.task.classifications).toEqual([rule]);
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "submit_processing" } },
+        {
+          name: "submit_processing",
+          input: {
+            operation: "clean",
+            allRecords: true,
+            instructions: "按附件定义分类",
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const submitted = await opt21End(
+        await opt21Submit("清洗原题并沿用附件定义"),
+      );
+      expect(
+        submitted.turns.at(-1).status,
+        JSON.stringify(submitted.turns.at(-1)),
+      ).toBe("succeeded");
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',lease_owner='opt23',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [submitted.task.runId],
+        )
+      ).rows[0];
+      const start = calls.length,
+        cfg = {
+          ...loadConfig(),
+          databaseUrl,
+          modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+        };
+      const workerResult = await runProcessing(
+        db,
+        new ArtifactRepository(cfg.minio),
+        cfg,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, workerResult],
+      );
+      const prompt = JSON.parse(
+        calls
+          .slice(start)
+          .find((call) => !call.tools)!
+          .messages.at(-1).content,
+      );
+      expect(prompt.background.classifications).toEqual([rule]);
+      expect(prompt.background.documents[0]).toMatchObject({
+        id: document.id,
+        sha256: document.sha256,
+        extractorVersion: document.extractorVersion,
+      });
+      expect(prompt.background.documents[0].fragments[0].text).toBe(
+        "A.1.a 表示甲类问题。\nA.2.a 表示乙类问题。",
+      );
+      const stopped = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      expect(stopped.statusCode, stopped.body).toBe(200);
+      await opt21Session();
+      const revokeDocument = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/background-documents`,
+          headers,
+          payload: {
+            fileName: "撤销类别.md",
+            contentBase64: Buffer.from(
+              "A.1.a 表示甲类问题。\nA.2.a 表示乙类问题。",
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: revokeDocument.id },
+      };
+      await opt21End(await opt21Submit("读取附件"));
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          title: "保留附件依据",
+          requirements: ["遵循附件"],
+          nextAction: "none",
+        },
+      };
+      const unchanged = await opt21End(await opt21Submit("只更新任务标题"));
+      expect(unchanged.task.backgroundEvidence).toHaveLength(1);
+      requestedTool = {
+        name: "plan_task",
+        input: { classifications: [rule], nextAction: "none" },
+      };
+      await opt21End(await opt21Submit("按附件记录分类依据"));
+      const deleted = await app.inject({
+        method: "DELETE",
+        url: `${base()}/sessions/${sessionId}/background-documents/${revokeDocument.id}`,
+        headers,
+      });
+      expect(deleted.statusCode, deleted.body).toBe(200);
+      requestedTool = {
+        name: "plan_task",
+        input: { classifications: [], nextAction: "none" },
+      };
+      const revoked = await opt21End(
+        await opt21Submit("撤销已删除附件的分类规则"),
+      );
+      expect(revoked.task.classifications).toEqual([]);
+      expect(revoked.task.backgroundEvidence).toEqual([]);
+      requestedTool = {
+        name: "read_records",
+        input: { source: { kind: "draft", id: source }, limit: 1 },
+      };
+      const resumed = await opt21End(await opt21Submit("继续读取原题"));
+      expect(resumed.turns.at(-1).tools[0].status).toBe("succeeded");
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
       await db.end();
     }
   });

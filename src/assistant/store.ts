@@ -24,6 +24,8 @@ export function taskPresentation(
 ) {
   if (!task || !Object.keys(task).length) return task;
   const presented = { ...task };
+  delete presented.selectedCandidates;
+  delete presented.backgroundDefinitions;
   delete presented.observations;
   delete presented.budgetCheckpoint;
   delete presented.planningCheckpointTurnId;
@@ -553,7 +555,7 @@ export async function startTurn(
     const continuing =
       session.task?.goal &&
       !["complete", "stopped"].includes(session.task.stage);
-    const task = continuing
+    const task: Record<string, any> = continuing
       ? {
           ...session.task,
           supplements: [...(session.task.supplements ?? []), text.trim()],
@@ -607,6 +609,7 @@ export async function startTurn(
             : {}),
           ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
         };
+    if (candidateSelection) task.selectedCandidates = candidateSelection;
     await client.query(
       "UPDATE assistant_proposal SET status='invalid' WHERE session_id=$1 AND status='pending'",
       [sessionId],

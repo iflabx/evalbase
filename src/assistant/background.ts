@@ -1,5 +1,5 @@
 import type { Database } from "../db/pool.js";
-import { sha256 } from "../package/contract.js";
+import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId } from "../server/support.js";
 import { BACKGROUND_LIMITS, extractBackground } from "./extract-background.js";
 import {
@@ -38,6 +38,152 @@ export type BackgroundSnapshot = {
     fragments: BackgroundFragment[];
   }[];
 };
+
+type DefinitionDocument = {
+  id: string;
+  sha256?: string;
+  extractorVersion?: string;
+  fragments: BackgroundFragment[];
+};
+
+/** Only current, already-validated definitions obtain a session-local reusable reference. */
+export function backgroundDefinitionReferences(
+  task: Record<string, any>,
+  documents: DefinitionDocument[],
+  scope: AssistantScope,
+  sessionId: string,
+) {
+  validateBackgroundRules(task, documents);
+  const references: Record<string, any>[] = [];
+  for (const rule of validateRules(task)) {
+    if (rule.basis !== "background") continue;
+    for (const definition of rule.definitions ?? []) {
+      if (definition.basis === "user") continue;
+      for (const document of documents) {
+        if (!document.sha256 || !document.extractorVersion) continue;
+        const fragment = document.fragments.find((part) => {
+          if (
+            !task.backgroundEvidence?.some(
+              (ref: any) =>
+                ref.documentId === document.id &&
+                ref.fragmentIndex === part.index,
+            )
+          )
+            return false;
+          try {
+            validateBackgroundRules(
+              {
+                ...task,
+                targetCount: undefined,
+                classifications: [
+                  {
+                    ...rule,
+                    allowedValues: [definition.value],
+                    requiredValues: [],
+                    quotas: undefined,
+                    definitions: [definition],
+                  },
+                ],
+                backgroundEvidence: [
+                  { documentId: document.id, fragmentIndex: part.index },
+                ],
+              },
+              [{ ...document, fragments: [part] }],
+            );
+            return true;
+          } catch (error) {
+            if (
+              !(error instanceof AssistantError) ||
+              error.code !== "assistant_background_rule_mismatch"
+            )
+              throw error;
+            return false;
+          }
+        });
+        if (!fragment) continue;
+        const binding = {
+          actorId: scope.actorId,
+          sessionId,
+          documentId: document.id,
+          sha256: document.sha256,
+          extractorVersion: document.extractorVersion,
+          fragment,
+          field: rule.field,
+          ...(rule.key ? { key: rule.key } : {}),
+          definition,
+        };
+        references.push({
+          field: rule.field,
+          ...(rule.key ? { key: rule.key } : {}),
+          value: definition.value,
+          reference: `definition:${sha256(canonicalJson(binding))}`,
+        });
+        break;
+      }
+    }
+  }
+  return references;
+}
+
+export function resolveBackgroundDefinitions(
+  current: Record<string, any>,
+  patch: Record<string, any>,
+  documents: DefinitionDocument[],
+  scope: AssistantScope,
+  sessionId: string,
+) {
+  if (
+    !patch.classifications?.some((rule: any) =>
+      rule.definitions?.some((definition: any) => definition.reference),
+    )
+  )
+    return patch;
+  const available = backgroundDefinitionReferences(
+    current,
+    documents,
+    scope,
+    sessionId,
+  );
+  return {
+    ...patch,
+    classifications: patch.classifications.map((rule: any) => ({
+      ...rule,
+      definitions: rule.definitions?.map((definition: any) => {
+        if (!definition.reference) return definition;
+        const ref = available.find(
+          (entry) =>
+            entry.reference === definition.reference &&
+            entry.value === definition.value &&
+            entry.field === rule.field &&
+            entry.key === rule.key?.trim(),
+        );
+        const saved = current.backgroundDefinitions?.some(
+          (entry: any) => entry.reference === definition.reference,
+        );
+        const previous = validateRules(current)
+          .find(
+            (entry) =>
+              entry.field === rule.field && entry.key === rule.key?.trim(),
+          )
+          ?.definitions?.find((entry) => entry.value === definition.value);
+        if (
+          !ref ||
+          !saved ||
+          !previous ||
+          rule.basis === "user" ||
+          definition.basis === "user" ||
+          (definition.text !== undefined && definition.text !== previous.text)
+        )
+          throw new AssistantError(
+            422,
+            "assistant_background_reference_invalid",
+            "背景定义引用已失效或与分类不符。请读取当前附件并首次核对对应原文；不能复用其他会话或类别的引用。",
+          );
+        return { ...previous };
+      }),
+    })),
+  };
+}
 
 const catalogColumns = `id,file_name AS "fileName",format,sha256,file_size AS "fileSize",
   extractor_version AS "extractorVersion",units,characters,jsonb_array_length(fragments) AS "fragmentCount"`;
@@ -346,9 +492,25 @@ export async function freezeBackground(
 /** This checks cited vocabulary, not whether each candidate is semantically classified correctly. */
 export function validateBackgroundRules(
   task: Record<string, any>,
-  documents: { id: string; fragments: BackgroundFragment[] }[],
+  documents: DefinitionDocument[],
 ) {
   if (!task.backgroundEvidence?.length) return;
+  if (
+    task.backgroundEvidence.some((ref: any) => {
+      const doc = documents.find((entry) => entry.id === ref.documentId),
+        fragment = doc?.fragments.find(
+          (entry) => entry.index === ref.fragmentIndex,
+        );
+      return (
+        !fragment ||
+        (ref.sha256 && doc?.sha256 && ref.sha256 !== doc.sha256) ||
+        (ref.extractorVersion &&
+          ref.extractorVersion !== doc?.extractorVersion) ||
+        (ref.textHash && ref.textHash !== sha256(fragment.text))
+      );
+    })
+  )
+    throw new AssistantError(409, "assistant_background_changed");
   const normalize = (value: string) =>
     value.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
   const excerpts = documents.flatMap((doc) =>

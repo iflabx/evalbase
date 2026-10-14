@@ -1,12 +1,232 @@
 import type { Database } from "../db/pool.js";
 import { sha256 } from "../package/contract.js";
+import type { ModelMessage } from "ai";
 import { hasProjectCapability } from "../security/project-access.js";
 import { backgroundCatalog } from "./background.js";
 import {
   AssistantError,
+  taskPresentation,
   type AssistantScope,
   type Dependency,
 } from "./store.js";
+
+/** Current constraints remain complete; record identities stay in server-side state. */
+export function currentTaskFacts(
+  task: Record<string, any>,
+  selection?: Record<string, any>,
+) {
+  const facts = taskPresentation(task) ?? {};
+  delete facts.selectedCandidates;
+  delete facts.backgroundDefinitions;
+  delete facts.turnBudget;
+  delete facts.diagnostics;
+  delete facts.retryOperations;
+  const picked = selection ?? task.selectedCandidates;
+  facts.candidateSelection = picked
+    ? {
+        runId: picked.runId,
+        selectedCount: picked.resultIds.length,
+        useAllSelected: true,
+      }
+    : null;
+  if (facts.goal !== undefined)
+    facts.originalRequest = String(facts.goal).slice(0, 1000);
+  delete facts.goal;
+  facts.historicalCorrections = (facts.supplements ?? [])
+    .slice(-6)
+    .map((text: string) => text.slice(0, 1000));
+  delete facts.supplements;
+  if (facts.executionPlan)
+    facts.executionPlan = {
+      ...facts.executionPlan,
+      steps: facts.executionPlan.steps.map(
+        ({ input: _input, backgroundRead: _backgroundRead, ...step }: any) =>
+          step,
+      ),
+    };
+  facts.classifications = (facts.classifications ?? []).map((rule: any) =>
+    rule.definitions
+      ? {
+          ...rule,
+          definitions: rule.definitions?.map((definition: any) => {
+            const ref = task.backgroundDefinitions?.find(
+              (entry: any) =>
+                entry.field === rule.field &&
+                entry.key === rule.key &&
+                entry.value === definition.value,
+            );
+            return ref
+              ? { value: definition.value, reference: ref.reference }
+              : definition;
+          }),
+        }
+      : rule,
+  );
+  if (Buffer.byteLength(JSON.stringify(facts)) > 30000)
+    throw new AssistantError(
+      422,
+      "assistant_context_capacity",
+      "当前生效要求超出上下文容量，要求已保留。请减少本任务同时处理的规则，不能静默略去约束。",
+    );
+  return facts;
+}
+
+/** Summaries are navigation aids; authoritative bodies and parameters are re-read. */
+export function toolResultSummary(
+  name: string,
+  input: Record<string, any>,
+  value: any,
+) {
+  const readInput: Record<string, any> = {};
+  for (const field of [
+    "source",
+    "runId",
+    "documentId",
+    "kind",
+    "search",
+    "testSetId",
+    "offset",
+    "from",
+    "query",
+    "limit",
+    "aggregate",
+    "conditions",
+    "groupBy",
+    "selection",
+  ])
+    if (input[field] !== undefined) readInput[field] = input[field];
+  if (readInput.source) {
+    readInput.source = { ...readInput.source };
+    delete readInput.source.recordIds;
+  }
+  const summary: Record<string, any> = {
+    historySummary: true,
+    contentTruncated: true,
+  };
+  for (const field of [
+    "total",
+    "matchingTotal",
+    "readCount",
+    "offset",
+    "source",
+    "partial",
+    "missingCount",
+    "checkedStatus",
+    "nextOffset",
+    "nextFrom",
+    "fragmentCount",
+    "matchCount",
+    "status",
+    "runId",
+    "draftId",
+    "previewId",
+    "url",
+    "selectedCount",
+    "refinedCount",
+    "added",
+    "fileName",
+    "sha256",
+    "extractorVersion",
+  ])
+    if (value?.[field] !== undefined) summary[field] = value[field];
+  if (summary.source) {
+    summary.source = { ...summary.source };
+    delete summary.source.recordIds;
+  }
+  if (name.startsWith("read_") || name === "query_project")
+    summary.readAgain = { tool: name, input: readInput };
+  if (name === "read_background") readInput.useForProcessing = false;
+  if (value?.error)
+    summary.error = {
+      code: value.error.code,
+      hint: String(value.error.hint ?? "").slice(0, 320),
+    };
+  if (value?.records)
+    summary.preview = value.records.slice(0, 2).map((row: any) => ({
+      id: row.id,
+      question: String(row.question ?? row.result?.question ?? "").slice(
+        0,
+        160,
+      ),
+    }));
+  if (value?.task)
+    summary.task = {
+      stage: value.task.stage,
+      targetCount: value.task.targetCount,
+      nextAction: value.task.nextAction,
+    };
+  return summary;
+}
+
+export function conversationHistory(
+  rows: Record<string, any>[],
+  encode: (value: any) => any,
+): ModelMessage[] {
+  return rows.slice(-6).flatMap((row) => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: String(row.user_text ?? "").slice(0, 1000) },
+    ];
+    let bytes = 0,
+      omitted = 0;
+    for (const record of row.tool_results ?? []) {
+      if (
+        record.name === "plan_task" ||
+        !["succeeded", "failed"].includes(record.status)
+      )
+        continue;
+      let input = record.input ?? {},
+        value =
+          record.status === "succeeded"
+            ? record.result
+            : { error: record.error };
+      if (Buffer.byteLength(JSON.stringify({ input, value })) > 3000) {
+        value = toolResultSummary(record.name, input, value);
+        input = value.readAgain?.input ?? { historicalParametersOmitted: true };
+      }
+      const size = Buffer.byteLength(JSON.stringify({ input, value }));
+      if (bytes + size > 6000) {
+        omitted++;
+        continue;
+      }
+      bytes += size;
+      messages.push(
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: record.key,
+              toolName: record.name,
+              input: encode(input),
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: record.key,
+              toolName: record.name,
+              output: { type: "json", value: encode(value) },
+            },
+          ],
+        },
+      );
+    }
+    messages.push({
+      role: "assistant",
+      content:
+        String(row.assistant_text ?? "")
+          .split("\n真实操作记录：")[0]
+          .slice(0, 2000) +
+        (omitted
+          ? `\n另有${omitted}项历史结果因容量未展示；以当前事实为准，需要正文时重新读取。`
+          : ""),
+    });
+    return messages;
+  });
+}
 
 /** Rebuild referenced business facts; conversation prose never supplies an identity. */
 export async function assistantContext(
@@ -21,7 +241,7 @@ export async function assistantContext(
     scope.actorId,
     "write",
   );
-  const [project, history, proposals] = await Promise.all([
+  const [project, history, proposals, current] = await Promise.all([
     db.query("SELECT name FROM project WHERE id=$1", [scope.projectId]),
     db.query(
       "SELECT user_text,assistant_text,tool_results,dependencies FROM assistant_turn WHERE session_id=$1 AND status<>'running' ORDER BY created_at DESC,id DESC LIMIT 50",
@@ -31,7 +251,12 @@ export async function assistantContext(
       "SELECT action,status,summary,receipt FROM assistant_proposal WHERE session_id=$1 AND actor_id=$2 ORDER BY created_at DESC,id DESC LIMIT 50",
       [sessionId, scope.actorId],
     ),
+    db.query(
+      "SELECT task FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
+      [sessionId, scope.projectId, scope.actorId],
+    ),
   ]);
+  const task = current.rows[0]?.task ?? {};
   const confirmedOperations = proposals.rows
     .filter((p) => p.status === "succeeded")
     .map((p) => {
@@ -54,6 +279,19 @@ export async function assistantContext(
     .filter((t) => t.name === "create_draft" && t.status === "succeeded")
     .map((t) => t.result.draftId);
   const refs: Dependency[] = history.rows.flatMap((t) => t.dependencies);
+  for (const source of [task.target, task.processingScope?.source]) {
+    if (source?.kind === "assets")
+      refs.push(
+        ...source.assetIds.map((id: string) => ({
+          kind: "asset" as const,
+          id,
+        })),
+      );
+    else if (["draft", "version", "asset"].includes(source?.kind))
+      refs.push({ kind: source.kind, id: source.id });
+  }
+  for (const id of [task.targetDraftId, task.createdDraftId])
+    if (id) refs.push({ kind: "draft", id });
   const previousPage = refs.find((ref) => ref.focus);
   if (page) refs.push(page);
   for (const op of confirmedOperations) {
@@ -181,6 +419,7 @@ export async function assistantContext(
   });
   // Register past references even if their body is omitted from the bounded protocol history.
   encode(history.rows.map((t) => t.tool_results));
+  encode(task);
   return {
     state,
     encode,

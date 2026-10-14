@@ -13,7 +13,11 @@ const cases = [
     "这份资料有多少条，包含哪些字段？",
     "aggregates and filters all 100 records",
   ],
-  ["A2", "先帮我设计整理方案，先不执行。", "keeps a saved plan inactive"],
+  [
+    "A2",
+    "先帮我设计整理方案，先不执行。",
+    "keeps a saved plan inactive|OPT-23 reuses verified background definitions",
+  ],
   [
     "A3",
     "清理首尾空白，其他内容不变。",
@@ -37,12 +41,12 @@ const cases = [
   [
     "A7",
     "继续沿用刚才的资料和要求。",
-    "submits a real operation after seven bounded source reads",
+    "submits a real operation after seven bounded source reads|OPT-23 rebuilds current source facts|OPT-23 keeps selected older metadata candidates",
   ],
   [
     "A8",
     "按附件分类，保留原问题和答案。",
-    "classifies in the worker then selects and reviews candidates",
+    "classifies in the worker then selects and reviews candidates|OPT-23 reuses verified background definitions",
   ],
   [
     "A9",
@@ -82,8 +86,8 @@ const report: any = {
   codeVersion: version,
   fixtureVersion:
     mode === "real" ? "synthetic-eight-v1" : "public-contract-fixtures-v1",
-  promptVersion: "assistant-prompt-v2",
-  toolsVersion: "assistant-tools-v2",
+  promptVersion: "assistant-prompt-v3",
+  toolsVersion: "assistant-tools-v3",
   startedAt: new Date().toISOString(),
   results: [],
 };
