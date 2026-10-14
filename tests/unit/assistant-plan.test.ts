@@ -5,10 +5,103 @@ import {
   planRequirementsKey,
   resolvedStepInput,
   missingStepDependency,
+  selectionParameters,
   type ExecutionPlan,
 } from "../../src/assistant/plan.js";
 
 describe("restored execution plan boundaries", () => {
+  it("keeps approved parameters when enabling a plan with unchanged step titles", () => {
+    expect(
+      selectionParameters({ method: "random", value: 4, conditions: null }, 4)
+        .conditions,
+    ).toBeNull();
+    const target = { kind: "draft", id: "source" };
+    const steps = [
+      {
+        title: "清理空白",
+        action: "submit_processing",
+        input: {
+          source: target,
+          operation: "clean",
+          allRecords: true,
+          instructions: "仅整理首尾空白",
+          allowedFields: ["question"],
+        },
+      },
+    ];
+    const prior = revisePlan(
+      undefined,
+      { executionMode: "plan", steps },
+      1,
+      target,
+      "same",
+    )!;
+    const executing = revisePlan(
+      prior,
+      {
+        executionMode: "execute",
+        steps: [{ title: "清理空白", action: "submit_processing" }],
+      },
+      2,
+      target,
+      "same",
+    )!;
+    expect(resolvedStepInput(executing)).toEqual({
+      ...steps[0].input,
+      source: target,
+    });
+    const withRead = revisePlan(
+      undefined,
+      {
+        executionMode: "plan",
+        steps: [{ title: "读取资料", action: "read_records" }, ...steps],
+      },
+      1,
+      target,
+      "same",
+    )!;
+    expect(
+      resolvedStepInput(
+        revisePlan(
+          withRead,
+          {
+            executionMode: "execute",
+            steps: [
+              { title: "清理空白", action: "submit_processing", input: {} },
+            ],
+          },
+          2,
+          target,
+          "same",
+        )!,
+      ),
+    ).toEqual(steps[0].input);
+    const duplicated = revisePlan(
+      withRead,
+      {
+        executionMode: "execute",
+        steps: [
+          { title: "清理空白", action: "submit_processing", input: {} },
+          { title: "清理空白", action: "submit_processing", input: {} },
+        ],
+      },
+      2,
+      target,
+      "same",
+    )!;
+    expect(duplicated.steps.every((step) => !step.input?.operation)).toBe(true);
+    const changed = revisePlan(
+      prior,
+      {
+        executionMode: "execute",
+        steps: [{ title: "新规则", action: "submit_processing" }],
+      },
+      2,
+      target,
+      "changed",
+    )!;
+    expect(resolvedStepInput(changed).instructions).toBeUndefined();
+  });
   it("binds a preview and its draft as a pair and carries a confirmed new draft forward", () => {
     const plan: ExecutionPlan = {
       mode: "execute",

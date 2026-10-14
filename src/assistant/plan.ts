@@ -143,6 +143,20 @@ export function revisePlan(
   const steps =
     (input.steps ?? previous?.steps)?.map((step, index) => {
       const prior = previous?.steps[index];
+      const approved =
+        input.executionMode === "execute" &&
+        previous?.mode === "plan" &&
+        (input.steps ?? []).filter(
+          (item) => item.action === step.action && item.title === step.title,
+        ).length === 1 &&
+        previous.requirementsKey === requirementsKey &&
+        canonicalJson(planSource(previous.target ?? {})) ===
+          canonicalJson(planSource(target ?? {}))
+          ? previous.steps.filter(
+              (item) =>
+                item.action === step.action && item.title === step.title,
+            )
+          : [];
       const inherited =
         !input.steps &&
         previous?.target &&
@@ -153,7 +167,10 @@ export function revisePlan(
           ? target
             ? { ...step.input, source: planSource(target) }
             : (({ source: _source, ...rest }) => rest)(step.input)
-          : step.input;
+          : (!step.input || Object.keys(step.input).length === 0) &&
+              approved.length === 1
+            ? approved[0]!.input
+            : step.input;
       let parameters =
         (inherited?.source
           ? { ...inherited, source: planSource(inherited.source) }
@@ -473,6 +490,24 @@ export function missingStepDependency(plan: ExecutionPlan) {
 }
 
 /** Model omissions reuse current facts; explicit changes still pass the same domain guards. */
+export function selectionParameters(
+  supplied: Record<string, any>,
+  targetCount: unknown,
+) {
+  const selection: Record<string, any> = {
+    ...supplied,
+    conditions: supplied.conditions === undefined ? [] : supplied.conditions,
+  };
+  if (
+    selection.method === "random" &&
+    selection.mode === undefined &&
+    Number.isInteger(targetCount) &&
+    selection.value === targetCount
+  )
+    selection.mode = "count";
+  return selection;
+}
+
 export function bindTaskInput(
   name: string,
   supplied: Record<string, any>,
@@ -485,6 +520,12 @@ export function bindTaskInput(
     plan?.steps[plan.current]?.action === name
       ? resolvedStepInput(plan, supplied)
       : { ...supplied };
+  if (
+    input.selection &&
+    ["submit_processing", "select_candidates"].includes(name)
+  ) {
+    input.selection = selectionParameters(input.selection, task.targetCount);
+  }
   const target = Object.hasOwn(task, "target") ? task.target : pageObject;
   if (
     name === "submit_processing" &&
@@ -536,6 +577,13 @@ export function bindTaskInput(
     input.where === undefined
   )
     input.allSelected = true;
+  if (name === "submit_processing" && input.instructions === undefined) {
+    const requirements = normalizedRequirements(task.requirements ?? []).join(
+      "\n",
+    );
+    if (requirements) input.instructions = requirements;
+    else if (input.operation === "clean") input.instructions = "";
+  }
   if (["submit_processing", "refine_candidates"].includes(name)) {
     input.allowedFields ??= task.allowedFields ?? ["question"];
     if (

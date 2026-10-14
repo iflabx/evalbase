@@ -3,7 +3,7 @@ import {
   createRefinementGroups,
 } from "../processing/refine.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
-import { selectRecords } from "../selection/index.js";
+import { selectRecords, type SelectionRecord } from "../selection/index.js";
 import { updateTask } from "./tasks.js";
 import {
   RequirementError,
@@ -20,6 +20,7 @@ import {
   resolvedStepInput,
   missingStepDependency,
   bindTaskInput,
+  selectionParameters,
   availableTaskTools,
   sourceWithinTask,
 } from "./plan.js";
@@ -50,7 +51,7 @@ import {
   InvalidToolInputError,
   type ModelMessage,
 } from "ai";
-import { Ajv, type ErrorObject } from "ajv";
+import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
 import type { Database } from "../db/pool.js";
 import type { Config } from "../config.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -187,7 +188,25 @@ const selectionSchema = {
     value: { type: "number", exclusiveMinimum: 0, maximum: 10000 },
     seed: { type: "string", maxLength: 200 },
   },
-  required: ["method", "conditions"],
+  required: ["method"],
+  allOf: [
+    {
+      if: { properties: { method: { const: "all" } }, required: ["method"] },
+      then: { properties: { mode: false, value: false } },
+    },
+    {
+      if: { properties: { method: { const: "random" } } },
+      then: { required: ["value"] },
+    },
+    {
+      if: { properties: { mode: { const: "count" } }, required: ["mode"] },
+      then: { properties: { value: { type: "integer" } } },
+    },
+    {
+      if: { properties: { mode: { const: "percent" } }, required: ["mode"] },
+      then: { properties: { value: { maximum: 100 } } },
+    },
+  ],
 };
 const sourceSchema = {
   type: "object",
@@ -319,7 +338,8 @@ export async function executeAssistantTurn(
   };
   let context: Awaited<ReturnType<typeof assistantContext>>;
   let queue: Promise<unknown> = Promise.resolve();
-  const fixedInputValidators = new Map<string, (value: unknown) => boolean>();
+  const fixedInputValidators = new Map<string, ValidateFunction>();
+  const planInputValidators = new Map<string, ValidateFunction>();
   const fixedReceipts: ModelMessage[] = [];
   let toolCalls = 0;
   let plannedAction: string | undefined;
@@ -423,20 +443,35 @@ export async function executeAssistantTurn(
       "write",
       true,
     );
-    const selection = selectRecords(
-      data.records.map((row) => ({
-        ...row,
-        assetId:
-          source.kind === "assets" && isPlainObject(row.source)
-            ? String(row.source.assetId)
-            : row.id,
-        ordinal:
-          source.kind === "assets" && isPlainObject(row.source)
-            ? Number(row.source.ordinal)
-            : 0,
-      })),
-      configuration,
-    );
+    let selection: ReturnType<
+      typeof selectRecords<SelectionRecord & { id: string }>
+    >;
+    try {
+      selection = selectRecords(
+        data.records.map((row) => ({
+          ...row,
+          assetId:
+            source.kind === "assets" && isPlainObject(row.source)
+              ? String(row.source.assetId)
+              : row.id,
+          ordinal:
+            source.kind === "assets" && isPlainObject(row.source)
+              ? Number(row.source.ordinal)
+              : 0,
+        })),
+        configuration,
+      );
+    } catch (error) {
+      // This pure selector has no domain writes; malformed configuration is not
+      // an unknown submitted operation.
+      if (error instanceof Error && error.message === "selection_invalid")
+        throw new AssistantError(
+          422,
+          "processing_scope_invalid",
+          "选取配置不合法；随机选取须提供mode:count或percent及value，不能省略范围单位。",
+        );
+      throw error;
+    }
     const selected = new Set(selection.selected.map((row) => row.id));
     const records = data.records.filter((row) => selected.has(row.id));
     if (!records.length || records.length !== selection.targetCount)
@@ -743,6 +778,10 @@ export async function executeAssistantTurn(
       additionalProperties: false,
     });
     fixedInputValidators.set(name, validateInput);
+    planInputValidators.set(
+      name,
+      ajv.compile({ type: "object", properties, additionalProperties: false }),
+    );
     return tool({
       description,
       inputSchema: schema(
@@ -780,6 +819,16 @@ export async function executeAssistantTurn(
           let referenceError: unknown;
           try {
             input = context.decode(input);
+            if (
+              name === "submit_processing" &&
+              (turn.candidate_selection ?? currentTask.selectedCandidates)
+                ?.scope === "task"
+            )
+              throw new AssistantError(
+                422,
+                "assistant_tool_input_invalid",
+                "当前勾选的是处理候选；修改这些候选使用refine_candidates与allSelected:true，不能重新处理原始输入。请修正方案步骤。",
+              );
             input = bindTaskInput(
               name,
               input,
@@ -1356,7 +1405,7 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。question仅与nextAction:none一起用于业务澄清。步骤有序，标题不是操作身份。规划不增加权限。",
+      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。question仅与nextAction:none一起用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。规划不增加权限。",
       {
         title: { type: "string", minLength: 1, maxLength: 40 },
         executionMode: {
@@ -1378,7 +1427,7 @@ export async function executeAssistantTurn(
                 type: "object",
                 maxProperties: 20,
                 description:
-                  "当前步骤已知的业务工具参数；后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
+                  "当前步骤已知的业务工具参数；处理步骤使用operation、instructions（复数）、allowedFields及allRecords/selection；select_candidates使用runId及selection:{method,conditions,mode,value}，不能用submit_processing的operation:select；仅启用已有方案应省略steps，不重填input。后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
               },
               scope: {
                 enum: ["preview", "all"],
@@ -1551,12 +1600,9 @@ export async function executeAssistantTurn(
       },
       [],
       async (input) => {
-        if (input.question && input.nextAction !== "none")
-          throw new AssistantError(
-            422,
-            "assistant_tool_input_invalid",
-            "question 与执行动作互斥：需要用户澄清时 nextAction 必须为 none；可以继续执行时省略 question，保存正确的后续 steps。不要把参数纠正问题交给用户。",
-          );
+        // A clarification always pauses execution. The model's leftover action
+        // cannot turn a question into an executing plan.
+        if (input.question) input = { ...input, nextAction: "none" };
         if (
           planningCheckpointRequired &&
           !input.question &&
@@ -1568,6 +1614,70 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        for (const step of input.steps ?? []) {
+          if (
+            step.input?.selection &&
+            ["submit_processing", "select_candidates"].includes(step.action)
+          )
+            step.input = {
+              ...step.input,
+              selection: selectionParameters(
+                step.input.selection,
+                input.targetCount === undefined
+                  ? current.targetCount
+                  : input.targetCount,
+              ),
+            };
+          if (
+            step.action === "submit_processing" &&
+            (turn.candidate_selection ?? current.selectedCandidates)?.scope ===
+              "task" &&
+            !current.executionPlan?.steps.some(
+              (prior: any) =>
+                prior.action === step.action &&
+                prior.status === "executed" &&
+                canonicalJson(prior.input ?? {}) ===
+                  canonicalJson(step.input ?? {}),
+            )
+          )
+            throw new AssistantError(
+              422,
+              "assistant_tool_input_invalid",
+              "当前勾选的是处理候选；局部修改步骤应为refine_candidates，使用allSelected:true及instructions，不能使用submit_processing。",
+            );
+          const parameters = { ...(step.input ?? {}) };
+          if (
+            step.action === "submit_processing" &&
+            (input.executionMode ?? current.executionPlan?.mode) ===
+              "execute" &&
+            current.runId &&
+            canonicalJson(
+              planSource(parameters.source ?? input.target ?? current.target),
+            ) === canonicalJson(planSource(current.target)) &&
+            current.executionPlan?.steps.some(
+              (prior: any) =>
+                prior.action === step.action &&
+                prior.status === "executed" &&
+                prior.receipt?.runId,
+            ) &&
+            !parameters.operation &&
+            !parameters.instructions &&
+            Object.keys(parameters).every((key) => key === "source")
+          )
+            throw new AssistantError(
+              422,
+              "assistant_tool_input_invalid",
+              "已有处理候选。只调整数量或筛选条件时使用select_candidates（随后read_processing核对），不要把已完成的submit_processing步骤重新列为待执行；真正重新处理须提供operation和具体instructions。可省略旧steps，只设置nextAction:select_candidates。",
+            );
+          if (parameters.runId === "") delete parameters.runId;
+          const validate = planInputValidators.get(step.action);
+          if (validate && !validate(parameters))
+            throw new AssistantError(
+              422,
+              "assistant_tool_input_invalid",
+              `步骤 ${step.action}：${inputHint(validate.errors)}。处理要求参数为instructions（复数）；只启用已有方案可省略steps，使用executionMode:execute。select_candidates筛选参数放在selection对象中，例如selection:{method:random,mode:count,value:目标条数,conditions:[]}，不能把method/value直接放到input。method:all表示全部匹配记录，不搭配mode/value；指定条数需random和mode:count。preview_selection仅用于原始资料文件选取，清洗结果用read_processing核对。`,
+            );
+        }
         const documents = (
           await db.query(
             'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
@@ -1654,6 +1764,29 @@ export async function executeAssistantTurn(
             )
           )
             throw new AssistantError(409, "assistant_retry_parameters_changed");
+        }
+        const picked = turn.candidate_selection ?? current.selectedCandidates;
+        if (
+          plan &&
+          missingStepDependency(plan) === "runId" &&
+          picked?.scope === "task" &&
+          plan.steps[plan.current]?.action === "refine_candidates"
+        ) {
+          const selected = resolveTaskSelection(
+            await taskCandidateCollection(db, artifacts, scope, current),
+            picked,
+          );
+          plan = {
+            ...plan,
+            steps: plan.steps.map((step, index) =>
+              index === plan!.current
+                ? {
+                    ...step,
+                    input: { ...step.input, runId: selected.groups[0]!.runId },
+                  }
+                : step,
+            ),
+          };
         }
         if (plan && missingStepDependency(plan) === "runId" && current.runId) {
           // The current task's own durable tool receipt is an explicit dependency, not a project-wide latest run.
@@ -2143,7 +2276,7 @@ export async function executeAssistantTurn(
     ),
     preview_selection: businessTool(
       "preview_selection",
-      "在明确草稿中预览文件筛选/随机选取，尚未写入草稿。conditions为AND，空数组表示无条件。",
+      "从原始资料文件筛选/随机选取记录，预览导入指定草稿的范围，尚未写入草稿。assetIds只能来自真实原始文件；本工具不是草稿清洗效果预览，清洗效果用read_processing核对。conditions为AND，空数组表示无条件。",
       {
         draftId: string,
         assetIds: { ...ids, maxItems: 5 },
@@ -2224,7 +2357,7 @@ export async function executeAssistantTurn(
     ),
     submit_processing: businessTool(
       "submit_processing",
-      "提交当前授权的清洗、改写或扩充，不采用或发布。省略来源、字段和已有步骤参数时复用当前任务事实；省略范围只复用同来源固定选择。首次处理必须给selection/recordIds或明确allRecords，不能默认全量。clean/rewrite一条输入对应一条候选；augment的outputCount为新增数量，默认继承当前新增目标。切换来源先更新plan_task并重新选取。",
+      "提交当前原始输入的清洗、改写或扩充，不采用或发布。勾选当前候选后改写应调用refine_candidates与allSelected:true，不能调用本工具。省略来源、字段和已有步骤参数时复用当前任务事实；省略范围只复用同来源固定选择。首次处理必须给selection/recordIds或明确allRecords，不能默认全量。clean/rewrite一条输入对应一条候选；augment的outputCount为新增数量，默认继承当前新增目标。切换来源先更新plan_task并重新选取。",
       {
         source: sourceSchema,
         recordIds: ids,

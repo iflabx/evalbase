@@ -13773,6 +13773,373 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT-25 corrects invalid plan step fields before executing and never expands a task selection to source rows", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      const page = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      const ids = [page.records[0].id, page.records.at(-1).id];
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "局部改写",
+                action: "submit_processing",
+                input: {
+                  operation: "rewrite",
+                  allSelected: true,
+                  instructions: "OPT-25 局部表述",
+                },
+              },
+            ],
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "局部改写",
+                action: "refine_candidates",
+                input: {
+                  allSelected: true,
+                  instructions: "OPT-25 局部表述",
+                  allowedFields: ["question"],
+                },
+              },
+            ],
+          },
+        },
+        {
+          name: "refine_candidates",
+          input: {
+            allSelected: true,
+            instructions: "OPT-25 局部表述",
+            allowedFields: ["question"],
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const response = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "只把这两条改自然点",
+          candidates: {
+            scope: "task",
+            reviewRevision: page.reviewRevision,
+            resultIds: ids,
+          },
+        },
+      });
+      expect(response.statusCode, response.body).toBe(202);
+      const state = await opt21End(response.json().turnId);
+      const receipts = state.turns.at(-1).tools;
+      expect(
+        receipts.find(
+          (t: any) => t.name === "plan_task" && t.status === "failed",
+        )?.effect,
+      ).toBe("none");
+      const corrected = receipts.find(
+        (t: any) => t.name === "refine_candidates",
+      );
+      expect(corrected?.status, JSON.stringify(receipts)).toBe("succeeded");
+      expect(corrected.result.refinedCount).toBe(2);
+      expect(
+        receipts.some(
+          (t: any) =>
+            t.name === "submit_processing" && t.status === "succeeded",
+        ),
+      ).toBe(false);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 rejects an empty repeat of completed processing when changing only the count", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    const before = (
+      await f.db.query(
+        "SELECT count(*)::int AS n FROM processing_run WHERE project_id=$1",
+        [projectId],
+      )
+    ).rows[0].n;
+    try {
+      await f.db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{executionPlan}',$2::jsonb) WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            mode: "execute",
+            current: 1,
+            steps: [
+              {
+                title: "整理",
+                action: "submit_processing",
+                status: "executed",
+                input: {
+                  operation: "clean",
+                  allRecords: true,
+                  instructions: "",
+                },
+                receipt: { key: "completed", runId: f.runs[1] },
+              },
+            ],
+          }),
+        ],
+      );
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            targetCount: 4,
+            countKind: "final",
+            steps: [{ title: "整理", action: "submit_processing" }],
+          },
+        },
+        { name: "read_processing", input: { runId: f.runs[1] } },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("改成4条，保留内容"));
+      const failed = state.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "plan_task");
+      expect(failed).toMatchObject({
+        status: "failed",
+        effect: "none",
+        error: { code: "assistant_tool_input_invalid" },
+      });
+      expect(failed.error.hint).toContain("select_candidates");
+      expect(
+        (
+          await f.db.query(
+            "SELECT count(*)::int AS n FROM processing_run WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].n,
+      ).toBe(before);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+  it("OPT-25 normalizes the same selection defaults in the plan and execution", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "错误全部选4条",
+                action: "select_candidates",
+                input: {
+                  runId: f.runs[1],
+                  selection: { method: "all", mode: "count", value: 4 },
+                },
+              },
+            ],
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            targetCount: 4,
+            steps: [
+              {
+                title: "选4条",
+                action: "select_candidates",
+                input: {
+                  runId: f.runs[1],
+                  selection: { method: "random", mode: "count", value: 4 },
+                },
+              },
+            ],
+          },
+        },
+        {
+          name: "select_candidates",
+          input: {
+            runId: f.runs[1],
+            selection: { method: "random", mode: "count", value: 4 },
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(
+        await opt21Submit("从已有成果选4条，保留内容"),
+      );
+      const receipts = state.turns.at(-1).tools;
+      expect(
+        receipts.find(
+          (tool: any) => tool.name === "plan_task" && tool.status === "failed",
+        )?.effect,
+      ).toBe("none");
+      expect(
+        receipts.find((tool: any) => tool.name === "select_candidates")?.status,
+        JSON.stringify(receipts),
+      ).toBe("succeeded");
+      expect(
+        state.task.executionPlan.steps[0].input.selection.conditions,
+      ).toEqual([]);
+      expect(
+        (
+          await f.db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task.candidateScope.resultIds,
+      ).toHaveLength(4);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+  it("OPT-25 rejects a random selection without its unit before writes and accepts short deterministic cleanup", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            nextAction: "submit_processing",
+            allowedFields: ["question"],
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            operation: "clean",
+            selection: { method: "random", value: 4, conditions: [] },
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            operation: "clean",
+            selection: {
+              method: "random",
+              mode: "count",
+              value: 4,
+              conditions: [],
+            },
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("只清理4条的首尾空白"));
+      const receipts = state.turns.at(-1).tools;
+      const invalid = receipts.find(
+        (r: any) => r.name === "submit_processing" && r.status === "failed",
+      );
+      expect(invalid?.effect, JSON.stringify(receipts)).toBe("none");
+      expect(invalid.error.code).not.toBe("assistant_operation_unknown");
+      const created = receipts.find(
+        (r: any) => r.name === "submit_processing" && r.status === "succeeded",
+      );
+      expect(created?.result.inputCount, JSON.stringify(receipts)).toBe(4);
+      expect(created.input.instructions).toBe("");
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 pauses a clarification even when the model leaves an old executing action", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      const before = (
+        await f.db.query("SELECT count(*)::int AS n FROM processing_run")
+      ).rows[0].n;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            question: "你想保留哪些4条？",
+            nextAction: "submit_processing",
+            executionMode: "execute",
+            steps: [
+              {
+                title: "处理记录",
+                action: "submit_processing",
+                input: {
+                  operation: "clean",
+                  allRecords: true,
+                  instructions: "",
+                  allowedFields: ["question"],
+                },
+              },
+            ],
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("保留4条"));
+      expect(state.task.stage).toBe("waiting_input");
+      expect(state.task.nextAction).toBeNull();
+      expect(state.task.question).toBe("你想保留哪些4条？");
+      expect(
+        (await f.db.query("SELECT count(*)::int AS n FROM processing_run"))
+          .rows[0].n,
+      ).toBe(before);
+      expect(
+        state.turns
+          .at(-1)
+          .tools.some((t: any) => t.name === "submit_processing"),
+      ).toBe(false);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
   it("OPT-25 exposes one paged effective task collection with stable identities across batches", async () => {
     const previous = sessionId,
       f = await opt25Results();

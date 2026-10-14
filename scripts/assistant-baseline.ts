@@ -117,6 +117,7 @@ const report: any = {
   startedAt: new Date().toISOString(),
   results: [],
 };
+const details: any[] = [];
 function save() {
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, JSON.stringify(report, null, 2) + "\n");
@@ -400,6 +401,8 @@ if (mode === "controlled") {
           if (rows.length >= page.total) return rows;
         }
       };
+      let businessReplies = 0;
+      let approvedFields: string[] | undefined;
       let goalCompleted = false,
         reason = "goal_not_reached";
       try {
@@ -446,7 +449,16 @@ if (mode === "controlled") {
                 after.some(
                   (s: any) =>
                     s.id === r.id &&
-                    JSON.stringify(r.result) === JSON.stringify(s.result),
+                    JSON.stringify([
+                      r.result.question,
+                      r.result.expectedOutput,
+                      r.result.metadata,
+                    ]) ===
+                      JSON.stringify([
+                        s.result.question,
+                        s.result.expectedOutput,
+                        s.result.metadata,
+                      ]),
                 ),
               ) &&
             before
@@ -454,7 +466,10 @@ if (mode === "controlled") {
               .every((r: any) =>
                 after.some(
                   (s: any) =>
+                    s.id === r.id &&
                     s.result.expectedOutput === r.result.expectedOutput &&
+                    JSON.stringify(s.result.metadata) ===
+                      JSON.stringify(r.result.metadata) &&
                     s.result.question !== r.result.question,
                 ),
               );
@@ -552,6 +567,19 @@ if (mode === "controlled") {
         } else {
           await send(prompt, { context });
           if (id === "A2") {
+            if (
+              state.task?.question ||
+              !(state.task?.executionPlan?.steps ?? []).some((step: any) =>
+                ["submit_processing", "refine_candidates"].includes(
+                  step.action,
+                ),
+              )
+            ) {
+              businessReplies++;
+              await send(
+                "先只整理首尾空白，保留问题、答案和分类，仍先给方案。",
+              );
+            }
             assert.equal(
               state.task?.executionPlan?.mode,
               "plan",
@@ -567,7 +595,19 @@ if (mode === "controlled") {
               "0",
               "plan_executed_early",
             );
+            approvedFields = [...(state.task?.allowedFields ?? ["question"])];
             await send("按方案执行。");
+            if (state.task?.question && businessReplies === 0) {
+              businessReplies++;
+              await send("是，按刚才方案执行，保留答案和分类。");
+            }
+          }
+          if (
+            id === "A6" &&
+            (state.task?.question || (await candidates()).length !== 4)
+          ) {
+            businessReplies++;
+            await send("随机从已有候选中保留4条，其他内容不要改。");
           }
           if (id === "A1") {
             const receipts = state.turns
@@ -619,7 +659,28 @@ if (mode === "controlled") {
             const outputRows = await candidates();
             const expected = id === "A6" ? 4 : rows.length;
             goalCompleted = outputRows.length === expected;
-            if (["A2", "A3", "A6"].includes(id))
+            if (id === "A2") {
+              // "Design a tidy-up plan" may include a proposed classification.
+              // Check the approved field contract, not a hidden trim-only plan.
+              const allowed = approvedFields ?? ["question"];
+              goalCompleted &&=
+                !state.task?.question &&
+                outputRows.every((r: any) => {
+                  const original = rows.find(
+                    (row) => row.expectedOutput === r.result.expectedOutput,
+                  );
+                  return (
+                    original &&
+                    (allowed.includes("question") ||
+                      original.question === r.result.question) &&
+                    (allowed.includes("metadata") ||
+                      JSON.stringify(original.metadata) ===
+                        JSON.stringify(r.result.metadata))
+                  );
+                }) &&
+                !state.task?.review?.protectedFieldChanges;
+            }
+            if (["A3", "A6"].includes(id))
               goalCompleted &&= outputRows.every((r: any) =>
                 rows.some(
                   (row) =>
@@ -880,6 +941,7 @@ if (mode === "controlled") {
             )
           : null,
         userClarifications: clarifications,
+        extraBusinessPrompts: businessReplies,
         semanticCorrections: null,
         semanticReview: "pending_human_review",
         durationMs: Date.now() - started,
@@ -899,6 +961,32 @@ if (mode === "controlled") {
             : null,
         })),
       });
+      // Only this script's synthetic database is read; keep review evidence apart
+      // from the small baseline metrics, without any connection credentials.
+      let reviewRows: any[] = [];
+      if (state?.task?.runId) {
+        try {
+          reviewRows = await candidates();
+        } catch {
+          /* unavailable results remain a failure */
+        }
+      }
+      details.push({
+        id,
+        sample: report.results.at(-1).sample,
+        input: rows,
+        task: state?.task,
+        turns: state?.turns,
+        records: integration200 ? reviewRows.slice(0, 20) : reviewRows,
+      });
+      writeFileSync(
+        output + ".details.json",
+        JSON.stringify(
+          { syntheticOnly: true, codeVersion: version, cases: details },
+          null,
+          2,
+        ),
+      );
       save();
       console.log(
         JSON.stringify({ case: id, goalCompleted, reason, userPrompts }),
