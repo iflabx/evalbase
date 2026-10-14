@@ -1,0 +1,167 @@
+{
+  "format": "assistant-baseline-v1",
+  "harnessHash": "9e86edaf307b8cc91b0b7fb444ac677b9888ae7242bea7e3f01b50969af9ad29",
+  "caseDefinitionsHash": "538529b46704b9add73ef0197761391eecf464155aa394f897023647071cde8e",
+  "mode": "real",
+  "codeVersion": "a9abcbe0c439c8d52185eddeaba5520066798834",
+  "fixtureVersion": "synthetic-orders-200-v1",
+  "promptVersion": "assistant-prompt-v5",
+  "toolsVersion": "assistant-tools-v4",
+  "startedAt": "2026-10-14T17:05:38.756Z",
+  "results": [
+    {
+      "id": "A2",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "complete",
+      "userPrompts": 5,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 309678,
+      "turns": [
+        {
+          "id": "turn_44869eb3a3854cf2835cb5fc5bd36e0b",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_44869eb3a3854cf2835cb5fc5bd36e0b",
+            "finishReason": "stop",
+            "requestAttempts": 3,
+            "durationMs": 10354,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_12ef600cf509421591d484d4e1e0570b",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_12ef600cf509421591d484d4e1e0570b",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 1995,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_2fdcb0d2187b467494d062ad9f1c3c1a",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_2fdcb0d2187b467494d062ad9f1c3c1a",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 719,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_23b0175cf45e42829ef921a2d524d634",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_23b0175cf45e42829ef921a2d524d634",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 6010,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_2d0afa05ab9b446b97d007a1d6a9726d",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_2d0afa05ab9b446b97d007a1d6a9726d",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 487,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_5f3067d68d71418d912aa22a6aff9395",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_5f3067d68d71418d912aa22a6aff9395",
+            "finishReason": "stop",
+            "requestAttempts": 4,
+            "durationMs": 12415,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_dd87365de61f4bebb69a8a1562b2e2e2",
+          "event": "confirmed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_dd87365de61f4bebb69a8a1562b2e2e2",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 2615,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_c4329abc4e184d42a96ab364b3ce4931",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_c4329abc4e184d42a96ab364b3ce4931",
+            "finishReason": "stop",
+            "requestAttempts": 4,
+            "durationMs": 9760,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_72434cc3c6214f11b2ba55b6821f1027",
+          "event": "confirmed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_72434cc3c6214f11b2ba55b6821f1027",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 2485,
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "32ad54e35a8c66045fed0a20f9b29cfa9e3707804154b67b49e69a4ad7e81d4d",
+  "integration": {
+    "structurallyChecked": 200,
+    "unchangedResults": 198,
+    "modelProcessed": 2,
+    "modelRewritten": 2,
+    "selectedNoOp": 0,
+    "semanticReview": "two_model_rows_pending_review; unchanged_198_preservation_verified",
+    "manualCorrections": 0,
+    "sourceReferencesChecked": 200
+  }
+}

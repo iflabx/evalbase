@@ -162,7 +162,6 @@ OPT-07 已记录错误来源/过滤范围、冻结参数、回包丢失、后台
 
 只更新同一 4217 隔离验收环境，保护一个长期项目、管理员/编辑两账号及 Owner 数据；不重跑 200/10,000 条生成或新增压力测试。实际命令、结果、两轴审阅和 Owner 待验事项见 [OPT-13 验证](../.scratch/assistant-optimization/opt13-verification.md)。
 
-
 ### 5.9 OPT-14 加载性能与平滑过渡
 
 按 [R14-1–8](../.scratch/assistant-optimization/issues/14-loading-performance-and-transitions.md#验收标准) 检查授权历史服务端分页、摘要不含正文/大身份数组、筛选统计与来源失效；集成用例使用隔离数据库和对象存储，不启动真实模型任务。助手仍使用完整领域详情读取，保留原协议。
@@ -170,7 +169,6 @@ OPT-07 已记录错误来源/过滤范围、冻结参数、回包丢失、后台
 受影响浏览器回归覆盖无活跃任务停止轮询、运行至终态、显式/前台/网络恢复刷新、首次读取失败、短暂断线、切换账号、撤权清理、中文组合输入、防抖、跨页选择、自动保存与未知采用结果。桌面/窄窗口检查表格内滚动、固定反馈区及减少动态效果，使用可控 API 延迟/错误，不向共享服务器增加人为负载。
 
 4217 复用原数据，仅更新变更服务到固定提交并验证健康、就绪和前端请求。优化前后以相同账号、项目的少量只读请求记录字节与耗时；旧列表全量响应与新列表第一页须区分，不能作为同记录数量压测或整页帧率结论。命令、两轴审阅、修复复验及人工步骤集中在 [OPT-14 验证](../.scratch/assistant-optimization/opt14-verification.md)；Owner checkpoint 独立记录，不改写旧验收。
-
 
 ### 5.10 OPT-16 去重、参考范围与紧凑列表
 
@@ -185,7 +183,6 @@ OPT-07 已记录错误来源/过滤范围、冻结参数、回包丢失、后台
 按 [R17-1–10](../.scratch/assistant-optimization/issues/17-processing-task-rounds.md#验收标准) 做定向验证：当前集合替换/追加/重做、未选与失败旧值保留、去重后分批保存、已保存范围新基线、启动竞争和保存互斥；可控模型与独立数据库验证数量，不新增真实大批生成。迁移检查父子顺序、分叉独立、正文/身份保持和重复迁移；来源清理与访问权限复用实际依赖。
 
 浏览器集中核对稳定路由、列表分页、默认可保存选择、补齐状态刷新、只读历史、未知保存同键对账及桌面/480px donor 布局。复用未失效的 OPT-16 证据，不增加任意历史回滚、版本树或压力测试。实际结果和未覆盖限制见 [OPT-17 验证](../.scratch/assistant-optimization/opt17-verification.md)，Owner 验收单独记录。
-
 
 ### 5.12 OPT-18 配置与失败恢复
 
@@ -203,15 +200,15 @@ OPT-07 已记录错误来源/过滤范围、冻结参数、回包丢失、后台
 
 固定短请求、重复次数、基线与最终完成口径统一见 [总方案 §9](assistant-workspace-reliability-plan.md#9-具体用户流程与测试口径)。每张 Ticket 保存直接验收断言，不复制第二套测试清单：
 
-| Ticket | 验证侧重 |
-| --- | --- |
-| [OPT-20](../.scratch/assistant-optimization/issues/20-assistant-diagnostics-and-baseline.md) | 失败分类、诊断脱敏、修复前基线与任务级记录 |
-| [OPT-21](../.scratch/assistant-optimization/issues/21-assistant-bounded-recovery.md) | 故障注入、共享预算、取消、未知写入对账与成果保留 |
-| [OPT-22](../.scratch/assistant-optimization/issues/22-assistant-tool-and-plan-contract.md) | 规范化要求、阶段工具、计划/执行、规则变更及旧回执 |
-| [OPT-23](../.scratch/assistant-optimization/issues/23-assistant-context-and-background-refs.md) | 长会话、固定指代、背景原文引用与权限/版本失效 |
-| [OPT-24](../.scratch/assistant-optimization/issues/24-assistant-independent-workspace.md) | 页面迁移、导航、现有能力、窄窗口、安全渲染及按需读取 |
-| [OPT-25](../.scratch/assistant-optimization/issues/25-assistant-task-results-and-delivery.md) | 整任务候选、局部调整、原草稿保存、重复样本与最终交付 |
+| Ticket                                                                                          | 验证侧重                                             |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| [OPT-20](../.scratch/assistant-optimization/issues/20-assistant-diagnostics-and-baseline.md)    | 失败分类、诊断脱敏、修复前基线与任务级记录           |
+| [OPT-21](../.scratch/assistant-optimization/issues/21-assistant-bounded-recovery.md)            | 故障注入、共享预算、取消、未知写入对账与成果保留     |
+| [OPT-22](../.scratch/assistant-optimization/issues/22-assistant-tool-and-plan-contract.md)      | 规范化要求、阶段工具、计划/执行、规则变更及旧回执    |
+| [OPT-23](../.scratch/assistant-optimization/issues/23-assistant-context-and-background-refs.md) | 长会话、固定指代、背景原文引用与权限/版本失效        |
+| [OPT-24](../.scratch/assistant-optimization/issues/24-assistant-independent-workspace.md)       | 页面迁移、导航、现有能力、窄窗口、安全渲染及按需读取 |
+| [OPT-25](../.scratch/assistant-optimization/issues/25-assistant-task-results-and-delivery.md)   | 整任务候选、局部调整、原草稿保存、重复样本与最终交付 |
 
 默认使用现有假模型与隔离持久化验证确定性边界，真实模型只执行有界样例；同一固定 HEAD 的有效证据直接复用。暂时故障恢复不等于首次成功，结构通过不等于内容合格，人工修正单独记账。保留 4217 的 Owner 数据，不加入 5/10 人压测、两小时试验或服务器重启检查；最终页面闭环集中一次人工验收，不替旧 Ticket 签署通过。
 
-OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，并保存修复前真实模型小样本；统一入口为 `scripts/assistant-baseline.ts`。可控模式只报告合同断言，真实模式核对持久成果和范围；未知恢复/人工纠错计数保持 null。命令、样本、复审及同一 4217 版本见 [OPT-20 验证记录](../.scratch/assistant-optimization/opt20-verification.md)。OPT-21 已完成共享重试预算、故障/退避、停止/撤权、原回执与未知写入、过期重领、总结失败后的成果保留和 Worker 累计额度回归；实际命令与 A9/A10 结果见 [验证记录](../.scratch/assistant-optimization/opt21-verification.md)。OPT-22 已完成要求精确归一、薄参数绑定、阶段能力、固定选取及规则变更确认竞争的定向回归；原回执、Metadata 键限制、旧批次选择和背景要求重排均有覆盖，A2/A3/A4/A6/A9/A10 实际结果见 [验证记录](../.scratch/assistant-optimization/opt22-verification.md)。OPT-23 已完成超过六轮/五十条历史的当前来源、持久选择及替换失效、长结果成对摘要和步骤推进、定义原文复用/篡改拒绝、删除后显式撤销以及普通附件省略分类的保护；既有 GB 附件仅作只读引用核查。A2/A7/A8 及同一 4217 证据见 [验证记录](../.scratch/assistant-optimization/opt23-verification.md)。OPT-24 已完成独立路由/个人会话迁移、分页与按需明细、安全渲染、权限失效、输入/选择保留和当前方案修订执行；审阅指出的终态轮询、无效记忆回落及提交旧快照竞态均通过定向回归。固定 Web、真实旧会话的请求字节/耗时及同一 4217 数据保留见 [OPT-24 验证记录](../.scratch/assistant-optimization/opt24-verification.md)。后续 OPT-25 的整任务结果与最终集中验收仍待实施。
+OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，并保存修复前真实模型小样本；统一入口为 `scripts/assistant-baseline.ts`。可控模式只报告合同断言，真实模式核对持久成果和范围；未知恢复/人工纠错计数保持 null。命令、样本、复审及同一 4217 版本见 [OPT-20 验证记录](../.scratch/assistant-optimization/opt20-verification.md)。OPT-21 已完成共享重试预算、故障/退避、停止/撤权、原回执与未知写入、过期重领、总结失败后的成果保留和 Worker 累计额度回归；实际命令与 A9/A10 结果见 [验证记录](../.scratch/assistant-optimization/opt21-verification.md)。OPT-22 已完成要求精确归一、薄参数绑定、阶段能力、固定选取及规则变更确认竞争的定向回归；原回执、Metadata 键限制、旧批次选择和背景要求重排均有覆盖，A2/A3/A4/A6/A9/A10 实际结果见 [验证记录](../.scratch/assistant-optimization/opt22-verification.md)。OPT-23 已完成超过六轮/五十条历史的当前来源、持久选择及替换失效、长结果成对摘要和步骤推进、定义原文复用/篡改拒绝、删除后显式撤销以及普通附件省略分类的保护；既有 GB 附件仅作只读引用核查。A2/A7/A8 及同一 4217 证据见 [验证记录](../.scratch/assistant-optimization/opt23-verification.md)。OPT-24 已完成独立路由/个人会话迁移、分页与按需明细、安全渲染、权限失效、输入/选择保留和当前方案修订执行；审阅指出的终态轮询、无效记忆回落及提交旧快照竞态均通过定向回归。固定 Web、真实旧会话的请求字节/耗时及同一 4217 数据保留见 [OPT-24 验证记录](../.scratch/assistant-optimization/opt24-verification.md)。OPT-25 的整任务有效集合、选择修订、局部调整与原草稿确认回执已实施；跨批、排除、缺失、权限、参数恢复、未知写入及最终模型/200条集成证据汇总见 [OPT-25 验证记录](../.scratch/assistant-optimization/opt25-verification.md)。最终 Owner 集中验收仍 pending。

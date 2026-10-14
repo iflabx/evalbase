@@ -1,0 +1,93 @@
+{
+  "sha": "a9abcbe0c439c8d52185eddeaba5520066798834",
+  "observedStage": "awaiting_review",
+  "taskCandidates": {
+    "total": 200,
+    "savedCount": 0,
+    "pageRows": 20
+  },
+  "totalMessages": 10,
+  "legacyMessageCount": 10,
+  "renderedMs": 1168,
+  "catalogVisibleMs": 2888,
+  "apiMetrics": [
+    {
+      "label": "sessions20",
+      "bytes": 2040,
+      "elapsedMs": 1168
+    },
+    {
+      "label": "status",
+      "bytes": 12519,
+      "elapsedMs": 65
+    },
+    {
+      "label": "messages20",
+      "bytes": 260328,
+      "elapsedMs": 67
+    },
+    {
+      "label": "legacyFullComparison",
+      "bytes": 264800,
+      "elapsedMs": 110
+    },
+    {
+      "label": "taskCandidates20",
+      "bytes": 51532,
+      "elapsedMs": 4606
+    }
+  ],
+  "pageReads": [
+    {
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18",
+      "query": "?view=status",
+      "status": 200,
+      "bytes": 12519
+    },
+    {
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18",
+      "query": "?view=messages&limit=20",
+      "status": 200,
+      "bytes": 260328
+    },
+    {
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions",
+      "query": "?search=&offset=0&limit=20",
+      "status": 200,
+      "bytes": 2040
+    },
+    {
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18/candidates",
+      "query": "?scope=task&offset=0&limit=10&view=all&search=",
+      "status": 200,
+      "bytes": 33272
+    }
+  ],
+  "assistantRequestCount": 4,
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions",
+      "query": "?search=&offset=0&limit=20"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18",
+      "query": "?view=status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18",
+      "query": "?view=messages&limit=20"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/sessions/conversation_71943fe13f0744eeb656b85811e0bf18/candidates",
+      "query": "?scope=task&offset=0&limit=10&view=all&search="
+    }
+  ],
+  "inputPreserved": true,
+  "pageErrors": 0,
+  "assistantMutations": 0,
+  "note": "authenticated existing Owner conversation; no model calls, sends, adoption, upload or deletion"
+}

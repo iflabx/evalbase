@@ -1,0 +1,37 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "538529b46704b9add73ef0197761391eecf464155aa394f897023647071cde8e",
+  "mode": "controlled",
+  "codeVersion": "a9abcbe0c439c8d52185eddeaba5520066798834",
+  "fixtureVersion": "public-contract-fixtures-v1",
+  "promptVersion": "assistant-prompt-v5",
+  "toolsVersion": "assistant-tools-v4",
+  "startedAt": "2026-10-14T16:28:10.481Z",
+  "results": [
+    {
+      "id": "A9",
+      "contractPassed": true,
+      "assertions": 32,
+      "goalCompleted": null,
+      "durationMs": 44751,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A10",
+      "contractPassed": true,
+      "assertions": 9,
+      "goalCompleted": null,
+      "durationMs": 14711,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    }
+  ],
+  "inputHash": "b1fa521e3eb3598cacc762eb588eb3bede3daead2b66277c15cb7a58f097b6ff"
+}

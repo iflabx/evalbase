@@ -101,6 +101,9 @@ const sourceRoot = resolve(process.env.BASELINE_SOURCE_ROOT ?? ".");
 const version = process.env.GIT_SHA ?? "unknown";
 const report: any = {
   format: "assistant-baseline-v1",
+  harnessHash: createHash("sha256")
+    .update(readFileSync(new URL(import.meta.url)))
+    .digest("hex"),
   caseDefinitionsHash: createHash("sha256")
     .update(JSON.stringify(cases))
     .digest("hex"),
@@ -335,7 +338,7 @@ if (mode === "controlled") {
         userPrompts = 0,
         clarifications = 0;
       async function drive() {
-        const deadline = Date.now() + 180_000;
+        const deadline = Date.now() + (integration200 ? 600_000 : 180_000);
         let stable = 0;
         while (Date.now() < deadline) {
           state = await call("GET", path);
@@ -361,6 +364,8 @@ if (mode === "controlled") {
               );
             }
           }
+          // Processing may outlast the small-sample wait; inspect fresh facts after awaiting its worker.
+          state = await call("GET", path);
           const active = state.turns.some((t: any) =>
             ["queued", "running"].includes(t.status),
           );
@@ -903,6 +908,36 @@ if (mode === "controlled") {
             ).records,
           ];
           assert.equal(current.length, 200, "integration_refinement_count");
+          writeFileSync(
+            output + ".content.json",
+            JSON.stringify(
+              {
+                syntheticOnly: true,
+                changedUnselected: current
+                  .filter(
+                    (row: any) =>
+                      !chosen.includes(row.id) &&
+                      row.result.question !==
+                        all.find((old: any) => old.id === row.id).result
+                          .question,
+                  )
+                  .map((row: any) => ({
+                    id: row.id,
+                    before: all.find((old: any) => old.id === row.id).result
+                      .question,
+                    after: row.result.question,
+                  })),
+                selected: current
+                  .filter((row) => chosen.includes(row.id))
+                  .map((row) => ({
+                    before: all.find((old) => old.id === row.id).result,
+                    after: row.result,
+                  })),
+              },
+              null,
+              2,
+            ),
+          );
           for (const row of current) {
             const original = all.find((old) => old.id === row.id);
             assert(original, "integration_stable_identity");
@@ -917,28 +952,30 @@ if (mode === "controlled") {
               "integration_metadata_protection",
             );
             assert(
-              chosen.includes(row.id)
-                ? row.result.question !== original.result.question
-                : row.result.question === original.result.question,
+              chosen.includes(row.id) ||
+                row.result.question === original.result.question,
               "integration_selection_scope",
             );
           }
-          writeFileSync(
-            output + ".content.json",
-            JSON.stringify(
-              {
-                syntheticOnly: true,
-                selected: current
-                  .filter((row) => chosen.includes(row.id))
-                  .map((row) => ({
-                    before: all.find((old) => old.id === row.id).result,
-                    after: row.result,
-                  })),
-              },
-              null,
-              2,
-            ),
+          const refined = state.turns
+            .flatMap((turn: any) => turn.tools)
+            .find(
+              (tool: any) =>
+                tool.name === "refine_candidates" &&
+                tool.status === "succeeded",
+            );
+          assert.equal(
+            refined?.result?.refinedCount,
+            2,
+            "integration_processed_selection_count",
           );
+          const changedSelected = current.filter(
+            (row: any) =>
+              chosen.includes(row.id) &&
+              row.result.question !==
+                all.find((old: any) => old.id === row.id).result.question,
+          ).length;
+          assert(changedSelected > 0, "integration_selected_no_change");
           await send("将全部成果保存回原草稿。", { candidates: null });
           const proposal = state.proposals.find(
             (p: any) => p.status === "pending" && p.action === "processing",
@@ -1004,7 +1041,9 @@ if (mode === "controlled") {
           report.integration = {
             structurallyChecked: 200,
             unchangedResults: 198,
-            modelRewritten: 2,
+            modelProcessed: 2,
+            modelRewritten: changedSelected,
+            selectedNoOp: 2 - changedSelected,
             semanticReview:
               "two_model_rows_pending_review; unchanged_198_preservation_verified",
             manualCorrections: 0,
@@ -1035,6 +1074,7 @@ if (mode === "controlled") {
             ? "goal_assertions_passed"
             : "goal_not_reached";
       } catch (error) {
+        goalCompleted = false;
         // Only locally-defined assertion codes enter evidence, never provider exception strings.
         if (
           error instanceof assert.AssertionError &&

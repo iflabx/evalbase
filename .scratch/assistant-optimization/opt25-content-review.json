@@ -1,0 +1,377 @@
+{
+  "format": "opt25-content-review-v1",
+  "codeVersion": "a9abcbe0c439c8d52185eddeaba5520066798834",
+  "reviewer": "Codex manual inspection",
+  "syntheticOnly": true,
+  "reviewedRows": 40,
+  "integrationRowsPending": 0,
+  "manualEdits": 0,
+  "unsupportedAnswerFacts": 8,
+  "expansionPlaceholderAnswers": 16,
+  "realBusinessOraclesVerified": 0,
+  "assessment": "流程、结构和选中范围通过不代表内容全部可用；生成答案仍需真实业务依据。未新增语义评分器。",
+  "rows": [
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:0",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:1",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:2",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:3",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:4",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:5",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:6",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 1,
+      "candidateId": "processing_8270bc42dff74863b06544dc6db8cadf:0:7",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:0",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:1",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:2",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:3",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:4",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:5",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:6",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 2,
+      "candidateId": "processing_4db5249645e64cd7a2a3aaba8ec8cc2c:0:7",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:0",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:1",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:2",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:3",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:4",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:5",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:6",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A4",
+      "sample": 3,
+      "candidateId": "processing_7c591bd8d7294a778e9205d0e726c7a6:0:7",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "unsupported_business_facts",
+      "manualEdits": 0
+    },
+    {
+      "case": "A5",
+      "sample": 1,
+      "candidateId": "processing_a53faaa3f0504058880ac5252a83c01d:0:0",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A5",
+      "sample": 1,
+      "candidateId": "processing_a53faaa3f0504058880ac5252a83c01d:0:1",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A5",
+      "sample": 2,
+      "candidateId": "processing_d2b055a9f50e4f3ebd7179f4ea20145b:0:0",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A5",
+      "sample": 2,
+      "candidateId": "processing_d2b055a9f50e4f3ebd7179f4ea20145b:0:1",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A5",
+      "sample": 3,
+      "candidateId": "processing_e9de71f72fd7421dad14d466591f5051:0:0",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A5",
+      "sample": 3,
+      "candidateId": "processing_e9de71f72fd7421dad14d466591f5051:0:1",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:0",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:1",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:2",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:3",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:4",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:5",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:6",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "A8",
+      "sample": 1,
+      "candidateId": "processing_f83e49b40bb94fb386e2f30edb04c64f:0:7",
+      "reviewed": ["question_meaning", "category"],
+      "questionAssessment": "consistent_with_source_intent",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "integration200",
+      "selection": "first",
+      "sourceRecordId": "draftrow_aec3f6a9061747cdbc93dc460f9d613d",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "order_number_and_intent_preserved; more_colloquial",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    },
+    {
+      "case": "integration200",
+      "selection": "last",
+      "sourceRecordId": "draftrow_c3ca85b9f7bc441dbf49e838716440d1",
+      "reviewed": ["rewrite_meaning", "protected_fields"],
+      "questionAssessment": "order_number_and_intent_preserved; more_colloquial",
+      "answerAssessment": "synthetic_marker_not_real_oracle",
+      "manualEdits": 0
+    }
+  ],
+  "integrationSourceAndStructureChecked": 200,
+  "integrationUnselectedPreserved": 198
+}

@@ -1,0 +1,1012 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "538529b46704b9add73ef0197761391eecf464155aa394f897023647071cde8e",
+  "mode": "real",
+  "codeVersion": "a9abcbe0c439c8d52185eddeaba5520066798834",
+  "fixtureVersion": "synthetic-eight-v1",
+  "promptVersion": "assistant-prompt-v5",
+  "toolsVersion": "assistant-tools-v4",
+  "startedAt": "2026-10-14T16:28:09.505Z",
+  "results": [
+    {
+      "id": "A1",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "waiting_input",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 6340,
+      "turns": [
+        {
+          "id": "turn_57b46d8e9e07494483dc024709df88d7",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_57b46d8e9e07494483dc024709df88d7",
+            "finishReason": "stop",
+            "requestAttempts": 2,
+            "durationMs": 4298,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 23114,
+      "turns": [
+        {
+          "id": "turn_508318d59f3445bf9b777f8342734572",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_508318d59f3445bf9b777f8342734572",
+            "finishReason": "stop",
+            "requestAttempts": 3,
+            "durationMs": 6792,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_9f3c4f4791544481a9ffe43807501011",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_9f3c4f4791544481a9ffe43807501011",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 1884,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_459f7faf5be847bfb0a22ac556597d75",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_459f7faf5be847bfb0a22ac556597d75",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 627,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "goalCompleted": true,
+      "sample": 2,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 25803,
+      "turns": [
+        {
+          "id": "turn_f2369d7a071d406a815fef1b3a1a08bd",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_f2369d7a071d406a815fef1b3a1a08bd",
+            "finishReason": "stop",
+            "requestAttempts": 3,
+            "durationMs": 8075,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_8af0ed6dfcc540f9942d72139f5bf698",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_8af0ed6dfcc540f9942d72139f5bf698",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3349,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_7e6be0f4b6184641ab3ebafba49c51da",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_7e6be0f4b6184641ab3ebafba49c51da",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 503,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "goalCompleted": true,
+      "sample": 3,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 25671,
+      "turns": [
+        {
+          "id": "turn_a2f40e7e06ba47d59bc0cc1450ffd548",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_a2f40e7e06ba47d59bc0cc1450ffd548",
+            "finishReason": "stop",
+            "requestAttempts": 3,
+            "durationMs": 6354,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_ba6e66b80868417d9030337d2d0147c0",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_ba6e66b80868417d9030337d2d0147c0",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 4514,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_7121ec5af4bc43c99aa4f42b0cc19484",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_7121ec5af4bc43c99aa4f42b0cc19484",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 420,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 15295,
+      "turns": [
+        {
+          "id": "turn_0096de196ed54f7a846ec76d3d355528",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_0096de196ed54f7a846ec76d3d355528",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 2714,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_dd0115aadad84dcf8779a3b77c93e9c1",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_dd0115aadad84dcf8779a3b77c93e9c1",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 419,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 19952,
+      "turns": [
+        {
+          "id": "turn_67af3354276e41f9b42aa62a6e0a3bdd",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_67af3354276e41f9b42aa62a6e0a3bdd",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 6631,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_e5bc2dfda085415abfaa8cfc6bf69989",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_e5bc2dfda085415abfaa8cfc6bf69989",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 511,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "goalCompleted": true,
+      "sample": 2,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 18843,
+      "turns": [
+        {
+          "id": "turn_850a3e56f7eb4368af7ba529941153da",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_850a3e56f7eb4368af7ba529941153da",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 6413,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_dab679b580ac4f538648bc09c74e1b58",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_dab679b580ac4f538648bc09c74e1b58",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 367,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "goalCompleted": true,
+      "sample": 3,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 21057,
+      "turns": [
+        {
+          "id": "turn_a2b83f599988428c817ae2cd430bd7d0",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_a2b83f599988428c817ae2cd430bd7d0",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 6657,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_89722252c45845febcb4153c018de625",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_89722252c45845febcb4153c018de625",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 422,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 24839,
+      "turns": [
+        {
+          "id": "turn_c56e10aa91814eeb87a703bc013796bb",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_c56e10aa91814eeb87a703bc013796bb",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3014,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_ba921706efda4d7b8989f9bcd59ee009",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_ba921706efda4d7b8989f9bcd59ee009",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 309,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_64a9a7111f5e4e15a92bddc1ae4d4a68",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_64a9a7111f5e4e15a92bddc1ae4d4a68",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3111,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_46d41a40eece41edbafc5709741d9d99",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_46d41a40eece41edbafc5709741d9d99",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 317,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "goalCompleted": true,
+      "sample": 2,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 25054,
+      "turns": [
+        {
+          "id": "turn_fe859557d9d645fea5b126b89e501fce",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_fe859557d9d645fea5b126b89e501fce",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3226,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_a873539cf16b4c56a73fcd914ce562d3",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_a873539cf16b4c56a73fcd914ce562d3",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 479,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_cf711013616d4c6db292e77f72495c94",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_cf711013616d4c6db292e77f72495c94",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3301,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_d6f9dda663af4db3909f8134bb1cbdf5",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_d6f9dda663af4db3909f8134bb1cbdf5",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 392,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "goalCompleted": true,
+      "sample": 3,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 25063,
+      "turns": [
+        {
+          "id": "turn_0e1b5bc8f633461a8bd027a536b0d2d9",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_0e1b5bc8f633461a8bd027a536b0d2d9",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 2595,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_650f590faf4c40e79aaeb5ee87922f04",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_650f590faf4c40e79aaeb5ee87922f04",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 406,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_9eba98812fcf44abad932422ba073d1d",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_9eba98812fcf44abad932422ba073d1d",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 4925,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_78f67a7035614223b516a3b691a21243",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_78f67a7035614223b516a3b691a21243",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 486,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A6",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 36205,
+      "turns": [
+        {
+          "id": "turn_2872288013cd4ae4b809e3540a30c51b",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_2872288013cd4ae4b809e3540a30c51b",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3140,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_e93778baad6945bf9ed126a6f14d4acd",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_e93778baad6945bf9ed126a6f14d4acd",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 417,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_57a9d6069c1a4e138745778fc95a20dd",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_57a9d6069c1a4e138745778fc95a20dd",
+            "finishReason": "stop",
+            "requestAttempts": 4,
+            "durationMs": 18068,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A7",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 9,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 41769,
+      "turns": [
+        {
+          "id": "turn_94efffd65bc746bbad29ab04acef6dc3",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_94efffd65bc746bbad29ab04acef6dc3",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 2634,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_a92b98ae01804363b2c26402e67d688e",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_a92b98ae01804363b2c26402e67d688e",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 385,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_01f37565143845f6903ba5ac12f6fd34",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_01f37565143845f6903ba5ac12f6fd34",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 1463,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_f4676329ef154793aa0ebaf32baa948a",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_f4676329ef154793aa0ebaf32baa948a",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 760,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_944689b789ff4735b6cd12e192586832",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_944689b789ff4735b6cd12e192586832",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 767,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_e4997fba1be747b6842b111dffaf0570",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_e4997fba1be747b6842b111dffaf0570",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 765,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_19e80d86f5fa432db1f9cdab76f6a848",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_19e80d86f5fa432db1f9cdab76f6a848",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 775,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_4af414ff1d2f4b1f9310632605338984",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_4af414ff1d2f4b1f9310632605338984",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 1431,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_8923865894184d12811f6171a0f4e316",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_8923865894184d12811f6171a0f4e316",
+            "finishReason": "stop",
+            "requestAttempts": 1,
+            "durationMs": 1380,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_15dd4a67628f44b9b93c2cfcfcebe0ac",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_15dd4a67628f44b9b93c2cfcfcebe0ac",
+            "finishReason": "stop",
+            "requestAttempts": 2,
+            "durationMs": 2680,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A8",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_review",
+      "userPrompts": 1,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 16745,
+      "turns": [
+        {
+          "id": "turn_3d578ecc0ff242e0b3ae66555d75c31c",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_3d578ecc0ff242e0b3ae66555d75c31c",
+            "finishReason": "tool-calls",
+            "requestAttempts": 2,
+            "durationMs": 6476,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_f3cbae29e2c743f591659007059f0ca9",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_f3cbae29e2c743f591659007059f0ca9",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 419,
+            "category": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "A10",
+      "goalCompleted": true,
+      "sample": 1,
+      "toolParameterFailures": 0,
+      "toolParameterRecoveries": 0,
+      "reason": "goal_assertions_passed",
+      "assertionCode": null,
+      "stage": "awaiting_confirmation",
+      "userPrompts": 2,
+      "automaticRepairs": null,
+      "protocolRepairs": 0,
+      "userClarifications": 0,
+      "extraBusinessPrompts": 0,
+      "manualContinuations": 0,
+      "manualTurnRetries": 0,
+      "userRetriedNoEffectTurns": 0,
+      "userRecoveredParameterTurns": 0,
+      "semanticCorrections": null,
+      "semanticReview": "pending_human_review",
+      "durationMs": 45055,
+      "turns": [
+        {
+          "id": "turn_0a1d129781d745aabba8e558c176e75a",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_0a1d129781d745aabba8e558c176e75a",
+            "finishReason": "tool-calls",
+            "requestAttempts": 1,
+            "durationMs": 3301,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_bfc2625a69104f1585758cf52af5d071",
+          "event": "processing_completed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_bfc2625a69104f1585758cf52af5d071",
+            "finishReason": "not_returned",
+            "requestAttempts": 0,
+            "durationMs": 368,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_5c431ac9c9784e6d868992400cadc9f0",
+          "event": "user",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_5c431ac9c9784e6d868992400cadc9f0",
+            "finishReason": "stop",
+            "requestAttempts": 3,
+            "durationMs": 14167,
+            "category": null
+          }
+        },
+        {
+          "id": "turn_0f509fe447e74c108723cc3dd1452190",
+          "event": "confirmed",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "diagnosticId": "turn_0f509fe447e74c108723cc3dd1452190",
+            "finishReason": "stop",
+            "requestAttempts": 2,
+            "durationMs": 10724,
+            "category": null
+          }
+        }
+      ]
+    }
+  ],
+  "modelRevision": 1,
+  "model": "qwen3.8-27b-un",
+  "inputHash": "a3ffe00d2eb1a46b977d8edad88e1b2348c542de077e97f9ff6bbba2dce182b1"
+}
