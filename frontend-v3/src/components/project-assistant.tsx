@@ -48,6 +48,22 @@ type Turn = {
   assistantText: string;
   status: string;
   errorCode: string | null;
+  diagnostics?: {
+    diagnosticId: string;
+    requestAttempts: number;
+    modelRevision: number | null;
+    durationMs: number;
+    retainedOperations: number;
+    retainedCandidates: number | null;
+    currentStep: { id: string | null; action: string } | null;
+    failure?: {
+      layer: string;
+      category: string;
+      httpStatus: number | null;
+      reason: string;
+      nextAction: string;
+    };
+  };
   tools: ToolResult[];
 };
 type Proposal = {
@@ -615,9 +631,40 @@ export function ProjectAssistant({
                         </p>
                       )}
                       {turn.errorCode && (
-                        <p role="alert" className="text-destructive">
-                          {messages[turn.errorCode] ?? "本轮未完成，请核对已执行的操作后再试。"}
-                        </p>
+                        <div className="space-y-2">
+                          <p role="alert" className="text-destructive">
+                            {turn.diagnostics?.failure?.reason ??
+                              messages[turn.errorCode] ??
+                              "本轮未完成，请核对已执行的操作后再试。"}
+                          </p>
+                          {turn.diagnostics?.failure?.nextAction && (
+                            <p className="text-sm text-muted-foreground">
+                              {turn.diagnostics.failure.nextAction}
+                            </p>
+                          )}
+                          <details className="text-xs text-muted-foreground">
+                            <summary className="cursor-pointer">诊断详情</summary>
+                            {turn.diagnostics?.failure ? (
+                              <div className="mt-2 space-y-1 break-words">
+                                {turn.diagnostics.currentStep && (
+                                  <p>
+                                    失败步骤：
+                                    {toolLabels[turn.diagnostics.currentStep.action] ?? "当前操作"}
+                                  </p>
+                                )}
+                                <p>
+                                  已完成数据操作 {turn.diagnostics.retainedOperations} 项
+                                  {turn.diagnostics.retainedCandidates !== null
+                                    ? ` · 保留候选 ${turn.diagnostics.retainedCandidates} 条`
+                                    : ""}
+                                </p>
+                                <p>诊断编号：{turn.diagnostics.diagnosticId}</p>
+                              </div>
+                            ) : (
+                              <p className="mt-2">没有详细诊断，已执行操作可在下方核对。</p>
+                            )}
+                          </details>
+                        </div>
                       )}
                       {turn.tools.length > 0 && (
                         <details className="rounded-md border bg-card p-3">

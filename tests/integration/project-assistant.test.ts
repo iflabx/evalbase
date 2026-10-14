@@ -48,11 +48,40 @@ describe("project assistant public contract", () => {
   let hold = false,
     release: () => void = () => undefined,
     entered: () => void = () => undefined;
+  let providerFailure: number | "network" | "json" | "shape" | undefined;
+  let failAfterTool = false;
   const server = createServer(async (req, res) => {
     let text = "";
     for await (const chunk of req) text += chunk;
     const body = JSON.parse(text);
     calls.push(body);
+    if (
+      providerFailure !== undefined &&
+      (!failAfterTool || body.messages.at(-1)?.role === "tool")
+    ) {
+      const failure = providerFailure;
+      providerFailure = undefined;
+      failAfterTool = false;
+      if (failure === "network") {
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(typeof failure === "number" ? failure : 200, {
+        "content-type": "application/json",
+      });
+      res.end(
+        failure === "json"
+          ? "{"
+          : failure === "shape"
+            ? "{}"
+            : JSON.stringify({
+                error: {
+                  message: "private-provider-canary synthetic-test-key",
+                },
+              }),
+      );
+      return;
+    }
     if (!body.tools) {
       let processing;
       try {
@@ -11359,4 +11388,148 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+  it.each([
+    [429, "rate_limit"],
+    [503, "temporary_service"],
+    [401, "provider_rejected"],
+    ["network", "network_error"],
+    ["json", "output_protocol"],
+    ["shape", "output_protocol"],
+  ] as const)(
+    "OPT-20 classifies provider failure %s through the public session",
+    async (failure, category) => {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const before = calls.length;
+      providerFailure = failure;
+      const response = await send("查询项目信息", undefined, "failed");
+      const state = response.json();
+      const turn = state.turns.at(-1);
+      expect(turn.diagnostics.failure).toMatchObject({
+        layer: "model",
+        category,
+      });
+      expect(turn.diagnostics).toMatchObject({
+        requestAttempts: 1,
+        modelRevision: 1,
+        contractVersion: "assistant-diagnostics-v1",
+      });
+      expect(turn.diagnostics.failure.httpStatus).toBe(
+        typeof failure === "number" ? failure : null,
+      );
+      expect(turn.diagnostics.diagnosticId).toBe(turn.id);
+      expect(state.task.recovery.message.length).toBeGreaterThan(10);
+      expect(response.body).not.toContain("private-provider-canary");
+      expect(response.body).not.toContain("synthetic-test-key");
+      expect(calls.length - before).toBe(1);
+    },
+  );
+  it("OPT-20 preserves completed operations when the provider fails during the summary", async () => {
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    providerFailure = 503;
+    failAfterTool = true;
+    const state = (
+      await send("创建一个测试集草稿", undefined, "failed")
+    ).json();
+    const turn = state.turns.at(-1);
+    expect(
+      turn.tools.filter(
+        (t: any) => t.name === "create_draft" && t.status === "succeeded",
+      ),
+    ).toHaveLength(1);
+    expect(turn.diagnostics.retainedOperations).toBe(1);
+    expect(turn.diagnostics.failure.category).toBe("temporary_service");
+    expect(state.task.recovery.message).toContain("保留");
+  });
+  it("OPT-20 does not count a pending confirmation as a completed data operation", async () => {
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "待确认诊断" },
+      })
+    ).json().draft.id;
+    await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+      headers,
+      payload: {
+        question: "合成问题",
+        expectedOutput: "合成答案",
+        metadata: [],
+      },
+    });
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    requestedTool = { name: "request_publish", input: { draftId: draft } };
+    providerFailure = 503;
+    failAfterTool = true;
+    try {
+      const state = (
+        await send("准备发布这个草稿", { kind: "draft", id: draft }, "failed")
+      ).json();
+      expect(state.proposals.some((p: any) => p.status === "pending")).toBe(
+        true,
+      );
+      expect(state.turns.at(-1).diagnostics.retainedOperations).toBe(0);
+    } finally {
+      requestedTool = undefined;
+    }
+  });
+  it.each([undefined, "ECONNRESET", "TimeoutError"])(
+    "OPT-20 identifies application faults %s without leaking the exception",
+    async (fault) => {
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const original = contextModule.assistantContext;
+      const spy = vi
+        .spyOn(contextModule, "assistantContext")
+        .mockImplementation(async (...args) => {
+          if (args.length === 4)
+            throw Object.assign(
+              new Error("private-application-canary"),
+              fault === "TimeoutError" ? { name: fault } : { code: fault },
+            );
+          return original(...args);
+        });
+      try {
+        const state = (await send("查询项目信息", undefined, "failed")).json();
+        expect(state.turns.at(-1).diagnostics.failure).toMatchObject({
+          layer: "application",
+          category: "internal_error",
+        });
+        expect(JSON.stringify(state)).not.toContain(
+          "private-application-canary",
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 });

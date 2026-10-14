@@ -208,7 +208,10 @@ const modelFetch: typeof fetch = async (input, init) => {
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         received += chunk.byteLength;
-        if (received > 8_000_000) throw new Error("model_response_too_large");
+        if (received > 8_000_000)
+          throw Object.assign(new Error("model_response_too_large"), {
+            code: "model_response_too_large",
+          });
         controller.enqueue(chunk);
       },
     }),
@@ -224,6 +227,13 @@ export async function configuredModel(
   config: Config,
   revision?: number,
   allowDisabled = false,
+  observeRequest?: (
+    observation: {
+      httpStatus: number | null;
+      timeToHeadersMs: number;
+    },
+    error?: unknown,
+  ) => void,
 ) {
   const connection = await readConnection(db, revision);
   if (!connection || (!allowDisabled && !connection.enabled))
@@ -232,7 +242,29 @@ export async function configuredModel(
     name: "evalbase",
     baseURL: connection.endpoint,
     apiKey: decrypt(connection, config),
-    fetch: modelFetch,
+    fetch: observeRequest
+      ? async (input, init) => {
+          const started = Date.now();
+          let httpStatus: number | null = null;
+          let failure: unknown;
+          try {
+            const response = await modelFetch(input, init);
+            httpStatus = response.status;
+            return response;
+          } catch (error) {
+            failure = error;
+            throw error;
+          } finally {
+            observeRequest(
+              {
+                httpStatus,
+                timeToHeadersMs: Date.now() - started,
+              },
+              failure,
+            );
+          }
+        }
+      : modelFetch,
   });
   return {
     revision: connection.revision,

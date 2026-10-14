@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+import { assistantFailure } from "../../src/assistant/diagnostics.js";
+
+describe("assistant diagnostic metadata", () => {
+  it.each([
+    ["assistant_no_progress", "budget", "budget_exhausted"],
+    ["model_connection_unavailable", "model", "provider_rejected"],
+    ["assistant_operation_failed", "application", "internal_error"],
+    ["assistant_context_changed", "business", "conflict"],
+    ["assistant_scope_invalid", "tool", "parameter_invalid"],
+    ["assistant_forbidden", "business", "permission_or_source"],
+  ])("classifies %s without storing error text", (code, layer, category) => {
+    const diagnostic = assistantFailure(new Error("private-canary"), code);
+    expect(diagnostic).toMatchObject({ layer, category });
+    expect(JSON.stringify(diagnostic)).not.toContain("private-canary");
+  });
+
+  it("classifies bounded output separately from configuration and handles error causes", () => {
+    const error = new Error("private-response", {
+      cause: Object.assign(new Error("private-body"), {
+        code: "model_response_too_large",
+      }),
+    });
+    expect(assistantFailure(error, "assistant_model_failed")).toMatchObject({
+      layer: "model",
+      category: "output_protocol",
+    });
+    expect(
+      JSON.stringify(assistantFailure(error, "assistant_model_failed")),
+    ).not.toContain("private-");
+    expect(
+      assistantFailure(new Error("unknown-internal"), "assistant_model_failed")
+        .layer,
+    ).toBe("application");
+    expect(
+      assistantFailure(
+        Object.assign(new Error("invalid application prompt"), {
+          name: "AI_InvalidPromptError",
+        }),
+        "assistant_model_failed",
+      ).layer,
+    ).toBe("application");
+  });
+
+  it("does not recommend replaying an operation with an uncertain effect", () => {
+    expect(
+      assistantFailure({}, "assistant_scope_invalid", { effect: "unknown" })
+        .nextAction,
+    ).toContain("先核对真实操作回执");
+  });
+
+  it("requires provider origin before classifying transport failures", () => {
+    const network = Object.assign(new Error("private-db"), {
+      code: "ECONNRESET",
+    });
+    const timeout = Object.assign(new Error("private-db"), {
+      name: "TimeoutError",
+    });
+    for (const error of [network, timeout]) {
+      expect(assistantFailure(error, "assistant_model_failed").layer).toBe(
+        "application",
+      );
+      expect(
+        assistantFailure(error, "assistant_model_failed", undefined, true)
+          .layer,
+      ).toBe("model");
+    }
+    expect(
+      assistantFailure({ statusCode: 503 }, "assistant_model_failed"),
+    ).toMatchObject({ layer: "application", httpStatus: null });
+  });
+});

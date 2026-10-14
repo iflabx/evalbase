@@ -1,6 +1,77 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAccountRoute } from "./mock-account";
 
+test("OPT-20 explains retained results and supports legacy failures without invented diagnostics", async ({
+  page,
+}) => {
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [
+            { id: "four", title: "失败诊断", ordinal: 4, updated_at: "2026-10-14T08:00:00Z" },
+          ],
+        },
+      });
+    if (path.endsWith("/sessions/four"))
+      return route.fulfill({
+        json: {
+          sessionId: "four",
+          proposals: [],
+          turns: [
+            {
+              id: "diagnosed",
+              userText: "扩写",
+              assistantText: "",
+              status: "failed",
+              errorCode: "assistant_model_failed",
+              tools: [],
+              diagnostics: {
+                diagnosticId: "diagnosed",
+                currentStep: { id: "review", action: "read_processing" },
+                retainedOperations: 1,
+                retainedCandidates: 8,
+                failure: {
+                  reason: "模型服务暂时不可用，本轮回复未完成。",
+                  nextAction: "稍后重试未完成步骤。",
+                },
+              },
+            },
+            {
+              id: "legacy",
+              userText: "旧失败",
+              assistantText: "",
+              status: "failed",
+              errorCode: "assistant_model_failed",
+              tools: [],
+            },
+          ],
+        },
+      });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await expect(
+    page.getByText("模型服务暂时不可用，本轮回复未完成。", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("稍后重试未完成步骤。", { exact: true })).toBeVisible();
+  const details = page
+    .locator("details")
+    .filter({ has: page.getByText("诊断详情", { exact: true }) });
+  await details.nth(0).locator("summary").click();
+  await expect(
+    page.getByText("已完成数据操作 1 项 · 保留候选 8 条", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("诊断编号：diagnosed", { exact: true })).toBeVisible();
+  await details.nth(1).locator("summary").click();
+  await expect(
+    page.getByText("没有详细诊断，已执行操作可在下方核对。", { exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 860, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
 test("shows only the current effective requirements and retains a field conflict after reload", async ({
   page,
 }) => {

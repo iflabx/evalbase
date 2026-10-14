@@ -44,6 +44,7 @@ import type { Config } from "../config.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { configuredModel } from "../model/connection.js";
 import { assistantContext } from "./context.js";
+import { assistantFailure, type AssistantFailure } from "./diagnostics.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject } from "../server/support.js";
 import { hasProjectCapability } from "../security/project-access.js";
@@ -352,6 +353,13 @@ export async function executeAssistantTurn(
     | undefined;
   const startedAt = Date.now();
   let finishReason = "not_returned";
+  let modelRevision: number | null = null;
+  const requests: { httpStatus: number | null; timeToHeadersMs: number }[] = [];
+  const modelTransportErrors = new WeakSet<object>();
+  let failureDiagnostic: AssistantFailure | undefined;
+  let retainedOperations = 0;
+  let retainedCandidates: number | null = null;
+  let currentStep: { id: string | null; action: string } | null = null;
   const restoring = Number(turn.execution_attempt) > 1 || turn.resuming;
   const restoringLegacyProcessing =
     restoring &&
@@ -457,7 +465,41 @@ export async function executeAssistantTurn(
       modelSteps,
       toolCalls,
       durationMs: Date.now() - startedAt,
+      diagnosticId: turn.id,
+      sessionId: turn.session_id,
+      taskRevision: turn.task_revision,
+      codeVersion: config.gitSha,
+      contractVersion: "assistant-diagnostics-v1",
+      promptVersion: "assistant-prompt-v1",
+      toolsVersion: "assistant-tools-v1",
+      modelRevision,
+      requestAttempts: requests.length,
+      requests,
+      protocolRepairs: Number(protocolRepair),
+      retainedOperations,
+      retainedCandidates,
+      currentStep,
+      ...(failureDiagnostic ? { failure: failureDiagnostic } : {}),
     };
+  }
+  function retainedFacts(task: any, results: Record<string, any>[]) {
+    retainedOperations = results.filter(
+      (item) =>
+        item.status === "succeeded" &&
+        !item.result?.requiresUserConfirmation &&
+        ![
+          "query_project",
+          "read_records",
+          "read_background",
+          "read_processing",
+          "plan_task",
+        ].includes(item.name),
+    ).length;
+    retainedCandidates = Number.isInteger(task?.review?.total)
+      ? task.review.total
+      : null;
+    const step = task?.executionPlan?.steps?.[task.executionPlan.current];
+    currentStep = step ? { id: step.id ?? null, action: step.action } : null;
   }
   async function yieldPendingStep() {
     if (
@@ -496,6 +538,7 @@ export async function executeAssistantTurn(
       noProgress = true;
       return false;
     }
+    retainedFacts(saved.task, tools);
     const observation = { turnId: turn.id, ...diagnostics("budget_yield") };
     const patch = {
       stage: "yielding",
@@ -536,6 +579,13 @@ export async function executeAssistantTurn(
         turn.session_id,
       ])
     ).rows[0]?.task;
+    const results =
+      (
+        await db.query("SELECT tool_results FROM assistant_turn WHERE id=$1", [
+          turn.id,
+        ])
+      ).rows[0]?.tool_results ?? [];
+    retainedFacts(task, results);
     const observation = {
       turnId: turn.id,
       ...diagnostics(),
@@ -2958,7 +3008,17 @@ export async function executeAssistantTurn(
   }
   try {
     await turnFence(db, scope, turn.id, turn.execution_token);
-    const model = await configuredModel(db, config);
+    const model = await configuredModel(
+      db,
+      config,
+      undefined,
+      false,
+      (observation, error) => {
+        requests.push(observation);
+        if (error && typeof error === "object") modelTransportErrors.add(error);
+      },
+    );
+    modelRevision = model.revision;
     context = await assistantContext(
       db,
       scope,
@@ -3549,34 +3609,57 @@ export async function executeAssistantTurn(
       )
     ).rows[0];
     const failure = unresolvedFailure(state?.tool_results ?? []);
-    const errorCode =
+    let errorCode =
       failure?.error?.code ??
       (noProgress
         ? "assistant_no_progress"
         : e instanceof AssistantError
           ? e.code
-          : (plannedAction || processingEventRunId) &&
-              ToolChoiceViolationError.isInstance(e)
-            ? "assistant_task_not_executed"
-            : "assistant_model_failed");
+          : e instanceof Error &&
+              "code" in e &&
+              String(e.code).startsWith("model_")
+            ? String(e.code)
+            : (plannedAction || processingEventRunId) &&
+                ToolChoiceViolationError.isInstance(e)
+              ? "assistant_task_not_executed"
+              : "assistant_model_failed");
+    let cause = e;
+    let modelTransportFailure = false;
+    for (let i = 0; i < 5 && cause && typeof cause === "object"; i++) {
+      modelTransportFailure ||= modelTransportErrors.has(cause);
+      cause = (cause as { cause?: unknown }).cause;
+    }
+    failureDiagnostic = assistantFailure(
+      e,
+      errorCode,
+      failure,
+      modelTransportFailure,
+    );
+    if (
+      failureDiagnostic.layer === "application" &&
+      errorCode === "assistant_model_failed"
+    )
+      errorCode = "assistant_internal_error";
+    if (
+      finishReason === "length" &&
+      failureDiagnostic.layer === "model" &&
+      failureDiagnostic.category === "output_protocol"
+    )
+      failureDiagnostic = {
+        ...failureDiagnostic,
+        category: "output_truncated",
+        reason: "模型输出达到长度上限，回复未完成。",
+      };
     await updateTask(db, turn, {
       stage: "failed",
       error: errorCode,
       recovery: {
         kind: failure
           ? "execution"
-          : errorCode === "assistant_model_failed" ||
-              errorCode === "assistant_result_incomplete"
+          : failureDiagnostic.layer === "model"
             ? "model_reply"
             : "execution",
-        message: failure
-          ? `${state?.task?.executionPlan?.steps?.[state.task.executionPlan.current]?.title ?? "当前操作"}${state?.task?.targetName ? `（${state.task.targetName}）` : ""}未完成（${errorCode}）。${failure.error?.hint ?? "请读取真实对象并修正当前步骤参数后继续；已有成果保留。"}`
-          : errorCode === "assistant_model_failed" ||
-              errorCode === "assistant_result_incomplete"
-            ? "模型回复未完成。已提交的任务和已保存的成果保留；重试会先核对真实回执。"
-            : errorCode === "assistant_no_progress"
-              ? "连续执行没有取得新进展，已暂停。请检查当前步骤和要求；已有成果保留。"
-              : "当前步骤未完成，已有成果保留。请检查具体原因后继续未完成部分。",
+        message: `${failureDiagnostic.reason} 已执行操作和已有成果保留。${failureDiagnostic.nextAction}`,
       },
     }).catch(() => undefined);
     await saveDiagnostics(errorCode).catch(() => undefined);
