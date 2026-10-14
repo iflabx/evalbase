@@ -1,10 +1,10 @@
 # OPT-24 独立项目助手页面与会话工作区
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-20
+Implementation: completed
+Blocked by: none
 
-优先级：P1。当前仅授权方案/Tickets；推荐在 OPT-23 后串行实施，避免来回接线。布局与行为以 [总方案 §6、§8](../../../docs/assistant-workspace-reliability-plan.md) 为准；UI 严格复用 [frontend-v1 donor 约束](../../../docs/architecture/phase1a-frontend-reuse.md)，正式代码只改 `frontend-v3/`。
+优先级：P1。Owner 已于 2026-10-14 单张授权开发，Implementation completed、Owner pending。布局与行为以 [总方案 §6、§8](../../../docs/assistant-workspace-reliability-plan.md) 为准；UI 严格复用 [frontend-v1 donor 约束](../../../docs/architecture/phase1a-frontend-reuse.md)，正式前端代码只改 `frontend-v3/`。
 
 ## 目标
 
@@ -44,3 +44,5 @@ Blocked by: OPT-20
 ## Comments
 
 - 2026-10-14：新页面行为已纳入详细方案；本张未开发，不更改 frozen prototype/frontend-v1。
+
+- 2026-10-14：独立会话页面、既有能力迁移、安全渲染和按需读取已完成；当前字段/控件顺序及空态、任务、审核和窄窗口按本 Ticket 对齐表与总方案 §6/§8 检查，继续复用 donor。21 个浏览器场景分段定向通过，7 个定向后端检查及两轴审阅问题已收口；固定 Web、真实旧会话读取、数据保留和剩余范围见 [验证记录](../opt24-verification.md)。同一 4217 更新，整任务汇总仍留 OPT-25，最终 Owner 验收 pending。

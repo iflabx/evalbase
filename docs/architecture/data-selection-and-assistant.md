@@ -2,7 +2,7 @@
 
 2026-10-08 修订。范围以 [PRD](../PRD-data-selection-and-assistant.md) 为准；框架选择依据保留在 [调研](../research/project-agent-framework-and-architecture-2026-10-04.md)。§9 的要求管理和执行恢复已由 OPT-06/07 实施；完整候选审核体验与综合交付仍由 OPT-08 承接。其他章节描述复用基础及既有约束。整改顺序与状态见 [Spec](../../.scratch/assistant-optimization/spec.md)。
 
-2026-10-14 最新实施：OPT-20–23 已完成诊断、有界恢复、工具合同以及当前事实和背景引用复用；OPT-24–25 仍为后续设计。范围、兼容与实际证据见 §14 和 [OPT-23 验证记录](../../.scratch/assistant-optimization/opt23-verification.md)。以下实施记录保留原时间。
+2026-10-14 最新实施：OPT-20–24 已完成诊断、有界恢复、工具合同、当前事实/背景引用和独立会话页面；OPT-25 仍为后续设计。范围、兼容与实际证据见 §14 和 [OPT-24 验证记录](../../.scratch/assistant-optimization/opt24-verification.md)。以下实施记录保留原时间。
 
 ## 1. 模块与依赖
 
@@ -249,7 +249,7 @@ OPT-23 复用当前 task、合法业务对象和真实回执生成模型事实�
 
 勾选范围写入已有 task.selectedCandidates，后续回合省略选择时沿用可证范围；refine 按当前有效结果及稳定来源身份核对，已被子轮或独立重做取代的勾选拒绝，未被取代的旧批次仍可使用。背景定义首次沿用原语义校验，验证后在已有 task JSON 保存仅含字段、类别和绑定引用的注册项；引用绑定当前账号、会话、附件哈希、提取版本和实际页/行原文。服务端解析回完整旧 definitions，继续原校验和处理冻结，不将引用当作新的分类依据。伪造、跨会话、类别不符、删除或内容/位置变化均失效；旧完整定义继续兼容。显式撤销全部分类可清理旧背景依据，省略分类参数不清理。提示和工具合同标记 v3，无新表、API、依赖或模型摘要链；证据与限制见 [OPT-23 记录](../../.scratch/assistant-optimization/opt23-verification.md)。
 
-后续 OPT-24–25 的技术细节集中于 [总方案 §6–8](../assistant-workspace-reliability-plan.md)，以下仍为待实施设计：
+OPT-24 在 frontend-v3 增加项目内个人会话路由，完整抽屉退出正式入口。页面按账号/项目/会话保存标签内未发送输入及原提交键，状态/消息/背景/候选查询按相同范围隔离并消费 AbortSignal。既有 sessions GET 支持名称过滤、分页及只读对象上下文核对；单会话 GET 的可选 status/messages 投影保留完整访问复检和无参数旧响应，状态不返回历史，消息按稳定游标分页。POST turns 的可选 expectedTaskRevision 沿原幂等回放、会话锁和权限校验执行，不新增工具直达入口。202 后取消提交前状态请求并重读，已受理提交收口不驱动终态轮询。安全 Markdown 仅用 React 文本节点，不生成操作卡或外部资源；复用既有任务/审核/背景组件，没有新依赖、表或 Worker 变更。详细证据见 [OPT-24 记录](../../.scratch/assistant-optimization/opt24-verification.md)。
 
-- frontend-v3 增加独立个人会话路由并退出完整抽屉入口，复用当前 status、消息、背景、确认及处理组件。现有会话清单可补名称过滤；结果读取必要时扩展既有候选接口的任务范围和派生审核修订，批次读取保留。新增读取能力仍复检用户、项目和完整来源权限。
+- 后续 OPT-25 的整任务结果读取与派生审核修订集中于 [总方案 §7–8](../assistant-workspace-reliability-plan.md)，尚未实施；当前页面明确保留本批候选与实际任务统计，不冒充整任务默认审核。
 - 不增加数据表或服务；必要的任务/规则/诊断字段按可选读取兼容旧任务。整体主业务顺序仍是资料→处理→审核→确认采用/发布，因此不改写历史 v2 主流程图或 ADR 的技术选型。实施状态与证据见 [OPT-20–25 台账](../../.scratch/assistant-optimization/spec.md)。
