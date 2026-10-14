@@ -1426,6 +1426,9 @@ export async function executeAssistantTurn(
               input: {
                 type: "object",
                 maxProperties: 20,
+                properties: {
+                  instructions: { type: "string", maxLength: 8000 },
+                },
                 description:
                   "当前步骤已知的业务工具参数；处理步骤使用operation、instructions（复数，单个字符串不是数组）、allowedFields及allRecords/selection；select_candidates使用runId及selection:{method,conditions,mode,value}，不能用submit_processing的operation:select；仅启用已有方案应省略steps，不重填input。后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
               },
@@ -3395,6 +3398,7 @@ export async function executeAssistantTurn(
         step?.status !== "pending" ||
         (turn.event === "user" &&
           ![
+            "read_records",
             "submit_processing",
             "refine_candidates",
             "read_processing",

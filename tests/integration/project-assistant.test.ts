@@ -11363,7 +11363,8 @@ describe("project assistant public contract", () => {
           name: "plan_task",
           input: {
             title: "确认发布用途",
-            requirements: ["用于意图识别", "确认发布用途后才发布"],
+            // Publication pauses in question; the already reviewed adoption requirements stay unchanged.
+            requirements: ["用于意图识别"],
             question: "发布后的测试集由谁使用？",
             nextAction: "none",
           },
@@ -13603,6 +13604,17 @@ describe("project assistant public contract", () => {
       }
       // Confirm an actual proposal while the assistant anchor deliberately stays
       // on the root of a direct round; descendants need the same provenance fence.
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((turn: any) =>
+                ["queued", "running"].includes(turn.status),
+              ),
+          { timeout: 15000 },
+        )
+        .toBe(false);
       await f.db.query(
         "UPDATE assistant_session SET task=jsonb_set(jsonb_set(task,'{runIds}',$2::jsonb),'{runId}',to_jsonb($3::text)) WHERE id=$1",
         [sessionId, JSON.stringify(f.runs), f.runs[1]],
@@ -14106,6 +14118,65 @@ describe("project assistant public contract", () => {
       expect(receipts[0].error.hint).toContain("outputCount");
       expect(receipts[0].error.hint).toContain("metadataKeys");
       expect(receipts[1]).toMatchObject({ status: "succeeded" });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+    }
+  });
+  it("OPT-25 executes approved read parameters before processing without model reconstruction", async () => {
+    const previous = sessionId,
+      source = await opt22Draft("R25 固定读取");
+    await opt21Session();
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            target: { kind: "draft", id: source },
+            executionMode: "execute",
+            steps: [
+              {
+                title: "核对三条",
+                action: "read_records",
+                input: { source: { kind: "draft", id: source }, limit: 3 },
+              },
+              {
+                title: "清理空白",
+                action: "submit_processing",
+                input: {
+                  operation: "clean",
+                  allRecords: true,
+                  instructions: "",
+                  allowedFields: ["question"],
+                },
+              },
+            ],
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("清理这份草稿"));
+      const receipts = state.turns.at(-1).tools;
+      expect(
+        receipts.find((tool: any) => tool.name === "read_records"),
+      ).toMatchObject({
+        status: "succeeded",
+        input: { limit: 3 },
+        result: { readCount: 3 },
+      });
+      expect(
+        receipts.find((tool: any) => tool.name === "submit_processing"),
+      ).toMatchObject({ status: "succeeded", result: { inputCount: 3 } });
+      expect(receipts.some((tool: any) => tool.status === "failed")).toBe(
+        false,
+      );
     } finally {
       requestedTool = undefined;
       toolSequence = [];

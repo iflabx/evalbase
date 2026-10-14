@@ -402,6 +402,7 @@ if (mode === "controlled") {
         }
       };
       let businessReplies = 0;
+      let manualContinuations = 0;
       let retriedNoEffectTurn: string | undefined;
       let approvedFields: string[] | undefined;
       let assertionCode: string | null = null;
@@ -410,8 +411,15 @@ if (mode === "controlled") {
       try {
         const source = (await call("POST", drafts, { name: `基线${id}资料` }))
           .draft.id;
-        for (const row of rows)
-          await call("POST", `${drafts}/${source}/records`, row);
+        const originalRows = new Map<string, (typeof rows)[number]>();
+        for (const row of rows) {
+          const created = await call(
+            "POST",
+            `${drafts}/${source}/records`,
+            row,
+          );
+          originalRows.set(created.record.id, row);
+        }
         path = `${base}/sessions/${(await call("POST", `${base}/sessions`, {})).sessionId}`;
         const context = { kind: "draft", id: source };
         if (id === "A8")
@@ -696,7 +704,35 @@ if (mode === "controlled") {
                   /metadata/i.test(t.assistantText),
               );
           } else {
-            const outputRows = await candidates();
+            let outputRows = await candidates();
+            if (id === "A4" && outputRows.length < 8 && state.task?.runId) {
+              const view = await call(
+                "GET",
+                `/api/projects/${projectId}/processing-tasks/${state.task.runId}?limit=1`,
+              );
+              if (view.recovery?.canContinue) {
+                const retained = outputRows;
+                await call(
+                  "POST",
+                  `/api/projects/${projectId}/processing-tasks/${view.task.id}/rounds`,
+                  { mode: "complete", expectedRevision: view.task.revision },
+                );
+                manualContinuations++;
+                await drive();
+                outputRows = await candidates();
+                assert(
+                  retained.every((row: any) =>
+                    outputRows.some(
+                      (current: any) =>
+                        current.id === row.id &&
+                        JSON.stringify(current.result) ===
+                          JSON.stringify(row.result),
+                    ),
+                  ),
+                  "continuation_changed_successful_rows",
+                );
+              }
+            }
             const expected = id === "A6" ? 4 : rows.length;
             goalCompleted = outputRows.length === expected;
             if (id === "A2") {
@@ -706,8 +742,8 @@ if (mode === "controlled") {
               goalCompleted &&=
                 !state.task?.question &&
                 outputRows.every((r: any) => {
-                  const original = rows.find(
-                    (row) => row.expectedOutput === r.result.expectedOutput,
+                  const original = originalRows.get(
+                    r.original?.baseline?.id ?? r.original?.id,
                   );
                   return (
                     original &&
@@ -922,7 +958,7 @@ if (mode === "controlled") {
         // Only locally-defined assertion codes enter evidence, never provider exception strings.
         if (
           error instanceof assert.AssertionError &&
-          /^[a-z_]+$/.test(error.message)
+          /^[a-z_0-9]+$/.test(error.message)
         )
           assertionCode = error.message;
         reason =
@@ -992,6 +1028,7 @@ if (mode === "controlled") {
           : null,
         userClarifications: clarifications,
         extraBusinessPrompts: businessReplies,
+        manualContinuations,
         userRetriedNoEffectTurns: retriedNoEffectTurn ? 1 : 0,
         semanticCorrections: null,
         semanticReview: "pending_human_review",
