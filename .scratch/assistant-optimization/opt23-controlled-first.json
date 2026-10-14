@@ -1,0 +1,49 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "0d7d36a46391b7477837c233b1abc827bba8fb686f0fa6fc8b8016a220c1292b",
+  "mode": "controlled",
+  "codeVersion": "ad0b8de9317247e42e5a93c3d110267a3e5a183e",
+  "fixtureVersion": "public-contract-fixtures-v1",
+  "promptVersion": "assistant-prompt-v3",
+  "toolsVersion": "assistant-tools-v3",
+  "startedAt": "2026-10-14T10:24:51.998Z",
+  "results": [
+    {
+      "id": "A2",
+      "contractPassed": true,
+      "assertions": 2,
+      "goalCompleted": null,
+      "durationMs": 9870,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A7",
+      "contractPassed": true,
+      "assertions": 3,
+      "goalCompleted": null,
+      "durationMs": 15412,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    },
+    {
+      "id": "A8",
+      "contractPassed": false,
+      "assertions": 1,
+      "goalCompleted": null,
+      "durationMs": 27952,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_fixture_failed"
+    }
+  ],
+  "inputHash": "3f9deadc32beba14b85402cdda0c805f9cf86209425d10e497203f3b67c52af8"
+}

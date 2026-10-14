@@ -1,10 +1,10 @@
 # OPT-23 项目助手长会话上下文与背景引用复用
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-22
+Implementation: completed
+Blocked by: none
 
-优先级：P1。仅授权文档。范围以 [总方案 §5](../../../docs/assistant-workspace-reliability-plan.md#5-长会话与背景文档) 为准，继承 [背景合同](../../../docs/assistant-optimization.md#3-背景文档与短请求) 与 [架构 §9.5](../../../docs/architecture/data-selection-and-assistant.md#95-旧任务兼容与验证)。
+优先级：P1。Owner 已于 2026-10-14 单张授权开发，Implementation completed、Owner pending。范围以 [总方案 §5](../../../docs/assistant-workspace-reliability-plan.md#5-长会话与背景文档) 为准，继承 [背景合同](../../../docs/assistant-optimization.md#3-背景文档与短请求) 与 [架构 §9.5](../../../docs/architecture/data-selection-and-assistant.md#95-旧任务兼容与验证)。
 
 ## 目标与范围
 
@@ -34,3 +34,5 @@ Blocked by: OPT-22
 ## Comments
 
 - 2026-10-14：长会话遗漏属待验证风险，本张须先建立可复现边界，不将所有历史故障归因于上下文；未实施。
+
+- 2026-10-14：已完成当前事实、持久选择、有界工具回执和会话内已验证定义引用；同一 4217 的固定版本、定向回归及限制见 [验证记录](../opt23-verification.md)。无前端界面变更，独立页面仍由 OPT-24 负责。

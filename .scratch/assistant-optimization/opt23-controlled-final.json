@@ -1,0 +1,25 @@
+{
+  "format": "assistant-baseline-v1",
+  "caseDefinitionsHash": "0d7d36a46391b7477837c233b1abc827bba8fb686f0fa6fc8b8016a220c1292b",
+  "mode": "controlled",
+  "codeVersion": "02d334edea1daaaa6e7a8fe315367aeb50a157ef",
+  "fixtureVersion": "public-contract-fixtures-v1",
+  "promptVersion": "assistant-prompt-v3",
+  "toolsVersion": "assistant-tools-v3",
+  "startedAt": "2026-10-14T10:30:09.919Z",
+  "results": [
+    {
+      "id": "A8",
+      "contractPassed": true,
+      "assertions": 2,
+      "goalCompleted": null,
+      "durationMs": 17556,
+      "userPrompts": null,
+      "automaticRepairs": null,
+      "userClarifications": null,
+      "semanticCorrections": null,
+      "reason": "controlled_contract_only"
+    }
+  ],
+  "inputHash": "9aeea45b07ac5bf36c52aa1dafb3e1658ae9b493d7e2b1b6c9362bceff85fcef"
+}

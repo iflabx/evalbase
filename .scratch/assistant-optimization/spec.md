@@ -1,5 +1,7 @@
 # 项目助手实测优化实施规格
 
+2026-10-14 最新实施：[OPT-23](issues/23-assistant-context-and-background-refs.md) 已按 Owner 单张授权完成。每轮复建当前事实，固定勾选持久保存，长工具结果使用成对摘要和重读入口；已验证附件定义以会话内绑定引用复用并恢复原文校验。版本、定向回归及同一 4217 数据保留见 [验证记录](opt23-verification.md)。Implementation completed、Owner pending；OPT-24–25 未实施。下方旧日期记录保留历史状态。
+
 2026-10-14 最新实施：[OPT-22](issues/22-assistant-tool-and-plan-contract.md) 已按 Owner 单张授权完成。工具按真实阶段提供，当前引用由服务端绑定，独立要求重排保持稳定；规则变更撤销旧确认资格并保留真实回执。验证、版本及同一 4217 数据保留见 [记录](opt22-verification.md)。Implementation completed、Owner pending；OPT-23–25 保持未实施。
 
 2026-10-14 最新实施：[OPT-21](issues/21-assistant-bounded-recovery.md) 已按 Owner 单张开发授权完成。模型传输恢复共享原回合预算，未知写入核对原回执，说明失败保留真实成果；实现、审阅及同一 4217 数据保留见 [验证记录](opt21-verification.md)。Implementation completed，Owner pending；后续 Ticket 保持原状态。
@@ -78,7 +80,7 @@ Implementation: in-progress
 | [OPT-20](issues/20-assistant-diagnostics-and-baseline.md) | 对话失败分类、可行动反馈及固定短请求基线 | 现有实现；Owner 已授权本张开发 | completed | [验证与基线](opt20-verification.md)；固定 Web `f566909`，Owner pending |
 | [OPT-21](issues/21-assistant-bounded-recovery.md) | 模型请求有限恢复、未知写对账与累计预算 | OPT-20 已完成 | completed | [实施与验证](opt21-verification.md)；同一 4217、Owner pending |
 | [OPT-22](issues/22-assistant-tool-and-plan-contract.md) | 工具按阶段提供、参数减负与要求顺序稳定性 | OPT-20/21 已完成 | completed | [实施与验证](opt22-verification.md)；同一 4217、Owner pending |
-| [OPT-23](issues/23-assistant-context-and-background-refs.md) | 当前事实摘要、长会话续用及已验证背景引用 | OPT-22 | not-started | 待长会话、引用真实性及旧数据兼容验证 |
+| [OPT-23](issues/23-assistant-context-and-background-refs.md) | 当前事实摘要、长会话续用及已验证背景引用 | OPT-22 已完成 | completed | [实施与验证](opt23-verification.md)；同一 4217、Owner pending |
 | [OPT-24](issues/24-assistant-independent-workspace.md) | 独立助手页面、个人会话、上下文及既有能力迁移 | OPT-20；推荐 OPT-23 后实施 | not-started | 待真实页面及权限/加载验证；UI 严格复用 frontend-v1 |
 | [OPT-25](issues/25-assistant-task-results-and-delivery.md) | 整任务成果审核、局部调整与确认交付闭环 | OPT-21/22/23/24 | not-started | 待整任务范围及最终固定样本；集中一次 Owner 验收 |
 
