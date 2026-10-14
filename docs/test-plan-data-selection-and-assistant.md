@@ -198,3 +198,18 @@ OPT-07 已记录错误来源/过滤范围、冻结参数、回包丢失、后台
 按 [R19-1–6](../.scratch/assistant-optimization/issues/19-processing-list-query-performance.md#验收与最小验证) 定向验证。公开 HTTP 与隔离数据库/对象存储检查稳定列表的查询、写锁和正文读取次数；超过 100 项的可控样本覆盖权限过滤后取最近范围、搜索、状态、统计及分页。终态、并发新增轮次/保存和来源清理沿用真实任务修订；旧回执包含部分继续处理后的混合轮次保存统计与必要运行一次回读。
 
 同一 59 项稳定数据分别记录服务分析和无响应缓存的真实 API 连续五次耗时，不用摘要探针替代完整接口。页面核对进入、刷新、筛选、返回和读取失败恢复，原始数据/测试集作为正常对照；无 UI 变更、不新增真实模型批量任务或压测。结果、两轴审阅及同一 4217 固定版本集中于 [OPT-19 验证](../.scratch/assistant-optimization/opt19-verification.md)，Owner 验收另记。
+
+### 5.14 OPT-20–25 助手稳定性与独立页面（待执行）
+
+固定短请求、重复次数、基线与最终完成口径统一见 [总方案 §9](assistant-workspace-reliability-plan.md#9-具体用户流程与测试口径)。每张 Ticket 保存直接验收断言，不复制第二套测试清单：
+
+| Ticket | 验证侧重 |
+| --- | --- |
+| [OPT-20](../.scratch/assistant-optimization/issues/20-assistant-diagnostics-and-baseline.md) | 失败分类、诊断脱敏、修复前基线与任务级记录 |
+| [OPT-21](../.scratch/assistant-optimization/issues/21-assistant-bounded-recovery.md) | 故障注入、共享预算、取消、未知写入对账与成果保留 |
+| [OPT-22](../.scratch/assistant-optimization/issues/22-assistant-tool-and-plan-contract.md) | 规范化要求、阶段工具、计划/执行、规则变更及旧回执 |
+| [OPT-23](../.scratch/assistant-optimization/issues/23-assistant-context-and-background-refs.md) | 长会话、固定指代、背景原文引用与权限/版本失效 |
+| [OPT-24](../.scratch/assistant-optimization/issues/24-assistant-independent-workspace.md) | 页面迁移、导航、现有能力、窄窗口、安全渲染及按需读取 |
+| [OPT-25](../.scratch/assistant-optimization/issues/25-assistant-task-results-and-delivery.md) | 整任务候选、局部调整、原草稿保存、重复样本与最终交付 |
+
+默认使用现有假模型与隔离持久化验证确定性边界，真实模型只执行有界样例；同一固定 HEAD 的有效证据直接复用。暂时故障恢复不等于首次成功，结构通过不等于内容合格，人工修正单独记账。保留 4217 的 Owner 数据，不加入 5/10 人压测、两小时试验或服务器重启检查；最终页面闭环集中一次人工验收，不替旧 Ticket 签署通过。
