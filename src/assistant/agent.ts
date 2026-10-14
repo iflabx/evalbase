@@ -2401,6 +2401,23 @@ export async function executeAssistantTurn(
       ["source", "operation", "instructions", "allowedFields"],
       async (input, key) => {
         await depend(references(input.source));
+        const conflicts = [];
+        if (input.operation !== "augment" && input.outputCount !== undefined)
+          conflicts.push("清洗/改写不传outputCount，数量由实际输入确定");
+        if (
+          input.metadataKeys &&
+          !(input.allowedFields ?? []).includes("metadata")
+        )
+          conflicts.push(
+            "Metadata未允许修改时不传metadataKeys，保留原Metadata",
+          );
+        if (conflicts.length)
+          throw new AssistantError(
+            422,
+            "processing_configuration_invalid",
+            conflicts.join("；") +
+              "。请删除冲突参数，保留其余合法范围与要求后重新提交；尚未创建处理任务。",
+          );
         let recordIds = input.recordIds;
         let expectedInputHash: string | undefined;
         let selectedConfiguration: Record<string, any> | undefined;
@@ -2461,12 +2478,6 @@ export async function executeAssistantTurn(
             canonicalJson({ records, revision: data.revision ?? null }),
           );
         }
-        if (
-          input.operation !== "augment" &&
-          input.outputCount !== undefined &&
-          input.outputCount !== recordIds.length
-        )
-          throw new AssistantError(422, "processing_configuration_invalid");
         const result = await createProcessingRun(
           db,
           artifacts,

@@ -14072,6 +14072,52 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("OPT-25 explains conflicting cleanup count and protected Metadata before any write", async () => {
+    const previous = sessionId,
+      source = await opt22Draft("R25 参数冲突");
+    await opt21Session();
+    try {
+      const input = {
+        source: { kind: "draft", id: source },
+        operation: "clean",
+        allRecords: true,
+        instructions: "",
+        allowedFields: ["question"],
+      };
+      toolSequence = [
+        {
+          name: "submit_processing",
+          input: { ...input, outputCount: 3, metadataKeys: ["类别"] },
+        },
+        { name: "submit_processing", input },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(
+        await opt21Submit("只清理问题空白，分类不变"),
+      );
+      const receipts = state.turns
+        .at(-1)
+        .tools.filter((tool: any) => tool.name === "submit_processing");
+      expect(receipts[0]).toMatchObject({
+        status: "failed",
+        effect: "none",
+        error: { code: "processing_configuration_invalid" },
+      });
+      expect(receipts[0].error.hint).toContain("outputCount");
+      expect(receipts[0].error.hint).toContain("metadataKeys");
+      expect(receipts[1]).toMatchObject({ status: "succeeded" });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+    }
+  });
   it("OPT-25 rejects a random selection without its unit before writes and accepts short deterministic cleanup", async () => {
     const previous = sessionId,
       f = await opt25Results();
