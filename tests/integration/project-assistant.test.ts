@@ -10081,6 +10081,11 @@ describe("project assistant public contract", () => {
           ],
         },
       };
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "select_candidates" } },
+        requestedTool,
+      ];
+      requestedTool = undefined;
       await send("恢复原方案的选中范围");
       const fixed = (
         await app.inject({
@@ -10102,10 +10107,18 @@ describe("project assistant public contract", () => {
           allowedFields: ["question"],
         },
       };
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "refine_candidates" } },
+        requestedTool,
+      ];
+      requestedTool = undefined;
       const outside = (await send("检查越界选择", undefined, "failed")).json();
-      expect(outside.turns.at(-1).tools[0].error.code).toBe(
-        "assistant_candidate_selection_changed",
-      );
+      expect(
+        outside.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "refine_candidates").error
+          .code,
+      ).toBe("assistant_candidate_selection_changed");
       expect(outside.task.runId).toBe(runId);
       toolSequence = [
         {
