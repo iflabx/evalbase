@@ -24,7 +24,9 @@ export function currentTaskFacts(
   const picked = selection ?? task.selectedCandidates;
   facts.candidateSelection = picked
     ? {
-        runId: picked.runId,
+        ...(picked.scope === "task"
+          ? { scope: "task", batchCount: picked.groups?.length ?? 0 }
+          : { runId: picked.runId }),
         selectedCount: picked.resultIds.length,
         useAllSelected: true,
       }

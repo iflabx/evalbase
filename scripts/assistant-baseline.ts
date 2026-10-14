@@ -31,7 +31,7 @@ const cases = [
   [
     "A5",
     "只把勾选的两条改得自然些，答案不变。",
-    "prepares a short selection and reuses only that frozen scope",
+    "prepares a short selection and reuses only that frozen scope|OPT-25 refines two cross-batch",
   ],
   [
     "A6",
@@ -51,9 +51,13 @@ const cases = [
   [
     "A9",
     "查询资料。",
-    "OPT-22|OPT-21|OPT-20 classifies provider failure|OPT-20 preserves completed operations|repairs missing prerequisites and a no-effect scope failure|keeps an unknown write bound when replanning|stops budget continuation when new query arguments",
+    "OPT-25 reconciles|OPT-25 rolls back|OPT-22|OPT-21|OPT-20 classifies provider failure|OPT-20 preserves completed operations|repairs missing prerequisites and a no-effect scope failure|keeps an unknown write bound when replanning|stops budget continuation when new query arguments",
   ],
-  ["A10", "采用全部结果，准备发布。", "requires a bound explicit confirmation"],
+  [
+    "A10",
+    "采用全部结果，准备发布。",
+    "requires a bound explicit confirmation|OPT-25 partially adopts|OPT-25 rejects",
+  ],
 ] as const;
 const arg = (key: string, fallback: string) =>
   process.argv
@@ -71,7 +75,25 @@ assert(
   selectedIds.every((id) => cases.some(([key]) => key === id)),
   "unknown case",
 );
-const selected = cases.filter(([id]) => selectedIds.includes(id));
+const repeatCases = new Set(arg("repeat-cases", "").split(",")),
+  repeat = Number(arg("repeat", "1"));
+assert(
+  Number.isSafeInteger(repeat) && repeat >= 1 && repeat <= 3,
+  "repeat must be between 1 and 3",
+);
+const selected = cases
+  .filter(([id]) => selectedIds.includes(id))
+  .flatMap((item) =>
+    Array.from(
+      { length: mode === "real" && repeatCases.has(item[0]) ? repeat : 1 },
+      () => item,
+    ),
+  );
+const integration200 = arg("integration", "") === "200";
+assert(
+  !integration200 || (mode === "real" && selectedIds.join(",") === "A2"),
+  "integration=200 requires real A2 only",
+);
 const output = resolve(
   arg("output", ".scratch/assistant-optimization/opt20-baseline.json"),
 );
@@ -85,9 +107,13 @@ const report: any = {
   mode,
   codeVersion: version,
   fixtureVersion:
-    mode === "real" ? "synthetic-eight-v1" : "public-contract-fixtures-v1",
-  promptVersion: "assistant-prompt-v4",
-  toolsVersion: "assistant-tools-v3",
+    mode === "real"
+      ? integration200
+        ? "synthetic-orders-200-v1"
+        : "synthetic-eight-v1"
+      : "public-contract-fixtures-v1",
+  promptVersion: "assistant-prompt-v5",
+  toolsVersion: "assistant-tools-v4",
   startedAt: new Date().toISOString(),
   results: [],
 };
@@ -268,7 +294,7 @@ if (mode === "controlled") {
     ).project.id;
     const drafts = `/api/projects/${projectId}/collaborative-drafts`,
       base = `/api/projects/${projectId}/assistant`;
-    const rows = [
+    let rows = [
       "退款什么时候到账？",
       "退款需要几天？",
       "价格是多少？",
@@ -282,6 +308,13 @@ if (mode === "controlled") {
       expectedOutput: `原答案${i}`,
       metadata: [{ key: "类别", value: i % 4 < 2 ? "进度" : "费用" }],
     }));
+    if (integration200) {
+      const templates = rows;
+      rows = Array.from({ length: 200 }, (_, i) => ({
+        ...templates[i % 8]!,
+        question: `  第${i + 1}笔订单：${templates[i % 8]!.question.trim()}  `,
+      }));
+    }
     report.inputHash = createHash("sha256")
       .update(JSON.stringify(rows))
       .digest("hex");
@@ -356,8 +389,17 @@ if (mode === "controlled") {
         await call("POST", `${path}/turns`, { message, ...extra });
         await drive();
       }
-      const candidates = async () =>
-        (await call("GET", `${path}/candidates?limit=100`)).records;
+      const candidates = async () => {
+        const rows = [];
+        for (let offset = 0; ; offset += 100) {
+          const page = await call(
+            "GET",
+            `${path}/candidates?scope=task&limit=100&offset=${offset}`,
+          );
+          rows.push(...page.records);
+          if (rows.length >= page.total) return rows;
+        }
+      };
       let goalCompleted = false,
         reason = "goal_not_reached";
       try {
@@ -379,9 +421,14 @@ if (mode === "controlled") {
         if (id === "A5") {
           const before = await candidates();
           assert(before.length >= 2, "precondition_candidates_missing");
+          const selection = await call(
+            "GET",
+            `${path}/candidates?scope=task&limit=100`,
+          );
           await send(prompt, {
             candidates: {
-              runId: before[0].runId ?? state.task.runId,
+              scope: "task",
+              reviewRevision: selection.reviewRevision,
               resultIds: before.slice(0, 2).map((r: any) => r.id),
             },
           });
@@ -570,7 +617,7 @@ if (mode === "controlled") {
               );
           } else {
             const outputRows = await candidates();
-            const expected = id === "A6" ? 4 : 8;
+            const expected = id === "A6" ? 4 : rows.length;
             goalCompleted = outputRows.length === expected;
             if (["A2", "A3", "A6"].includes(id))
               goalCompleted &&= outputRows.every((r: any) =>
@@ -614,6 +661,150 @@ if (mode === "controlled") {
                 ),
               );
           }
+        }
+        if (integration200) {
+          assert(goalCompleted, "integration_cleanup_failed");
+          const before = await call(
+            "GET",
+            `${path}/candidates?scope=task&limit=100`,
+          );
+          const later = await call(
+            "GET",
+            `${path}/candidates?scope=task&offset=100&limit=100`,
+          );
+          const all = [...before.records, ...later.records],
+            chosen = [all[0].id, all.at(-1).id];
+          assert.equal(all.length, 200, "integration_collection_count");
+          assert.equal(
+            new Set(all.map((row) => row.id)).size,
+            200,
+            "integration_identity_count",
+          );
+          await send("这两条改得更口语化，答案和Metadata保留。", {
+            candidates: {
+              scope: "task",
+              reviewRevision: before.reviewRevision,
+              resultIds: chosen,
+            },
+          });
+          const current = [
+            ...(await call("GET", `${path}/candidates?scope=task&limit=100`))
+              .records,
+            ...(
+              await call(
+                "GET",
+                `${path}/candidates?scope=task&offset=100&limit=100`,
+              )
+            ).records,
+          ];
+          assert.equal(current.length, 200, "integration_refinement_count");
+          for (const row of current) {
+            const original = all.find((old) => old.id === row.id);
+            assert(original, "integration_stable_identity");
+            assert.equal(
+              row.result.expectedOutput,
+              original.result.expectedOutput,
+              "integration_answer_protection",
+            );
+            assert.deepEqual(
+              row.result.metadata,
+              original.result.metadata,
+              "integration_metadata_protection",
+            );
+            assert(
+              chosen.includes(row.id)
+                ? row.result.question !== original.result.question
+                : row.result.question === original.result.question,
+              "integration_selection_scope",
+            );
+          }
+          writeFileSync(
+            output + ".content.json",
+            JSON.stringify(
+              {
+                syntheticOnly: true,
+                selected: current
+                  .filter((row) => chosen.includes(row.id))
+                  .map((row) => ({
+                    before: all.find((old) => old.id === row.id).result,
+                    after: row.result,
+                  })),
+              },
+              null,
+              2,
+            ),
+          );
+          await send("将全部成果保存回原草稿。", { candidates: null });
+          const proposal = state.proposals.find(
+            (p: any) => p.status === "pending" && p.action === "processing",
+          );
+          assert(proposal, "integration_confirmation_missing");
+          assert.equal(
+            proposal.summary.count,
+            200,
+            "integration_confirmation_scope",
+          );
+          const saved = await call(
+            "POST",
+            `${base}/proposals/${proposal.id}/confirm`,
+            {},
+          );
+          assert.deepEqual(
+            (await call("POST", `${base}/proposals/${proposal.id}/confirm`, {}))
+              .receipt,
+            saved.receipt,
+            "integration_receipt_replay",
+          );
+          await drive();
+          const actual = (
+            await db.query(
+              "SELECT id,question,expected_output,metadata,source FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+              [source],
+            )
+          ).rows;
+          assert.equal(actual.length, 200, "integration_saved_count");
+          for (const row of current) {
+            const persisted = actual.find(
+              (item: any) =>
+                item.id === (row.original?.baseline?.id ?? row.original?.id),
+            );
+            assert(persisted, "integration_original_draft_target");
+            assert.equal(persisted.question, row.result.question);
+            assert.equal(persisted.expected_output, row.result.expectedOutput);
+            assert.deepEqual(persisted.metadata, row.result.metadata);
+            assert(persisted.source, "integration_source_missing");
+          }
+          const savedPage = await call(
+            "GET",
+            `${path}/candidates?scope=task&limit=100`,
+          );
+          assert.equal(savedPage.savedCount, 200, "integration_delivery_count");
+          await send("发布这个草稿。");
+          const publishing = state.proposals.find(
+            (p: any) => p.status === "pending" && p.action === "publish",
+          );
+          assert(publishing, "integration_publication_confirmation_missing");
+          const published = await call(
+            "POST",
+            `${base}/proposals/${publishing.id}/confirm`,
+            {},
+          );
+          assert.equal(
+            published.receipt.version.recordCount,
+            200,
+            "integration_published_count",
+          );
+          await drive();
+          goalCompleted = true;
+          report.integration = {
+            structurallyChecked: 200,
+            unchangedResults: 198,
+            modelRewritten: 2,
+            semanticReview:
+              "two_model_rows_pending_review; unchanged_198_preservation_verified",
+            manualCorrections: 0,
+            sourceReferencesChecked: 200,
+          };
         }
         if (state.turns.some((t: any) => t.status === "failed")) {
           goalCompleted = false;
@@ -673,6 +864,7 @@ if (mode === "controlled") {
       report.results.push({
         id,
         goalCompleted,
+        sample: report.results.filter((item: any) => item.id === id).length + 1,
         toolParameterFailures,
         toolParameterRecoveries,
         reason,

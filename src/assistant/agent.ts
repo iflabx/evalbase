@@ -1,4 +1,7 @@
-import { createRefinementRun } from "../processing/refine.js";
+import {
+  createRefinementRun,
+  createRefinementGroups,
+} from "../processing/refine.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { selectRecords } from "../selection/index.js";
 import { updateTask } from "./tasks.js";
@@ -29,8 +32,9 @@ import {
 import {
   reviewTask,
   taskCompatibilityProblem,
-  scopeRunToTask,
   effectiveTaskRuns,
+  taskCandidateCollection,
+  resolveTaskSelection,
 } from "./review.js";
 import { reviewCandidates } from "../processing/review.js";
 import {
@@ -489,8 +493,8 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v1",
-      promptVersion: "assistant-prompt-v4",
-      toolsVersion: "assistant-tools-v3",
+      promptVersion: "assistant-prompt-v5",
+      toolsVersion: "assistant-tools-v4",
       modelRevision,
       requestAttempts: requests.length,
       transportRetries: turnBudget.transportRetries,
@@ -2465,7 +2469,7 @@ export async function executeAssistantTurn(
     ),
     refine_candidates: businessTool(
       "refine_candidates",
-      "按用户明确指定范围重改上一批候选，保留未选记录。此工具不新增记录，不能用于补齐数量；不要因自己的语义评价自动重改候选。resultIds使用read_processing返回的候选序号；勾选范围来自本轮candidateSelection，allSelected:true可重改全部勾选候选；where可按标签、问题内容或Metadata条件定位全部范围。用户明确要求全部候选时可用where:{field:question,operator:contains,value:空字符串}，不需翻页枚举ID；resultIds/where二选一，必须遵守勾选范围。allowedFields只包含用户允许修改的字段。",
+      "按用户明确指定范围重改上一批候选，保留未选记录。此工具不新增记录，不能用于补齐数量；不要因自己的语义评价自动重改候选。resultIds使用read_processing返回的候选序号；勾选范围来自本轮candidateSelection，使用allSelected:true处理固定的任务勾选，可跨多个批次，不枚举预览ID；where可按标签、问题内容或Metadata条件定位全部范围。用户明确要求全部候选时可用where:{field:question,operator:contains,value:空字符串}，不需翻页枚举ID；resultIds/where二选一，必须遵守勾选范围。allowedFields只包含用户允许修改的字段。",
       {
         runId: string,
         resultIds: ids,
@@ -2498,6 +2502,57 @@ export async function executeAssistantTurn(
           ])
         ).rows[0]?.task;
         const picked = turn.candidate_selection ?? task.selectedCandidates;
+        if (picked?.scope === "task") {
+          const collection = await taskCandidateCollection(
+            db,
+            artifacts,
+            scope,
+            task,
+          );
+          const selected = resolveTaskSelection(collection, picked);
+          if (
+            input.allSelected !== true ||
+            input.where ||
+            input.resultIds ||
+            !selected.groups.some((group) => group.runId === input.runId)
+          )
+            throw new AssistantError(
+              409,
+              "assistant_candidate_selection_changed",
+            );
+          const results = await createRefinementGroups(
+            db,
+            artifacts,
+            {
+              ...executionScope,
+              assistantResultsGuard: { states: collection.states },
+            },
+            selected.groups,
+            key,
+            {
+              instructions: input.instructions,
+              allowedFields: input.allowedFields,
+            },
+          );
+          await Promise.all(
+            results.map((result) => depend(references(result.run.source))),
+          );
+          await updateTask(db, turn, {
+            runId: results.at(-1)!.run.id,
+            selectedCandidates: null,
+            stage: "processing",
+            review: null,
+          });
+          yieldToProcessing = true;
+          return {
+            runId: results.at(-1)!.run.id,
+            runIds: results.map((result) => result.run.id),
+            status: "queued",
+            refinedCount: picked.resultIds.length,
+            total: collection.records.length,
+            url: `/projects/${scope.projectId}/processing?run=${results.at(-1)!.run.id}`,
+          };
+        }
         const currentCandidates = picked
           ? effectiveTaskRuns(
               await Promise.all(
@@ -2703,8 +2758,15 @@ export async function executeAssistantTurn(
         ).rows[0]?.task;
         const { runIds, runs, review, finished, checkedStatus } =
           await reviewTask(db, artifacts, scope, task ?? {}, data);
-        const visible =
-          runs.find((item) => item.run.id === input.runId) ?? data;
+        const visible = {
+          total: runs.reduce((n, item) => n + item.total, 0),
+          records: runs.flatMap((item) =>
+            item.records.map((row) => ({
+              ...row,
+              resultRef: { runId: item.run.id, resultId: row.id },
+            })),
+          ),
+        };
         for (const item of runs) await depend(references(item.run.source));
         if (finished)
           await updateTask(db, turn, {
@@ -2753,7 +2815,10 @@ export async function executeAssistantTurn(
           review: smallReview(review),
           records: visible.records
             .slice(input.offset ?? 0, (input.offset ?? 0) + 10)
-            .map((r) => smallRecords([{ ...r.result, id: r.id }])[0]),
+            .map((r) => ({
+              ...smallRecords([{ ...r.result, id: r.id }])[0],
+              resultRef: r.resultRef,
+            })),
           issues: data.issues.slice(0, 10),
           url: `/projects/${scope.projectId}/processing?run=${input.runId}`,
         };
@@ -2807,12 +2872,13 @@ export async function executeAssistantTurn(
     ),
     request_processing_apply: businessTool(
       "request_processing_apply",
-      "为已完成处理结果建立采用确认卡片。多批任务采用全部成果时allTask:true，默认采用全部有效候选，服务端固定全部有效批次，生成单一来源文件并保留真实溯源。仅采用一批时省略allTask。asset仅保存派生文件，newDraft建立草稿，draft写入指定草稿；采用范围必须显式填写：指定部分传resultIds，采用全部有效候选传allValid:true；不可两者都省略。同一草稿已经采用的候选自动排除。",
+      "为已完成处理结果建立采用确认卡片。多批任务采用全部成果时allTask:true，默认采用全部有效候选，服务端固定全部有效批次，生成单一来源文件并保留真实溯源。仅采用一批时省略allTask。asset仅保存派生文件，newDraft建立草稿，draft写入指定草稿；采用范围必须显式填写：浏览器任务勾选传allSelected:true，旧单批指定部分传resultIds，采用整任务全部有效候选传allValid:true；不可全部省略。同一草稿已经采用的候选自动排除。",
       {
         runId: string,
         resultIds: ids,
         allValid: { type: "boolean" },
         allTask: { type: "boolean" },
+        allSelected: { type: "boolean" },
         target: {
           type: "object",
           properties: {
@@ -2843,22 +2909,47 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
-        candidateScopeForRun(task, input.runId);
+        const picked = turn.candidate_selection ?? task.selectedCandidates;
+        const selectedTask =
+          picked?.scope === "task" && input.allSelected === true;
+        const collection = await taskCandidateCollection(
+          db,
+          artifacts,
+          scope,
+          task,
+        );
+        if (
+          collection.executionRuns.some(
+            (run) => !["succeeded", "failed", "cancelled"].includes(run.status),
+          )
+        )
+          throw new AssistantError(409, "processing_still_running");
+        const selectedGroups = selectedTask
+          ? resolveTaskSelection(collection, picked).groups
+          : undefined;
+        const knownRun =
+          collection.runs.some((run) => run.run.id === input.runId) ||
+          (task.runIds ?? [task.runId]).includes(input.runId);
+        if (!knownRun)
+          throw new AssistantError(
+            409,
+            "assistant_candidate_selection_changed",
+          );
         const allValid =
-          input.allValid === true ||
-          (input.allTask === true &&
-            input.allValid === undefined &&
-            input.resultIds === undefined);
-        if (input.allTask && !task.runIds?.includes(input.runId))
+          !selectedTask &&
+          (input.allValid === true ||
+            (input.allTask === true &&
+              input.allValid === undefined &&
+              input.resultIds === undefined));
+        if (input.allTask && !knownRun)
           throw new AssistantError(
             422,
             "assistant_candidate_review_incomplete",
           );
         if (
+          !selectedTask &&
           input.allTask &&
-          (!allValid ||
-            input.resultIds !== undefined ||
-            !task.runIds?.includes(input.runId))
+          (!allValid || input.resultIds !== undefined || !knownRun)
         )
           throw new AssistantError(422, "processing_result_invalid");
         if (allValid && input.resultIds === undefined) {
@@ -2884,14 +2975,16 @@ export async function executeAssistantTurn(
               "assistant_candidate_review_incomplete",
             );
         }
-        const runIds: string[] =
-          input.allTask && allValid && input.resultIds === undefined
-            ? (task.runIds ?? [input.runId])
+        const runIds: string[] = selectedGroups
+          ? selectedGroups.map((group) => group.runId)
+          : input.allTask && allValid && input.resultIds === undefined
+            ? collection.runs.map((run) => run.run.id)
             : [input.runId];
         let available: ReturnType<typeof scopeCandidateRun>[] = [];
         for (const runId of runIds) {
           const item =
-            runId === input.runId
+            collection.runs.find((run) => run.run.id === runId) ??
+            (runId === input.runId
               ? data
               : await readProcessingRun(
                   db,
@@ -2900,16 +2993,11 @@ export async function executeAssistantTurn(
                   runId,
                   { limit: "10000" },
                   true,
-                );
+                ));
           await depend(references(item.run.source));
           if (!["succeeded", "failed", "cancelled"].includes(item.run.status))
             throw new AssistantError(409, "processing_still_running");
-          available.push(
-            scopeRunToTask(
-              task,
-              scopeCandidateRun(item, candidateScopeForRun(task, runId)),
-            ),
-          );
+          available.push(item);
         }
         available = effectiveTaskRuns(available);
         const target: Record<string, any> = { kind: input.target.kind };
@@ -2936,9 +3024,30 @@ export async function executeAssistantTurn(
           target.purpose = input.target.purpose ?? "";
         }
         const resultGroups = [];
+        const alreadyAdopted =
+          target.kind === "draft"
+            ? await adoptedCandidateKeys(
+                db,
+                artifacts,
+                scope,
+                collection.runs,
+                target.id,
+                true,
+              )
+            : new Set<string>();
+        const pendingTotal = collection.runs.reduce(
+          (n, item) =>
+            n +
+            item.records.filter(
+              (row) => !alreadyAdopted.has(`${item.run.id}:${row.id}`),
+            ).length,
+          0,
+        );
         for (const item of available) {
-          const ids =
-            allValid && input.resultIds === undefined
+          const ids = selectedGroups
+            ? selectedGroups.find((group) => group.runId === item.run.id)!
+                .resultIds
+            : allValid && input.resultIds === undefined
               ? item.allIds
               : input.resultIds;
           if (
@@ -2954,16 +3063,7 @@ export async function executeAssistantTurn(
             ids.some((id) => !item.allIds.includes(id))
           )
             throw new AssistantError(422, "processing_result_invalid");
-          const adopted =
-            target.kind === "draft"
-              ? await adoptedCandidateKeys(
-                  db,
-                  artifacts,
-                  scope,
-                  [item],
-                  target.id,
-                )
-              : new Set<string>();
+          const adopted = alreadyAdopted;
           if (
             input.resultIds &&
             ids.some((id) => adopted.has(`${item.run.id}:${id}`))
@@ -3017,11 +3117,18 @@ export async function executeAssistantTurn(
             runId: primary.runId,
             resultIds: primary.resultIds,
             target,
+            resultsGuard: {
+              states: collection.states,
+              ...(allValid && input.allTask
+                ? { excludedGroups: collection.excluded }
+                : {}),
+            },
             ...(resultGroups.length > 1 ? { resultGroups } : {}),
           },
           {
             title: "采用处理结果",
             count,
+            range: count === pendingTotal ? "task" : "partial",
             target:
               target.kind === "asset"
                 ? "派生原始文件"
@@ -3417,6 +3524,7 @@ export async function executeAssistantTurn(
       model: model.model,
       temperature: 0.2,
       instructions:
+        "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。只给方案设plan并仅查询；用户明确要求执行时设execute，不重复开工确认。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +

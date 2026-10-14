@@ -31,13 +31,6 @@ import { ProcessingSourcePicker } from "./processing-source-picker";
 import "@/assistant-workspace.css";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import { request, canRetainReadResult } from "@/services/workspace";
 
@@ -86,7 +79,14 @@ type Proposal = {
   id: string;
   turn_id: string;
   action: string;
-  summary: { title?: string; target?: string; count?: number; revision?: number; url?: string };
+  summary: {
+    title?: string;
+    target?: string;
+    count?: number;
+    revision?: number;
+    url?: string;
+    range?: "partial" | "task";
+  };
   status: string;
   expires_at: string;
   receipt?: {
@@ -189,7 +189,7 @@ type Submission = {
   key: string;
   sessionId?: string | undefined;
   context?: AssistantPageContext | undefined;
-  candidates?: CandidateSelection | undefined;
+  candidates?: CandidateSelection | null | undefined;
   turnId?: string;
   status: "submitting" | "accepted" | "failed";
   expectedTaskRevision?: number;
@@ -236,7 +236,7 @@ const messages: Record<string, string> = {
   assistant_plan_revalidation_required: "要求已变化，请重新核对当前步骤和已有成果。",
   assistant_step_context_changed:
     "请求的动作与当前步骤不一致，需要修正未执行步骤后继续。已有成果保留。",
-  assistant_candidate_selection_changed: "候选批次已经变化，请重新选择。",
+  assistant_candidate_selection_changed: "成果已更新，请重新核对并勾选。",
   assistant_turn_running: "本会话还有一条消息正在处理，请稍候。",
   assistant_busy: "当前已有任务正在使用助手，请稍后再试。",
   assistant_session_full: "本会话已达到消息上限，请新建会话继续。",
@@ -287,9 +287,7 @@ export function ProjectAssistant({
   pageContext?: AssistantPageContext | undefined;
   canWrite: boolean;
 }) {
-  const [picked, setPicked] = useState<CandidateSelection>(),
-    [candidateRun, setCandidateRun] = useState<string>(),
-    [busy, setBusy] = useState(false),
+  const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [sessionSearch, setSessionSearch] = useState(""),
     [sessionOffset, setSessionOffset] = useState(0),
@@ -304,11 +302,21 @@ export function ProjectAssistant({
     [foreground, setForeground] = useState(!document.hidden);
   const scopeKey = `evalbase:assistant:${actorId}:${projectId}:`,
     draftKey = scopeKey + (sessionId ?? "new");
-  const [draft, patchDraft] = useAssistantDraft<{ message: string; pending?: Submission }>(
-    draftKey,
-  );
+  const [draft, patchDraft] = useAssistantDraft<{
+    message: string;
+    pending?: Submission;
+    picked?: CandidateSelection | undefined;
+  }>(draftKey);
   const message = draft.message ?? "",
-    pending = draft.pending;
+    pending = draft.pending,
+    picked = draft.picked;
+  const setPicked = useCallback(
+    (value: CandidateSelection | undefined) => {
+      const current = JSON.parse(readAssistantDraft(draftKey));
+      writeAssistantDraft(draftKey, { ...current, picked: value });
+    },
+    [draftKey],
+  );
   const setMessage = (value: string | ((old: string) => string)) =>
     patchDraft((current) => ({
       message: typeof value === "function" ? value(current.message ?? "") : value,
@@ -317,7 +325,6 @@ export function ProjectAssistant({
     navigate = useNavigate(),
     container = useRef<HTMLDivElement>(null),
     candidatePane = useRef<HTMLDivElement>(null),
-    candidateSelections = useRef<Record<string, CandidateSelection>>({}),
     historyRef = useRef<HTMLDivElement>(null),
     contentRef = useRef<HTMLDivElement>(null),
     follow = useRef(true),
@@ -624,10 +631,6 @@ export function ProjectAssistant({
       setPane("workspace");
     }
   }, [visible?.task?.runId, visible?.task?.stage]);
-  useLayoutEffect(() => {
-    setPicked(undefined);
-    candidateSelections.current = {};
-  }, [sessionId, visible?.task?.candidateScope?.hash]);
   const taskRuns = visible?.task?.runIds ?? (visible?.task?.runId ? [visible.task.runId] : []);
   const processingRecovery = useQueries({
     queries: taskRuns.map((runId) => ({
@@ -642,8 +645,7 @@ export function ProjectAssistant({
     })),
   });
   const canRetryProcessing = processingRecovery.some((q) => q.data?.recovery?.canRetry === true);
-  const reviewRun =
-    candidateRun && taskRuns.includes(candidateRun) ? candidateRun : visible?.task?.runId;
+  const reviewRun = visible?.task?.runId;
   function setPending(submission: Submission) {
     const key = scopeKey + (submission.sessionId ?? "new");
     const current = JSON.parse(readAssistantDraft(key));
@@ -702,8 +704,8 @@ export function ProjectAssistant({
     await queryClient.invalidateQueries({ queryKey: ["assistant-sessions", projectId] });
     return value.sessionId;
   }
-  async function send(retry?: Submission) {
-    const text = retry?.message ?? message;
+  async function send(retry?: Submission, textOverride?: string) {
+    const text = retry?.message ?? textOverride ?? message;
     if (
       !text.trim() ||
       busy ||
@@ -730,9 +732,7 @@ export function ProjectAssistant({
             key: crypto.randomUUID(),
             sessionId,
             context: pageContext,
-            ...(picked && taskRuns.includes(picked.runId) && picked.resultIds.length
-              ? { candidates: picked }
-              : {}),
+            ...(picked ? { candidates: picked.resultIds.length ? picked : null } : {}),
             status: "submitting",
           });
     setPending({ ...submission, status: "submitting" });
@@ -745,7 +745,7 @@ export function ProjectAssistant({
         {
           message: text,
           ...(submission.context ? { context: submission.context } : {}),
-          ...(submission.candidates ? { candidates: submission.candidates } : {}),
+          ...(submission.candidates !== undefined ? { candidates: submission.candidates } : {}),
           ...(submission.expectedTaskRevision !== undefined
             ? { expectedTaskRevision: submission.expectedTaskRevision }
             : {}),
@@ -774,6 +774,14 @@ export function ProjectAssistant({
     } catch (e) {
       setError(errorText(e));
       setPending({ ...submission, status: "failed" });
+      if (e instanceof Error && e.message === "assistant_candidate_selection_changed") {
+        const key = scopeKey + (submission.sessionId ?? "new"),
+          saved = JSON.parse(readAssistantDraft(key));
+        writeAssistantDraft(key, { ...saved, pending: undefined });
+        await queryClient.invalidateQueries({
+          queryKey: ["assistant-candidates", base, submission.sessionId],
+        });
+      }
       if (submission.expectedTaskRevision !== undefined) await conversation.refetch();
     } finally {
       setBusy(false);
@@ -1259,6 +1267,7 @@ export function ProjectAssistant({
                             <h4 className="font-semibold">{p.summary.title}</h4>
                             <p className="break-words text-muted-foreground">
                               {p.summary.target} · {p.summary.count ?? 0} 条记录
+                              {p.summary.range === "partial" && " · 部分采用"}
                               {p.summary.revision !== undefined
                                 ? ` · 草稿修订 ${p.summary.revision}`
                                 : ""}
@@ -1411,7 +1420,7 @@ export function ProjectAssistant({
                   {error}
                 </p>
               )}
-              {picked && taskRuns.includes(picked.runId) && Boolean(picked.resultIds.length) && (
+              {picked && Boolean(picked.resultIds.length) && (
                 <p className="text-xs text-muted-foreground">
                   本条要求仅重改选中的 {picked!.resultIds.length} 条候选，其余保留。
                 </p>
@@ -1633,21 +1642,23 @@ export function ProjectAssistant({
                         "已固定的来源"}
                     </p>
                   )}
-                  {workTab === "results" && visible.task.runId && (
-                    <ProcessingTaskCard
-                      projectId={projectId}
-                      actorId={actorId}
-                      sessionId={sessionId!}
-                      runId={visible.task.runId}
-                      open={showWorkspace && workTab === "results" && foreground}
-                      onReview={() =>
-                        candidatePane.current?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "start",
-                        })
-                      }
-                    />
-                  )}
+                  {workTab === "results" &&
+                    visible.task.runId &&
+                    (visible.task.stage === "processing" || canRetryProcessing) && (
+                      <ProcessingTaskCard
+                        projectId={projectId}
+                        actorId={actorId}
+                        sessionId={sessionId!}
+                        runId={visible.task.runId}
+                        open={showWorkspace && workTab === "results" && foreground}
+                        onReview={() =>
+                          candidatePane.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          })
+                        }
+                      />
+                    )}
                   {workTab === "results" &&
                     visible.task.review?.runId === visible.task.runId &&
                     visible.task.review && (
@@ -1758,27 +1769,6 @@ export function ProjectAssistant({
                 {!reviewRun && (
                   <p className="py-5 text-sm text-muted-foreground">处理结果会显示在这里。</p>
                 )}
-                {taskRuns.length > 1 && reviewRun && (
-                  <Select
-                    value={reviewRun}
-                    onValueChange={(id) => {
-                      if (picked) candidateSelections.current[picked.runId] = picked;
-                      setCandidateRun(id);
-                      setPicked(candidateSelections.current[id]);
-                    }}
-                  >
-                    <SelectTrigger aria-label="选择候选批次">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {taskRuns.map((runId, index) => (
-                        <SelectItem key={runId} value={runId}>
-                          批次 {index + 1}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
                 {openedTabs.results &&
                   canWrite &&
                   sessionId &&
@@ -1788,18 +1778,19 @@ export function ProjectAssistant({
                     visible.task.stage,
                   ) && (
                     <AssistantCandidates
-                      key={`${sessionId}:${reviewRun}:${visible.task.candidateScope?.hash ?? "all"}`}
+                      key={sessionId}
                       actorId={actorId}
                       active={showWorkspace && workTab === "results" && foreground}
                       base={base}
                       sessionId={sessionId}
                       runId={reviewRun}
-                      scopeHash={visible.task.candidateScope?.hash}
+                      scopeHash={
+                        String(visible.taskRevision ?? 0) +
+                        (visible.task.candidateScope?.hash ?? "")
+                      }
                       selected={picked}
-                      onSelect={(value) => {
-                        candidateSelections.current[value.runId] = value;
-                        setPicked(value);
-                      }}
+                      onSelect={setPicked}
+                      onSave={running || busy ? undefined : (text) => void send(undefined, text)}
                     />
                   )}
               </div>

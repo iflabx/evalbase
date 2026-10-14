@@ -5,6 +5,13 @@ import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import { backgroundCatalog } from "./background.js";
+import type { ArtifactRepository } from "../storage/artifacts.js";
+import {
+  taskCandidateCollection,
+  resolveTaskSelection,
+  type TaskCandidateSelection,
+} from "./review.js";
+import { guardProcessingTask } from "../processing/task-state.js";
 import {
   RequirementError,
   effectiveRules,
@@ -504,6 +511,7 @@ export async function startTurn(
   pageContext?: unknown,
   candidateSelection?: unknown,
   expectedTaskRevision?: unknown,
+  artifacts?: ArtifactRepository,
 ) {
   if (
     expectedTaskRevision !== undefined &&
@@ -541,8 +549,30 @@ export async function startTurn(
     await assistantAccess(db, scope, page.kind === "draft");
     await dependenciesAvailable(db, scope, [page]);
   }
+  const taskSelection =
+    isPlainObject(candidateSelection) && candidateSelection.scope === "task";
+  if (
+    taskSelection &&
+    (!artifacts ||
+      Object.keys(candidateSelection).some(
+        (k) => !["scope", "reviewRevision", "resultIds"].includes(k),
+      ) ||
+      typeof candidateSelection.reviewRevision !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(candidateSelection.reviewRevision) ||
+      !Array.isArray(candidateSelection.resultIds) ||
+      !candidateSelection.resultIds.length ||
+      candidateSelection.resultIds.length > 10000 ||
+      candidateSelection.resultIds.some(
+        (id) => typeof id !== "string" || !id || id.length > 250,
+      ) ||
+      new Set(candidateSelection.resultIds).size !==
+        candidateSelection.resultIds.length)
+  )
+    throw new AssistantError(422, "assistant_candidate_selection_invalid");
   if (
     candidateSelection !== undefined &&
+    candidateSelection !== null &&
+    !taskSelection &&
     (!isPlainObject(candidateSelection) ||
       Object.keys(candidateSelection).some(
         (k) => !["runId", "resultIds"].includes(k),
@@ -558,33 +588,76 @@ export async function startTurn(
         candidateSelection.resultIds.length)
   )
     throw new AssistantError(422, "assistant_candidate_selection_invalid");
-  const legacyRequestHash = candidateSelection
-    ? sha256(
-        canonicalJson({
-          message: text,
-          ...(page ? { context: { kind: page.kind, id: page.id } } : {}),
-          candidates: candidateSelection,
-        }),
-      )
-    : page
+  const legacyRequestHash =
+    candidateSelection === null
       ? sha256(
           canonicalJson({
             message: text,
-            context: { kind: page.kind, id: page.id },
+            ...(page ? { context: { kind: page.kind, id: page.id } } : {}),
+            candidates: null,
           }),
         )
-      : sha256(text);
+      : candidateSelection
+        ? sha256(
+            canonicalJson({
+              message: text,
+              ...(page ? { context: { kind: page.kind, id: page.id } } : {}),
+              candidates: candidateSelection,
+            }),
+          )
+        : page
+          ? sha256(
+              canonicalJson({
+                message: text,
+                context: { kind: page.kind, id: page.id },
+              }),
+            )
+          : sha256(text);
   const requestHash =
     expectedTaskRevision === undefined
       ? legacyRequestHash
       : sha256(canonicalJson({ legacyRequestHash, expectedTaskRevision }));
   await readSession(db, scope, sessionId);
+  let prepared:
+      | {
+          selection: TaskCandidateSelection;
+          states: { id: string; revision: number }[];
+          revision: number;
+        }
+      | undefined,
+    selectionError: unknown;
+  if (taskSelection) {
+    try {
+      const current = await sessionRow(db, scope, sessionId);
+      const collection = await taskCandidateCollection(
+        db,
+        artifacts!,
+        scope,
+        current.task,
+      );
+      prepared = {
+        selection: resolveTaskSelection(
+          collection,
+          candidateSelection as TaskCandidateSelection,
+          Number(current.task_revision),
+        ),
+        states: collection.states,
+        revision: Number(current.task_revision),
+      };
+    } catch (error) {
+      selectionError = error;
+    } // Receipt replay still wins over a changed live collection.
+  }
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext('assistant-concurrency'))",
     );
+    if (taskSelection)
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `processing-candidates:${scope.projectId}`,
+      ]);
     const session = await sessionRow(client, scope, sessionId, true);
     const prior = (
       await client.query(
@@ -597,6 +670,15 @@ export async function startTurn(
         throw new AssistantError(409, "idempotency_conflict");
       await client.query("COMMIT");
       return { turn: prior, replayed: true };
+    }
+    if (taskSelection) {
+      if (selectionError) throw selectionError;
+      if (!prepared || Number(session.task_revision) !== prepared.revision)
+        throw new AssistantError(409, "assistant_candidate_selection_changed");
+      await guardProcessingTask(client, {
+        ...scope,
+        assistantResultsGuard: { states: prepared.states },
+      });
     }
     await client.query(
       "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
@@ -618,6 +700,7 @@ export async function startTurn(
       throw new AssistantError(409, "assistant_confirmation_running");
     if (
       candidateSelection &&
+      !taskSelection &&
       !(
         (session.task?.runIds ??
           (session.task?.runId ? [session.task.runId] : [])) as string[]
@@ -672,7 +755,7 @@ export async function startTurn(
           page?.kind === "draft" || turns.some((t) => t.requires_write),
           JSON.stringify(dependencies),
           Number(session.task_revision) + 1,
-          candidateSelection ?? null,
+          prepared?.selection ?? candidateSelection ?? null,
         ],
       )
     ).rows[0];
@@ -733,7 +816,8 @@ export async function startTurn(
             : {}),
           ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
         };
-    if (candidateSelection) task.selectedCandidates = candidateSelection;
+    if (candidateSelection !== undefined)
+      task.selectedCandidates = prepared?.selection ?? candidateSelection;
     await client.query(
       "UPDATE assistant_proposal SET status='invalid' WHERE session_id=$1 AND status='pending'",
       [sessionId],
@@ -805,6 +889,17 @@ export async function saveProposal(
 }
 
 /** Read already committed domain receipts only; expiration never authorizes a new effect. */
+export async function clearConfirmedCandidateSelection(
+  db: Pick<Database, "query">,
+  proposal: Record<string, any>,
+) {
+  if (proposal.action !== "processing") return;
+  await db.query(
+    "UPDATE assistant_session SET task=task||'{\"selectedCandidates\":null}'::jsonb WHERE id=$1 AND task_revision=$2",
+    [proposal.session_id, proposal.task_revision],
+  );
+}
+
 export async function recoverProposalReceipt(
   db: Pick<Database, "query">,
   scope: AssistantScope,
@@ -941,6 +1036,7 @@ export async function recoverProposalReceipt(
     "UPDATE assistant_proposal SET status='succeeded',receipt=$2,lease_until=NULL WHERE id=$1 AND status IN('pending','executing','invalid')",
     [proposal.id, receipt],
   );
+  await clearConfirmedCandidateSelection(db, proposal);
   return receipt;
 }
 
@@ -977,23 +1073,38 @@ export async function recoverAssistantReceipt(
     }
   } else if (["submit_processing", "refine_candidates"].includes(item.name)) {
     await assistantAccess(db, scope, true);
-    const row = (
+    const rows = (
       await db.query(
-        "SELECT r.id,r.source,r.input_ref,r.input_count,j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.idempotency_key=$3",
-        [scope.projectId, scope.actorId, item.key],
+        "SELECT r.id,r.source,r.input_ref,r.input_count,j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND (r.idempotency_key=$3 OR ($4 AND left(r.idempotency_key,length($3)+1)=$3||':')) ORDER BY (r.idempotency_key=$3) DESC,r.created_at,r.id",
+        [
+          scope.projectId,
+          scope.actorId,
+          item.key,
+          item.name === "refine_candidates",
+        ],
       )
-    ).rows[0];
+    ).rows;
+    const row = rows.at(-1);
     if (row?.input_ref) {
-      await processingSourceAvailable(db, scope.projectId, row.source, true);
-      references =
-        row.source.kind === "assets"
-          ? row.source.assetIds.map((id: string) => ({
-              kind: "asset",
-              id,
-            }))
-          : [{ kind: row.source.kind, id: row.source.id }];
+      for (const found of rows) {
+        await processingSourceAvailable(
+          db,
+          scope.projectId,
+          found.source,
+          true,
+        );
+        references.push(
+          ...(found.source.kind === "assets"
+            ? found.source.assetIds.map((id: string) => ({
+                kind: "asset" as const,
+                id,
+              }))
+            : [{ kind: found.source.kind, id: found.source.id }]),
+        );
+      }
       result = {
         runId: row.id,
+        ...(rows.length > 1 ? { runIds: rows.map((found) => found.id) } : {}),
         status: row.status,
         inputCount: row.input_count,
         recovered: true,

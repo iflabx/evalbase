@@ -34,6 +34,23 @@ export async function guardProcessingTask(
   scope: ProcessingScope,
 ) {
   const request = scope.taskRound ?? scope.taskSave;
+  if (scope.assistantResultsGuard) {
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `processing-candidates:${scope.projectId}`,
+    ]);
+    for (const state of scope.assistantResultsGuard.states) {
+      const row = (
+        await db.query(
+          `SELECT t.revision,j.status FROM processing_task t JOIN processing_run r ON r.id=t.latest_run_id JOIN job j ON j.id=r.job_id WHERE t.id=$1 AND t.project_id=$2 FOR SHARE OF t`,
+          [state.id, scope.projectId],
+        )
+      ).rows[0];
+      if (!row || Number(row.revision) !== state.revision)
+        throw new ProcessingError(409, "assistant_candidate_selection_changed");
+      if (!["succeeded", "failed", "cancelled"].includes(row.status))
+        throw new ProcessingError(409, "processing_still_running");
+    }
+  }
   if (!request) return;
   await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
     `processing-candidates:${scope.projectId}`,

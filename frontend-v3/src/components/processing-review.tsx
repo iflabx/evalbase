@@ -269,6 +269,7 @@ export function ProcessingReview({
   selected,
   onToggle,
   disabled = false,
+  disabledIds,
   generated = false,
   offset = 0,
   total,
@@ -282,6 +283,7 @@ export function ProcessingReview({
   selected: Set<string>;
   onToggle: (id: string, checked: boolean) => void;
   disabled?: boolean;
+  disabledIds?: Set<string> | undefined;
   generated?: boolean;
   offset?: number;
   total?: number;
@@ -368,7 +370,7 @@ export function ProcessingReview({
                   <Checkbox
                     aria-label={`选择结果 ${offset + index + 1}`}
                     checked={selected.has(row.id)}
-                    disabled={disabled || row.unprocessed}
+                    disabled={disabled || row.unprocessed || disabledIds?.has(row.id)}
                     onCheckedChange={(value) => onToggle(row.id, value === true)}
                   />
                 </td>

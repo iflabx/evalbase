@@ -165,6 +165,10 @@ async function fixture(
     if (path.endsWith("/candidates")) {
       state.candidates++;
       return reply({
+        scope: "task",
+        reviewRevision: "a".repeat(64),
+        taskTotal: 2,
+        savedCount: 0,
         records: [0, 1].map((i) => ({
           id: `0:${i}`,
           result: {
@@ -209,6 +213,153 @@ async function fixture(
 async function overflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
+
+test("OPT-25 cross-page selection survives refresh and saves the fixed task scope", async ({
+  page,
+}, info) => {
+  let reviewRevision = "b".repeat(64);
+  const rows = Array.from({ length: 14 }, (_, i) => ({
+    id: `root${i < 7 ? "A" : "B"}:0:${i % 7}`,
+    result: {
+      question: `跨批问题 ${i + 1}`,
+      expectedOutput: "保留答案",
+      metadata: [{ key: "分类", value: "示例" }],
+    },
+    changedFields: ["question"],
+  }));
+  const state = await fixture(page, {
+    task: {
+      title: "跨批审核",
+      goal: "整理资料",
+      stage: "awaiting_review",
+      runId: "runB",
+      runIds: ["runA", "runB"],
+    },
+    intercept: async (route) => {
+      const u = new URL(route.request().url());
+      if (!u.pathname.endsWith("/candidates")) return false;
+      expect(u.searchParams.get("scope")).toBe("task");
+      const offset = Number(u.searchParams.get("offset") ?? 0),
+        text = u.searchParams.get("search") ?? "",
+        filtered = rows.filter((row) => row.result.question.includes(text));
+      await route.fulfill({
+        json: {
+          scope: "task",
+          reviewRevision,
+          records: filtered.slice(offset, offset + 10),
+          allIds: filtered.map((row) => row.id),
+          total: filtered.length,
+          taskTotal: 14,
+          savedCount: 0,
+          saveTarget: { kind: "draft", id: "original" },
+          stats: { all: 14, changed: 14, needsReview: 0 },
+          history: [
+            { runId: "runA", round: 1, count: 7, operation: "clean" },
+            { runId: "runB", round: 1, count: 7, operation: "clean" },
+          ],
+        },
+      });
+      return true;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("选择结果 1", { exact: true }).click();
+  await page.getByRole("button", { name: "下一页候选" }).click();
+  await page.getByLabel("选择结果 11").click();
+  await expect(page.getByText("已选 2 条候选", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
+  await expect(page.getByText("已选 2 条候选", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("opt25-results-1440.png"), fullPage: true });
+  await page.setViewportSize({ width: 420, height: 900 });
+  await overflow(page);
+  await page.screenshot({ path: info.outputPath("opt25-results-420.png"), fullPage: true });
+  reviewRevision = "c".repeat(64);
+  await page.reload();
+  await expect(
+    page.getByText("成果已更新，原勾选范围已失效。请清空选择后重新核对。"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存所选回原草稿" })).toBeDisabled();
+  await page.getByRole("button", { name: "清空选择", exact: true }).click();
+  await page.getByLabel("选择结果 1", { exact: true }).click();
+  await page.getByRole("button", { name: "保存所选回原草稿" }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(state.posts.at(-1).body).toMatchObject({
+    message: "将勾选成果保存回原草稿",
+    candidates: { scope: "task", reviewRevision, resultIds: [rows[0]!.id] },
+  });
+});
+
+test("OPT-25 a rejected stale submission refreshes results and uses a new key after reselecting", async ({
+  page,
+}) => {
+  let revision = "a".repeat(64);
+  const keys: string[] = [];
+  const state = await fixture(page, {
+    task: { goal: "整理资料", stage: "awaiting_review", runId: "run" },
+    intercept: async (route) => {
+      const u = new URL(route.request().url());
+      if (u.pathname.endsWith("/candidates")) {
+        await route.fulfill({
+          json: {
+            scope: "task",
+            reviewRevision: revision,
+            records: [
+              {
+                id: "origin:0:0",
+                result: { question: "当前问题", expectedOutput: "答案", metadata: [] },
+              },
+            ],
+            allIds: ["origin:0:0"],
+            total: 1,
+            stats: { all: 1, changed: 0, needsReview: 0 },
+          },
+        });
+        return true;
+      }
+      if (u.pathname.endsWith("/turns")) {
+        keys.push(route.request().headers()["idempotency-key"]!);
+        if (keys.length === 1) {
+          revision = "d".repeat(64);
+          await route.fulfill({
+            status: 409,
+            json: { error: { code: "assistant_candidate_selection_changed" } },
+          });
+          return true;
+        }
+      }
+      return false;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("选择结果 1", { exact: true }).click();
+  await page.getByLabel("向项目助手发送消息").fill("只改这条");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    page.getByText("成果已更新，原勾选范围已失效。请清空选择后重新核对。"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "清空选择", exact: true }).click();
+  await page.getByLabel("选择结果 1", { exact: true }).click();
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(keys[0]).not.toBe(keys[1]);
+  expect(state.posts.at(-1).body.candidates.reviewRevision).toBe(revision);
+});
+
+test("OPT-25 clearing selection clears the persisted server range on the next request", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    task: { goal: "整理资料", stage: "awaiting_review", runId: "run" },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByLabel("选择结果 1", { exact: true }).click();
+  await page.getByRole("button", { name: "清空选择", exact: true }).click();
+  await page.getByLabel("向项目助手发送消息").fill("只核对全部结果");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(state.posts.at(-1).body.candidates).toBeNull();
+});
 
 test("OPT-24 a delayed pre-submission status cannot hide an accepted first turn", async ({
   page,
@@ -596,11 +747,11 @@ test("OPT-24 results and narrow tabs retain selection and input; only fixed sele
     },
   });
   await page.goto(`${url}/one`);
-  await page.getByLabel("选择结果 1").click();
+  await page.getByLabel("选择结果 1", { exact: true }).click();
   await page.getByLabel("向项目助手发送消息").fill("只调整这条");
   await page.getByRole("button", { name: "资料与要求", exact: true }).click();
   await page.getByRole("button", { name: "结果", exact: true }).click();
-  await expect(page.getByLabel("选择结果 1")).toBeChecked();
+  await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
   await page.screenshot({ path: testInfo.outputPath("opt24-review-1440.png"), fullPage: true });
   for (const width of [1280, 420]) {
     await page.setViewportSize({ width, height: 900 });
@@ -608,13 +759,17 @@ test("OPT-24 results and narrow tabs retain selection and input; only fixed sele
     await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("只调整这条");
     await overflow(page);
     await page.getByRole("button", { name: "工作区", exact: true }).click();
-    await expect(page.getByLabel("选择结果 1")).toBeChecked();
+    await expect(page.getByLabel("选择结果 1", { exact: true })).toBeChecked();
   }
   await page.screenshot({ path: testInfo.outputPath("opt24-review-420.png"), fullPage: true });
   await page.getByRole("button", { name: "对话", exact: true }).click();
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
-  expect(state.posts.at(-1).body.candidates).toEqual({ runId: "run", resultIds: ["0:0"] });
+  expect(state.posts.at(-1).body.candidates).toEqual({
+    scope: "task",
+    reviewRevision: "a".repeat(64),
+    resultIds: ["0:0"],
+  });
 });
 
 test("OPT-24 execute button uses current plan revision and does not substitute the selected page source", async ({

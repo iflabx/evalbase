@@ -58,6 +58,11 @@ export type ProcessingScope = {
   /** Resolved and fenced by the task service, never trusted from a run request. */
   taskRound?: TaskRound;
   taskSave?: TaskSave;
+  /** Frozen by the assistant's task review; never read from a public processing body. */
+  assistantResultsGuard?: {
+    states: { id: string; revision: number }[];
+    excludedGroups?: { runId: string; resultIds: string[] }[];
+  };
 };
 export type ProcessingSource =
   | { kind: "assets"; assetIds: string[]; recordIds: string[] }

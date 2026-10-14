@@ -112,6 +112,7 @@ export async function processingSourceSummary(
 export function processingReviewPage(
   data: Awaited<ReturnType<typeof readProcessingRun>>,
   query: { offset?: string; limit?: string; view?: string; search?: string },
+  runIssues?: ReadonlyMap<string, typeof data.issues>,
 ) {
   const offset = Number(query.offset ?? 0),
     limit = Number(query.limit ?? 20),
@@ -147,7 +148,11 @@ export function processingReviewPage(
             JSON.stringify(row.original![field]) !==
             JSON.stringify(row.result[field]),
         );
-    const issues = data.issues.filter(
+    const ref = (row as typeof row & { resultRef?: { runId: string } })
+      .resultRef;
+    const issues = (
+      ref && runIssues ? (runIssues.get(ref.runId) ?? []) : data.issues
+    ).filter(
       (issue) =>
         !["empty_question", "duplicate_content", "missing_output"].includes(
           issue.code,
@@ -210,7 +215,12 @@ export async function presentProcessingReview(
   scope: ProcessingScope,
   data: Awaited<ReturnType<typeof readProcessingRun>>,
   query: { offset?: string; limit?: string; view?: string; search?: string },
+  taskRuns: Awaited<ReturnType<typeof readProcessingRun>>[] = [data],
 ) {
+  const runData = new Map(taskRuns.map((item) => [item.run.id, item]));
+  const actualRef = (row: (typeof data.records)[number]) =>
+    (row as typeof row & { resultRef?: { runId: string; resultId: string } })
+      .resultRef ?? { runId: data.run.id, resultId: row.id };
   if (
     query.search !== undefined &&
     (typeof query.search !== "string" || query.search.length > 200)
@@ -239,6 +249,7 @@ export async function presentProcessingReview(
         }
       : data,
     query,
+    new Map(taskRuns.map((item) => [item.run.id, item.issues])),
   );
   const sourceById = searchable
     ? new Map(data.records.map((row, index) => [row.id, searchable[index]!]))
@@ -276,27 +287,36 @@ export async function presentProcessingReview(
     artifacts,
     scope,
     page.records.flatMap((row) =>
-      row.original ? [{ runId: data.run.id, inputId: row.original.id }] : [],
+      row.original
+        ? [{ runId: actualRef(row).runId, inputId: row.original.id }]
+        : [],
     ),
   );
   const adopted = await adoptedCandidateKeys(
     db,
     artifacts,
     scope,
-    [data],
+    taskRuns,
     undefined,
     true,
   );
-  const references =
-    data.rootOperation === "augment"
-      ? await processingReferences(db, artifacts, scope, data.run.id)
-      : null;
+  const referenceByRun = new Map(
+    await Promise.all(
+      [...new Set(page.records.map((row) => actualRef(row).runId))].map(
+        async (id) =>
+          [
+            id,
+            runData.get(id)?.rootOperation === "augment"
+              ? await processingReferences(db, artifacts, scope, id)
+              : null,
+          ] as const,
+      ),
+    ),
+  );
   return {
     ...page,
     adoptedIds: data.records
-      .filter((row) =>
-        adopted.has(candidateKey({ runId: data.run.id, resultId: row.id })),
-      )
+      .filter((row) => adopted.has(candidateKey(actualRef(row))))
       .map((row) => row.id),
     run: {
       ...page.run,
@@ -305,13 +325,16 @@ export async function presentProcessingReview(
     },
     records: page.records.map((row, index) => {
       const origin = origins[index]!;
+      const ref = actualRef(row),
+        actual = runData.get(ref.runId) ?? data,
+        references = referenceByRun.get(ref.runId);
       const history = row.original
-        ? (histories.get(`${data.run.id}\0${row.original.id}`) ?? [])
+        ? (histories.get(`${ref.runId}\0${row.original.id}`) ?? [])
         : [];
       const generated =
-        (row.original?.adoptionOperation ?? data.rootOperation) === "augment";
+        (row.original?.adoptionOperation ?? actual.rootOperation) === "augment";
       const badge = { clean: "已清洗", rewrite: "已改写", augment: "模型扩写" }[
-        data.run.options.operation
+        actual.run.options.operation
       ];
       const sourcePresentation = {
         ...origin,

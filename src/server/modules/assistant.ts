@@ -12,6 +12,8 @@ import {
   taskCompatibilityProblem,
   effectiveTaskRuns,
   scopeRunToTask,
+  presentTaskCandidates,
+  taskCandidateCollection,
 } from "../../assistant/review.js";
 import { presentProcessingReview } from "../../processing/presentation.js";
 import { reviewCandidates } from "../../processing/review.js";
@@ -46,6 +48,7 @@ import {
   listSessions,
   renameSession,
   recoverProposalReceipt,
+  clearConfirmedCandidateSelection,
   sessionRow,
   startTurn,
   turnFence,
@@ -483,6 +486,7 @@ export function registerAssistant({
             request.body.context,
             request.body.candidates,
             request.body.expectedTaskRevision,
+            artifacts,
           );
         if (!started.replayed)
           void dispatch().catch((error) => app.log.error(error));
@@ -694,6 +698,9 @@ export function registerAssistant({
               {
                 ...effectScope,
                 ...(p.resultGroups ? { acceptanceGroups: p.resultGroups } : {}),
+                ...(p.resultsGuard
+                  ? { assistantResultsGuard: p.resultsGuard }
+                  : {}),
               },
               p.runId,
               proposal.id,
@@ -746,6 +753,7 @@ export function registerAssistant({
           );
           if (!saved.rowCount)
             throw new AssistantError(409, "assistant_context_unavailable");
+          await clearConfirmedCandidateSelection(db, proposal);
           await queueContinuation(
             db,
             proposal.session_id,
@@ -815,6 +823,7 @@ export function registerAssistant({
       run?: string;
       view?: string;
       search?: string;
+      scope?: string;
     };
   }>(
     `${path}/sessions/:sessionId/candidates`,
@@ -828,9 +837,85 @@ export function registerAssistant({
             request.params.sessionId,
           );
         await assistantAccess(db, currentScope, true);
+        const finishRead = async () => {
+          const after = await sessionRow(
+            db,
+            currentScope,
+            request.params.sessionId,
+          );
+          await assistantAccess(db, currentScope, true);
+          if (after.content_revision !== session.content_revision)
+            throw new AssistantError(409, "assistant_context_deleted");
+          if (
+            after.task_revision !== session.task_revision ||
+            after.task.candidateScope?.hash !==
+              session.task.candidateScope?.hash
+          )
+            throw new AssistantError(
+              409,
+              "assistant_candidate_selection_changed",
+            );
+        };
         if (!session.task?.runId)
           throw new AssistantError(404, "processing_not_found");
+        if (
+          request.query.scope !== undefined &&
+          !["task", "run"].includes(request.query.scope)
+        )
+          throw new AssistantError(422, "query_parameter_invalid");
+        if (
+          request.query.scope === "task" ||
+          (!request.query.scope && !request.query.run)
+        ) {
+          if (request.query.run)
+            throw new AssistantError(422, "query_parameter_invalid");
+          const result = await presentTaskCandidates(
+            db,
+            artifacts,
+            currentScope,
+            session.task,
+            Number(session.task_revision),
+            request.query,
+          );
+          await finishRead();
+          return result;
+        }
         const runId = request.query.run ?? session.task.runId;
+        if (request.query.scope === "run") {
+          const current = await taskCandidateCollection(
+            db,
+            artifacts,
+            currentScope,
+            session.task,
+          );
+          if (
+            !current.history.some((item) => item.runId === runId) &&
+            !(session.task.runIds ?? [session.task.runId]).includes(runId)
+          )
+            throw new AssistantError(
+              409,
+              "assistant_candidate_selection_changed",
+            );
+          const result = {
+            ...(await presentProcessingReview(
+              db,
+              artifacts,
+              currentScope,
+              await readProcessingRun(
+                db,
+                artifacts,
+                currentScope,
+                runId,
+                { limit: "10000" },
+                true,
+              ),
+              request.query,
+            )),
+            scope: "run",
+          };
+          await finishRead();
+          return result;
+        }
         if (!(session.task.runIds ?? [session.task.runId]).includes(runId))
           throw new AssistantError(
             409,
@@ -902,20 +987,7 @@ export function registerAssistant({
             current,
             request.query,
           );
-          const after = await sessionRow(
-            db,
-            currentScope,
-            request.params.sessionId,
-          );
-          if (
-            after.task_revision !== session.task_revision ||
-            after.task.candidateScope?.hash !==
-              session.task.candidateScope?.hash
-          )
-            throw new AssistantError(
-              409,
-              "assistant_candidate_selection_changed",
-            );
+          await finishRead();
           return {
             ...page,
             taskTotal: effective.reduce((total, item) => total + item.total, 0),
@@ -971,19 +1043,7 @@ export function registerAssistant({
               : (sourceName ?? "来源未记录"),
           };
         });
-        const after = await sessionRow(
-          db,
-          currentScope,
-          request.params.sessionId,
-        );
-        if (
-          after.task_revision !== session.task_revision ||
-          after.task.candidateScope?.hash !== session.task.candidateScope?.hash
-        )
-          throw new AssistantError(
-            409,
-            "assistant_candidate_selection_changed",
-          );
+        await finishRead();
         return { ...result, records };
       }),
   );

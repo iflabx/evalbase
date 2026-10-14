@@ -506,8 +506,9 @@ export function bindTaskInput(
     ].includes(name)
   )
     input.runId ??=
-      name === "refine_candidates" && selection?.runId
-        ? selection.runId
+      name === "refine_candidates" &&
+      (selection?.runId || selection?.groups?.[0]?.runId)
+        ? (selection.runId ?? selection.groups[0].runId)
         : task.runId;
   const draftId =
     task.targetDraftId ??
@@ -518,6 +519,23 @@ export function bindTaskInput(
     input.target ??= { kind: "draft", id: draftId };
     if (input.target.kind === "draft") input.target.id ??= draftId;
   }
+  if (name === "request_processing_apply") {
+    if (selection?.scope === "task" && input.resultIds === undefined)
+      input.allSelected = true;
+    else if (
+      input.allValid === true &&
+      input.allTask === undefined &&
+      input.resultIds === undefined
+    )
+      input.allTask = true;
+  }
+  if (
+    name === "refine_candidates" &&
+    selection?.scope === "task" &&
+    input.resultIds === undefined &&
+    input.where === undefined
+  )
+    input.allSelected = true;
   if (["submit_processing", "refine_candidates"].includes(name)) {
     input.allowedFields ??= task.allowedFields ?? ["question"];
     if (

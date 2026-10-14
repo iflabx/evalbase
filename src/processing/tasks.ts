@@ -169,6 +169,7 @@ async function taskState(
         if (refs.length > 10000)
           throw new ProcessingError(422, "processing_capacity_exceeded");
         task.incomplete =
+          refs.some((ref) => Boolean(ref.inputId)) ||
           run.status !== "succeeded" ||
           changed <
             (run.options.operation === "augment"
@@ -278,6 +279,25 @@ async function currentRows(
   }
   return rows;
 }
+/** Reuse the current-reference resolver for the assistant's multi-task workspace. */
+export async function processingTaskCandidates(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  runId: string,
+) {
+  const { task, runs, latest } = await taskState(db, artifacts, scope, runId);
+  return {
+    id: task.id,
+    revision: task.revision,
+    refs: task.current_refs,
+    latestRunId: latest.id,
+    rows: await currentRows(db, artifacts, scope, task),
+    excluded: task.excluded_refs.filter((ref) => !ref.inputId),
+    runs,
+  };
+}
+
 async function adopted(
   db: Database,
   artifacts: ArtifactRepository,

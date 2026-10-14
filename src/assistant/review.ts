@@ -6,7 +6,9 @@ import {
 } from "../processing/store.js";
 import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys, candidateKey } from "../processing/adoption.js";
-import { canonicalJson } from "../package/contract.js";
+import { canonicalJson, sha256 } from "../package/contract.js";
+import { processingTaskCandidates } from "../processing/tasks.js";
+import { presentProcessingReview } from "../processing/presentation.js";
 import { planRequirementsKey } from "./plan.js";
 import {
   requirementSummary,
@@ -21,6 +23,260 @@ import {
 } from "./candidates.js";
 
 /** Reviews the current leaves and, for a final-total goal, the actual draft after pending adoption. */
+export async function taskCandidateCollection(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: AssistantScope,
+  task: Record<string, any>,
+  data?: Awaited<ReturnType<typeof readProcessingRun>>,
+) {
+  const ids: string[] = [
+    ...new Set<string>(task.runIds ?? (task.runId ? [task.runId] : [])),
+  ];
+  if (!ids.length) throw new AssistantError(404, "processing_not_found");
+  if (ids.length > 12) throw new AssistantError(422, "assistant_task_limit");
+  const loaded = new Map<
+    string,
+    Awaited<ReturnType<typeof readProcessingRun>>
+  >();
+  const read = async (id: string) => {
+    if (!loaded.has(id))
+      loaded.set(
+        id,
+        data?.run.id === id
+          ? data
+          : await readProcessingRun(
+              db,
+              artifacts,
+              scope,
+              id,
+              { limit: "10000" },
+              true,
+            ),
+      );
+    return loaded.get(id)!;
+  };
+  const states: { id: string; revision: number }[] = [],
+    history: {
+      runId: string;
+      status: string;
+      operation: string;
+      round: number;
+      count: number;
+    }[] = [],
+    excluded: { runId: string; resultIds: string[] }[] = [];
+  const executionRuns: { id: string; status: string }[] = [];
+  const seenTasks = new Set<string>();
+  const candidates: Awaited<ReturnType<typeof readProcessingRun>>[] = [];
+  for (const id of ids) {
+    const root = await read(id);
+    if (!root.run.taskId) {
+      executionRuns.push({ id, status: root.run.status });
+      candidates.push(
+        scopeRunToTask(
+          task,
+          scopeCandidateRun(root, candidateScopeForRun(task, id)),
+        ),
+      );
+      continue;
+    }
+    if (seenTasks.has(root.run.taskId)) continue;
+    seenTasks.add(root.run.taskId);
+    const current = await processingTaskCandidates(db, artifacts, scope, id);
+    states.push({ id: current.id, revision: current.revision });
+    const latest = current.runs.find((run) => run.id === current.latestRunId)!;
+    executionRuns.push({ id: latest.id, status: latest.status });
+    current.runs.forEach((run) =>
+      history.push({
+        runId: run.id,
+        status: run.status,
+        operation: run.options.operation,
+        round: run.round_number,
+        count: Number(run.output_count ?? 0),
+      }),
+    );
+    for (const runId of new Set(current.excluded.map((ref) => ref.runId)))
+      excluded.push({
+        runId,
+        resultIds: current.excluded
+          .filter((ref) => ref.runId === runId)
+          .map((ref) => ref.resultId),
+      });
+    const scopeRoot = task.candidateScope
+      ? await read(task.candidateScope.runId)
+      : undefined;
+    if (scopeRoot) scopeCandidateRun(scopeRoot, task.candidateScope);
+    const fixed =
+      scopeRoot?.run.taskId === current.id ? task.candidateScope : undefined;
+    for (const runId of new Set(
+      current.rows.filter((row) => row.localId).map((row) => row.runId),
+    )) {
+      const raw = await read(runId),
+        refs = new Set(
+          current.rows
+            .filter((row) => row.runId === runId && row.localId)
+            .map((row) => row.localId),
+        );
+      const rows = raw.records.filter(
+        (row) =>
+          refs.has(row.id) &&
+          (!fixed ||
+            fixed.originKeys.includes(candidateKey(row.candidateOrigin))),
+      );
+      candidates.push(
+        scopeRunToTask(task, {
+          ...raw,
+          records: rows,
+          allIds: rows.map((row) => row.id),
+          total: rows.length,
+        }),
+      );
+    }
+  }
+  const runs = effectiveTaskRuns(candidates);
+  if (runs.reduce((n, run) => n + run.total, 0) > 10000)
+    throw new AssistantError(422, "processing_capacity_exceeded");
+  const records = runs.flatMap((run) =>
+    run.records.map((row) => ({
+      ...row,
+      id: candidateKey(row.candidateOrigin),
+      resultRef: {
+        runId: run.run.id,
+        resultId: row.id,
+        identity: candidateKey(row.candidateOrigin),
+      },
+    })),
+  );
+  if (new Set(records.map((row) => row.id)).size !== records.length)
+    throw new AssistantError(409, "assistant_candidate_selection_changed");
+  const digest = sha256(
+    canonicalJson({
+      states,
+      executionRuns,
+      records: records.map((row) => ({
+        id: row.id,
+        ref: row.resultRef,
+        result: row.result,
+      })),
+      scope: task.candidateScope?.hash ?? null,
+    }),
+  );
+  return { runs, records, digest, states, history, excluded, executionRuns };
+}
+
+export async function presentTaskCandidates(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: AssistantScope,
+  task: Record<string, any>,
+  revision: number,
+  query: { offset?: string; limit?: string; view?: string; search?: string },
+) {
+  const collection = await taskCandidateCollection(db, artifacts, scope, task);
+  const primary =
+    collection.runs.at(-1) ??
+    (await readProcessingRun(db, artifacts, scope, task.runId, { limit: "1" }));
+  const data = {
+    ...primary,
+    records: collection.records,
+    allIds: collection.records.map((row) => row.id),
+    total: collection.records.length,
+    issues: collection.runs.flatMap((run) => run.issues),
+  };
+  const page = await presentProcessingReview(
+    db,
+    artifacts,
+    scope,
+    data,
+    query,
+    collection.runs,
+  );
+  const target =
+    task.targetDraftId ??
+    (task.target?.kind === "draft" ? task.target.id : undefined);
+  const saved = await adoptedCandidateKeys(
+    db,
+    artifacts,
+    scope,
+    collection.runs,
+    target,
+    Boolean(target),
+  );
+  const savedIds = collection.records
+    .filter((row) =>
+      saved.has(`${row.resultRef.runId}:${row.resultRef.resultId}`),
+    )
+    .map((row) => row.id);
+  const reviewRevision = sha256(
+    canonicalJson({ revision, digest: collection.digest }),
+  );
+  const selected = task.selectedCandidates as
+    | TaskCandidateSelection
+    | undefined;
+  const selection =
+    selected?.scope === "task" && selected.catalogDigest === collection.digest
+      ? {
+          scope: "task",
+          reviewRevision,
+          resultIds: selected.resultIds,
+          previousReviewRevision: selected.reviewRevision,
+        }
+      : undefined;
+  return {
+    ...page,
+    scope: "task",
+    taskTotal: data.total,
+    reviewRevision,
+    savedIds,
+    savedCount: savedIds.length,
+    history: collection.history,
+    selection,
+    ...(target ? { saveTarget: { kind: "draft", id: target } } : {}),
+  };
+}
+
+export type TaskCandidateSelection = {
+  scope: "task";
+  reviewRevision: string;
+  resultIds: string[];
+  catalogDigest?: string;
+  groups?: { runId: string; resultIds: string[] }[];
+};
+
+/** Resolve browser identities once, and reuse the immutable references inside the turn. */
+export function resolveTaskSelection(
+  collection: Awaited<ReturnType<typeof taskCandidateCollection>>,
+  selection: TaskCandidateSelection,
+  revision?: number,
+) {
+  if (
+    (revision !== undefined &&
+      selection.reviewRevision !==
+        sha256(canonicalJson({ revision, digest: collection.digest }))) ||
+    (selection.catalogDigest !== undefined &&
+      selection.catalogDigest !== collection.digest)
+  )
+    throw new AssistantError(409, "assistant_candidate_selection_changed");
+  const chosen = new Set(selection.resultIds),
+    rows = collection.records.filter((row) => chosen.has(row.id));
+  if (
+    rows.length !== chosen.size ||
+    collection.executionRuns.some(
+      (run) => !["succeeded", "failed", "cancelled"].includes(run.status),
+    )
+  )
+    throw new AssistantError(409, "assistant_candidate_selection_changed");
+  const groups = [...new Set(rows.map((row) => row.resultRef.runId))].map(
+    (runId) => ({
+      runId,
+      resultIds: rows
+        .filter((row) => row.resultRef.runId === runId)
+        .map((row) => row.resultRef.resultId),
+    }),
+  );
+  return { ...selection, catalogDigest: collection.digest, groups };
+}
+
 export async function reviewTask(
   db: Database,
   artifacts: ArtifactRepository,
@@ -32,27 +288,13 @@ export async function reviewTask(
   const runIds: string[] = task.runIds?.includes(data.run.id)
     ? task.runIds
     : [data.run.id];
-  let runs = [];
-  for (const runId of runIds)
-    runs.push(
-      scopeRunToTask(
-        task,
-        scopeCandidateRun(
-          runId === data.run.id
-            ? data
-            : await readProcessingRun(
-                db,
-                artifacts,
-                scope,
-                runId,
-                { offset: "0", limit: "10000" },
-                true,
-              ),
-          candidateScopeForRun(task, runId),
-        ),
-      ),
-    );
-  runs = effectiveTaskRuns(runs);
+  const { runs, executionRuns } = await taskCandidateCollection(
+    db,
+    artifacts,
+    scope,
+    { ...task, runIds },
+    data,
+  );
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
   let final;
@@ -291,10 +533,10 @@ export async function reviewTask(
           }
         : {}),
     },
-    finished: runs.every((item) =>
-      ["succeeded", "failed", "cancelled"].includes(item.run.status),
+    finished: executionRuns.every((item) =>
+      ["succeeded", "failed", "cancelled"].includes(item.status),
     ),
-    checkedStatus: runs.every((item) => item.run.status === "succeeded")
+    checkedStatus: executionRuns.every((item) => item.status === "succeeded")
       ? "succeeded"
       : "failed",
   };

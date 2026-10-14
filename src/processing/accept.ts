@@ -370,12 +370,30 @@ export async function acceptProcessingResults(
           scope.assistantGuard?.sessionId,
         ])
       ).rows[0]?.task;
+      const anchors = (
+        await client.query(
+          "SELECT DISTINCT task_id FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[])",
+          [scope.projectId, task?.runIds ?? []],
+        )
+      ).rows.map((row) => row.task_id);
+      const members = scope.assistantResultsGuard
+        ? (
+            await client.query(
+              "SELECT id FROM processing_run WHERE project_id=$1 AND task_id=ANY($2::text[]) AND task_id=ANY($3::text[])",
+              [
+                scope.projectId,
+                anchors,
+                scope.assistantResultsGuard.states.map((state) => state.id),
+              ],
+            )
+          ).rows.map((row) => row.id)
+        : [];
       if (
         !task ||
         loaded.some(
           (item) =>
-            item.run.actor_id !== scope.actorId ||
-            !task.runIds?.includes(item.run.id),
+            !task.runIds?.includes(item.run.id) &&
+            !members.includes(item.run.id),
         )
       )
         throw new ProcessingError(409, "assistant_processing_context_changed");
@@ -410,10 +428,13 @@ export async function acceptProcessingResults(
       canonicalJson(sortedIds(dedupPlan.keptIds)) !== canonicalJson(ids)
     )
       throw new ProcessingError(409, "processing_deduplication_changed");
-    const excludedRows = scope.taskSave
+    const excludedGroups =
+      scope.taskSave?.excludedGroups ??
+      scope.assistantResultsGuard?.excludedGroups;
+    const excludedRows = excludedGroups
       ? (
           await Promise.all(
-            scope.taskSave.excludedGroups.map((group) =>
+            excludedGroups.map((group) =>
               selectedProcessingGroup(
                 client,
                 artifacts,
@@ -492,7 +513,7 @@ export async function acceptProcessingResults(
         row.source.kind === "draft" &&
         row.source.id === draftId &&
         row.rootOperation !== "augment" &&
-        (scope.taskSave
+        (excludedGroups
           ? !selected.some(
               (kept) =>
                 kept.originalId === row.originalId &&

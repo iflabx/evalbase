@@ -7,6 +7,9 @@ import * as contextModule from "../../src/assistant/context.js";
 import * as draftCreateModule from "../../src/drafts/create.js";
 import * as taskModule from "../../src/assistant/tasks.js";
 import * as fenceModule from "../../src/assistant/fence.js";
+import * as refineModule from "../../src/processing/refine.js";
+import * as presentationModule from "../../src/processing/presentation.js";
+import * as reviewModule from "../../src/assistant/review.js";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
 import { createPool } from "../../src/db/pool.js";
 import { migrate } from "../../src/db/migrate.js";
@@ -125,10 +128,14 @@ describe("project assistant public contract", () => {
                       .map((row: any) => ({
                         sourceId: row.id,
                         question:
-                          processing.instructions === "新增第二个具体问题" ||
-                          row.question === "另一个背景约束下的具体场景问题"
-                            ? "另一个背景约束下的具体场景问题"
-                            : "背景约束下的具体场景问题",
+                          processing.instructions === "OPT-25 局部表述"
+                            ? row.question.trim() + " 自然表述"
+                            : processing.instructions ===
+                                  "新增第二个具体问题" ||
+                                row.question ===
+                                  "另一个背景约束下的具体场景问题"
+                              ? "另一个背景约束下的具体场景问题"
+                              : "背景约束下的具体场景问题",
                         expectedOutput: row.expectedOutput,
                         metadata: processing.metadataKeys
                           ? [
@@ -13188,6 +13195,1168 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+  async function opt25Results() {
+    const source = await opt22Draft("R25 原草稿");
+    for (let i = 3; i < 14; i++) {
+      const r = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
+        headers,
+        payload: {
+          question: `  唯一问题 ${i}  `,
+          expectedOutput: "保留答案",
+          metadata: [{ key: "类别", value: "原类别" }],
+        },
+      });
+      expect(r.statusCode, r.body).toBe(201);
+    }
+    await opt21Session();
+    const db = createPool(databaseUrl),
+      cfg = { ...loadConfig(), databaseUrl },
+      artifacts = new ArtifactRepository(cfg.minio);
+    const ids = (
+      await db.query(
+        "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 ORDER BY position",
+        [source],
+      )
+    ).rows.map((r) => r.id);
+    const runs: string[] = [];
+    for (const selected of [ids.slice(0, 7), ids.slice(7)]) {
+      const r = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/processing-runs`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: { kind: "draft", id: source, recordIds: selected },
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      });
+      expect(r.statusCode, r.body).toBe(201);
+      const id = r.json().run.id;
+      runs.push(id);
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',lease_owner='opt25',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [id],
+        )
+      ).rows[0];
+      const result = await runProcessing(db, artifacts, cfg, job);
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+    }
+    await db.query(
+      "UPDATE processing_task SET assistant_session_id=$1 WHERE id IN(SELECT task_id FROM processing_run WHERE id=ANY($2::text[]))",
+      [sessionId, runs],
+    );
+    await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+      sessionId,
+      JSON.stringify({
+        title: "R25 跨批整理",
+        goal: "整理14条资料",
+        target: { kind: "draft", id: source },
+        targetDraftId: source,
+        allowedFields: ["question"],
+        runId: runs[1],
+        runIds: runs,
+        stage: "awaiting_review",
+      }),
+    ]);
+    return { db, source, runs, artifacts, cfg };
+  }
+  it.each(["permission", "content"])(
+    "OPT-25 fences historical candidate reads when %s changes during presentation",
+    async (change) => {
+      const previous = sessionId,
+        f = await opt25Results();
+      const actor = (
+        await f.db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].actor_id;
+      const original = presentationModule.presentProcessingReview;
+      const spy = vi
+        .spyOn(presentationModule, "presentProcessingReview")
+        .mockImplementationOnce(async (...args) => {
+          const page = await original(...args);
+          if (change === "content")
+            await f.db.query(
+              "UPDATE assistant_session SET content_revision=content_revision+1 WHERE id=$1",
+              [sessionId],
+            );
+          else {
+            await f.db.query("UPDATE app_user SET role='user' WHERE id=$1", [
+              actor,
+            ]);
+            await f.db.query(
+              "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'viewer') ON CONFLICT(project_id,user_id) DO UPDATE SET role='viewer'",
+              [projectId, actor],
+            );
+          }
+          return page;
+        });
+      try {
+        const response = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=run&run=${f.runs[0]}&limit=100`,
+          headers,
+        });
+        expect([403, 404, 409]).toContain(response.statusCode);
+        expect(response.body).not.toContain("唯一问题");
+        expect(spy).toHaveBeenCalledTimes(1);
+      } finally {
+        spy.mockRestore();
+        await f.db.query("UPDATE app_user SET role='admin' WHERE id=$1", [
+          actor,
+        ]);
+        await f.db.query(
+          "UPDATE project_member SET role='owner' WHERE project_id=$1 AND user_id=$2",
+          [projectId, actor],
+        );
+        sessionId = previous;
+        await f.db.end();
+      }
+    },
+  );
+
+  it("OPT-25 keeps active follow-up runs out of review readiness and adoption", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      await app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}/candidates?scope=task`,
+        headers,
+      });
+      const actorId = (
+        await f.db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].actor_id;
+      const scope = { projectId, actorId };
+      const pending = await refineModule.createRefinementRun(
+        f.db,
+        f.artifacts,
+        {
+          ...scope,
+          taskRound: {
+            taskId: f.runs[0],
+            expectedRevision: (
+              await f.db.query(
+                "SELECT revision FROM processing_task WHERE id=$1",
+                [f.runs[0]],
+              )
+            ).rows[0].revision,
+            before: (
+              await f.db.query(
+                "SELECT current_refs FROM processing_task WHERE id=$1",
+                [f.runs[0]],
+              )
+            ).rows[0].current_refs,
+            kind: "continue" as const,
+          },
+        },
+        f.runs[0],
+        randomUUID(),
+        {
+          resultIds: ["0:0"],
+          instructions: "OPT-25 局部表述",
+          allowedFields: ["question"],
+        },
+      );
+      const task = (
+        await f.db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      const collection = await reviewModule.taskCandidateCollection(
+        f.db,
+        f.artifacts,
+        scope,
+        task,
+      );
+      const raw = await import("../../src/processing/store.js").then((m) =>
+        m.readProcessingRun(
+          f.db,
+          f.artifacts,
+          scope,
+          f.runs[1],
+          { limit: "10000" },
+          true,
+        ),
+      );
+      const checked = await reviewModule.reviewTask(
+        f.db,
+        f.artifacts,
+        scope,
+        task,
+        raw,
+      );
+      expect(checked.finished).toBe(false);
+      expect(
+        collection.executionRuns.find((run) => run.id === pending.run.id)
+          ?.status,
+      ).toBe("queued");
+      expect(() =>
+        reviewModule.resolveTaskSelection(collection, {
+          scope: "task",
+          reviewRevision: "",
+          resultIds: [collection.records[0].id],
+        }),
+      ).toThrow();
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { nextAction: "request_processing_apply" },
+        },
+        { name: "request_processing_apply", input: { allValid: true } },
+      ];
+      const state = await opt21End(await opt21Submit("保存全部成果"));
+      const tool = state.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "request_processing_apply");
+      expect(tool?.status, JSON.stringify(state.turns.at(-1))).toBe("failed");
+      expect(state.proposals.some((p: any) => p.status === "pending")).toBe(
+        false,
+      );
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 preserves exclusions and newer unselected rows across repeated local refinement and adopts direct round receipts", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    const get = () =>
+      app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+        headers,
+      });
+    try {
+      const initial = (await get()).json();
+      const actorId = (
+        await f.db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].actor_id;
+      // A direct processing-page continuation contributes newer selected refs while
+      // the assistant's stored run list still points at the initial round.
+      const workspace = await import("../../src/processing/tasks.js").then(
+        (m) =>
+          m.processingTaskCandidates(
+            f.db,
+            f.artifacts,
+            { projectId, actorId },
+            f.runs[0],
+          ),
+      );
+      const row = workspace.rows[0];
+      const direct = await refineModule.createRefinementRun(
+        f.db,
+        f.artifacts,
+        {
+          projectId,
+          actorId,
+          taskRound: {
+            taskId: workspace.id,
+            expectedRevision: workspace.revision,
+            before: workspace.refs,
+            kind: "continue",
+            records: [
+              {
+                id: "candidate:" + row.id,
+                taskRecordKey: row.id,
+                candidateOrigin: row.candidateOrigin,
+                question: row.result.question,
+                expectedOutput: row.result.expectedOutput,
+                metadata: row.result.metadata,
+                baseline: row.original.baseline ?? row.original,
+                adoptionFields: ["question"],
+                adoptionOperation: "clean",
+              },
+            ],
+          },
+        },
+        f.runs[0],
+        randomUUID(),
+        {
+          resultIds: [row.id],
+          instructions: "OPT-25 局部表述",
+          allowedFields: ["question"],
+        },
+      );
+      const finish = async (id: string) => {
+        const job = (
+          await f.db.query(
+            "UPDATE job SET status='running',lease_owner='opt25',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [id],
+          )
+        ).rows[0];
+        const result = await runProcessing(
+          f.db,
+          f.artifacts,
+          {
+            ...f.cfg,
+            modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+          },
+          job,
+        );
+        await f.db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, result],
+        );
+      };
+      await finish(direct.run.id);
+      const current = (await get()).json();
+      expect(current.taskTotal).toBe(14);
+      expect(
+        current.records.find((r: any) => r.id === initial.records[0].id).result
+          .question,
+      ).toBe(initial.records[0].result.question + " 自然表述");
+      // The whole effective collection includes both parent and direct child refs.
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { nextAction: "request_processing_apply" },
+        },
+        { name: "request_processing_apply", input: { allValid: true } },
+      ];
+      const proposed = await opt21End(await opt21Submit("保存全部成果"));
+      const proposal = proposed.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal, JSON.stringify(proposed.turns.at(-1))).toBeDefined();
+      // Reject stale adoption, then continue the original task after an exclusion.
+      const excluded = current.records.find(
+        (r: any) => r.resultRef.runId === f.runs[0],
+      );
+      await f.db.query(
+        "UPDATE processing_task SET excluded_refs=excluded_refs||jsonb_build_array(current_refs->1),current_refs=current_refs-1,revision=revision+1 WHERE id=$1",
+        [workspace.id],
+      );
+      const page = (await get()).json();
+      const ids = [
+        page.records.find((r: any) => r.resultRef.runId === f.runs[0]).id,
+        page.records.at(-1).id,
+      ];
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "refine_candidates" } },
+        {
+          name: "refine_candidates",
+          input: {
+            allSelected: true,
+            instructions: "OPT-25 局部表述",
+            allowedFields: ["question"],
+          },
+        },
+      ];
+      const submitted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "只改勾选两条，其他不动",
+          candidates: {
+            scope: "task",
+            reviewRevision: page.reviewRevision,
+            resultIds: ids,
+          },
+        },
+      });
+      expect(submitted.statusCode, submitted.body).toBe(202);
+      const state = await opt21End(submitted.json().turnId);
+      const tool = state.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "refine_candidates");
+      expect(tool?.status, JSON.stringify(state.turns.at(-1))).toBe(
+        "succeeded",
+      );
+      for (const id of tool.result.runIds) await finish(id);
+      const after = (await get()).json();
+      expect(after.taskTotal).toBe(13);
+      expect(after.allIds).not.toContain(excluded.id);
+      expect(new Set(after.allIds)).toEqual(new Set(page.allIds));
+      for (const r of after.records) {
+        const old = page.records.find((x: any) => x.id === r.id);
+        expect(r.result.question).toBe(
+          old.result.question + (ids.includes(r.id) ? " 自然表述" : ""),
+        );
+        expect(r.result.expectedOutput).toBe(old.result.expectedOutput);
+        expect(r.result.metadata).toEqual(old.result.metadata);
+      }
+      // Confirm an actual proposal while the assistant anchor deliberately stays
+      // on the root of a direct round; descendants need the same provenance fence.
+      await f.db.query(
+        "UPDATE assistant_session SET task=jsonb_set(jsonb_set(task,'{runIds}',$2::jsonb),'{runId}',to_jsonb($3::text)) WHERE id=$1",
+        [sessionId, JSON.stringify(f.runs), f.runs[1]],
+      );
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { nextAction: "request_processing_apply" },
+        },
+        { name: "request_processing_apply", input: { allValid: true } },
+      ];
+      const prepared = await opt21End(await opt21Submit("保存全部成果"));
+      const active = prepared.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(active, JSON.stringify(prepared.turns.at(-1))).toBeDefined();
+      const receipt = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${active.id}/confirm`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {},
+      });
+      expect(receipt.statusCode, receipt.body).toBe(200);
+      expect(receipt.json().receipt.receipt.adopted).toBe(13);
+      const actorScope = { projectId, actorId };
+      const adoptedCollection = await reviewModule.taskCandidateCollection(
+        f.db,
+        f.artifacts,
+        actorScope,
+        (
+          await f.db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task,
+      );
+      const adoptedRow = adoptedCollection.records.find(
+        (r) => r.resultRef.runId !== r.candidateOrigin.runId,
+      )!;
+      expect(adoptedRow).toBeDefined();
+      await expect(
+        refineModule.createRefinementGroups(
+          f.db,
+          f.artifacts,
+          {
+            ...actorScope,
+            assistantResultsGuard: { states: adoptedCollection.states },
+          },
+          [
+            {
+              runId: adoptedRow.resultRef.runId,
+              resultIds: [adoptedRow.resultRef.resultId],
+            },
+          ],
+          randomUUID(),
+          { instructions: "不应再次处理", allowedFields: ["question"] },
+        ),
+      ).rejects.toMatchObject({ code: "processing_already_adopted" });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 keeps missing input placeholders out of candidates after refining a successful row", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      const batch = (
+        await f.db.query(
+          "SELECT * FROM processing_batch WHERE run_id=$1 ORDER BY ordinal LIMIT 1",
+          [f.runs[0]],
+        )
+      ).rows[0];
+      const output = JSON.parse(
+        (await f.artifacts.readBytes(batch.result_ref, 100000000)).toString(
+          "utf8",
+        ),
+      );
+      output.records.splice(1, 1);
+      const stored = await f.artifacts.storeProcessing(
+        Buffer.from(canonicalJson(output)),
+        f.runs[0],
+        "batch-0",
+      );
+      await f.db.query(
+        "UPDATE processing_batch SET result_ref=$2,result_indices=$3,output_count=6 WHERE run_id=$1",
+        [f.runs[0], stored.objectRef, [0, 2, 3, 4, 5, 6]],
+      );
+      await f.db.query(
+        "UPDATE job SET status='failed',error_code='processing_output_incomplete' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [f.runs[0]],
+      );
+      const actorId = (
+        await f.db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].actor_id;
+      const actorScope = { projectId, actorId };
+      const task = (
+        await f.db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      const before = await reviewModule.taskCandidateCollection(
+        f.db,
+        f.artifacts,
+        actorScope,
+        task,
+      );
+      expect(before.records).toHaveLength(13);
+      const row = before.records.find((r) => r.resultRef.runId === f.runs[0])!;
+      const children = await refineModule.createRefinementGroups(
+        f.db,
+        f.artifacts,
+        { ...actorScope, assistantResultsGuard: { states: before.states } },
+        [{ runId: row.resultRef.runId, resultIds: [row.resultRef.resultId] }],
+        randomUUID(),
+        { instructions: "OPT-25 局部表述", allowedFields: ["question"] },
+      );
+      const job = (
+        await f.db.query(
+          "UPDATE job SET status='running',lease_owner='opt25',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [children[0].run.id],
+        )
+      ).rows[0];
+      const result = await runProcessing(
+        f.db,
+        f.artifacts,
+        {
+          ...f.cfg,
+          modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+        },
+        job,
+      );
+      await f.db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      const after = await reviewModule.taskCandidateCollection(
+        f.db,
+        f.artifacts,
+        actorScope,
+        task,
+      );
+      expect(after.records).toHaveLength(13);
+      expect(new Set(after.records.map((r) => r.id))).toEqual(
+        new Set(before.records.map((r) => r.id)),
+      );
+      const state = (
+        await f.db.query(
+          "SELECT current_refs,incomplete FROM processing_task WHERE id=$1",
+          [f.runs[0]],
+        )
+      ).rows[0];
+      expect(state.current_refs.filter((r: any) => r.inputId)).toHaveLength(1);
+      expect(state.incomplete).toBe(true);
+    } finally {
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 exposes one paged effective task collection with stable identities across batches", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      const get = (query = "") =>
+        app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&view=all&limit=10${query}`,
+          headers,
+        });
+      const first = await get();
+      expect(first.statusCode, first.body).toBe(200);
+      const page = first.json();
+      expect(page.total).toBe(14);
+      expect(page.taskTotal).toBe(14);
+      expect(page.records).toHaveLength(10);
+      expect(page.reviewRevision).toMatch(/^[a-f0-9]{64}$/);
+      expect(new Set(page.allIds).size).toBe(14);
+      expect(
+        new Set(page.records.map((r: any) => r.resultRef.runId)).size,
+      ).toBe(2);
+      const later = (await get("&offset=10")).json();
+      expect(later.records).toHaveLength(4);
+      expect(later.reviewRevision).toBe(page.reviewRevision);
+      expect(
+        new Set([...page.records, ...later.records].map((r: any) => r.id)).size,
+      ).toBe(14);
+      const searched = (
+        await get("&search=" + encodeURIComponent("唯一问题 13"))
+      ).json();
+      expect(searched.total).toBe(1);
+      expect(searched.allIds[0]).toBe(
+        later.records.find((r: any) => r.result.question === "唯一问题 13").id,
+      );
+      expect(page.saveTarget).toMatchObject({ kind: "draft", id: f.source });
+      expect(page.savedCount).toBe(0);
+      expect(page.stats.all).toBe(14);
+    } finally {
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 refines two cross-batch identities atomically and rejects stale selection without duplicating replay", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    const get = () =>
+      app.inject({
+        method: "GET",
+        url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+        headers,
+      });
+    try {
+      const before = (await get()).json(),
+        ids = [before.records[0].id, before.records.at(-1).id];
+      const key = randomUUID(),
+        payload = {
+          message: "只将勾选两条问题改自然些，答案和Metadata保留",
+          candidates: {
+            scope: "task",
+            reviewRevision: before.reviewRevision,
+            resultIds: ids,
+          },
+        };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            nextAction: "refine_candidates",
+            allowedFields: ["question"],
+          },
+        },
+        {
+          name: "refine_candidates",
+          input: {
+            allSelected: true,
+            instructions: "OPT-25 局部表述",
+            allowedFields: ["question"],
+          },
+        },
+      ];
+      requestedTool = undefined;
+      const submitted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": key },
+        payload,
+      });
+      expect(submitted.statusCode, submitted.body).toBe(202);
+      const result = await opt21End(submitted.json().turnId);
+      const tool = result.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "refine_candidates");
+      expect(tool.status, JSON.stringify(tool)).toBe("succeeded");
+      expect(tool.result.runIds).toHaveLength(2);
+      for (const id of tool.result.runIds) {
+        const job = (
+          await f.db.query(
+            "UPDATE job SET status='running',lease_owner='opt25',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [id],
+          )
+        ).rows[0];
+        const value = await runProcessing(
+          f.db,
+          f.artifacts,
+          {
+            ...f.cfg,
+            modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+          },
+          job,
+        );
+        await f.db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, value],
+        );
+      }
+      const after = (await get()).json();
+      expect(after.taskTotal).toBe(14);
+      expect(new Set(after.allIds)).toEqual(new Set(before.allIds));
+      for (const row of after.records) {
+        const old = before.records.find((r: any) => r.id === row.id);
+        expect(row.result.question).toBe(
+          ids.includes(row.id)
+            ? old.result.question + " 自然表述"
+            : old.result.question,
+        );
+        expect(row.result.expectedOutput).toBe(old.result.expectedOutput);
+        expect(row.result.metadata).toEqual(old.result.metadata);
+      }
+      const count = (
+        await f.db.query("SELECT count(*)::int AS n FROM processing_run")
+      ).rows[0].n;
+      const stale = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload,
+      });
+      expect(stale.statusCode, stale.body).toBe(409);
+      expect(stale.json().error.code).toBe(
+        "assistant_candidate_selection_changed",
+      );
+      const replay = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": key },
+        payload,
+      });
+      expect(replay.statusCode, replay.body).toBe(200);
+      expect(replay.json().turnId).toBe(submitted.json().turnId);
+      expect(
+        (await f.db.query("SELECT count(*)::int AS n FROM processing_run"))
+          .rows[0].n,
+      ).toBe(count);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 partially adopts cross-batch results to the original draft with real receipts and leaves the task unfinished", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      const page = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      const ids = [page.records[0].id, page.records.at(-1).id];
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { nextAction: "request_processing_apply" },
+        },
+        { name: "request_processing_apply", input: { allSelected: true } },
+      ];
+      const result = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "将勾选两条保存回原草稿",
+          candidates: {
+            scope: "task",
+            reviewRevision: page.reviewRevision,
+            resultIds: ids,
+          },
+        },
+      });
+      expect(result.statusCode, result.body).toBe(202);
+      const prepared = await opt21End(result.json().turnId);
+      const proposal = prepared.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal, JSON.stringify(prepared.turns.at(-1))).toBeDefined();
+      expect(proposal.summary.range).toBe("partial");
+      expect(proposal.summary.count).toBe(2);
+      const confirmed = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      const replay = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {},
+      });
+      expect(replay.statusCode, replay.body).toBe(200);
+      const current = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      expect(current.savedCount).toBe(2);
+      expect(
+        (
+          await f.db.query(
+            "SELECT task->'selectedCandidates' AS selection FROM assistant_session WHERE id=$1",
+            [sessionId],
+          )
+        ).rows[0].selection,
+      ).toBeNull();
+      expect(new Set(current.savedIds)).toEqual(new Set(ids));
+      expect(
+        (
+          await f.db.query(
+            "SELECT count(*)::int AS n FROM collaborative_draft_record WHERE draft_id=$1",
+            [f.source],
+          )
+        ).rows[0].n,
+      ).toBe(14);
+      expect((await read()).json().task.stage).not.toBe("complete");
+      expect(
+        (
+          await f.db.query(
+            "SELECT count(DISTINCT receipt->>'acceptanceId')::int AS n FROM processing_acceptance WHERE project_id=$1 AND receipt->>'draftId'=$2",
+            [projectId, f.source],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it.each(["field", "excluded"])(
+    "OPT-25 rejects stale %s adoption and preserves the original draft",
+    async (change) => {
+      const previous = sessionId,
+        f = await opt25Results();
+      try {
+        requestedTool = undefined;
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: { nextAction: "request_processing_apply" },
+          },
+          { name: "request_processing_apply", input: { allValid: true } },
+        ];
+        const prepared = await opt21End(
+          await opt21Submit("将全部成果保存回原草稿"),
+        );
+        const proposal = prepared.proposals.find(
+          (p: any) => p.status === "pending",
+        );
+        expect(proposal, JSON.stringify(prepared.turns.at(-1))).toBeDefined();
+        expect(proposal.summary.count).toBe(14);
+        if (change === "field")
+          await f.db.query(
+            "UPDATE collaborative_draft_record SET question='用户新修改',question_revision=question_revision+1 WHERE id=(SELECT id FROM collaborative_draft_record WHERE draft_id=$1 ORDER BY position LIMIT 1)",
+            [f.source],
+          );
+        else
+          await f.db.query(
+            "UPDATE processing_task SET excluded_refs=excluded_refs||jsonb_build_array(current_refs->0),current_refs=current_refs-0,revision=revision+1 WHERE id=(SELECT task_id FROM processing_run WHERE id=$1)",
+            [f.runs[0]],
+          );
+        const confirmed = await app.inject({
+          method: "POST",
+          url: `${base()}/proposals/${proposal.id}/confirm`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {},
+        });
+        expect(confirmed.statusCode, confirmed.body).toBe(409);
+        expect(confirmed.json().error.code).toBe(
+          change === "field"
+            ? "draft_field_conflict"
+            : "assistant_candidate_selection_changed",
+        );
+        expect(
+          (
+            await f.db.query(
+              "SELECT count(*)::int AS n FROM processing_acceptance WHERE draft_id=$1",
+              [f.source],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+        expect(
+          (
+            await f.db.query(
+              "SELECT count(*)::int AS n FROM collaborative_draft_record WHERE draft_id=$1",
+              [f.source],
+            )
+          ).rows[0].n,
+        ).toBe(14);
+        if (change === "field")
+          expect(
+            (
+              await f.db.query(
+                "SELECT question FROM collaborative_draft_record WHERE id=(SELECT id FROM collaborative_draft_record WHERE draft_id=$1 ORDER BY position LIMIT 1)",
+                [f.source],
+              )
+            ).rows[0].question,
+          ).toBe("用户新修改");
+        else {
+          const page = (
+            await app.inject({
+              method: "GET",
+              url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+              headers,
+            })
+          ).json();
+          expect(page.taskTotal).toBe(13);
+          expect(page.stats.all).toBe(13);
+        }
+      } finally {
+        requestedTool = undefined;
+        toolSequence = [];
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        await f.db.end();
+      }
+    },
+  );
+
+  it("OPT-25 rolls back all cross-batch refinements when the second artifact cannot be stored", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    let spy: any;
+    try {
+      const page = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      const initial = (
+        await f.db.query("SELECT count(*)::int AS n FROM processing_run")
+      ).rows[0].n;
+      const save = ArtifactRepository.prototype.storeProcessing;
+      let writes = 0;
+      spy = vi
+        .spyOn(ArtifactRepository.prototype, "storeProcessing")
+        .mockImplementation(async function (this: ArtifactRepository, ...args) {
+          if (++writes === 2) throw new Error("synthetic artifact failure");
+          return save.apply(this, args);
+        });
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "refine_candidates" } },
+        {
+          name: "refine_candidates",
+          input: { allSelected: true, instructions: "OPT-25 局部表述" },
+        },
+      ];
+      requestedTool = undefined;
+      const submitted = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "只改这两条",
+          candidates: {
+            scope: "task",
+            reviewRevision: page.reviewRevision,
+            resultIds: [page.records[0].id, page.records.at(-1).id],
+          },
+        },
+      });
+      expect(submitted.statusCode, submitted.body).toBe(202);
+      const state = await opt21End(submitted.json().turnId);
+      expect(
+        state.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "refine_candidates").status,
+      ).toBe("failed");
+      expect(writes).toBe(2);
+      expect(
+        (await f.db.query("SELECT count(*)::int AS n FROM processing_run"))
+          .rows[0].n,
+      ).toBe(initial);
+      expect(state.task.runIds).toEqual(f.runs);
+    } finally {
+      spy?.mockRestore();
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-25 reconciles a committed cross-batch refinement after its response is lost", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    let spy: any;
+    try {
+      const page = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      const initial = (
+        await f.db.query("SELECT count(*)::int AS n FROM processing_run")
+      ).rows[0].n;
+      const create = refineModule.createRefinementGroups;
+      spy = vi
+        .spyOn(refineModule, "createRefinementGroups")
+        .mockImplementationOnce(async (...args) => {
+          await create(...args);
+          throw Object.assign(new Error("synthetic lost response"), {
+            code: "ECONNRESET",
+          });
+        });
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "refine_candidates" } },
+        {
+          name: "refine_candidates",
+          input: { allSelected: true, instructions: "OPT-25 局部表述" },
+        },
+      ];
+      requestedTool = undefined;
+      const response = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/turns`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          message: "只改勾选的两条",
+          candidates: {
+            scope: "task",
+            reviewRevision: page.reviewRevision,
+            resultIds: [page.records[0].id, page.records.at(-1).id],
+          },
+        },
+      });
+      expect(response.statusCode, response.body).toBe(202);
+      const state = await opt21End(response.json().turnId);
+      const tool = state.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "refine_candidates");
+      expect(tool.status, JSON.stringify(tool)).toBe("succeeded");
+      expect(tool.result.runIds).toHaveLength(2);
+      expect(new Set(state.task.runIds)).toEqual(new Set(tool.result.runIds));
+      expect(
+        (await f.db.query("SELECT count(*)::int AS n FROM processing_run"))
+          .rows[0].n,
+      ).toBe(initial + 2);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy?.mockRestore();
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it.each([0, 1])(
+    "OPT-25 keeps a fixed classification selection of %s rows in the task view",
+    async (count) => {
+      const previous = sessionId,
+        f = await opt25Results();
+      try {
+        requestedTool = undefined;
+        toolSequence = [
+          { name: "plan_task", input: { nextAction: "select_candidates" } },
+          {
+            name: "select_candidates",
+            input: {
+              runId: f.runs[0],
+              groups: [
+                {
+                  count: 1,
+                  conditions: [
+                    {
+                      field: "question",
+                      operator: "contains",
+                      value: count ? "唯一问题 3" : "不存在的分类",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ];
+        const state = await opt21End(await opt21Submit("按条件固定候选"));
+        expect(
+          state.turns
+            .at(-1)
+            .tools.find((t: any) => t.name === "select_candidates").status,
+        ).toBe("succeeded");
+        const page = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        });
+        expect(page.statusCode, page.body).toBe(200);
+        expect(page.json().total).toBe(count);
+        expect(page.json().allIds).toHaveLength(count);
+        await f.db.query(
+          "UPDATE assistant_session SET task=jsonb_set(task,'{candidateScope,hash}',to_jsonb($2::text)) WHERE id=$1",
+          [sessionId, "0".repeat(64)],
+        );
+        const invalid = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        });
+        expect(invalid.statusCode, invalid.body).toBe(409);
+      } finally {
+        requestedTool = undefined;
+        toolSequence = [];
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        await f.db.end();
+      }
+    },
+  );
+
   it("OPT-24 paginates authorized history and rejects a stale plan execution revision", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);

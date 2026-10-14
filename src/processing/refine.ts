@@ -18,6 +18,7 @@ import {
 } from "./presentation.js";
 import {
   getProcessingRun,
+  processingRunSummary,
   processingAccess,
   readProcessingRun,
   ProcessingError,
@@ -25,6 +26,8 @@ import {
   type ProcessingRun,
   type ProcessingScope,
 } from "./store.js";
+import type { PoolClient } from "pg";
+import { processingTaskCandidates } from "./tasks.js";
 
 async function readFrozenInput(
   artifacts: ArtifactRepository,
@@ -53,6 +56,7 @@ export async function createRefinementRun(
   key: unknown,
   body: unknown,
   mode: "refine" | "continue" | "rerun" = "refine",
+  transaction?: { client: PoolClient; stored: string[] },
 ) {
   await processingAccess(db, scope);
   if (
@@ -113,10 +117,10 @@ export async function createRefinementRun(
         : {}),
     }),
   );
-  const client = await db.connect();
+  const client = transaction?.client ?? (await db.connect());
   let storedInput: string | undefined;
   try {
-    await client.query("BEGIN");
+    if (!transaction) await client.query("BEGIN");
     // ponytail: project-wide adoption fence for at most 10 users; split by candidate if measured contention warrants it.
     if (mode !== "refine")
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
@@ -135,6 +139,13 @@ export async function createRefinementRun(
     if (prior) {
       if (prior.request_hash !== digest)
         throw new ProcessingError(409, "idempotency_conflict");
+      if (transaction)
+        return {
+          run: processingRunSummary(
+            await getProcessingRun(client, scope, prior.id),
+          ),
+          replayed: true,
+        };
       const result = await readProcessingRun(db, artifacts, scope, prior.id, {
         limit: "1",
       });
@@ -369,6 +380,7 @@ export async function createRefinementRun(
       throw new ProcessingError(422, "processing_capacity_exceeded");
     const stored = await artifacts.storeProcessing(bytes, runId, "input");
     storedInput = stored.objectRef;
+    transaction?.stored.push(stored.objectRef);
     await client.query(
       "INSERT INTO job(id,project_id,actor_id,kind,payload,status,idempotency_key,correlation_id) VALUES($1,$2,$3,'process_data',$4,'queued',$5,$1)",
       [
@@ -403,6 +415,14 @@ export async function createRefinementRun(
     );
     await linkAssistantProcessing(client, scope, runId);
     await attachProcessingRound(client, scope, runId, parentId);
+    if (transaction)
+      return {
+        run: {
+          ...processingRunSummary(await getProcessingRun(client, scope, runId)),
+          refinedCount: selected.size,
+        },
+        replayed: false,
+      };
     await client.query("COMMIT");
     const result = await readProcessingRun(db, artifacts, scope, runId, {
       limit: "1",
@@ -412,14 +432,154 @@ export async function createRefinementRun(
       replayed: false,
     };
   } catch (error) {
-    await client.query("ROLLBACK");
-    if (storedInput) {
+    if (!transaction) await client.query("ROLLBACK");
+    if (storedInput && !transaction) {
       await db.query(
         "INSERT INTO processing_cleanup(project_id,object_ref) VALUES($1,$2) ON CONFLICT DO NOTHING",
         [scope.projectId, storedInput],
       );
       await cleanupProcessingObjects(db, artifacts, scope.projectId);
     }
+    throw error;
+  } finally {
+    if (!transaction) client.release();
+  }
+}
+
+/** One user selection may span several existing runs; all child receipts commit together. */
+export async function createRefinementGroups(
+  db: Database,
+  artifacts: ArtifactRepository,
+  scope: ProcessingScope,
+  groups: { runId: string; resultIds: string[] }[],
+  key: string,
+  body: { instructions: string; allowedFields: string[] },
+) {
+  // Resolve each processing workspace once. A raw historical run includes rows that
+  // have since been replaced or excluded, so it cannot be the next round's input.
+  const workspaces = new Map<
+    string,
+    Awaited<ReturnType<typeof processingTaskCandidates>>
+  >();
+  const grouped = new Map<
+    string,
+    {
+      workspace: Awaited<ReturnType<typeof processingTaskCandidates>>;
+      selected: Set<string>;
+    }
+  >();
+  for (const group of groups) {
+    const current =
+      workspaces.get(group.runId) ??
+      (await processingTaskCandidates(db, artifacts, scope, group.runId));
+    for (const run of current.runs) workspaces.set(run.id, current);
+    const item = grouped.get(current.id) ?? {
+      workspace: current,
+      selected: new Set<string>(),
+    };
+    for (const id of group.resultIds) {
+      const row = current.rows.find(
+        (row) => row.runId === group.runId && row.localId === id,
+      );
+      if (!row)
+        throw new ProcessingError(409, "assistant_candidate_selection_changed");
+      item.selected.add(row.id);
+    }
+    grouped.set(current.id, item);
+  }
+  const client = await db.connect(),
+    transaction = { client, stored: [] as string[] };
+  try {
+    await client.query("BEGIN");
+    await guardProcessingTask(client, scope);
+    const results = [];
+    for (const [index, { workspace, selected }] of [
+      ...grouped.values(),
+    ].entries()) {
+      const receipts = await adoptedCandidateKeys(
+        client,
+        artifacts,
+        scope,
+        workspace.runs.map((run) => ({
+          run: { id: run.id },
+          records: workspace.rows
+            .filter((row) => row.runId === run.id && row.localId)
+            .map((row) => ({
+              id: row.localId,
+              candidateOrigin: row.candidateOrigin,
+            })),
+        })),
+        undefined,
+        true,
+      );
+      if (
+        workspace.rows.some(
+          (row) =>
+            selected.has(row.id) &&
+            receipts.has(
+              candidateKey({ runId: row.runId, resultId: row.localId }),
+            ),
+        )
+      )
+        throw new ProcessingError(409, "processing_already_adopted");
+      const records = workspace.rows
+        .filter((row) => row.localId)
+        .map((row) => ({
+          id: `candidate:${row.id}`,
+          taskRecordKey: row.id,
+          candidateOrigin: row.candidateOrigin,
+          question: row.result.question,
+          expectedOutput: row.result.expectedOutput,
+          metadata: row.result.metadata,
+          baseline: row.original.baseline ?? row.original,
+          ...(row.original.source === undefined
+            ? {}
+            : { source: row.original.source }),
+          ...(row.original.revisions === undefined
+            ? {}
+            : { revisions: row.original.revisions }),
+          adoptionOperation: row.rootOperation,
+          adoptionFields: [
+            ...new Set([...row.adoptionFields, ...body.allowedFields]),
+          ] as InputSnapshot["records"][number]["adoptionFields"],
+        }));
+      // One child per processing task retains its whole effective workspace, even
+      // when the selected identities came from several historical runs.
+      const childScope = {
+        ...scope,
+        taskRound: {
+          taskId: workspace.id,
+          expectedRevision: workspace.revision,
+          before: workspace.refs,
+          records,
+          kind: "continue" as const,
+        },
+      };
+      delete childScope.assistantResultsGuard;
+      results.push(
+        await createRefinementRun(
+          db,
+          artifacts,
+          childScope,
+          workspace.latestRunId,
+          index === 0 ? key : `${key}:${sha256(workspace.id).slice(0, 16)}`,
+          { ...body, resultIds: [...selected] },
+          "refine",
+          transaction,
+        ),
+      );
+    }
+    await client.query("COMMIT");
+    return results;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    for (const objectRef of transaction.stored)
+      await db.query(
+        "INSERT INTO processing_cleanup(project_id,object_ref) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [scope.projectId, objectRef],
+      );
+    if (transaction.stored.length)
+      await cleanupProcessingObjects(db, artifacts, scope.projectId);
     throw error;
   } finally {
     client.release();
