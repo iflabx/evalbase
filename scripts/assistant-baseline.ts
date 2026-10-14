@@ -532,6 +532,10 @@ if (mode === "controlled") {
             ).rows[0].count === runCount;
         } else if (id === "A10") {
           await send("采用全部结果新建测试集，准备发布。");
+          if (state.task?.question) {
+            businessReplies++;
+            await send("测试集名称叫退款与费用测试，采用全部结果并准备发布。");
+          }
           const adoption = state.proposals.find(
             (p: any) => p.action === "processing" && p.status === "pending",
           );
