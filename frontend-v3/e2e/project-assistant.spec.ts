@@ -164,6 +164,7 @@ test("distinguishes a failed model reply from retained processing and keeps the 
             title: "可靠执行",
             goal: "清洗两条问题",
             stage: failed ? "failed" : "processing",
+            canRetryTurn: failed,
             runId: "kept",
             checkedStatus: failed ? "succeeded" : "queued",
             error: failed ? "assistant_model_failed" : null,
@@ -250,13 +251,13 @@ test("distinguishes a failed model reply from retained processing and keeps the 
   });
 });
 
-for (const scenario of ["exhausted", "available", "mixed"] as const) {
+for (const scenario of ["exhausted", "available", "mixed", "expired-reply"] as const) {
   test(`assistant processing retry follows server recovery: ${scenario}`, async ({ page }) => {
     let retries = 0;
     const runIds =
       scenario === "mixed"
         ? ["available", "spent"]
-        : [scenario === "available" ? "available" : "spent"];
+        : [scenario === "exhausted" ? "spent" : "available"];
     const latest = runIds.at(-1)!;
     await assistantPage(page, async (route, path) => {
       if (path === `${assistantBase}/sessions`)
@@ -279,6 +280,8 @@ for (const scenario of ["exhausted", "available", "mixed"] as const) {
               runIds,
               checkedStatus: "failed",
               review: { missingCount: 1 },
+              canRetryTurn: false,
+              recovery: scenario === "expired-reply" ? { kind: "model_reply" } : null,
             },
             turns: [],
             proposals: [],
@@ -1596,4 +1599,55 @@ test("hides another run's diagnostics and displays model prose as readable text"
   ).toBeVisible();
   await expect(page.getByText(/候选 3 \/ 目标 3/)).toHaveCount(0);
   await expect(page.getByText(/protectedFieldChanges/)).toHaveCount(0);
+});
+
+test("OPT-21 shows bounded recovery and hides an unavailable retry", async ({ page }) => {
+  let recovering = true;
+  await assistantPage(page, async (route, path) => {
+    if (path === `${assistantBase}/sessions`)
+      return route.fulfill({
+        json: {
+          sessions: [
+            { id: "bounded", title: "有限恢复", ordinal: 1, updated_at: "2026-10-14T12:00:00Z" },
+          ],
+        },
+      });
+    if (path.endsWith("/sessions/bounded"))
+      return route.fulfill({
+        json: {
+          sessionId: "bounded",
+          task: {
+            goal: "查询资料",
+            title: "有限恢复",
+            stage: recovering ? "inspecting" : "failed",
+            canRetryTurn: false,
+            transportRecovery: recovering ? { turnId: "turn", retry: 1, delayMs: 500 } : null,
+          },
+          proposals: [],
+          turns: [
+            {
+              id: "turn",
+              userText: "查询资料",
+              assistantText: "",
+              status: recovering ? "running" : "failed",
+              errorCode: recovering ? null : "assistant_budget_exhausted",
+              tools: [],
+            },
+          ],
+        },
+      });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await expect(page.getByText("模型服务暂时繁忙，正在重试…", { exact: true })).toBeVisible();
+  await page.getByLabel("向项目助手发送消息").fill("保留下一条输入");
+  recovering = false;
+  await expect(page.getByText("模型服务暂时繁忙，正在重试…", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "当前任务" }).getByRole("button", { name: "重试未完成步骤" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("保留下一条输入");
+  await page.setViewportSize({ width: 860, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });

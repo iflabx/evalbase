@@ -4,6 +4,7 @@ import { parse as parseCsv } from "csv-parse/sync";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as contextModule from "../../src/assistant/context.js";
+import * as draftCreateModule from "../../src/drafts/create.js";
 import { buildApp, type AgentBenchApp } from "../../src/server/app.js";
 import { createPool } from "../../src/db/pool.js";
 import { migrate } from "../../src/db/migrate.js";
@@ -49,25 +50,36 @@ describe("project assistant public contract", () => {
     release: () => void = () => undefined,
     entered: () => void = () => undefined;
   let providerFailure: number | "network" | "json" | "shape" | undefined;
+  let providerFailureRemaining = 1;
+  let providerFaults: (number | null)[] = [];
+  let providerRetryAfter: string | undefined;
   let failAfterTool = false;
   const server = createServer(async (req, res) => {
     let text = "";
     for await (const chunk of req) text += chunk;
     const body = JSON.parse(text);
     calls.push(body);
+    if (providerFaults.length) {
+      providerFailure = providerFaults.shift() ?? undefined;
+      providerFailureRemaining = 1;
+    }
     if (
       providerFailure !== undefined &&
       (!failAfterTool || body.messages.at(-1)?.role === "tool")
     ) {
       const failure = providerFailure;
-      providerFailure = undefined;
-      failAfterTool = false;
+      if (--providerFailureRemaining <= 0) {
+        providerFailure = undefined;
+        failAfterTool = false;
+        providerFailureRemaining = 1;
+      }
       if (failure === "network") {
         req.socket.destroy();
         return;
       }
       res.writeHead(typeof failure === "number" ? failure : 200, {
         "content-type": "application/json",
+        ...(providerRetryAfter ? { "retry-after": providerRetryAfter } : {}),
       });
       res.end(
         failure === "json"
@@ -11408,6 +11420,9 @@ describe("project assistant public contract", () => {
       ).json().sessionId;
       const before = calls.length;
       providerFailure = failure;
+      providerFailureRemaining = [429, 503, "network"].includes(failure)
+        ? 3
+        : 1;
       const response = await send("查询项目信息", undefined, "failed");
       const state = response.json();
       const turn = state.turns.at(-1);
@@ -11416,7 +11431,7 @@ describe("project assistant public contract", () => {
         category,
       });
       expect(turn.diagnostics).toMatchObject({
-        requestAttempts: 1,
+        requestAttempts: [429, 503, "network"].includes(failure) ? 3 : 1,
         modelRevision: 1,
         contractVersion: "assistant-diagnostics-v1",
       });
@@ -11427,7 +11442,9 @@ describe("project assistant public contract", () => {
       expect(state.task.recovery.message.length).toBeGreaterThan(10);
       expect(response.body).not.toContain("private-provider-canary");
       expect(response.body).not.toContain("synthetic-test-key");
-      expect(calls.length - before).toBe(1);
+      expect(calls.length - before).toBe(
+        [429, 503, "network"].includes(failure) ? 3 : 1,
+      );
     },
   );
   it("OPT-20 preserves completed operations when the provider fails during the summary", async () => {
@@ -11440,6 +11457,7 @@ describe("project assistant public contract", () => {
       })
     ).json().sessionId;
     providerFailure = 503;
+    providerFailureRemaining = 3;
     failAfterTool = true;
     const state = (
       await send("创建一个测试集草稿", undefined, "failed")
@@ -11483,6 +11501,7 @@ describe("project assistant public contract", () => {
     ).json().sessionId;
     requestedTool = { name: "request_publish", input: { draftId: draft } };
     providerFailure = 503;
+    providerFailureRemaining = 3;
     failAfterTool = true;
     try {
       const state = (
@@ -11532,4 +11551,549 @@ describe("project assistant public contract", () => {
       }
     },
   );
+
+  async function opt21Session() {
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+  }
+  async function opt21Submit(
+    message = "查询项目信息",
+    context?: { kind: string; id: string },
+  ) {
+    const r = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions/${sessionId}/turns`,
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message, ...(context ? { context } : {}) },
+    });
+    expect(r.statusCode, r.body).toBe(202);
+    return r.json().turnId;
+  }
+  async function opt21End(id: string) {
+    await expect
+      .poll(
+        async () =>
+          ["failed", "succeeded", "interrupted"].includes(
+            (await read()).json().turns.find((t: any) => t.id === id)?.status,
+          ),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    return (await read()).json();
+  }
+  it.each([429, 503, "network"] as const)(
+    "OPT-21 recovers transient %s once without replaying tools",
+    async (failure) => {
+      await opt21Session();
+      const before = calls.length;
+      providerFailure = failure;
+      providerFailureRemaining = 1;
+      const state = await opt21End(await opt21Submit());
+      const turn = state.turns.at(-1);
+      expect(turn.status).toBe("succeeded");
+      expect(turn.diagnostics.transportRetries).toBe(1);
+      expect(turn.diagnostics.retryWaits).toMatchObject([
+        { used: 1, delayMs: 500 },
+      ]);
+      expect(
+        turn.tools.filter(
+          (t: any) => t.name === "query_project" && t.status === "succeeded",
+        ),
+      ).toHaveLength(1);
+      expect(calls[before]).toEqual(calls[before + 1]);
+      expect(turn.diagnostics.requestAttempts).toBe(3);
+    },
+  );
+  it("OPT-21 shares retry budget between model steps", async () => {
+    await opt21Session();
+    const before = calls.length;
+    toolSequence = [
+      { name: "query_project", input: { kind: "project" } },
+      { name: "query_project", input: { kind: "testSets" } },
+    ];
+    providerFaults = [503, null, 503, null, 503];
+    try {
+      const state = await opt21End(await opt21Submit());
+      const turn = state.turns.at(-1);
+      expect(turn.status).toBe("failed");
+      expect(calls.length - before).toBe(5);
+      expect(turn.diagnostics.transportRetries).toBe(2);
+      expect(turn.diagnostics.retryWaits.map((x: any) => x.delayMs)).toEqual([
+        500, 1000,
+      ]);
+    } finally {
+      providerFaults = [];
+      providerFailure = undefined;
+      toolSequence = [];
+    }
+  });
+  it("OPT-21 honors excessive Retry-After without another request", async () => {
+    await opt21Session();
+    const before = calls.length;
+    providerFailure = 429;
+    providerRetryAfter = "120";
+    try {
+      const state = await opt21End(await opt21Submit());
+      expect(state.turns.at(-1).status).toBe("failed");
+      expect(state.turns.at(-1).diagnostics.transportRetries).toBe(0);
+      expect(calls.length - before).toBe(1);
+    } finally {
+      providerRetryAfter = undefined;
+      providerFailure = undefined;
+    }
+  });
+  it("OPT-21 stops during Retry-After and never sends the retry", async () => {
+    await opt21Session();
+    const before = calls.length;
+    providerFailure = 429;
+    providerRetryAfter = "2";
+    try {
+      await opt21Submit();
+      await expect
+        .poll(async () => (await read()).json().task.transportRecovery?.retry, {
+          timeout: 5000,
+        })
+        .toBe(1);
+      const stop = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      expect(stop.statusCode, stop.body).toBe(200);
+      await new Promise((r) => setTimeout(r, 2200));
+      expect(calls.length - before).toBe(1);
+      expect((await read()).json().task.stage).toBe("stopped");
+    } finally {
+      providerRetryAfter = undefined;
+      providerFailure = undefined;
+    }
+  });
+  it("OPT-21 stops a revoked write turn before its retry", async () => {
+    await opt21Session();
+    const before = calls.length;
+    const db = createPool(databaseUrl);
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "撤权恢复边界" },
+      })
+    ).json().draft.id;
+    const actor = (
+      await db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+        sessionId,
+      ])
+    ).rows[0].actor_id;
+    providerFailure = 429;
+    providerRetryAfter = "2";
+    try {
+      const id = await opt21Submit("查询当前草稿", {
+        kind: "draft",
+        id: draft,
+      });
+      await expect
+        .poll(async () => (await read()).json().task.transportRecovery?.retry, {
+          timeout: 5000,
+        })
+        .toBe(1);
+      await db.query("UPDATE app_user SET role='user' WHERE id=$1", [actor]);
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'viewer') ON CONFLICT(project_id,user_id) DO UPDATE SET role='viewer'",
+        [projectId, actor],
+      );
+      await new Promise((r) => setTimeout(r, 2200));
+      expect(calls.length - before).toBe(1);
+      expect(
+        (await db.query("SELECT status FROM assistant_turn WHERE id=$1", [id]))
+          .rows[0].status,
+      ).toBe("failed");
+      expect((await read()).statusCode).toBe(404);
+    } finally {
+      providerRetryAfter = undefined;
+      providerFailure = undefined;
+      await db.query("UPDATE app_user SET role='admin' WHERE id=$1", [actor]);
+      await db.query(
+        "UPDATE project_member SET role='owner' WHERE project_id=$1 AND user_id=$2",
+        [projectId, actor],
+      );
+      await db.end();
+    }
+  });
+  it("OPT-21 retains original receipt and cumulative budgets on concurrent recovery", async () => {
+    await opt21Session();
+    const db = createPool(databaseUrl);
+    const original = draftCreateModule.createSharedDraft;
+    const spy = vi
+      .spyOn(draftCreateModule, "createSharedDraft")
+      .mockImplementationOnce(async (...args) => {
+        await original(...args);
+        throw new Error("response lost");
+      });
+    providerFailure = 503;
+    providerFailureRemaining = 3;
+    failAfterTool = true;
+    try {
+      const state = await opt21End(await opt21Submit("创建一个测试集草稿"));
+      const turn = state.turns.at(-1);
+      expect(turn.status).toBe("failed");
+      const receipt = turn.tools.find(
+        (t: any) => t.name === "create_draft" && t.status === "succeeded",
+      );
+      expect(receipt.result.recovered).toBe(true);
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{autoCount}','7') WHERE id=$1",
+        [sessionId],
+      );
+      const request = {
+        method: "POST" as const,
+        url: `${base()}/sessions/${sessionId}/retry`,
+        headers,
+        payload: {},
+      };
+      const retries = await Promise.all([
+        app.inject(request),
+        app.inject(request),
+      ]);
+      expect(retries.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+      const restored = await opt21End(turn.id);
+      expect(restored.task.autoCount).toBe(7);
+      const current = (
+        await db.query(
+          "SELECT execution_attempt,tool_results FROM assistant_turn WHERE id=$1",
+          [turn.id],
+        )
+      ).rows[0];
+      expect(current.execution_attempt).toBe(2);
+      expect(
+        current.tool_results.find(
+          (t: any) => t.name === "create_draft" && t.status === "succeeded",
+        ).key,
+      ).toBe(receipt.key);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM draft_creation_receipt WHERE operation_key=$1",
+            [receipt.key],
+          )
+        ).rows[0].count,
+      ).toBe(1);
+      expect(restored.turns.at(-1).diagnostics.transportRetries).toBe(2);
+    } finally {
+      spy.mockRestore();
+      providerFailure = undefined;
+      failAfterTool = false;
+      providerFailureRemaining = 1;
+      await db.end();
+    }
+  });
+  it("OPT-21 blocks unknown writes until a receipt can be verified", async () => {
+    await opt21Session();
+    const spy = vi
+      .spyOn(draftCreateModule, "createSharedDraft")
+      .mockRejectedValue(new Error("unknown outcome"));
+    try {
+      requestedTool = {
+        name: "create_draft",
+        input: { name: "唯一未知回执边界" },
+      };
+      const state = await opt21End(await opt21Submit("创建一个测试集草稿"));
+      const turn = state.turns.at(-1);
+      expect(turn.status).toBe("failed");
+      expect(spy).toHaveBeenCalledTimes(1);
+      requestedTool = {
+        name: "create_draft",
+        input: { name: "唯一未知回执边界" },
+      };
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      const recovered = await opt21End(turn.id);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(recovered.turns.at(-1).diagnostics.failure.category).toBe(
+        "effect_unknown",
+      );
+    } finally {
+      spy.mockRestore();
+      requestedTool = undefined;
+    }
+  });
+  it("OPT-21 preserves real completed candidates when the final explanation fails", async () => {
+    const db = createPool(databaseUrl);
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: { name: "处理结果保留" },
+      })
+    ).json().draft.id;
+    for (const question of ["  甲问题  ", "  乙问题  "])
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${draft}/records`,
+        headers,
+        payload: { question, expectedOutput: "原答案", metadata: [] },
+      });
+    await opt21Session();
+    requestedTool = {
+      name: "submit_processing",
+      input: {
+        source: { kind: "draft", id: draft },
+        allRecords: true,
+        operation: "clean",
+        instructions: "",
+        allowedFields: ["question"],
+      },
+    };
+    try {
+      const submitted = await opt21End(
+        await opt21Submit("清理首尾空白", { kind: "draft", id: draft }),
+      );
+      const runId = submitted.task.runId;
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',lease_owner='opt21',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [runId],
+        )
+      ).rows[0];
+      const cfg = { ...loadConfig(), databaseUrl };
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(cfg.minio),
+        cfg,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      await expect
+        .poll(async () => (await read()).json().task.stage, { timeout: 10000 })
+        .toBe("awaiting_review");
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 5000 },
+        )
+        .toBe(false);
+      const before = (
+        await db.query("SELECT count(*)::int AS count FROM processing_run")
+      ).rows[0].count;
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      providerFailure = 503;
+      providerFailureRemaining = 3;
+      failAfterTool = true;
+      const state = await opt21End(await opt21Submit("说明当前已完成的结果"));
+      expect(state.turns.at(-1).status).toBe("failed");
+      expect(state.task.stage).toBe("awaiting_review");
+      expect(state.task.runId).toBe(runId);
+      expect(state.task.review.total).toBe(2);
+      expect(state.task.canRetryTurn).toBe(true);
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM processing_run"))
+          .rows[0].count,
+      ).toBe(before);
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      const recovered = await opt21End(state.turns.at(-1).id);
+      expect(recovered.turns.at(-1).status).toBe("succeeded");
+      expect(recovered.task.recovery).toBeNull();
+      // Legacy interruption after writing a valid output still has a recoverable batch.
+      await db.query(
+        "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}',to_jsonb('processing-v5'::text)) WHERE id=$1",
+        [runId],
+      );
+      await db.query(
+        "UPDATE processing_batch SET error_code='processing_batch_failed',model_attempts=1 WHERE run_id=$1",
+        [runId],
+      );
+      await db.query(
+        "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=$1",
+        [job.id],
+      );
+      await db.query(
+        'UPDATE assistant_session SET task=task||\'{"stage":"awaiting_review","checkedStatus":"failed"}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      const endpoint = `/api/projects/${projectId}/processing-runs/${runId}/status`;
+      expect(
+        (await app.inject({ method: "GET", url: endpoint, headers })).json()
+          .recovery.canRetry,
+      ).toBe(true);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await db.query(
+            "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+            [runId],
+          )
+        ).rows[0].model_attempts,
+      ).toBe(1);
+      // An expired explanation must not block a separately valid Worker recovery.
+      await db.query(
+        "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=$1",
+        [job.id],
+      );
+      await db.query(
+        'UPDATE assistant_session SET task=jsonb_set(task,\'{turnBudget,deadlineAt}\',\'1\')||\'{"stage":"awaiting_review","checkedStatus":"failed","recovery":{"kind":"model_reply"}}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      expect((await read()).json().task.canRetryTurn).toBe(false);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await db.query(
+            "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+            [runId],
+          )
+        ).rows[0].model_attempts,
+      ).toBe(1);
+    } finally {
+      requestedTool = undefined;
+      providerFailure = undefined;
+      providerFailureRemaining = 1;
+      failAfterTool = false;
+      await db.end();
+    }
+  });
+  it("OPT-21 refuses exhausted time and executor recovery budgets", async () => {
+    await opt21Session();
+    const db = createPool(databaseUrl);
+    providerFailure = 401;
+    try {
+      const state = await opt21End(await opt21Submit());
+      const id = state.turns.at(-1).id;
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{turnBudget,deadlineAt}',to_jsonb(1::bigint)) WHERE id=$1",
+        [sessionId],
+      );
+      const request = {
+        method: "POST" as const,
+        url: `${base()}/sessions/${sessionId}/retry`,
+        headers,
+        payload: {},
+      };
+      expect((await app.inject(request)).statusCode).toBe(409);
+      expect((await read()).json().task.canRetryTurn).toBe(false);
+      await db.query(
+        "UPDATE assistant_session SET task=task-'turnBudget' WHERE id=$1",
+        [sessionId],
+      );
+      await db.query(
+        "UPDATE assistant_turn SET execution_attempt=3 WHERE id=$1",
+        [id],
+      );
+      expect((await app.inject(request)).statusCode).toBe(409);
+      expect((await read()).json().task.canRetryTurn).toBe(false);
+    } finally {
+      await db.end();
+    }
+  });
+  it("OPT-21 keeps an expired reclaimed turn's original budget", async () => {
+    await opt21Session();
+    const db = createPool(databaseUrl);
+    providerFailure = 401;
+    try {
+      const state = await opt21End(await opt21Submit());
+      const id = state.turns.at(-1).id;
+      const before = calls.length;
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{turnBudget}', $2::jsonb)||'{\"stage\":\"inspecting\"}'::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            ...state.task.turnBudget,
+            deadlineAt: 1,
+            modelSteps: 5,
+            toolCalls: 7,
+            transportRetries: 2,
+          }),
+        ],
+      );
+      await db.query(
+        "UPDATE assistant_turn SET status='running',expires_at=now()-interval '1 second',execution_attempt=1 WHERE id=$1",
+        [id],
+      );
+      await expect
+        .poll(
+          async () => {
+            const t = (
+              await db.query(
+                "SELECT status,execution_attempt FROM assistant_turn WHERE id=$1",
+                [id],
+              )
+            ).rows[0];
+            return t.status === "failed" && t.execution_attempt === 2;
+          },
+          { timeout: 5000 },
+        )
+        .toBe(true);
+      const recovered = (await read()).json();
+      expect(recovered.task.turnBudget).toMatchObject({
+        deadlineAt: 1,
+        modelSteps: 5,
+        toolCalls: 7,
+        transportRetries: 2,
+      });
+      expect(calls.length).toBe(before);
+      expect(recovered.task.canRetryTurn).toBe(false);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(409);
+    } finally {
+      await db.end();
+    }
+  });
 });

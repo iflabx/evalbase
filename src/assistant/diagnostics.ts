@@ -50,6 +50,13 @@ export function assistantFailure(
       "模型连接尚未配置完成或当前不可用。",
       "请管理员检查模型连接和加密配置后再试。",
     );
+  if (code === "assistant_operation_unknown")
+    return result(
+      "business",
+      "effect_unknown",
+      "原操作的提交结果尚未确认。",
+      "正在核对原操作回执；不要重复提交或更换参数。已有输入和成果保留。",
+    );
   if (
     /assistant_no_progress|assistant_session_limit|assistant_budget/.test(code)
   )

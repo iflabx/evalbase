@@ -10,6 +10,7 @@ import {
   dependenciesAvailable,
   sessionRow,
   recoverProposalReceipt,
+  canResumeAssistantTurn,
   type AssistantScope,
 } from "./store.js";
 
@@ -386,13 +387,24 @@ export async function controlAssistantTask(
         await client.query("DELETE FROM assistant_session WHERE id=$1", [id]);
       }
     } else {
+      const turn = (
+        await client.query(
+          "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
+          [id],
+        )
+      ).rows[0];
+      const resumeReply =
+        session.task?.recovery?.kind === "model_reply" &&
+        ["failed", "interrupted"].includes(turn?.status) &&
+        canResumeAssistantTurn(turn, session.task);
       if (
         session.task?.runId &&
         session.task.stage === "awaiting_review" &&
         (["failed", "cancelled"].includes(session.task.checkedStatus) ||
           (session.task.checkedStatus === "succeeded" &&
             Number(session.task.review?.missingCount) > 0)) &&
-        job
+        job &&
+        !resumeReply
       ) {
         const recoverable = [];
         for (const item of jobs) {
@@ -417,7 +429,7 @@ export async function controlAssistantTask(
           [recoverable.map((item) => item.id)],
         );
         await client.query(
-          'UPDATE assistant_session SET task=task||\'{"stage":"processing","error":null}\'::jsonb WHERE id=$1',
+          'UPDATE assistant_session SET task=task||\'{"stage":"processing","error":null,"recovery":null}\'::jsonb WHERE id=$1',
           [id],
         );
         await client.query("COMMIT");
@@ -425,30 +437,15 @@ export async function controlAssistantTask(
           runId: session.task.runId,
         };
       }
-      const turn = (
-        await client.query(
-          "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
-          [id],
-        )
-      ).rows[0];
-      if (
-        !turn ||
-        (!["failed", "interrupted"].includes(turn.status) &&
-          !(
-            session.task?.error === "assistant_task_limit" &&
-            turn.status === "succeeded"
-          )) ||
-        !turn.user_text ||
-        session.task?.stage === "stopped"
-      )
+      if (!canResumeAssistantTurn(turn, session.task))
         throw new AssistantError(409, "assistant_retry_unavailable");
       await dependenciesAvailable(client, scope, turn.dependencies);
       await client.query(
-        "UPDATE assistant_turn SET status='queued',execution_token=NULL,task_revision=$2,error_code=NULL,execution_attempt=0,resuming=true WHERE id=$1",
+        "UPDATE assistant_turn SET status='queued',execution_token=NULL,task_revision=$2,error_code=NULL,resuming=true WHERE id=$1",
         [turn.id, session.task_revision],
       );
       await client.query(
-        'UPDATE assistant_session SET task=task||\'{"stage":"inspecting","error":null,"autoCount":0}\'::jsonb WHERE id=$1',
+        'UPDATE assistant_session SET task=task||\'{"stage":"inspecting","error":null}\'::jsonb WHERE id=$1',
         [id],
       );
     }

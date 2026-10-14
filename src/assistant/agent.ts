@@ -45,6 +45,7 @@ import type { ArtifactRepository } from "../storage/artifacts.js";
 import { configuredModel } from "../model/connection.js";
 import { assistantContext } from "./context.js";
 import { assistantFailure, type AssistantFailure } from "./diagnostics.js";
+import { assistantTransport } from "./transport.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject } from "../server/support.js";
 import { hasProjectCapability } from "../security/project-access.js";
@@ -307,6 +308,7 @@ export async function executeAssistantTurn(
   scope: AssistantScope,
   turn: Record<string, any>,
   command: DraftCommand,
+  cancellation?: AbortSignal,
 ) {
   const executionScope = {
     ...scope,
@@ -352,10 +354,39 @@ export async function executeAssistantTurn(
     | { runId: string; total: number; missing: number }
     | undefined;
   const startedAt = Date.now();
+  let turnBudget = {
+    turnId: turn.id,
+    deadlineAt: startedAt + 80000,
+    modelSteps: 0,
+    toolCalls: 0,
+    transportRetries: 0,
+    requests: [] as { httpStatus: number | null; timeToHeadersMs: number }[],
+    retryWaits: [] as {
+      used: number;
+      delayMs: number;
+      httpStatus: number | null;
+    }[],
+  };
+  let abortSignal: AbortSignal = AbortSignal.timeout(80000);
+  let budgetLoaded = false;
+  const retryWaits: {
+    used: number;
+    delayMs: number;
+    httpStatus: number | null;
+  }[] = [];
   let finishReason = "not_returned";
   let modelRevision: number | null = null;
   const requests: { httpStatus: number | null; timeToHeadersMs: number }[] = [];
   const modelTransportErrors = new WeakSet<object>();
+  let requestControlError: unknown;
+  async function controlModelRequest<T>(action: () => Promise<T>) {
+    try {
+      return await action();
+    } catch (error) {
+      requestControlError = error;
+      throw error;
+    }
+  }
   let failureDiagnostic: AssistantFailure | undefined;
   let retainedOperations = 0;
   let retainedCandidates: number | null = null;
@@ -474,6 +505,8 @@ export async function executeAssistantTurn(
       toolsVersion: "assistant-tools-v1",
       modelRevision,
       requestAttempts: requests.length,
+      transportRetries: turnBudget.transportRetries,
+      retryWaits,
       requests,
       protocolRepairs: Number(protocolRepair),
       retainedOperations,
@@ -481,6 +514,10 @@ export async function executeAssistantTurn(
       currentStep,
       ...(failureDiagnostic ? { failure: failureDiagnostic } : {}),
     };
+  }
+  async function saveBudget() {
+    Object.assign(turnBudget, { modelSteps, toolCalls, requests, retryWaits });
+    await updateTask(db, turn, { turnBudget });
   }
   function retainedFacts(task: any, results: Record<string, any>[]) {
     retainedOperations = results.filter(
@@ -541,6 +578,7 @@ export async function executeAssistantTurn(
     retainedFacts(saved.task, tools);
     const observation = { turnId: turn.id, ...diagnostics("budget_yield") };
     const patch = {
+      transportRecovery: null,
       stage: "yielding",
       error: null,
       diagnostics: diagnostics("budget_yield"),
@@ -592,6 +630,13 @@ export async function executeAssistantTurn(
       ...(errorCode ? { errorCode } : {}),
     };
     await updateTask(db, turn, {
+      transportRecovery: null,
+      ...(budgetLoaded
+        ? { turnBudget: { ...turnBudget, requests, retryWaits } }
+        : {}),
+      ...(!errorCode && task?.recovery?.kind === "model_reply"
+        ? { recovery: null }
+        : {}),
       diagnostics: observation,
       observations: [
         ...(task?.observations ?? []).filter(
@@ -761,6 +806,8 @@ export async function executeAssistantTurn(
             };
           }
           toolCalls++;
+          abortSignal.throwIfAborted();
+          await saveBudget();
           if (
             !["query_project", "read_records", "read_background"].includes(
               name,
@@ -933,6 +980,43 @@ export async function executeAssistantTurn(
                   },
                 });
               }
+            }
+            const uncertain = saved.find(
+              (r) =>
+                r.key === key &&
+                ["started", "failed"].includes(r.status) &&
+                !hasNoEffect(r),
+            );
+            if (
+              uncertain &&
+              [
+                "create_draft",
+                "submit_processing",
+                "refine_candidates",
+              ].includes(name)
+            ) {
+              const recovered = await recoverAssistantReceipt(
+                db,
+                scope,
+                uncertain,
+              );
+              if (!recovered) {
+                budgetBoundary = true;
+                throw new AssistantError(
+                  409,
+                  "assistant_operation_unknown",
+                  "正在核对原操作回执；结果尚未确认，不能重复提交。已有输入和成果保留。",
+                );
+              }
+              await depend(recovered.references);
+              Object.assign(uncertain, {
+                status: "succeeded",
+                result: recovered.result,
+              });
+              await updateTurn(
+                "UPDATE assistant_turn SET tool_results=(SELECT jsonb_agg(CASE WHEN x->>'key'=$2 THEN $3::jsonb ELSE x END) FROM jsonb_array_elements(tool_results) x) WHERE id=$1 AND status='running'",
+                [turn.id, key, JSON.stringify(uncertain)],
+              );
             }
             const prior = saved.find(
               (r) => r.key === key && r.status === "succeeded",
@@ -1114,6 +1198,18 @@ export async function executeAssistantTurn(
             }
             const noEffect =
               !actionStarted || validationWithoutEffect.has(error.code);
+            if (
+              !noEffect &&
+              [
+                "create_draft",
+                "submit_processing",
+                "refine_candidates",
+              ].includes(name)
+            ) {
+              budgetBoundary = true;
+              if (error.code === "assistant_operation_failed")
+                error.code = "assistant_operation_unknown";
+            }
             if (boundStep && noEffect)
               await updateTask(db, turn, {
                 executionPlan: {
@@ -2979,7 +3075,7 @@ export async function executeAssistantTurn(
         toolCallId: step.id ?? `step:${count}`,
         messages,
         context: {},
-        abortSignal: AbortSignal.timeout(80000),
+        abortSignal,
       });
       if (Buffer.byteLength(JSON.stringify({ input, result })) <= 12000)
         fixedReceipts.push(
@@ -3007,7 +3103,34 @@ export async function executeAssistantTurn(
     }
   }
   try {
+    const savedState = (
+      await db.query(
+        "SELECT task->'turnBudget' AS budget,task->'observations' AS observations FROM assistant_session WHERE id=$1",
+        [turn.session_id],
+      )
+    ).rows[0];
+    const savedBudget = savedState?.budget;
+    if (savedBudget?.turnId === turn.id) {
+      turnBudget = { ...turnBudget, ...savedBudget };
+      requests.push(...turnBudget.requests);
+      retryWaits.push(...turnBudget.retryWaits);
+    } else if (restoring) {
+      const prior = savedState?.observations?.find(
+        (item: { turnId: string }) => item.turnId === turn.id,
+      );
+      turnBudget.modelSteps = prior?.modelSteps ?? 0;
+      turnBudget.toolCalls = prior?.toolCalls ?? 0;
+      turnBudget.transportRetries = prior?.transportRetries ?? 0;
+    }
+    budgetLoaded = true;
+    modelSteps = turnBudget.modelSteps;
+    toolCalls = turnBudget.toolCalls;
+    abortSignal = AbortSignal.any([
+      AbortSignal.timeout(Math.max(1, turnBudget.deadlineAt - Date.now())),
+      ...(cancellation ? [cancellation] : []),
+    ]);
     await turnFence(db, scope, turn.id, turn.execution_token);
+    await updateTask(db, turn, { turnBudget, transportRecovery: null });
     const model = await configuredModel(
       db,
       config,
@@ -3017,6 +3140,41 @@ export async function executeAssistantTurn(
         requests.push(observation);
         if (error && typeof error === "object") modelTransportErrors.add(error);
       },
+      (request) =>
+        assistantTransport(request, {
+          signal: abortSignal,
+          deadlineAt: turnBudget.deadlineAt,
+          initialRetries: turnBudget.transportRetries,
+          beforeRequest: async () => {
+            await controlModelRequest(() =>
+              turnFence(db, scope, turn.id, turn.execution_token),
+            );
+          },
+          onRecovered: async () => {
+            await controlModelRequest(() =>
+              updateTask(db, turn, { transportRecovery: null }),
+            );
+          },
+          onFailure: (error) => {
+            if (error && typeof error === "object")
+              modelTransportErrors.add(error);
+          },
+          onRetry: async (value) => {
+            turnBudget.transportRetries = value.used;
+            retryWaits.push(value);
+            Object.assign(turnBudget, { requests, retryWaits });
+            await controlModelRequest(() =>
+              updateTask(db, turn, {
+                turnBudget,
+                transportRecovery: {
+                  turnId: turn.id,
+                  retry: value.used,
+                  delayMs: value.delayMs,
+                },
+              }),
+            );
+          },
+        }),
     );
     modelRevision = model.revision;
     context = await assistantContext(
@@ -3292,6 +3450,7 @@ export async function executeAssistantTurn(
             ],
           );
         }
+        await saveBudget();
         await continueFixedSteps(messages);
       },
       stopWhen: [
@@ -3304,11 +3463,15 @@ export async function executeAssistantTurn(
       ],
       prepareStep: async ({ instructions, responseMessages }) => {
         await turnFence(db, scope, turn.id, turn.execution_token);
+        abortSignal.throwIfAborted();
+        if (modelSteps >= 10)
+          throw new AssistantError(422, "assistant_budget_exhausted");
         stepMessages = [...responseMessages, ...fixedReceipts];
         const fixedState = fixedReceipts.length
           ? { messages: [...messages, ...stepMessages] }
           : {};
         modelSteps++;
+        await saveBudget();
         // Reserve the last bounded step for a reply, rather than another query.
         if (modelSteps >= 10 || toolCalls >= 10) {
           summarizing = true;
@@ -3402,7 +3565,7 @@ export async function executeAssistantTurn(
         toolCallId: savedProcessing.key,
         messages,
         context: {},
-        abortSignal: AbortSignal.timeout(80000),
+        abortSignal,
       });
       recoveredProcessingKey = undefined;
     }
@@ -3415,7 +3578,7 @@ export async function executeAssistantTurn(
           toolCallId: `event:${turn.id}`,
           messages,
           context: {},
-          abortSignal: AbortSignal.timeout(80000),
+          abortSignal,
         },
       );
       const current = (
@@ -3446,7 +3609,6 @@ export async function executeAssistantTurn(
       messages.push(...fixedReceipts.splice(0));
     }
     if (await finishExhaustedProcessing()) return;
-    const abortSignal = AbortSignal.timeout(80000);
     // A provider may emit its tool template as text. Request native calls once;
     // never execute the text as commands or expose it as a completed reply.
     const textualCall = (text: string) =>
@@ -3592,7 +3754,10 @@ export async function executeAssistantTurn(
                 : "已核对处理结果，请查看下方候选和异常。"),
       ],
     );
-  } catch (e) {
+  } catch (caught) {
+    const e = cancellation?.aborted
+      ? cancellation.reason
+      : (requestControlError ?? caught);
     await queue;
     if (
       (e instanceof AssistantError &&
@@ -3623,6 +3788,9 @@ export async function executeAssistantTurn(
                 ToolChoiceViolationError.isInstance(e)
               ? "assistant_task_not_executed"
               : "assistant_model_failed");
+    if (abortSignal.aborted && abortSignal.reason?.name === "TimeoutError") {
+      errorCode = "assistant_budget_exhausted";
+    }
     let cause = e;
     let modelTransportFailure = false;
     for (let i = 0; i < 5 && cause && typeof cause === "object"; i++) {
@@ -3650,8 +3818,15 @@ export async function executeAssistantTurn(
         category: "output_truncated",
         reason: "模型输出达到长度上限，回复未完成。",
       };
+    const retainedTask = state?.task;
+    const retainedProcessing =
+      failureDiagnostic.layer === "model" &&
+      !failure &&
+      retainedTask?.checkedStatus === "succeeded" &&
+      retainedTask.review?.total > 0;
     await updateTask(db, turn, {
-      stage: "failed",
+      transportRecovery: null,
+      stage: retainedProcessing ? "awaiting_review" : "failed",
       error: errorCode,
       recovery: {
         kind: failure

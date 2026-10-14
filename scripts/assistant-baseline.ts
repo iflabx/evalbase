@@ -47,7 +47,7 @@ const cases = [
   [
     "A9",
     "查询资料。",
-    "OPT-20 classifies provider failure|OPT-20 preserves completed operations|repairs missing prerequisites and a no-effect scope failure|keeps an unknown write bound when replanning|stops budget continuation when new query arguments",
+    "OPT-21|OPT-20 classifies provider failure|OPT-20 preserves completed operations|repairs missing prerequisites and a no-effect scope failure|keeps an unknown write bound when replanning|stops budget continuation when new query arguments",
   ],
   ["A10", "采用全部结果，准备发布。", "requires a bound explicit confirmation"],
 ] as const;

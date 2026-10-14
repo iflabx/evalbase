@@ -234,37 +234,39 @@ export async function configuredModel(
     },
     error?: unknown,
   ) => void,
+  decorateFetch?: (request: typeof fetch) => typeof fetch,
 ) {
   const connection = await readConnection(db, revision);
   if (!connection || (!allowDisabled && !connection.enabled))
     throw new ModelConnectionError(409, "model_connection_unavailable");
+  const observedFetch: typeof fetch = observeRequest
+    ? async (input, init) => {
+        const started = Date.now();
+        let httpStatus: number | null = null;
+        let failure: unknown;
+        try {
+          const response = await modelFetch(input, init);
+          httpStatus = response.status;
+          return response;
+        } catch (error) {
+          failure = error;
+          throw error;
+        } finally {
+          observeRequest(
+            {
+              httpStatus,
+              timeToHeadersMs: Date.now() - started,
+            },
+            failure,
+          );
+        }
+      }
+    : modelFetch;
   const provider = createOpenAICompatible({
     name: "evalbase",
     baseURL: connection.endpoint,
     apiKey: decrypt(connection, config),
-    fetch: observeRequest
-      ? async (input, init) => {
-          const started = Date.now();
-          let httpStatus: number | null = null;
-          let failure: unknown;
-          try {
-            const response = await modelFetch(input, init);
-            httpStatus = response.status;
-            return response;
-          } catch (error) {
-            failure = error;
-            throw error;
-          } finally {
-            observeRequest(
-              {
-                httpStatus,
-                timeToHeadersMs: Date.now() - started,
-              },
-              failure,
-            );
-          }
-        }
-      : modelFetch,
+    fetch: decorateFetch ? decorateFetch(observedFetch) : observedFetch,
   });
   return {
     revision: connection.revision,

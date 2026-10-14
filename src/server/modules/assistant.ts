@@ -48,6 +48,7 @@ import {
   recoverProposalReceipt,
   sessionRow,
   startTurn,
+  turnFence,
   type AssistantScope,
 } from "../../assistant/store.js";
 
@@ -65,6 +66,14 @@ export function registerAssistant({
 > & { publishDraft: ReturnType<typeof registerDrafts> }) {
   const path = "/api/projects/:projectId/assistant",
     running = new Set<Promise<void>>();
+  const cancellations = new Map<
+    string,
+    {
+      controller: AbortController;
+      turn: Record<string, any>;
+      scope: AssistantScope;
+    }
+  >();
   type Params = {
     projectId: string;
     sessionId: string;
@@ -87,6 +96,14 @@ export function registerAssistant({
     return polling;
   }
   async function dispatchWork() {
+    // Reuse the existing supervisor tick for stopping in-flight model waits.
+    for (const { controller, turn, scope } of cancellations.values()) {
+      try {
+        await turnFence(db, scope, turn.id, turn.execution_token);
+      } catch (error) {
+        controller.abort(error);
+      }
+    }
     await collectProcessingEvents(db);
     for (let i = 0; i < 3; i++) {
       if (closed) break;
@@ -96,6 +113,8 @@ export function registerAssistant({
         projectId: turn.project_id,
         actorId: turn.actor_id,
       };
+      const controller = new AbortController();
+      cancellations.set(turn.id, { controller, turn, scope: currentScope });
       const work = executeAssistantTurn(
         db,
         artifacts,
@@ -120,12 +139,14 @@ export function registerAssistant({
             key,
           );
         },
+        controller.signal,
       );
       running.add(work);
       void work
         .catch(() => undefined)
         .finally(() => {
           running.delete(work);
+          cancellations.delete(turn.id);
           void dispatch().catch((error) => app.log.error(error));
         });
     }
@@ -861,6 +882,8 @@ export function registerAssistant({
   );
   app.addHook("onClose", async () => {
     closed = true;
+    for (const { controller } of cancellations.values())
+      controller.abort(new AssistantError(409, "assistant_interrupted"));
     clearInterval(timer);
     if (polling) await polling.catch((error) => app.log.error(error));
     await Promise.allSettled([...running]);

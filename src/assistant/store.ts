@@ -90,6 +90,23 @@ export type Dependency = {
   id: string;
   focus?: true;
 };
+/** Budget capability only; callers still enforce access and source permissions. */
+export function canResumeAssistantTurn(
+  turn: Record<string, any> | undefined,
+  task: Record<string, any>,
+) {
+  const budget = task?.turnBudget?.turnId === turn?.id ? task.turnBudget : null;
+  return Boolean(
+    turn &&
+    (["failed", "interrupted"].includes(turn.status) ||
+      (task?.error === "assistant_task_limit" &&
+        turn.status === "succeeded")) &&
+    Number(turn.execution_attempt) < 3 &&
+    turn.user_text &&
+    (!budget || (budget.deadlineAt > Date.now() && budget.modelSteps < 10)) &&
+    task?.stage !== "stopped",
+  );
+}
 export class AssistantError extends Error {
   constructor(
     public status: number,
@@ -255,6 +272,11 @@ export async function readSession(
   const current = await sessionRow(db, scope, id);
   if (current.content_revision !== session.content_revision)
     throw new AssistantError(409, "assistant_context_deleted");
+  const latestTurn = turns.at(-1);
+  const canRetryTurn = Boolean(
+    canResumeAssistantTurn(latestTurn, current.task) &&
+    (await hasProjectCapability(db, scope.projectId, scope.actorId, "write")),
+  );
   const presentedTask = taskPresentation(
     current.task,
     processing?.id === current.task?.runId &&
@@ -264,7 +286,7 @@ export async function readSession(
   );
   return {
     sessionId: id,
-    task: presentedTask,
+    task: presentedTask ? { ...presentedTask, canRetryTurn } : presentedTask,
     title: current.custom_title ?? presentedTask?.title ?? current.title,
     turns: turns.map((t) => ({
       id: t.id,
@@ -611,11 +633,13 @@ export async function turnFence(
   await assistantAccess(db, scope);
   const row = (
     await db.query(
-      "SELECT t.dependencies,t.requires_write FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1 AND s.project_id=$2 AND s.actor_id=$3 AND t.status='running' AND t.expires_at>now() AND t.task_revision=s.task_revision AND ($4::text IS NULL OR t.execution_token=$4)",
+      "SELECT t.dependencies,t.requires_write,s.task->'turnBudget' AS budget FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1 AND s.project_id=$2 AND s.actor_id=$3 AND t.status='running' AND t.expires_at>now() AND t.task_revision=s.task_revision AND ($4::text IS NULL OR t.execution_token=$4)",
       [turnId, scope.projectId, scope.actorId, token ?? null],
     )
   ).rows[0];
   if (!row) throw new AssistantError(409, "assistant_interrupted");
+  if (row.budget?.turnId === turnId && row.budget.deadlineAt <= Date.now())
+    throw new AssistantError(409, "assistant_budget_exhausted");
   if (row.requires_write) await assistantAccess(db, scope, true);
   await dependenciesAvailable(db, scope, row.dependencies);
 }

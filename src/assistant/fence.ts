@@ -32,12 +32,18 @@ export async function guardAssistantCommit(
   await assistantAccess(db, scope, true);
   const session = (
     await db.query(
-      "SELECT task_revision FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 FOR SHARE",
+      "SELECT task_revision,task->'turnBudget' AS budget FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 FOR SHARE",
       [guard.sessionId, scope.projectId, scope.actorId],
     )
   ).rows[0];
   if (session?.task_revision !== guard.revision)
     throw new AssistantError(409, "assistant_interrupted");
+  if (
+    guard.turnId &&
+    session.budget?.turnId === guard.turnId &&
+    session.budget.deadlineAt <= Date.now()
+  )
+    throw new AssistantError(409, "assistant_budget_exhausted");
   if (
     guard.turnId &&
     !(

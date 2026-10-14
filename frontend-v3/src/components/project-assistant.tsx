@@ -93,6 +93,8 @@ type Conversation = {
     candidateScope?: { hash: string; count: number; sourceCount: number; targetCount: number };
     error?: string;
     recovery?: { kind: string; message: string };
+    canRetryTurn?: boolean;
+    transportRecovery?: { turnId: string; retry: number; delayMs: number } | null;
     target?: { kind: string; id?: string };
     targetName?: string;
     requirements?: string[];
@@ -627,7 +629,9 @@ export function ProjectAssistant({
                       )}
                       {["queued", "running"].includes(turn.status) && (
                         <p className="text-muted-foreground">
-                          正在处理… 关闭面板后可再回来查看结果。
+                          {visible.task?.transportRecovery?.turnId === turn.id
+                            ? "模型服务暂时繁忙，正在重试…"
+                            : "正在处理… 关闭面板后可再回来查看结果。"}
                         </p>
                       )}
                       {turn.errorCode && (
@@ -945,7 +949,7 @@ export function ProjectAssistant({
                   </div>
                   {canWrite && sessionId && (
                     <div className="flex gap-1">
-                      {((visible.task.stage === "failed" &&
+                      {((visible.task.canRetryTurn &&
                         visible.task.error !== "assistant_session_limit" &&
                         !visible.task.requirementProblem &&
                         ![
