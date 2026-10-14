@@ -404,6 +404,7 @@ if (mode === "controlled") {
       let businessReplies = 0;
       let retriedNoEffectTurn: string | undefined;
       let approvedFields: string[] | undefined;
+      let assertionCode: string | null = null;
       let goalCompleted = false,
         reason = "goal_not_reached";
       try {
@@ -420,8 +421,14 @@ if (mode === "controlled") {
               "分类依据：进度指退款到账、退货和退款进度；费用指价格、服务费、月费和年费。仅新增Metadata「主题」分类，保留原问题、答案和原Metadata。",
             ).toString("base64"),
           });
-        if (["A5", "A6", "A7", "A10"].includes(id))
+        if (["A5", "A6", "A7", "A10"].includes(id)) {
           await send("清理首尾空白，其他内容不变。", { context });
+          assert.equal(
+            (await candidates()).length,
+            8,
+            "initial_cleanup_incomplete",
+          );
+        }
         if (id === "A5") {
           const before = await candidates();
           assert(before.length >= 2, "precondition_candidates_missing");
@@ -909,6 +916,11 @@ if (mode === "controlled") {
             : "goal_not_reached";
       } catch (error) {
         // Only locally-defined assertion codes enter evidence, never provider exception strings.
+        if (
+          error instanceof assert.AssertionError &&
+          /^[a-z_]+$/.test(error.message)
+        )
+          assertionCode = error.message;
         reason =
           error instanceof assert.AssertionError
             ? "goal_or_precondition_assertion_failed"
@@ -962,6 +974,7 @@ if (mode === "controlled") {
         toolParameterFailures,
         toolParameterRecoveries,
         reason,
+        assertionCode,
         stage: state?.task?.stage ?? null,
         userPrompts,
         automaticRepairs: null,
