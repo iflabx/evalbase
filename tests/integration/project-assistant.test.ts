@@ -14253,6 +14253,37 @@ describe("project assistant public contract", () => {
       await f.db.end();
     }
   });
+  it("OPT-25 rejects a nonlinguistic clarification placeholder without pausing the valid task", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      toolSequence = [
+        { name: "plan_task", input: { question: ":)", nextAction: "none" } },
+      ];
+      requestedTool = undefined;
+      const state = await opt21End(await opt21Submit("只改我勾选的两条"));
+      expect(
+        state.turns.at(-1).tools.find((tool: any) => tool.name === "plan_task"),
+      ).toMatchObject({
+        status: "failed",
+        error: { code: "assistant_tool_input_invalid" },
+      });
+      expect(state.task.question).not.toBe(":)");
+      expect(state.task.runIds).toEqual(f.runs);
+      expect(state.task.stage).not.toBe("waiting_input");
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
   it("OPT-25 executes approved read parameters before processing without model reconstruction", async () => {
     const previous = sessionId,
       source = await opt22Draft("R25 固定读取");
