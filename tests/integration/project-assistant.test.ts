@@ -63,6 +63,12 @@ describe("project assistant public contract", () => {
   let providerFaults: (number | null)[] = [];
   let providerRetryAfter: string | undefined;
   let failAfterTool = false;
+  let parameterRepairTextOnce = false;
+  let parameterRepairReply:
+    | ((
+        input: any,
+      ) => Record<string, unknown> | Promise<Record<string, unknown>>)
+    | undefined;
   const server = createServer(async (req, res) => {
     let text = "";
     for await (const chunk of req) text += chunk;
@@ -218,6 +224,68 @@ describe("project assistant public contract", () => {
       entered();
       await new Promise<void>((r) => (release = r));
       hold = false;
+    }
+    let repairRequest;
+    try {
+      repairRequest = JSON.parse(body.messages.at(-1)?.content ?? "");
+    } catch {
+      /* Normal assistant messages are not repair envelopes. */
+    }
+    if (repairRequest?.operation === "repair_tool_arguments") {
+      if (parameterRepairTextOnce) {
+        parameterRepairTextOnce = false;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            id: "repair-protocol-failure",
+            object: "chat.completion",
+            created: 1,
+            model: "synthetic",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "未按工具协议返回参数" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+        );
+        return;
+      }
+      const input =
+        (await parameterRepairReply?.(repairRequest)) ?? repairRequest.original;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "parameter-repair",
+          object: "chat.completion",
+          created: 1,
+          model: "synthetic",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "repaired-call",
+                    type: "function",
+                    function: {
+                      name: repairRequest.toolName,
+                      arguments: JSON.stringify(input),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
+        }),
+      );
+      return;
     }
     if (
       textualToolCallAfterScopeError &&
@@ -16315,8 +16383,391 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT32 repairs one malformed repair response within the same two-request limit", async () => {
+    const previous = sessionId;
+    await opt21Session();
+    const start = calls.length;
+    try {
+      requestedTool = {
+        name: "query_project",
+        input: { kind: "project", offset: "0" },
+      };
+      parameterRepairReply = ({ original }) => ({ ...original, offset: 0 });
+      parameterRepairTextOnce = true;
+      const state = (await send("查询项目")).json();
+      expect(state.turns.at(-1).diagnostics.parameterRepairs).toEqual([
+        { name: "query_project", outcome: "invalid" },
+        { name: "query_project", outcome: "repaired" },
+      ]);
+      expect(
+        calls
+          .slice(start)
+          .filter((c) =>
+            String(c.messages.at(-1)?.content).includes(
+              '"operation":"repair_tool_arguments"',
+            ),
+          ),
+      ).toHaveLength(2);
+      expect(
+        state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
+      ).toHaveLength(0);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      parameterRepairReply = undefined;
+      parameterRepairTextOnce = false;
+    }
+  });
+
   it.each(["plan", "direct"])(
-    "OPT-26 repairs a %s parameter error within the same turn without duplicate drafts",
+    "OPT32 repairs before execution without stale failure cards (%s)",
+    async (path) => {
+      const previous = sessionId;
+      await opt21Session();
+      const name = `OPT32-${randomUUID()}`;
+      const start = calls.length;
+      try {
+        requestedTool =
+          path === "direct"
+            ? { name: "create_draft", input: { name: [name] } }
+            : {
+                name: "plan_task",
+                input: {
+                  executionMode: "execute",
+                  steps: {
+                    title: "创建草稿",
+                    action: "create_draft",
+                    input: { name },
+                  },
+                },
+              };
+        if (path === "plan") {
+          toolSequence = [
+            requestedTool,
+            { name: "create_draft", input: { name } },
+          ];
+          requestedTool = undefined;
+        }
+        parameterRepairReply = ({ original }) =>
+          path === "direct"
+            ? { ...original, name: original.name[0] }
+            : { ...original, steps: [original.steps] };
+        const state = (await send("创建一个草稿")).json();
+        const turn = state.turns.at(-1);
+        expect(turn.status).toBe("succeeded");
+        expect(
+          turn.tools.filter((t: any) => t.status === "failed"),
+        ).toHaveLength(0);
+        expect(
+          turn.tools.filter(
+            (t: any) => t.name === "create_draft" && t.status === "succeeded",
+          ),
+        ).toHaveLength(1);
+        const repairCalls = calls
+          .slice(start)
+          .filter((c) =>
+            c.messages.some((m: any) =>
+              String(m.content).includes('"operation":"repair_tool_arguments"'),
+            ),
+          );
+        expect(repairCalls).toHaveLength(1);
+        expect(repairCalls[0].tools).toHaveLength(1);
+        expect(repairCalls[0].tools[0].function.name).toBe(
+          path === "direct" ? "create_draft" : "plan_task",
+        );
+        const db = createPool(databaseUrl);
+        try {
+          expect(
+            (
+              await db.query(
+                "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+                [projectId, name],
+              )
+            ).rows,
+          ).toHaveLength(1);
+        } finally {
+          await db.end();
+        }
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        parameterRepairReply = undefined;
+      }
+    },
+  );
+
+  it.each([
+    [{ targetCount: "2" }, { targetCount: 3 }],
+    [
+      { allowedFields: "question" },
+      { allowedFields: ["question", "metadata"] },
+    ],
+    [{ requirements: "保留原始问题" }, { requirements: ["重写所有问题"] }],
+    [
+      { targetCount: "2" },
+      {
+        targetCount: 2,
+        target: { kind: "draft", id: "invented-cross-project" },
+      },
+    ],
+  ])(
+    "OPT32 refuses repairs that change frozen business meaning (%j)",
+    async (original, corrected) => {
+      const previous = sessionId;
+      await opt21Session();
+      const start = calls.length;
+      try {
+        requestedTool = { name: "plan_task", input: original };
+        parameterRepairReply = () => corrected;
+        const state = (await send("只给方案", undefined, "failed")).json();
+        expect(state.turns.at(-1).errorCode).toBe(
+          "assistant_tool_input_invalid",
+        );
+        expect(
+          state.turns.at(-1).tools.every((t: any) => t.status !== "succeeded"),
+        ).toBe(true);
+        expect(state.task.targetCount ?? null).toBeNull();
+        expect(state.task.parameterRepairLimits).toBeUndefined();
+        expect(
+          calls
+            .slice(start)
+            .filter((c) =>
+              String(c.messages.at(-1)?.content).includes(
+                '"operation":"repair_tool_arguments"',
+              ),
+            ),
+        ).toHaveLength(2);
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        parameterRepairReply = undefined;
+      }
+    },
+  );
+
+  it("OPT32 caps unsupported-field repair across user retry and retains its reason", async () => {
+    const previous = sessionId;
+    await opt21Session();
+    const start = calls.length;
+    const name = `OPT32-unsafe-${randomUUID()}`;
+    try {
+      parameterRepairReply = () => ({ name });
+      for (const message of ["创建草稿，只改前两条", "重试未完成步骤"]) {
+        requestedTool = {
+          name: "create_draft",
+          input: { name, instructions: "只改前两条" },
+        };
+        const state = (await send(message, undefined, "failed")).json();
+        expect(state.turns.at(-1).errorCode).toBe(
+          "assistant_tool_input_invalid",
+        );
+        expect(
+          state.turns.at(-1).tools.filter((t: any) => t.status === "succeeded"),
+        ).toHaveLength(0);
+      }
+      expect(
+        calls
+          .slice(start)
+          .filter((c) =>
+            String(c.messages.at(-1)?.content).includes(
+              '"operation":"repair_tool_arguments"',
+            ),
+          ),
+      ).toHaveLength(2);
+      const db = createPool(databaseUrl);
+      try {
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+              [projectId, name],
+            )
+          ).rows,
+        ).toHaveLength(0);
+      } finally {
+        await db.end();
+      }
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      parameterRepairReply = undefined;
+    }
+  });
+
+  it("OPT32 rejects an unknown tool without guessing another tool or executing", async () => {
+    const previous = sessionId;
+    await opt21Session();
+    const start = calls.length;
+    try {
+      requestedTool = { name: "invented_tool", input: {} };
+      const state = (await send("查询项目", undefined, "failed")).json();
+      expect(state.turns.at(-1).errorCode).toBe("assistant_tool_input_invalid");
+      expect(calls.length - start).toBe(1);
+      expect(
+        state.turns.at(-1).tools.every((t: any) => t.effect === "none"),
+      ).toBe(true);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+
+  it("OPT32 cannot turn unsupported allSelected into allRecords", async () => {
+    const previous = sessionId;
+    await opt21Session();
+    try {
+      requestedTool = {
+        name: "submit_processing",
+        input: {
+          operation: "clean",
+          allSelected: true,
+          instructions: "整理空白",
+        },
+      };
+      parameterRepairReply = () => ({
+        operation: "clean",
+        allRecords: true,
+        instructions: "整理空白",
+      });
+      const state = (await send("清洗已选择记录", undefined, "failed")).json();
+      expect(state.turns.at(-1).errorCode).toBe("assistant_tool_input_invalid");
+      expect(state.task.runId).toBeUndefined();
+      expect(
+        state.turns.at(-1).tools.every((t: any) => t.effect === "none"),
+      ).toBe(true);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      parameterRepairReply = undefined;
+    }
+  });
+
+  it.each(["stop", "revision", "pause"])(
+    "OPT32 refuses a late repair after %s",
+    async (change) => {
+      const previous = sessionId;
+      await opt21Session();
+      const db = createPool(databaseUrl);
+      const name = `OPT32-late-${randomUUID()}`;
+      let finish!: () => void;
+      let entered!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      try {
+        requestedTool = { name: "create_draft", input: { name: [name] } };
+        parameterRepairReply = async () => {
+          entered();
+          await resume;
+          return { name };
+        };
+        const id = await opt21Submit("创建草稿");
+        await waiting;
+        if (change === "stop") {
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: `${base()}/sessions/${sessionId}/stop`,
+                headers,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+        } else if (change === "revision") {
+          await db.query(
+            "UPDATE assistant_session SET task_revision=task_revision+1 WHERE id=$1",
+            [sessionId],
+          );
+          const { turnFence } = await import("../../src/assistant/store.js");
+          const saved = (
+            await db.query(
+              "SELECT s.actor_id,t.execution_token FROM assistant_session s JOIN assistant_turn t ON t.session_id=s.id WHERE t.id=$1",
+              [id],
+            )
+          ).rows[0];
+          await expect(
+            turnFence(
+              db,
+              { projectId, actorId: saved.actor_id },
+              id,
+              saved.execution_token,
+            ),
+          ).rejects.toMatchObject({ code: "assistant_interrupted" });
+          // A raw revision mutation has no scheduler transition; stop this obsolete test turn for cleanup.
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/stop`,
+            headers,
+            payload: {},
+          });
+        } else {
+          await db.query(
+            "UPDATE assistant_session SET task=task||'{\"executionPaused\":true}'::jsonb WHERE id=$1",
+            [sessionId],
+          );
+        }
+        finish();
+        await opt21End(id);
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+              [projectId, name],
+            )
+          ).rows,
+        ).toHaveLength(0);
+      } finally {
+        finish();
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        requestedTool = undefined;
+        parameterRepairReply = undefined;
+        await db.end();
+      }
+    },
+  );
+
+  it("OPT32 charges a repair transport retry to the same request and repair limits", async () => {
+    const previous = sessionId;
+    await opt21Session();
+    const start = calls.length;
+    try {
+      requestedTool = {
+        name: "query_project",
+        input: { kind: "project", offset: "0" },
+      };
+      parameterRepairReply = ({ original }) => ({ ...original, offset: 0 });
+      providerFaults = [null, 503, null];
+      const state = (await send("查询项目")).json();
+      const diagnostics = state.turns.at(-1).diagnostics;
+      expect(diagnostics.transportRetries).toBe(1);
+      expect(diagnostics.modelSteps).toBe(calls.length - start);
+      expect(diagnostics.parameterRepairs).toEqual([
+        { name: "query_project", outcome: "repaired" },
+      ]);
+      expect(
+        state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
+      ).toHaveLength(0);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      parameterRepairReply = undefined;
+      providerFaults = [];
+    }
+  });
+
+  it.each(["plan", "direct"])(
+    "OPT-26 refuses to discard unsupported requirements in a %s call without writes",
     async (path) => {
       const previous = sessionId;
       const draftName = `OPT26-${randomUUID()}`;
@@ -16331,50 +16782,38 @@ describe("project assistant public contract", () => {
       const start = calls.length;
       try {
         const invalid = { name: draftName, instructions: "not supported" };
-        toolSequence =
+        requestedTool =
           path === "plan"
-            ? [
-                {
-                  name: "plan_task",
-                  input: {
-                    executionMode: "execute",
-                    steps: [
-                      {
-                        title: "创建草稿",
-                        action: "create_draft",
-                        input: invalid,
-                      },
-                    ],
-                  },
+            ? {
+                name: "plan_task",
+                input: {
+                  executionMode: "execute",
+                  steps: [
+                    {
+                      title: "创建草稿",
+                      action: "create_draft",
+                      input: invalid,
+                    },
+                  ],
                 },
-                {
-                  name: "plan_task",
-                  input: {
-                    executionMode: "execute",
-                    steps: [
-                      {
-                        title: "创建草稿",
-                        action: "create_draft",
-                        input: { name: draftName },
-                      },
-                    ],
-                  },
-                },
-                { name: "create_draft", input: { name: draftName } },
-              ]
-            : [
-                { name: "create_draft", input: invalid },
-                { name: "create_draft", input: { name: draftName } },
-              ];
-        const state = (await send("创建一个草稿")).json();
+              }
+            : { name: "create_draft", input: invalid };
+        parameterRepairReply = ({ original }) =>
+          path === "plan"
+            ? {
+                ...original,
+                steps: [{ ...original.steps[0], input: { name: draftName } }],
+              }
+            : { name: draftName };
+        const state = (await send("创建一个草稿", undefined, "failed")).json();
         const turn = state.turns.at(-1);
-        expect(turn.status).toBe("succeeded");
+        expect(turn.errorCode).toBe("assistant_tool_input_invalid");
         expect(
           turn.tools.filter(
             (tool: any) =>
               tool.name === "create_draft" && tool.status === "succeeded",
           ),
-        ).toHaveLength(1);
+        ).toHaveLength(0);
         const db = createPool(databaseUrl);
         try {
           expect(
@@ -16384,7 +16823,7 @@ describe("project assistant public contract", () => {
                 [projectId, draftName],
               )
             ).rows,
-          ).toHaveLength(1);
+          ).toHaveLength(0);
         } finally {
           await db.end();
         }
@@ -16400,6 +16839,7 @@ describe("project assistant public contract", () => {
         sessionId = previous;
         toolSequence = [];
         requestedTool = undefined;
+        parameterRepairReply = undefined;
       }
     },
   );
@@ -16431,7 +16871,7 @@ describe("project assistant public contract", () => {
         },
       }));
       const state = (await send("创建草稿", undefined, "failed")).json();
-      expect(state.turns.at(-1).errorCode).toBe("assistant_no_progress");
+      expect(state.turns.at(-1).errorCode).toBe("assistant_tool_input_invalid");
       expect(calls.length - start).toBeLessThanOrEqual(4);
       const db = createPool(databaseUrl);
       try {

@@ -37,6 +37,7 @@ export function taskPresentation(
   delete presented.budgetCheckpoint;
   delete presented.planningCheckpointTurnId;
   delete presented.planValidationRequired;
+  delete presented.parameterRepairLimits;
   if (presented.executionPlan) {
     presented.executionPlan = {
       ...presented.executionPlan,
