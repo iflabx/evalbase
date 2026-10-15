@@ -176,6 +176,58 @@ describe("current task result compatibility", () => {
       },
     };
     expect(taskCompatibilityProblem(task, [data])).toBeNull();
+    const generatedTask = {
+      ...task,
+      allowedFields: ["question", "expectedOutput", "metadata"],
+      metadataKeys: ["risk"],
+    };
+    const generated = {
+      ...data,
+      backgroundGoal: {
+        requirements: requirementSummary(generatedTask),
+        classifications: [],
+      },
+    };
+    const locallyRestricted = {
+      ...generatedTask,
+      allowedFields: ["question"],
+    };
+    expect(taskCompatibilityProblem(locallyRestricted, [generated])).toBeNull();
+    expect(
+      taskCompatibilityProblem({ ...locallyRestricted, metadataKeys: [] }, [
+        generated,
+      ]),
+    ).not.toBeNull();
+    for (const prefix of ["允许修改：", "可修改的 Metadata 字段："]) {
+      const original = {
+        ...generatedTask,
+        requirements: [`${prefix}将题目改写成中文`],
+      };
+      const frozen = {
+        ...generated,
+        backgroundGoal: {
+          ...generated.backgroundGoal,
+          requirements: requirementSummary(original),
+        },
+      };
+      expect(
+        taskCompatibilityProblem({ ...original, allowedFields: ["question"] }, [
+          frozen,
+        ]),
+      ).toBeNull();
+      expect(
+        taskCompatibilityProblem(
+          { ...original, requirements: [`${prefix}将题目改写成英文`] },
+          [frozen],
+        ),
+      ).not.toBeNull();
+    }
+    expect(
+      taskCompatibilityProblem(
+        { ...locallyRestricted, requirements: ["改为其他规则"] },
+        [generated],
+      ),
+    ).not.toBeNull();
     const identicalEvidence = {
       ...data,
       backgroundEvidence: task.backgroundEvidence,

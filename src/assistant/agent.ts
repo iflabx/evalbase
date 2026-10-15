@@ -1534,7 +1534,7 @@ export async function executeAssistantTurn(
         },
         requirements: {
           description:
-            "仅当语义要求改变时提交当前完整清单；省略保留，空数组明确撤销。删除被替代的条目，保留未改要求，不记录执行进度。数量和字段规则使用对应结构字段。",
+            "仅当内容语义要求改变时提交当前完整清单；省略保留，空数组明确撤销。保存、采用、核对、继续执行是操作，放在nextAction，不得添加到requirements；只保存时省略本字段。删除被替代条目，保留未改要求，不记录执行进度。数量和字段规则使用结构字段。",
           type: "array",
           items: { type: "string", maxLength: 1000 },
           maxItems: 20,

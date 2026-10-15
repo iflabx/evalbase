@@ -16978,6 +16978,7 @@ describe("project assistant public contract", () => {
               sessionId,
             ])
           ).rows[0].task;
+          task.allowedFields = ["question"];
           task.executionPlan = {
             ...task.executionPlan,
             mode: "execute",

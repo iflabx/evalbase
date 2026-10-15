@@ -823,11 +823,33 @@ export function taskCompatibilityProblem(
         sha256?: string;
       }[];
       if (item.backgroundGoal) {
+        // Local edits can narrow field permissions. Reconstruct only the exact
+        // server-generated enum at its fixed summary slot; never filter business
+        // requirements that happen to use the same prefix.
+        const fieldNames: Record<string, string> = {
+          问题: "question",
+          期望输出: "expectedOutput",
+          Metadata: "metadata",
+        };
+        const slot =
+          Number(task.overallTargetCount != null) +
+          Number(task.targetCount != null);
+        const line = item.backgroundGoal.requirements[slot];
+        const names = line?.slice("允许修改：".length).split("、");
+        const fields =
+          line === "允许修改：不修改任何字段"
+            ? []
+            : line?.startsWith("允许修改：") &&
+                names?.every((name) => Object.hasOwn(fieldNames, name))
+              ? names.map((name) => fieldNames[name])
+              : undefined;
+        const currentSummary = requirementSummary(
+          fields ? { ...task, allowedFields: fields } : task,
+        );
         if (
           canonicalJson(
             normalizedRequirements(item.backgroundGoal.requirements),
-          ) !==
-            canonicalJson(normalizedRequirements(requirementSummary(task))) ||
+          ) !== canonicalJson(normalizedRequirements(currentSummary)) ||
           canonicalJson(item.backgroundGoal.classifications ?? []) !==
             canonicalJson(validateRules(task))
         )
