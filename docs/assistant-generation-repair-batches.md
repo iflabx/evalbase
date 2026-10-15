@@ -26,9 +26,11 @@
 | 第一批 | [OPT-28](../.scratch/assistant-optimization/issues/28-result-scope-and-goal-count.md) | 当前成果范围统一，目标与补齐请求数量分开 | 现有实现；可独立于 OPT-26/27 修复 |
 | 第二批：补齐真实能力 | [OPT-29](../.scratch/assistant-optimization/issues/29-document-grounded-generation.md) | 文档驱动从零生成、能力预检、八类逐项交付 | OPT-26、OPT-27、OPT-28 |
 | 第三批：产出质量与完整验收 | [OPT-30](../.scratch/assistant-optimization/issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性、重复反馈与有界补齐 | OPT-29 |
-| 第三批 | [OPT-31](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、质量反馈和最终同会话闭环 | OPT-28、OPT-30 |
+| 第三批（更新） | [OPT-31](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、最终同会话闭环 | OPT-28、OPT-30、OPT-32、OPT-33 |
+| 后续前置补修 | [OPT-32](../.scratch/assistant-optimization/issues/32-tool-argument-repair.md) | 工具参数调用前纠错及真实模型恢复验证 | 现有实现 |
+| 后续前置补修 | [OPT-33](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md) | 文档分类引用与短提示规划 | OPT-32 |
 
-推荐按编号推进；第一批三张不存在人为串行依赖。后续批次依赖前批相关自动验证通过，不要求逐张重复人工确认。获得某一批开发授权后可在该批内连续推进；本次文档授权不等于开发、部署或合并授权。
+原六张按编号推进；新增补修后，剩余顺序改为 OPT-32 → OPT-33 → OPT-31。第一批三张不存在人为串行依赖。后续批次依赖前批相关自动验证通过，不要求逐张重复人工确认。获得某一批开发授权后可在该批内连续推进；本次文档授权不等于开发、部署或合并授权。
 
 第一批先消除确定性执行错误；此时不能宣称已支持空输入生成。第二批交付可运行的生成路径；内容多样性与最终八类交付在第三批验收。每张包含相关前后端及定向验证，不另拆样式票、测试票或文档票。
 
@@ -62,11 +64,25 @@ GB 分类仅为这次验收数据，产品仍支持通用测试集；不内置�
 
 1. 第一批用现有可控模型和隔离持久化回归本次错误：错误字段、最新意图、跨批 20+28+2 集合、50/30/2 数量。已有未变权限与确认用例直接复用，不重新运行全库流程。
 2. 第二批先做 5–10 条真实文档生成样例，再完成第一类 50 条小闭环；检查无原始数据输入、无人工种子、刷新恢复及真实保存回执。能力通过与内容质量分别记录。
-3. 第三批在固定代码/模型配置下，用一个新会话完成一次八类各 50 条的集成验收，作为本轮唯一大批生成。使用上述普通短提示词；允许业务澄清和既有确认，不允许靠用户提供工具名、参数修正、内部 ID、手动种子或绕过页面 API 来完成。
+3. OPT-32/33 前置定向验证通过后，由 OPT-31 在固定代码/模型配置下，用一个新会话完成一次八类各 50 条的集成验收，作为本轮唯一大批生成。使用上述普通短提示词；允许业务澄清和既有确认，不允许靠用户提供工具名、参数修正、内部 ID、手动种子或绕过页面 API 来完成。
 4. 400 条全部进行结构检查；每类内容按自然问法、语义完整、分类一致和期望行为进行逐条审核。若只抽查，必须注明范围，不能据此标记 400 条全部可用。明确区分模型原生合格、自动恢复后合格和人工修改后合格。
 5. 记录各类实际数量、重复与未变化数量、模型调用/重试次数、失败类别、耗时和技术纠错提示次数；技术纠错提示目标为 0。预算耗尽保留进度，不能隐藏失败或反复重跑直到成功。一次通过不证明任意模型和输入零失败。
-6. 最终汇总六张验证证据，复用同一 4217 供一次集中人工验收。只构建受影响服务，不新增 5/10 人压测、两小时稳定试验或服务器重启测试；不自动合并、推送或正式部署。
+6. 最终汇总原六张及 OPT-32/33 的相关验证证据，复用同一 4217 供一次集中人工验收。只构建受影响服务，不新增 5/10 人压测、两小时稳定试验或服务器重启测试；不自动合并、推送或正式部署。
 
 ## 6. 实施状态
 
-方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md)、[OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md) 和 [OPT-28 证据](../.scratch/assistant-optimization/opt28-verification.md)，Owner 验收 pending。OPT-29 已完成依据文档从零生成与预检，真实 5 条和恢复后 50 条及限制见 [OPT-29 证据](../.scratch/assistant-optimization/opt29-verification.md)，Owner pending。OPT-30/31 保持未实施；各张最新状态以台账为准，不将部分实施记为三批全部完成。
+方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md)、[OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md) 和 [OPT-28 证据](../.scratch/assistant-optimization/opt28-verification.md)，Owner 验收 pending。OPT-29 已完成依据文档从零生成与预检，真实 5 条和恢复后 50 条及限制见 [OPT-29 证据](../.scratch/assistant-optimization/opt29-verification.md)，Owner pending。OPT-30 已完成数量/场景及共享预算实现，真实内容和 GB 规划仍有未通过项，见 [OPT-30 证据](../.scratch/assistant-optimization/opt30-verification.md)。OPT-31/32/33 均未实施、Owner pending；各张最新状态以台账为准，不将部分实施记为三批全部完成。
+
+## 7. 后续补修与 OPT-31 调整
+
+2026-10-15，Owner 确认基于重复参数错误、GB 短提示规划失败和生成类别误标，新建两张前置修复票并补充原 OPT-31；未授权开发。本节覆盖旧记录中“GB 规划和语义问题全部留到 OPT-31 收口”的宽泛安排，旧失败和验证证据保持。
+
+| 分工 | 唯一负责范围 | 对下一张的交付 |
+| --- | --- | --- |
+| OPT-32 | 公共参数合同、无副作用校验、SDK 调用前修复与总预算 | 参数错误自动恢复或有界停止，真实模型证据与原操作身份保留 |
+| OPT-33 | 文档层级引用、定义边界、用户要求解释及短提示可执行规划 | 验证后的定义与要求、非空方案及小样本真实执行衔接 |
+| OPT-31 | 改写有效性、生成内容一致性、有限局部修复与真实质量反馈 | 同会话最终成果及原约定的一次八类完整验收 |
+
+OPT-32/33 使用既有接口和隔离小样本验证；OPT-31 复用其证据，集中执行最终大批验收。原通用 HTTP、权限、幂等和协议测试继续保留；预设“第二次正确”的可控模型只证明协议行为，真实纠错能力另用固定历史错误及短提示集合验证。所有成功、自动恢复及失败计入分母，报告调用数、耗时、人工干预和内容审核范围，不能筛掉失败后宣称通过。
+
+三张继续使用现有 AI SDK、PostgreSQL/Worker/MinIO、固定候选身份与确认机制。参数纠错、文档引用和内容判断分别负责；字段保护、已采用数据修订和根目标累计预算保持。详细边界及可执行断言仅维护在对应 Ticket，不再拆样式、测试或质量平台票。

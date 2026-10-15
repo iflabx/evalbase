@@ -218,3 +218,14 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 方案创建时仅新增验收计划；后续 OPT-26 已完成定向接口、单元、浏览器及真实模型短提示验证，范围与限制见 [验证记录](../.scratch/assistant-optimization/opt26-verification.md)。OPT-27 已完成同会话暂停/恢复、事件与迟到保护、既有运行及确认修订的接口回归和窄窗口浏览器验证，见 [实际证据](../.scratch/assistant-optimization/opt27-verification.md)。OPT-28 已完成当前 50 条/固定两条、旧任务目标与旧 ID 兼容、修订保护及浏览器回归，见 [实际证据](../.scratch/assistant-optimization/opt28-verification.md)。OPT-29 已完成文档从零生成、独立类别、无副作用预检及恢复后的固定确认；真实 5 条与恢复后 50 条、失败和未覆盖限制见 [实际证据](../.scratch/assistant-optimization/opt29-verification.md)。上述四张 Owner 验收 pending，OPT-30/31 尚未实施。详细断言分别见 [OPT-26](../.scratch/assistant-optimization/issues/26-tool-contract-and-error-feedback.md#验收标准)、[OPT-27](../.scratch/assistant-optimization/issues/27-intent-and-plan-continuation.md#验收标准)、[OPT-28](../.scratch/assistant-optimization/issues/28-result-scope-and-goal-count.md#验收标准)、[OPT-29](../.scratch/assistant-optimization/issues/29-document-grounded-generation.md#验收标准)、[OPT-30](../.scratch/assistant-optimization/issues/30-generation-diversity-and-recovery.md#验收标准)、[OPT-31](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#验收标准)。
 
 三批推进、普通短提示词、400 条唯一一次集成验证及内容审核范围以 [总方案 §5](assistant-generation-repair-batches.md#5-验证与完成口径) 为准；不重复建立测试平台或每票重跑大批生成，不追加压力/长稳/重启试验。历史通过证据只覆盖未变化的范围，新发现的问题必须有对应回归，Owner 验收单独记录。
+
+### 5.16 OPT-32/33 前置补修与 OPT-31 内容验收
+
+2026-10-15 新增文档计划，三张均未实施。OPT-30 已完成其定向实现，GB 规划和内容审核未通过的实际范围见 [证据](../.scratch/assistant-optimization/opt30-verification.md)；上一节创建时的“OPT-30/31 尚未实施”为历史记录，不作为当前状态。
+
+- 按 [OPT-32 验收标准](../.scratch/assistant-optimization/issues/32-tool-argument-repair.md#验收标准) 验证 SDK 调用前修复、无副作用校验、统一预算、身份/权限和未知写入保护；保留协议 Mock 测试，增加脱敏历史错误交给真实修复模型及普通短提示验证，逐次报告全部尝试。
+- 按 [OPT-33 验收标准](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md#验收标准) 验证章节/子项别名、定义边界、自由描述与枚举区分、非空方案及只规划无写入；GB 固定短提示、八类仅规划、独立小样本执行和非安全分类文档分别记录。
+- 前两张定向检查通过后，按 [OPT-31 验收标准](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#验收标准) 检查改写实际变化、内容核对、有限局部修复、规则/内容修订失效与既有采用确认；真实模型结论对照预先记录的人工判断，统计漏报/误报，不以模型自评作为唯一真值。
+- 最后执行一次既定同会话八类各 50 条流程，400 条全量结构检查及逐条内容复核；区分原生结果、自动恢复、人工修改与未完成项。参数合法、规划可执行、业务完成、内容符合和保存事实分别报告，不将任一层通过替代其他层。
+
+开发依赖与共同边界只在 [总方案 §7](assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整) 维护。复用同一 4217 并保留旧数据；本次不运行模型、业务测试或部署，不将文档检查记为上述验收完成。
