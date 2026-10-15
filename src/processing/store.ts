@@ -38,6 +38,11 @@ import {
   type ProcessingOptions,
   type ProcessingResult,
 } from "./protocol.js";
+import {
+  createGenerationPlan,
+  GENERATION_RECIPE,
+  type GenerationPlan,
+} from "./generation.js";
 
 export class ProcessingError extends Error {
   constructor(
@@ -74,6 +79,7 @@ export type ProcessingSource =
     };
 export type CandidateOrigin = { runId: string; resultId: string };
 export type InputSnapshot = {
+  generation?: GenerationPlan;
   deduplicationBaseline?: Pick<
     ProcessingInput,
     "question" | "expectedOutput" | "metadata"
@@ -629,6 +635,12 @@ export async function createProcessingRun(
     }
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
+    if (options.operation === "generate")
+      data.generation = createGenerationPlan(
+        runId,
+        options.outputCount!,
+        options.scenarios,
+      );
     const inputBytes = Buffer.from(canonicalJson(data));
     if (inputBytes.byteLength > 100000000)
       throw new ProcessingError(422, "processing_capacity_exceeded");
@@ -660,7 +672,7 @@ export async function createProcessingRun(
           ...PROCESSING_EXECUTION,
           recipeVersion:
             options.operation === "generate"
-              ? "processing-v8"
+              ? GENERATION_RECIPE
               : PROCESSING_EXECUTION.recipeVersion,
         },
         data.background?.documents.map((document) => document.id) ?? [],
@@ -1278,6 +1290,13 @@ export async function preflightDocumentGeneration(
   scope: ProcessingScope,
   options?: ProcessingOptions,
 ) {
+  if (options) {
+    try {
+      options = processingOptions(options);
+    } catch {
+      throw new ProcessingError(422, "processing_configuration_invalid");
+    }
+  }
   await processingAccess(db, scope);
   if (!scope.assistantGuard)
     throw new ProcessingError(422, "processing_scope_invalid");

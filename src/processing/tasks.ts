@@ -1,4 +1,9 @@
 import { generatesRecords } from "./protocol.js";
+import {
+  GENERATION_RECIPE,
+  remainingGenerationPositions,
+  generationPosition,
+} from "./generation.js";
 import { processingRecovery } from "./recovery.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -49,9 +54,13 @@ const groupRefs = (refs: TaskRef[]) =>
   [...new Set(refs.filter((r) => !r.inputId).map((r) => r.runId))].map(
     (runId) => ({
       runId,
-      resultIds: refs
-        .filter((r) => r.runId === runId && !r.inputId)
-        .map((r) => r.resultId),
+      resultIds: [
+        ...new Set(
+          refs
+            .filter((r) => r.runId === runId && !r.inputId)
+            .map((r) => r.resultId),
+        ),
+      ],
     }),
   );
 async function frozen(
@@ -152,16 +161,31 @@ async function taskState(
               ref.runId === run.parent_run_id &&
               `candidate:${ref.resultId}` === located?.row.id,
           );
-          const key = generatesRecords(run.options.operation)
-            ? `${run.round_number}:${Number(output.id.split(":")[0]) * 10000 + Number(output.id.split(":")[1]) + 1}`
-            : (located!.row.taskRecordKey ??
-              old?.key ??
-              `${run.round_number}:${located!.index + 1}`);
+          const position =
+            run.execution_config.recipeVersion === GENERATION_RECIPE
+              ? generationPosition(output)
+              : undefined;
+          const generatedRef =
+            position === undefined
+              ? undefined
+              : before.find((ref) => ref.generationPosition === position);
+          const key =
+            generatedRef?.key ??
+            (generatesRecords(run.options.operation)
+              ? `${run.round_number}:${Number(output.id.split(":")[0]) * 10000 + Number(output.id.split(":")[1]) + 1}`
+              : (located!.row.taskRecordKey ??
+                old?.key ??
+                `${run.round_number}:${located!.index + 1}`));
           next.set(key, {
             key,
             runId: run.id,
             resultId: output.id,
             origin: output.candidateOrigin,
+            replaces:
+              run.round_kind === "saved"
+                ? undefined
+                : (generatedRef ?? next.get(key)?.replaces),
+            generationPosition: position ?? next.get(key)?.generationPosition,
           });
           changed++;
         }
@@ -239,6 +263,7 @@ async function currentRows(
         ...selected,
         id: ref.key,
         localId: selected.id,
+        generationPosition: ref.generationPosition,
         original: selected.input,
         result: {
           sourceId: selected.sourceId,
@@ -260,6 +285,7 @@ async function currentRows(
       rows.push({
         id: ref.key,
         localId: "",
+        generationPosition: ref.generationPosition,
         runId: ref.runId,
         original: input,
         input,
@@ -470,6 +496,34 @@ export async function readProcessingTask(
     });
   }
   const { diagnostics, ...recovery } = await processingRecovery(db, latest);
+  let generation:
+    | { targetCount: number; validCount: number; missingCount: number }
+    | undefined;
+  if (root.execution_config.recipeVersion === GENERATION_RECIPE) {
+    const input = await frozen(artifacts, root);
+    if (!input.generation)
+      throw new ProcessingError(409, "processing_input_corrupt");
+    const pending = remainingGenerationPositions(input.generation, rows).length;
+    const live =
+      !terminal(latest.status) && latest.options.operation === "generate"
+        ? Number(latest.output_count ?? 0)
+        : 0;
+    const missingCount = Math.max(0, pending - live);
+    generation = {
+      targetCount: input.generation.total,
+      validCount: input.generation.total - missingCount,
+      missingCount,
+    };
+    const budget = recovery.generationBudget;
+    recovery.canContinue =
+      (latest.options.operation !== "generate" && recovery.canContinue) ||
+      (terminal(latest.status) &&
+        latest.status !== "cancelled" &&
+        missingCount > 0 &&
+        Boolean(budget && !budget.exhausted && !budget.blocked) &&
+        !recovery.canRetry);
+    if (missingCount && budget?.exhausted) recovery.reason = "budget_exhausted";
+  }
   return {
     ...page,
     diagnostics,
@@ -482,6 +536,7 @@ export async function readProcessingTask(
       latestRunId: latest.id,
       roundCount: runs.length,
       currentCount: rows.length,
+      ...(generation ? { generation } : {}),
       incomplete: task.incomplete,
       excludedCount: task.excluded_refs.length,
       savedCount: saved,
@@ -624,7 +679,7 @@ export async function createProcessingTaskRound(
           )
         ).rows[0]
       : null;
-  const { task, latest } = await taskState(db, artifacts, scope, id);
+  const { task, latest, runs } = await taskState(db, artifacts, scope, id);
   if (task.revision !== body.expectedRevision && !prior)
     throw new ProcessingError(409, "processing_task_changed");
   const mode = body.mode as "continue" | "rerun" | "complete" | "saved";
@@ -642,6 +697,7 @@ export async function createProcessingTaskRound(
   let records: InputSnapshot["records"] | undefined,
     before = task.current_refs,
     parentId = latest.id;
+  let generation: InputSnapshot["generation"];
   if (mode === "saved") {
     const saved = prior ? null : await savedInput(db, artifacts, scope, task);
     const run = prior ? await getProcessingRun(db, scope, prior.id) : null;
@@ -665,6 +721,7 @@ export async function createProcessingTaskRound(
     const run = await getProcessingRun(db, scope, prior.id);
     const input = await frozen(artifacts, run);
     records = input.records;
+    generation = input.generation;
     if (mode === "complete") options = run.options;
     parentId = run.parent_run_id ?? latest.id;
     const existing = (
@@ -676,46 +733,89 @@ export async function createProcessingTaskRound(
     if (!existing) throw new ProcessingError(409, "idempotency_conflict");
     before = existing.task_before;
   } else if (mode === "complete") {
-    if (!(await processingRecovery(db, latest)).canContinue)
-      throw new ProcessingError(409, "processing_completion_unavailable");
-    const input = await frozen(artifacts, latest);
-    options = latest.options;
-    if (generatesRecords(options.operation)) {
-      records = input.records;
-      options = {
-        ...options,
-        outputCount: Math.max(
-          0,
-          (options.outputCount ?? latest.input_count) -
-            Number(latest.output_count ?? 0),
-        ),
-      };
-    } else {
-      const data = await readProcessingRun(
-        db,
-        artifacts,
-        scope,
-        latest.id,
-        { limit: "10000" },
-        true,
-      );
-      const succeeded = new Set(data.records.map((row) => row.result.sourceId));
-      records = input.records
-        .filter((row) => !succeeded.has(row.id))
-        .map((row) => ({
-          ...row,
-          taskRecordKey:
-            row.taskRecordKey ??
-            task.current_refs.find(
-              (ref) => ref.inputId === row.id && ref.runId === latest.id,
-            )?.key,
-        }));
-      if (!records.length || records.some((row) => !row.taskRecordKey))
+    const recovery = await processingRecovery(db, latest);
+    const root = runs[0]!;
+    if (
+      root.execution_config.recipeVersion === GENERATION_RECIPE &&
+      !(latest.options.operation !== "generate" && recovery.canContinue)
+    ) {
+      const input = await frozen(artifacts, root);
+      const current = await currentRows(db, artifacts, scope, task);
+      const budget = recovery.generationBudget;
+      if (
+        !input.generation ||
+        !budget ||
+        budget.exhausted ||
+        budget.blocked ||
+        latest.status === "cancelled"
+      )
         throw new ProcessingError(409, "processing_completion_unavailable");
-      const rows = await currentRows(db, artifacts, scope, task),
-        saved = await adopted(db, artifacts, scope, rows);
-      if (records.some((row) => saved.has(row.taskRecordKey!)))
-        throw new ProcessingError(409, "processing_already_adopted");
+      const positions = remainingGenerationPositions(input.generation, current);
+      if (!positions.length)
+        throw new ProcessingError(409, "processing_completion_unavailable");
+      generation = {
+        ...input.generation,
+        positions,
+        previousFailure: recovery.diagnostics.at(-1)?.calls.at(-1)?.code,
+      };
+      records = [];
+      options = { ...root.options, outputCount: positions.length };
+    } else {
+      if (!recovery.canContinue)
+        throw new ProcessingError(409, "processing_completion_unavailable");
+      const input = await frozen(artifacts, latest);
+      options = latest.options;
+      if (generatesRecords(options.operation)) {
+        records = input.records;
+        options = {
+          ...options,
+          outputCount: Math.max(
+            0,
+            (options.outputCount ?? latest.input_count) -
+              Number(latest.output_count ?? 0),
+          ),
+        };
+      } else {
+        const data = await readProcessingRun(
+          db,
+          artifacts,
+          scope,
+          latest.id,
+          { limit: "10000" },
+          true,
+        );
+        const succeeded = new Set(
+          data.records.map((row) => row.result.sourceId),
+        );
+        records = input.records
+          .filter((row) => !succeeded.has(row.id))
+          .map((row) => ({
+            ...row,
+            taskRecordKey:
+              row.taskRecordKey ??
+              task.current_refs.find(
+                (ref) => ref.inputId === row.id && ref.runId === latest.id,
+              )?.key,
+          }));
+        if (!records.length || records.some((row) => !row.taskRecordKey))
+          throw new ProcessingError(409, "processing_completion_unavailable");
+        const rows = await currentRows(db, artifacts, scope, task),
+          saved = await adopted(db, artifacts, scope, rows);
+        const fromSavedRange =
+          input.source.kind === "draft" &&
+          runs.some(
+            (run) =>
+              run.round_kind === "saved" &&
+              run.source.kind === "draft" &&
+              run.source.id === (input.source as { id: string }).id &&
+              run.round_number <= latest.round_number,
+          );
+        if (
+          !fromSavedRange &&
+          records.some((row) => saved.has(row.taskRecordKey!))
+        )
+          throw new ProcessingError(409, "processing_already_adopted");
+      }
     }
   } else if (mode === "rerun") {
     const current = await currentRows(db, artifacts, scope, task);
@@ -773,9 +873,15 @@ export async function createProcessingTaskRound(
     expectedRevision: body.expectedRevision as number,
     before,
     records,
+    ...(generation ? { generation } : {}),
     kind: mode,
     deduplicationBaseline: generatesRecords(options.operation)
-      ? (await currentRows(db, artifacts, scope, task)).map((row) => row.result)
+      ? (await currentRows(db, artifacts, scope, task)).map((row) => ({
+          ...row.result,
+          ...(generation
+            ? { sourceId: `generated:${generationPosition(row)}` }
+            : {}),
+        }))
       : undefined,
   };
   return createRefinementRun(
@@ -1006,12 +1112,23 @@ export async function acceptTask(
     refs = task.current_refs.filter((r) => ids.includes(r.key));
   if (refs.length !== ids.length || refs.some((r) => r.inputId))
     throw new ProcessingError(422, "processing_result_invalid");
+  const saved = await adopted(
+    db,
+    artifacts,
+    scope,
+    await currentRows(db, artifacts, scope, task),
+  );
+  const replaced: TaskRef[] = [];
+  for (const ref of refs) {
+    if (saved.has(ref.key)) continue;
+    for (let old = ref.replaces; old; old = old.replaces) replaced.push(old);
+  }
   const groups = groupRefs(refs),
     primary = groups[0]!;
   const taskSave = {
     taskId: task.id,
     expectedRevision: body.expectedRevision as number,
-    excludedGroups: groupRefs(task.excluded_refs),
+    excludedGroups: groupRefs([...task.excluded_refs, ...replaced]),
     requestHash,
   };
   // The adoption service reconciles the original idempotency key before any new writes.

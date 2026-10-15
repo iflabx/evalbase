@@ -1,7 +1,7 @@
 # OPT-30 生成场景分配与有界重复补齐
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 Blocked by: OPT-29
 
 优先级：P1。第三批。依赖 [OPT-29](29-document-grounded-generation.md)，复用 OPT-28 目标与成果合同。本次仅文档，开发待后续授权；证据及共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
@@ -33,3 +33,4 @@ Blocked by: OPT-29
 ## Comments
 
 - 2026-10-15：聚焦现有生成链与重复恢复，不增加第二套内容生成平台；仅整理文档，验收未执行。
+- 2026-10-15：Owner 已授权单张开发，沿用 `codex/assistant-optimization` 与同一4217；以 `09d22cf` 为开发基线，范围及 v9 冻结约定见架构，本张仅在最终验证后更新完成状态。

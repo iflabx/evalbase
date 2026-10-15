@@ -577,7 +577,8 @@ export function ProjectAssistant({
     ) {
       const current = JSON.parse(readAssistantDraft(draftKey));
       if (current.pending?.key === pending.key) {
-        const { pending: acknowledged, ...rest } = current;
+        const rest = { ...current };
+        delete rest.pending;
         writeAssistantDraft(draftKey, rest);
       }
     }
@@ -1862,7 +1863,12 @@ export function ProjectAssistant({
 }
 
 type ProcessingStatus = {
-  recovery?: { canRetry: boolean; canContinue: boolean; reason: string | null };
+  recovery?: {
+    canRetry: boolean;
+    canContinue: boolean;
+    reason: string | null;
+    generationBudget?: { exhausted: boolean };
+  };
   run: {
     status: string;
     inputCount: number;
@@ -1958,7 +1964,11 @@ function ProcessingTaskCard({
       {done && Boolean(run.missingCount) && (
         <>
           {task.data?.recovery?.reason === "budget_exhausted" && (
-            <p className="text-xs text-muted-foreground">本轮重试额度已用完，已有候选保留。</p>
+            <p className="text-xs text-muted-foreground">
+              {task.data?.recovery?.generationBudget?.exhausted
+                ? "本任务生成额度已用完，已有候选保留。"
+                : "本轮重试额度已用完，已有候选保留。"}
+            </p>
           )}
           <Link
             className="inline-block text-sm text-primary hover:underline"

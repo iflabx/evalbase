@@ -136,7 +136,12 @@ type Deduplication = {
   inspected: number;
 };
 type ResultPage = {
-  recovery?: { canRetry: boolean; canContinue: boolean; reason: string | null };
+  recovery?: {
+    canRetry: boolean;
+    canContinue: boolean;
+    reason: string | null;
+    generationBudget?: { exhausted: boolean };
+  };
   diagnostics?: {
     batch: number;
     attempts: number;
@@ -161,6 +166,7 @@ type ResultPage = {
     latestRunId: string;
     roundCount: number;
     currentCount: number;
+    generation?: { targetCount: number; validCount: number; missingCount: number };
     incomplete: boolean;
     excludedCount: number;
     savedCount: number;
@@ -2044,7 +2050,11 @@ function ProcessingResults({
     terminal = ["succeeded", "failed", "cancelled"].includes(run.status);
   const usableCount =
       value.task?.latestUsableCount ?? value.usableCount ?? run.outputCount ?? value.total,
-    completionMissing = Math.max(0, (run.options.outputCount ?? 0) - usableCount);
+    completionMissing =
+      run.options.operation !== "generate" && (run.missingCount ?? 0) > 0
+        ? run.missingCount!
+        : (value.task?.generation?.missingCount ??
+          Math.max(0, (run.options.outputCount ?? 0) - usableCount));
   const stale = data.isPlaceholderData || !data.data;
   const saved = value.receipts?.length ? value.receipts : receipt ? [receipt] : [];
   const savedSelection = [...selected].filter((id) => value.adoptedIds?.includes(id));
@@ -2069,17 +2079,20 @@ function ProcessingResults({
               >
                 <ProcessingStatus run={run} />
                 <span>
-                  {value.task
-                    ? `本轮输入 ${run.inputCount} · 输出 ${run.outputCount ?? 0} · 当前未保存 ${value.task.unsavedCount} 条`
-                    : ["augment", "generate"].includes(run.options.operation)
-                      ? `已获得 ${usableCount} / ${run.options.outputCount ?? run.inputCount} 条有效结果`
-                      : `已产生 ${run.outputCount ?? value.stats?.all ?? value.total} / ${run.inputCount} 条结果`}
+                  {value.task?.generation
+                    ? `有效 ${value.task.generation.validCount} / ${value.task.generation.targetCount} 条 · 当前未保存 ${value.task.unsavedCount} 条`
+                    : value.task
+                      ? `本轮输入 ${run.inputCount} · 输出 ${run.outputCount ?? 0} · 当前未保存 ${value.task.unsavedCount} 条`
+                      : ["augment", "generate"].includes(run.options.operation)
+                        ? `已获得 ${usableCount} / ${run.options.outputCount ?? run.inputCount} 条有效结果`
+                        : `已产生 ${run.outputCount ?? value.stats?.all ?? value.total} / ${run.inputCount} 条结果`}
                   {(
+                    value.task?.generation ||
                     ["augment", "generate"].includes(run.options.operation)
                       ? completionMissing
                       : run.missingCount
                   )
-                    ? ` · 尚缺 ${["augment", "generate"].includes(run.options.operation) ? completionMissing : run.missingCount} 条`
+                    ? ` · 尚缺 ${value.task?.generation || ["augment", "generate"].includes(run.options.operation) ? completionMissing : run.missingCount} 条`
                     : ""}
                   {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
                 </span>
@@ -2110,7 +2123,7 @@ function ProcessingResults({
                   disabled={busy || unknownSave || stale || data.isError}
                   onClick={() => void completeMissing()}
                 >
-                  {["augment", "generate"].includes(run.options.operation)
+                  {value.task?.generation || ["augment", "generate"].includes(run.options.operation)
                     ? `补齐剩余 ${completionMissing} 条`
                     : "继续处理未完成部分"}
                 </Button>
@@ -2163,40 +2176,44 @@ function ProcessingResults({
               )}
             </div>
           </div>
-          {terminal && ((run.missingCount ?? 0) > 0 || run.status === "failed") && (
-            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-              <p>
-                {diagnosticLabels[value.recovery?.reason ?? ""] ?? "本轮未全部完成，已有结果保留。"}
-              </p>
-              <details>
-                <summary className="cursor-pointer">查看执行说明</summary>
-                {value.diagnostics?.length ? (
-                  <div className="mt-2 space-y-3">
-                    {value.diagnostics.map((batch) => (
-                      <div key={batch.batch}>
-                        <p>
-                          批次 {batch.batch + 1} · 最终有效 {batch.accepted} 条 · 缺少{" "}
-                          {batch.missing} 条 · 已调用 {batch.attempts} 次
-                        </p>
-                        <ul className="mt-1 space-y-1">
-                          {batch.calls.map((call) => (
-                            <li key={call.attempt} className="break-words">
-                              第 {call.attempt} 次：{diagnosticLabels[call.code] ?? "未记录"} ·{" "}
-                              {(call.durationMs / 1000).toFixed(1)} 秒 · 返回 {call.generated} /
-                              校验通过 {call.validated} / 重复剔除 {call.duplicates} / 其他无效{" "}
-                              {call.invalid} / 接受 {call.accepted}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2">历史任务未记录具体原因。</p>
-                )}
-              </details>
-            </div>
-          )}
+          {terminal &&
+            (completionMissing > 0 || (run.missingCount ?? 0) > 0 || run.status === "failed") && (
+              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                <p>
+                  {value.recovery?.generationBudget?.exhausted
+                    ? `本任务生成额度已用完，已有候选保留；尚缺 ${completionMissing} 条。`
+                    : (diagnosticLabels[value.recovery?.reason ?? ""] ??
+                      "本轮未全部完成，已有结果保留。")}
+                </p>
+                <details>
+                  <summary className="cursor-pointer">查看执行说明</summary>
+                  {value.diagnostics?.length ? (
+                    <div className="mt-2 space-y-3">
+                      {value.diagnostics.map((batch) => (
+                        <div key={batch.batch}>
+                          <p>
+                            批次 {batch.batch + 1} · 最终有效 {batch.accepted} 条 · 缺少{" "}
+                            {batch.missing} 条 · 已调用 {batch.attempts} 次
+                          </p>
+                          <ul className="mt-1 space-y-1">
+                            {batch.calls.map((call) => (
+                              <li key={call.attempt} className="break-words">
+                                第 {call.attempt} 次：{diagnosticLabels[call.code] ?? "未记录"} ·{" "}
+                                {(call.durationMs / 1000).toFixed(1)} 秒 · 返回 {call.generated} /
+                                校验通过 {call.validated} / 重复剔除 {call.duplicates} / 其他无效{" "}
+                                {call.invalid} / 接受 {call.accepted}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2">历史任务未记录具体原因。</p>
+                  )}
+                </details>
+              </div>
+            )}
           {!value.task && run.parentRunId && (
             <Link
               className="mt-2 inline-block text-sm text-primary hover:underline"

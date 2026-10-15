@@ -7,6 +7,13 @@ import {
 } from "./recovery.js";
 import { generateText } from "ai";
 import { contentKey } from "./deduplication.js";
+import {
+  GENERATION_RECIPE,
+  generationBudget,
+  generationContext,
+  generationPosition,
+  type GenerationPlan,
+} from "./generation.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import type { Config } from "../config.js";
 import type { Database } from "../db/pool.js";
@@ -50,6 +57,51 @@ async function fence(
   );
   if (!claim.rowCount) throw new Error("processing_lease_lost");
 }
+async function reserveModelCall(
+  db: Database,
+  job: ProcessingJob,
+  run: ProcessingRun,
+  ordinal: number,
+  shared: boolean,
+) {
+  const client = shared ? await db.connect() : undefined;
+  try {
+    if (client) await client.query("BEGIN");
+    if (client)
+      await client.query(
+        "SELECT id FROM processing_task WHERE id=(SELECT task_id FROM processing_run WHERE id=$1) FOR UPDATE",
+        [run.id],
+      );
+    const budget = client ? await generationBudget(client, run.id) : undefined;
+    if (shared && (!budget || budget.exhausted || budget.blocked)) {
+      await client!.query("COMMIT");
+      return null;
+    }
+    const reserved = await (client ?? db).query(
+      `INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at)
+      SELECT $1,$2,1,now() WHERE EXISTS(SELECT 1 FROM job WHERE id=$3 AND lease_owner=$4 AND attempt=$5 AND status='running' AND lease_expires_at>now())
+      ON CONFLICT(run_id,ordinal) DO UPDATE SET model_attempts=processing_batch.model_attempts+1,
+        model_started_at=coalesce(processing_batch.model_started_at,now())
+      WHERE processing_batch.model_attempts<$6 AND (processing_batch.model_started_at IS NULL OR processing_batch.model_started_at>now()-($7::int * interval '1 millisecond')) RETURNING ordinal`,
+      [
+        run.id,
+        ordinal,
+        job.id,
+        job.lease_owner,
+        job.attempt,
+        run.execution_config.maxAttempts,
+        run.execution_config.batchTimeoutMs,
+      ],
+    );
+    if (client) await client.query("COMMIT");
+    return reserved.rowCount ? { deadline: budget?.deadline } : null;
+  } catch (error) {
+    if (client) await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client?.release();
+  }
+}
 // Bounded batches keep context and retries small; one model consumer is sufficient for the current ten-user ceiling.
 function modelRequest(
   inputs: ProcessingInput[],
@@ -58,7 +110,7 @@ function modelRequest(
   missing: number,
   background: InputSnapshot["background"],
   accepted: ProcessingResult["records"] = [],
-  batch?: { offset: number; total: number },
+  batch?: { offset: number; total: number; positions?: number[] },
   dataOnly = false,
   distinctBatches = false,
   previous: ProcessingResult["records"] = [],
@@ -66,17 +118,51 @@ function modelRequest(
     lastFailure?: FailureCode;
     rejectedDuplicates: { question: string; expectedOutput: string }[];
   },
+  generation?: GenerationPlan,
 ) {
+  const generationAccepted: ProcessingResult["records"] = [];
+  const generationPositions = new Set<number>(),
+    generationContent = new Set<string>();
+  if (generation)
+    for (const row of [...previous, ...accepted]) {
+      const position = generationPosition(row),
+        key = contentKey(row);
+      if (
+        !row.question.trim() ||
+        position === undefined ||
+        generationPositions.has(position) ||
+        generationContent.has(key)
+      )
+        continue;
+      generationPositions.add(position);
+      generationContent.add(key);
+      generationAccepted.push(row);
+    }
   const base = processingPrompt(
     inputs,
     options,
     missing,
     background,
-    batch ? { ...batch, originalCount: expected, accepted } : undefined,
+    batch
+      ? {
+          ...batch,
+          originalCount: expected,
+          accepted: generation ? generationAccepted : accepted,
+        }
+      : undefined,
     dataOnly,
   );
   const correction = {
     ...JSON.parse(base.prompt),
+    ...(generation && batch?.positions
+      ? {
+          generation: generationContext(
+            generation,
+            batch.positions,
+            generationAccepted!,
+          ),
+        }
+      : {}),
     ...(feedback
       ? {
           lastFailure: feedback.lastFailure,
@@ -136,6 +222,7 @@ function batches(
   quotaInput = true,
   dataOnly = false,
   distinctBatches = false,
+  generation?: GenerationPlan,
 ) {
   const result: { inputs: ProcessingInput[]; count: number }[] = [];
   const fits = (rows: ProcessingInput[], offset: number, count: number) => {
@@ -155,9 +242,22 @@ function batches(
       budgetCount,
       background,
       [],
-      quotaInput ? { offset, total: outputCount ?? inputs.length } : undefined,
+      quotaInput
+        ? {
+            offset,
+            total: generation?.total ?? outputCount ?? inputs.length,
+            ...(generation
+              ? {
+                  positions: generation.positions.slice(offset, offset + count),
+                }
+              : {}),
+          }
+        : undefined,
       dataOnly,
       distinctBatches,
+      [],
+      undefined,
+      generation,
     );
     return (
       Buffer.byteLength(request.system + request.prompt) <=
@@ -223,16 +323,28 @@ export async function runProcessing(
   if (sha256(bytes) !== run.input_hash)
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
+  const generation =
+    run.execution_config.recipeVersion === GENERATION_RECIPE
+      ? input.generation
+      : undefined;
+  if (
+    run.execution_config.recipeVersion === GENERATION_RECIPE &&
+    (!generation || generation.positions.length !== run.options.outputCount)
+  )
+    throw new ProcessingError(409, "processing_input_corrupt");
   const legacyRecipe = run.execution_config.recipeVersion === "processing-v1";
   const distinctBatches = [
     "processing-v5",
     "processing-v6",
     "processing-v7",
     "processing-v8",
+    GENERATION_RECIPE,
   ].includes(run.execution_config.recipeVersion);
-  const recovery = ["processing-v7", "processing-v8"].includes(
-    run.execution_config.recipeVersion,
-  );
+  const recovery = [
+    "processing-v7",
+    "processing-v8",
+    GENERATION_RECIPE,
+  ].includes(run.execution_config.recipeVersion);
   const deduplication =
     recovery || run.execution_config.recipeVersion === "processing-v6";
   const dataOnly = [
@@ -242,6 +354,7 @@ export async function runProcessing(
     "processing-v6",
     "processing-v7",
     "processing-v8",
+    GENERATION_RECIPE,
   ].includes(run.execution_config.recipeVersion);
   if (
     ![
@@ -253,6 +366,7 @@ export async function runProcessing(
       "processing-v6",
       "processing-v7",
       "processing-v8",
+      GENERATION_RECIPE,
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
       ...run.execution_config,
@@ -273,6 +387,7 @@ export async function runProcessing(
     quotaInput,
     dataOnly,
     distinctBatches,
+    generation,
   );
   await db.query(
     "UPDATE job SET counts=coalesce(counts,'{}'::jsonb)||jsonb_build_object('processingBatches',$2::int) WHERE id=$1 AND status='running' AND lease_owner=$3 AND attempt=$4 AND lease_expires_at>now()",
@@ -294,7 +409,13 @@ export async function runProcessing(
       acceptedContent.add(contentKey(row));
     if (run.options.operation === "generate")
       for (const row of input.deduplicationBaseline ?? [])
-        acceptedRows.push({ ...row, sourceId: "previous-candidate" });
+        acceptedRows.push({
+          ...row,
+          sourceId:
+            generation && "sourceId" in row
+              ? String(row.sourceId)
+              : "previous-candidate",
+        });
     // Seed every preserved batch before resuming an earlier incomplete batch.
     const preserved = await db.query(
       "SELECT result_ref FROM processing_batch WHERE run_id=$1 AND result_ref IS NOT NULL ORDER BY ordinal",
@@ -353,7 +474,10 @@ export async function runProcessing(
     const feedback: {
       lastFailure?: FailureCode;
       rejectedDuplicates: { question: string; expectedOutput: string }[];
-    } = { rejectedDuplicates: [] };
+    } = {
+      rejectedDuplicates: [],
+      lastFailure: trace.calls.at(-1)?.code ?? generation?.previousFailure,
+    };
     try {
       let result;
       if (!model) result = cleanRecords(group.inputs, run.options);
@@ -380,6 +504,13 @@ export async function runProcessing(
               ),
             ) as ProcessingResult)
           : undefined;
+        const groupOffset = groups
+          .slice(0, index)
+          .reduce((n, g) => n + g.count, 0);
+        const groupPositions = generation?.positions.slice(
+          groupOffset,
+          groupOffset + group.count,
+        );
         const saved =
           priorResult?.records.filter(
             (row) =>
@@ -403,6 +534,7 @@ export async function runProcessing(
           modelInputs,
           run.options,
           expected,
+          generation ? saved.map((row) => generationPosition(row)!) : undefined,
         );
         // Preserve every valid result, including from a previous attempt. Only request missing output.
         for (
@@ -423,6 +555,9 @@ export async function runProcessing(
           const remaining = generatesRecords(run.options.operation)
             ? modelInputs
             : modelInputs.filter((row) => !acceptedIds.has(row.id));
+          const missingPositions = groupPositions?.filter(
+            (position) => !acceptedIds.has(`generated:${position}`),
+          );
           const prompt = modelRequest(
             remaining,
             run.options,
@@ -435,13 +570,18 @@ export async function runProcessing(
                   offset: groups
                     .slice(0, index)
                     .reduce((n, g) => n + g.count, 0),
-                  total: run.options.outputCount ?? input.records.length,
+                  total:
+                    generation?.total ??
+                    run.options.outputCount ??
+                    input.records.length,
+                  ...(missingPositions ? { positions: missingPositions } : {}),
                 }
               : undefined,
             dataOnly,
             distinctBatches,
             deduplication ? acceptedRows : [],
             recovery ? feedback : undefined,
+            generation,
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >
@@ -460,25 +600,18 @@ export async function runProcessing(
           };
           let calledAt: number | undefined;
           try {
+            let sharedDeadline: number | null | undefined;
             if (deduplication) {
               // Reserve before calling the model; a crash/retry cannot reset the call or time budget.
-              const reserved = await db.query(
-                `INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at)
-                SELECT $1,$2,1,now() WHERE EXISTS(SELECT 1 FROM job WHERE id=$3 AND lease_owner=$4 AND attempt=$5 AND status='running' AND lease_expires_at>now())
-                ON CONFLICT(run_id,ordinal) DO UPDATE SET model_attempts=processing_batch.model_attempts+1,
-                  model_started_at=coalesce(processing_batch.model_started_at,now())
-                WHERE processing_batch.model_attempts<$6 AND (processing_batch.model_started_at IS NULL OR processing_batch.model_started_at>now()-($7::int * interval '1 millisecond')) RETURNING ordinal`,
-                [
-                  run.id,
-                  index,
-                  job.id,
-                  job.lease_owner,
-                  job.attempt,
-                  run.execution_config.maxAttempts,
-                  run.execution_config.batchTimeoutMs,
-                ],
+              const reserved = await reserveModelCall(
+                db,
+                job,
+                run,
+                index,
+                Boolean(generation),
               );
-              if (!reserved.rowCount) break;
+              if (!reserved) break;
+              sharedDeadline = reserved.deadline;
             }
             calledAt = Date.now();
             const extra = await generateText({
@@ -489,19 +622,28 @@ export async function runProcessing(
                 "processing-v6",
                 "processing-v7",
                 "processing-v8",
+                GENERATION_RECIPE,
               ].includes(run.execution_config.recipeVersion)
                 ? {
-                    temperature:
-                      run.execution_config.recipeVersion === "processing-v8"
-                        ? 0.7
-                        : 0.2,
+                    temperature: ["processing-v8", GENERATION_RECIPE].includes(
+                      run.execution_config.recipeVersion,
+                    )
+                      ? 0.7
+                      : 0.2,
                   }
                 : {}),
               system: prompt.system,
               prompt: prompt.prompt,
               maxOutputTokens: run.execution_config.maxOutputTokens,
               maxRetries: 0,
-              abortSignal: batchSignal,
+              abortSignal: sharedDeadline
+                ? AbortSignal.any([
+                    batchSignal,
+                    AbortSignal.timeout(
+                      Math.max(1, sharedDeadline - Date.now()),
+                    ),
+                  ])
+                : batchSignal,
               experimental_telemetry: { isEnabled: false },
             });
             call.finishReason = [
@@ -525,14 +667,18 @@ export async function runProcessing(
                 .replace(/^```(?:json)?\s*/u, "")
                 .replace(/\s*```$/u, ""),
             );
-            call.generated = Array.isArray(value?.records)
-              ? value.records.length
-              : 0;
+            call.generated =
+              generation && Array.isArray(value)
+                ? value.length
+                : Array.isArray(value?.records)
+                  ? value.records.length
+                  : 0;
             const validated = validateModelRows(
               value,
               remaining,
               run.options,
               missing,
+              missingPositions,
             );
             call.validated = validated.records.length;
             call.invalid = call.generated - call.validated;
@@ -587,6 +733,11 @@ export async function runProcessing(
               modelInputs,
               run.options,
               expected,
+              generation
+                ? [...result.records, ...added].map(
+                    (row) => generationPosition(row)!,
+                  )
+                : undefined,
             );
           } catch (error) {
             if (!recovery) {

@@ -1,5 +1,6 @@
 import type { Database } from "../db/pool.js";
 import type { ProcessingRun } from "./store.js";
+import { GENERATION_RECIPE, generationBudget } from "./generation.js";
 
 export type FailureCode =
   | "temporary_service"
@@ -79,9 +80,12 @@ export async function processingRecovery(
       b.error_code ||
       b.issues.some((i: { code: string }) => i.code === "missing_output"),
   );
-  const bounded = ["processing-v6", "processing-v7", "processing-v8"].includes(
-    run.execution_config.recipeVersion,
-  );
+  const bounded = [
+    "processing-v6",
+    "processing-v7",
+    "processing-v8",
+    GENERATION_RECIPE,
+  ].includes(run.execution_config.recipeVersion);
   const available = pending.some(
     (b) =>
       b.diagnostics?.stopReason !== "provider_rejected" &&
@@ -111,28 +115,37 @@ export async function processingRecovery(
     ].includes(run.error_code);
   const canRetry =
     terminal && incomplete && !businessFailure && (unstarted || available);
+  const budget = await generationBudget(db, run.id);
+  const sharedGeneration =
+    run.execution_config.recipeVersion === GENERATION_RECIPE;
+  const retryAllowed =
+    canRetry && !(sharedGeneration && (budget?.exhausted || budget?.blocked));
   return {
-    canRetry,
+    canRetry: retryAllowed,
     canContinue:
       terminal &&
       run.status !== "cancelled" &&
       missing > 0 &&
       !businessFailure &&
       !pending.some((b) => b.diagnostics?.stopReason === "provider_rejected") &&
-      !canRetry,
+      !retryAllowed &&
+      !(sharedGeneration && (budget?.exhausted || budget?.blocked)),
+    ...(budget ? { generationBudget: budget } : {}),
     reason: !incomplete
       ? null
       : businessFailure
         ? "source_or_configuration"
-        : canRetry
-          ? "remaining_budget"
-          : pending.some(
-                (b) => b.diagnostics?.stopReason === "provider_rejected",
-              )
-            ? "provider_rejected"
-            : terminal && bounded && pending.length
-              ? "budget_exhausted"
-              : "not_available",
+        : sharedGeneration && budget?.exhausted
+          ? "budget_exhausted"
+          : retryAllowed
+            ? "remaining_budget"
+            : pending.some(
+                  (b) => b.diagnostics?.stopReason === "provider_rejected",
+                )
+              ? "provider_rejected"
+              : terminal && bounded && pending.length
+                ? "budget_exhausted"
+                : "not_available",
     diagnostics: batches
       .filter((b) => b.diagnostics)
       .map((b) => ({

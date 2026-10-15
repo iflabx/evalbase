@@ -10,6 +10,8 @@ export type TaskRef = {
   runId: string;
   resultId: string;
   inputId?: string;
+  generationPosition?: number;
+  replaces?: TaskRef;
   origin?: { runId: string; resultId: string };
 };
 export type TaskRound = {
@@ -18,6 +20,7 @@ export type TaskRound = {
   before: TaskRef[];
   records?: InputSnapshot["records"];
   deduplicationBaseline?: InputSnapshot["deduplicationBaseline"];
+  generation?: InputSnapshot["generation"];
   recordKeys?: Record<string, string>;
   kind: "continue" | "rerun" | "complete" | "saved";
 };

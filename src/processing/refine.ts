@@ -1,4 +1,5 @@
 import { generatesRecords } from "./protocol.js";
+import { GENERATION_RECIPE, generationBudget } from "./generation.js";
 import {
   guardAssistantCommit,
   linkAssistantProcessing,
@@ -174,16 +175,40 @@ export async function createRefinementRun(
     )
       throw new ProcessingError(409, "processing_source_unavailable");
     const parent = await getProcessingRun(client, scope, parentId, true);
+    const inheritedInput = await readFrozenInput(artifacts, parent);
+    const plan = scope.taskRound?.generation ?? inheritedInput.generation;
+    const generationRoot = plan
+      ? await getProcessingRun(client, scope, plan.rootRunId)
+      : undefined;
+    const generation =
+      generationRoot?.execution_config.recipeVersion === GENERATION_RECIPE
+        ? plan
+        : undefined;
     if (
       options.operation === "generate" &&
-      (parent.source.kind !== "background" ||
+      ((generationRoot?.source ?? parent.source).kind !== "background" ||
         scope.taskRound?.kind !== "complete" ||
         canonicalJson({
           ...options,
-          outputCount: parent.options.outputCount,
-        }) !== canonicalJson(parent.options))
+          outputCount:
+            generationRoot?.options.outputCount ?? parent.options.outputCount,
+        }) !== canonicalJson(generationRoot?.options ?? parent.options))
     )
       throw new ProcessingError(422, "processing_configuration_invalid");
+    if (
+      options.operation === "generate" &&
+      generationRoot?.execution_config.recipeVersion === GENERATION_RECIPE
+    ) {
+      const budget = await generationBudget(client, parentId);
+      if (
+        !budget ||
+        budget.exhausted ||
+        budget.blocked ||
+        !scope.taskRound?.generation ||
+        generation!.positions.length !== options.outputCount
+      )
+        throw new ProcessingError(409, "processing_completion_unavailable");
+    }
     if (!["succeeded", "failed", "cancelled"].includes(parent.status))
       throw new ProcessingError(409, "processing_still_running");
     const data =
@@ -223,7 +248,10 @@ export async function createRefinementRun(
       )
     )
       throw new ProcessingError(409, "processing_already_adopted");
-    const input = await readFrozenInput(artifacts, parent);
+    const input =
+      options.operation === "generate" && generationRoot
+        ? await readFrozenInput(artifacts, generationRoot)
+        : inheritedInput;
     const snapshots = new Map(input.records.map((row) => [row.id, row]));
     const selected = new Set(resultIds);
     const inputRootOperation =
@@ -335,7 +363,7 @@ export async function createRefinementRun(
           rootOperation: refinement.rootOperation,
         })
       : input.background;
-    if (background && scope.completionBaseline) {
+    if (background && scope.completionBaseline && !generation) {
       background = {
         ...background,
         classifications: background.classifications?.map((rule) => {
@@ -380,19 +408,23 @@ export async function createRefinementRun(
     const bytes = Buffer.from(
       canonicalJson({
         source: input.source,
+        ...(generation ? { generation } : {}),
         ...(input.revision === undefined ? {} : { revision: input.revision }),
         records,
         ...(generatesRecords(options.operation)
           ? {
-              deduplicationBaseline: [
-                ...(scope.taskRound?.deduplicationBaseline ?? []),
-                ...(input.deduplicationBaseline ?? []),
-                ...input.records,
-                ...(data?.records.map((row) => ({
-                  id: row.id,
-                  ...row.result,
-                })) ?? []),
-              ],
+              deduplicationBaseline:
+                generation && scope.taskRound?.deduplicationBaseline
+                  ? scope.taskRound.deduplicationBaseline
+                  : [
+                      ...(scope.taskRound?.deduplicationBaseline ?? []),
+                      ...(input.deduplicationBaseline ?? []),
+                      ...input.records,
+                      ...(data?.records.map((row) => ({
+                        id: row.id,
+                        ...row.result,
+                      })) ?? []),
+                    ],
             }
           : {}),
         ...(mode === "refine" ? { refinement } : { continuation }),
@@ -424,18 +456,25 @@ export async function createRefinementRun(
         jobId,
         key,
         digest,
-        parent.source,
+        options.operation === "generate" && generationRoot
+          ? generationRoot.source
+          : parent.source,
         options,
         stored.objectRef,
         stored.sha256,
         records.length,
         model?.revision ?? null,
-        parent.target_draft_id,
+        options.operation === "generate" && parent.source.kind === "draft"
+          ? parent.source.id
+          : (parent.target_draft_id ?? generationRoot?.target_draft_id),
         {
           ...PROCESSING_EXECUTION,
           recipeVersion:
             options.operation === "generate"
-              ? "processing-v8"
+              ? generationRoot?.execution_config.recipeVersion ===
+                GENERATION_RECIPE
+                ? GENERATION_RECIPE
+                : "processing-v8"
               : PROCESSING_EXECUTION.recipeVersion,
         },
         parentId,
