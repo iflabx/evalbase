@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-15",
+  "code": "94177609b4ebbce469e479f3fb82eeb557f0e96e",
+  "implementation": "completed",
+  "ownerAcceptance": "pending",
+  "scope": "OPT-30; whole assistant workflow and GB content acceptance are not passed",
+  "checks": {
+    "unit": 15,
+    "integration": 18,
+    "unique": 33,
+    "backendTypes": "passed",
+    "frontendTypes": "passed",
+    "changedFilesLint": "passed",
+    "productionBuild": "passed"
+  },
+  "comparison": [
+    {
+      "recipe": "processing-v8",
+      "runId": "processing_4c9750056322403c82e948be87148b4b",
+      "requests": 8,
+      "structurallyValid": 40,
+      "target": 50,
+      "durationMs": 59721,
+      "exactDuplicates": 0,
+      "failure": "processing_batch_failed"
+    },
+    {
+      "recipe": "processing-v9",
+      "runId": "processing_215b8c59a40e4cd69cce85f5198d569e",
+      "requests": 5,
+      "structurallyValid": 50,
+      "target": 50,
+      "durationMs": 52948,
+      "exactDuplicates": 0,
+      "failure": null
+    }
+  ],
+  "manualContentReview": {
+    "reviewed": 50,
+    "definiteOrdinaryOrTranslationItems": [
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50
+    ],
+    "categoryCompliance": "not passed; other rows also require review",
+    "note": "Structural count is not a claim of 50 qualified A.1.a questions."
+  },
+  "planning": {
+    "initialGbConversation": "two failed planning turns before eventual recovery",
+    "freshGbConversation": "first plan and one business-language retry both assistant_no_progress",
+    "overallGbWorkflow": "not passed"
+  },
+  "browser": {
+    "projectId": "project_34ab2f82268c4fe9a5b14dc4aa8e6b46",
+    "sessionId": "conversation_2f98f3ac53034762878aeb19d7e51a39",
+    "runId": "processing_2672972a47bf408b9495bae4cace02b7",
+    "input": 0,
+    "output": 5,
+    "saved": 5,
+    "recipe": "processing-v9",
+    "scenarios": 5,
+    "result": "one business prompt, execute button, select/save, manual confirmation succeeded"
+  },
+  "deployment": {
+    "port": 4217,
+    "updated": [
+      "web",
+      "worker",
+      "model-worker"
+    ],
+    "databaseAndObjectServicesReused": true,
+    "businessCountsEqualAtCutover": true,
+    "allDraftRecordFingerprintEqualAtCutover": true
+  }
+}

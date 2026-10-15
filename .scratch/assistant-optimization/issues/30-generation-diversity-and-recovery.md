@@ -1,10 +1,10 @@
 # OPT-30 生成场景分配与有界重复补齐
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 Blocked by: OPT-29
 
-优先级：P1。第三批。依赖 [OPT-29](29-document-grounded-generation.md)，复用 OPT-28 目标与成果合同。本次仅文档，开发待后续授权；证据及共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
+优先级：P1。第三批。依赖 [OPT-29](29-document-grounded-generation.md)，复用 OPT-28 目标与成果合同。本张已按 Owner 单张授权实现，Owner 验收 pending；实际结果见[验证记录](../opt30-verification.md)，共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
 
 ## 问题与目标
 
@@ -34,3 +34,5 @@ Blocked by: OPT-29
 
 - 2026-10-15：聚焦现有生成链与重复恢复，不增加第二套内容生成平台；仅整理文档，验收未执行。
 - 2026-10-15：Owner 已授权单张开发，沿用 `codex/assistant-optimization` 与同一4217；以 `09d22cf` 为开发基线，范围及 v9 冻结约定见架构，本张仅在最终验证后更新完成状态。
+
+- 2026-10-15：实现 `fb05aa4`、固定应用 `94177609b4eb` 已更新同一4217，保留验收数据；33项定向用例、类型/lint/生产构建及通用5条浏览器采用通过。真实50条结构数量达标，逐条内容审核存在明显误标，GB新会话规划仍有失败；完整事实和范围限制见[验证记录](../opt30-verification.md)。Implementation completed、Owner pending，不将助手整体或GB题库验收记为通过。OPT-31保持not-started。
