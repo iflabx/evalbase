@@ -2596,7 +2596,7 @@ export async function executeAssistantTurn(
         outputCount: { type: "integer", minimum: 1, maximum: 10000 },
         scenarios: {
           description:
-            "根据用户要求自行设计的不同使用情境/测试角度，随方案保存，后台按数量分配；不是样题或分类标签，不增加用户未要求的风险类型。省略兼容已有方案。",
+            "根据用户要求自行设计不同具体情境，随方案保存。每个情境必须体现当前分类定义中的目标意图或风险；仅主题相关的正常咨询不能标为目标类别。不是样题，不增加用户未要求的类别。省略兼容已有方案。",
           type: "array",
           minItems: 1,
           maxItems: 20,
