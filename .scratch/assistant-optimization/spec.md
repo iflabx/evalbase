@@ -98,7 +98,7 @@ Implementation: in-progress
 | [OPT-26](issues/26-tool-contract-and-error-feedback.md) | 统一参数合同、内部纠错与用户错误反馈 | 现有实现 | completed | [实施与验证](opt26-verification.md)；同一 4217 Web `06591f8`，Owner pending |
 | [OPT-27](issues/27-intent-and-plan-continuation.md) | 最新意图、暂停与计划续接 | 现有实现；与 OPT-26/28 独立 | completed | [实施与验证](opt27-verification.md)；同一 4217 Web `a8893ec`，Owner pending |
 | [OPT-28](issues/28-result-scope-and-goal-count.md) | 当前成果范围与业务目标数量一致性 | 现有实现；与 OPT-26/27 独立 | completed | 当前集合及目标数量、兼容修复和验证见 [记录](opt28-verification.md)；Owner pending |
-| [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | none | completed | [实施与验证](opt29-verification.md)，Owner pending |
+| [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | none | completed | [实施与验证](opt29-verification.md)、[四项补修及浏览器复测](opt29-followup-verification.md)，Owner pending |
 | [OPT-30](issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性与有界重复补齐 | OPT-29 | not-started | 2026-10-15 仅文档；验收未执行 |
 | [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、质量反馈及八类集成验收 | OPT-28/30 | not-started | 2026-10-15 仅文档；验收未执行 |
 
