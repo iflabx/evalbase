@@ -54,6 +54,9 @@ export async function queueContinuation(
     ).rows[0];
     if (
       !session?.task?.goal ||
+      ((session.task.executionPaused ||
+        session.task.executionPlan?.mode === "plan") &&
+        event !== "confirmed") ||
       (expectedRevision !== undefined &&
         session.task_revision !== expectedRevision) ||
       ["stopped", "complete", "failed"].includes(session.task.stage)

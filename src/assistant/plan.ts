@@ -626,6 +626,7 @@ export function availableTaskTools(
   ];
   if (task.runId) reads.push("read_processing");
   if (
+    task.executionPaused ||
     task.executionPlan?.mode === "plan" ||
     task.question ||
     ["processing", "awaiting_confirmation"].includes(task.stage)

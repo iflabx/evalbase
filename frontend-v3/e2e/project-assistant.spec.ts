@@ -967,6 +967,61 @@ test("OPT-24 fixed confirmation cards come from server proposals and confirmatio
   expect(state.posts.filter((p) => p.path.endsWith("/turns"))).toHaveLength(0);
 });
 
+test("OPT-27 keeps a paused plan visible and resumes with the current revision", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 850 });
+  const state = await fixture(page, {
+    task: {
+      goal: "分步建立测试集",
+      stage: "waiting_input",
+      executionPaused: true,
+      executionPlan: {
+        mode: "execute",
+        needsReview: true,
+        current: 1,
+        steps: [
+          { title: "建立首份草稿", action: "create_draft", status: "executed" },
+          { title: "建立下一份草稿", action: "create_draft", status: "pending" },
+        ],
+      },
+    },
+    messages: [
+      {
+        ...turn("paused", "后续步骤已暂停，首份草稿保留。"),
+        tools: [
+          {
+            key: "done",
+            name: "create_draft",
+            status: "succeeded",
+            result: { name: "首份草稿", url: "/projects/assistant_project/test-sets/drafts/first" },
+          },
+        ],
+      },
+    ],
+  });
+  await page.goto(`${url}/one`);
+  await expect(page.getByRole("status").first()).toHaveText("已暂停");
+  await page.reload();
+  await expect(page.getByRole("status").first()).toHaveText("已暂停");
+  expect(state.posts).toEqual([]);
+  await page.getByRole("log").locator("summary", { hasText: "操作记录" }).click();
+  await expect(page.getByRole("link", { name: "查看结果" })).toBeVisible();
+  await page.getByLabel("向项目助手发送消息").fill("稍后再补的要求");
+  const resume = page.getByRole("button", { name: "继续执行", exact: true });
+  await resume.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(state.posts.at(-1).body).toMatchObject({
+    message: "继续执行当前任务",
+    expectedTaskRevision: 7,
+  });
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("稍后再补的要求");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
 for (const latestError of ["assistant_tool_input_invalid", "assistant_no_progress", null]) {
   test(`OPT-26 keeps internal parameter hints collapsed after latest status ${latestError}`, async ({
     page,

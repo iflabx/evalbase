@@ -108,6 +108,7 @@ type Conversation = {
     title?: string;
     goal?: string;
     stage: string;
+    executionPaused?: boolean;
     runId?: string;
     runIds?: string[];
     checkedStatus?: string;
@@ -676,21 +677,24 @@ export function ProjectAssistant({
   const currentLabel = pageContext
     ? `所选${pageContext.kind === "draft" ? "草稿" : pageContext.kind === "asset" ? "原始数据" : pageContext.kind === "version" ? "版本" : "测试集"}：${currentName ?? "正在核对…"}${currentCount !== undefined ? ` · ${currentCount} 条记录` : ""}`
     : undefined;
-  const stageLabel = (
-    {
-      inspecting: "检查资料与要求",
-      planning: "方案待执行",
-      processing: "处理中",
-      checking: "核对结果",
-      yielding: "准备继续",
-      awaiting_review: "候选待审核",
-      awaiting_confirmation: "等待确认",
-      waiting_input: "等待补充",
-      failed: "任务未完成",
-      stopped: "已停止",
-      complete: "已完成",
-    } as Record<string, string>
-  )[visible?.task?.stage ?? ""];
+  const stageLabel =
+    visible?.task?.executionPaused && visible.task.stage !== "stopped"
+      ? "已暂停"
+      : (
+          {
+            inspecting: "检查资料与要求",
+            planning: "方案待执行",
+            processing: "处理中",
+            checking: "核对结果",
+            yielding: "准备继续",
+            awaiting_review: "候选待审核",
+            awaiting_confirmation: "等待确认",
+            waiting_input: "等待补充",
+            failed: "任务未完成",
+            stopped: "已停止",
+            complete: "已完成",
+          } as Record<string, string>
+        )[visible?.task?.stage ?? ""];
   const validLink = (url: string | undefined) =>
     url?.startsWith(`/projects/${projectId}/`) ? url : undefined;
   async function createSession(preserveInput = false) {
@@ -882,15 +886,18 @@ export function ProjectAssistant({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {visible?.task?.executionPlan?.mode === "plan" &&
-            !visible.task.executionPlan.needsReview &&
+          {(visible?.task?.executionPlan?.mode === "plan" || visible?.task?.executionPaused) &&
+            visible.task.stage !== "stopped" &&
+            (!visible.task.executionPlan?.needsReview || visible.task.executionPaused) &&
             canWrite && (
               <Button
                 size="sm"
                 disabled={busy || running || visible.taskRevision === undefined}
                 onClick={() =>
                   void send({
-                    message: "按当前已保存方案执行",
+                    message: visible.task?.executionPaused
+                      ? "继续执行当前任务"
+                      : "按当前已保存方案执行",
                     sessionId,
                     key: crypto.randomUUID(),
                     status: "submitting",
@@ -898,7 +905,7 @@ export function ProjectAssistant({
                   })
                 }
               >
-                按方案执行
+                {visible.task.executionPaused ? "继续执行" : "按方案执行"}
               </Button>
             )}
           {canWrite &&
@@ -1585,19 +1592,21 @@ export function ProjectAssistant({
                               {index + 1}. {step.title}
                             </span>
                             <span className="shrink-0 text-xs text-muted-foreground">
-                              {visible.task?.executionPlan?.needsReview
-                                ? "待重新核对"
-                                : step.status === "executed"
-                                  ? "已执行"
+                              {step.status === "executed"
+                                ? "已执行"
+                                : visible.task?.executionPlan?.needsReview
+                                  ? "待重新核对"
                                   : step.status === "waiting"
                                     ? step.action.startsWith("request_")
                                       ? "等待确认"
                                       : visible.task?.checkedStatus === "failed"
                                         ? "需要重试"
                                         : "等待结果"
-                                    : visible.task?.executionPlan?.mode === "plan"
-                                      ? "方案待执行"
-                                      : "待执行"}
+                                    : visible.task?.executionPaused
+                                      ? "已暂停"
+                                      : visible.task?.executionPlan?.mode === "plan"
+                                        ? "方案待执行"
+                                        : "待执行"}
                             </span>
                           </li>
                         ))}

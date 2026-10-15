@@ -15531,6 +15531,270 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+  it("OPT-27 pauses old pending work through reads, events and recovery, then resumes once", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    const firstName = `OPT27-first-${randomUUID()}`,
+      secondName = `OPT27-next-${randomUUID()}`;
+    try {
+      await opt21Session();
+      const steps = [
+        {
+          title: "创建第一份",
+          action: "create_draft",
+          input: { name: firstName },
+        },
+        {
+          title: "创建第二份",
+          action: "create_draft",
+          input: { name: secondName },
+        },
+      ];
+      requestedTool = {
+        name: "plan_task",
+        input: { executionMode: "plan", steps, nextAction: "none" },
+      };
+      const planned = (await send("先给方案，不执行")).json();
+      expect(planned.task.stage).toBe("planning");
+      toolSequence = [
+        { name: "plan_task", input: { executionMode: "execute" } },
+        { name: "create_draft", input: { name: firstName } },
+        // Retain an actual committed prefix while the next action is still pending.
+        { name: "plan_task", input: { nextAction: "none" } },
+        { name: "query_project", input: { kind: "project" } },
+      ];
+      requestedTool = undefined;
+      const paused = (
+        await send("先创建第一份，然后暂停并解释后续方案")
+      ).json();
+      expect(paused.task.executionPaused).toBe(true);
+      expect(paused.task.stage).toBe("waiting_input");
+      expect(paused.task.nextAction).toBeNull();
+      expect(paused.task.executionPlan.steps.map((s: any) => s.status)).toEqual(
+        ["executed", "pending"],
+      );
+      const firstId = paused.task.executionPlan.steps[0].receipt.draftId;
+      const countDraft = async (name: string) =>
+        (
+          await db.query(
+            "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+            [projectId, name],
+          )
+        ).rows;
+      expect(await countDraft(firstName)).toEqual([{ id: firstId }]);
+      expect(await countDraft(secondName)).toEqual([]);
+      const revision = (
+        await db.query(
+          "SELECT task_revision FROM assistant_session WHERE id=$1",
+          [sessionId],
+        )
+      ).rows[0].task_revision;
+      const before = calls.length;
+      for (const event of ["processing_completed", "budget_yield"])
+        await taskModule.queueContinuation(
+          db,
+          sessionId,
+          event,
+          `paused-${event}`,
+          revision,
+        );
+      expect((await read()).json().turns).toHaveLength(2);
+      // Simulate a previously queued automatic response being reclaimed after the pause.
+      await db.query(
+        "UPDATE assistant_turn SET event='budget_yield',status='running',execution_attempt=1,expires_at=now()-interval '1 second' WHERE id=$1",
+        [paused.turns.at(-1).id],
+      );
+      await opt21End(paused.turns.at(-1).id);
+      expect(calls.length).toBe(before);
+      expect((await read()).json().task.executionPaused).toBe(true);
+      expect(await countDraft(secondName)).toEqual([]);
+      // A fields-only explanation must not implicitly resume the saved plan either.
+      requestedTool = {
+        name: "plan_task",
+        input: { title: "解释两份草稿的方案" },
+      };
+      const explained = (await send("先别执行，只解释方案")).json();
+      expect(explained.task.executionPaused).toBe(true);
+      expect(explained.task.nextAction).toBeNull();
+      toolSequence = [
+        { name: "plan_task", input: { executionMode: "execute" } },
+        { name: "create_draft", input: { name: secondName } },
+      ];
+      requestedTool = undefined;
+      const resumed = (await send("按方案继续执行")).json();
+      expect(resumed.task.executionPaused).toBe(false);
+      expect(
+        resumed.task.executionPlan.steps.map((s: any) => s.status),
+      ).toEqual(["executed", "executed"]);
+      expect(resumed.task.executionPlan.steps[0].receipt.draftId).toBe(firstId);
+      await read();
+      await read();
+      expect(await countDraft(firstName)).toHaveLength(1);
+      expect(await countDraft(secondName)).toHaveLength(1);
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+      await db.end();
+    }
+  });
+
+  it("OPT-27 pauses dispatch without cancelling a queued run and preserves its results on resume", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = await opt22Draft("OPT27 暂停中的真实输入");
+      await opt21Session();
+      const input = {
+        source: { kind: "draft", id: source },
+        allRecords: true,
+        operation: "clean",
+        instructions: "",
+        allowedFields: ["question"],
+      };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            target: input.source,
+            executionMode: "execute",
+            steps: [
+              { title: "清洗", action: "submit_processing", input },
+              { title: "核对", action: "read_processing" },
+            ],
+          },
+        },
+        { name: "submit_processing", input },
+      ];
+      const working = (await send("清洗这些问题并核对结果")).json();
+      const runId = working.task.runId;
+      expect(runId).toBeTruthy();
+      toolSequence = [];
+      requestedTool = { name: "plan_task", input: { nextAction: "none" } };
+      const paused = (await send("先暂停后面的步骤，只解释处理过程")).json();
+      expect(paused.task.executionPaused).toBe(true);
+      expect(paused.task.stage).toBe("waiting_input");
+      expect(
+        (
+          await db.query(
+            "SELECT j.status FROM job j JOIN processing_run r ON r.job_id=j.id WHERE r.id=$1",
+            [runId],
+          )
+        ).rows[0].status,
+      ).toBe("queued");
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=1,lease_owner='opt27',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [runId],
+        )
+      ).rows[0];
+      const config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(config.minio),
+        config,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      await taskModule.collectProcessingEvents(db);
+      const retained = (await read()).json();
+      expect(retained.task.executionPaused).toBe(true);
+      expect(retained.turns).toHaveLength(2);
+      toolSequence = [
+        { name: "plan_task", input: { executionMode: "execute" } },
+        { name: "read_processing", input: { runId } },
+      ];
+      requestedTool = undefined;
+      const resumed = (await send("继续核对结果")).json();
+      expect(resumed.task.executionPaused).toBe(false);
+      expect(resumed.task.review.total).toBe(3);
+      expect(resumed.task.runId).toBe(runId);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM processing_run WHERE source->>'id'=$1",
+            [source],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        resumed.task.executionPlan.steps.every(
+          (step: any) => step.status === "executed",
+        ),
+      ).toBe(true);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { nextAction: "request_processing_apply" },
+        },
+        {
+          name: "request_processing_apply",
+          input: {
+            runId,
+            allValid: true,
+            target: { kind: "newDraft", name: "OPT27 旧确认不得写入" },
+          },
+        },
+      ];
+      const awaiting = (await send("准备保存这些结果")).json();
+      const proposal = awaiting.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal).toBeTruthy();
+      requestedTool = {
+        name: "plan_task",
+        input: { targetCount: 2, nextAction: "none" },
+      };
+      const changed = (
+        await send("先别保存，目标改成两条，只解释如何调整")
+      ).json();
+      expect(changed.task.targetCount).toBe(2);
+      expect(changed.task.runId).toBe(runId);
+      expect(changed.task.executionPaused).toBe(true);
+      const oldConfirmation = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(oldConfirmation.statusCode).toBe(409);
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name='OPT27 旧确认不得写入'",
+            [projectId],
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+      await db.end();
+    }
+  });
+
+  it("OPT-27 does not treat a tool-free model answer as an explicit pause", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      textualToolCall = "清洗只做规范整理，改写按要求改变表达。";
+      const state = (await send("清洗和改写有何区别？")).json();
+      expect(state.task.executionPaused).not.toBe(true);
+      expect(state.turns.at(-1).tools).toEqual([]);
+    } finally {
+      sessionId = previous;
+      textualToolCall = undefined;
+    }
+  });
+
   it("OPT-26 advertises action-specific plan inputs from the actual tools", async () => {
     const previous = sessionId;
     sessionId = (

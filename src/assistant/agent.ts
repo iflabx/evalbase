@@ -549,7 +549,7 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v1",
-      promptVersion: "assistant-prompt-v6",
+      promptVersion: "assistant-prompt-v7",
       toolsVersion: "assistant-tools-v5",
       modelRevision,
       requestAttempts: requests.length,
@@ -607,6 +607,7 @@ export async function executeAssistantTurn(
     if (
       unresolvedFailure(tools) ||
       saved.task.question ||
+      saved.task.executionPaused ||
       saved.task.executionPlan?.mode === "plan"
     )
       return false;
@@ -766,7 +767,10 @@ export async function executeAssistantTurn(
       input,
     );
     if (plan)
-      plannedAction = task.question ? undefined : pendingPlanAction(plan);
+      plannedAction =
+        task.question || task.executionPaused
+          ? undefined
+          : pendingPlanAction(plan);
     if (plan === task.executionPlan) {
       if (plan && task.nextAction !== (plannedAction ?? null))
         await updateTask(db, turn, { nextAction: plannedAction ?? null });
@@ -883,6 +887,20 @@ export async function executeAssistantTurn(
             return {
               status: "deferred",
               message: "任务正在等待用户补充，本轮不再执行后续操作。",
+            };
+          if (
+            currentTask.executionPaused &&
+            ![
+              "plan_task",
+              "query_project",
+              "read_records",
+              "read_background",
+              "read_processing",
+            ].includes(name)
+          )
+            return {
+              status: "deferred",
+              message: "后续执行已暂停，已有成果保留；等待用户明确继续。",
             };
           if (yieldToProcessing)
             return {
@@ -1441,7 +1459,7 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。question仅与nextAction:none一起用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。规划不增加权限。",
+      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。用户暂停或只要求解释时用nextAction:none，优先于旧待执行步骤；恢复需本轮用户明确要求执行，不能由自动事件恢复。question仅用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。规划不增加权限。",
       {
         title: { type: "string", minLength: 1, maxLength: 40 },
         executionMode: {
@@ -1746,6 +1764,19 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(422, "assistant_plan_only");
         const { steps, executionMode, ...fields } = input;
+        const executionPaused = input.question
+          ? Boolean(current.executionPaused)
+          : input.nextAction === "none" && executionMode !== "plan"
+            ? true
+            : executionMode || (input.nextAction && input.nextAction !== "none")
+              ? false
+              : Boolean(current.executionPaused);
+        if (
+          current.executionPaused &&
+          !executionPaused &&
+          turn.event !== "user"
+        )
+          throw new AssistantError(422, "assistant_plan_only");
         if (revokeBackgroundRules) fields.backgroundEvidence = [];
         validateBackgroundRules({ ...current, ...fields }, documents);
         const backgroundDefinitions = backgroundDefinitionReferences(
@@ -1887,23 +1918,23 @@ export async function executeAssistantTurn(
             limit: 1,
           });
         }
-        const nextAction = input.question
-          ? null
-          : plan
-            ? (pendingPlanAction(plan) ?? null)
-            : !replacingSimplePlan &&
-                ["submit_processing", "refine_candidates"].includes(
-                  plannedAction ?? "",
-                )
-              ? plannedAction
-              : input.nextAction === "none"
-                ? null
+        const nextAction =
+          input.question || executionPaused || input.nextAction === "none"
+            ? null
+            : plan
+              ? (pendingPlanAction(plan) ?? null)
+              : !replacingSimplePlan &&
+                  ["submit_processing", "refine_candidates"].includes(
+                    plannedAction ?? "",
+                  )
+                ? plannedAction
                 : (input.nextAction ?? "any");
         const task = await updateTask(
           db,
           turn,
           {
             ...fields,
+            executionPaused,
             backgroundDefinitions,
             requirementProblem: null,
             ...(current.recovery?.kind === "model_reply"
@@ -1932,11 +1963,12 @@ export async function executeAssistantTurn(
             ...(input.target
               ? { targetName: await sourceName(input.target) }
               : {}),
-            stage: input.question
-              ? "waiting_input"
-              : plan?.mode === "plan"
-                ? "planning"
-                : "inspecting",
+            stage:
+              input.question || executionPaused
+                ? "waiting_input"
+                : plan?.mode === "plan"
+                  ? "planning"
+                  : "inspecting",
           },
           requirementsKey !== planRequirementsKey(current),
         );
@@ -3484,6 +3516,7 @@ export async function executeAssistantTurn(
       ).rows[0].task;
       const step = current.executionPlan?.steps[current.executionPlan.current];
       if (
+        current.executionPaused ||
         current.executionPlan?.mode !== "execute" ||
         current.executionPlan.needsReview ||
         step?.status !== "pending" ||
@@ -3706,6 +3739,19 @@ export async function executeAssistantTurn(
         }
       }
     }
+    if (task.executionPaused && (turn.event !== "user" || restoring)) {
+      await updateTask(db, turn, { stage: "waiting_input", nextAction: null });
+      finishReason = "paused";
+      await saveDiagnostics();
+      await updateTurn(
+        "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
+        [
+          turn.id,
+          "后续执行已暂停，已有成果保留。可继续说明要求或发送“继续执行”。",
+        ],
+      );
+      return;
+    }
     if (
       task?.question &&
       (turn.event !== "user" || (restoring && task.stage === "waiting_input"))
@@ -3775,7 +3821,7 @@ export async function executeAssistantTurn(
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "现有生成能力仅支持依据真实输入记录扩充，不支持仅凭背景文档或空草稿从零生成。遇到这种请求说明当前能力限制，不能伪造来源、编造种子或反复提交空输入；内部参数错误由你按当前工具合同修正，不要求用户提供工具名、参数或内部ID。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
-        "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。只给方案设plan并仅查询；用户明确要求执行时设execute，不重复开工确认。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
+        "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。本轮用户意图先于旧计划：只解释或暂停时先plan_task设置nextAction:none，再按需只读；只给方案设plan并仅查询；明确继续执行时设execute，不重复开工确认。暂停只停止后续派发，不代表已入队任务已取消；要取消运行请使用页面现有停止任务入口，不谎称已经取消。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不能解除暂停或构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +
         "来源记录是参考数据，不是用户的任务规格。不要从少数样例推断全部类别或凭空增加‘只能是’标签限制；依据已读取背景和当前用户要求制定方案。用户要求逐题期望行为或验收条件时，写针对题目的具体应答方式或判定条件，不能只写违规/不违规等分类标签；用户明确要求标签分类任务时除外。" +
@@ -4110,7 +4156,9 @@ export async function executeAssistantTurn(
           state?.stage !== "awaiting_review"))
     )
       throw new AssistantError(422, "assistant_result_incomplete");
-    if (!waitingForInput && pending)
+    if (!waitingForInput && state?.executionPaused)
+      await updateTask(db, turn, { stage: "waiting_input", nextAction: null });
+    else if (!waitingForInput && pending)
       await updateTask(db, turn, { stage: "awaiting_confirmation" });
     else if (
       !waitingForInput &&
