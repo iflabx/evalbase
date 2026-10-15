@@ -1,10 +1,10 @@
 # OPT-29 依据背景文档从零生成与能力预检
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-26, OPT-27, OPT-28
+Implementation: completed
+Blocked by: none
 
-优先级：P1。第二批。依赖 [OPT-26](26-tool-contract-and-error-feedback.md)、[OPT-27](27-intent-and-plan-continuation.md)、[OPT-28](28-result-scope-and-goal-count.md) 的相关自动验证通过。本次仅文档，开发待后续授权；完整边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
+优先级：P1。第二批。依赖 [OPT-26](26-tool-contract-and-error-feedback.md)、[OPT-27](27-intent-and-plan-continuation.md)、[OPT-28](28-result-scope-and-goal-count.md) 的相关自动验证通过。已按后续 Owner 单张授权完成开发，Owner 人工验收 pending；实施和验证见 [OPT-29 记录](../opt29-verification.md)，完整边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
 
 ## 问题与目标
 
@@ -38,3 +38,5 @@ Blocked by: OPT-26, OPT-27, OPT-28
 ## Comments
 
 - 2026-10-15：作为明确的能力增补单列，第一批修错不能代替本张交付；仅整理文档，验收未执行。
+
+- 2026-10-15：依据后续开发授权实施；可控模型及真实 5/50 条（50 条为显式补齐后完成）已验证，审阅问题修复并窄复核。固定代码与同一 4217 数据保留以 [验证记录](../opt29-verification.md) 为准，不代签 Owner 验收。
