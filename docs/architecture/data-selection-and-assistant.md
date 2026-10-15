@@ -264,3 +264,5 @@ OPT-25 默认 candidates 的 `scope=task` 复用 processing task 的当前有效
 - 场景分配与重复反馈进入现有有界生成配方；实际变化、结构检查和内容审核分开。旧冻结任务保持原恢复语义，权限、个人资料生命周期、幂等、容量和固定确认继续遵循 [ADR-0014](../adr/0014-project-agent-and-processing-runtime.md)。
 
 不引入第二框架、向量库、通用 DAG、候选副本表或新评审智能体。实现时仅补受影响接口及存储说明，不借本轮重构其他模块。
+
+2026-10-15 OPT-27 实施补充：原 task JSON 的可选 `executionPaused` 记录明确暂停，旧任务缺省为未暂停；它约束自动派发、固定步骤、实际工具入口及回执后续动作，不改变后台运行自身的取消/终态。`nextAction:none` 优先于旧 pending；字段省略或纯文本回答不自动撤销授权。恢复须来自用户回合的明确执行动作，并继续复检原任务修订、needsReview、对象及参数；确认事件只同步真实已提交回执，不能解除暂停。无新增表、路由、调度或状态机平台，实际验证见 [OPT-27 记录](../../.scratch/assistant-optimization/opt27-verification.md)，其余计划状态见台账。

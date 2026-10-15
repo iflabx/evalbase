@@ -1,10 +1,10 @@
 # OPT-27 最新用户意图与计划暂停、续接修复
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。第一批，可独立修复；合批验证使用 OPT-26 的反馈合同。本次仅文档，开发待后续授权。共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
+优先级：P1。第一批，可独立修复；沿用 OPT-26 的反馈合同。已按 Owner 后续单张授权完成开发、定向验证及同一 4217 更新，Owner 人工验收 pending。共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)，证据见 [实施与验证](../opt27-verification.md)。
 
 ## 问题与目标
 
@@ -35,3 +35,4 @@ Blocked by: none
 ## Comments
 
 - 2026-10-15：根据旧方案误续做建立；仅整理文档，验收未执行。
+- 2026-10-15：完成代码 `a8893ece4482d8b2eb3e31b6ad8d93be88d7c485`；复用 task JSON 暂停标记、旧修订/回执/取消保护，UI 仅调整现有状态和继续按钮。16 项接口、18 项单元及 5 项浏览器回归通过，Standards/Spec 无未关闭 P0/P1/P2。同一 4217 更新及保留数据的实际记录见验证文档，Owner pending。

@@ -1,6 +1,6 @@
 # 项目助手执行与生成修复：三个批次
 
-2026-10-15。方案创建时 Owner 授权整理修复方案和 Tickets，六张均未开始开发；后续 OPT-26 已获单张开发授权并完成，最新执行状态见 [台账](../.scratch/assistant-optimization/spec.md)。产品入口见 [PRD §7.7](PRD-data-selection-and-assistant.md#77-执行与生成修复2026-10-15待实施)。本方案细化既有助手合同，并明确补入“依据背景文档从零生成”；不把这项新增能力写成现有功能。
+2026-10-15。方案创建时 Owner 授权整理修复方案和 Tickets，六张均未开始开发；后续 OPT-26、OPT-27 已分别获单张开发授权并完成，最新执行状态见 [台账](../.scratch/assistant-optimization/spec.md)。产品入口见 [PRD §7.7](PRD-data-selection-and-assistant.md#77-执行与生成修复2026-10-15待实施)。本方案细化既有助手合同，并明确补入“依据背景文档从零生成”；不把这项新增能力写成现有功能。
 
 ## 1. 实测依据与问题边界
 
@@ -69,4 +69,4 @@ GB 分类仅为这次验收数据，产品仍支持通用测试集；不内置�
 
 ## 6. 实施状态
 
-方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26 已完成实现、定向验证与同一 4217 更新，见 [实施证据](../.scratch/assistant-optimization/opt26-verification.md)，Owner 验收 pending。OPT-27–31 保持未实施；各张最新状态以台账为准，不将部分实施记为三批全部完成。
+方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md) 和 [OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md)，Owner 验收 pending。OPT-28–31 保持未实施；各张最新状态以台账为准，不将部分实施记为三批全部完成。
