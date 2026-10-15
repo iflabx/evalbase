@@ -224,8 +224,8 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 2026-10-15 新增文档计划，三张均未实施。OPT-30 已完成其定向实现，GB 规划和内容审核未通过的实际范围见 [证据](../.scratch/assistant-optimization/opt30-verification.md)；上一节创建时的“OPT-30/31 尚未实施”为历史记录，不作为当前状态。
 
 - 按 [OPT-32 验收标准](../.scratch/assistant-optimization/issues/32-tool-argument-repair.md#验收标准) 验证 SDK 调用前修复、无副作用校验、统一预算、身份/权限和未知写入保护；保留协议 Mock 测试，增加脱敏历史错误交给真实修复模型及普通短提示验证，逐次报告全部尝试。
-- 按 [OPT-33 验收标准](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md#验收标准) 验证章节/子项别名、定义边界、自由描述与枚举区分、非空方案及只规划无写入；GB 固定短提示、八类仅规划、独立小样本执行和非安全分类文档分别记录。
-- 前两张定向检查通过后，按 [OPT-31 验收标准](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#验收标准) 检查改写实际变化、内容核对、有限局部修复、规则/内容修订失效与既有采用确认；真实模型结论对照预先记录的人工判断，统计漏报/误报，不以模型自评作为唯一真值。
+- 按 [OPT-33 验收标准](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md#验收标准) 及 [通用文档矩阵](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md#通用文档验收矩阵) 验证不同编号、自然段、简单表格、跨页/片段、矛盾缺失与文档指令隔离。复用三个基础样本及其夹具变体，真实规划按票内固定六次分配执行，不做文档结构与格式的全组合；八类仅规划及独立小样本执行分别记录。
+- 前两张定向检查通过后，按 [OPT-31 验收标准](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#验收标准) 检查改写实际变化、内容核对、有限局部修复、规则/内容修订失效与既有采用确认；真实模型结论对照预先记录的人工判断，统计漏报/误报，不以模型自评作为唯一真值。非 GB 内容复用 OPT-33 的意图说明和普通改写规范，各 3–5 条，只核对相关内容及修复，不重复文档解析矩阵或新建大批生成。
 - 最后执行一次既定同会话八类各 50 条流程，400 条全量结构检查及逐条内容复核；区分原生结果、自动恢复、人工修改与未完成项。参数合法、规划可执行、业务完成、内容符合和保存事实分别报告，不将任一层通过替代其他层。
 
 开发依赖与共同边界只在 [总方案 §7](assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整) 维护。复用同一 4217 并保留旧数据；本次不运行模型、业务测试或部署，不将文档检查记为上述验收完成。
