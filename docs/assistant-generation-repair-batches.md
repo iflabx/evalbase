@@ -1,6 +1,6 @@
 # 项目助手执行与生成修复：三个批次
 
-2026-10-15。Owner 授权整理修复方案和 Tickets；本轮只修改文档，六张均未开始开发。产品入口见 [PRD §7.7](PRD-data-selection-and-assistant.md#77-执行与生成修复2026-10-15待实施)，执行状态见 [台账](../.scratch/assistant-optimization/spec.md)。本方案细化既有助手合同，并明确补入“依据背景文档从零生成”；不把这项新增能力写成现有功能。
+2026-10-15。方案创建时 Owner 授权整理修复方案和 Tickets，六张均未开始开发；后续 OPT-26 已获单张开发授权并完成，最新执行状态见 [台账](../.scratch/assistant-optimization/spec.md)。产品入口见 [PRD §7.7](PRD-data-selection-and-assistant.md#77-执行与生成修复2026-10-15待实施)。本方案细化既有助手合同，并明确补入“依据背景文档从零生成”；不把这项新增能力写成现有功能。
 
 ## 1. 实测依据与问题边界
 
@@ -67,6 +67,6 @@ GB 分类仅为这次验收数据，产品仍支持通用测试集；不内置�
 5. 记录各类实际数量、重复与未变化数量、模型调用/重试次数、失败类别、耗时和技术纠错提示次数；技术纠错提示目标为 0。预算耗尽保留进度，不能隐藏失败或反复重跑直到成功。一次通过不证明任意模型和输入零失败。
 6. 最终汇总六张验证证据，复用同一 4217 供一次集中人工验收。只构建受影响服务，不新增 5/10 人压测、两小时稳定试验或服务器重启测试；不自动合并、推送或正式部署。
 
-## 6. 本轮文档状态
+## 6. 实施状态
 
-六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。本次仅记录问题、修改范围、依赖与验收；开发完成、真实模型通过及 Owner 验收均需后续实际证据。
+方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26 已完成实现、定向验证与同一 4217 更新，见 [实施证据](../.scratch/assistant-optimization/opt26-verification.md)，Owner 验收 pending。OPT-27–31 保持未实施；各张最新状态以台账为准，不将部分实施记为三批全部完成。

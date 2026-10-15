@@ -1,10 +1,10 @@
 # OPT-26 工具参数合同与用户错误反馈修复
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。第一批。依赖已存在的 OPT-20–25 实现；本次仅文档，开发待后续授权。共同边界和证据见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
+优先级：P1。第一批。依赖已存在的 OPT-20–25 实现；已按 Owner 后续单张授权完成开发、定向验证及同一 4217 更新，Owner 人工验收 pending。共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)，实际证据见 [实施与验证](../opt26-verification.md)。
 
 ## 问题与目标
 
@@ -35,3 +35,4 @@ Blocked by: none
 ## Comments
 
 - 2026-10-15：根据八类测试集实测建立；仅整理文档，验收未执行。
+- 2026-10-15：按后续授权完成代码 `06591f85f09b39ad5feb4b63b4486bbf912c68d2`，定向接口、单元、浏览器及真实模型短提示验证通过；Standards/Spec 复审无未关闭 P0/P1/P2。同一 4217 仅更新 Web，保留原验收数据；详细范围与既有测试限制见验证记录，Owner pending。

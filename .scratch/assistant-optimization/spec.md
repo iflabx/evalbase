@@ -1,4 +1,6 @@
-2026-10-15 新增文档计划：Owner 要求按三个批次整理 [OPT-26–31 修复方案](../../docs/assistant-generation-repair-batches.md)，覆盖参数/错误反馈、计划意图、成果范围与数量、文档从零生成、多样性和改写质量。六张均为 not-started，本轮未改应用或 4217，开发待后续授权；旧 Ticket 实施及 Owner 验收记录保持。
+2026-10-15 最新实施：[OPT-26](issues/26-tool-contract-and-error-feedback.md) 已按 Owner 单张授权完成。计划输入由实际工具合同派生，内部参数纠错与业务反馈分层；固定代码 `06591f85f09b39ad5feb4b63b4486bbf912c68d2` 已更新同一 4217 Web，保留原数据。定向验证、真实模型三条短提示和 Standards/Spec 复审见 [验证记录](opt26-verification.md)。Implementation completed、Owner pending；OPT-27–31 保持 not-started。
+
+2026-10-15 文档起点：Owner 要求按三个批次整理 [OPT-26–31 修复方案](../../docs/assistant-generation-repair-batches.md)，覆盖参数/错误反馈、计划意图、成果范围与数量、文档从零生成、多样性和改写质量。方案创建时六张均为 not-started；后续实施以上方记录及台账为准，旧 Ticket 实施及 Owner 验收记录保持。
 
 2026-10-15 最新实施：[OPT-25](issues/25-assistant-task-results-and-delivery.md) 已按Owner授权完成。默认整任务有效成果，固定勾选及局部处理，原草稿采用与真实回执；最终代码、27项HTTP、39项故障/确认合同、15次短请求和200条同会话流程、40条内容核对及同一4217数据保留见[验证记录](opt25-verification.md)。Implementation completed、Owner pending；下面旧记录保留历史状态，OPT-05/09不由本次代签。
 
@@ -89,7 +91,7 @@ Implementation: in-progress
 | [OPT-23](issues/23-assistant-context-and-background-refs.md)      | 当前事实摘要、长会话续用及已验证背景引用                       | OPT-22 已完成                                         | completed      | [实施与验证](opt23-verification.md)；同一 4217、Owner pending                                           |
 | [OPT-24](issues/24-assistant-independent-workspace.md)            | 独立助手页面、个人会话、上下文及既有能力迁移                   | OPT-20；OPT-23 已完成                                 | completed      | [实施与验证](opt24-verification.md)；同一 4217、Owner pending                                           |
 | [OPT-25](issues/25-assistant-task-results-and-delivery.md)        | 整任务成果审核、局部调整与确认交付闭环                         | OPT-21/22/23/24                                       | completed      | [原验证](opt25-verification.md)、[审阅补修及最新4217](opt20-25-review-fixes.md)；Owner集中验收pending   |
-| [OPT-26](issues/26-tool-contract-and-error-feedback.md) | 统一参数合同、内部纠错与用户错误反馈 | 现有实现 | not-started | 2026-10-15 仅文档；验收未执行 |
+| [OPT-26](issues/26-tool-contract-and-error-feedback.md) | 统一参数合同、内部纠错与用户错误反馈 | 现有实现 | completed | [实施与验证](opt26-verification.md)；同一 4217 Web `06591f8`，Owner pending |
 | [OPT-27](issues/27-intent-and-plan-continuation.md) | 最新意图、暂停与计划续接 | 现有实现；与 OPT-26/28 独立 | not-started | 2026-10-15 仅文档；验收未执行 |
 | [OPT-28](issues/28-result-scope-and-goal-count.md) | 当前成果范围与业务目标数量一致性 | 现有实现；与 OPT-26/27 独立 | not-started | 2026-10-15 仅文档；验收未执行 |
 | [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | OPT-26/27/28 | not-started | 2026-10-15 仅文档；验收未执行 |
