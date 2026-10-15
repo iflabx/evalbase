@@ -105,6 +105,7 @@ const validationWithoutEffect = new Set([
   "assistant_delivery_pending",
   "assistant_background_not_read",
   "assistant_background_rule_mismatch",
+  "assistant_background_reference_invalid",
   "assistant_requirement_conflict",
   "assistant_candidate_selection_invalid",
   "assistant_plan_count_conflict",
@@ -1497,7 +1498,7 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。用户暂停或只要求解释时用nextAction:none，优先于旧待执行步骤；恢复需本轮用户明确要求执行，不能由自动事件恢复。question仅用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。规划不增加权限。",
+      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。用户暂停或只要求解释时用nextAction:none，优先于旧待执行步骤；恢复需本轮用户明确要求执行，不能由自动事件恢复。question仅用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。文档生成的多类方案每类依次为generate_candidates、read_processing、request_processing_apply，核对不等于采用；每类都保留采用确认，不能用read_processing合并保存动作。target省略或null，背景不是资产；当前classifications只约束第一待生成类，其他类别规则保存在各自生成步骤input.classifications。规划不增加权限。",
       {
         title: { type: "string", minLength: 1, maxLength: 40 },
         executionMode: {
@@ -1599,7 +1600,7 @@ export async function executeAssistantTurn(
                       minLength: 1,
                       maxLength: 100,
                       description:
-                        "仅复用当前任务已验证的定义引用；与value对应。首次读取仍提供text，用户自定义标签提供真实用户原话。",
+                        "仅复制当前任务返回的definition:哈希引用；不能填页号、行号或自行编写。首次读取或切换新类别只提供text并逐字复制当前原文，不填写reference；用户自定义标签提供真实用户原话。",
                     },
                     basis: {
                       enum: ["background", "user"],
@@ -1702,6 +1703,23 @@ export async function executeAssistantTurn(
       async (input) => {
         // A clarification always pauses execution. The model's leftover action
         // cannot turn a question into an executing plan.
+        if (
+          input.question &&
+          input.nextAction &&
+          input.nextAction !== "none" &&
+          lastFailure?.name === "plan_task" &&
+          [
+            "assistant_tool_input_invalid",
+            "assistant_delivery_pending",
+            "assistant_background_reference_invalid",
+            "assistant_background_rule_mismatch",
+          ].includes(lastFailure.code)
+        )
+          throw new AssistantError(
+            422,
+            "assistant_tool_input_invalid",
+            "不能用question把工具参数错误转交用户。按上一条具体错误修正方案；保留本轮用户的先规划或执行意图，不重复询问开工确认。真实的业务范围或配额冲突仍按原规则澄清。",
+          );
         if (input.question && !/[\p{L}\p{N}]/u.test(input.question))
           throw new AssistantError(
             422,
@@ -4130,7 +4148,7 @@ export async function executeAssistantTurn(
         "当前全部候选改写用allResults:true，按非空条件用where，UI固定勾选用allSelected:true，三者不混用；没有勾选不等于全部。数量含义分开：targetCount是当前测试集交付目标，overallTargetCount是多测试集合计目标，outputCount仅为本次新增量。首次明确目标先保存plan_task；普通补齐、省略数量和计划重建不能改变当前目标。read_processing报告countUnverified时，先从原始请求和生效要求核对；原话明确可直接plan_task恢复，不明确才问业务数量。不能累加各批请求量、拿现有候选数反推目标，或把八类各50的400填成首类目标。" +
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
-        "现有生成能力仅支持依据真实输入记录扩充，不支持仅凭背景文档或空草稿从零生成。遇到这种请求说明当前能力限制，不能伪造来源、编造种子或反复提交空输入；内部参数错误由你按当前工具合同修正，不要求用户提供工具名、参数或内部ID。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
+        "依据已读取背景文档从零生成使用generate_candidates；基于真实记录扩充使用submit_processing，两者的输入合同不同，不要求用户补种子或把背景当资产。内部参数错误由你按当前工具合同修正，不能用question把工具参数错误转交用户，不要求用户提供工具名、参数或内部ID。只给方案时保存完整plan后说明步骤，不询问是否同意先给方案；本轮用户已明确执行时直接启用execute，不复述历史问题要求再次开工确认。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
         "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。本轮用户意图先于旧计划：只解释或暂停时先plan_task设置nextAction:none，再按需只读；只给方案设plan并仅查询；明确继续执行时设execute，不重复开工确认。暂停只停止后续派发，不代表已入队任务已取消；要取消运行请使用页面现有停止任务入口，不谎称已经取消。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不能解除暂停或构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +
@@ -4437,6 +4455,7 @@ export async function executeAssistantTurn(
     }
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
+    if (await finishSavedPlanningTurn()) return;
     if (await finishExhaustedProcessing()) return;
     if (textualCall(response.text))
       throw new AssistantError(422, "assistant_result_incomplete");

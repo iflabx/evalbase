@@ -389,7 +389,8 @@ export async function readProcessingTask(
     const raw = {
       ...data,
       run: rawRun,
-      rootOperation: rawRun.options.operation,
+      rootOperation:
+        slice[0]?.original?.adoptionOperation ?? data.rootOperation,
       records: slice.map((row) => ({
         ...row,
         id: (row as unknown as { localId: string }).localId || row.id,

@@ -108,6 +108,57 @@ describe("OPT-23 verified definition references", () => {
 });
 
 describe("OPT-10 document definitions", () => {
+  it("OPT29 treats a physical line citation with literal text as a fresh quote, never as a reusable token", () => {
+    const docs = [
+      {
+        id: "doc",
+        fragments: [
+          {
+            index: 1,
+            text: "### 物流查询\n定义：用户查询配送进度。\n### 退款申请\n定义：用户申请退回已付款项。",
+          },
+        ],
+      },
+    ];
+    const current = {
+      backgroundEvidence: [{ documentId: "doc", fragmentIndex: 1 }],
+    };
+    const quoted = (text: string) => ({
+      classifications: [
+        {
+          field: "metadata",
+          key: "category",
+          basis: "background",
+          allowedValues: ["退款申请"],
+          definitions: [{ value: "退款申请", text, reference: "第1–22行" }],
+        },
+      ],
+    });
+    const resolved = resolveBackgroundDefinitions(
+      current,
+      quoted("用户申请退回已付款项。"),
+      docs,
+      { projectId: "p", actorId: "u" },
+      "s",
+    );
+    expect(resolved.classifications[0].definitions[0]).toEqual({
+      value: "退款申请",
+      text: "用户申请退回已付款项。",
+    });
+    expect(() =>
+      validateBackgroundRules({ ...current, ...resolved }, docs),
+    ).not.toThrow();
+    for (const invalid of ["用户希望退款并投诉商家。", "用户查询配送进度。"])
+      expect(() =>
+        resolveBackgroundDefinitions(
+          current,
+          quoted(invalid),
+          docs,
+          { projectId: "p", actorId: "u" },
+          "s",
+        ),
+      ).toThrow();
+  });
   const documents = [
     {
       id: "doc",

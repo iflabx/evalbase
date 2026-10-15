@@ -21,6 +21,24 @@ const inputs = [
   },
 ];
 describe("model processing output boundary", () => {
+  it("OPT29 writes expected behavior as criteria rather than invented performed actions", () => {
+    const prompt = processingPrompt(
+      [],
+      processingOptions({
+        operation: "generate",
+        instructions: "按文档生成",
+        outputCount: 5,
+        allowedFields: ["question", "expectedOutput", "metadata"],
+      }),
+      5,
+    );
+    expect(prompt.system).toContain(
+      "expectedOutput describes evaluation criteria",
+    );
+    expect(prompt.system).toContain(
+      "Never assert that contact, queries, feedback, refunds or other external actions have already happened",
+    );
+  });
   it("adds only authorized classification keys without relabeling sources to satisfy quotas", () => {
     const options = processingOptions({
       operation: "rewrite",

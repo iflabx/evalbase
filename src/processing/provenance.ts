@@ -173,7 +173,12 @@ export async function processingHistory(
   scope: ProcessingScope,
   requests: { runId: string; inputId: string }[],
 ) {
-  type Run = { input: InputSnapshot; operation: string; createdAt: string };
+  type Run = {
+    input: InputSnapshot;
+    operation: string;
+    createdAt: string;
+    taskBefore: { key: string; runId: string; resultId: string }[];
+  };
   const runs = new Map<string, Run | null>(),
     batches = new Map<string, { sourceIds: string[]; indices: number[] }>();
   const key = (row: { runId: string; inputId: string }) =>
@@ -190,7 +195,7 @@ export async function processingHistory(
     );
     if (ids.length) {
       const rows = await db.query(
-        "SELECT id,source,options,input_ref,created_at FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[]) AND (cardinality(background_document_ids)=0 OR actor_id=$3)",
+        "SELECT id,source,options,input_ref,created_at,task_before FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[]) AND (cardinality(background_document_ids)=0 OR actor_id=$3)",
         [scope.projectId, ids, scope.actorId],
       );
       ids.forEach((id) => runs.set(id, null));
@@ -206,6 +211,7 @@ export async function processingHistory(
               ),
               operation: row.options.operation,
               createdAt: row.created_at,
+              taskBefore: row.task_before ?? [],
             });
         } catch (error) {
           if (!(error instanceof ProcessingError)) throw error;
@@ -221,7 +227,11 @@ export async function processingHistory(
       const history = histories.get(row.origin)!;
       const run = runs.get(row.runId),
         input = run?.input.records.find((record) => record.id === row.inputId);
-      if (!run || !input || row.visited.has(row.runId)) {
+      if (
+        !run ||
+        (!input && run.operation !== "generate") ||
+        row.visited.has(row.runId)
+      ) {
         history.unshift({ label: "部分处理过程未记录", kind: "processing" });
         continue;
       }
@@ -239,7 +249,16 @@ export async function processingHistory(
         (run.input.continuation?.kind === "continue"
           ? run.input.continuation.parentRunId
           : run.input.continuation?.inputParentRunId);
-      if (parentId && row.inputId.startsWith("candidate:"))
+      const taskParent = input?.taskRecordKey
+        ? run.taskBefore.find((ref) => ref.key === input.taskRecordKey)
+        : undefined;
+      if (taskParent?.resultId)
+        parents.push({
+          current: row,
+          runId: taskParent.runId,
+          resultId: taskParent.resultId,
+        });
+      else if (parentId && row.inputId.startsWith("candidate:"))
         parents.push({
           current: row,
           runId: parentId,
@@ -432,7 +451,7 @@ export async function presentSources(
               documentOrigin: documentOrigins.get(runId),
               operation: run.operation,
               runId,
-              inputId: original?.id,
+              inputId: original?.id ?? row.locator?.inputId,
               generated:
                 (run.input.continuation?.rootOperation ??
                   run.input.refinement?.rootOperation ??
@@ -517,11 +536,7 @@ export async function presentSources(
         ...node.documentOrigin,
         steps: [
           ...node.documentOrigin.steps,
-          {
-            label: operationLabels[node.operation ?? ""] ?? "已处理",
-            href: node.runHref,
-            kind: "processing",
-          },
+          ...(histories.get(`${node.runId}\0${node.inputId}`) ?? []),
           { label: node.name, href: node.href, kind: "saved" },
           ...(node.savedTarget
             ? [{ ...node.savedTarget, kind: "saved" as const }]

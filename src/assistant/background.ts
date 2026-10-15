@@ -150,6 +150,34 @@ export function resolveBackgroundDefinitions(
       ...rule,
       definitions: rule.definitions?.map((definition: any) => {
         if (!definition.reference) return definition;
+        // A physical citation is not a server-issued token. A fresh literal
+        // quote can still be verified against this session's cited fragments.
+        if (
+          definition.text &&
+          !definition.reference.startsWith("definition:") &&
+          current.backgroundEvidence?.length &&
+          rule.basis !== "user" &&
+          definition.basis !== "user"
+        ) {
+          const quoted = { ...definition };
+          delete quoted.reference;
+          validateBackgroundRules(
+            {
+              ...current,
+              classifications: [
+                {
+                  ...rule,
+                  allowedValues: [quoted.value],
+                  requiredValues: [],
+                  quotas: [],
+                  definitions: [quoted],
+                },
+              ],
+            },
+            documents,
+          );
+          return quoted;
+        }
         const ref = available.find(
           (entry) =>
             entry.reference === definition.reference &&

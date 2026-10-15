@@ -16504,6 +16504,99 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   }
+  it("OPT29 repairs a malformed generation plan instead of asking the user to confirm it again", async () => {
+    const previous = sessionId;
+    try {
+      await opt29Background();
+      const start = calls.length;
+      const generation = {
+        title: "生成第一类5条",
+        action: "generate_candidates",
+        input: {
+          name: `OPT29-repair-${randomUUID()}`,
+          instructions: "按文档生成5条完整问题",
+          outputCount: 5,
+        },
+      };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            steps: [generation, { ...generation, title: "生成第二类5条" }],
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            question: "是否确认按附件分两步执行？",
+            nextAction: "generate_candidates",
+          },
+        },
+        {
+          name: "plan_task",
+          input: { executionMode: "plan", steps: [generation] },
+        },
+      ];
+      const state = await opt21End(await opt21Submit("按附件生成，先给方案"));
+      expect(state.task.question).toBeNull();
+      expect(state.task.executionPlan.mode).toBe("plan");
+      expect(
+        state.turns
+          .at(-1)
+          .tools.filter(
+            (t: any) => t.name === "plan_task" && t.status === "failed",
+          ),
+      ).toHaveLength(2);
+      const modelContext = JSON.stringify(calls.slice(start));
+      expect(modelContext).not.toContain("不支持仅凭背景文档或空草稿从零生成");
+      expect(modelContext).toContain("不能用question把工具参数错误转交用户");
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+    }
+  });
+  it("OPT29 still pauses for a real business clarification after a parameter error and a read", async () => {
+    const previous = sessionId;
+    try {
+      const doc = await opt29Background();
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            steps: [
+              {
+                title: "创建草稿",
+                action: "create_draft",
+                input: { name: "不应创建", instructions: "invalid" },
+              },
+            ],
+          },
+        },
+        { name: "read_background", input: { documentId: doc.id } },
+        {
+          name: "plan_task",
+          input: {
+            question: "文档有八类，你想先做哪一类？",
+            nextAction: "none",
+          },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit("按文档选一类生成，类别我还没定"),
+      );
+      expect(state.task.question).toBe("文档有八类，你想先做哪一类？");
+      expect(state.task.stage).toBe("waiting_input");
+      expect(state.task.nextAction).toBeNull();
+      expect(state.task.runId).toBeUndefined();
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+    }
+  });
   it.each([5, 50])(
     "OPT29 plans and generates %i source-free candidates, reviews and confirms into its own draft",
     async (count) => {
@@ -16656,6 +16749,32 @@ describe("project assistant public contract", () => {
         expect(candidates.json().records[0].sourcePresentation.label).toContain(
           "依据背景文档生成",
         );
+        const checkGenerationProvenance = async () => {
+          for (const url of [
+            `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+            `/api/projects/${projectId}/processing-tasks/${runId}`,
+          ]) {
+            const response = await app.inject({ method: "GET", url, headers });
+            expect(response.statusCode, response.body).toBe(200);
+            for (const record of response.json().records) {
+              expect(record.sourcePresentation.label).toBe("依据背景文档生成");
+              const history = record.sourcePresentation.steps.filter(
+                (step: any) => step.kind === "processing",
+              );
+              expect(
+                history.some(
+                  (step: any) =>
+                    step.label === "依据背景文档生成" && step.occurredAt,
+                ),
+                JSON.stringify({ url, record }),
+              ).toBe(true);
+              expect(
+                history.some((step: any) => step.label.includes("未记录")),
+              ).toBe(false);
+            }
+          }
+        };
+        await checkGenerationProvenance();
         const refresh = await app.inject({
           method: "GET",
           url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
@@ -16721,6 +16840,7 @@ describe("project assistant public contract", () => {
               headers,
             })
           ).json();
+          await checkGenerationProvenance();
           expect(new Set(after.allIds)).toEqual(new Set(before.allIds));
           for (const actual of after.records) {
             const old = before.records.find((x: any) => x.id === actual.id);
