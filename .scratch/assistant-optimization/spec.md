@@ -1,4 +1,6 @@
-2026-10-15 最新文档：Owner 确认新增 [OPT-32](issues/32-tool-argument-repair.md) 调用前参数纠错、[OPT-33](issues/33-document-classification-and-short-plan.md) 文档分类引用与短提示规划，并扩充 [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) 的内容一致性与有限修复。开发顺序为 OPT-32 → OPT-33 → OPT-31；OPT-32 已按后续授权实施并完成本轮收尾补修，Owner pending；OPT-33、OPT-31 仍 not-started。共同边界和验证安排见 [补修说明](../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。
+2026-10-15 最新实施：[OPT-33](issues/33-document-classification-and-short-plan.md) 已完成通用文档分类引用、短提示可执行方案及实际要求保存；应用 f411325631bdad8ccd160c5b2a81d4c5261d3247 已更新同一4217 Web，现有验收数据保留。82个不同定向用例、最终六种固定文档复测、全部开发失败及场景人工核对见[验证记录](opt33-verification.md)。Implementation completed，Owner pending；OPT-31 保持 not-started。
+
+2026-10-15 最新文档：Owner 确认新增 [OPT-32](issues/32-tool-argument-repair.md) 调用前参数纠错、[OPT-33](issues/33-document-classification-and-short-plan.md) 文档分类引用与短提示规划，并扩充 [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) 的内容一致性与有限修复。开发顺序为 OPT-32 → OPT-33 → OPT-31；OPT-32 已按后续授权实施并完成本轮收尾补修，Owner pending；OPT-33 已按后续授权实施，Owner pending；OPT-31 仍 not-started。共同边界和验证安排见 [补修说明](../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。
 
 2026-10-15 最新实施：[OPT-30](issues/30-generation-diversity-and-recovery.md) 已完成场景分配、真实缺额补齐与根目标共享额度；固定应用 `94177609b4eb` 已更新同一4217并保留数据。33项定向用例和通用5条浏览器采用通过；GB规划与类别语义审核仍有未通过项，不能视为整体助手验收通过，详见[验证记录](opt30-verification.md)。Implementation completed，Owner pending；OPT-31保持not-started。
 
@@ -106,7 +108,7 @@ Implementation: in-progress
 | [OPT-30](issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性与有界重复补齐 | OPT-29 | completed | 2026-10-15 实现及同一4217交付；Owner pending，GB规划/语义未全通过，见验证记录 |
 | [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33 | not-started | 2026-10-15 更新范围及依赖；Owner pending，验收未执行 |
 | [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | completed | [实现及收尾补修验证](opt32-verification.md)；4217 Web 2cdd519，Owner pending；已保存要求的收尾回放通过，纯文本确认未保存仍留作短提示问题，整体未签通过 |
-| [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划 | OPT-32 | not-started | 2026-10-15 新建文档；Owner pending，验收未执行 |
+| [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划及实际要求保存 | OPT-32 已完成 | completed | [实施及定向验证](opt33-verification.md)；同一4217 Web f411325，Owner pending，候选质量留 OPT-31 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

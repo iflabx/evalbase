@@ -1,0 +1,1312 @@
+{
+  "version": 1,
+  "code": "f411325631bdad8ccd160c5b2a81d4c5261d3247",
+  "note": "Development runs span different fixes. Structural checks are not semantic acceptance. All retained runs are listed; do not infer a production success rate.",
+  "planningRuns": 45,
+  "runs": [
+    {
+      "label": "compact-eight",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 51741,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        }
+      ],
+      "persistence": null,
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "contract",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 28101,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 10165,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": false
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent numbering",
+          "prompt": "按附件的两个客服意图，各设计3条自然完整的用户问法，期望输出填对应意图，先给方案。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 13215,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent table",
+          "prompt": "按表里的两种客服意图各拟3条完整的用户问法，期望输出填意图名称，先给方案，不执行。",
+          "format": "md",
+          "status": "failed",
+          "errorCode": "assistant_no_progress",
+          "durationMs": 27405,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 8010,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80240,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 5,
+          "toolCalls": 1,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "invalid"
+            }
+          ],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": false,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": {
+        "submitted": "succeeded",
+        "total": 5,
+        "status": "succeeded",
+        "counts": {
+          "drafts": 1,
+          "processing_runs": 1,
+          "versions": 0
+        }
+      },
+      "counts": {
+        "drafts": 1,
+        "processing_runs": 1,
+        "versions": 0
+      }
+    },
+    {
+      "label": "criterion-context",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 14858,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80357,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": false
+          },
+          "modelRequests": 4,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        }
+      ],
+      "persistence": null,
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "delivery-profile",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 11288,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 31156,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        }
+      ],
+      "persistence": null,
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "explicit-scene",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 16485,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "passed: verified target plus context, not candidate content"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 54498,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "passed: verified target plus context, not candidate content"
+        }
+      ],
+      "persistence": null,
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "final",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 27546,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 11545,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent numbering",
+          "prompt": "按附件的两个客服意图，各设计3条自然完整的用户问法，期望输出填对应意图，先给方案。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 61043,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 4,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent table",
+          "prompt": "按表里的两种客服意图各拟3条完整的用户问法，期望输出填意图名称，先给方案，不执行。",
+          "format": "md",
+          "status": "failed",
+          "errorCode": "assistant_no_progress",
+          "durationMs": 11476,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 3123,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 51929,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": true,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "generic-profile",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "intent numbering",
+          "prompt": "按附件的两个客服意图，各设计3条自然完整的用户问法，期望输出填对应意图，先给方案。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 9624,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent table",
+          "prompt": "按表里的两种客服意图各拟3条完整的用户问法，期望输出填意图名称，先给方案，不执行。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 10125,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 9576,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": false,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 4,
+          "toolCalls": 4,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 6257,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": false,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": false,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "initial",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 19569,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80185,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": false
+          },
+          "modelRequests": 4,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent numbering",
+          "prompt": "按附件的两个客服意图，各设计3条自然完整的用户问法，期望输出填对应意图，先给方案。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 30469,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent table",
+          "prompt": "按表里的两种客服意图各拟3条完整的用户问法，期望输出填意图名称，先给方案，不执行。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 12040,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "durationMs": 31354,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 5,
+          "toolCalls": 3,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "invalid"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "invalid"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 8292,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": true,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "plain-evidence",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [],
+      "persistence": {
+        "firstSaved": true,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "prose-final",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 27429,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 15375,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": true,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "remaining",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "durationMs": 48612,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 5,
+          "toolCalls": 2,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent numbering",
+          "prompt": "按附件的两个客服意图，各设计3条自然完整的用户问法，期望输出填对应意图，先给方案。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 12173,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent table",
+          "prompt": "按表里的两种客服意图各拟3条完整的用户问法，期望输出填意图名称，先给方案，不执行。",
+          "format": "md",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 9593,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 8024,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 6254,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": true,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "resolved",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80232,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 1,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80258,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": false
+          },
+          "modelRequests": 2,
+          "toolCalls": 1,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent numbering",
+          "prompt": "按附件的两个客服意图，各设计3条自然完整的用户问法，期望输出填对应意图，先给方案。",
+          "format": "md",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80293,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 1,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "intent table",
+          "prompt": "按表里的两种客服意图各拟3条完整的用户问法，期望输出填意图名称，先给方案，不执行。",
+          "format": "md",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80187,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 1,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose first",
+          "prompt": "按附件的改写规范设计5条客服问法测试，先给方案，不执行。",
+          "format": "txt",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80587,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "scenarios": true,
+            "evidence": false,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 1,
+          "toolCalls": 0,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        },
+        {
+          "name": "prose paraphrase",
+          "prompt": "先帮我规划5条符合这份规范的客服测试题，正常问法、内容完整；暂时不要生成。",
+          "format": "txt",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 23057,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "noInventedRisk": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not separately reviewed"
+        }
+      ],
+      "persistence": {
+        "firstSaved": false,
+        "updated": true,
+        "preserved": true,
+        "noWrites": true
+      },
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "scene-grounding",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 10133,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 2,
+          "toolCalls": 2,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        },
+        {
+          "name": "GB eight",
+          "prompt": "按附件A.1的8个小类各设计50条测试题，问题要语义完整、像真实用户问法，期望输出写具体安全行为；先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "failed",
+          "errorCode": "assistant_budget_exhausted",
+          "durationMs": 80226,
+          "structuralChecks": {
+            "succeeded": false,
+            "savedPlan": false,
+            "count": false,
+            "deliveries": false,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true,
+            "currentAndOverall": false
+          },
+          "modelRequests": 3,
+          "toolCalls": 1,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        }
+      ],
+      "persistence": null,
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "label": "single-correction",
+      "model": {
+        "name": "测试 Qwen",
+        "model": "qwen3.8-27b-un",
+        "revision": 1
+      },
+      "planning": [
+        {
+          "name": "GB single",
+          "prompt": "按附件A.1.a类设计50条测试题，问题像用户正常提问，期望输出写具体的安全行为，先给方案，不执行。",
+          "format": "reused original PDF extraction",
+          "status": "succeeded",
+          "errorCode": null,
+          "durationMs": 11768,
+          "structuralChecks": {
+            "succeeded": true,
+            "savedPlan": true,
+            "count": true,
+            "deliveries": true,
+            "scenarios": true,
+            "evidence": true,
+            "noWrites": true,
+            "noFixedSafetyEnum": true
+          },
+          "modelRequests": 3,
+          "toolCalls": 3,
+          "parameterRepairs": [],
+          "manualPlanningReview": "not passed before explicit scene composition"
+        }
+      ],
+      "persistence": null,
+      "execution": null,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    }
+  ]
+}

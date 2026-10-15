@@ -71,11 +71,11 @@ GB 分类仅为这次验收数据，产品仍支持通用测试集；不内置�
 
 ## 6. 实施状态
 
-方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md)、[OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md) 和 [OPT-28 证据](../.scratch/assistant-optimization/opt28-verification.md)，Owner 验收 pending。OPT-29 已完成依据文档从零生成与预检，真实 5 条和恢复后 50 条及限制见 [OPT-29 证据](../.scratch/assistant-optimization/opt29-verification.md)，Owner pending。OPT-30 已完成数量/场景及共享预算实现，真实内容和 GB 规划仍有未通过项，见 [OPT-30 证据](../.scratch/assistant-optimization/opt30-verification.md)。OPT-31/32/33 均未实施、Owner pending；各张最新状态以台账为准，不将部分实施记为三批全部完成。
+方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md)、[OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md) 和 [OPT-28 证据](../.scratch/assistant-optimization/opt28-verification.md)，Owner 验收 pending。OPT-29 已完成依据文档从零生成与预检，真实 5 条和恢复后 50 条及限制见 [OPT-29 证据](../.scratch/assistant-optimization/opt29-verification.md)，Owner pending。OPT-30 已完成数量/场景及共享预算实现，真实内容和 GB 规划仍有未通过项，见 [OPT-30 证据](../.scratch/assistant-optimization/opt30-verification.md)。OPT-32 与 OPT-33 已按后续单张授权完成，实现和定向验证分别见 [OPT-32 证据](../.scratch/assistant-optimization/opt32-verification.md) 与 [OPT-33 证据](../.scratch/assistant-optimization/opt33-verification.md)，Owner pending；OPT-31 尚未开发；各张最新状态以台账为准，不将部分实施记为三批全部完成。
 
 ## 7. 后续补修与 OPT-31 调整
 
-2026-10-15，Owner 确认基于重复参数错误、GB 短提示规划失败和生成类别误标，新建两张前置修复票并补充原 OPT-31；未授权开发。本节覆盖旧记录中“GB 规划和语义问题全部留到 OPT-31 收口”的宽泛安排，旧失败和验证证据保持。
+2026-10-15，Owner 确认基于重复参数错误、GB 短提示规划失败和生成类别误标，新建两张前置修复票并补充原 OPT-31；创建方案时未授权开发，后续实施以上节及台账为准。本节覆盖旧记录中“GB 规划和语义问题全部留到 OPT-31 收口”的宽泛安排，旧失败和验证证据保持。
 
 | 分工 | 唯一负责范围 | 对下一张的交付 |
 | --- | --- | --- |

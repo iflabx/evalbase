@@ -1,10 +1,10 @@
 # OPT-33 文档分类引用与短提示规划修复
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-32
+Implementation: completed
+Blocked by: none
 
-优先级：P1。基于现有 OPT-23/29/30，依赖 [OPT-32](32-tool-argument-repair.md) 的调用前纠错及定向验证。治理入口为 [PRD §7.8](../../../docs/PRD-data-selection-and-assistant.md#78-调用纠错文档规划与内容一致性补修2026-10-15待实施) 和 [补修顺序](../../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。本次仅文档，尚未授权开发。
+优先级：P1。基于现有 OPT-23/29/30，依赖 [OPT-32](32-tool-argument-repair.md) 的调用前纠错及定向验证。治理入口为 [PRD §7.8](../../../docs/PRD-data-selection-and-assistant.md#78-调用纠错文档规划与内容一致性补修2026-10-15待实施) 和 [补修顺序](../../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。方案创建时仅获文档授权；Owner 于 2026-10-15 后续授权实施，实际完成、验证及同一 4217 更新见[验证记录](../opt33-verification.md)。
 
 ## 问题与目标
 
@@ -70,3 +70,5 @@ GB 原文按 `A.1` 标题和 `a)` 等子项排版，当前按完整字符串检�
 - 2026-10-15：Owner 要求补强通用文档覆盖并控制复杂度；增加六类结构/边界矩阵，沿用 GB 加两份小样本。原六次 GB 规划调整为 GB 两次、非 GB 四次；一次 5 条执行及最终唯一 400 条验收保持。仅文档，依赖及实施状态不变。
 
 - 2026-10-15：OPT-32 收尾补修的额外自然短提示探测出现“仅文本确认、没有 plan_task 保存回执”；后续只改数量不能证明首轮语义约束已结构化保存。保留为本票短提示规划的证据，验证时区分回合状态、模型文本与真实保存事实，不增加既定真实调用规模；见[探测记录](../opt32-verification.md#2026-10-15-已保存要求的收尾补修)。本票仍未实施。
+
+- 2026-10-15：Owner 授权 OPT-33 及“仅口头确认、未实际保存要求”的一并修复。应用 f411325631bdad8ccd160c5b2a81d4c5261d3247，定向验证、45次开发规划探测及其失败保留、最终六种固定用例、独立5条执行衔接和同一4217数据保留见[验证记录](../opt33-verification.md)。Implementation completed，Owner pending；OPT-31 未开发，候选内容质量未由本票代签。
