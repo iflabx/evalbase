@@ -721,15 +721,7 @@ export async function executeAssistantTurn(
     if (
       latest?.status === "succeeded" &&
       !unresolvedFailure(tools) &&
-      tools.every((item) =>
-        [
-          "plan_task",
-          "query_project",
-          "read_records",
-          "read_background",
-          "read_processing",
-        ].includes(item.name),
-      ) &&
+      tools.every((item) => item.name === "plan_task") &&
       !plannedAction &&
       !processingEventRunId &&
       !planningCheckpointRequired &&

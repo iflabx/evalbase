@@ -3741,6 +3741,33 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+
+  it("OPT32 follow-up preserves a read answer alongside recorded requirements", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      toolSequence = [
+        { name: "plan_task", input: { requirements: ["保留事实"] } },
+        { name: "query_project", input: { kind: "project" } },
+      ];
+      finalReply = "已记录要求。当前项目是助手合同测试。";
+      const state = (
+        await send("记录保留事实的要求，并告诉我当前项目名称")
+      ).json();
+      expect(state.turns.at(-1).assistantText).toBe(finalReply);
+    } finally {
+      toolSequence = [];
+      finalReply = undefined;
+      sessionId = previous;
+    }
+  });
   it("reserves a final reply after repeated successful queries", async () => {
     const previous = sessionId;
     sessionId = (
