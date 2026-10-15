@@ -79,7 +79,7 @@ export async function processingRecovery(
       b.error_code ||
       b.issues.some((i: { code: string }) => i.code === "missing_output"),
   );
-  const bounded = ["processing-v6", "processing-v7"].includes(
+  const bounded = ["processing-v6", "processing-v7", "processing-v8"].includes(
     run.execution_config.recipeVersion,
   );
   const available = pending.some(

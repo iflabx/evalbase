@@ -9,6 +9,7 @@ export const PLAN_ACTIONS = [
   "create_draft",
   "preview_selection",
   "submit_processing",
+  "generate_candidates",
   "select_candidates",
   "refine_candidates",
   "retry_processing",
@@ -209,6 +210,7 @@ export function revisePlan(
           (prior.action === "create_draft" && prior.receipt?.draftId) ||
           ([
             "submit_processing",
+            "generate_candidates",
             "refine_candidates",
             "retry_processing",
           ].includes(prior.action) &&
@@ -338,6 +340,7 @@ export function advancePlan(
   }
   const processing = [
     "submit_processing",
+    "generate_candidates",
     "refine_candidates",
     "retry_processing",
   ].includes(step.action);
@@ -578,7 +581,10 @@ export function bindTaskInput(
     input.where === undefined
   )
     input.allSelected = true;
-  if (name === "submit_processing" && input.instructions === undefined) {
+  if (
+    ["submit_processing", "generate_candidates"].includes(name) &&
+    input.instructions === undefined
+  ) {
     const requirements = normalizedRequirements(task.requirements ?? []).join(
       "\n",
     );
@@ -600,6 +606,7 @@ export function bindTaskInput(
     )
       input.outputCount ??= task.targetCount ?? undefined;
   }
+  if (name === "generate_candidates") input.outputCount ??= task.targetCount;
   if (name === "plan_task" && input.countKind === "final")
     input.targetDraftId ??=
       task.targetDraftId ?? (target?.kind === "draft" ? target.id : undefined);
@@ -651,6 +658,7 @@ export function availableTaskTools(
     "create_draft",
     "preview_selection",
     "submit_processing",
+    "generate_candidates",
     ...(task.selectionPreview ? ["request_selection_apply"] : []),
     ...(task.target?.kind === "draft" || task.createdDraftId
       ? ["request_publish"]

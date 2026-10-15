@@ -1,8 +1,10 @@
+import { generatesRecords } from "../processing/protocol.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import {
   previewProcessingInput,
   readProcessingRun,
+  processingRunSummary,
 } from "../processing/store.js";
 import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys, candidateKey } from "../processing/adoption.js";
@@ -95,6 +97,14 @@ export async function taskCandidateCollection(
     const current = await processingTaskCandidates(db, artifacts, scope, id);
     states.push({ id: current.id, revision: current.revision });
     const latest = current.runs.find((run) => run.id === current.latestRunId)!;
+    const completedGeneration =
+      latest.source.kind === "background" &&
+      latest.status === "succeeded" &&
+      current.runs.some(
+        (run) =>
+          run.round_kind === "complete" &&
+          processingRunSummary(run).executionComplete,
+      );
     executionRuns.push({ id: latest.id, status: latest.status });
     current.runs.forEach((run) =>
       history.push({
@@ -150,6 +160,14 @@ export async function taskCandidateCollection(
       candidates.push(
         scopeRunToTask(task, {
           ...raw,
+          // Current valid candidates survive a failed generation. A successful explicit
+          // completion resolves its old missing-output diagnostics; history stays raw.
+          ...(completedGeneration && runId !== latest.id
+            ? {
+                run: { ...raw.run, status: latest.status, missingCount: 0 },
+                issues: [],
+              }
+            : {}),
           records: rows,
           allIds: rows.map((row) => row.id),
           total: rows.length,
@@ -685,8 +703,8 @@ export function effectiveTaskRuns(
     .flatMap((data) => {
       const records = data.records.filter((row) => {
         if (
-          data.rootOperation === "augment" ||
-          data.run.options?.operation === "augment"
+          generatesRecords(data.rootOperation) ||
+          generatesRecords(data.run.options?.operation ?? "")
         )
           return true;
         const original = row.original?.baseline ?? row.original;

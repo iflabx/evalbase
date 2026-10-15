@@ -32,6 +32,7 @@ import {
 } from "../server/support.js";
 import {
   processingOptions,
+  generatesRecords,
   PROCESSING_EXECUTION,
   type ProcessingInput,
   type ProcessingOptions,
@@ -66,7 +67,11 @@ export type ProcessingScope = {
 };
 export type ProcessingSource =
   | { kind: "assets"; assetIds: string[]; recordIds: string[] }
-  | { kind: "draft" | "version"; id: string; recordIds: string[] };
+  | {
+      kind: "draft" | "version" | "background";
+      id: string;
+      recordIds: string[];
+    };
 export type CandidateOrigin = { runId: string; resultId: string };
 export type InputSnapshot = {
   deduplicationBaseline?: Pick<
@@ -169,7 +174,19 @@ function strings(value: unknown, maximum: number): value is string[] {
     new Set(value).size === value.length
   );
 }
-function parseSource(value: unknown): ProcessingSource {
+function parseSource(value: unknown, generation = false): ProcessingSource {
+  if (
+    generation &&
+    isPlainObject(value) &&
+    value.kind === "background" &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    value.id.length <= 250 &&
+    Array.isArray(value.recordIds) &&
+    !value.recordIds.length &&
+    Object.keys(value).every((key) => ["kind", "id", "recordIds"].includes(key))
+  )
+    return { kind: "background", id: value.id, recordIds: [] };
   if (!isPlainObject(value) || !strings(value.recordIds, 10000))
     throw new ProcessingError(422, "processing_scope_invalid");
   if (
@@ -262,7 +279,23 @@ export async function processingSourceRows(
         )
       ).rows
     : [];
-  return { assets: assetRows, version: versionRows, draft: draftRows };
+  const sessions = sources.flatMap((source) =>
+    source.kind === "background" ? [source.id] : [],
+  );
+  const background = sessions.length
+    ? (
+        await db.query(
+          `SELECT s.id FROM assistant_session s WHERE s.project_id=$1 AND s.id=ANY($2::text[]) AND EXISTS(SELECT 1 FROM assistant_background_document d WHERE d.session_id=s.id) ${lock ? "FOR SHARE OF s" : ""}`,
+          [projectId, sessions],
+        )
+      ).rows
+    : [];
+  return {
+    assets: assetRows,
+    version: versionRows,
+    draft: draftRows,
+    background,
+  };
 }
 
 // Read availability on every body access; a saved snapshot does not bypass recycling or deletion.
@@ -289,6 +322,7 @@ async function snapshot(
   source: ProcessingSource,
 ): Promise<InputSnapshot> {
   await processingSourceAvailable(client, projectId, source, true);
+  if (source.kind === "background") return { source, records: [] };
   let records: InputSnapshot["records"];
   let revision: number | undefined;
   if (source.kind === "assets") {
@@ -378,10 +412,9 @@ async function snapshot(
 }
 
 function missingCount(row: ProcessingRun) {
-  const expected =
-    row.options.operation === "augment"
-      ? (row.options.outputCount ?? row.input_count)
-      : row.input_count;
+  const expected = generatesRecords(row.options.operation)
+    ? (row.options.outputCount ?? row.input_count)
+    : row.input_count;
   return Math.max(0, expected - Number(row.output_count ?? 0));
 }
 
@@ -462,13 +495,19 @@ export async function createProcessingRun(
         input.targetDraftId.length > 250))
   )
     throw new ProcessingError(422, "processing_request_invalid");
-  const source = parseSource(input.source);
   let options: ProcessingOptions;
   try {
     options = processingOptions(input.options);
   } catch {
     throw new ProcessingError(422, "processing_configuration_invalid");
   }
+  const source = parseSource(input.source, options.operation === "generate");
+  if (
+    (options.operation === "generate") !== (source.kind === "background") ||
+    (source.kind === "background" &&
+      source.id !== scope.assistantGuard?.sessionId)
+  )
+    throw new ProcessingError(422, "processing_scope_invalid");
   const target =
     typeof input.targetDraftId === "string"
       ? input.targetDraftId
@@ -549,7 +588,7 @@ export async function createProcessingRun(
     )
       throw new ProcessingError(409, "processing_source_unavailable");
     if (
-      options.operation === "augment" &&
+      generatesRecords(options.operation) &&
       (target || source.kind === "draft")
     ) {
       const baseline = await client.query(
@@ -582,6 +621,12 @@ export async function createProcessingRun(
       );
       if (background) data.background = background;
     }
+    if (
+      options.operation === "generate" &&
+      !data.background?.documents.length
+    ) {
+      throw new ProcessingError(422, "assistant_background_required");
+    }
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     const inputBytes = Buffer.from(canonicalJson(data));
@@ -611,7 +656,13 @@ export async function createProcessingRun(
         data.records.length,
         modelRevision,
         target,
-        PROCESSING_EXECUTION,
+        {
+          ...PROCESSING_EXECUTION,
+          recipeVersion:
+            options.operation === "generate"
+              ? "processing-v8"
+              : PROCESSING_EXECUTION.recipeVersion,
+        },
         data.background?.documents.map((document) => document.id) ?? [],
       ],
     );
@@ -875,7 +926,16 @@ export async function readProcessingRun(
               runId,
               resultId: `${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
             },
-            original: originals.get(result.records[i].sourceId),
+            original:
+              originals.get(result.records[i].sourceId) ??
+              (run.options.operation === "generate"
+                ? ({
+                    id: result.records[i].sourceId,
+                    question: result.records[i].question,
+                    expectedOutput: result.records[i].expectedOutput,
+                    metadata: result.records[i].metadata,
+                  } as InputSnapshot["records"][number])
+                : undefined),
             result: result.records[i],
           });
     }
@@ -916,7 +976,7 @@ export async function readProcessingRun(
           records
             .filter((row) => row.result.question.trim())
             .map((row) => ({ id: row.id, ...row.result })),
-          run.options.operation === "augment"
+          generatesRecords(run.options.operation)
             ? [...input.records, ...(input.deduplicationBaseline ?? [])]
             : [],
         ).keptIds.length
@@ -1210,5 +1270,46 @@ export async function previewProcessingInput(
     throw error;
   } finally {
     client.release();
+  }
+}
+
+export async function preflightDocumentGeneration(
+  db: Pick<Database, "query">,
+  scope: ProcessingScope,
+  options?: ProcessingOptions,
+) {
+  await processingAccess(db, scope);
+  if (!scope.assistantGuard)
+    throw new ProcessingError(422, "processing_scope_invalid");
+  await guardAssistantCommit(db, scope);
+  const documents = await db.query(
+    `SELECT d.id FROM assistant_background_document d JOIN assistant_session s ON s.id=d.session_id WHERE s.id=$1 AND s.project_id=$2 AND s.actor_id=$3`,
+    [scope.assistantGuard.sessionId, scope.projectId, scope.actorId],
+  );
+  if (!documents.rowCount)
+    throw new ProcessingError(422, "assistant_background_required");
+  const model = await db.query(
+    "SELECT enabled FROM model_connection ORDER BY revision DESC LIMIT 1",
+  );
+  if (!model.rows[0]?.enabled)
+    throw new ProcessingError(409, "model_connection_unavailable");
+  if (options) {
+    const frozen = await freezeBackground(
+      db,
+      scope,
+      scope.assistantGuard.sessionId,
+      {
+        options,
+        records: [],
+        source: {
+          kind: "background",
+          id: scope.assistantGuard.sessionId,
+          recordIds: [],
+        },
+      },
+    );
+    if (!frozen?.documents.length)
+      throw new ProcessingError(422, "assistant_background_required");
+    return frozen;
   }
 }

@@ -1077,11 +1077,15 @@ export async function recoverAssistantReceipt(
         url: `/projects/${scope.projectId}/test-sets/drafts/${row.id}`,
       };
     }
-  } else if (["submit_processing", "refine_candidates"].includes(item.name)) {
+  } else if (
+    ["submit_processing", "generate_candidates", "refine_candidates"].includes(
+      item.name,
+    )
+  ) {
     await assistantAccess(db, scope, true);
     const rows = (
       await db.query(
-        "SELECT r.id,r.source,r.input_ref,r.input_count,j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND (r.idempotency_key=$3 OR ($4 AND left(r.idempotency_key,length($3)+1)=$3||':')) ORDER BY (r.idempotency_key=$3) DESC,r.created_at,r.id",
+        "SELECT r.id,r.source,r.input_ref,r.input_count,r.target_draft_id,j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND (r.idempotency_key=$3 OR ($4 AND left(r.idempotency_key,length($3)+1)=$3||':')) ORDER BY (r.idempotency_key=$3) DESC,r.created_at,r.id",
         [
           scope.projectId,
           scope.actorId,
@@ -1105,7 +1109,9 @@ export async function recoverAssistantReceipt(
                 kind: "asset" as const,
                 id,
               }))
-            : [{ kind: found.source.kind, id: found.source.id }]),
+            : found.source.kind === "background"
+              ? []
+              : [{ kind: found.source.kind, id: found.source.id }]),
         );
       }
       result = {
@@ -1113,6 +1119,9 @@ export async function recoverAssistantReceipt(
         ...(rows.length > 1 ? { runIds: rows.map((found) => found.id) } : {}),
         status: row.status,
         inputCount: row.input_count,
+        ...(item.name === "generate_candidates"
+          ? { draftId: row.target_draft_id }
+          : {}),
         recovered: true,
         url: `/projects/${scope.projectId}/processing?run=${row.id}`,
       };

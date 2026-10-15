@@ -1119,3 +1119,77 @@ for (const latestError of ["assistant_tool_input_invalid", "assistant_no_progres
     ).toBe(true);
   });
 }
+
+test("OPT29 document generation reuses result review and clear source labels", async ({
+  page,
+}, info) => {
+  await fixture(page, {
+    task: {
+      goal: "依据文档生成",
+      stage: "awaiting_review",
+      runId: "generated",
+      targetCount: 50,
+      overallTargetCount: 400,
+      requirementSummary: ["新增候选：50 条", "整体交付：400 条（当前测试集单独核对）"],
+    },
+    messages: [
+      {
+        ...turn("generated", "已生成本类候选，请审核内容。"),
+        tools: [
+          {
+            key: "generate",
+            name: "generate_candidates",
+            status: "succeeded",
+            result: { runId: "generated" },
+          },
+        ],
+      },
+    ],
+    intercept: async (route) => {
+      if (!new URL(route.request().url()).pathname.endsWith("/candidates")) return false;
+      await route.fulfill({
+        json: {
+          scope: "task",
+          rootOperation: "generate",
+          reviewRevision: "a".repeat(64),
+          taskTotal: 1,
+          total: 1,
+          allIds: ["generated:0:0"],
+          savedCount: 0,
+          stats: { all: 1, changed: 1, needsReview: 0 },
+          records: [
+            {
+              id: "generated:0:0",
+              result: {
+                question: "如何核验这条消息是否可靠？",
+                expectedOutput: "提供交叉核验方法",
+                metadata: [{ key: "类别", value: "A.1.a" }],
+              },
+              changedFields: ["new"],
+              sourcePresentation: {
+                label: "依据背景文档生成",
+                generated: true,
+                badges: [],
+                steps: [{ label: "背景.pdf · 第 2 页", kind: "reference", href: `${url}/one` }],
+              },
+            },
+          ],
+          history: [
+            { runId: "generated", round: 1, operation: "generate", status: "succeeded", count: 1 },
+          ],
+        },
+      });
+      return true;
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByRole("button", { name: /^(工作区|打开工作区)$/ }).click();
+  const results = page.getByRole("region", { name: "候选结果" });
+  await expect(results).toContainText("如何核验这条消息是否可靠？");
+  await expect(results).toContainText("依据背景文档生成");
+  await results.getByText("处理历史", { exact: false }).click();
+  await expect(results).toContainText("依据文档生成");
+  await page.screenshot({ path: info.outputPath("document-generation.png"), fullPage: true });
+  await page.setViewportSize({ width: 420, height: 900 });
+  await overflow(page);
+});

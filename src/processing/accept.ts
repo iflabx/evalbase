@@ -17,7 +17,11 @@ import {
   type ProcessingScope,
   type InputSnapshot,
 } from "./store.js";
-import type { ProcessingOutput, ProcessingResult } from "./protocol.js";
+import {
+  generatesRecords,
+  type ProcessingOutput,
+  type ProcessingResult,
+} from "./protocol.js";
 
 const sortedIds = (ids: string[]) =>
   ids
@@ -88,7 +92,17 @@ export async function selectedProcessingGroup(
     continuation: Boolean(snapshot.continuation),
     selected: ids.map((id) => {
       const row = available.get(id),
-        input = row && original.get(row.sourceId);
+        input =
+          row &&
+          (original.get(row.sourceId) ??
+            (run.options.operation === "generate"
+              ? ({
+                  id: row.sourceId,
+                  question: row.question,
+                  expectedOutput: row.expectedOutput,
+                  metadata: row.metadata,
+                } as InputSnapshot["records"][number])
+              : undefined));
       if (!row || !input)
         throw new ProcessingError(422, "processing_result_invalid");
       return {
@@ -141,7 +155,7 @@ export async function previewDeduplication(
     group.run.target_draft_id ??
     (group.run.source.kind === "draft" ? group.run.source.id : null);
   const existing =
-    rows[0]?.rootOperation === "augment" && knownDraft
+    rows[0] && generatesRecords(rows[0].rootOperation) && knownDraft
       ? (
           await db.query(
             "SELECT question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
@@ -163,7 +177,7 @@ export async function previewDeduplication(
     (row) =>
       excludedIds.has(row.id) &&
       row.source.kind === "draft" &&
-      row.rootOperation !== "augment" &&
+      !generatesRecords(row.rootOperation) &&
       !keptOriginals.has(row.originalId),
   );
   return {
@@ -485,7 +499,7 @@ export async function acceptProcessingResults(
           (row) =>
             row.source.kind === "draft" &&
             row.source.id === draftId &&
-            row.rootOperation !== "augment",
+            !generatesRecords(row.rootOperation),
         ) &&
         revision !== target.expectedRevision
       )
@@ -506,19 +520,19 @@ export async function acceptProcessingResults(
         draftId !== null &&
         row.source.kind === "draft" &&
         row.source.id === draftId &&
-        row.rootOperation !== "augment",
+        !generatesRecords(row.rootOperation),
     );
     const removingRows = excludedRows.filter(
       (row) =>
         draftId &&
         row.source.kind === "draft" &&
         row.source.id === draftId &&
-        row.rootOperation !== "augment" &&
+        !generatesRecords(row.rootOperation) &&
         (excludedGroups
           ? !selected.some(
               (kept) =>
                 kept.originalId === row.originalId &&
-                kept.rootOperation !== "augment",
+                !generatesRecords(kept.rootOperation),
             )
           : dedupPlan?.removedRecordIds.includes(row.originalId)),
     );
@@ -710,7 +724,7 @@ export async function acceptProcessingResults(
         opaqueId("attr"),
         assetId,
         name,
-        `${{ clean: "清洗", rewrite: "改写", augment: "扩充" }[run.options.operation]}处理结果`,
+        `${{ clean: "清洗", rewrite: "改写", augment: "扩充", generate: "文档生成" }[run.options.operation]}处理结果`,
         scope.actorId,
       ],
     );

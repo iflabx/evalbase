@@ -329,7 +329,11 @@ export function validateProcessingRequirements(
         ));
     return !editable;
   });
-  if (records.some((row) => row.raw !== undefined)) return;
+  if (
+    options.operation === "generate" ||
+    records.some((row) => row.raw !== undefined)
+  )
+    return;
   const valueOf = (row: ProcessingInput, rule: Rule) =>
     rule.field === "expectedOutput"
       ? row.expectedOutput

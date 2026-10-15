@@ -110,7 +110,7 @@ type Run = {
   id: string;
   source: { kind: string; id?: string };
   options: {
-    operation: "clean" | "rewrite" | "augment";
+    operation: "clean" | "rewrite" | "augment" | "generate";
     instructions: string;
     allowedFields?: string[];
     metadataKeys?: string[];
@@ -585,7 +585,10 @@ function ProcessingPage() {
                                     className="mt-0.5 max-w-sm truncate pl-6 text-xs text-muted-foreground"
                                     title={run.options.instructions}
                                   >
-                                    第 {run.roundCount ?? 1} 轮 · {labels[run.options.operation]}
+                                    第 {run.roundCount ?? 1} 轮 ·{" "}
+                                    {run.options.operation === "generate"
+                                      ? "依据文档生成"
+                                      : labels[run.options.operation]}
                                   </p>
                                   {!run.roundCount && run.parentRunId && (
                                     <p className="mt-1 pl-6 text-xs text-muted-foreground">
@@ -753,7 +756,7 @@ function ProcessingForm({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const operationConfigs = useRef(saved?.operationConfigs ?? restoredSettings.current);
-  function switchOperation(next: Run["options"]["operation"]) {
+  function switchOperation(next: "clean" | "rewrite" | "augment") {
     if (next === operation) return;
     operationConfigs.current[operation] = {
       instructions,
@@ -874,7 +877,7 @@ function ProcessingForm({
     setSelected(new Set(input.data.allIds));
     if (rerun && input.data.parent) {
       const options = input.data.parent.options;
-      setOperation(options.operation);
+      setOperation(options.operation === "generate" ? "rewrite" : options.operation);
       setInstructions(options.instructions);
       setAllowedFields(options.allowedFields ?? ["question"]);
       setMetadataKeys(options.metadataKeys);
@@ -1036,46 +1039,54 @@ function ProcessingForm({
             处理 {visibleInput?.sourceSummary?.name ?? "数据"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} · {visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条
+            {visibleInput?.sourceSummary?.kindLabel ?? "来源读取中"} ·{" "}
+            {visibleInput?.sourceTotal ?? visibleInput?.total ?? 0} 条
           </p>
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
-            {followup && visibleInput?.parent && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost">上一轮要求</Button>
-                </PopoverTrigger>
-                <PopoverContent aria-label="上一轮处理要求" align="end" className="max-h-[60vh] w-[min(24rem,calc(100vw-2rem))] space-y-2 overflow-y-auto">
-                  <h2 className="text-sm font-semibold">上一轮处理要求</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {labels[visibleInput.parent.options.operation]} · {new Date(visibleInput.parent.createdAt).toLocaleString()}
-                  </p>
-                  <p className="whitespace-pre-wrap break-words border-t pt-2 text-sm">
-                    {visibleInput.parent.options.instructions || "未填写要求"}
-                  </p>
-                </PopoverContent>
-              </Popover>
-            )}
-            <Button variant="ghost" asChild>
-              <Link
-                to="/projects/$projectId/processing"
-                params={{ projectId }}
-                search={
-                  followup
-                    ? { run: String(source["id"]) }
-                    : { source: undefined, sourceId: undefined, run: undefined }
-                }
+          {followup && visibleInput?.parent && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost">上一轮要求</Button>
+              </PopoverTrigger>
+              <PopoverContent
+                aria-label="上一轮处理要求"
+                align="end"
+                className="max-h-[60vh] w-[min(24rem,calc(100vw-2rem))] space-y-2 overflow-y-auto"
               >
-                {followup ? "返回上次结果" : "返回处理任务"}
-              </Link>
+                <h2 className="text-sm font-semibold">上一轮处理要求</h2>
+                <p className="text-xs text-muted-foreground">
+                  {visibleInput.parent.options.operation === "generate"
+                    ? "依据文档生成"
+                    : labels[visibleInput.parent.options.operation]}{" "}
+                  · {new Date(visibleInput.parent.createdAt).toLocaleString()}
+                </p>
+                <p className="whitespace-pre-wrap break-words border-t pt-2 text-sm">
+                  {visibleInput.parent.options.instructions || "未填写要求"}
+                </p>
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button variant="ghost" asChild>
+            <Link
+              to="/projects/$projectId/processing"
+              params={{ projectId }}
+              search={
+                followup
+                  ? { run: String(source["id"]) }
+                  : { source: undefined, sourceId: undefined, run: undefined }
+              }
+            >
+              {followup ? "返回上次结果" : "返回处理任务"}
+            </Link>
+          </Button>
+          {visibleInput?.sourceSummary?.href && (
+            <Button variant="outline" asChild>
+              <a href={visibleInput.sourceSummary.href} target="_blank" rel="noopener noreferrer">
+                查看来源
+              </a>
             </Button>
-            {visibleInput?.sourceSummary?.href && (
-              <Button variant="outline" asChild>
-                <a href={visibleInput.sourceSummary.href} target="_blank" rel="noopener noreferrer">
-                  查看来源
-                </a>
-              </Button>
-            )}
+          )}
         </div>
       </div>
       {unknownSubmit && (
@@ -1217,7 +1228,15 @@ function ProcessingForm({
                   {selected.size} 条
                   {hidden > 0 && visibleInput ? `（含筛选外 ${hidden} 条，也会提交）` : ""}
                   {followup && (
-                    <span> · {rerun ? "沿用上次完整输入" : taskMode === "saved" ? "仅限草稿已保存范围" : "未选记录保留"}</span>
+                    <span>
+                      {" "}
+                      ·{" "}
+                      {rerun
+                        ? "沿用上次完整输入"
+                        : taskMode === "saved"
+                          ? "仅限草稿已保存范围"
+                          : "未选记录保留"}
+                    </span>
                   )}
                 </p>
               </div>
@@ -1425,7 +1444,11 @@ function ProcessingForm({
                                   纠错和统一格式需填写补充要求；重复检查不会自动删除记录。
                                 </p>
                               )}
-                              <TooltipArrow width={12} height={6} className="fill-popover/95 stroke-border" />
+                              <TooltipArrow
+                                width={12}
+                                height={6}
+                                className="fill-popover/95 stroke-border"
+                              />
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -1437,7 +1460,8 @@ function ProcessingForm({
               </div>
               {customFields && (
                 <p className="text-xs leading-relaxed text-muted-foreground" aria-live="polite">
-                  已调整处理字段：{allowedFields.map((field) => fieldNames[field]).join("、") || "未选择"}
+                  已调整处理字段：
+                  {allowedFields.map((field) => fieldNames[field]).join("、") || "未选择"}
                   {allowedFields.includes("metadata") && metadataKeys?.length
                     ? `（Metadata 仅 ${metadataKeys.join("、")}）`
                     : ""}
@@ -1643,7 +1667,7 @@ function ProcessingRoundHistory({
                     selected={new Set()}
                     onToggle={() => {}}
                     disabled
-                    generated={detail.data?.rootOperation === "augment"}
+                    generated={["augment", "generate"].includes(detail.data?.rootOperation ?? "")}
                     offset={(resultPage - 1) * 20}
                     total={detail.data?.total ?? 0}
                     onPageChange={setResultPage}
@@ -1670,7 +1694,10 @@ function ProcessingRoundHistory({
                     <CardContent className="space-y-2 p-4">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="font-medium">
-                          第 {item.roundNumber} 轮 · {labels[item.options.operation]}
+                          第 {item.roundNumber} 轮 ·{" "}
+                          {item.options.operation === "generate"
+                            ? "依据文档生成"
+                            : labels[item.options.operation]}
                         </h3>
                         <ProcessingStatus run={item} />
                       </div>
@@ -2030,8 +2057,11 @@ function ProcessingResults({
             <div>
               <h2 className="font-semibold">{value.task?.title ?? "当前成果"}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                第 {value.task?.roundCount ?? 1} 轮 · {labels[run.options.operation]} · 当前成果{" "}
-                {value.task?.currentCount ?? value.total} 条
+                第 {value.task?.roundCount ?? 1} 轮 ·{" "}
+                {run.options.operation === "generate"
+                  ? "依据文档生成"
+                  : labels[run.options.operation]}{" "}
+                · 当前成果 {value.task?.currentCount ?? value.total} 条
               </p>
               <div
                 role="status"
@@ -2041,11 +2071,15 @@ function ProcessingResults({
                 <span>
                   {value.task
                     ? `本轮输入 ${run.inputCount} · 输出 ${run.outputCount ?? 0} · 当前未保存 ${value.task.unsavedCount} 条`
-                    : run.options.operation === "augment"
+                    : ["augment", "generate"].includes(run.options.operation)
                       ? `已获得 ${usableCount} / ${run.options.outputCount ?? run.inputCount} 条有效结果`
                       : `已产生 ${run.outputCount ?? value.stats?.all ?? value.total} / ${run.inputCount} 条结果`}
-                  {(run.options.operation === "augment" ? completionMissing : run.missingCount)
-                    ? ` · 尚缺 ${run.options.operation === "augment" ? completionMissing : run.missingCount} 条`
+                  {(
+                    ["augment", "generate"].includes(run.options.operation)
+                      ? completionMissing
+                      : run.missingCount
+                  )
+                    ? ` · 尚缺 ${["augment", "generate"].includes(run.options.operation) ? completionMissing : run.missingCount} 条`
                     : ""}
                   {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
                 </span>
@@ -2076,7 +2110,7 @@ function ProcessingResults({
                   disabled={busy || unknownSave || stale || data.isError}
                   onClick={() => void completeMissing()}
                 >
-                  {run.options.operation === "augment"
+                  {["augment", "generate"].includes(run.options.operation)
                     ? `补齐剩余 ${completionMissing} 条`
                     : "继续处理未完成部分"}
                 </Button>
@@ -2094,9 +2128,21 @@ function ProcessingResults({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => onFollowup("rerun", [])}>
-                      重新运行
-                    </DropdownMenuItem>
+                    {run.source.kind === "background" ? (
+                      <DropdownMenuItem asChild>
+                        <Link
+                          to="/projects/$projectId/assistant/$sessionId"
+                          search={{ sourceKind: undefined, sourceId: undefined }}
+                          params={{ projectId, sessionId: run.source.id! }}
+                        >
+                          返回助手调整生成要求
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => onFollowup("rerun", [])}>
+                        重新运行
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -2491,7 +2537,10 @@ function ProcessingResults({
             disabled={
               !terminal || busy || data.isError || stale || unknownSave || Boolean(deduplication)
             }
-            generated={value.rootOperation === "augment" || run.options.operation === "augment"}
+            generated={
+              ["augment", "generate"].includes(value.rootOperation ?? "") ||
+              ["augment", "generate"].includes(run.options.operation)
+            }
             offset={stale ? (value.offset ?? (page - 1) * 20) : (page - 1) * 20}
             total={value.total}
             pageSize={20}
@@ -2593,7 +2642,7 @@ function ProcessingResults({
                     ? `保存 ${selected.size} 条到独立原始数据文件。`
                     : `向草稿追加 ${selected.size} 条记录。`}{" "}
               {destination === "draft" && deduplication
-                ? `更新 ${value.rootOperation === "augment" ? 0 : selected.size} 条、新增 ${value.rootOperation === "augment" ? selected.size : 0} 条、移除 ${deduplication.removedRecordIds.length} 条重复原记录。`
+                ? `更新 ${["augment", "generate"].includes(value.rootOperation ?? "") ? 0 : selected.size} 条、新增 ${["augment", "generate"].includes(value.rootOperation ?? "") ? selected.size : 0} 条、移除 ${deduplication.removedRecordIds.length} 条重复原记录。`
                 : ""}
               确认后才保存，不会发布版本。
             </DialogDescription>
@@ -2623,7 +2672,9 @@ function ProcessingResults({
                     <SelectItem value="existingDraft">加入已有草稿</SelectItem>
                     {run.source.kind === "draft" && (
                       <SelectItem value="draft">
-                        {run.options.operation === "augment" ? "加入来源草稿" : "更新来源草稿"}
+                        {["augment", "generate"].includes(run.options.operation)
+                          ? "加入来源草稿"
+                          : "更新来源草稿"}
                       </SelectItem>
                     )}
                   </SelectContent>
@@ -2674,7 +2725,8 @@ function ProcessingResults({
             )}
             {destination === "draft" && (
               <p className="text-sm text-muted-foreground">
-                {value.rootOperation === "augment" || run.options.operation === "augment"
+                {["augment", "generate"].includes(value.rootOperation ?? "") ||
+                ["augment", "generate"].includes(run.options.operation)
                   ? "所选生成记录会追加到原草稿，不替换已有记录。"
                   : "只采用本次允许修改的字段。同字段已被他人修改时会停止采用并保留其内容。"}
               </p>

@@ -15,6 +15,7 @@ import { canonicalJson, sha256 } from "../package/contract.js";
 import { configuredModel } from "../model/connection.js";
 import {
   cleanRecords,
+  generatesRecords,
   PROCESSING_EXECUTION,
   processingPrompt,
   validateModelRows,
@@ -82,7 +83,7 @@ function modelRequest(
           rejectedDuplicates: feedback.rejectedDuplicates.slice(-5),
         }
       : {}),
-    ...(distinctBatches && options.operation === "augment" && batch
+    ...(distinctBatches && generatesRecords(options.operation) && batch
       ? {
           augmentationBatch: { ...batch, count: expected },
           augmentationRule:
@@ -103,10 +104,9 @@ function modelRequest(
           })),
         }
       : {}),
-    correctionRule:
-      options.operation === "augment"
-        ? "Return only the missing new records. Do not repeat or rewrite accepted candidates. Count alreadyAccepted toward any category quotas in the original instructions."
-        : "Return exactly one record for each supplied remaining input id. Do not regenerate already accepted records.",
+    correctionRule: generatesRecords(options.operation)
+      ? "Return only the missing new records. Do not repeat or rewrite accepted candidates. Count alreadyAccepted toward any category quotas in the original instructions."
+      : "Return exactly one record for each supplied remaining input id. Do not regenerate already accepted records.",
   };
   let prompt = JSON.stringify(correction);
   // Correction hints may shrink; confirmed requirements, background and source records never do.
@@ -177,6 +177,8 @@ function batches(
         if (!fits([...group, row], i, count)) break;
         group.push(row);
       }
+      if (!inputs.length && !fits([], i, count))
+        throw new ProcessingError(422, "processing_record_too_large");
       result.push({ inputs: group, count });
     }
   } else {
@@ -226,8 +228,11 @@ export async function runProcessing(
     "processing-v5",
     "processing-v6",
     "processing-v7",
+    "processing-v8",
   ].includes(run.execution_config.recipeVersion);
-  const recovery = run.execution_config.recipeVersion === "processing-v7";
+  const recovery = ["processing-v7", "processing-v8"].includes(
+    run.execution_config.recipeVersion,
+  );
   const deduplication =
     recovery || run.execution_config.recipeVersion === "processing-v6";
   const dataOnly = [
@@ -236,6 +241,7 @@ export async function runProcessing(
     "processing-v5",
     "processing-v6",
     "processing-v7",
+    "processing-v8",
   ].includes(run.execution_config.recipeVersion);
   if (
     ![
@@ -246,6 +252,7 @@ export async function runProcessing(
       "processing-v5",
       "processing-v6",
       "processing-v7",
+      "processing-v8",
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
       ...run.execution_config,
@@ -279,12 +286,15 @@ export async function runProcessing(
     warningCount = 0;
   const acceptedContent = new Set<string>();
   const acceptedRows: ProcessingResult["records"] = [];
-  if (deduplication && run.options.operation === "augment") {
+  if (deduplication && generatesRecords(run.options.operation)) {
     for (const row of [
       ...input.records,
       ...(input.deduplicationBaseline ?? []),
     ])
       acceptedContent.add(contentKey(row));
+    if (run.options.operation === "generate")
+      for (const row of input.deduplicationBaseline ?? [])
+        acceptedRows.push({ ...row, sourceId: "previous-candidate" });
     // Seed every preserved batch before resuming an earlier incomplete batch.
     const preserved = await db.query(
       "SELECT result_ref FROM processing_batch WHERE run_id=$1 AND result_ref IS NOT NULL ORDER BY ordinal",
@@ -347,7 +357,7 @@ export async function runProcessing(
     try {
       let result;
       if (!model) result = cleanRecords(group.inputs, run.options);
-      else if (!modelInputs.length)
+      else if (!modelInputs.length && run.options.operation !== "generate")
         result = cleanRecords(group.inputs, {
           ...run.options,
           allowedFields: [],
@@ -371,8 +381,11 @@ export async function runProcessing(
             ) as ProcessingResult)
           : undefined;
         const saved =
-          priorResult?.records.filter((row) => eligible.has(row.sourceId)) ??
-          [];
+          priorResult?.records.filter(
+            (row) =>
+              run.options.operation === "generate" ||
+              eligible.has(row.sourceId),
+          ) ?? [];
         const diagnostics = (priorResult?.issues ?? []).filter((issue) =>
           [
             "invalid_output",
@@ -381,8 +394,12 @@ export async function runProcessing(
             "excess_output",
           ].includes(issue.code),
         );
+        const modelRows = (rows: ProcessingResult["records"]) =>
+          run.options.operation === "generate"
+            ? rows.map(({ sourceId: _id, ...row }) => row)
+            : rows;
         result = validateModelRows(
-          { records: saved },
+          { records: modelRows(saved) },
           modelInputs,
           run.options,
           expected,
@@ -403,10 +420,9 @@ export async function runProcessing(
           const acceptedIds = new Set(
             result.records.map((row) => row.sourceId),
           );
-          const remaining =
-            run.options.operation === "augment"
-              ? modelInputs
-              : modelInputs.filter((row) => !acceptedIds.has(row.id));
+          const remaining = generatesRecords(run.options.operation)
+            ? modelInputs
+            : modelInputs.filter((row) => !acceptedIds.has(row.id));
           const prompt = modelRequest(
             remaining,
             run.options,
@@ -472,8 +488,14 @@ export async function runProcessing(
                 "processing-v5",
                 "processing-v6",
                 "processing-v7",
+                "processing-v8",
               ].includes(run.execution_config.recipeVersion)
-                ? { temperature: 0.2 }
+                ? {
+                    temperature:
+                      run.execution_config.recipeVersion === "processing-v8"
+                        ? 0.7
+                        : 0.2,
+                  }
                 : {}),
               system: prompt.system,
               prompt: prompt.prompt,
@@ -529,7 +551,7 @@ export async function runProcessing(
               ...result.records.map(contentKey),
             ]);
             const added = validated.records.filter((row) => {
-              if (run.options.operation !== "augment") return true;
+              if (!generatesRecords(run.options.operation)) return true;
               if (deduplication && !row.question.trim()) {
                 diagnostics.push({
                   code: "empty_question",
@@ -561,7 +583,7 @@ export async function runProcessing(
                   ? "insufficient_output"
                   : "ok";
             result = validateModelRows(
-              { records: [...result.records, ...added] },
+              { records: modelRows([...result.records, ...added]) },
               modelInputs,
               run.options,
               expected,
@@ -629,7 +651,7 @@ export async function runProcessing(
           ),
         };
       }
-      if (run.options.operation !== "augment")
+      if (!generatesRecords(run.options.operation))
         result.records.sort(
           (a, b) => positions.get(a.sourceId)! - positions.get(b.sourceId)!,
         );
@@ -644,7 +666,7 @@ export async function runProcessing(
       const usedPositions = new Set(savedPositions.values());
       resultIndices = result.records.map((row, i) => {
         if (input.refinement) return positions.get(row.sourceId)!;
-        if (run.options.operation === "augment") return i;
+        if (generatesRecords(run.options.operation)) return i;
         const saved = savedPositions.get(row.sourceId);
         if (saved !== undefined) return saved;
         let position = groupPositions.get(row.sourceId)!;
@@ -752,7 +774,7 @@ export async function runProcessing(
     } finally {
       client.release();
     }
-    if (deduplication && run.options.operation === "augment" && body) {
+    if (deduplication && generatesRecords(run.options.operation) && body) {
       const saved = JSON.parse(body.toString("utf8")) as ProcessingResult;
       for (const row of saved.records) {
         const key = contentKey(row);

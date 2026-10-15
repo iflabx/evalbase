@@ -1,3 +1,4 @@
+import { generatesRecords } from "./protocol.js";
 import { deduplicate } from "./deduplication.js";
 import type { Database } from "../db/pool.js";
 import type { QueryResultRow } from "pg";
@@ -62,6 +63,13 @@ export async function processingSourceSummary(
   sourceRows?: QueryResultRow[],
 ) {
   const base = `/projects/${encodeURIComponent(scope.projectId)}`;
+  if (source.kind === "background")
+    return {
+      name: "依据背景文档生成",
+      kindLabel: "背景文档",
+      files: [],
+      href: `${base}/assistant/${encodeURIComponent(source.id)}`,
+    };
   if (source.kind === "assets") {
     const assets =
       sourceRows ??
@@ -142,8 +150,9 @@ export function processingReviewPage(
       .resultRef;
     const actual = (ref && runData?.get(ref.runId)) || data;
     const added =
-      (row.original?.adoptionOperation ?? actual.rootOperation) === "augment" ||
-      !row.original;
+      generatesRecords(
+        row.original?.adoptionOperation ?? actual.rootOperation,
+      ) || !row.original;
     const changedFields = added
       ? ["new"]
       : (["question", "expectedOutput", "metadata"] as const).filter(
@@ -305,7 +314,7 @@ export async function presentProcessingReview(
         async (id) =>
           [
             id,
-            runData.get(id)?.rootOperation === "augment"
+            generatesRecords(runData.get(id)?.rootOperation ?? "")
               ? await processingReferences(db, artifacts, scope, id)
               : null,
           ] as const,
@@ -330,11 +339,15 @@ export async function presentProcessingReview(
       const history = row.original
         ? (histories.get(`${ref.runId}\0${row.original.id}`) ?? [])
         : [];
-      const generated =
-        (row.original?.adoptionOperation ?? actual.rootOperation) === "augment";
-      const badge = { clean: "已清洗", rewrite: "已改写", augment: "模型扩写" }[
-        actual.run.options.operation
-      ];
+      const generated = generatesRecords(
+        row.original?.adoptionOperation ?? actual.rootOperation,
+      );
+      const badge = {
+        clean: "已清洗",
+        rewrite: "已改写",
+        augment: "模型扩写",
+        generate: "依据背景文档生成",
+      }[actual.run.options.operation];
       const sourcePresentation = {
         ...origin,
         label:

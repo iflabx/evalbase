@@ -353,7 +353,7 @@ export function AssistantCandidates({
             loading={data.isFetching || data.isPlaceholderData}
             error={data.isError}
             onRetry={() => void data.refetch()}
-            generated={value.rootOperation === "augment"}
+            generated={["augment", "generate"].includes(value.rootOperation ?? "")}
             disabled={
               readOnly || stale || data.isError || data.isFetching || data.isPlaceholderData
             }
@@ -416,9 +416,14 @@ export function AssistantCandidates({
                   }
                 >
                   批次 {index + 1} · 第 {item.round} 轮 ·{" "}
-                  {({ clean: "清洗", rewrite: "改写", augment: "扩充" } as Record<string, string>)[
-                    item.operation
-                  ] ?? "处理"}{" "}
+                  {(
+                    {
+                      clean: "清洗",
+                      rewrite: "改写",
+                      augment: "扩充",
+                      generate: "依据文档生成",
+                    } as Record<string, string>
+                  )[item.operation] ?? "处理"}{" "}
                   · {item.count} 条
                 </a>
               </li>

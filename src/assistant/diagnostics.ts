@@ -43,6 +43,13 @@ export function assistantFailure(
       "模型回复超过接口容量上限。",
       "核对保留成果后减少本轮输出范围再试。",
     );
+  if (code === "assistant_background_required")
+    return result(
+      "business",
+      "missing_background",
+      "尚未上传可用的背景文档。",
+      "请上传本次生成所依据的文档，再继续原方案。",
+    );
   if (code.startsWith("model_"))
     return result(
       "model",

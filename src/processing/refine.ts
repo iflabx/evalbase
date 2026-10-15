@@ -1,3 +1,4 @@
+import { generatesRecords } from "./protocol.js";
 import {
   guardAssistantCommit,
   linkAssistantProcessing,
@@ -75,6 +76,14 @@ export async function createRefinementRun(
         ).includes(k),
     ) ||
     (mode !== "rerun" &&
+      !(
+        mode === "continue" &&
+        scope.taskRound?.kind === "complete" &&
+        isPlainObject(body.options) &&
+        body.options.operation === "generate" &&
+        Array.isArray(body.resultIds) &&
+        body.resultIds.length === 0
+      ) &&
       (!Array.isArray(body.resultIds) ||
         !body.resultIds.length ||
         body.resultIds.length > 10000 ||
@@ -165,6 +174,16 @@ export async function createRefinementRun(
     )
       throw new ProcessingError(409, "processing_source_unavailable");
     const parent = await getProcessingRun(client, scope, parentId, true);
+    if (
+      options.operation === "generate" &&
+      (parent.source.kind !== "background" ||
+        scope.taskRound?.kind !== "complete" ||
+        canonicalJson({
+          ...options,
+          outputCount: parent.options.outputCount,
+        }) !== canonicalJson(parent.options))
+    )
+      throw new ProcessingError(422, "processing_configuration_invalid");
     if (!["succeeded", "failed", "cancelled"].includes(parent.status))
       throw new ProcessingError(409, "processing_still_running");
     const data =
@@ -230,32 +249,35 @@ export async function createRefinementRun(
     };
     const records: InputSnapshot["records"] =
       scope.taskRound?.records ??
-      (mode === "rerun"
-        ? input.records.map(({ candidateOrigin: _origin, ...row }) => row)
-        : data!.records
-            .filter((row) => mode === "refine" || selected.has(row.id))
-            .map((row) => {
-              const original = snapshots.get(row.result.sourceId);
-              if (!original)
-                throw new ProcessingError(409, "processing_input_corrupt");
-              return {
-                id: `candidate:${row.id}`,
-                ...(options.operation === "augment"
-                  ? {}
-                  : { candidateOrigin: row.candidateOrigin }),
-                question: row.result.question,
-                expectedOutput: row.result.expectedOutput,
-                metadata: row.result.metadata,
-                baseline: original.baseline ?? original,
-                ...(original.source === undefined
-                  ? {}
-                  : { source: original.source }),
-                ...(original.revisions === undefined
-                  ? {}
-                  : { revisions: original.revisions }),
-              };
-            }));
-    if (!records.length)
+      (options.operation === "generate"
+        ? []
+        : mode === "rerun"
+          ? input.records.map(({ candidateOrigin: _origin, ...row }) => row)
+          : data!.records
+              .filter((row) => mode === "refine" || selected.has(row.id))
+              .map((row) => {
+                const original =
+                  snapshots.get(row.result.sourceId) ?? row.original;
+                if (!original)
+                  throw new ProcessingError(409, "processing_input_corrupt");
+                return {
+                  id: `candidate:${row.id}`,
+                  ...(options.operation === "augment"
+                    ? {}
+                    : { candidateOrigin: row.candidateOrigin }),
+                  question: row.result.question,
+                  expectedOutput: row.result.expectedOutput,
+                  metadata: row.result.metadata,
+                  baseline: original.baseline ?? original,
+                  ...(original.source === undefined
+                    ? {}
+                    : { source: original.source }),
+                  ...(original.revisions === undefined
+                    ? {}
+                    : { revisions: original.revisions }),
+                };
+              }));
+    if (!records.length && options.operation !== "generate")
       throw new ProcessingError(422, "processing_result_invalid");
     if (
       options.operation === "clean" &&
@@ -282,9 +304,10 @@ export async function createRefinementRun(
     )
       throw new ProcessingError(409, "model_connection_unavailable");
     await guardAssistantCommit(client, scope);
-    const rootOperation =
-      options.operation === "augment" || inputRootOperation === "augment"
-        ? "augment"
+    const rootOperation = generatesRecords(options.operation)
+      ? options.operation
+      : generatesRecords(inputRootOperation)
+        ? inputRootOperation
         : options.operation;
     const inputParentRunId =
       input.continuation?.inputParentRunId ??
@@ -359,7 +382,7 @@ export async function createRefinementRun(
         source: input.source,
         ...(input.revision === undefined ? {} : { revision: input.revision }),
         records,
-        ...(options.operation === "augment"
+        ...(generatesRecords(options.operation)
           ? {
               deduplicationBaseline: [
                 ...(scope.taskRound?.deduplicationBaseline ?? []),
@@ -408,7 +431,13 @@ export async function createRefinementRun(
         records.length,
         model?.revision ?? null,
         parent.target_draft_id,
-        PROCESSING_EXECUTION,
+        {
+          ...PROCESSING_EXECUTION,
+          recipeVersion:
+            options.operation === "generate"
+              ? "processing-v8"
+              : PROCESSING_EXECUTION.recipeVersion,
+        },
         parentId,
         background?.documents.map((document) => document.id) ?? [],
       ],
@@ -602,7 +631,7 @@ export async function completeProcessingRun(
     { limit: "10000" },
     true,
   );
-  if (data.run.options.operation !== "augment")
+  if (!generatesRecords(data.run.options.operation))
     throw new ProcessingError(422, "processing_configuration_invalid");
   const input = await readFrozenInput(
     artifacts,

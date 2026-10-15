@@ -1,3 +1,4 @@
+import { generatesRecords } from "./protocol.js";
 import { processingRecovery } from "./recovery.js";
 import type { Database } from "../db/pool.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -118,7 +119,7 @@ async function taskState(
         const before = (run.task_before as TaskRef[] | null) ?? refs;
         if (run.task_before === null) baselines.push({ runId: run.id, before });
         let base = [...before];
-        if (!base.length && run.options.operation !== "augment")
+        if (!base.length && !generatesRecords(run.options.operation))
           base = input.records.map((row, index) => ({
             key: `${run.round_number}:${index + 1}`,
             runId: run.id,
@@ -144,19 +145,18 @@ async function taskState(
         let changed = 0;
         for (const output of data.records) {
           const located = inputs.get(output.result.sourceId);
-          if (!located)
+          if (!located && run.options.operation !== "generate")
             throw new ProcessingError(409, "processing_input_corrupt");
           const old = before.find(
             (ref) =>
               ref.runId === run.parent_run_id &&
-              `candidate:${ref.resultId}` === located.row.id,
+              `candidate:${ref.resultId}` === located?.row.id,
           );
-          const key =
-            run.options.operation === "augment"
-              ? `${run.round_number}:${Number(output.id.split(":")[0]) * 10000 + Number(output.id.split(":")[1]) + 1}`
-              : (located.row.taskRecordKey ??
-                old?.key ??
-                `${run.round_number}:${located.index + 1}`);
+          const key = generatesRecords(run.options.operation)
+            ? `${run.round_number}:${Number(output.id.split(":")[0]) * 10000 + Number(output.id.split(":")[1]) + 1}`
+            : (located!.row.taskRecordKey ??
+              old?.key ??
+              `${run.round_number}:${located!.index + 1}`);
           next.set(key, {
             key,
             runId: run.id,
@@ -172,7 +172,7 @@ async function taskState(
           refs.some((ref) => Boolean(ref.inputId)) ||
           run.status !== "succeeded" ||
           changed <
-            (run.options.operation === "augment"
+            (generatesRecords(run.options.operation)
               ? (run.options.outputCount ?? run.input_count)
               : input.records.length) ||
           data.run.executionComplete === false;
@@ -679,7 +679,7 @@ export async function createProcessingTaskRound(
       throw new ProcessingError(409, "processing_completion_unavailable");
     const input = await frozen(artifacts, latest);
     options = latest.options;
-    if (options.operation === "augment") {
+    if (generatesRecords(options.operation)) {
       records = input.records;
       options = {
         ...options,
@@ -755,9 +755,10 @@ export async function createProcessingTaskRound(
         ...(r.original.revisions === undefined
           ? {}
           : { revisions: r.original.revisions }),
-        adoptionOperation:
-          options.operation === "augment" || r.rootOperation === "augment"
-            ? "augment"
+        adoptionOperation: generatesRecords(options.operation)
+          ? options.operation
+          : generatesRecords(r.rootOperation)
+            ? r.rootOperation
             : options.operation,
         adoptionFields: [
           ...new Set([...r.adoptionFields, ...options.allowedFields]),
@@ -772,12 +773,9 @@ export async function createProcessingTaskRound(
     before,
     records,
     kind: mode,
-    deduplicationBaseline:
-      options.operation === "augment"
-        ? (await currentRows(db, artifacts, scope, task)).map(
-            (row) => row.result,
-          )
-        : undefined,
+    deduplicationBaseline: generatesRecords(options.operation)
+      ? (await currentRows(db, artifacts, scope, task)).map((row) => row.result)
+      : undefined,
   };
   return createRefinementRun(
     db,
@@ -1157,6 +1155,9 @@ async function processingTaskListPage(
     assets: new Map(available.assets.map((row) => [row.id as string, row])),
     version: new Map(available.version.map((row) => [row.id as string, row])),
     draft: new Map(available.draft.map((row) => [row.id as string, row])),
+    background: new Map(
+      available.background.map((row) => [row.id as string, row]),
+    ),
   };
   const unavailable = new Set(
     sources

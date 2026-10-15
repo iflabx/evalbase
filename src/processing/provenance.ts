@@ -66,6 +66,7 @@ const operationLabels: Record<string, string> = {
   clean: "已清洗",
   rewrite: "已改写",
   augment: "模型扩写",
+  generate: "依据背景文档生成",
 };
 const sourceKey = (value: unknown) =>
   isPlainObject(value) &&
@@ -88,6 +89,19 @@ export async function processingReferences(
     const input = JSON.parse(
       (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
     ) as InputSnapshot;
+    if (run.options.operation === "generate")
+      return {
+        label: "依据背景文档生成",
+        badges: [],
+        generated: true,
+        steps: (input.background?.documents ?? []).flatMap((document) =>
+          document.fragments.map((fragment) => ({
+            label: `${document.fileName} · ${fragment.page ? `第 ${fragment.page} 页` : `第 ${fragment.startLine ?? fragment.index}–${fragment.endLine ?? fragment.index} 行`}`,
+            href: `/projects/${encodeURIComponent(scope.projectId)}/assistant/${encodeURIComponent(run.source.kind === "background" ? run.source.id : "")}`,
+            kind: "reference" as const,
+          })),
+        ),
+      };
     if (run.options.operation === "augment") {
       const sources = new Map<string, unknown>();
       let missing = false;
@@ -308,6 +322,7 @@ export async function presentSources(
     generated?: boolean;
     references?: string[];
     savedTarget?: { label: string; href: string };
+    documentOrigin?: SourcePresentation | null;
   };
   const nodes = new Map<string, Node>(),
     pending = new Map<string, unknown>();
@@ -324,6 +339,7 @@ export async function presentSources(
     Map<string, InputSnapshot["records"][number]>
   >();
   const runReferenceKeys = new Map<string, string[]>();
+  const documentOrigins = new Map<string, SourcePresentation | null>();
   const base = `/projects/${encodeURIComponent(scope.projectId)}`;
   for (let depth = 0; pending.size && depth < 32; depth++) {
     const batch = [...pending];
@@ -381,7 +397,11 @@ export async function presentSources(
       const parent = original
         ? sourceKey(original.baseline?.source ?? original.source)
         : undefined;
-      if (run?.operation === "augment" && !runReferenceKeys.has(runId)) {
+      if (
+        ["augment", "generate"].includes(run?.operation ?? "") &&
+        run &&
+        !runReferenceKeys.has(runId)
+      ) {
         const referenceKeys = new Set<string>();
         for (const record of run.input.records) {
           const source = record.baseline?.source ?? record.source;
@@ -392,12 +412,24 @@ export async function presentSources(
         }
         runReferenceKeys.set(runId, [...referenceKeys]);
       }
+      if (
+        run &&
+        (run.input.continuation?.rootOperation ??
+          run.input.refinement?.rootOperation ??
+          run.operation) === "generate" &&
+        !documentOrigins.has(runId)
+      )
+        documentOrigins.set(
+          runId,
+          await processingReferences(db, artifacts, scope, runId),
+        );
       nodes.set(key, {
         name: row.file_name,
         href: `${base}/datasets/${encodeURIComponent(row.collection_id)}/files/${encodeURIComponent(row.id)}`,
         processed: Boolean(row.processing_run_id || runId),
         ...(run
           ? {
+              documentOrigin: documentOrigins.get(runId),
               operation: run.operation,
               runId,
               inputId: original?.id,
@@ -479,6 +511,22 @@ export async function presentSources(
         fileName: node.name,
         badges: [],
         steps: [direct],
+      };
+    if (node.documentOrigin)
+      return {
+        ...node.documentOrigin,
+        steps: [
+          ...node.documentOrigin.steps,
+          {
+            label: operationLabels[node.operation ?? ""] ?? "已处理",
+            href: node.runHref,
+            kind: "processing",
+          },
+          { label: node.name, href: node.href, kind: "saved" },
+          ...(node.savedTarget
+            ? [{ ...node.savedTarget, kind: "saved" as const }]
+            : []),
+        ],
       };
     if (!node.operation || node.parent === undefined)
       return {

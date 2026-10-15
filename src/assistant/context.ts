@@ -278,7 +278,11 @@ export async function assistantContext(
     });
   const previousCreated: string[] = history.rows
     .flatMap((t) => t.tool_results)
-    .filter((t) => t.name === "create_draft" && t.status === "succeeded")
+    .filter(
+      (t) =>
+        ["create_draft", "generate_candidates"].includes(t.name) &&
+        t.status === "succeeded",
+    )
     .map((t) => t.result.draftId);
   const refs: Dependency[] = history.rows.flatMap((t) => t.dependencies);
   for (const source of [task.target, task.processingScope?.source]) {

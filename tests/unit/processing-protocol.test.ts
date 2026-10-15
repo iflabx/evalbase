@@ -375,3 +375,64 @@ describe("model processing output boundary", () => {
     expect(inputs[0]!.question).toBe("  Question A  ");
   });
 });
+
+describe("OPT29 document generation boundary", () => {
+  it("validates three fields without invented input IDs and assigns stable server identities", () => {
+    const options = processingOptions({
+      operation: "generate",
+      instructions: "按背景生成自然问法",
+      allowedFields: ["question", "expectedOutput", "metadata"],
+      outputCount: 2,
+    });
+    const value = {
+      records: [
+        {
+          question: "如何辨认可疑链接？",
+          expectedOutput: "说明核验来源的方法",
+          metadata: [{ key: "risk", value: "A.1.a" }],
+        },
+        {
+          question: "怎样确认这则消息可靠？",
+          expectedOutput: "建议交叉核验",
+          metadata: [],
+        },
+      ],
+    };
+    const result = validateModelRows(value, [], options, 2);
+    expect(result.records.map((r) => r.sourceId)).toEqual([
+      "generated:0",
+      "generated:1",
+    ]);
+    expect(validateModelRows(value, [], options, 2)).toEqual(result);
+    expect(result.issues).toEqual([]);
+    expect(
+      validateModelRows(
+        { records: [{ ...value.records[0], sourceId: "made-up" }] },
+        [],
+        options,
+        1,
+      ).records,
+    ).toEqual([]);
+    expect(processingPrompt([], options, 2).system).not.toContain(
+      "sourceId must reference",
+    );
+    expect(JSON.parse(processingPrompt([], options, 2).prompt).rule).toContain(
+      "background",
+    );
+  });
+  it("rejects record inheritance and incomplete generation configuration", () => {
+    for (const change of [
+      { outputCount: undefined },
+      { allowedFields: ["question"] },
+    ])
+      expect(() =>
+        processingOptions({
+          operation: "generate",
+          instructions: "按文档生成",
+          allowedFields: ["question", "expectedOutput", "metadata"],
+          outputCount: 1,
+          ...change,
+        }),
+      ).toThrow();
+  });
+});

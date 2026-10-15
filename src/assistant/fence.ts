@@ -1,7 +1,7 @@
 import type { Database } from "../db/pool.js";
 import { AssistantError, assistantAccess } from "./store.js";
 import { carryCandidateScope } from "./candidates.js";
-import { advancePlan, pendingPlanAction } from "./plan.js";
+import { advancePlan, pendingPlanAction, planRequirementsKey } from "./plan.js";
 
 /** Supplied only by server-side assistant callers, after locking domain sources. */
 export type AssistantGuard = {
@@ -82,17 +82,22 @@ export async function linkAssistantProcessing(
       scope.assistantGuard.sessionId,
     ])
   ).rows[0].task;
-  const parent = (
-    await db.query("SELECT parent_run_id FROM processing_run WHERE id=$1", [
-      runId,
-    ])
-  ).rows[0]?.parent_run_id;
-  const prior: string[] = state.runIds ?? (state.runId ? [state.runId] : []);
+  const run = (
+    await db.query(
+      "SELECT parent_run_id,source,options,target_draft_id FROM processing_run WHERE id=$1",
+      [runId],
+    )
+  ).rows[0];
+  const parent = run?.parent_run_id;
+  const freshDelivery = run?.options.operation === "generate" && !parent;
+  const prior: string[] = freshDelivery
+    ? []
+    : (state.runIds ?? (state.runId ? [state.runId] : []));
   const runs = [
     ...new Set(prior.map((id) => (id === parent ? runId : id)).concat(runId)),
   ];
   const candidateScope = carryCandidateScope(
-    state.candidateScope,
+    freshDelivery ? null : state.candidateScope,
     runId,
     parent,
   );
@@ -110,16 +115,32 @@ export async function linkAssistantProcessing(
   if (capacity.total > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
   const step = state.executionPlan?.steps[state.executionPlan.current];
-  const plan = step?.operation
+  let plan = step?.operation
     ? advancePlan(
         state.executionPlan,
         step.action,
-        { runId, status: "queued", source: step.operation.input.source },
+        {
+          runId,
+          draftId: run.target_draft_id,
+          status: "queued",
+          source: step.operation.input.source,
+        },
         step.operation.key,
         scope.assistantGuard.revision,
         step.operation.input,
       )
     : state.executionPlan;
+  if (freshDelivery && plan)
+    plan = {
+      ...plan,
+      requirementsKey: planRequirementsKey({
+        ...state,
+        target: null,
+        targetCount: run.options.outputCount,
+        countKind: "new",
+        targetDraftId: run.target_draft_id,
+      }),
+    };
   await db.query(
     "UPDATE assistant_session SET task=task||jsonb_build_object('runId',$2::text,'runIds',$3::jsonb,'stage','processing','error',NULL,'review',NULL,'checkedStatus',NULL,'candidateScope',$4::jsonb)||$5::jsonb,updated_at=now() WHERE id=$1",
     [
@@ -127,11 +148,24 @@ export async function linkAssistantProcessing(
       runId,
       JSON.stringify(runs),
       JSON.stringify(candidateScope),
-      JSON.stringify(
-        plan
+      JSON.stringify({
+        ...(freshDelivery
+          ? {
+              target: null,
+              targetName: step?.input?.name ?? "依据背景文档生成",
+              targetCount: run.options.outputCount,
+              countKind: "new",
+              createdDraftId: run.target_draft_id,
+              targetDraftId: run.target_draft_id,
+              processingScope: null,
+              selectedCandidates: null,
+              selectionPreview: null,
+            }
+          : {}),
+        ...(plan
           ? { executionPlan: plan, nextAction: pendingPlanAction(plan) ?? null }
-          : {},
-      ),
+          : {}),
+      }),
     ],
   );
 }

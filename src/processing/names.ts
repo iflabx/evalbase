@@ -5,7 +5,12 @@ export function processingResultName(
   operation: ProcessingOptions["operation"],
   runId: string,
 ) {
-  const label = { clean: "清洗", rewrite: "改写", augment: "扩充" }[operation];
+  const label = {
+    clean: "清洗",
+    rewrite: "改写",
+    generate: "依据背景文档生成",
+    augment: "扩充",
+  }[operation];
   const name = `${label}结果-${runId.slice(-8)}.jsonl`;
   if (Buffer.from(name, "utf8").toString("utf8") !== name)
     throw new Error("processing_name_invalid");

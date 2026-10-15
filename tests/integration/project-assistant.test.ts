@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Ajv } from "ajv";
 import { parse as parseCsv } from "csv-parse/sync";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as processingStoreModule from "../../src/processing/store.js";
 import * as contextModule from "../../src/assistant/context.js";
 import * as draftCreateModule from "../../src/drafts/create.js";
 import * as taskModule from "../../src/assistant/tasks.js";
@@ -45,6 +47,7 @@ describe("project assistant public contract", () => {
     | Record<string, unknown>
     | Record<string, unknown>[]
     | undefined;
+  let generationDuplicates = false;
   let repeatRead: boolean | "progress" | "bounded" = false;
   let textualToolCall: string | undefined;
   let textualReplies: string[] = [];
@@ -105,6 +108,49 @@ describe("project assistant public contract", () => {
         processing = JSON.parse(body.messages.at(-1)?.content ?? "");
       } catch {
         /* Other protocol requests keep their existing fixture response. */
+      }
+      if (processing?.operation === "generate") {
+        const offset = processing.augmentationBatch?.offset ?? 0;
+        const prefix = processing.previousBatchExamples?.length
+          ? "在新的场景中，"
+          : "";
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            id: "synthetic-generation",
+            object: "chat.completion",
+            created: 1,
+            model: "synthetic",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    records: Array.from(
+                      { length: processing.outputCount },
+                      (_, i) => ({
+                        question: `${prefix}如果我遇到第${generationDuplicates ? 1 : offset + i + 1}种具体情况，应当怎样核验信息来源？`,
+                        expectedOutput: "说明核验方法，不编造事实",
+                        metadata: [
+                          {
+                            key: "riskCategory",
+                            value:
+                              processing.background?.classifications?.[0]
+                                ?.allowedValues?.[0] ?? "A.1.a",
+                          },
+                        ],
+                      }),
+                    ),
+                  }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
+          }),
+        );
+        return;
       }
       if (processing?.operation && Array.isArray(processing.records)) {
         res.writeHead(200, { "content-type": "application/json" });
@@ -16400,6 +16446,1015 @@ describe("project assistant public contract", () => {
     } finally {
       sessionId = previous;
       toolSequence = [];
+    }
+  });
+  async function opt29Background() {
+    await opt21Session();
+    const upload = await app.inject({
+      method: "POST",
+      url: `${base()}/sessions/${sessionId}/background-documents`,
+      headers,
+      payload: {
+        fileName: "生成依据.md",
+        contentBase64: Buffer.from(
+          Array.from(
+            { length: 8 },
+            (_, i) =>
+              `A.1.${String.fromCharCode(97 + i)} 测试第${i + 1}类场景。`,
+          ).join("\n") +
+            "\n问题须完整自然，期望行为为核验信息，不编造事实。私人原文-canary",
+        ).toString("base64"),
+      },
+    });
+    expect(upload.statusCode, upload.body).toBe(201);
+    requestedTool = {
+      name: "read_background",
+      input: { documentId: upload.json().document.id },
+    };
+    await opt21End(await opt21Submit("先读文档"));
+    requestedTool = undefined;
+    return upload.json().document;
+  }
+  async function opt29Worker(runId: string) {
+    const db = createPool(databaseUrl);
+    try {
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',lease_owner='opt29',lease_expires_at=now()+interval '5 minutes' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+          [runId],
+        )
+      ).rows[0];
+      const cfg = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      };
+      const result = await runProcessing(
+        db,
+        new ArtifactRepository(cfg.minio),
+        cfg,
+        job,
+      );
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      return result;
+    } finally {
+      await db.end();
+    }
+  }
+  it.each([5, 50])(
+    "OPT29 plans and generates %i source-free candidates, reviews and confirms into its own draft",
+    async (count) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        const document = await opt29Background();
+        const name = `OPT29-${count}-${randomUUID()}`;
+        const steps = Array.from({ length: count === 50 ? 8 : 1 }, (_, i) => [
+          {
+            title: `生成第${i + 1}类`,
+            action: "generate_candidates",
+            input: {
+              name: i ? `${name}-${i + 1}` : name,
+              instructions: `按背景生成第${i + 1}类自然的用户问题，填写明确期望行为和riskCategory`,
+              outputCount: count,
+              classifications: [
+                {
+                  field: "metadata",
+                  key: "riskCategory",
+                  basis: "background",
+                  allowedValues: [`A.1.${String.fromCharCode(97 + i)}`],
+                  definitions: [
+                    {
+                      value: `A.1.${String.fromCharCode(97 + i)}`,
+                      text: `A.1.${String.fromCharCode(97 + i)} 测试第${i + 1}类场景`,
+                    },
+                  ],
+                  quotas: [
+                    { value: `A.1.${String.fromCharCode(97 + i)}`, count },
+                  ],
+                },
+              ],
+            },
+          },
+          { title: `核对第${i + 1}类`, action: "read_processing" },
+          {
+            title: `保存第${i + 1}类`,
+            action: "request_processing_apply",
+            input: { allValid: true },
+          },
+        ]).flat();
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            target: null,
+            targetCount: count,
+            countKind: "new",
+            ...(count === 50 ? { overallTargetCount: 400 } : {}),
+            allowedFields: ["question", "expectedOutput", "metadata"],
+            executionMode: "plan",
+            steps,
+          },
+        };
+        const plan = await opt21End(await opt21Submit("按文档生成，先给方案"));
+        expect(plan.task.executionPlan.mode).toBe("plan");
+        expect(
+          (
+            await db.query("SELECT id FROM collaborative_draft WHERE name=$1", [
+              name,
+            ])
+          ).rowCount,
+        ).toBe(0);
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM processing_run WHERE source->>'id'=$1",
+              [sessionId],
+            )
+          ).rowCount,
+        ).toBe(0);
+        requestedTool = {
+          name: "plan_task",
+          input: { executionMode: "execute" },
+        };
+        const execution = await opt21End(await opt21Submit("按方案执行"));
+        expect(
+          execution.task.runId,
+          JSON.stringify(execution.turns.at(-1)),
+        ).toBeTruthy();
+        const runId = execution.task.runId;
+        const row = (
+          await db.query("SELECT * FROM processing_run WHERE id=$1", [runId])
+        ).rows[0];
+        expect(row.source).toEqual({
+          kind: "background",
+          id: sessionId,
+          recordIds: [],
+        });
+        expect(row.input_count).toBe(0);
+        expect(row.options.outputCount).toBe(count);
+        expect(row.execution_config.recipeVersion).toBe("processing-v8");
+        const start = calls.length;
+        if (count === 5) {
+          providerFailure = 503;
+          providerFailureRemaining = 1;
+        }
+        expect((await opt29Worker(runId)).counts).toMatchObject({
+          input: 0,
+          output: count,
+        });
+        if (count === 5)
+          expect(
+            (
+              await db.query(
+                "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+                [runId],
+              )
+            ).rows[0].model_attempts,
+          ).toBe(2);
+        for (const call of calls.slice(start).filter((c) => !c.tools)) {
+          expect(call.temperature).toBe(0.7);
+          const prompt = JSON.parse(call.messages.at(-1).content);
+          expect(prompt.records).toBeUndefined();
+          expect(prompt.background.documents[0]).toMatchObject({
+            id: document.id,
+            sha256: document.sha256,
+          });
+        }
+        requestedTool = undefined;
+        toolSequence = [];
+        await taskModule.collectProcessingEvents(db);
+        await expect
+          .poll(
+            async () =>
+              (await read())
+                .json()
+                .turns.some((t: any) =>
+                  ["queued", "running"].includes(t.status),
+                ),
+            { timeout: 15000 },
+          )
+          .toBe(false);
+        const checked = (await read()).json();
+        expect(
+          checked.task.review,
+          JSON.stringify(checked.turns.at(-1)),
+        ).toMatchObject({
+          candidateCount: count,
+          countSatisfied: true,
+          protectedFieldChanges: 0,
+        });
+        const candidates = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        });
+        expect(candidates.statusCode, candidates.body).toBe(200);
+        expect(candidates.json().taskTotal).toBe(count);
+        expect(candidates.json().records[0].sourcePresentation.label).toContain(
+          "依据背景文档生成",
+        );
+        const refresh = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        });
+        expect(refresh.json().records.map((x: any) => x.id)).toEqual(
+          candidates.json().records.map((x: any) => x.id),
+        );
+        if (count === 5) {
+          const before = candidates.json();
+          toolSequence = [
+            { name: "plan_task", input: { nextAction: "refine_candidates" } },
+            {
+              name: "refine_candidates",
+              input: {
+                allSelected: true,
+                instructions: "OPT-25 局部表述",
+                allowedFields: ["question"],
+              },
+            },
+          ];
+          const submitted = await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: {
+              message: "只把勾选的一条改自然，答案和标签不动",
+              candidates: {
+                scope: "task",
+                reviewRevision: before.reviewRevision,
+                resultIds: [before.records[0].id],
+              },
+            },
+          });
+          expect(submitted.statusCode, submitted.body).toBe(202);
+          const changed = await opt21End(submitted.json().turnId);
+          const refined = changed.turns
+            .at(-1)
+            .tools.find(
+              (t: any) =>
+                t.name === "refine_candidates" && t.status === "succeeded",
+            );
+          expect(refined, JSON.stringify(changed.turns.at(-1))).toBeDefined();
+          for (const id of refined.result.runIds ?? [refined.result.runId])
+            await opt29Worker(id);
+          toolSequence = [];
+          await taskModule.collectProcessingEvents(db);
+          await expect
+            .poll(
+              async () =>
+                (await read())
+                  .json()
+                  .turns.some((t: any) =>
+                    ["queued", "running"].includes(t.status),
+                  ),
+              { timeout: 15000 },
+            )
+            .toBe(false);
+          const after = (
+            await app.inject({
+              method: "GET",
+              url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+              headers,
+            })
+          ).json();
+          expect(new Set(after.allIds)).toEqual(new Set(before.allIds));
+          for (const actual of after.records) {
+            const old = before.records.find((x: any) => x.id === actual.id);
+            expect(actual.result.expectedOutput).toBe(
+              old.result.expectedOutput,
+            );
+            expect(actual.result.metadata).toEqual(old.result.metadata);
+            expect(actual.result.question).toBe(
+              old.result.question +
+                (actual.id === before.records[0].id ? " 自然表述" : ""),
+            );
+          }
+        }
+        toolSequence = [
+          {
+            name: "plan_task",
+            input:
+              count === 50
+                ? { executionMode: "execute" }
+                : { nextAction: "request_processing_apply" },
+          },
+          { name: "request_processing_apply", input: { allValid: true } },
+        ];
+        requestedTool = undefined;
+        const prepared = await opt21End(await opt21Submit("保存这批成果"));
+        const proposal = prepared.proposals.find(
+          (p: any) => p.status === "pending",
+        );
+        expect(proposal, JSON.stringify(prepared.turns.at(-1))).toBeDefined();
+        toolSequence = [];
+        const confirmed = await app.inject({
+          method: "POST",
+          url: `${base()}/proposals/${proposal.id}/confirm`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {},
+        });
+        expect(confirmed.statusCode, confirmed.body).toBe(200);
+        expect(confirmed.json().receipt.receipt.adopted).toBe(count);
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+              [row.target_draft_id],
+            )
+          ).rowCount,
+        ).toBe(count);
+        expect(
+          (
+            await db.query("SELECT id FROM collaborative_draft WHERE name=$1", [
+              name,
+            ])
+          ).rowCount,
+        ).toBe(1);
+        if (count === 5) {
+          const account = {
+            email: `opt29-member-${randomUUID()}@example.test`,
+            password: "Opt29Member123",
+            confirmPassword: "Opt29Member123",
+          };
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: "/api/accounts",
+                headers: { origin },
+                payload: account,
+              })
+            ).statusCode,
+          ).toBe(201);
+          const login = await app.inject({
+            method: "POST",
+            url: "/api/session",
+            headers: { origin },
+            payload: account,
+          });
+          const other = {
+            origin,
+            cookie: `${login.cookies[0].name}=${login.cookies[0].value}`,
+            "x-csrf-token": login.json().csrfToken,
+          };
+          const invitation = await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/invitations`,
+            headers,
+            payload: { email: account.email, role: "editor" },
+          });
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: `/api/me/invitations/${invitation.json().invitation.id}/accept`,
+                headers: other,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+          const privateRun = await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/processing-runs/${runId}`,
+            headers: other,
+          });
+          expect(privateRun.statusCode).toBe(404);
+          const own = await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/collaborative-drafts/${row.target_draft_id}`,
+            headers,
+          });
+          expect(own.statusCode, own.body).toBe(200);
+          expect(own.body).toContain("依据背景文档生成");
+          const shared = await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/collaborative-drafts/${row.target_draft_id}`,
+            headers: other,
+          });
+          expect(shared.statusCode, shared.body).toBe(200);
+          expect(shared.body).not.toContain("私人原文-canary");
+          expect(shared.body).not.toContain(document.id);
+          await expect
+            .poll(
+              async () =>
+                (await read())
+                  .json()
+                  .turns.some((t: any) =>
+                    ["queued", "running"].includes(t.status),
+                  ),
+              { timeout: 15000 },
+            )
+            .toBe(false);
+          const removed = await app.inject({
+            method: "DELETE",
+            url: `${base()}/sessions/${sessionId}/background-documents/${document.id}`,
+            headers,
+          });
+          expect(removed.statusCode, removed.body).toBe(200);
+          expect(
+            (
+              await app.inject({
+                method: "GET",
+                url: `/api/projects/${projectId}/processing-runs/${runId}`,
+                headers,
+              })
+            ).statusCode,
+          ).toBe(404);
+          expect(
+            (
+              await db.query(
+                "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+                [row.target_draft_id],
+              )
+            ).rowCount,
+          ).toBe(5);
+        }
+        if (count === 50) {
+          await expect
+            .poll(
+              async () =>
+                Number(
+                  (
+                    await db.query(
+                      "SELECT count(*) FROM processing_run WHERE source->>'id'=$1",
+                      [sessionId],
+                    )
+                  ).rows[0].count,
+                ),
+              { timeout: 15000 },
+            )
+            .toBe(2);
+          await expect
+            .poll(
+              async () =>
+                (await read())
+                  .json()
+                  .turns.some((t: any) =>
+                    ["queued", "running"].includes(t.status),
+                  ),
+              { timeout: 15000 },
+            )
+            .toBe(false);
+          const next = (await read()).json();
+          expect(next.task.overallTargetCount).toBe(400);
+          expect(next.task.targetCount).toBe(50);
+          expect(next.task.runIds).toHaveLength(1);
+          expect(next.task.runId).not.toBe(runId);
+          expect(next.task.classifications[0]).toMatchObject({
+            allowedValues: ["A.1.b"],
+            quotas: [{ value: "A.1.b", count: 50 }],
+          });
+          const cfg = { ...loadConfig(), databaseUrl };
+          const nextInput = (
+            await db.query("SELECT input_ref FROM processing_run WHERE id=$1", [
+              next.task.runId,
+            ])
+          ).rows[0].input_ref;
+          const frozen = JSON.parse(
+            (
+              await new ArtifactRepository(cfg.minio).readBytes(
+                nextInput,
+                100000000,
+              )
+            ).toString("utf8"),
+          );
+          expect(frozen.background.classifications[0].allowedValues).toEqual([
+            "A.1.b",
+          ]);
+          await opt29Worker(next.task.runId);
+          await taskModule.collectProcessingEvents(db);
+          await expect
+            .poll(
+              async () =>
+                (await read())
+                  .json()
+                  .turns.some((t: any) =>
+                    ["queued", "running"].includes(t.status),
+                  ),
+              { timeout: 15000 },
+            )
+            .toBe(false);
+          const nextChecked = (await read()).json();
+          expect(nextChecked.task.review).toMatchObject({
+            candidateCount: 50,
+            countSatisfied: true,
+          });
+          expect(nextChecked.task.classifications[0].allowedValues).toEqual([
+            "A.1.b",
+          ]);
+          expect(next.task.executionPlan.steps[0].status).toBe("executed");
+          expect(
+            (
+              await db.query(
+                "SELECT options->>'outputCount' AS count FROM processing_run WHERE source->>'id'=$1",
+                [sessionId],
+              )
+            ).rows.map((x) => x.count),
+          ).toEqual(["50", "50"]);
+        }
+      } finally {
+        providerFailure = undefined;
+        requestedTool = undefined;
+        toolSequence = [];
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+  it("OPT29 rejects missing background before creating a draft or run and keeps empty record modes closed", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const name = `OPT29-missing-${randomUUID()}`;
+      requestedTool = {
+        name: "generate_candidates",
+        input: { name, instructions: "生成问题", outputCount: 5 },
+      };
+      const result = await opt21End(await opt21Submit("按文档生成5条"));
+      expect(
+        result.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "generate_candidates").error.code,
+      ).toBe("assistant_background_required");
+      expect(
+        (
+          await db.query("SELECT id FROM collaborative_draft WHERE name=$1", [
+            name,
+          ])
+        ).rowCount,
+      ).toBe(0);
+      for (const operation of ["clean", "rewrite", "augment", "generate"]) {
+        const response = await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/processing-runs`,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "background", id: sessionId, recordIds: [] },
+            options: {
+              operation,
+              instructions: "处理",
+              allowedFields: ["question", "expectedOutput", "metadata"],
+              ...(["augment", "generate"].includes(operation)
+                ? { outputCount: 5 }
+                : {}),
+            },
+          },
+        });
+        expect(response.statusCode, response.body).toBe(422);
+      }
+    } finally {
+      requestedTool = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it("OPT29 reads a real PDF and refuses a generation plan without inter-delivery confirmation", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const uploaded = await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/background-documents`,
+        headers,
+        payload: {
+          fileName: "背景.pdf",
+          contentBase64: readFileSync(
+            "tests/fixtures/background-two-pages.pdf",
+          ).toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode, uploaded.body).toBe(201);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: uploaded.json().document.id },
+      };
+      const readPdf = await opt21End(await opt21Submit("先读附件"));
+      toolSequence = [
+        {
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id, from: 999 },
+        },
+        {
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id, from: 1 },
+        },
+      ];
+      requestedTool = undefined;
+      const corrected = await opt21End(await opt21Submit("核对附件位置"));
+      expect(
+        corrected.turns.at(-1).tools.find((x: any) => x.status === "failed")
+          .error.hint,
+      ).toContain("共有");
+      expect(
+        corrected.turns
+          .at(-1)
+          .tools.some(
+            (x: any) =>
+              x.name === "read_background" && x.status === "succeeded",
+          ),
+      ).toBe(true);
+
+      expect(readPdf.task.backgroundEvidence.length).toBeGreaterThan(0);
+      for (const steps of [
+        [
+          {
+            title: "建立空草稿",
+            action: "create_draft",
+            input: { name: "OPT29-PDF空" },
+          },
+          {
+            title: "生成",
+            action: "generate_candidates",
+            input: { name: "OPT29-PDF空", instructions: "按文档生成" },
+          },
+        ],
+        [
+          {
+            title: "生成",
+            action: "generate_candidates",
+            input: { name: "OPT29-PDF缺数", instructions: "按文档生成" },
+          },
+        ],
+      ]) {
+        requestedTool = {
+          name: "plan_task",
+          input: { executionMode: "execute", steps },
+        };
+        const missing = await opt21End(await opt21Submit("按文档生成"));
+        expect(
+          missing.turns.at(-1).tools.find((t: any) => t.name === "plan_task")
+            .error.code,
+        ).toBe("assistant_tool_input_invalid");
+      }
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          steps: [
+            {
+              title: "生成甲",
+              action: "generate_candidates",
+              input: {
+                name: "OPT29-PDF甲",
+                outputCount: 5,
+                instructions: "依据文档生成",
+              },
+            },
+            {
+              title: "生成乙",
+              action: "generate_candidates",
+              input: {
+                name: "OPT29-PDF乙",
+                outputCount: 5,
+                instructions: "依据文档生成",
+              },
+            },
+          ],
+        },
+      };
+      const invalid = await opt21End(
+        await opt21Submit("分两类各5条，先给方案"),
+      );
+      expect(
+        invalid.turns.at(-1).tools.find((x: any) => x.name === "plan_task")
+          .error.code,
+      ).toBe("assistant_delivery_pending");
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM collaborative_draft WHERE name LIKE 'OPT29-PDF%'",
+          )
+        ).rowCount,
+      ).toBe(0);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          steps: [
+            {
+              title: "生成甲",
+              action: "generate_candidates",
+              input: {
+                name: "OPT29-PDF甲",
+                outputCount: 5,
+                instructions: "依据文档生成",
+              },
+            },
+          ],
+        },
+      };
+      const valid = await opt21End(await opt21Submit("先给单类方案"));
+      expect(valid.task.executionPlan.mode).toBe("plan");
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM processing_run WHERE source->>'id'=$1",
+            [sessionId],
+          )
+        ).rowCount,
+      ).toBe(0);
+    } finally {
+      requestedTool = undefined;
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it.each(["before", "after"])(
+    "OPT29 recovers a %s-run lost response using one target and the original key",
+    async (moment) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      let spy: any;
+      try {
+        await opt29Background();
+        const name = `OPT29-receipt-${randomUUID()}`;
+        const input = {
+          name,
+          outputCount: 5,
+          instructions: "按背景生成完整自然问题",
+        };
+        const original = processingStoreModule.createProcessingRun;
+        spy = vi
+          .spyOn(processingStoreModule, "createProcessingRun")
+          .mockImplementationOnce(async (...args) => {
+            if (moment === "after") await original(...args);
+            throw new Error("synthetic-lost-response");
+          });
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              { title: "生成文档候选", action: "generate_candidates", input },
+            ],
+          },
+        };
+        const first = await opt21End(await opt21Submit("按文档生成5条"));
+        spy.mockRestore();
+        expect(
+          (
+            await db.query("SELECT id FROM collaborative_draft WHERE name=$1", [
+              name,
+            ])
+          ).rowCount,
+        ).toBe(1);
+        if (moment === "before") {
+          expect(
+            first.turns
+              .at(-1)
+              .tools.find((t: any) => t.name === "generate_candidates").error
+              .code,
+          ).toBe("assistant_operation_unknown");
+          requestedTool = { name: "generate_candidates", input };
+          const retry = await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/retry`,
+            headers,
+            payload: {},
+          });
+          expect(retry.statusCode, retry.body).toBe(200);
+          await opt21End(first.turns.at(-1).id);
+        }
+        const state = (await read()).json();
+        expect(
+          state.task.runId,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBeTruthy();
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM processing_run WHERE source->>'id'=$1",
+              [sessionId],
+            )
+          ).rowCount,
+        ).toBe(1);
+        expect(
+          (
+            await db.query("SELECT id FROM collaborative_draft WHERE name=$1", [
+              name,
+            ])
+          ).rowCount,
+        ).toBe(1);
+        if (moment === "after") {
+          const path = `/api/projects/${projectId}/processing-runs/${state.task.runId}`;
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: `${path}/cancel`,
+                headers,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+          const refreshed = await app.inject({
+            method: "GET",
+            url: path,
+            headers,
+          });
+          expect(refreshed.statusCode, refreshed.body).toBe(200);
+          expect(refreshed.json().run.status).toBe("cancel_requested");
+          await db.query(
+            "UPDATE job SET status='cancelled' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) AND status='cancel_requested'",
+            [state.task.runId],
+          );
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: `${path}/retry`,
+                headers,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+          await opt29Worker(state.task.runId);
+          const stable = (
+            await app.inject({ method: "GET", url: path, headers })
+          ).json();
+          expect(stable.records).toHaveLength(5);
+          expect(stable.run.execution.recipeVersion).toBe("processing-v8");
+        }
+      } finally {
+        spy?.mockRestore();
+        requestedTool = undefined;
+        toolSequence = [];
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+  it("OPT29 preserves valid candidates at the batch budget and explicitly completes only the missing count", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt29Background();
+      requestedTool = {
+        name: "generate_candidates",
+        input: {
+          name: `OPT29-budget-${randomUUID()}`,
+          instructions: "按背景生成完整问题",
+          outputCount: 5,
+        },
+      };
+      const first = await opt21End(await opt21Submit("按文档生成5条"));
+      const runId = first.task.runId;
+      generationDuplicates = true;
+      await expect(opt29Worker(runId)).rejects.toMatchObject({
+        code: "processing_batch_failed",
+      });
+      generationDuplicates = false;
+      await db.query(
+        "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [runId],
+      );
+      const path = `/api/projects/${projectId}/processing-tasks/${runId}`;
+      const partial = await app.inject({ method: "GET", url: path, headers });
+      expect(partial.statusCode, partial.body).toBe(200);
+      expect(partial.json().records).toHaveLength(1);
+      expect(partial.json().recovery.canRetry).toBe(false);
+      const publicGenerate = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/processing-runs/${runId}/followups`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "continue",
+          resultIds: [],
+          options: {
+            operation: "generate",
+            instructions: "绕开助手改变目标",
+            outputCount: 10,
+            allowedFields: ["question", "expectedOutput", "metadata"],
+          },
+        },
+      });
+      expect(publicGenerate.statusCode, publicGenerate.body).toBe(422);
+      expect(
+        (
+          await db.query(
+            "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+            [runId],
+          )
+        ).rows[0].model_attempts,
+      ).toBe(3);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/processing-runs/${runId}/retry`,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(409);
+      const completed = await app.inject({
+        method: "POST",
+        url: `${path}/rounds`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          mode: "complete",
+          expectedRevision: partial.json().task.revision,
+        },
+      });
+      expect(completed.statusCode, completed.body).toBe(201);
+      expect(completed.json().run.options.outputCount).toBe(4);
+      await opt29Worker(completed.json().run.id);
+      const current = await app.inject({ method: "GET", url: path, headers });
+      expect(current.statusCode, current.body).toBe(200);
+      expect(current.json().records).toHaveLength(5);
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            nextAction: "read_processing",
+            steps: [
+              { title: "核对当前成果", action: "read_processing" },
+              {
+                title: "保存当前成果",
+                action: "request_processing_apply",
+                input: { allValid: true, allTask: true },
+              },
+            ],
+          },
+        },
+        {
+          name: "request_processing_apply",
+          input: { allValid: true, allTask: true },
+        },
+      ];
+      const reviewed = await opt21End(
+        await opt21Submit("核对全部成果，保存到草稿"),
+      );
+      expect(reviewed.task.review).toMatchObject({
+        candidateCount: 5,
+        countSatisfied: true,
+        complete: true,
+        missingCount: 0,
+      });
+      const proposal = reviewed.proposals.find(
+        (p: any) => p.status === "pending" && p.action === "processing",
+      );
+      expect(proposal, JSON.stringify(reviewed.turns.at(-1))).toBeDefined();
+      requestedTool = undefined;
+      const adopted = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers,
+        payload: {},
+      });
+      expect(adopted.statusCode, adopted.body).toBe(200);
+      expect(adopted.json().receipt.receipt.adopted).toBe(5);
+      expect(
+        current
+          .json()
+          .records.some(
+            (r: any) =>
+              r.candidateOrigin?.resultId ===
+              partial.json().records[0].candidateOrigin?.resultId,
+          ),
+      ).toBe(true);
+      expect(
+        (
+          await db.query(
+            "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+            [runId],
+          )
+        ).rows[0].model_attempts,
+      ).toBe(3);
+    } finally {
+      generationDuplicates = false;
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await db.end();
     }
   });
 });

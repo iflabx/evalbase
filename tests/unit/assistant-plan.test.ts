@@ -569,3 +569,54 @@ describe("restored execution plan boundaries", () => {
     ).toBe(1);
   });
 });
+
+it("OPT29 preserves per-delivery generation receipts and waits for completed results", () => {
+  const input = { name: "A.1.a", instructions: "按文档生成", outputCount: 50 };
+  const plan = revisePlan(
+    undefined,
+    {
+      executionMode: "execute",
+      steps: [
+        { title: "A", action: "generate_candidates", input },
+        { title: "确认A", action: "request_processing_apply" },
+        {
+          title: "B",
+          action: "generate_candidates",
+          input: { ...input, name: "A.1.b" },
+        },
+      ],
+    },
+    1,
+    null,
+    "requirements",
+  )!;
+  const waiting = advancePlan(
+    plan,
+    "generate_candidates",
+    { runId: "run-A", draftId: "draft-A", status: "queued" },
+    "stable",
+    1,
+    input,
+  )!;
+  expect(waiting.current).toBe(0);
+  expect(waiting.steps[0]?.receipt).toMatchObject({
+    runId: "run-A",
+    draftId: "draft-A",
+  });
+  expect(
+    advancePlan(
+      waiting,
+      "read_processing",
+      { runId: "run-A", status: "succeeded", partial: false, missingCount: 0 },
+      "read",
+      1,
+    )?.current,
+  ).toBe(1);
+  expect(
+    bindTaskInput(
+      "generate_candidates",
+      { name: "A.1.b" },
+      { targetCount: 50, target: { kind: "draft", id: "wrong-source" } },
+    ),
+  ).toEqual({ name: "A.1.b", outputCount: 50 });
+});
