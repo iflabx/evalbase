@@ -4,6 +4,8 @@
 
 静态图：[PNG](system-flow-v2.png)；Mermaid 源文件：[MMD](system-flow-v2.mmd)。
 
+2026-10-15 文档增补：[OPT-26–31 三批修复](assistant-generation-repair-batches.md) 尚未实施；图中虚线“按要求从零生成”表示计划新增路径，沿用后台处理、审核与确认。当前运行和历史修复的实际状态见优化台账。
+
 ## 1. 项目主流程
 
 ```mermaid
@@ -29,7 +31,7 @@ flowchart LR
     Version --> Trash["回收 / 恢复 / 永久删除"]
     Space --> Assistant["项目助手  自然语言"]
     Assistant --> Requirements["当前生效要求  校验对象与字段"]
-    Requirements --> Plan["简单操作或复杂任务步骤"]
+    Requirements --> Plan["简单操作或复杂任务步骤  能力预检"]
     Plan -->|已有执行授权| Tools["固定输入与参数  当前用户业务权限"]
     Tools --> Yield["保存结果  匹配回执与完成条件"]
     Yield -->|确定步骤有界续做| Plan
@@ -42,6 +44,10 @@ flowchart LR
     Version --> Process
     Draft --> Process
     Process --> Worker["后台分批处理  校验"]
+    Assistant --> Background["私人背景文档"]
+    Background -.-> Generation["按要求从零生成  OPT-29待实施"]
+    Tools -.-> Generation
+    Generation -.-> Worker
     Worker --> Result["进度与结果预览"]
     Worker -->|分类完成| Classified["固定分类结果"]
     Classified --> ClassifiedSelect["按类别选取与全量核对"]
