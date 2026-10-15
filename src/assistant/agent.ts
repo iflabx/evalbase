@@ -719,6 +719,64 @@ export async function executeAssistantTurn(
     const latest = tools[index];
     const task = saved.task;
     if (
+      latest?.status === "succeeded" &&
+      !unresolvedFailure(tools) &&
+      tools.every((item) =>
+        [
+          "plan_task",
+          "query_project",
+          "read_records",
+          "read_background",
+          "read_processing",
+        ].includes(item.name),
+      ) &&
+      !plannedAction &&
+      !processingEventRunId &&
+      !planningCheckpointRequired &&
+      !task.question &&
+      !task.executionPlan &&
+      !task.runId &&
+      !task.selectionPreview &&
+      !latest.input?.steps &&
+      !latest.input?.executionMode &&
+      Object.keys(latest.input ?? {}).some((field) =>
+        [
+          "requirements",
+          "targetCount",
+          "countKind",
+          "allowedFields",
+          "metadataKeys",
+          "classifications",
+        ].includes(field),
+      ) &&
+      canonicalJson(currentTaskFacts(task)) ===
+        canonicalJson(latest.result?.task) &&
+      !(
+        await db.query(
+          "SELECT 1 FROM assistant_proposal WHERE session_id=$1 AND task_revision=$2 AND status IN ('pending','executing') LIMIT 1",
+          [turn.session_id, turn.task_revision],
+        )
+      ).rowCount
+    ) {
+      await updateTask(db, turn, { stage: "planning", error: null });
+      await saveDiagnostics();
+      const completed = await updateTurn(
+        "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
+        [
+          turn.id,
+          [
+            "要求已记录，尚未开始新的处理。",
+            ...requirementSummary(task).map((item: string) => `- ${item}`),
+          ]
+            .join("\n")
+            .slice(0, 8000),
+        ],
+      );
+      if (!completed.rowCount)
+        throw new AssistantError(409, "assistant_interrupted");
+      return true;
+    }
+    if (
       latest?.status !== "succeeded" ||
       latest.input?.executionMode !== "plan" ||
       !latest.input?.steps?.length ||
@@ -1170,6 +1228,19 @@ export async function executeAssistantTurn(
             const prior = saved.find(
               (r) => r.key === key && r.status === "succeeded",
             );
+            if (
+              name === "plan_task" &&
+              prior &&
+              canonicalJson(currentTaskFacts(currentTask)) ===
+                canonicalJson(prior.result?.task)
+            ) {
+              // Re-saving identical requirements is not progress or a new execution obligation.
+              if (plannedAction || processingEventRunId) {
+                noProgress = true;
+                budgetBoundary = true;
+              } else summarizing = true;
+              return context.encode(prior.result);
+            }
             if (
               prior &&
               ![
@@ -2090,13 +2161,16 @@ export async function executeAssistantTurn(
             : plan
               ? (pendingPlanAction(plan) ?? null)
               : !replacingSimplePlan &&
-                  [
+                  ([
                     "submit_processing",
                     "generate_candidates",
                     "refine_candidates",
-                  ].includes(plannedAction ?? "")
+                  ].includes(plannedAction ?? "") ||
+                    (input.nextAction === undefined &&
+                      plannedAction &&
+                      !["any", "plan_task"].includes(plannedAction)))
                 ? plannedAction
-                : (input.nextAction ?? "any");
+                : (input.nextAction ?? null);
         const task = await updateTask(
           db,
           turn,
@@ -2140,7 +2214,7 @@ export async function executeAssistantTurn(
           },
           requirementsKey !== planRequirementsKey(current),
         );
-        // Legacy plans require one real follow-up tool; explicit plans keep their intended action pending through preparatory reads.
+        // Recording requirements alone does not create an obligation to execute a tool.
         plannedAction = nextAction ?? undefined;
         waitingForInput = Boolean(input.question);
         if (!input.question) planningCheckpointRequired = false;
@@ -4382,7 +4456,7 @@ export async function executeAssistantTurn(
         modelSteps++;
         await saveBudget();
         // Reserve the last bounded step for a reply, rather than another query.
-        if (modelSteps >= 10 || toolCalls >= 10) {
+        if (summarizing || modelSteps >= 10 || toolCalls >= 10) {
           activeRepairTools.clear();
           summarizing = true;
           return {
@@ -4615,6 +4689,18 @@ export async function executeAssistantTurn(
     await turnFence(db, scope, turn.id, turn.execution_token);
     if (repairFailure)
       throw new AssistantError(422, "assistant_tool_input_invalid");
+    const failedReceipt = unresolvedFailure(
+      (
+        await db.query("SELECT tool_results FROM assistant_turn WHERE id=$1", [
+          turn.id,
+        ])
+      ).rows[0].tool_results,
+    );
+    if (failedReceipt)
+      throw new AssistantError(
+        422,
+        failedReceipt.error?.code ?? "assistant_operation_failed",
+      );
     if (await finishSavedPlanningTurn()) return;
     if (await finishExhaustedProcessing()) return;
     if (textualCall(response.text))

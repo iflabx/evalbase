@@ -339,7 +339,7 @@ describe("project assistant public contract", () => {
             ? backgroundCheckpoint.shift()!
             : backgroundCheckpoint!,
         }
-      : body.tool_choice === "none"
+      : body.tool_choice === "none" || !body.tools?.length
         ? undefined
         : toolSequence.shift();
     if (checkpointRequested) {
@@ -3496,6 +3496,251 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+
+  it.each(["valid", "repaired", "empty reply", "duplicate batch"])(
+    "OPT32 follow-up finishes a requirements-only turn: %s",
+    async (mode) => {
+      const previous = sessionId;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions",
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const db = createPool(databaseUrl);
+      const input = {
+        targetCount: 3,
+        requirements: ["保留事实，不添加新信息"],
+      };
+      const before = calls.length;
+      try {
+        if (mode === "repaired") {
+          requestedTool = {
+            name: "plan_task",
+            input: { targetCount: "3", requirements: "保留事实，不添加新信息" },
+          };
+          parameterRepairReply = () => input;
+        } else if (mode === "duplicate batch") {
+          toolBatch = Array.from({ length: 6 }, () => ({
+            name: "plan_task",
+            input,
+          }));
+        } else requestedTool = { name: "plan_task", input };
+        if (mode === "empty reply") finalReply = "";
+        const state = (
+          await send("记录要求：做3条，保留事实，不添加新信息。先不要执行")
+        ).json();
+        const turn = state.turns.at(-1);
+        expect(turn.status).toBe("succeeded");
+        expect(turn.assistantText).toContain("要求已记录");
+        expect(turn.assistantText).toContain("3");
+        expect(state.task.nextAction).toBeNull();
+        expect(state.task.targetCount).toBe(3);
+        expect(state.task.requirements).toEqual(input.requirements);
+        expect(state.task.stage).not.toBe("complete");
+        expect(turn.tools).toHaveLength(1);
+        expect(calls.length - before).toBeLessThanOrEqual(
+          mode === "repaired" ? 3 : 2,
+        );
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int AS n FROM collaborative_draft WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int AS n FROM processing_run WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+      } finally {
+        requestedTool = undefined;
+        toolBatch = undefined;
+        parameterRepairReply = undefined;
+        finalReply = undefined;
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+  it("OPT32 follow-up bounds repeated successful planning without clearing an explicit action", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const input = {
+      targetCount: 3,
+      requirements: ["保留事实"],
+      nextAction: "create_draft",
+    };
+    const start = calls.length;
+    try {
+      toolSequence = Array.from({ length: 9 }, () => ({
+        name: "plan_task",
+        input,
+      }));
+      const state = (
+        await send("记录要求后创建草稿", undefined, "failed")
+      ).json();
+      expect(state.turns.at(-1).errorCode).toBe("assistant_no_progress");
+      expect(state.task.nextAction).toBe("create_draft");
+      expect(calls.length - start).toBeLessThanOrEqual(3);
+      expect(state.turns.at(-1).tools).toHaveLength(1);
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+  it("OPT32 follow-up does not conceal a failed operation after recording requirements", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { targetCount: 3, requirements: ["保留事实"] },
+        },
+        {
+          name: "read_background",
+          input: { documentId: "missing-background" },
+        },
+      ];
+      const state = (
+        await send("先记录要求，再读取说明", undefined, "failed")
+      ).json();
+      expect(state.turns.at(-1).status).toBe("failed");
+      expect(
+        state.turns
+          .at(-1)
+          .tools.some(
+            (t: any) => t.name === "read_background" && t.status === "failed",
+          ),
+      ).toBe(true);
+      expect(state.task.requirements).toEqual(["保留事实"]);
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+
+  it("OPT32 follow-up preserves an explicit action across a requirements patch", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const start = calls.length;
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { requirements: ["保留事实"], nextAction: "create_draft" },
+        },
+        { name: "plan_task", input: { targetCount: 3 } },
+        { name: "create_draft", input: { name: "明确授权后创建" } },
+      ];
+      const state = (await send("先记录要求，然后创建空草稿")).json();
+      expect(calls[start + 2].tool_choice).toBe("required");
+      expect(
+        state.turns
+          .at(-1)
+          .tools.filter(
+            (t: any) => t.name === "create_draft" && t.status === "succeeded",
+          ),
+      ).toHaveLength(1);
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
+
+  it("OPT32 follow-up preserves pending publication after recording requirements", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const path = "/api/projects/" + projectId + "/collaborative-drafts";
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: path,
+        headers,
+        payload: { name: "要求记录后待确认" },
+      })
+    ).json().draft;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: path + "/" + draft.id + "/records",
+          headers,
+          payload: { question: "合成问题", expectedOutput: "", metadata: [] },
+        })
+      ).statusCode,
+    ).toBe(201);
+    try {
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            requirements: ["保留事实"],
+            target: { kind: "draft", id: draft.id },
+          },
+        },
+        { name: "request_publish", input: { draftId: draft.id } },
+      ];
+      const state = (
+        await send("记录保留事实的要求，再准备发布这个草稿")
+      ).json();
+      expect(state.task.stage).toBe("awaiting_confirmation");
+      expect(
+        state.proposals.filter((p: any) => p.status === "pending"),
+      ).toHaveLength(1);
+      expect(state.turns.at(-1).assistantText).not.toContain(
+        "要求已记录，尚未开始新的处理",
+      );
+      const db = createPool(databaseUrl);
+      try {
+        expect(
+          (await db.query("SELECT count(*)::int AS n FROM test_set_version"))
+            .rows[0].n,
+        ).toBe(0);
+      } finally {
+        await db.end();
+      }
+    } finally {
+      toolSequence = [];
+      sessionId = previous;
+    }
+  });
   it("reserves a final reply after repeated successful queries", async () => {
     const previous = sessionId;
     sessionId = (
@@ -4376,7 +4621,12 @@ describe("project assistant public contract", () => {
       toolSequence = [
         { name: "create_draft", input: { name: "不应被建立的草稿" } },
       ];
-      const readOnly = (await send("只查看当前方案")).json();
+      const readOnly = (
+        await send("只查看当前方案", undefined, "failed")
+      ).json();
+      expect(readOnly.turns.at(-1).errorCode).toBe(
+        "assistant_tool_input_invalid",
+      );
       expect(
         readOnly.turns
           .at(-1)
