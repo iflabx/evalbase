@@ -16971,18 +16971,112 @@ describe("project assistant public contract", () => {
             );
           }
         }
+        if (count === 5) {
+          // Reproduce a plan already waiting at adoption, rather than only a completed simple plan.
+          const task = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task;
+          task.executionPlan = {
+            ...task.executionPlan,
+            mode: "execute",
+            current: 0,
+            needsReview: false,
+            steps: [
+              {
+                id: `pending-apply-${randomUUID()}`,
+                title: "保存当前成果",
+                action: "request_processing_apply",
+                input: { allValid: true },
+                status: "pending",
+              },
+            ],
+          };
+          await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+            sessionId,
+            task,
+          ]);
+          const latest = (
+            await app.inject({
+              method: "GET",
+              url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+              headers,
+            })
+          ).json();
+          const explainStart = calls.length;
+          toolSequence = [{ name: "plan_task", input: { nextAction: "none" } }];
+          const explanation = await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: {
+              message: "先解释这批内容，不保存",
+              candidates: {
+                scope: "task",
+                reviewRevision: latest.reviewRevision,
+                resultIds: latest.records.map((record: any) => record.id),
+              },
+            },
+          });
+          expect(explanation.statusCode, explanation.body).toBe(202);
+          const paused = await opt21End(explanation.json().turnId);
+          expect(paused.turns.at(-1).status).toBe("succeeded");
+          expect(paused.task.executionPaused).toBe(true);
+          expect(
+            calls
+              .slice(explainStart)
+              .filter(
+                (call: any) => call.tool_choice?.function?.name === "plan_task",
+              ),
+          ).toHaveLength(1);
+        }
         toolSequence = [
           {
             name: "plan_task",
             input:
               count === 50
                 ? { executionMode: "execute" }
-                : { nextAction: "request_processing_apply" },
+                : {
+                    executionMode: "execute",
+                    nextAction: "request_processing_apply",
+                  },
           },
           { name: "request_processing_apply", input: { allValid: true } },
         ];
         requestedTool = undefined;
-        const prepared = await opt21End(await opt21Submit("保存这批成果"));
+        const saveStart = calls.length;
+        let saveTurnId: string;
+        if (count === 5) {
+          const latest = (
+            await app.inject({
+              method: "GET",
+              url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+              headers,
+            })
+          ).json();
+          const submitted = await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${sessionId}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: {
+              message: "将勾选成果保存回原草稿",
+              candidates: {
+                scope: "task",
+                reviewRevision: latest.reviewRevision,
+                resultIds: latest.records.map((record: any) => record.id),
+              },
+            },
+          });
+          expect(submitted.statusCode, submitted.body).toBe(202);
+          saveTurnId = submitted.json().turnId;
+        } else saveTurnId = await opt21Submit("保存这批成果");
+        const prepared = await opt21End(saveTurnId);
+        if (count === 5)
+          expect(calls[saveStart].tool_choice?.function?.name).toBe(
+            "plan_task",
+          );
+        expect(prepared.task.executionPlan?.needsReview).not.toBe(true);
         const proposal = prepared.proposals.find(
           (p: any) => p.status === "pending",
         );

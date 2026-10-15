@@ -4288,6 +4288,19 @@ export async function executeAssistantTurn(
             activeTools,
             toolChoice: { type: "tool" as const, toolName: "read_processing" },
           };
+        if (
+          modelSteps === 1 &&
+          turn.event === "user" &&
+          turn.candidate_selection &&
+          currentTask.executionPlan?.needsReview &&
+          activeTools.includes("plan_task")
+        )
+          return {
+            ...fixedState,
+            activeTools: ["plan_task"],
+            toolChoice: { type: "tool" as const, toolName: "plan_task" },
+            instructions: `${instructions}\n本轮用户已提交固定候选范围，旧计划因新请求待核对，不是工具不可用。先调用plan_task只保存本轮变化与下一动作，省略steps以复用已有成果。用户要求执行操作时明确填写executionMode:execute以重新核对旧方案；保存勾选成果时nextAction为request_processing_apply，局部改写时为refine_candidates。仅解释或确需澄清时用none，不执行数据操作。不要重列已完成生成，不扩大勾选范围；采用仍只建立确认卡，不自动确认。`,
+          };
         // An invalid plan may need source/background reads before it can be repaired.
         if (plannedAction === "read_processing")
           return {
