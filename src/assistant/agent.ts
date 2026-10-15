@@ -1739,6 +1739,21 @@ export async function executeAssistantTurn(
         ).rows[0].task;
         const plannedDeliveries =
           input.steps ?? current.executionPlan?.steps ?? [];
+        const selectedRefinement = input.steps?.findIndex(
+          (step: any) => step.action === "refine_candidates",
+        );
+        if (
+          turn.candidate_selection &&
+          selectedRefinement > 0 &&
+          input.steps
+            .slice(0, selectedRefinement)
+            .some((step: any) => step.action === "generate_candidates")
+        )
+          throw new AssistantError(
+            422,
+            "assistant_tool_input_invalid",
+            "本轮已有用户勾选的真实候选，局部改写前不能重列生成阶段。保留当前候选和保护字段，省略steps并设置nextAction:refine_candidates，或从refine_candidates开始列改写、核对和采用步骤；后续独立测试集放在本类采用确认之后，不重建已完成生成步骤。旧确认卡因新要求已失效，不需要用户先确认或取消它；改写后重新核对并建立确认卡。",
+          );
         if (
           plannedDeliveries.some(
             (step: any) => step.action === "generate_candidates",
@@ -4147,7 +4162,7 @@ export async function executeAssistantTurn(
         "当前全部候选改写用allResults:true，按非空条件用where，UI固定勾选用allSelected:true，三者不混用；没有勾选不等于全部。数量含义分开：targetCount是当前测试集交付目标，overallTargetCount是多测试集合计目标，outputCount仅为本次新增量。首次明确目标先保存plan_task；普通补齐、省略数量和计划重建不能改变当前目标。read_processing报告countUnverified时，先从原始请求和生效要求核对；原话明确可直接plan_task恢复，不明确才问业务数量。不能累加各批请求量、拿现有候选数反推目标，或把八类各50的400填成首类目标。" +
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
-        "依据已读取背景文档从零生成使用generate_candidates；基于真实记录扩充使用submit_processing，两者的输入合同不同，不要求用户补种子或把背景当资产。内部参数错误由你按当前工具合同修正，不能用question把工具参数错误转交用户，不要求用户提供工具名、参数或内部ID。只给方案时保存完整plan后说明步骤，不询问是否同意先给方案；本轮用户已明确执行时直接启用execute，不复述历史问题要求再次开工确认。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
+        "依据已读取背景文档从零生成使用generate_candidates；基于真实记录扩充使用submit_processing，两者的输入合同不同，不要求用户补种子或把背景当资产。内部参数错误由你按当前工具合同修正，不能用question把工具参数错误转交用户，不要求用户提供工具名、参数或内部ID。只给方案时保存完整plan后说明步骤，不询问是否同意先给方案；本轮用户已明确执行时直接启用execute，不复述历史问题要求再次开工确认。勾选候选后的局部改写直接用refine_candidates，不重列已完成的生成阶段；新要求会使旧确认卡失效，不让用户先确认或取消失效卡，修改后重新核对并建立确认卡。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
         "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。本轮用户意图先于旧计划：只解释或暂停时先plan_task设置nextAction:none，再按需只读；只给方案设plan并仅查询；明确继续执行时设execute，不重复开工确认。暂停只停止后续派发，不代表已入队任务已取消；要取消运行请使用页面现有停止任务入口，不谎称已经取消。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不能解除暂停或构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +

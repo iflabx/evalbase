@@ -16872,6 +16872,30 @@ describe("project assistant public contract", () => {
         if (count === 5) {
           const before = candidates.json();
           toolSequence = [
+            {
+              name: "plan_task",
+              input: {
+                executionMode: "execute",
+                steps: [
+                  {
+                    ...steps[0],
+                    input: {
+                      ...steps[0].input,
+                      instructions: "不应重建已完成生成",
+                    },
+                  },
+                  {
+                    title: "仅改勾选一条",
+                    action: "refine_candidates",
+                    input: {
+                      allSelected: true,
+                      instructions: "OPT-25 局部表述",
+                      allowedFields: ["question"],
+                    },
+                  },
+                ],
+              },
+            },
             { name: "plan_task", input: { nextAction: "refine_candidates" } },
             {
               name: "refine_candidates",
@@ -16897,6 +16921,13 @@ describe("project assistant public contract", () => {
           });
           expect(submitted.statusCode, submitted.body).toBe(202);
           const changed = await opt21End(submitted.json().turnId);
+          expect(
+            changed.turns
+              .at(-1)
+              .tools.find(
+                (t: any) => t.name === "plan_task" && t.status === "failed",
+              )?.error.hint,
+          ).toContain("局部改写前不能重列生成阶段");
           const refined = changed.turns
             .at(-1)
             .tools.find(
