@@ -8,6 +8,7 @@ import { processingOptions } from "../processing/protocol.js";
 type Rule = NonNullable<CandidateGoal["classifications"]>[number];
 type RuleUpdate = Rule & { clear?: boolean };
 type Requirements = CandidateGoal & {
+  overallTargetCount?: number | null;
   requirements?: string[];
   allowedFields?: string[];
   metadataKeys?: string[] | null;
@@ -247,6 +248,15 @@ export function reviseRequirements(
     allowedLabels: [],
     classifications: rules,
   };
+  if (
+    merged.overallTargetCount != null &&
+    merged.targetCount != null &&
+    merged.overallTargetCount < merged.targetCount
+  )
+    throw new RequirementError(
+      "assistant_requirement_conflict",
+      "整体交付目标不能小于当前目标。请分别核对全部测试集与当前测试集的条数。",
+    );
   return {
     ...input,
     requirements: [
@@ -416,6 +426,9 @@ export function requirementSummary(
     rules = effectiveRules(task);
   }
   return [
+    ...(task.overallTargetCount != null
+      ? [`整体交付：${task.overallTargetCount} 条（当前测试集单独核对）`]
+      : []),
     ...(task.targetCount == null
       ? []
       : [

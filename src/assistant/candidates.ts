@@ -7,6 +7,9 @@ import { candidateKey } from "../processing/adoption.js";
 
 type Run = Awaited<ReturnType<typeof readProcessingRun>>;
 export type CandidateScope = {
+  scope?: "task";
+  members?: CandidateScope[];
+  excludedOriginKeys?: string[];
   runId: string;
   resultIds: string[];
   originKeys: string[];
@@ -26,6 +29,63 @@ export type CandidateScope = {
 // Hash the same JSON representation used by persisted/public candidate results.
 const digest = (records: Run["records"]) =>
   sha256(canonicalJson(JSON.parse(JSON.stringify(records))));
+
+/** Freeze the same current collection used by preview and adoption, retaining real run references. */
+export function selectCandidateCollection(
+  data: Run,
+  runs: Run[],
+  input: Parameters<typeof selectCandidateRun>[1],
+  previous?: CandidateScope,
+): CandidateScope {
+  const records = runs.flatMap((run) =>
+    run.records.map((row) => ({
+      ...row,
+      id: candidateKey(row.candidateOrigin),
+    })),
+  );
+  const selected = selectCandidateRun(
+    { ...data, records, total: records.length },
+    input,
+  );
+  const keys = new Set(selected.originKeys);
+  const members = runs.map((run) => {
+    const rows = run.records.filter((row) =>
+      keys.has(candidateKey(row.candidateOrigin)),
+    );
+    return {
+      ...selected,
+      runId: run.run.id,
+      resultIds: rows.map((row) => row.id),
+      originKeys: rows.map((row) => candidateKey(row.candidateOrigin)),
+      hash: digest(rows),
+    };
+  });
+  const excludedOriginKeys = [
+    ...new Set([
+      ...(previous?.excludedOriginKeys ?? []),
+      ...records.filter((row) => !keys.has(row.id)).map((row) => row.id),
+    ]),
+  ];
+  return {
+    ...selected,
+    scope: "task",
+    members,
+    excludedOriginKeys,
+    hash: sha256(canonicalJson({ members, excludedOriginKeys })),
+  };
+}
+
+export function candidateCollectionHashValid(scope: CandidateScope) {
+  return (
+    scope.hash ===
+    sha256(
+      canonicalJson({
+        members: scope.members,
+        excludedOriginKeys: scope.excludedOriginKeys,
+      }),
+    )
+  );
+}
 
 /** Use existing deterministic selection against persisted classifications, never model-enumerated IDs. */
 export function selectCandidateRun(
@@ -104,6 +164,7 @@ export function carryCandidateScope(
 ): CandidateScope | null {
   if (scope?.runId === runId) return scope;
   if (!scope) return null;
+  if (scope.scope === "task") return scope;
   if (scope.runId !== parentRunId) return scope;
   return {
     ...scope,
@@ -119,6 +180,7 @@ export function candidateScopeForRun(
   runId: string,
 ): CandidateScope | undefined {
   const scope = task?.candidateScope;
+  if (scope?.scope === "task") return;
   if (!scope || scope.runId === runId) return scope;
   if (!task?.runIds?.includes(runId))
     throw new AssistantError(409, "assistant_candidate_selection_changed");
@@ -132,14 +194,20 @@ export function candidateSelectionShortfalls(
 ) {
   if (!scope) return [];
   const supplements = runs
-    .filter((run) => run.run.id !== scope.runId)
+    .filter((run) => scope.scope === "task" || run.run.id !== scope.runId)
     .flatMap((run) =>
-      run.records.map((row, ordinal) => ({
-        ...row.result,
-        id: `${run.run.id}:${row.id}`,
-        assetId: run.run.id,
-        ordinal,
-      })),
+      run.records
+        .filter(
+          (row) =>
+            scope.scope !== "task" ||
+            !scope.originKeys.includes(candidateKey(row.candidateOrigin)),
+        )
+        .map((row, ordinal) => ({
+          ...row.result,
+          id: `${run.run.id}:${row.id}`,
+          assetId: run.run.id,
+          ordinal,
+        })),
     );
   const assigned = new Set<string>();
   return scope.groups.flatMap((group, index) => {

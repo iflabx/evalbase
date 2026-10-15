@@ -214,6 +214,49 @@ async function overflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
 
+test("OPT-28 separates the current goal from overall delivery and explains unknown counts", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    task: {
+      goal: "当前类别50条，整体400条",
+      stage: "awaiting_review",
+      runId: "run",
+      overallTargetCount: 400,
+      requirementSummary: ["新增候选：50 条", "整体交付：400 条（当前测试集单独核对）"],
+      review: {
+        runId: "run",
+        total: 2,
+        expectedCount: null,
+        countUnverified: true,
+        countSatisfied: false,
+        emptyQuestions: 0,
+        duplicates: 0,
+        protectedFieldChanges: 0,
+        labels: [],
+        classifications: [],
+      },
+    },
+  });
+  await page.goto(`${url}/one`);
+  await page.getByRole("button", { name: /^(工作区|打开工作区)$/ }).click();
+  await expect(page.getByText("目标数量待确认", { exact: false })).toBeVisible();
+  await expect(page.getByText("数量达标", { exact: true })).toHaveCount(0);
+  state.task.stage = "complete";
+  state.task.review = {
+    ...state.task.review,
+    expectedCount: 50,
+    countUnverified: false,
+    countSatisfied: true,
+    total: 50,
+  };
+  await page.reload();
+  await expect(page.getByText("当前目标已完成", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 420, height: 900 });
+  await overflow(page);
+  expect(state.posts).toHaveLength(0);
+});
+
 test("OPT-25 completed tasks retain read-only results and history after refresh", async ({
   page,
 }) => {

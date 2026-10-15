@@ -12703,6 +12703,25 @@ describe("project assistant public contract", () => {
       const second = (await opt21End(await opt21Submit("再清洗乙问题"))).task
         .runId;
       await finish(second);
+      // This fixture authorizes both batches as the current collection. A standalone
+      // fixed input otherwise narrows the task to 乙, and an old 甲 ID must be rejected.
+      await db.query(
+        "UPDATE assistant_session SET task=task-'processingScope' WHERE id=$1",
+        [sessionId],
+      );
+      const current = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      expect(
+        current.records.map((row: any) => row.result.question).join(" "),
+      ).toContain("甲");
+      expect(
+        current.records.map((row: any) => row.result.question).join(" "),
+      ).toContain("乙");
       toolSequence = [
         {
           name: "plan_task",
@@ -13196,9 +13215,10 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
-  async function opt25Results(unchanged = false) {
+  async function opt25Results(unchanged = false, sizes = [7, 7]) {
     const source = await opt22Draft("R25 原草稿");
-    for (let i = 3; i < 14; i++) {
+    const total = sizes.reduce((n, size) => n + size, 0);
+    for (let i = 3; i < total; i++) {
       const r = await app.inject({
         method: "POST",
         url: `/api/projects/${projectId}/collaborative-drafts/${source}/records`,
@@ -13227,7 +13247,10 @@ describe("project assistant public contract", () => {
       )
     ).rows.map((r) => r.id);
     const runs: string[] = [];
-    for (const selected of [ids.slice(0, 7), ids.slice(7)]) {
+    let offset = 0;
+    for (const size of sizes) {
+      const selected = ids.slice(offset, offset + size);
+      offset += size;
       const r = await app.inject({
         method: "POST",
         url: `/api/projects/${projectId}/processing-runs`,
@@ -13264,11 +13287,11 @@ describe("project assistant public contract", () => {
       sessionId,
       JSON.stringify({
         title: "R25 跨批整理",
-        goal: "整理14条资料",
+        goal: `整理${total}条资料`,
         target: { kind: "draft", id: source },
         targetDraftId: source,
         allowedFields: ["question"],
-        runId: runs[1],
+        runId: runs.at(-1),
         runIds: runs,
         stage: "awaiting_review",
       }),
@@ -14549,10 +14572,10 @@ describe("project assistant public contract", () => {
   });
 
   it.each(["awaiting_review", "stopped"])(
-    "OPT-25 refines two cross-batch identities after %s and rejects stale selection without duplicating replay",
+    "OPT-28 / OPT-25 refines two of 50 cross-batch identities after %s and rejects stale selection without duplicating replay",
     async (stage) => {
       const previous = sessionId,
-        f = await opt25Results();
+        f = await opt25Results(false, [20, 28, 2]);
       const get = () =>
         app.inject({
           method: "GET",
@@ -14633,7 +14656,7 @@ describe("project assistant public contract", () => {
           );
         }
         const after = (await get()).json();
-        expect(after.taskTotal).toBe(14);
+        expect(after.taskTotal).toBe(50);
         expect(new Set(after.allIds)).toEqual(new Set(before.allIds));
         for (const row of after.records) {
           const old = before.records.find((r: any) => r.id === row.id);
@@ -15531,6 +15554,399 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+  it.each(["all", "where"])(
+    "OPT-28 selects and refines the same 20+28+2 current results using %s",
+    async (method) => {
+      const previous = sessionId,
+        f = await opt25Results(false, [20, 28, 2]);
+      try {
+        await f.db.query(
+          "UPDATE assistant_session SET task=task||'{\"targetCount\":50}'::jsonb WHERE id=$1",
+          [sessionId],
+        );
+        toolSequence = [
+          { name: "plan_task", input: { nextAction: "select_candidates" } },
+          {
+            name: "select_candidates",
+            input: {
+              runId: f.runs[0],
+              selection: { method: "all", conditions: [] },
+            },
+          },
+        ];
+        const selected = await opt21End(await opt21Submit("固定这批全部50条"));
+        const selectedTool = selected.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "select_candidates");
+        expect(selectedTool.status, JSON.stringify(selectedTool)).toBe(
+          "succeeded",
+        );
+        expect(selectedTool.result.selectedCount).toBe(50);
+        expect(selected.task.runIds).toHaveLength(3);
+        const endpoint = () =>
+          `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`;
+        const page = (
+          await app.inject({ method: "GET", url: endpoint(), headers })
+        ).json();
+        expect(page.total).toBe(50);
+        const history = await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=run&run=${f.runs[0]}&limit=100`,
+          headers,
+        });
+        expect(history.json().total).toBe(20);
+        toolSequence = [
+          { name: "plan_task", input: { nextAction: "refine_candidates" } },
+          {
+            name: "refine_candidates",
+            input: {
+              runId: f.runs[0],
+              instructions: "OPT-25 局部表述",
+              allowedFields: ["question"],
+              ...(method === "all"
+                ? { allResults: true }
+                : {
+                    where: {
+                      field: "metadata",
+                      key: "类别",
+                      operator: "equals",
+                      value: "原类别",
+                    },
+                  }),
+            },
+          },
+        ];
+        const submitted = await opt21End(
+          await opt21Submit(
+            method === "all"
+              ? "把这批全部问题改得自然"
+              : "把类别为原类别的全部问题改得自然",
+          ),
+        );
+        const refined = submitted.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "refine_candidates");
+        expect(refined.status, JSON.stringify(refined)).toBe("succeeded");
+        expect(refined.result.refinedCount).toBe(50);
+        expect(refined.result.total).toBe(50);
+        const children = (
+          await f.db.query(
+            "SELECT r.id FROM processing_run r WHERE r.parent_run_id=ANY($1::text[])",
+            [f.runs],
+          )
+        ).rows;
+        expect(children).toHaveLength(3);
+        for (const child of children) {
+          const job = (
+            await f.db.query(
+              "UPDATE job SET status='running',lease_owner='opt28',lease_expires_at=now()+interval '30 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+              [child.id],
+            )
+          ).rows[0];
+          const result = await runProcessing(
+            f.db,
+            f.artifacts,
+            {
+              ...f.cfg,
+              modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+            },
+            job,
+          );
+          await f.db.query(
+            "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+            [job.id, result],
+          );
+        }
+        const { collectProcessingEvents } =
+          await import("../../src/assistant/tasks.js");
+        await collectProcessingEvents(f.db);
+        await expect
+          .poll(
+            async () =>
+              (await read())
+                .json()
+                .turns.some((t: any) =>
+                  ["queued", "running"].includes(t.status),
+                ),
+            { timeout: 15000 },
+          )
+          .toBe(false);
+        const after = (
+          await app.inject({ method: "GET", url: endpoint(), headers })
+        ).json();
+        expect(after.total).toBe(50);
+        expect(
+          after.records.every((row: any) =>
+            row.result.question.endsWith("自然表述"),
+          ),
+        ).toBe(true);
+        requestedTool = {
+          name: "read_processing",
+          input: { runId: children[0].id },
+        };
+        const checked = await opt21End(await opt21Submit("核对当前全部成果"));
+        expect(checked.task.review).toMatchObject({
+          total: 50,
+          expectedCount: 50,
+          countSatisfied: true,
+        });
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: { nextAction: "request_processing_apply" },
+          },
+          {
+            name: "request_processing_apply",
+            input: { runId: children[0].id, allValid: true },
+          },
+        ];
+        const ready = await opt21End(
+          await opt21Submit("把全部成果保存回原草稿"),
+        );
+        const proposal = ready.proposals.find(
+          (p: any) => p.status === "pending",
+        );
+        expect(proposal?.summary.count, JSON.stringify(ready.task)).toBe(50);
+        const accepted = await app.inject({
+          method: "POST",
+          url: `${base()}/proposals/${proposal.id}/confirm`,
+          headers,
+          payload: {},
+        });
+        expect(accepted.statusCode, accepted.body).toBe(200);
+        expect(
+          (
+            await f.db.query(
+              "SELECT count(*)::int n FROM collaborative_draft_record WHERE draft_id=$1 AND question LIKE '%自然表述'",
+              [f.source],
+            )
+          ).rows[0].n,
+        ).toBe(50);
+      } finally {
+        toolSequence = [];
+        requestedTool = undefined;
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/stop`,
+          headers,
+          payload: {},
+        });
+        sessionId = previous;
+        await f.db.end();
+      }
+    },
+  );
+
+  it("OPT-28 restores a recorded legacy goal and preserves 50/400 through pause, replan and refresh", async () => {
+    const previous = sessionId,
+      f = await opt25Results(false, [20, 28, 2]);
+    try {
+      await f.db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            requirements: ["新增候选：50 条"],
+            overallTargetCount: 400,
+          }),
+        ],
+      );
+      requestedTool = { name: "read_processing", input: { runId: f.runs[0] } };
+      const recovered = await opt21End(await opt21Submit("核对当前类别"));
+      expect(recovered.task).toMatchObject({
+        targetCount: 50,
+        overallTargetCount: 400,
+      });
+      expect(recovered.task.review).toMatchObject({
+        expectedCount: 50,
+        total: 50,
+        countSatisfied: true,
+      });
+      for (const input of [
+        { nextAction: "none" },
+        { goal: "重新整理当前类别的核对方案", nextAction: "read_processing" },
+      ]) {
+        requestedTool = { name: "plan_task", input };
+        const state = await opt21End(
+          await opt21Submit(
+            input.nextAction === "none" ? "先暂停" : "重新整理方案",
+          ),
+        );
+        expect(state.task).toMatchObject({
+          targetCount: 50,
+          overallTargetCount: 400,
+        });
+        expect((await read()).json().task.targetCount).toBe(50);
+      }
+      await f.db.query(
+        "UPDATE assistant_session SET task=(task-'targetCount')||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            requirements: ["新增候选：50 条", "新增候选：30 条"],
+          }),
+        ],
+      );
+      requestedTool = { name: "read_processing", input: { runId: f.runs[0] } };
+      const ambiguous = await opt21End(await opt21Submit("只核对，不执行"));
+      expect(ambiguous.task.review).toMatchObject({
+        expectedCount: null,
+        countUnverified: true,
+        complete: false,
+      });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-28 rejects legacy result IDs excluded from the current collection", async () => {
+    const previous = sessionId,
+      f = await opt25Results(false, [20, 28, 2]);
+    try {
+      const { taskCandidateCollection } =
+        await import("../../src/assistant/review.js");
+      const session = (
+        await f.db.query(
+          "SELECT task,actor_id FROM assistant_session WHERE id=$1",
+          [sessionId],
+        )
+      ).rows[0];
+      const before = await taskCandidateCollection(
+        f.db,
+        f.artifacts,
+        { projectId, actorId: session.actor_id },
+        session.task,
+      );
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "select_candidates" } },
+        {
+          name: "select_candidates",
+          input: {
+            runId: f.runs[0],
+            seed: "opt28-fixed-two",
+            selection: {
+              method: "random",
+              mode: "count",
+              value: 2,
+              conditions: [],
+            },
+          },
+        },
+      ];
+      const selected = await opt21End(await opt21Submit("只保留两条候选"));
+      const chosen = selected.task.candidateScope.count;
+      expect(chosen).toBe(2);
+      const page = (
+        await app.inject({
+          method: "GET",
+          url: `${base()}/sessions/${sessionId}/candidates?scope=task&limit=100`,
+          headers,
+        })
+      ).json();
+      const excluded = before.records.find(
+        (row) => !page.allIds.includes(row.id),
+      )!;
+      toolSequence = [
+        { name: "plan_task", input: { nextAction: "refine_candidates" } },
+        {
+          name: "refine_candidates",
+          input: {
+            runId: excluded.resultRef.runId,
+            resultIds: [excluded.resultRef.resultId],
+            instructions: "OPT-25 局部表述",
+            allowedFields: ["question"],
+          },
+        },
+      ];
+      const rejected = await opt21End(await opt21Submit("尝试改写旧记录引用"));
+      const tool = rejected.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "refine_candidates");
+      expect(tool.status, JSON.stringify(tool)).toBe("failed");
+      expect(tool.error.code).toBe("assistant_candidate_selection_changed");
+      expect(
+        (
+          await f.db.query(
+            "SELECT id FROM processing_run WHERE parent_run_id=ANY($1::text[])",
+            [f.runs],
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
+  it("OPT-28 refuses empty-condition and absent-checkbox shortcuts without writing", async () => {
+    const previous = sessionId,
+      f = await opt25Results();
+    try {
+      for (const input of [
+        { allSelected: true },
+        { where: { field: "question", operator: "contains", value: "" } },
+      ]) {
+        toolSequence = [
+          { name: "plan_task", input: { nextAction: "refine_candidates" } },
+          {
+            name: "refine_candidates",
+            input: {
+              runId: f.runs[0],
+              instructions: "OPT-25 局部表述",
+              allowedFields: ["question"],
+              ...input,
+            },
+          },
+        ];
+        const state = await opt21End(await opt21Submit("尝试不明确的范围"));
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some(
+              (t: any) =>
+                t.name === "refine_candidates" && t.status === "failed",
+            ),
+        ).toBe(true);
+      }
+      expect(
+        (
+          await f.db.query(
+            "SELECT id FROM processing_run WHERE parent_run_id=ANY($1::text[])",
+            [f.runs],
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      toolSequence = [];
+      requestedTool = undefined;
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
   it("OPT-27 pauses old pending work through reads, events and recovery, then resumes once", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);

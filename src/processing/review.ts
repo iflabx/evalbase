@@ -5,6 +5,7 @@ import type { ProcessingInput } from "./protocol.js";
 import { effectiveRules } from "../assistant/requirements.js";
 
 export type CandidateGoal = {
+  countUnverified?: boolean;
   targetCount?: number | null;
   countKind?: "new" | "final";
   allowedLabels?: string[];
@@ -105,13 +106,16 @@ export function reviewCandidates(
     0,
   );
   const expectedCount =
-    goal?.targetCount === null ? null : (goal?.targetCount ?? expectedRunCount);
+    goal?.countUnverified || goal?.targetCount === null
+      ? null
+      : (goal?.targetCount ?? expectedRunCount);
   const candidateCount = runs.reduce((count, item) => count + item.total, 0);
   const total = final ? records.length : candidateCount;
   const countSatisfied =
-    expectedCount === null
+    !goal?.countUnverified &&
+    (expectedCount === null
       ? candidateCount === expectedRunCount
-      : total === expectedCount;
+      : total === expectedCount);
   const formatIssues = runs
     .flatMap((item) => item.issues)
     .filter((issue) =>
@@ -188,6 +192,7 @@ export function reviewCandidates(
       0,
     ),
     expectedCount,
+    countUnverified: Boolean(goal?.countUnverified),
     countSatisfied,
     emptyQuestions,
     duplicates,

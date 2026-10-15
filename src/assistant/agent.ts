@@ -1,10 +1,8 @@
-import {
-  createRefinementRun,
-  createRefinementGroups,
-} from "../processing/refine.js";
+import { createRefinementGroups } from "../processing/refine.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { selectRecords, type SelectionRecord } from "../selection/index.js";
 import { updateTask } from "./tasks.js";
+import { guardProcessingTask } from "../processing/task-state.js";
 import {
   RequirementError,
   reviseRequirements,
@@ -38,11 +36,7 @@ import {
   resolveTaskSelection,
 } from "./review.js";
 import { reviewCandidates } from "../processing/review.js";
-import {
-  selectCandidateRun,
-  scopeCandidateRun,
-  candidateScopeForRun,
-} from "./candidates.js";
+import { selectCandidateCollection, scopeCandidateRun } from "./candidates.js";
 import {
   ToolLoopAgent,
   tool,
@@ -549,8 +543,8 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v1",
-      promptVersion: "assistant-prompt-v7",
-      toolsVersion: "assistant-tools-v5",
+      promptVersion: "assistant-prompt-v8",
+      toolsVersion: "assistant-tools-v6",
       modelRevision,
       requestAttempts: requests.length,
       transportRetries: turnBudget.transportRetries,
@@ -1503,10 +1497,17 @@ export async function executeAssistantTurn(
         },
         targetCount: {
           description:
-            "当前目标条数。用户撤销数量限制时传null清除旧值，省略则保留旧值；同时更新requirements及已变动的分类配额。",
+            "当前测试集交付目标，非本次outputCount或补齐量。首次明确目标时保存，省略保留，只有用户变更才更新；多份各50时当前50、整体另存overallTargetCount，不能填整体400。明确撤销数量限制时null。",
           type: ["integer", "null"],
           minimum: 1,
           maximum: 10000,
+        },
+        overallTargetCount: {
+          type: ["integer", "null"],
+          minimum: 1,
+          maximum: 10000,
+          description:
+            "多个测试集合计交付目标，仅作整体说明，不代替当前targetCount。用户未变更时省略保留，撤销整体说明时null。",
         },
         countKind: {
           enum: ["new", "final"],
@@ -2646,8 +2647,6 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
-        if (!(task.runIds ?? [task.runId]).includes(input.runId))
-          throw new AssistantError(409, "assistant_processing_context_changed");
         const data = await readProcessingRun(
           db,
           artifacts,
@@ -2657,24 +2656,65 @@ export async function executeAssistantTurn(
           true,
         );
         await depend(references(data.run.source));
-        const candidateScope = selectCandidateRun(data, input);
+        const collection = await taskCandidateCollection(
+          db,
+          artifacts,
+          scope,
+          task,
+          data,
+        );
+        if (
+          !(task.runIds ?? [task.runId]).includes(input.runId) &&
+          !collection.runs.some((run) => run.run.id === input.runId) &&
+          !collection.history.some((run) => run.runId === input.runId)
+        )
+          throw new AssistantError(409, "assistant_processing_context_changed");
+        if (
+          collection.executionRuns.some(
+            (run) => !["succeeded", "failed", "cancelled"].includes(run.status),
+          )
+        )
+          throw new AssistantError(409, "processing_still_running");
+        const candidateScope = selectCandidateCollection(
+          { ...data, run: { ...data.run, status: "succeeded" } },
+          collection.runs,
+          input,
+          task.candidateScope,
+        );
         const nextTask = {
           ...task,
           runId: input.runId,
-          runIds: [input.runId],
           candidateScope,
         };
         const checked = await reviewTask(db, artifacts, scope, nextTask, data);
-        await updateTask(db, turn, {
-          runId: input.runId,
-          runIds: [input.runId],
-          candidateScope,
-          review: checked.review,
-          selectedCandidates: null,
-          checkedStatus: checked.checkedStatus,
-          stage: "awaiting_review",
-          error: null,
-        });
+        const client = await db.connect();
+        try {
+          await client.query("BEGIN");
+          await guardProcessingTask(client, {
+            ...executionScope,
+            assistantResultsGuard: { states: collection.states },
+          });
+          await updateTask(
+            client,
+            turn,
+            {
+              runId: input.runId,
+              candidateScope,
+              review: checked.review,
+              selectedCandidates: null,
+              checkedStatus: checked.checkedStatus,
+              stage: "awaiting_review",
+              error: null,
+            },
+            true,
+          );
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
         return {
           runId: input.runId,
           selectedCount: candidateScope.resultIds.length,
@@ -2682,8 +2722,9 @@ export async function executeAssistantTurn(
           groups: candidateScope.groups,
           review: smallReview(checked.review),
           records: smallRecords(
-            scopeCandidateRun(data, candidateScope)
-              .records.slice(0, 10)
+            collection.records
+              .filter((row) => candidateScope.originKeys.includes(row.id))
+              .slice(0, 10)
               .map((row) => ({ ...row.result, id: row.id })),
           ),
         };
@@ -2691,11 +2732,12 @@ export async function executeAssistantTurn(
     ),
     refine_candidates: businessTool(
       "refine_candidates",
-      "按用户明确指定范围重改上一批候选，保留未选记录。此工具不新增记录，不能用于补齐数量；不要因自己的语义评价自动重改候选。resultIds使用read_processing返回的候选序号；勾选范围来自本轮candidateSelection，使用allSelected:true处理固定的任务勾选，可跨多个批次，不枚举预览ID；where可按标签、问题内容或Metadata条件定位全部范围。用户明确要求全部候选时可用where:{field:question,operator:contains,value:空字符串}，不需翻页枚举ID；resultIds/where二选一，必须遵守勾选范围。allowedFields只包含用户允许修改的字段。",
+      "按用户明确范围改写当前整任务有效成果，保留未选记录，不新增或补齐数量。明确全部用allResults:true，无需先勾选；按条件用where，在全部当前成果匹配，不能用空条件冒充全量；UI固定勾选用allSelected:true，不能因未勾选扩大范围。三者与历史单批resultIds互斥；runId只定位当前任务，不把历史运行当当前全部。allowedFields仅包含用户允许修改字段。",
       {
         runId: string,
         resultIds: ids,
         allSelected: { type: "boolean" },
+        allResults: { type: "boolean" },
         where: {
           type: "object",
           properties: {
@@ -2724,24 +2766,134 @@ export async function executeAssistantTurn(
           ])
         ).rows[0]?.task;
         const picked = turn.candidate_selection ?? task.selectedCandidates;
-        if (picked?.scope === "task") {
+        if (input.where && !input.where.value.trim())
+          throw new AssistantError(
+            422,
+            "assistant_candidate_selection_invalid",
+            "筛选条件不能为空。明确处理当前全部时使用allResults，固定勾选使用allSelected。",
+          );
+        if (
+          [
+            input.allResults === true,
+            input.allSelected === true,
+            Boolean(input.where),
+            Boolean(input.resultIds),
+          ].filter(Boolean).length !== 1 ||
+          (input.allSelected === true && !picked)
+        )
+          throw new AssistantError(
+            422,
+            "assistant_candidate_selection_invalid",
+          );
+        {
           const collection = await taskCandidateCollection(
             db,
             artifacts,
             scope,
             task,
           );
-          const selected = resolveTaskSelection(collection, picked);
+          const knownRun =
+            (task.runIds ?? [task.runId]).includes(input.runId) ||
+            collection.runs.some((run) => run.run.id === input.runId) ||
+            collection.history.some((run) => run.runId === input.runId);
+          const selected =
+            picked?.scope === "task"
+              ? resolveTaskSelection(collection, picked)
+              : undefined;
+          const legacyReplaced =
+            picked &&
+            !selected &&
+            (
+              await db.query(
+                "SELECT 1 FROM processing_run WHERE parent_run_id=$1 AND project_id=$2 AND actor_id=$3 LIMIT 1",
+                [picked.runId, scope.projectId, scope.actorId],
+              )
+            ).rowCount;
           if (
-            input.allSelected !== true ||
-            input.where ||
-            input.resultIds ||
-            !selected.groups.some((group) => group.runId === input.runId)
+            !knownRun ||
+            legacyReplaced ||
+            (selected && input.allSelected !== true) ||
+            (picked &&
+              !selected &&
+              (input.runId !== picked.runId ||
+                (input.allSelected !== true &&
+                  (!input.resultIds ||
+                    canonicalJson([...input.resultIds].sort()) !==
+                      canonicalJson([...picked.resultIds].sort())))))
           )
             throw new AssistantError(
               409,
               "assistant_candidate_selection_changed",
             );
+          if (
+            collection.executionRuns.some(
+              (run) =>
+                !["succeeded", "failed", "cancelled"].includes(run.status),
+            )
+          )
+            throw new AssistantError(
+              409,
+              picked
+                ? "assistant_candidate_selection_changed"
+                : "processing_still_running",
+            );
+          const condition = input.where;
+          const rows = selected
+            ? collection.records.filter((row) =>
+                selected.resultIds.includes(row.id),
+              )
+            : picked || input.resultIds
+              ? collection.records.filter(
+                  (row) =>
+                    row.resultRef.runId === input.runId &&
+                    (picked?.resultIds ?? input.resultIds).includes(
+                      row.resultRef.resultId,
+                    ),
+                )
+              : collection.records.filter((row) => {
+                  if (!condition) return true;
+                  const values =
+                    condition.field === "metadata"
+                      ? row.result.metadata
+                          .filter(
+                            (entry) =>
+                              !condition.key || entry.key === condition.key,
+                          )
+                          .map((entry) => entry.value)
+                      : [
+                          row.result[
+                            condition.field as "question" | "expectedOutput"
+                          ],
+                        ];
+                  return values.some((value) =>
+                    condition.operator === "equals"
+                      ? value === condition.value
+                      : value.includes(condition.value),
+                  );
+                });
+          if (
+            ((picked && !selected) || input.resultIds) &&
+            rows.length !==
+              new Set<string>(picked?.resultIds ?? input.resultIds).size
+          )
+            throw new AssistantError(
+              409,
+              "assistant_candidate_selection_changed",
+            );
+          if (!rows.length)
+            throw new AssistantError(
+              422,
+              "assistant_candidate_selection_invalid",
+              "当前范围没有匹配候选，请核对条件或重新勾选。",
+            );
+          const groups = [
+            ...new Set(rows.map((row) => row.resultRef.runId)),
+          ].map((runId) => ({
+            runId,
+            resultIds: rows
+              .filter((row) => row.resultRef.runId === runId)
+              .map((row) => row.resultRef.resultId),
+          }));
           const results = await createRefinementGroups(
             db,
             artifacts,
@@ -2749,7 +2901,7 @@ export async function executeAssistantTurn(
               ...executionScope,
               assistantResultsGuard: { states: collection.states },
             },
-            selected.groups,
+            groups,
             key,
             {
               instructions: input.instructions,
@@ -2770,134 +2922,11 @@ export async function executeAssistantTurn(
             runId: results.at(-1)!.run.id,
             runIds: results.map((result) => result.run.id),
             status: "queued",
-            refinedCount: picked.resultIds.length,
+            refinedCount: rows.length,
             total: collection.records.length,
             url: `/projects/${scope.projectId}/processing?run=${results.at(-1)!.run.id}`,
           };
         }
-        const currentCandidates = picked
-          ? effectiveTaskRuns(
-              await Promise.all(
-                (task.runIds ?? [task.runId]).map(async (runId: string) =>
-                  scopeCandidateRun(
-                    await readProcessingRun(
-                      db,
-                      artifacts,
-                      scope,
-                      runId,
-                      { limit: "10000" },
-                      true,
-                    ),
-                    candidateScopeForRun(task, runId),
-                  ),
-                ),
-              ),
-            ).find((data) => data.run.id === picked.runId)
-          : undefined;
-        if (
-          picked &&
-          (!currentCandidates ||
-            picked.resultIds.some(
-              (id: string) => !currentCandidates.allIds.includes(id),
-            ) ||
-            (
-              await db.query(
-                "SELECT 1 FROM processing_run WHERE parent_run_id=$1 AND project_id=$2 AND actor_id=$3 LIMIT 1",
-                [picked.runId, scope.projectId, scope.actorId],
-              )
-            ).rowCount)
-        )
-          throw new AssistantError(
-            409,
-            "assistant_candidate_selection_changed",
-            "原勾选范围已被后续处理替换。请查看当前成果并重新勾选，不能沿用旧下标或自动扩大范围。",
-          );
-        if (input.allSelected === true && picked?.runId === input.runId)
-          input.resultIds = picked.resultIds;
-        if (Boolean(input.resultIds) === Boolean(input.where))
-          throw new AssistantError(
-            422,
-            "assistant_candidate_selection_invalid",
-          );
-        if (input.where || task?.candidateScope) {
-          const data = scopeCandidateRun(
-            await readProcessingRun(
-              db,
-              artifacts,
-              scope,
-              input.runId,
-              { limit: "10000" },
-              true,
-            ),
-            candidateScopeForRun(task, input.runId),
-          );
-          if (input.resultIds?.some((id: string) => !data.allIds.includes(id)))
-            throw new AssistantError(
-              422,
-              "assistant_candidate_selection_changed",
-            );
-          const condition = input.where;
-          if (condition)
-            input.resultIds = data.records
-              .filter((row) => {
-                const text =
-                  condition.field === "metadata"
-                    ? row.result.metadata
-                        .filter(
-                          (entry) =>
-                            !condition.key || entry.key === condition.key,
-                        )
-                        .map((entry) => entry.value)
-                    : [
-                        row.result[
-                          condition.field as "question" | "expectedOutput"
-                        ],
-                      ];
-                return text.some((value) =>
-                  condition.operator === "equals"
-                    ? value === condition.value
-                    : value.includes(condition.value),
-                );
-              })
-              .map((row) => row.id);
-        }
-        if (
-          picked &&
-          (input.runId !== picked.runId ||
-            canonicalJson([...input.resultIds].sort()) !==
-              canonicalJson([...picked.resultIds].sort()))
-        )
-          throw new AssistantError(
-            422,
-            "assistant_candidate_selection_changed",
-          );
-        const result = await createRefinementRun(
-          db,
-          artifacts,
-          executionScope,
-          input.runId,
-          key,
-          {
-            resultIds: input.resultIds,
-            instructions: input.instructions,
-            allowedFields: input.allowedFields,
-          },
-        );
-        await depend(references(result.run.source));
-        await updateTask(db, turn, {
-          runId: result.run.id,
-          selectedCandidates: null,
-          stage: "processing",
-          review: null,
-        });
-        yieldToProcessing = true;
-        return {
-          runId: result.run.id,
-          status: result.run.status,
-          refinedCount: input.resultIds.length,
-          total: result.run.inputCount,
-          url: `/projects/${scope.projectId}/processing?run=${result.run.id}`,
-        };
       },
     ),
     retry_processing: businessTool(
@@ -2991,15 +3020,26 @@ export async function executeAssistantTurn(
         };
         for (const item of runs) await depend(references(item.run.source));
         if (finished)
-          await updateTask(db, turn, {
-            runId: input.runId,
-            runIds,
-            stage: "awaiting_review",
-            checkedStatus,
-            review,
-            recovery: null,
-            error: null,
-          });
+          await updateTask(
+            db,
+            turn,
+            {
+              ...(review.goalRecovered
+                ? {
+                    targetCount: review.expectedCount,
+                    countKind: review.countKind,
+                  }
+                : {}),
+              runId: input.runId,
+              runIds,
+              stage: "awaiting_review",
+              checkedStatus,
+              review,
+              recovery: null,
+              error: null,
+            },
+            Boolean(review.goalRecovered),
+          );
         else
           await updateTask(db, turn, {
             runId: input.runId,
@@ -3569,7 +3609,8 @@ export async function executeAssistantTurn(
         (step.action === "refine_candidates" &&
           !input.resultIds &&
           !input.where &&
-          !input.allSelected) ||
+          !input.allSelected &&
+          !input.allResults) ||
         !fixedInputValidators.get(step.action)?.(input)
       )
         break;
@@ -3818,6 +3859,7 @@ export async function executeAssistantTurn(
       model: model.model,
       temperature: 0.2,
       instructions:
+        "当前全部候选改写用allResults:true，按非空条件用where，UI固定勾选用allSelected:true，三者不混用；没有勾选不等于全部。数量含义分开：targetCount是当前测试集交付目标，overallTargetCount是多测试集合计目标，outputCount仅为本次新增量。首次明确目标先保存plan_task；普通补齐、省略数量和计划重建不能改变当前目标。read_processing报告countUnverified时，先从原始请求和生效要求核对；原话明确可直接plan_task恢复，不明确才问业务数量。不能累加各批请求量、拿现有候选数反推目标，或把八类各50的400填成首类目标。" +
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "现有生成能力仅支持依据真实输入记录扩充，不支持仅凭背景文档或空草稿从零生成。遇到这种请求说明当前能力限制，不能伪造来源、编造种子或反复提交空输入；内部参数错误由你按当前工具合同修正，不要求用户提供工具名、参数或内部ID。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +

@@ -3,11 +3,105 @@ import {
   taskCompatibilityProblem,
   scopeRunToTask,
   effectiveTaskRuns,
+  resolveCandidateGoal,
 } from "../../src/assistant/review.js";
 import { planRequirementsKey } from "../../src/assistant/plan.js";
 import { requirementSummary } from "../../src/assistant/requirements.js";
+import { canonicalJson } from "../../src/package/contract.js";
 
 describe("current task result compatibility", () => {
+  it("OPT-28 keeps a recorded 50 goal separate from requests 50, 30 and 2 and overall 400", () => {
+    const runs = [50, 30, 2].map((outputCount) => ({
+      rootOperation: "augment",
+      run: { options: { operation: "augment", outputCount } },
+      backgroundGoal: { requirements: ["新增候选：50 条"] },
+    })) as any;
+    expect(
+      resolveCandidateGoal({ targetCount: 50, overallTargetCount: 400 }, runs),
+    ).toMatchObject({ targetCount: 50, overallTargetCount: 400 });
+    expect(resolveCandidateGoal({}, runs)).toMatchObject({
+      targetCount: 50,
+      goalRecovered: true,
+    });
+    expect(
+      resolveCandidateGoal({ targetCount: null }, runs).targetCount,
+    ).toBeNull();
+    const ambiguous = structuredClone(runs);
+    ambiguous[1].backgroundGoal.requirements = ["新增候选：30 条"];
+    expect(resolveCandidateGoal({}, ambiguous).countUnverified).toBe(true);
+    expect(
+      resolveCandidateGoal(
+        {},
+        runs.map((run: any) => ({ ...run, backgroundGoal: undefined })),
+      ).countUnverified,
+    ).toBe(true);
+    expect(
+      resolveCandidateGoal(
+        { candidateScope: { targetCount: 50 } },
+        runs.map((run: any) => ({ ...run, backgroundGoal: undefined })),
+      ).countUnverified,
+    ).toBe(true);
+    expect(
+      requirementSummary({ targetCount: 50, overallTargetCount: 400 }),
+    ).toEqual(
+      expect.arrayContaining([
+        "新增候选：50 条",
+        "整体交付：400 条（当前测试集单独核对）",
+      ]),
+    );
+  });
+  it("OPT-28 recovers the frozen non-generation input range without counting replacement rows twice", () => {
+    const runs = [
+      ["a", "b"],
+      ["b", "c"],
+    ].map((recordIds) => ({
+      run: {
+        options: { operation: "rewrite" },
+        source: { kind: "draft", id: "D", recordIds },
+      },
+    })) as any;
+    expect(resolveCandidateGoal({}, runs).targetCount).toBe(3);
+    const owned = runs.map((run: any, i: number) => ({
+      ...run,
+      run: { ...run.run, taskId: `T${i}` },
+    }));
+    const excluded = [
+      {
+        taskId: "T0",
+        identity: canonicalJson({
+          source: { kind: "draft", id: "D" },
+          id: "b",
+        }),
+      },
+    ];
+    expect(
+      resolveCandidateGoal({}, owned.slice(0, 1), excluded).targetCount,
+    ).toBe(1);
+    expect(resolveCandidateGoal({}, owned, excluded).targetCount).toBe(3);
+    expect(
+      resolveCandidateGoal(
+        {
+          processingScope: {
+            source: { kind: "draft", id: "D" },
+            recordIds: ["b", "c"],
+          },
+        },
+        runs,
+      ).targetCount,
+    ).toBe(2);
+    const assets = [
+      { assetIds: ["A"], recordIds: ["A:1", "A:2"] },
+      { assetIds: ["A", "B"], recordIds: ["A:2", "B:1"] },
+    ].map((source) => ({
+      run: {
+        options: { operation: "rewrite" },
+        source: { kind: "assets", ...source },
+      },
+    })) as any;
+    expect(resolveCandidateGoal({}, assets).targetCount).toBe(3);
+    assets[1].run.source.recordIds = ["unknown:1"];
+    expect(resolveCandidateGoal({}, assets).countUnverified).toBe(true);
+  });
   it("OPT-22 reuses background outputs after exact independent requirement reorder but detects real edits", () => {
     const task = {
       requirements: ["保留答案", "保留问题"],

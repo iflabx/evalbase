@@ -109,6 +109,7 @@ type Conversation = {
     goal?: string;
     stage: string;
     executionPaused?: boolean;
+    overallTargetCount?: number | null;
     runId?: string;
     runIds?: string[];
     checkedStatus?: string;
@@ -139,6 +140,7 @@ type Conversation = {
       total: number;
       expectedCount: number | null;
       countSatisfied: boolean;
+      countUnverified?: boolean;
       countKind?: "new" | "final";
       baseCount?: number;
       remainingCount?: number;
@@ -692,7 +694,7 @@ export function ProjectAssistant({
             waiting_input: "等待补充",
             failed: "任务未完成",
             stopped: "已停止",
-            complete: "已完成",
+            complete: visible?.task?.overallTargetCount ? "当前目标已完成" : "已完成",
           } as Record<string, string>
         )[visible?.task?.stage ?? ""];
   const validLink = (url: string | undefined) =>
@@ -1700,13 +1702,15 @@ export function ProjectAssistant({
                           {visible.task.review.expectedCount !== null &&
                             ` / 目标 ${visible.task.review.expectedCount}`}{" "}
                           条 ·{" "}
-                          {visible.task.review.expectedCount === null
-                            ? visible.task.review.countSatisfied
-                              ? "运行输出齐全"
-                              : "运行输出不完整"
-                            : visible.task.review.countSatisfied
-                              ? "数量达标"
-                              : "数量未达标"}
+                          {visible.task.review.countUnverified
+                            ? "目标数量待确认"
+                            : visible.task.review.expectedCount === null
+                              ? visible.task.review.countSatisfied
+                                ? "运行输出齐全"
+                                : "运行输出不完整"
+                              : visible.task.review.countSatisfied
+                                ? "数量达标"
+                                : "数量未达标"}
                         </p>
                         {visible.task.candidateScope && (
                           <p className="text-muted-foreground">

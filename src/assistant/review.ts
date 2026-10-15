@@ -20,6 +20,7 @@ import {
   scopeCandidateRun,
   candidateScopeForRun,
   candidateSelectionShortfalls,
+  candidateCollectionHashValid,
 } from "./candidates.js";
 
 /** Reviews the current leaves and, for a final-total goal, the actual draft after pending adoption. */
@@ -66,8 +67,17 @@ export async function taskCandidateCollection(
     }[] = [],
     excluded: { runId: string; resultIds: string[] }[] = [];
   const executionRuns: { id: string; status: string }[] = [];
+  const excludedInputIdentities: { taskId: string; identity?: string }[] = [];
   const seenTasks = new Set<string>();
   const candidates: Awaited<ReturnType<typeof readProcessingRun>>[] = [];
+  const fixedTaskScope =
+    task.candidateScope?.scope === "task" ? task.candidateScope : undefined;
+  if (fixedTaskScope) {
+    if (!candidateCollectionHashValid(fixedTaskScope))
+      throw new AssistantError(409, "assistant_candidate_selection_changed");
+    for (const member of fixedTaskScope.members ?? [])
+      scopeCandidateRun(await read(member.runId), member);
+  }
   for (const id of ids) {
     const root = await read(id);
     if (!root.run.taskId) {
@@ -95,16 +105,30 @@ export async function taskCandidateCollection(
         count: Number(run.output_count ?? 0),
       }),
     );
-    for (const runId of new Set(current.excluded.map((ref) => ref.runId)))
+    for (const runId of new Set(current.excluded.map((ref) => ref.runId))) {
+      const raw = await read(runId);
+      for (const ref of current.excluded.filter((ref) => ref.runId === runId)) {
+        const row = raw.records.find((row) => row.id === ref.resultId);
+        const id =
+          row?.original?.baseline?.id ??
+          row?.original?.id ??
+          row?.result.sourceId;
+        excludedInputIdentities.push({
+          taskId: current.id,
+          identity: id ? frozenInputIdentity(raw.run.source, id) : undefined,
+        });
+      }
       excluded.push({
         runId,
         resultIds: current.excluded
           .filter((ref) => ref.runId === runId)
           .map((ref) => ref.resultId),
       });
-    const scopeRoot = task.candidateScope
-      ? await read(task.candidateScope.runId)
-      : undefined;
+    }
+    const scopeRoot =
+      task.candidateScope && !fixedTaskScope
+        ? await read(task.candidateScope.runId)
+        : undefined;
     if (scopeRoot) scopeCandidateRun(scopeRoot, task.candidateScope);
     const fixed =
       scopeRoot?.run.taskId === current.id ? task.candidateScope : undefined;
@@ -133,7 +157,20 @@ export async function taskCandidateCollection(
       );
     }
   }
-  const runs = effectiveTaskRuns(candidates);
+  const excludedKeys = new Set<string>(
+    fixedTaskScope?.excludedOriginKeys ?? [],
+  );
+  const runs = effectiveTaskRuns(candidates).map((run) => {
+    const rows = run.records.filter(
+      (row) => !excludedKeys.has(candidateKey(row.candidateOrigin)),
+    );
+    return {
+      ...run,
+      records: rows,
+      allIds: rows.map((row) => row.id),
+      total: rows.length,
+    };
+  });
   if (runs.reduce((n, run) => n + run.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
   const records = runs.flatMap((run) =>
@@ -161,7 +198,16 @@ export async function taskCandidateCollection(
       scope: task.candidateScope?.hash ?? null,
     }),
   );
-  return { runs, records, digest, states, history, excluded, executionRuns };
+  return {
+    runs,
+    records,
+    digest,
+    states,
+    history,
+    excluded,
+    executionRuns,
+    excludedInputIdentities,
+  };
 }
 
 export async function presentTaskCandidates(
@@ -277,6 +323,89 @@ export function resolveTaskSelection(
   return { ...selection, catalogDigest: collection.digest, groups };
 }
 
+/** Recover only recorded goals or the frozen input range; generation request sizes are not delivery goals. */
+function frozenInputIdentity(
+  source: Awaited<ReturnType<typeof readProcessingRun>>["run"]["source"],
+  id: string,
+) {
+  const assetId =
+    source.kind === "assets"
+      ? rowAssetId({ result: { sourceId: id } }, source)
+      : undefined;
+  if (source.kind === "assets" && !source.assetIds.includes(assetId)) return;
+  return canonicalJson({
+    source:
+      source.kind === "assets"
+        ? { kind: "assets", assetId }
+        : { kind: source.kind, id: source.id },
+    id,
+  });
+}
+
+export function resolveCandidateGoal(
+  task: Record<string, any>,
+  runs: Awaited<ReturnType<typeof readProcessingRun>>[],
+  excludedIdentities: { taskId: string; identity?: string }[] = [],
+) {
+  if (Object.hasOwn(task, "targetCount") && task.targetCount !== undefined)
+    return task;
+  const goals = new Map<
+    string,
+    { targetCount: number; countKind: "new" | "final" }
+  >();
+  for (const text of [
+    ...(task.requirements ?? []),
+    ...runs.flatMap((run) => run.backgroundGoal?.requirements ?? []),
+  ]) {
+    const match = /^(新增候选|最终总数)：\s*(\d+)\s*条$/u.exec(text.trim());
+    if (match && Number(match[2]) > 0 && Number(match[2]) <= 10000) {
+      const goal = {
+        targetCount: Number(match[2]),
+        countKind:
+          match[1] === "最终总数" ? ("final" as const) : ("new" as const),
+      };
+      goals.set(canonicalJson(goal), goal);
+    }
+  }
+  if (goals.size === 1)
+    return { ...task, ...[...goals.values()][0], goalRecovered: true };
+  if (
+    !goals.size &&
+    runs.length &&
+    runs.every(
+      (run) =>
+        (run.rootOperation ?? run.run.options.operation) !== "augment" &&
+        run.run.source.recordIds?.length,
+    )
+  ) {
+    const identities = runs.flatMap((run) => {
+      const fixed = currentRecordScope(task, run.run.source, run.run.id);
+      const excluded = new Set(
+        excludedIdentities
+          .filter((entry) => entry.taskId === (run.run.taskId ?? run.run.id))
+          .map((entry) => entry.identity),
+      );
+      return run.run.source.recordIds
+        .filter((id) => !fixed || fixed.has(id))
+        .map((id) => frozenInputIdentity(run.run.source, id))
+        .filter(
+          (identity) => identity === undefined || !excluded.has(identity),
+        );
+    });
+    if (
+      [
+        ...identities,
+        ...excludedIdentities.map((entry) => entry.identity),
+      ].every((identity) => identity !== undefined)
+    )
+      return {
+        ...task,
+        targetCount: new Set(identities).size,
+      };
+  }
+  return { ...task, countUnverified: true };
+}
+
 export async function reviewTask(
   db: Database,
   artifacts: ArtifactRepository,
@@ -285,18 +414,29 @@ export async function reviewTask(
   data: Awaited<ReturnType<typeof readProcessingRun>>,
   publication = false,
 ) {
-  const runIds: string[] = task.runIds?.includes(data.run.id)
+  const runIds: string[] = task.runIds?.length
     ? task.runIds
-    : [data.run.id];
-  const { runs, executionRuns } = await taskCandidateCollection(
-    db,
-    artifacts,
-    scope,
-    { ...task, runIds },
-    data,
-  );
+    : task.runId
+      ? [task.runId]
+      : [data.run.id];
+  const { runs, executionRuns, history, excludedInputIdentities } =
+    await taskCandidateCollection(
+      db,
+      artifacts,
+      scope,
+      { ...task, runIds },
+      data,
+    );
+  if (
+    !runIds.includes(data.run.id) &&
+    !runs.some((run) => run.run.id === data.run.id) &&
+    !history.some((run) => run.runId === data.run.id)
+  )
+    throw new AssistantError(409, "assistant_processing_context_changed");
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
+  const goal = resolveCandidateGoal(task, runs, excludedInputIdentities);
+  task = goal;
   let final;
   const destinationId =
     task.targetDraftId ??
@@ -472,17 +612,9 @@ export async function reviewTask(
       revision,
     };
   }
-  const goal = task.candidateScope
-    ? {
-        ...task,
-        targetCount: task.targetCount ?? task.candidateScope.targetCount,
-      }
-    : task;
   const review = reviewCandidates(
     data,
-    publication && goal.targetCount === undefined
-      ? { ...goal, targetCount: runs.reduce((sum, run) => sum + run.total, 0) }
-      : goal,
+    goal,
     reviewedRuns,
     final,
     publication ||
@@ -512,6 +644,7 @@ export async function reviewTask(
     runs,
     review: {
       ...review,
+      ...(goal.goalRecovered ? { goalRecovered: true } : {}),
       ...(publication
         ? {
             deliveryComplete:

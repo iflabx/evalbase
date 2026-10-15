@@ -16,7 +16,7 @@ import {
 
 /** Task state is independent of the model's bounded conversation history. */
 export async function updateTask(
-  db: Database,
+  db: Pick<Database, "query">,
   turn: Record<string, any>,
   patch: Record<string, unknown>,
   invalidateProposals = false,

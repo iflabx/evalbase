@@ -29,6 +29,19 @@ const candidates = () =>
   }) as unknown as Page;
 
 describe("full candidate review", () => {
+  it("OPT-28 does not declare an unverified goal complete by summing generation requests", () => {
+    const runs = [50, 30, 2].map((requested, index) => {
+      const data = candidates();
+      data.run.id = `part-${index}`;
+      data.run.options.outputCount = requested;
+      return data;
+    });
+    const review = reviewCandidates(runs[0]!, { countUnverified: true }, runs);
+    expect(review.expectedCount).toBeNull();
+    expect(review.countSatisfied).toBe(false);
+    expect(review.complete).toBe(false);
+    expect(review.countUnverified).toBe(true);
+  });
   it("checks manual draft edits against current rules without reapplying model batch restrictions", () => {
     const data = candidates();
     data.run.options.allowedFields = ["metadata"];
