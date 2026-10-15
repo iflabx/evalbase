@@ -16557,6 +16557,92 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
     }
   });
+  it("OPT29 recovers per-delivery quotas without treating independent test sets as a user conflict", async () => {
+    const previous = sessionId;
+    try {
+      await opt29Background();
+      const start = calls.length;
+      const rules = [0, 1].map((i) => ({
+        field: "metadata",
+        key: "category",
+        basis: "background",
+        allowedValues: [`A.1.${String.fromCharCode(97 + i)}`],
+        definitions: [
+          {
+            value: `A.1.${String.fromCharCode(97 + i)}`,
+            text: `A.1.${String.fromCharCode(97 + i)} 测试第${i + 1}类场景`,
+          },
+        ],
+        quotas: [{ value: `A.1.${String.fromCharCode(97 + i)}`, count: 5 }],
+      }));
+      const steps = rules.flatMap((rule, i) => [
+        {
+          title: `生成第${i + 1}类5条`,
+          action: "generate_candidates",
+          input: {
+            name: `OPT29-quota-${i}-${randomUUID()}`,
+            instructions: "按背景生成完整自然问题",
+            outputCount: 5,
+            classifications: [rule],
+          },
+        },
+        { title: `核对第${i + 1}类`, action: "read_processing" },
+        {
+          title: `保存第${i + 1}类`,
+          action: "request_processing_apply",
+          input: { allValid: true },
+        },
+      ]);
+      const plan = {
+        executionMode: "plan",
+        targetCount: 5,
+        overallTargetCount: 10,
+        steps,
+      };
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            ...plan,
+            classifications: [
+              {
+                ...rules[0],
+                allowedValues: rules.flatMap((r) => r.allowedValues),
+                definitions: rules.flatMap((r) => r.definitions),
+                quotas: rules.flatMap((r) => r.quotas),
+              },
+            ],
+          },
+        },
+        { name: "plan_task", input: { ...plan, classifications: [rules[0]] } },
+      ];
+      const state = await opt21End(
+        await opt21Submit(
+          "按附件创建两个测试集，各5条，不用原始数据，先给方案。",
+        ),
+      );
+      expect(state.task.question).toBeNull();
+      expect(state.task.runId).toBeUndefined();
+      expect(state.task.targetCount).toBe(5);
+      expect(state.task.overallTargetCount).toBe(10);
+      expect(state.task.executionPlan.steps).toHaveLength(6);
+      expect(state.task.classifications[0].allowedValues).toEqual(["A.1.a"]);
+      expect(
+        state.task.executionPlan.steps[3].input.classifications[0]
+          .allowedValues,
+      ).toEqual(["A.1.b"]);
+      expect(state.turns.at(-1).assistantText).toContain(
+        "方案已保存，尚未执行。",
+      );
+      expect(JSON.stringify(calls.slice(start))).toContain(
+        "多份各N条不是业务配额冲突",
+      );
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+    }
+  });
   it("OPT29 still pauses for a real business clarification after a parameter error and a read", async () => {
     const previous = sessionId;
     try {

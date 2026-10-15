@@ -78,7 +78,6 @@ import {
   dependenciesAvailable,
   saveProposal,
   turnFence,
-  taskPresentation,
   recoverAssistantReceipt,
   type AssistantScope,
   type Dependency,
@@ -715,7 +714,7 @@ export async function executeAssistantTurn(
       !task.executionPlan.steps.length ||
       task.question ||
       tools.slice(index).some((item) => item.status === "failed") ||
-      canonicalJson(taskPresentation(task)?.executionPlan) !==
+      canonicalJson(currentTaskFacts(task)?.executionPlan) !==
         canonicalJson(latest.result?.task?.executionPlan)
     )
       return false;
@@ -1479,7 +1478,7 @@ export async function executeAssistantTurn(
                                           ? "outputCount只用于augment；clean/rewrite每条输入生成一条候选，不增删记录。核对operation、allowedFields和输出数量，不要编造运行引用。"
                                           : error.code ===
                                               "assistant_plan_count_conflict"
-                                            ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}规则未保存。用plan_task仅纠正冲突字段；省略保持原规则。模型自行拟定的配额须自行修正，用户固定的矛盾要求才澄清，不降低目标。`
+                                            ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}规则未保存。用plan_task仅纠正冲突字段；省略保持原规则。模型自行拟定的配额须自行修正，用户固定的矛盾要求才澄清，不降低目标。${name === "plan_task" && input.steps?.filter((step: any) => step.action === "generate_candidates").length > 1 ? "当前方案包含多个独立测试集：顶层targetCount和classifications只对应第一待生成测试集，整体数量用overallTargetCount，各类配额放入各自generate_candidates步骤的input.classifications。多份各N条不是业务配额冲突，也不是服务只支持一份；删除顶层混入的其他交付类别，保留全部步骤及用户要求，自行重新保存完整方案，不让用户重复确认。" : ""}`
                                             : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
@@ -1573,7 +1572,7 @@ export async function executeAssistantTurn(
         },
         classifications: {
           description:
-            "按字段更新规则：仅替换本次列出的field/key，未列出的字段保持不变。列出某字段时须包含该字段仍生效的完整规则；clear:true明确撤销该字段，空数组清除全部字段规则。期望输出标签用field:expectedOutput，Metadata分类必须用field:metadata及真实key。修改requirements文字不改变结构化规则。",
+            "当前一个测试集的字段规则，不是多个交付的分类汇总。多个测试集各N条时，顶层仅放第一待生成类的允许值和N条配额，其他类分别存入各自generate_candidates步骤的input.classifications；整体数量另存overallTargetCount。按字段更新：只替换本次field/key的完整规则，未列字段保持；clear:true撤销该字段，空数组清除全部规则。期望输出标签用field:expectedOutput，Metadata分类用field:metadata及真实key。requirements文字不改变结构化规则。",
           type: "array",
           maxItems: 5,
           items: {
@@ -1696,7 +1695,7 @@ export async function executeAssistantTurn(
           minLength: 1,
           maxLength: 1000,
           description:
-            "确需用户补充时填写，并用nextAction:none暂停。配额冲突时只保存标题、要求和问题，不保存未确认的执行参数；回答后须另存完整有效方案。其他有效规划仍可保存步骤，等待回答前不执行。",
+            "仅在用户业务要求确实矛盾或缺失时填写，并用nextAction:none暂停。模型混填当前与整体配额属于参数错误，须自行修正，不询问用户；多份各N条可按步骤执行，不需再确认当前只做一份。用户配额确实矛盾时只保存标题、要求和问题，回答后另存完整有效方案。等待回答前不执行。",
         },
       },
       [],
