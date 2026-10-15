@@ -1,0 +1,137 @@
+{
+  "baseline": "bfb7d4ca14dfedc7c52c8bce52b19a9291cbec29",
+  "code": "2cdd519ab165680c4a404d23535cbe8df4622253",
+  "scope": "已保存要求的收尾、相同事实重复规划、明确待办保留、失败分类",
+  "checks": {
+    "uniqueIntegrationTests": 37,
+    "unitTests": 21,
+    "totalUniqueTests": 58,
+    "review": {
+      "standards": "no blocking findings",
+      "spec": "pending-publication P2 fixed; combined-read answer guard narrowed and rechecked"
+    },
+    "evidenceGroups": {
+      "initialRed": "followup-red.log: 7 failed before fix",
+      "adjacent": "followup-final-integration.log: 32 passed; publication test SQL assertion fixed and rechecked separately",
+      "finalFollowup": "followup-final-recheck.log: 9 passed, includes publication and combined read",
+      "pause": "followup-pause.log: 3 passed",
+      "unit": "followup-unit.log: 21 passed",
+      "static": "final content typecheck, affected lint, diff check passed"
+    }
+  },
+  "realReplays": [
+    {
+      "file": "real-evidence-followup-real-1.json",
+      "status": "succeeded",
+      "errorCode": null,
+      "codeVersion": "unknown",
+      "requests": 3,
+      "toolCalls": 1,
+      "parameterRepairs": [
+        {
+          "name": "plan_task",
+          "outcome": "repaired"
+        }
+      ],
+      "durationMs": 2115,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "file": "real-evidence-followup-real-2.json",
+      "status": "succeeded",
+      "errorCode": null,
+      "codeVersion": "unknown",
+      "requests": 3,
+      "toolCalls": 1,
+      "parameterRepairs": [
+        {
+          "name": "plan_task",
+          "outcome": "repaired"
+        }
+      ],
+      "durationMs": 2098,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    },
+    {
+      "file": "real-evidence-followup-final-code.json",
+      "status": "succeeded",
+      "errorCode": null,
+      "codeVersion": "2cdd519ab165680c4a404d23535cbe8df4622253",
+      "requests": 3,
+      "toolCalls": 1,
+      "parameterRepairs": [
+        {
+          "name": "plan_task",
+          "outcome": "repaired"
+        }
+      ],
+      "durationMs": 2094,
+      "counts": {
+        "drafts": 0,
+        "processing_runs": 0,
+        "versions": 0
+      }
+    }
+  ],
+  "naturalShortPromptProbe": {
+    "accepted": false,
+    "first": {
+      "status": "succeeded",
+      "toolCalls": 0,
+      "persistedPlanReceipts": 0
+    },
+    "followup": {
+      "status": "succeeded",
+      "targetCount": 5,
+      "requirements": []
+    },
+    "reason": "首轮模型仅文本确认，没有保存要求回执；不能把成功回合当作要求已持久化。保留为后续短提示规划问题，不计本轮业务通过。"
+  },
+  "checkpoint": {
+    "code": "2cdd519ab165680c4a404d23535cbe8df4622253",
+    "image": "evalbase-agent-checkpoint:2cdd519ab165",
+    "ready": {
+      "status": "ok",
+      "dependencies": {
+        "postgresql": "ok",
+        "minio": "ok"
+      },
+      "git_sha": "2cdd519ab165680c4a404d23535cbe8df4622253"
+    },
+    "updated_services": [
+      "web"
+    ],
+    "unchanged_services": [
+      "postgres",
+      "minio",
+      "worker",
+      "model-worker"
+    ],
+    "business_counts_equal": true,
+    "draft_content_unchanged": true,
+    "database_backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt32/followup-owner-before-2cdd519ab165.dump",
+    "counts": [
+      "app_user|2",
+      "project|3",
+      "data_asset|23",
+      "source_record|20650",
+      "collaborative_draft|25",
+      "collaborative_draft_record|1574",
+      "test_set_version|8",
+      "processing_run|96",
+      "assistant_session|21",
+      "assistant_background_document|17"
+    ],
+    "frontend_asset": "/assets/index-CJkV359l.js",
+    "localReady": true,
+    "sessionApiStatus": 401
+  }
+}
