@@ -1,0 +1,1999 @@
+{
+  "date": "2026-10-15",
+  "baseline": "d7dc9dafd3a0ec28425fa354d32486834b0b1834",
+  "code": "5b0322a8f562b0d75065d5d6b506bdc04982e886",
+  "ownerAcceptance": "pending",
+  "checks": {
+    "unit": 57,
+    "integration": 31,
+    "unique": 88,
+    "backendTypes": "passed",
+    "changedFilesLint": "passed",
+    "productionBuild": "passed",
+    "standardsReview": "no remaining findings",
+    "specReview": "no remaining blocking code findings",
+    "commands": {
+      "units": "docker run --rm --network evalbase-agent-test --cpus=1 --memory=2g -v /home/bistu/EvalBase/.worktrees/agent-data-processing:/app -w /app -e NODE_ENV=test -e DATABASE_URL=postgresql://agent_test:synthetic-agent-test@evalbase-agent-test-postgres-1:5432/agent_test -e MINIO_ENDPOINT=evalbase-agent-test-minio-1 -e MINIO_ACCESS_KEY=agent-test -e MINIO_SECRET_KEY=synthetic-agent-test -e MINIO_BUCKET=agent-test -e APP_ORIGIN=http://127.0.0.1:4217 evalbase-agent-checkpoint:4eaf74fcf3f1 node node_modules/vitest/vitest.mjs run --exclude '**/.scratch/**' --exclude '**/frontend-v1/**' --exclude '**/frontend-v2/**' --silent=true tests/unit/assistant-tool-repair.test.ts tests/unit/assistant-transport.test.ts tests/unit/assistant-contract.test.ts tests/unit/assistant-plan.test.ts tests/unit/assistant-diagnostics.test.ts tests/unit/assistant-context.test.ts tests/unit/assistant-reply.test.ts",
+      "integrationInitial": "docker run --rm --network evalbase-agent-test --cpus=1 --memory=2g -v /home/bistu/EvalBase/.worktrees/agent-data-processing:/app -w /app -e NODE_ENV=test -e DATABASE_URL=postgresql://agent_test:synthetic-agent-test@evalbase-agent-test-postgres-1:5432/agent_test -e MINIO_ENDPOINT=evalbase-agent-test-minio-1 -e MINIO_ACCESS_KEY=agent-test -e MINIO_SECRET_KEY=synthetic-agent-test -e MINIO_BUCKET=agent-test -e APP_ORIGIN=http://127.0.0.1:4217 evalbase-agent-checkpoint:4eaf74fcf3f1 node node_modules/vitest/vitest.mjs run --exclude '**/.scratch/**' --exclude '**/frontend-v1/**' --exclude '**/frontend-v2/**' --silent=true tests/integration/project-assistant.test.ts -t 'OPT32|OPT-21|OPT-26|OPT29 repairs malformed'",
+      "integrationRecheck": "docker run --rm --network evalbase-agent-test --cpus=1 --memory=2g -v /home/bistu/EvalBase/.worktrees/agent-data-processing:/app -w /app -e NODE_ENV=test -e DATABASE_URL=postgresql://agent_test:synthetic-agent-test@evalbase-agent-test-postgres-1:5432/agent_test -e MINIO_ENDPOINT=evalbase-agent-test-minio-1 -e MINIO_ACCESS_KEY=agent-test -e MINIO_SECRET_KEY=synthetic-agent-test -e MINIO_BUCKET=agent-test -e APP_ORIGIN=http://127.0.0.1:4217 evalbase-agent-checkpoint:4eaf74fcf3f1 node node_modules/vitest/vitest.mjs run --exclude '**/.scratch/**' --exclude '**/frontend-v1/**' --exclude '**/frontend-v2/**' --silent=true tests/integration/project-assistant.test.ts -t 'OPT-26 refuses to discard|OPT-26 stops repeated|OPT29 repairs a malformed'",
+      "static": ".scratch/assistant-optimization/opt29-doc-check-node node_modules/typescript/bin/tsc -p tsconfig.server.json --noEmit && .scratch/assistant-optimization/opt29-doc-check-node node_modules/eslint/bin/eslint.js src/assistant/agent.ts src/assistant/store.ts src/assistant/tool-repair.ts tests/unit/assistant-tool-repair.test.ts tests/integration/project-assistant.test.ts && git diff --check && git diff --cached --check",
+      "build": "git archive 5b0322a8f562b0d75065d5d6b506bdc04982e886; docker build --label org.opencontainers.image.revision=5b0322a8f562b0d75065d5d6b506bdc04982e886 -t evalbase-agent-checkpoint:5b0322a8f562 <fixed archive>",
+      "realHarness": ".scratch/assistant-optimization/opt32/real.ts; configured model in disposable test database; final source equals implementation commit",
+      "docs": ".scratch/assistant-optimization/opt29-doc-check-node scripts/check-docs.mjs"
+    }
+  },
+  "finalReal": {
+    "model": {
+      "name": "测试 Qwen",
+      "model": "qwen3.8-27b-un",
+      "revision": 1
+    },
+    "historical": [
+      {
+        "name": "query offset string",
+        "injected": true,
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_5ee5cf34fd8e40409e9f8e517645e9bf",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 28
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 331
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 371
+            }
+          ],
+          "sessionId": "conversation_6b07a146a4fa46bb8d28aabdc375aef4",
+          "toolCalls": 1,
+          "durationMs": 1379,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_5ee5cf34fd8e40409e9f8e517645e9bf",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [
+            {
+              "name": "query_project",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_5ee5cf34fd8e40409e9f8e517645e9bf:13bc9dd8e0e9c2084f1801733b2322710894f0406f7a10ab52425dc10a30ef1f",
+            "name": "query_project",
+            "input": {
+              "kind": "project",
+              "offset": 0
+            },
+            "result": {
+              "project": {
+                "id": "project_7235b874ba374c13a3a554fbd151a0d4",
+                "name": "OPT32真实纠错隔离验证"
+              }
+            },
+            "status": "succeeded"
+          }
+        ],
+        "requests": [
+          {
+            "repair": false,
+            "injected": true,
+            "status": 200,
+            "durationMs": 0,
+            "strict": false,
+            "declaredTools": [
+              "plan_task",
+              "read_background",
+              "query_project",
+              "read_records",
+              "create_draft",
+              "preview_selection",
+              "generate_candidates",
+              "submit_processing"
+            ],
+            "choice": "auto"
+          },
+          {
+            "repair": true,
+            "injected": false,
+            "status": 200,
+            "durationMs": 327,
+            "strict": false,
+            "repairInput": {
+              "kind": "project",
+              "offset": 0
+            }
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 364,
+            "strict": false
+          }
+        ],
+        "durationMs": 1631
+      },
+      {
+        "name": "draft name wrapper",
+        "injected": true,
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_e05e7896b21c4e8abac3acc5d0a85495",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 4
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2257
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 550
+            }
+          ],
+          "sessionId": "conversation_77d454611f624ff6a01a01985a14637a",
+          "toolCalls": 1,
+          "durationMs": 3328,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_e05e7896b21c4e8abac3acc5d0a85495",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [
+            {
+              "name": "create_draft",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_e05e7896b21c4e8abac3acc5d0a85495:a89a81d4363bea7dacc95c5645ace84b2435a0378f6ba4a456f2fb5b4cd1e209",
+            "name": "create_draft",
+            "input": {
+              "name": "历史纠错草稿"
+            },
+            "result": {
+              "url": "/projects/project_7235b874ba374c13a3a554fbd151a0d4/test-sets/drafts/collabdraft_f66195f40338aebdc30a1fe46985766b2dc14165b2ac2d086694f6d30867dbe0",
+              "name": "历史纠错草稿",
+              "draftId": "collabdraft_f66195f40338aebdc30a1fe46985766b2dc14165b2ac2d086694f6d30867dbe0",
+              "replayed": false,
+              "revision": 0
+            },
+            "status": "succeeded"
+          }
+        ],
+        "requests": [
+          {
+            "repair": false,
+            "injected": true,
+            "status": 200,
+            "durationMs": 0,
+            "strict": false,
+            "declaredTools": [
+              "plan_task",
+              "read_background",
+              "query_project",
+              "read_records",
+              "create_draft",
+              "preview_selection",
+              "generate_candidates",
+              "submit_processing"
+            ],
+            "choice": "auto"
+          },
+          {
+            "repair": true,
+            "injected": false,
+            "status": 200,
+            "durationMs": 2254,
+            "strict": false,
+            "repairInput": {
+              "name": "历史纠错草稿"
+            }
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 545,
+            "strict": false
+          }
+        ],
+        "durationMs": 3587
+      },
+      {
+        "name": "single step object",
+        "injected": true,
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_ec723d40131d477d9a417211cb1ba42e",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 3
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 1560
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 552
+            }
+          ],
+          "sessionId": "conversation_e9daf5d135514842a52b9116389a49e7",
+          "toolCalls": 1,
+          "durationMs": 2620,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": {
+            "id": "step_967cf2260eae4fa1955aae06526f8f19",
+            "action": "query_project"
+          },
+          "diagnosticId": "turn_ec723d40131d477d9a417211cb1ba42e",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_ec723d40131d477d9a417211cb1ba42e:033f2ec5ad4fb099b419c85c84f1cf4b93655ba411c97f188e4014f0fea09e75",
+            "name": "plan_task",
+            "input": {
+              "steps": [
+                {
+                  "input": {
+                    "kind": "project",
+                    "offset": 0
+                  },
+                  "title": "查询项目",
+                  "action": "query_project"
+                }
+              ],
+              "executionMode": "plan"
+            },
+            "result": {
+              "task": {
+                "stage": "planning",
+                "title": "新任务",
+                "question": null,
+                "autoCount": 0,
+                "nextAction": null,
+                "requirements": [],
+                "executionPlan": {
+                  "mode": "plan",
+                  "steps": [
+                    {
+                      "id": "step_967cf2260eae4fa1955aae06526f8f19",
+                      "title": "查询项目",
+                      "action": "query_project",
+                      "status": "pending",
+                      "revision": 1
+                    }
+                  ],
+                  "current": 0,
+                  "needsReview": false
+                },
+                "classifications": [],
+                "executionPaused": false,
+                "originalRequest": "先给查询当前项目的方案，不执行",
+                "transportRecovery": null,
+                "candidateSelection": null,
+                "requirementProblem": null,
+                "requirementSummary": [],
+                "historicalCorrections": [],
+                "requirementProblemKind": "diagnostic"
+              }
+            },
+            "status": "succeeded"
+          }
+        ],
+        "requests": [
+          {
+            "repair": false,
+            "injected": true,
+            "status": 200,
+            "durationMs": 0,
+            "strict": false,
+            "declaredTools": [
+              "plan_task",
+              "read_background",
+              "query_project",
+              "read_records",
+              "create_draft",
+              "preview_selection",
+              "generate_candidates",
+              "submit_processing"
+            ],
+            "choice": "auto"
+          },
+          {
+            "repair": true,
+            "injected": false,
+            "status": 200,
+            "durationMs": 1557,
+            "strict": false,
+            "repairInput": {
+              "executionMode": "plan",
+              "steps": [
+                {
+                  "title": "查询项目",
+                  "action": "query_project",
+                  "input": {
+                    "kind": "project",
+                    "offset": 0
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 547,
+            "strict": false
+          }
+        ],
+        "durationMs": 3025
+      },
+      {
+        "name": "background numeric strings",
+        "injected": true,
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_39cd8acdffd0417e932835e57e091bee",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 4
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2753
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 681
+            }
+          ],
+          "sessionId": "conversation_b60915a04d3b4053a5cb00fad299140e",
+          "toolCalls": 1,
+          "durationMs": 3880,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_39cd8acdffd0417e932835e57e091bee",
+          "finishReason": "stop",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [
+            {
+              "name": "read_background",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_39cd8acdffd0417e932835e57e091bee:eeae94e657082c8b05bf4febfcbc3845b1cb3fb1ee53b9538085ab8b5289721c",
+            "name": "read_background",
+            "input": {
+              "from": 1,
+              "limit": 1,
+              "documentId": "background_74ce5ee0ede44756a6d5cd9a57f24299",
+              "useForProcessing": false
+            },
+            "result": {
+              "omitted": "Synthetic background body excluded from delivery evidence"
+            },
+            "status": "succeeded"
+          }
+        ],
+        "requests": [
+          {
+            "repair": false,
+            "injected": true,
+            "status": 200,
+            "durationMs": 0,
+            "strict": false,
+            "declaredTools": [
+              "plan_task",
+              "read_background",
+              "query_project",
+              "read_records",
+              "create_draft",
+              "preview_selection",
+              "generate_candidates",
+              "submit_processing"
+            ],
+            "choice": "auto"
+          },
+          {
+            "repair": true,
+            "injected": false,
+            "status": 200,
+            "durationMs": 2752,
+            "strict": false,
+            "repairInput": {
+              "documentId": "background_74ce5ee0ede44756a6d5cd9a57f24299",
+              "from": 1,
+              "limit": 1,
+              "useForProcessing": false
+            }
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 678,
+            "strict": false
+          }
+        ],
+        "durationMs": 4045
+      },
+      {
+        "name": "requirement array wrapper",
+        "injected": true,
+        "status": "failed",
+        "errorCode": "assistant_result_incomplete",
+        "diagnostics": {
+          "turnId": "turn_6d9fe4b057c04fed8200d7ced8310b6f",
+          "failure": {
+            "layer": "model",
+            "reason": "模型回复不完整或未符合接口格式。",
+            "category": "output_protocol",
+            "httpStatus": null,
+            "nextAction": "核对已保留成果后重试未完成步骤。"
+          },
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 3
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2498
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 16653
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 693
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 791
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 819
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 795
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 931
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 1023
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 1439
+            }
+          ],
+          "errorCode": "assistant_result_incomplete",
+          "sessionId": "conversation_1b6ba2141b34433d9b945a0815343ca1",
+          "toolCalls": 8,
+          "durationMs": 26379,
+          "modelSteps": 10,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_6d9fe4b057c04fed8200d7ced8310b6f",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 10,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_6d9fe4b057c04fed8200d7ced8310b6f:a903cb261d96f3285c46e075341adadb0217613ea2279228256cc325bfc67784",
+            "name": "plan_task",
+            "input": {
+              "targetCount": 3,
+              "requirements": [
+                "保留事实，不添加新信息"
+              ]
+            },
+            "result": {
+              "task": {
+                "stage": "inspecting",
+                "title": "新任务",
+                "question": null,
+                "autoCount": 0,
+                "nextAction": "any",
+                "targetCount": 3,
+                "requirements": [
+                  "保留事实，不添加新信息"
+                ],
+                "classifications": [],
+                "executionPaused": false,
+                "originalRequest": "记录要求：做3条，保留事实，不添加新信息。先不要执行",
+                "transportRecovery": null,
+                "candidateSelection": null,
+                "requirementProblem": null,
+                "requirementSummary": [
+                  "新增候选：3 条",
+                  "保留事实，不添加新信息"
+                ],
+                "historicalCorrections": [],
+                "requirementProblemKind": "diagnostic"
+              }
+            },
+            "status": "succeeded"
+          }
+        ],
+        "requests": [
+          {
+            "repair": false,
+            "injected": true,
+            "status": 200,
+            "durationMs": 0,
+            "strict": false,
+            "declaredTools": [
+              "plan_task",
+              "read_background",
+              "query_project",
+              "read_records",
+              "create_draft",
+              "preview_selection",
+              "generate_candidates",
+              "submit_processing"
+            ],
+            "choice": "auto"
+          },
+          {
+            "repair": true,
+            "injected": false,
+            "status": 200,
+            "durationMs": 2495,
+            "strict": false,
+            "repairInput": {
+              "requirements": [
+                "保留事实，不添加新信息"
+              ],
+              "targetCount": 3
+            }
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 16648,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 690,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 787,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 814,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 790,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 925,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 1018,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 1436,
+            "strict": false
+          }
+        ],
+        "durationMs": 26605
+      },
+      {
+        "name": "nested instruction spelling",
+        "injected": true,
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_14d8eed41ad249bbac81194db18c9c09",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 3
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 736
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 747
+            }
+          ],
+          "sessionId": "conversation_a961658b813c48d399807ff3dc7fea57",
+          "toolCalls": 1,
+          "durationMs": 2043,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": {
+            "id": "step_9a4e2990d4b7473696eea1b0b6f876b2",
+            "action": "submit_processing"
+          },
+          "diagnosticId": "turn_14d8eed41ad249bbac81194db18c9c09",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_14d8eed41ad249bbac81194db18c9c09:61194627a8e34484bbb9541fbaf0b114d5ae47c6ceedddeaf4ab3a42142a05c2",
+            "name": "plan_task",
+            "input": {
+              "steps": [
+                {
+                  "input": {
+                    "operation": "clean",
+                    "allRecords": true,
+                    "instructions": "整理首尾空白",
+                    "allowedFields": [
+                      "question"
+                    ]
+                  },
+                  "title": "清洗当前草稿",
+                  "action": "submit_processing"
+                }
+              ],
+              "executionMode": "plan"
+            },
+            "result": {
+              "task": {
+                "stage": "planning",
+                "title": "新任务",
+                "question": null,
+                "autoCount": 0,
+                "nextAction": null,
+                "requirements": [],
+                "executionPlan": {
+                  "mode": "plan",
+                  "steps": [
+                    {
+                      "id": "step_9a4e2990d4b7473696eea1b0b6f876b2",
+                      "title": "清洗当前草稿",
+                      "action": "submit_processing",
+                      "status": "pending",
+                      "revision": 1
+                    }
+                  ],
+                  "current": 0,
+                  "needsReview": false
+                },
+                "classifications": [],
+                "executionPaused": false,
+                "originalRequest": "先给清洗当前草稿的方案，只整理首尾空白，不执行",
+                "transportRecovery": null,
+                "candidateSelection": null,
+                "requirementProblem": null,
+                "requirementSummary": [],
+                "historicalCorrections": [],
+                "requirementProblemKind": "diagnostic"
+              }
+            },
+            "status": "succeeded"
+          }
+        ],
+        "requests": [
+          {
+            "repair": false,
+            "injected": true,
+            "status": 200,
+            "durationMs": 0,
+            "strict": false,
+            "declaredTools": [
+              "plan_task",
+              "read_background",
+              "query_project",
+              "read_records",
+              "create_draft",
+              "preview_selection",
+              "generate_candidates",
+              "submit_processing"
+            ],
+            "choice": "auto"
+          },
+          {
+            "repair": true,
+            "injected": false,
+            "status": 200,
+            "durationMs": 734,
+            "strict": false,
+            "repairInput": {
+              "executionMode": "plan",
+              "steps": [
+                {
+                  "title": "清洗当前草稿",
+                  "action": "submit_processing",
+                  "input": {
+                    "allRecords": true,
+                    "operation": "clean",
+                    "instructions": "整理首尾空白",
+                    "allowedFields": [
+                      "question"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 743,
+            "strict": false
+          }
+        ],
+        "durationMs": 2073
+      }
+    ],
+    "shortPrompts": [
+      {
+        "prompt": "查询当前项目",
+        "repetition": 0,
+        "status": "succeeded",
+        "errorCode": null,
+        "planSteps": 0,
+        "drafts": 0,
+        "diagnostics": {
+          "turnId": "turn_c2218f3136f14d90a0c78d0ed74c67be",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 629
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 405
+            }
+          ],
+          "sessionId": "conversation_e93577a8a7cb43dea3f5e3a160f3ab37",
+          "toolCalls": 1,
+          "durationMs": 1473,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_c2218f3136f14d90a0c78d0ed74c67be",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 2,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "requests": [
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 626,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 400,
+            "strict": false
+          }
+        ],
+        "durationMs": 1973
+      },
+      {
+        "prompt": "查询当前项目",
+        "repetition": 1,
+        "status": "succeeded",
+        "errorCode": null,
+        "planSteps": 0,
+        "drafts": 0,
+        "diagnostics": {
+          "turnId": "turn_6bb5fce7b39e490a9d6fa4e154038a28",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 505
+            }
+          ],
+          "sessionId": "conversation_e1f4f0c349524e3f934cc445fcc80b6c",
+          "toolCalls": 0,
+          "durationMs": 965,
+          "modelSteps": 1,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_6bb5fce7b39e490a9d6fa4e154038a28",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "requests": [
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 501,
+            "strict": false
+          }
+        ],
+        "durationMs": 1481
+      },
+      {
+        "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+        "repetition": 0,
+        "status": "succeeded",
+        "errorCode": null,
+        "planSteps": 1,
+        "drafts": 0,
+        "diagnostics": {
+          "turnId": "turn_174f9839e95b4756a7433f6480dfa501",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 1617
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 885
+            }
+          ],
+          "sessionId": "conversation_78a0ce6522e84a7bbe4cd6e64c3fe621",
+          "toolCalls": 1,
+          "durationMs": 2964,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": {
+            "id": "step_f17616562f9f49208d8b8cced1a13331",
+            "action": "create_draft"
+          },
+          "diagnosticId": "turn_174f9839e95b4756a7433f6480dfa501",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 2,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "requests": [
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 1616,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 879,
+            "strict": false
+          }
+        ],
+        "durationMs": 3033
+      },
+      {
+        "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+        "repetition": 1,
+        "status": "succeeded",
+        "errorCode": null,
+        "planSteps": 1,
+        "drafts": 0,
+        "diagnostics": {
+          "turnId": "turn_99e4716977fa411184703ae8b1d94398",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2276
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 1102
+            }
+          ],
+          "sessionId": "conversation_d09fdbf8715e40239502976f581d075c",
+          "toolCalls": 1,
+          "durationMs": 3842,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": {
+            "id": "step_fdfc2870d37b4d7fbbec22f723b93906",
+            "action": "create_draft"
+          },
+          "diagnosticId": "turn_99e4716977fa411184703ae8b1d94398",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 2,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "requests": [
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 2273,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 1098,
+            "strict": false
+          }
+        ],
+        "durationMs": 4033
+      },
+      {
+        "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+        "repetition": 0,
+        "status": "succeeded",
+        "errorCode": null,
+        "planSteps": 1,
+        "drafts": 1,
+        "diagnostics": {
+          "turnId": "turn_91fe6da74e4f4a81b8e578cdcb9b4162",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2247
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 29256
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2324
+            }
+          ],
+          "sessionId": "conversation_96ef88c31b314611aa8ce51acffeaadc",
+          "toolCalls": 2,
+          "durationMs": 34380,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_91fe6da74e4f4a81b8e578cdcb9b4162",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "requests": [
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 2244,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 29253,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 2318,
+            "strict": false
+          }
+        ],
+        "durationMs": 34549
+      },
+      {
+        "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+        "repetition": 1,
+        "status": "succeeded",
+        "errorCode": null,
+        "planSteps": 1,
+        "drafts": 1,
+        "diagnostics": {
+          "turnId": "turn_4571305039db4942bdea1cdd54d88b29",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 1675
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 746
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 588
+            }
+          ],
+          "sessionId": "conversation_40228f7645174403aa433126a034a85b",
+          "toolCalls": 2,
+          "durationMs": 3639,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "codeVersion": "unknown",
+          "currentStep": null,
+          "diagnosticId": "turn_4571305039db4942bdea1cdd54d88b29",
+          "finishReason": "stop",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v8",
+          "modelRevision": 1,
+          "promptVersion": "assistant-prompt-v9",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "parameterRepairVersion": "arguments-v1"
+        },
+        "requests": [
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 1670,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 739,
+            "strict": false
+          },
+          {
+            "repair": false,
+            "injected": false,
+            "status": 200,
+            "durationMs": 584,
+            "strict": false
+          }
+        ],
+        "durationMs": 4182
+      }
+    ],
+    "strict": {
+      "request": [
+        {
+          "repair": false,
+          "injected": false,
+          "status": 200,
+          "durationMs": 532,
+          "strict": true
+        }
+      ],
+      "result": "provider returned a call for an unsatisfiable schema; strict enforcement not established",
+      "toolCalls": [
+        {
+          "name": "strict_probe",
+          "input": {
+            "value": "left"
+          }
+        }
+      ]
+    },
+    "counts": {
+      "drafts": 3,
+      "processing_runs": 0,
+      "versions": 0
+    }
+  },
+  "allRealRunSummaries": [
+    {
+      "file": "real-evidence-callback-audit.json",
+      "historical": [
+        {
+          "name": "nested instruction spelling",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "requests": 3,
+          "repairMs": 0
+        }
+      ],
+      "shortPrompts": []
+    },
+    {
+      "file": "real-evidence-diagnostic.json",
+      "historical": [
+        {
+          "name": "requirement array wrapper",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 6453
+        }
+      ],
+      "shortPrompts": []
+    },
+    {
+      "file": "real-evidence-final.json",
+      "historical": [
+        {
+          "name": "query offset string",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "query_project",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 327
+        },
+        {
+          "name": "draft name wrapper",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "create_draft",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2254
+        },
+        {
+          "name": "single step object",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 1557
+        },
+        {
+          "name": "background numeric strings",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "read_background",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2752
+        },
+        {
+          "name": "requirement array wrapper",
+          "status": "failed",
+          "errorCode": "assistant_result_incomplete",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 10,
+          "repairMs": 2495
+        },
+        {
+          "name": "nested instruction spelling",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 734
+        }
+      ],
+      "shortPrompts": [
+        {
+          "prompt": "查询当前项目",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1973
+        },
+        {
+          "prompt": "查询当前项目",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1481
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3033
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 4033
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 34549
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 4182
+        }
+      ]
+    },
+    {
+      "file": "real-evidence-fixed.json",
+      "historical": [
+        {
+          "name": "query offset string",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "query_project",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2453
+        },
+        {
+          "name": "draft name wrapper",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "create_draft",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 3817
+        },
+        {
+          "name": "single step object",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 15316
+        },
+        {
+          "name": "background numeric strings",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "read_background",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 3494
+        },
+        {
+          "name": "requirement array wrapper",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 6433
+        },
+        {
+          "name": "nested instruction spelling",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2305
+        }
+      ],
+      "shortPrompts": [
+        {
+          "prompt": "查询当前项目",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1493
+        },
+        {
+          "prompt": "查询当前项目",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 899
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3018
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3020
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 20911
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3664
+        }
+      ]
+    },
+    {
+      "file": "real-evidence-initial.json",
+      "historical": [
+        {
+          "name": "query offset string",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "query_project",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2496
+        },
+        {
+          "name": "draft name wrapper",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "create_draft",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 3759
+        },
+        {
+          "name": "single step object",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 14347
+        },
+        {
+          "name": "background numeric strings",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "read_background",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 3635
+        },
+        {
+          "name": "requirement array wrapper",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 6046
+        },
+        {
+          "name": "nested instruction spelling",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2335
+        }
+      ],
+      "shortPrompts": [
+        {
+          "prompt": "查询当前项目",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1453
+        },
+        {
+          "prompt": "查询当前项目",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1431
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3039
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3020
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 18801
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 5776
+        }
+      ]
+    },
+    {
+      "file": "real-evidence-recursive-checked.json",
+      "historical": [
+        {
+          "name": "nested instruction spelling",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "requests": 3,
+          "repairMs": 0
+        }
+      ],
+      "shortPrompts": []
+    },
+    {
+      "file": "real-evidence-recursive-fixed.json",
+      "historical": [
+        {
+          "name": "nested instruction spelling",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2812
+        }
+      ],
+      "shortPrompts": []
+    },
+    {
+      "file": "real-evidence-recursive.json",
+      "historical": [
+        {
+          "name": "nested instruction spelling",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "requests": 3,
+          "repairMs": 0
+        }
+      ],
+      "shortPrompts": []
+    },
+    {
+      "file": "real-evidence-thin.json",
+      "historical": [
+        {
+          "name": "query offset string",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "query_project",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 363
+        },
+        {
+          "name": "draft name wrapper",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "create_draft",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2247
+        },
+        {
+          "name": "single step object",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 12102
+        },
+        {
+          "name": "background numeric strings",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "read_background",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 2692
+        },
+        {
+          "name": "requirement array wrapper",
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "requests": 5,
+          "repairMs": 2476
+        },
+        {
+          "name": "nested instruction spelling",
+          "status": "failed",
+          "errorCode": "assistant_tool_input_invalid",
+          "repairs": [
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "unsafe"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "requests": 3,
+          "repairMs": 11141
+        }
+      ],
+      "shortPrompts": [
+        {
+          "prompt": "查询当前项目",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1467
+        },
+        {
+          "prompt": "查询当前项目",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 1510
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3060
+        },
+        {
+          "prompt": "请先给创建一个名为短提示草稿的空测试集的方案，暂不执行",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3043
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 0,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 21422
+        },
+        {
+          "prompt": "现在新建一个名为短提示执行草稿的空测试集",
+          "repetition": 1,
+          "status": "succeeded",
+          "errorCode": null,
+          "repairs": [],
+          "durationMs": 3648
+        }
+      ]
+    }
+  ],
+  "checkpoint": {
+    "code": "5b0322a8f562b0d75065d5d6b506bdc04982e886",
+    "updatedServices": [
+      "web"
+    ],
+    "unchangedServices": [
+      "worker",
+      "model-worker",
+      "postgres",
+      "minio"
+    ],
+    "ready": {
+      "status": "ok",
+      "dependencies": {
+        "postgresql": "ok",
+        "minio": "ok"
+      },
+      "git_sha": "5b0322a8f562b0d75065d5d6b506bdc04982e886"
+    },
+    "health": {
+      "status": "ok",
+      "git_sha": "5b0322a8f562b0d75065d5d6b506bdc04982e886"
+    },
+    "frontendAsset": "/assets/index-CJkV359l.js",
+    "frontendAssetBytes": 362557,
+    "sessionApiStatus": 401,
+    "dataUnchanged": true,
+    "before": {
+      "counts": {
+        "app_user": 2,
+        "project": 3,
+        "data_asset": 23,
+        "source_record": 20650,
+        "collaborative_draft": 25,
+        "collaborative_draft_record": 1574,
+        "test_set_version": 8,
+        "processing_run": 96,
+        "assistant_session": 21,
+        "assistant_background_document": 17
+      },
+      "draftHash": "a44cc0dcb9dd64c7bb00484a6a1060c0",
+      "postgres": "7f81ded39560ee9b6f24ea2ff88296557feff1267777103c497820c4ae28e17d",
+      "minio": "b669067b77c53aa80813f512de94ab8e41ce14132ee702ef84da6e7c92c310b0"
+    },
+    "after": {
+      "counts": {
+        "app_user": 2,
+        "project": 3,
+        "data_asset": 23,
+        "source_record": 20650,
+        "collaborative_draft": 25,
+        "collaborative_draft_record": 1574,
+        "test_set_version": 8,
+        "processing_run": 96,
+        "assistant_session": 21,
+        "assistant_background_document": 17
+      },
+      "draftHash": "a44cc0dcb9dd64c7bb00484a6a1060c0",
+      "postgres": "7f81ded39560ee9b6f24ea2ff88296557feff1267777103c497820c4ae28e17d",
+      "minio": "b669067b77c53aa80813f512de94ab8e41ce14132ee702ef84da6e7c92c310b0"
+    },
+    "backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt32/owner-before-5b0322a8f562.dump",
+    "webContainer": "e7d0496ffab023956127bc0d6977b0f136fbd30c284548c9d068ccdc8dbfa0a1"
+  },
+  "limits": [
+    "Six injected calls were structurally invalid; all six repaired in one request. This is not a natural first-pass rate.",
+    "Requirement-only replay repaired successfully but the subsequent ordinary planning did not finish; whole turn failed and is not counted as passed.",
+    "Of six genuine short-prompt turns, five used tools and one answered from existing project context; all six completed, two drafts total, no published versions.",
+    "Strict true was transmitted but the provider returned a call for an unsatisfiable schema. Constrained generation is not established.",
+    "No browser interaction for this backend-only change. SDK/HTTP tests, runtime health, asset and protected session request were checked."
+  ]
+}

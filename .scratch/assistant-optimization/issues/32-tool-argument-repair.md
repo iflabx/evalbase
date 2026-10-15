@@ -1,10 +1,10 @@
 # OPT-32 工具参数调用前纠错与真实模型恢复验证
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。沿用现有 OPT-21/22/26 及 OPT-30 后的代码；不等待旧票 Owner 验收。治理入口为 [PRD §7.8](../../../docs/PRD-data-selection-and-assistant.md#78-调用纠错文档规划与内容一致性补修2026-10-15待实施) 和 [补修顺序](../../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。本次仅文档，尚未授权开发。
+优先级：P1。沿用现有 OPT-21/22/26 及 OPT-30 后的代码；不等待旧票 Owner 验收。治理入口为 [PRD §7.8](../../../docs/PRD-data-selection-and-assistant.md#78-调用纠错文档规划与内容一致性补修2026-10-15待实施) 和 [补修顺序](../../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。2026-10-15 Owner 已授权本票开发；实现、验证及同一 4217 交付见 [验证记录](../opt32-verification.md)。Owner 验收 pending，整流程未全部通过。
 
 ## 问题与目标
 
@@ -49,3 +49,5 @@ Blocked by: none
 ## Comments
 
 - 2026-10-15：Owner 授权写修复 tickets；本张承接调用前纠错缺口，不将既有 Mock 回归当作真实恢复率证明。Implementation not-started，Owner 验收 pending。
+
+- 2026-10-15：按 Owner 授权完成调用前纠错，固定 5b0322a 更新同一 4217；88 项定向测试通过，真实注入参数修复 6/6、普通短提示 6/6。保留一例参数修好后后续规划未完成，未将整轮或助手整体记为通过；详见 [验证记录](../opt32-verification.md)。

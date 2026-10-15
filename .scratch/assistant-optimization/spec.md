@@ -105,7 +105,7 @@ Implementation: in-progress
 | [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | none | completed | [实施与验证](opt29-verification.md)、[四项补修及浏览器复测](opt29-followup-verification.md)，Owner pending |
 | [OPT-30](issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性与有界重复补齐 | OPT-29 | completed | 2026-10-15 实现及同一4217交付；Owner pending，GB规划/语义未全通过，见验证记录 |
 | [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33 | not-started | 2026-10-15 更新范围及依赖；Owner pending，验收未执行 |
-| [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | not-started | 2026-10-15 新建文档；Owner pending，验收未执行 |
+| [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | completed | [实现及验证](opt32-verification.md)；4217 Web 5b0322a，Owner pending；保留一例后续规划失败，整体未签通过 |
 | [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划 | OPT-32 | not-started | 2026-10-15 新建文档；Owner pending，验收未执行 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
