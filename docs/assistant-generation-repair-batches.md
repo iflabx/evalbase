@@ -69,4 +69,4 @@ GB 分类仅为这次验收数据，产品仍支持通用测试集；不内置�
 
 ## 6. 实施状态
 
-方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md) 和 [OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md)，Owner 验收 pending。OPT-28–31 保持未实施；各张最新状态以台账为准，不将部分实施记为三批全部完成。
+方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md)、[OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md) 和 [OPT-28 证据](../.scratch/assistant-optimization/opt28-verification.md)，Owner 验收 pending。OPT-29–31 保持未实施；各张最新状态以台账为准，不将部分实施记为三批全部完成。

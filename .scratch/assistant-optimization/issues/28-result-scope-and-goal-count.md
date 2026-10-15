@@ -1,10 +1,10 @@
 # OPT-28 当前成果范围与目标数量一致性修复
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。第一批，可独立修复；合批验证使用 OPT-26/27 的合同。本次仅文档，开发待后续授权。共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
+优先级：P1。第一批，可独立修复；合批验证使用 OPT-26/27 的合同。已按后续 Owner 单张授权实施，人工验收 pending。共同边界见 [三批修复方案](../../../docs/assistant-generation-repair-batches.md)。
 
 ## 问题与目标
 
@@ -33,3 +33,5 @@ Blocked by: none
 ## Comments
 
 - 2026-10-15：按当前集合与目标漂移两个同链问题建票；仅整理文档，验收未执行。
+
+- 2026-10-15：完成当前集合范围统一、旧 ID 校验、目标来源恢复和当前/整体数量区分。定向验证及同一 4217 更新见 [OPT-28 验证记录](../opt28-verification.md)。Owner 验收 pending；未合并、推送或正式部署。

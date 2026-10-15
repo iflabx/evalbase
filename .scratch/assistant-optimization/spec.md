@@ -1,4 +1,4 @@
-2026-10-15 最新实施：[OPT-27](issues/27-intent-and-plan-continuation.md) 已按 Owner 单张授权完成。最新意图优先，明确暂停持久保留，恢复使用已有真实回执；固定代码 `a8893ece4482d8b2eb3e31b6ad8d93be88d7c485` 已更新同一 4217 Web，原数据保留。定向验证与 Standards/Spec 复审见 [验证记录](opt27-verification.md)。Implementation completed、Owner pending；OPT-28–31 保持 not-started。
+2026-10-15 最新实施：[OPT-28](issues/28-result-scope-and-goal-count.md) 已按 Owner 单张授权完成当前成果范围与目标数量修复。固定代码 `e2c1f6e52d42648e0f27ae905a1b040c4209ee27` 已更新同一 4217 Web、数据保留，定向验证与 Standards/Spec 修复复核见 [验证记录](opt28-verification.md)。Implementation completed、Owner pending；OPT-29–31 保持 not-started。
 
 2026-10-15 既有实施：[OPT-26](issues/26-tool-contract-and-error-feedback.md) 已按 Owner 单张授权完成。计划输入由实际工具合同派生，内部参数纠错与业务反馈分层；代码 `06591f85f09b39ad5feb4b63b4486bbf912c68d2` 的定向验证、真实模型三条短提示和复审见 [验证记录](opt26-verification.md)。Implementation completed、Owner pending；后续环境版本以上方最新记录为准。
 
@@ -95,7 +95,7 @@ Implementation: in-progress
 | [OPT-25](issues/25-assistant-task-results-and-delivery.md)        | 整任务成果审核、局部调整与确认交付闭环                         | OPT-21/22/23/24                                       | completed      | [原验证](opt25-verification.md)、[审阅补修及最新4217](opt20-25-review-fixes.md)；Owner集中验收pending   |
 | [OPT-26](issues/26-tool-contract-and-error-feedback.md) | 统一参数合同、内部纠错与用户错误反馈 | 现有实现 | completed | [实施与验证](opt26-verification.md)；同一 4217 Web `06591f8`，Owner pending |
 | [OPT-27](issues/27-intent-and-plan-continuation.md) | 最新意图、暂停与计划续接 | 现有实现；与 OPT-26/28 独立 | completed | [实施与验证](opt27-verification.md)；同一 4217 Web `a8893ec`，Owner pending |
-| [OPT-28](issues/28-result-scope-and-goal-count.md) | 当前成果范围与业务目标数量一致性 | 现有实现；与 OPT-26/27 独立 | not-started | 2026-10-15 仅文档；验收未执行 |
+| [OPT-28](issues/28-result-scope-and-goal-count.md) | 当前成果范围与业务目标数量一致性 | 现有实现；与 OPT-26/27 独立 | completed | 当前集合及目标数量、兼容修复和验证见 [记录](opt28-verification.md)；Owner pending |
 | [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | OPT-26/27/28 | not-started | 2026-10-15 仅文档；验收未执行 |
 | [OPT-30](issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性与有界重复补齐 | OPT-29 | not-started | 2026-10-15 仅文档；验收未执行 |
 | [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、质量反馈及八类集成验收 | OPT-28/30 | not-started | 2026-10-15 仅文档；验收未执行 |
