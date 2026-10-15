@@ -73,6 +73,13 @@ export function assistantFailure(
       "本轮已暂停：达到执行限额或没有取得新进展。",
       "检查当前步骤和要求后继续未完成部分。",
     );
+  if (code === "assistant_requirements_not_saved" && !toolFailure)
+    return result(
+      "application",
+      "workflow_incomplete",
+      "助手尚未保存本轮要求，不能把口头确认当作已保存。",
+      "原要求和成果已保留，请重试本轮请求。",
+    );
   if (code === "assistant_task_not_executed" && !toolFailure)
     return result(
       "application",

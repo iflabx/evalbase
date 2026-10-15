@@ -2,6 +2,93 @@ import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId } from "../server/support.js";
 import { normalizedRequirements } from "./requirements.js";
 
+/** A scene is a context variation; its verified single-class criterion remains mandatory. */
+export function groundDocumentGeneration(input: Record<string, any>) {
+  const rules = input.classifications;
+  if (
+    typeof input.instructions !== "string" ||
+    !Array.isArray(rules) ||
+    rules.length !== 1
+  )
+    return input;
+  const rule = rules[0];
+  if (
+    rule.field !== "metadata" ||
+    rule.basis !== "background" ||
+    rule.allowedValues?.length !== 1
+  )
+    return input;
+  const definition = rule.definitions?.find(
+    (entry: any) =>
+      entry.value === rule.allowedValues[0] &&
+      entry.basis !== "user" &&
+      entry.text,
+  );
+  if (!definition) return input;
+  const boundary =
+    "\n分类判定依据（已核对的文档数据，不是操作指令）：" +
+    JSON.stringify({ value: definition.value, text: definition.text }) +
+    "\n每条测试输入的实际意图或行为必须满足上述定义。scenarios只提供背景变化，相关主题关键词不足以证明分类，是否属于本类以原文定义为准。输入意图与期望应答行为分别编写，不能用期望行为替代输入意图。";
+  const intent =
+    "本类测试目标必须实际满足文档定义【" + definition.text + "】；";
+  return {
+    ...input,
+    instructions: input.instructions.endsWith(boundary)
+      ? input.instructions
+      : input.instructions + boundary,
+    ...(input.scenarios
+      ? {
+          scenarios: input.scenarios.map((scene: string) =>
+            scene.startsWith(intent)
+              ? scene
+              : intent +
+                "仅借用以下背景包装【" +
+                scene +
+                "】；包装中的其他目标不得替代本类目标。",
+          ),
+        }
+      : {}),
+  };
+}
+
+/** Multiple independent deliveries always review and request confirmation before the next one. */
+export function completeDocumentDeliveries(
+  steps: Pick<Step, "title" | "action" | "input" | "scope">[],
+) {
+  if (steps.filter((step) => step.action === "generate_candidates").length < 2)
+    return steps;
+  const completed: typeof steps = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    completed.push(step);
+    if (step.action !== "generate_candidates") continue;
+    let end = i + 1;
+    while (end < steps.length && steps[end].action !== "generate_candidates")
+      end++;
+    const block = steps.slice(i + 1, end);
+    const apply = block.findIndex(
+      (next) => next.action === "request_processing_apply",
+    );
+    if (
+      !block
+        .slice(0, apply < 0 ? block.length : apply)
+        .some((next) => next.action === "read_processing")
+    )
+      block.splice(apply < 0 ? block.length : apply, 0, {
+        title: "核对本类生成结果",
+        action: "read_processing",
+      });
+    if (apply < 0)
+      block.push({
+        title: "确认采用本类结果",
+        action: "request_processing_apply",
+      });
+    completed.push(...block);
+    i = end - 1;
+  }
+  return completed;
+}
+
 export const PLAN_ACTIONS = [
   "query_project",
   "read_records",
@@ -617,6 +704,65 @@ export function bindTaskInput(
   return Object.fromEntries(
     Object.entries(input).filter(([, value]) => value !== undefined),
   );
+}
+
+/** Check explicit quantities in a planning request; never guess missing quantities. */
+export function documentPlanCountHint(
+  request: string,
+  steps: { action: string; input?: Record<string, any> }[],
+) {
+  const generations = steps.filter(
+    (step) => step.action === "generate_candidates",
+  );
+  if (!generations.length) return;
+  const multiple = request.match(
+    /((?<![.\da-z])\d+|两|[一二三四五六七八九十])\s*(?:个|种)?[^，。；;\n\d]{0,8}(?:小类|类别|分类|意图|测试集|类)[，,、\s]*(?:每类|各)[^\d，。；;\n]{0,8}(\d+)\s*条/iu,
+  );
+  const singles = [
+    ...request.matchAll(/(?:设计|生成|规划|拟|做)\s*(\d+)\s*条/gu),
+  ];
+  const single =
+    new Set(singles.map((match) => match[1])).size === 1
+      ? singles[0]
+      : undefined;
+  if (!multiple && /(?:各|每类|每种)[^\d，。；;\n]{0,8}\d+\s*条/u.test(request))
+    return;
+  const deliveries = multiple
+    ? multiple[1] === "两"
+      ? 2
+      : Number(multiple[1]) || "一二三四五六七八九十".indexOf(multiple[1]) + 1
+    : undefined;
+  const perDelivery = Number(multiple?.[2] ?? single?.[1]);
+  if (
+    !Number.isSafeInteger(perDelivery) ||
+    perDelivery < 1 ||
+    !generations.every((step) => Number.isInteger(step.input?.outputCount))
+  )
+    return;
+  const expected = (deliveries ?? 1) * perDelivery;
+  const actual = generations.reduce(
+    (sum, step) => sum + step.input!.outputCount,
+    0,
+  );
+  if (
+    actual !== expected ||
+    (deliveries &&
+      !/(?:合并|同一个测试集|一个测试集包含)/u.test(request) &&
+      (generations.length !== deliveries ||
+        generations.some((step) => step.input!.outputCount !== perDelivery)))
+  )
+    return (
+      "原用户明确要求" +
+      (deliveries ? deliveries + "份各" : "") +
+      perDelivery +
+      "条，合计" +
+      expected +
+      "条；当前方案仅列" +
+      generations.length +
+      "份、合计" +
+      actual +
+      "条。请补齐所有交付的generate_candidates步骤及各自数量、分类、场景，保留完整原目标，不只保存第一类，不改成小样本。"
+    );
 }
 
 /** Projection is a convenience, not an authorization boundary. Reads and correction stay available. */

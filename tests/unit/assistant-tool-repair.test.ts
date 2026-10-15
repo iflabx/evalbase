@@ -22,6 +22,37 @@ const schema = {
 };
 
 describe("argument repair meaning guard", () => {
+  it("decodes exactly one canonical extra JSON string layer without changing business text", () => {
+    const steps = [
+      {
+        action: "read_records",
+        input: { limit: 2, unknownRequirement: '保留引号"与路径 C:\\temp\\x' },
+      },
+    ];
+    const json = JSON.stringify(steps);
+    const escaped = JSON.stringify(json).slice(1, -1);
+    expect(sameRepairMeaning({ steps: escaped }, { steps }, schema)).toBe(true);
+    expect(
+      sameRepairMeaning({ steps: JSON.stringify(json) }, { steps }, schema),
+    ).toBe(true);
+    expect(
+      sameRepairMeaning(
+        { steps: JSON.stringify(JSON.stringify(json)) },
+        { steps },
+        schema,
+      ),
+    ).toBe(false);
+    expect(
+      sameRepairMeaning(
+        { steps: escaped },
+        { steps: [{ action: "read_records", input: { limit: 2 } }] },
+        schema,
+      ),
+    ).toBe(false);
+    expect(
+      sameRepairMeaning({ steps: "prefix " + escaped }, { steps }, schema),
+    ).toBe(false);
+  });
   it("accepts only lossless wrappers, numeric types and the known spelling alias", () => {
     expect(
       sameRepairMeaning(

@@ -7,10 +7,130 @@ import {
   resolvedStepInput,
   missingStepDependency,
   selectionParameters,
+  documentPlanCountHint,
+  groundDocumentGeneration,
   type ExecutionPlan,
 } from "../../src/assistant/plan.js";
 
 describe("restored execution plan boundaries", () => {
+  it("binds a verified single-class criterion without relabeling contexts or changing other contracts", () => {
+    const input = {
+      instructions: "生成完整问法",
+      scenarios: ["用户咨询账户功能"],
+      outputCount: 50,
+      classifications: [
+        {
+          field: "metadata",
+          key: "intent",
+          basis: "background",
+          allowedValues: ["注销"],
+          definitions: [
+            { value: "注销", text: "用户请求永久删除自己的账户。" },
+          ],
+        },
+      ],
+    };
+    const grounded = groundDocumentGeneration(input);
+    expect(grounded.instructions).toContain("用户请求永久删除自己的账户。");
+    expect(grounded.instructions).toContain("相关主题关键词不足以证明分类");
+    expect(grounded.scenarios[0]).toContain(
+      "本类测试目标必须实际满足文档定义【用户请求永久删除自己的账户。】",
+    );
+    expect(grounded.scenarios[0]).toContain("背景包装【用户咨询账户功能】");
+    expect(grounded.scenarios[0]).toContain("包装中的其他目标不得替代本类目标");
+    expect(input.scenarios).toEqual(["用户咨询账户功能"]);
+    expect(grounded.outputCount).toBe(50);
+    expect(input.instructions).toBe("生成完整问法");
+    expect(groundDocumentGeneration(grounded)).toEqual(grounded);
+    expect(
+      groundDocumentGeneration({ instructions: "按话术规范改写" }),
+    ).toEqual({ instructions: "按话术规范改写" });
+    const multiple = {
+      ...input,
+      classifications: [
+        { ...input.classifications[0], allowedValues: ["注销", "退款"] },
+      ],
+    };
+    expect(groundDocumentGeneration(multiple)).toEqual(multiple);
+    const user = {
+      ...input,
+      classifications: [{ ...input.classifications[0], basis: "user" }],
+    };
+    expect(groundDocumentGeneration(user)).toEqual(user);
+    const expectedOutput = {
+      ...input,
+      classifications: [
+        { ...input.classifications[0], field: "expectedOutput" },
+      ],
+    };
+    expect(groundDocumentGeneration(expectedOutput)).toEqual(expectedOutput);
+    const language = groundDocumentGeneration({
+      ...input,
+      classifications: [
+        {
+          ...input.classifications[0],
+          key: "language",
+          allowedValues: ["中文"],
+          definitions: [{ value: "中文", text: "题目的语言为中文。" }],
+        },
+      ],
+    });
+    expect(language.scenarios[0]).toContain("题目的语言为中文。");
+    expect(language.scenarios[0]).not.toContain("用户请求模型实施");
+    const explanation = groundDocumentGeneration({
+      ...input,
+      classifications: [
+        {
+          ...input.classifications[0],
+          allowedValues: ["概念解释"],
+          definitions: [
+            {
+              value: "概念解释",
+              text: "用户希望解释术语含义，可进行中立概念咨询。",
+            },
+          ],
+        },
+      ],
+    });
+    expect(explanation.instructions).toContain("可进行中立概念咨询");
+    expect(explanation.instructions).not.toContain(
+      "中立咨询或概念解释本身不构成本类",
+    );
+    expect(
+      groundDocumentGeneration({ classifications: input.classifications }),
+    ).toEqual({ classifications: input.classifications });
+  });
+  it("checks explicit document delivery quantities without inventing unspecified counts", () => {
+    const steps = (count: number, n = 1) =>
+      Array.from({ length: n }, () => ({
+        action: "generate_candidates",
+        input: { outputCount: count },
+      }));
+    expect(documentPlanCountHint("8个小类各设计50条", steps(50))).toContain(
+      "合计400",
+    );
+    expect(
+      documentPlanCountHint("八类各设计50条", steps(50, 8)),
+    ).toBeUndefined();
+    expect(
+      documentPlanCountHint("按附件A.1八类各设计50条，只给方案", steps(50)),
+    ).toContain("合计400");
+    expect(
+      documentPlanCountHint("按附件A.1八类各设计50条，只给方案", steps(50, 8)),
+    ).toBeUndefined();
+    expect(
+      documentPlanCountHint("两个客服意图，各设计3条", steps(3, 2)),
+    ).toBeUndefined();
+    expect(
+      documentPlanCountHint("两种客服意图各拟3条，合并一个测试集", steps(6)),
+    ).toBeUndefined();
+    expect(documentPlanCountHint("设计5条", steps(3))).toContain("5条");
+    expect(documentPlanCountHint("每类各设计5条", steps(5, 8))).toBeUndefined();
+    expect(
+      documentPlanCountHint("原先设计50条，现在设计5条", steps(5)),
+    ).toBeUndefined();
+    expect(documentPlanCountHint("给个方案", steps(5))).toBeUndefined();
+  });
   it("keeps approved parameters when enabling a plan with unchanged step titles", () => {
     expect(
       selectionParameters({ method: "random", value: 4, conditions: null }, 4)

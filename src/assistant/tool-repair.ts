@@ -54,6 +54,26 @@ function inputContract(value: unknown, definition: any): any {
   return definition;
 }
 
+function parseContainerText(raw: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Some providers uniformly escape an entire container without its outer quotes.
+    // Require an exact canonical round trip; never search substrings or rewrite quotes.
+    const decoded: unknown = JSON.parse('"' + raw + '"');
+    if (
+      typeof decoded !== "string" ||
+      JSON.stringify(decoded).slice(1, -1) !== raw
+    )
+      throw new Error("noncanonical_json_wrapper");
+    parsed = JSON.parse(decoded);
+  }
+  if (typeof parsed === "string" && JSON.stringify(parsed) === raw)
+    parsed = JSON.parse(parsed);
+  return parsed;
+}
+
 /** Compare meaning conservatively: only lossless schema-directed wrappers/types. */
 export function repairInputMeaning(value: unknown, definition: any): unknown {
   definition = inputContract(value, definition);
@@ -73,7 +93,7 @@ export function repairInputMeaning(value: unknown, definition: any): unknown {
       }
     } else if (types.includes("object") || types.includes("array")) {
       try {
-        const parsed: unknown = JSON.parse(value);
+        const parsed = parseContainerText(value);
         if (isPlainObject(parsed) || Array.isArray(parsed)) value = parsed;
       } catch {
         // A normal string can be a single array item, never a JSON substring.

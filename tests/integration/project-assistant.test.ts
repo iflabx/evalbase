@@ -3768,6 +3768,374 @@ describe("project assistant public contract", () => {
       sessionId = previous;
     }
   });
+  it("OPT33 reconciles a verbal acknowledgement before reporting saved requirements", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      const start = calls.length;
+      textualToolCall = "已记录要求：3条，保留事实，不添加新信息。";
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          requirements: ["做3条", "保留事实", "不添加新信息"],
+          nextAction: "none",
+        },
+      };
+      const state = (
+        await send("记录要求：做3条，保留事实，不添加新信息。先不要执行")
+      ).json();
+      expect(calls[start + 1].tool_choice.function.name).toBe("plan_task");
+      expect(state.task.targetCount).toBe(3);
+      expect(state.task.requirements).toEqual(["保留事实", "不添加新信息"]);
+      expect(state.turns.at(-1).diagnostics.requirementsReconciled).toBe(true);
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: { targetCount: 5, requirements: [], nextAction: "none" },
+        },
+        { name: "plan_task", input: { targetCount: 5, nextAction: "none" } },
+      ];
+      const updated = (await send("把数量改为5，仍然先不执行")).json();
+      expect(updated.task.targetCount).toBe(5);
+      expect(updated.task.requirements).toEqual(state.task.requirements);
+      expect(
+        updated.turns
+          .at(-1)
+          .tools.some((item: any) => item.name === "create_draft"),
+      ).toBe(false);
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: { requirements: ["保留事实"], nextAction: "none" },
+      };
+      const ambiguous = (
+        await send("记录要求：不要生成3条，数量改成5条，保留事实，先不执行")
+      ).json();
+      expect(ambiguous.task.targetCount).toBeUndefined();
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      textualToolCall = undefined;
+      toolSequence = [];
+    }
+  });
+  it("OPT33 rejects repeated acknowledgement without a save receipt", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      textualReplies = ["要求已记录，目标3条。", "要求已记录，目标3条。"];
+      const state = (
+        await send("记录目标3条，先不执行", undefined, "failed")
+      ).json();
+      expect(state.turns.at(-1).errorCode).toBe(
+        "assistant_requirements_not_saved",
+      );
+      expect(
+        state.turns.at(-1).diagnostics.requestAttempts,
+      ).toBeLessThanOrEqual(2);
+      expect(state.task.targetCount).toBeUndefined();
+    } finally {
+      sessionId = previous;
+      textualReplies = [];
+      textualToolCall = undefined;
+    }
+  });
+  it("OPT33 confirms stored facts without saving again and preserves requirements not individually revoked", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          requirements: ["保留事实", "不添加新信息"],
+          nextAction: "none",
+        },
+      };
+      const stored = (
+        await send("记录要求：保留事实，不添加新信息，先不执行")
+      ).json();
+      const before = calls.length;
+      textualReplies = ["要求已经保存：保留事实，不添加新信息。"];
+      const confirmed = (await send("之前的要求还在吗？")).json();
+      expect(calls.length - before).toBe(1);
+      expect(confirmed.turns.at(-1).tools).toEqual([]);
+      expect(confirmed.task.requirements).toEqual(stored.task.requirements);
+      toolSequence = [
+        { name: "plan_task", input: { requirements: [] } },
+        {
+          name: "plan_task",
+          input: { requirements: ["不添加新信息"], nextAction: "none" },
+        },
+      ];
+      const revised = (await send("取消保留事实这个要求")).json();
+      expect(revised.task.requirements).toEqual(["不添加新信息"]);
+      expect(
+        revised.turns
+          .at(-1)
+          .tools.some(
+            (t: any) =>
+              t.status === "failed" &&
+              t.error.code === "assistant_tool_input_invalid",
+          ),
+      ).toBe(true);
+      requestedTool = { name: "plan_task", input: { requirements: [] } };
+      expect((await send("清空所有要求")).json().task.requirements).toEqual([]);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      textualReplies = [];
+    }
+  });
+  it("OPT33 rejects unadvertised writes before a document-only plan is saved", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const counts = async () =>
+        (
+          await db.query(
+            "SELECT (SELECT count(*) FROM processing_run WHERE project_id=$1)::int AS runs,(SELECT count(*) FROM collaborative_draft WHERE project_id=$1)::int AS drafts",
+            [projectId],
+          )
+        ).rows[0];
+      const before = await counts();
+      const doc = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "规范.md",
+            contentBase64: Buffer.from(
+              "问题完整自然，期望输出逐题说明正常回答行为。",
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      const generation = {
+        name: "不能提前生成",
+        instructions: "生成完整客服问法",
+        outputCount: 5,
+        scenarios: ["咨询配送进度"],
+        classifications: [],
+      };
+      toolSequence = [
+        { name: "read_background", input: { documentId: doc.id } },
+        { name: "generate_candidates", input: generation },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            requirements: ["问题完整自然"],
+            steps: [
+              {
+                title: "生成5条",
+                action: "generate_candidates",
+                input: generation,
+              },
+            ],
+          },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit("按附件设计5条，先给方案"),
+      );
+      expect(
+        state.turns
+          .at(-1)
+          .tools.some(
+            (t: any) =>
+              t.name === "generate_candidates" && t.status === "succeeded",
+          ),
+      ).toBe(false);
+      expect(await counts()).toEqual(before);
+      expect(state.task.backgroundEvidence).toHaveLength(1);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+  it("OPT33 leaves pure explanations and empty reconciliation inputs unchanged", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = { name: "plan_task", input: {} };
+      const state = (await send("清洗和改写有何区别？")).json();
+      expect(state.task.executionPaused).not.toBe(true);
+      expect(state.task.executionPlan).toBeUndefined();
+      expect(state.task.requirements ?? []).toEqual([]);
+      expect(state.turns.at(-1).tools[0].result.unchanged).toBe(true);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+  it("OPT33 resolves split hierarchy queries and stores eight compact deliveries without writes", async () => {
+    const previous = sessionId;
+    const db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const content =
+        Array.from(
+          { length: 8 },
+          (_, i) =>
+            "2." +
+            (i + 1) +
+            " 前置说明\n" +
+            "与当前分类无关的资料介绍。".repeat(8),
+        ).join("\n") +
+        "\nA.1 测试分类\n" +
+        Array.from(
+          { length: 8 },
+          (_, i) =>
+            String.fromCharCode(97 + i) +
+            ") 第" +
+            (i + 1) +
+            "类：仅测试该类的明确边界。",
+        ).join("\n") +
+        "\nA.2 其他分类";
+      const doc = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "分类.md",
+            contentBase64: Buffer.from(content).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: doc.id, query: "A.1" },
+      };
+      const readState = (await send("读取附件的A.1.a定义")).json();
+      const response = readState.turns
+        .at(-1)
+        .tools.find((item: any) => item.name === "read_background").result;
+      expect(response.fragments[0].index).toBe(1);
+      const references = response.definitions;
+      expect(references.find((ref: any) => ref.value === "A.1.h")).toBeTruthy();
+      expect(
+        references.filter((ref: any) => /^A\.1\.[a-h]$/.test(ref.code)),
+      ).toHaveLength(8);
+      const steps = Array.from({ length: 8 }, (_, i) => {
+        const value = "A.1." + String.fromCharCode(97 + i),
+          reference = references.find(
+            (ref: any) => ref.value === value,
+          ).reference;
+        return {
+          title: "第" + (i + 1) + "类",
+          action: "generate_candidates",
+          input: {
+            name: value,
+            instructions: "仅按本类定义生成完整自然的问题",
+            outputCount: 50,
+            scenarios: ["本类定义中的边界场景"],
+            classifications: [
+              {
+                field: "metadata",
+                key: "category",
+                basis: "background",
+                allowedValues: [value],
+                definitions: [{ value, reference }],
+              },
+            ],
+          },
+        };
+      });
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            question: "请确认8个测试集分别创建还是合并为一个？",
+            executionMode: "plan",
+            requirements: ["问题语义完整"],
+            steps,
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            requirements: ["问题语义完整"],
+            steps: steps.slice(0, 1),
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            requirements: ["问题语义完整"],
+            steps,
+          },
+        },
+      ];
+      const start = calls.length;
+      const planned = (await send("按附件A.1八类各设计50条，只给方案")).json();
+      expect(planned.task.executionPlan.steps).toHaveLength(24);
+      expect(
+        planned.task.executionPlan.steps.filter(
+          (step: any) => step.action === "generate_candidates",
+        ),
+      ).toHaveLength(8);
+      expect(planned.task.overallTargetCount).toBe(400);
+      for (const step of planned.task.executionPlan.steps.filter(
+        (item: any) => item.action === "generate_candidates",
+      )) {
+        const definition = step.input.classifications[0].definitions[0];
+        expect(step.input.instructions).toContain(
+          JSON.stringify({ value: definition.value, text: definition.text }),
+        );
+        expect(step.input.instructions).toContain(
+          "输入意图与期望应答行为分别编写",
+        );
+        expect(step.input.scenarios[0]).toContain(
+          "本类测试目标必须实际满足文档定义【" + definition.text + "】",
+        );
+        expect(step.input.scenarios[0]).toContain(
+          "背景包装【本类定义中的边界场景】",
+        );
+      }
+      expect(planned.task.executionPlan.mode).toBe("plan");
+      expect(calls.length - start).toBe(3);
+      expect(calls[start].tool_choice).toBe("auto");
+      expect(
+        calls[start].tools.every((tool: any) =>
+          [
+            "plan_task",
+            "read_background",
+            "query_project",
+            "read_records",
+          ].includes(tool.function.name),
+        ),
+      ).toBe(true);
+      expect(
+        planned.turns
+          .at(-1)
+          .tools.some((item: any) =>
+            [
+              "generate_candidates",
+              "create_draft",
+              "submit_processing",
+            ].includes(item.name),
+          ),
+      ).toBe(false);
+      expect(
+        (await db.query("SELECT count(*)::int AS n FROM processing_run"))
+          .rows[0].n,
+      ).toBe(0);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
   it("reserves a final reply after repeated successful queries", async () => {
     const previous = sessionId;
     sessionId = (

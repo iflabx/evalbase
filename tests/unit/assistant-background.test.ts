@@ -5,6 +5,7 @@ import {
   validateBackgroundRules,
   backgroundDefinitionReferences,
   resolveBackgroundDefinitions,
+  documentDefinitionReferences,
 } from "../../src/assistant/background.js";
 
 describe("OPT-23 verified definition references", () => {
@@ -232,6 +233,32 @@ describe("OPT-10 document definitions", () => {
       ]),
     ).not.toThrow();
   });
+  it("keeps unrelated negation separate from fixed labels and does not let background basis invent an enum", () => {
+    const state: any = task("正确", "正确");
+    delete state.backgroundEvidence;
+    state.classifications[0].field = "expectedOutput";
+    state.classifications[0].basis = "user";
+    delete state.classifications[0].key;
+    state.goal = "期望输出使用固定标签：正确，不要增加其他内容";
+    expect(() => validateBackgroundRules(state, [])).not.toThrow();
+    state.goal = "不要使用正确标签";
+    expect(() => validateBackgroundRules(state, [])).toThrow();
+    state.classifications[0].basis = "background";
+    state.backgroundEvidence = [{ documentId: "doc", fragmentIndex: 1 }];
+    state.classifications[0].allowedValues = ["安全行为"];
+    state.classifications[0].definitions = [
+      { value: "安全行为", text: "每题说明具体应答。" },
+    ];
+    state.goal = "期望输出写安全行为";
+    expect(() =>
+      validateBackgroundRules(state, [
+        {
+          id: "doc",
+          fragments: [{ index: 1, text: "## 安全行为\n每题说明具体应答。" }],
+        },
+      ]),
+    ).toThrow();
+  });
   it("accepts a verbatim user fallback quote with its sentence punctuation", () => {
     const rules: any = task("A.1.a", "表示甲类问题。");
     rules.goal = "按附件分类，无法归类时用其他。";
@@ -437,4 +464,174 @@ describe("background document extraction", () => {
       );
     },
   );
+});
+
+describe("OPT33 document entry boundaries", () => {
+  it("binds a first-read reference to complete original locations and rejects stale scopes", () => {
+    const docs = [
+      {
+        id: "d",
+        sha256: "h",
+        extractorVersion: "v",
+        fragments: [
+          { index: 1, page: 1, text: "A.1 风险\na) 甲类\n第一段。" },
+          { index: 2, page: 2, text: "必要限定条件。\nb) 乙类\n另一条定义。" },
+        ],
+      },
+    ];
+    const scope = { projectId: "p", actorId: "u" };
+    const evidence = [
+      { documentId: "d", fragmentIndex: 1 },
+      { documentId: "d", fragmentIndex: 2 },
+    ];
+    expect(
+      documentDefinitionReferences(docs, evidence.slice(0, 1), scope, "s").some(
+        (ref) => ref.value === "A.1.a",
+      ),
+    ).toBe(false);
+    const ref = documentDefinitionReferences(docs, evidence, scope, "s").find(
+      (ref) => ref.value === "A.1.a",
+    )!;
+    expect(ref.fragmentIndices).toEqual([1, 2]);
+    const current = { backgroundEvidence: evidence };
+    const patch = {
+      classifications: [
+        {
+          field: "metadata",
+          key: "risk",
+          basis: "background",
+          allowedValues: ["A.1.a"],
+          definitions: [{ value: "A.1.a", reference: ref.reference }],
+        },
+      ],
+    };
+    expect(
+      resolveBackgroundDefinitions(current, patch, docs, scope, "s")
+        .classifications[0].definitions[0].text,
+    ).toContain("必要限定条件");
+    expect(() =>
+      resolveBackgroundDefinitions(current, patch, docs, scope, "other"),
+    ).toThrow();
+    expect(() =>
+      resolveBackgroundDefinitions(
+        current,
+        patch,
+        [{ ...docs[0], sha256: "changed" }],
+        scope,
+        "s",
+      ),
+    ).toThrow();
+  });
+  const document = (text: string) => [
+    {
+      id: "doc",
+      sha256: "hash",
+      extractorVersion: "v1",
+      fragments: [{ index: 1, text }],
+    },
+  ];
+  const task = (value: string, text: string) => ({
+    backgroundEvidence: [{ documentId: "doc", fragmentIndex: 1 }],
+    classifications: [
+      {
+        field: "metadata",
+        key: "category",
+        basis: "background",
+        allowedValues: [value],
+        definitions: [{ value, text }],
+      },
+    ],
+  });
+  it.each(["A.1.a", "甲类问题", "A.1.a 甲类问题"])(
+    "accepts a proved parent/item alias: %s",
+    (value) => {
+      expect(() =>
+        validateBackgroundRules(
+          task(value, "甲类问题；"),
+          document("A.1 风险\na) 甲类问题；\nb) 乙类问题；\nA.2 其他风险"),
+        ),
+      ).not.toThrow();
+    },
+  );
+  it("rejects sibling text even when only one class is requested", () => {
+    expect(() =>
+      validateBackgroundRules(
+        task("A.1.a", "乙类问题；"),
+        document("A.1 风险\na) 甲类问题；\nb) 乙类问题；"),
+      ),
+    ).toThrow();
+  });
+  it.each([
+    [
+      "1.2.3",
+      "1.2 客服\n1.2.3 退款咨询\n申请退回已付款项。\n1.2.4 物流查询\n查询配送进度。",
+    ],
+    [
+      "1.1",
+      "一、客服\n（一）退款咨询\n申请退回已付款项。\n（二）物流查询\n查询配送进度。",
+    ],
+  ])("supports bounded numbering: %s", (value, text) => {
+    expect(() =>
+      validateBackgroundRules(
+        task(value, "申请退回已付款项。"),
+        document(text),
+      ),
+    ).not.toThrow();
+  });
+  it("rejects an ambiguous duplicate heading", () => {
+    expect(() =>
+      validateBackgroundRules(
+        task("退款咨询", "退还全部付款。"),
+        document("## 退款咨询\n退还全部付款。\n## 退款咨询\n只能查询进度。"),
+      ),
+    ).toThrow();
+  });
+  it("rejects misaligned table evidence", () => {
+    expect(() =>
+      validateBackgroundRules(
+        task("退款", "退款定义"),
+        document(
+          "| 类别 | 定义 | 示例 |\n| --- | --- | --- |\n| 退款 |\n| 物流 | 退款定义 | 查询快递 |",
+        ),
+      ),
+    ).toThrow();
+  });
+  it("does not borrow numbering across a new chapter or table definitions from a footer", () => {
+    expect(() =>
+      validateBackgroundRules(
+        task("A.1.a", "甲类定义。"),
+        document("A.1 风险\n## 独立章节\na) 甲类定义。"),
+      ),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(
+        task("物流查询", "每条问题完整。"),
+        document(
+          "| 类别 | 定义 |\n| --- | --- |\n| 物流查询 | 查询配送进度。 |\n每条问题完整。",
+        ),
+      ),
+    ).toThrow();
+  });
+  it("does not accept a model invented expected-output enum as a user declaration", () => {
+    const state: any = task("安全行为", "安全行为");
+    state.goal = "期望输出写安全行为";
+    state.requirements = [state.goal];
+    state.classifications[0].field = "expectedOutput";
+    delete state.classifications[0].key;
+    state.classifications[0].basis = "user";
+    expect(() =>
+      validateBackgroundRules(
+        state,
+        document("说明：每题给出具体的合规应答行为。"),
+      ),
+    ).toThrow();
+    state.goal = "期望输出使用固定标签：安全行为";
+    state.requirements = [state.goal];
+    expect(() =>
+      validateBackgroundRules(
+        state,
+        document("说明：每题给出具体的合规应答行为。"),
+      ),
+    ).not.toThrow();
+  });
 });

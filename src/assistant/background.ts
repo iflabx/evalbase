@@ -12,6 +12,13 @@ import {
 import type { BackgroundFragment } from "./extract-background.js";
 import type { CandidateGoal } from "../processing/review.js";
 import {
+  backgroundSections,
+  matchingSections,
+  matchesSectionDefinition,
+  normalizedExcerpt,
+  sectionAliases,
+} from "./background-sections.js";
+import {
   requirementSummary,
   validateRules,
   validateProcessingRequirements,
@@ -45,6 +52,58 @@ type DefinitionDocument = {
   extractorVersion?: string;
   fragments: BackgroundFragment[];
 };
+
+/** References bind original text and locations to this actor/session; they grant no authority. */
+export function documentDefinitionReferences(
+  documents: DefinitionDocument[],
+  evidence: { documentId: string; fragmentIndex: number }[],
+  scope: AssistantScope,
+  sessionId: string,
+) {
+  return documents.flatMap((document) => {
+    if (!document.sha256 || !document.extractorVersion) return [];
+    const index = backgroundSections(document.fragments);
+    if (index.malformedTable) return [];
+    const selected = evidence
+      .filter((ref) => ref.documentId === document.id)
+      .map((ref) => ref.fragmentIndex);
+    return index.sections
+      .filter(
+        (section) =>
+          section.fragments.every((part) => selected.includes(part)) &&
+          matchingSections(index.sections, section.code ?? section.name)
+            .length === 1,
+      )
+      .map((section) => {
+        const text = section.text.slice(0, 240);
+        return {
+          value: section.code ?? section.name,
+          ...(section.code ? { code: section.code } : {}),
+          name: section.name,
+          text,
+          aliases: sectionAliases(section),
+          fragmentIndices: section.fragments,
+          documentId: document.id,
+          reference:
+            "definition:" +
+            sha256(
+              canonicalJson({
+                version: "background-section-v1",
+                actorId: scope.actorId,
+                sessionId,
+                documentId: document.id,
+                sha256: document.sha256,
+                extractorVersion: document.extractorVersion,
+                fragments: document.fragments.filter((part) =>
+                  section.fragments.includes(part.index),
+                ),
+                section,
+              }),
+            ),
+        };
+      });
+  });
+}
 
 /** Only current, already-validated definitions obtain a session-local reusable reference. */
 export function backgroundDefinitionReferences(
@@ -138,18 +197,49 @@ export function resolveBackgroundDefinitions(
     )
   )
     return patch;
-  const available = backgroundDefinitionReferences(
-    current,
+  const catalog = documentDefinitionReferences(
     documents,
+    current.backgroundEvidence ?? [],
     scope,
     sessionId,
   );
+  let available: ReturnType<typeof backgroundDefinitionReferences> | undefined;
   return {
     ...patch,
     classifications: patch.classifications.map((rule: any) => ({
       ...rule,
       definitions: rule.definitions?.map((definition: any) => {
         if (!definition.reference) return definition;
+        const original = catalog.find(
+          (entry) =>
+            entry.reference === definition.reference &&
+            entry.aliases.some(
+              (alias) =>
+                normalizedExcerpt(alias) ===
+                normalizedExcerpt(definition.value),
+            ),
+        );
+        if (original && rule.basis !== "user" && definition.basis !== "user") {
+          const text = definition.text ?? original.text;
+          const document = documents.find(
+            (entry) => entry.id === original.documentId,
+          )!;
+          if (
+            !matchesSectionDefinition(
+              document.fragments,
+              (current.backgroundEvidence ?? [])
+                .filter((ref: any) => ref.documentId === document.id)
+                .map((ref: any) => ref.fragmentIndex),
+              definition.value,
+              text,
+            )
+          )
+            throw new AssistantError(
+              422,
+              "assistant_background_reference_invalid",
+            );
+          return { value: definition.value, text };
+        }
         // A physical citation is not a server-issued token. A fresh literal
         // quote can still be verified against this session's cited fragments.
         if (
@@ -178,6 +268,12 @@ export function resolveBackgroundDefinitions(
           );
           return quoted;
         }
+        available ??= backgroundDefinitionReferences(
+          current,
+          documents,
+          scope,
+          sessionId,
+        );
         const ref = available.find(
           (entry) =>
             entry.reference === definition.reference &&
@@ -362,11 +458,21 @@ export async function readBackground(
   if (!row) throw new AssistantError(404, "assistant_document_not_found");
   const normalize = (text: string) =>
     text.replace(/\s+/gu, "").toLocaleLowerCase();
+  const structure = backgroundSections(row.fragments);
+  const sectionFragments = new Set(
+    query === undefined
+      ? []
+      : matchingSections(structure.sections, query).flatMap(
+          (section) => section.fragments,
+        ),
+  );
   const fragments =
     query === undefined
       ? row.fragments
-      : row.fragments.filter((fragment: BackgroundFragment) =>
-          normalize(fragment.text).includes(normalize(query)),
+      : row.fragments.filter(
+          (fragment: BackgroundFragment) =>
+            normalize(fragment.text).includes(normalize(query)) ||
+            sectionFragments.has(fragment.index),
         );
   if (fragments.length && from > fragments.length)
     throw new AssistantError(
@@ -378,10 +484,62 @@ export async function readBackground(
   const after = await sessionRow(db, scope, sessionId);
   if (after.content_revision !== before.content_revision)
     throw new AssistantError(409, "assistant_context_deleted");
+  const returned = fragments.slice(from - 1, from - 1 + limit);
+  const references = documentDefinitionReferences(
+    [row],
+    [
+      ...(before.task.backgroundEvidence ?? []),
+      ...returned.map((part: BackgroundFragment) => ({
+        documentId,
+        fragmentIndex: part.index,
+      })),
+    ],
+    scope,
+    sessionId,
+  );
+  // A bounded catalog must prioritize the requested section, not preceding pages
+  // that only mention its code. Child codes come from the parsed hierarchy.
+  const requested =
+    query === undefined ? [] : matchingSections(structure.sections, query);
+  const relevant = references.filter((reference) =>
+    requested.some(
+      (section) =>
+        reference.aliases.some(
+          (alias) =>
+            normalizedExcerpt(alias) ===
+            normalizedExcerpt(section.code ?? section.name),
+        ) ||
+        (section.code && reference.code?.startsWith(section.code + ".")) ||
+        structure.sections.some(
+          (child) =>
+            sectionAliases(child).includes(reference.value) &&
+            child.start >= section.start &&
+            child.end <= section.end,
+        ),
+    ),
+  );
+  const ranked = relevant.length ? relevant : references;
+  const definitions: typeof references = [];
+  for (const reference of ranked) {
+    if (
+      definitions.length >= 20 ||
+      Buffer.byteLength(JSON.stringify([...definitions, reference])) > 6000
+    )
+      break;
+    definitions.push(reference);
+  }
   return {
     ...row,
+    definitions,
+    definitionsTruncated: definitions.length < ranked.length,
+    ...(structure.malformedTable
+      ? {
+          navigationHint:
+            "表格列存在缺失或错位，不能可靠绑定类别与定义；请核对可读原文。",
+        }
+      : {}),
     ...(query === undefined ? {} : { matchCount: fragments.length }),
-    fragments: fragments.slice(from - 1, from - 1 + limit),
+    fragments: returned,
     nextFrom: from - 1 + limit < fragments.length ? from + limit : null,
     ...(query !== undefined && fragments.length === 0
       ? {
@@ -526,6 +684,62 @@ export function validateBackgroundRules(
   task: Record<string, any>,
   documents: DefinitionDocument[],
 ) {
+  const userRequests = [task.goal, ...(task.supplements ?? [])].filter(
+    (text): text is string => typeof text === "string",
+  );
+  const outputRequest = userRequests.findLast((text) =>
+    /期望输出|固定标签|枚举|意图识别|分类测试/u.test(text),
+  );
+  const fixedOutput =
+    outputRequest &&
+    /固定(?:值|标签|输出|为)?|枚举|标签|只能|取值|原样填写|(?:期望输出).{0,8}(?:填|为|使用).{0,8}(?:意图|类别|分类)/u.test(
+      outputRequest,
+    ) &&
+    !/(?:不设|不使用|不要|不得).{0,4}(?:固定标签|枚举|固定值)/u.test(
+      outputRequest,
+    );
+  for (const rule of validateRules(task)) {
+    if (
+      rule.field === "expectedOutput" &&
+      userRequests.length &&
+      (rule.allowedValues?.length ||
+        rule.requiredValues?.length ||
+        rule.quotas?.length) &&
+      !fixedOutput
+    )
+      throw new AssistantError(
+        422,
+        "assistant_background_rule_mismatch",
+        "逐题期望行为应保存为自然语言要求，不能因文档标题或模型自报依据就固化为单一标签；只有用户明确指定固定值或分类标签任务才设置期望输出枚举。",
+      );
+    if (rule.basis !== "user") continue;
+    for (const value of new Set([
+      ...(rule.allowedValues ?? []),
+      ...(rule.requiredValues ?? []),
+      ...(rule.quotas ?? []).map((q) => q.value),
+    ])) {
+      const request = [task.goal, ...(task.supplements ?? [])].findLast(
+        (text) => typeof text === "string" && text.includes(value),
+      );
+      if (
+        !request ||
+        /(?:不要|不得|禁止|撤销|取消|不再).{0,16}/u.test(
+          request
+            .split(/[。；;，,\n]/u)
+            .findLast((part: string) => part.includes(value)) ?? "",
+        ) ||
+        (rule.field === "expectedOutput" &&
+          !/(?:固定(?:值|标签|输出)?|枚举|标签|只能|取值|原样填写)/u.test(
+            request,
+          ))
+      )
+        throw new AssistantError(
+          422,
+          "assistant_background_rule_mismatch",
+          "该固定标签未由用户明确指定。逐题期望行为应保存为自然语言要求，不设单一固定枚举；请保留实际要求并清除误设的字段分类规则，不向用户索要工具参数。",
+        );
+    }
+  }
   if (!task.backgroundEvidence?.length) return;
   if (
     task.backgroundEvidence.some((ref: any) => {
@@ -555,6 +769,24 @@ export function validateBackgroundRules(
       )
       .map((fragment) => fragment.text),
   );
+  const indexedDefinition = (value: string, quote: string) => {
+    const results = documents
+      .filter((doc) =>
+        task.backgroundEvidence.some((ref: any) => ref.documentId === doc.id),
+      )
+      .map((doc) =>
+        matchesSectionDefinition(
+          doc.fragments,
+          task.backgroundEvidence
+            .filter((ref: any) => ref.documentId === doc.id)
+            .map((ref: any) => ref.fragmentIndex),
+          value,
+          quote,
+        ),
+      )
+      .filter((result) => result !== undefined);
+    return results.length ? results.length === 1 && results[0] : undefined;
+  };
   const userDefinition = (value: string, quote: string) => {
     const negative = /不要|不得|禁止|撤销|取消|不再|不允许/u;
     const label = normalize(value);
@@ -615,47 +847,51 @@ export function validateBackgroundRules(
             definition.value === value &&
             ((definition.basis === "user" &&
               userDefinition(value, definition.text)) ||
-              excerpts.some((excerpt) => {
-                const text = normalize(excerpt);
-                const label = normalize(value);
-                const start = text.indexOf(label);
-                if (start < 0) return false;
-                const rest = text.slice(start + label.length);
-                // Stop at the next numbered entry or declared category, rather than
-                // accepting a real definition quoted from a different entry.
-                const numbered = rest.search(
-                  /[a-z](?:\.[0-9]+)+(?:\.[a-z])?|[0-9]+(?:\.[0-9]+)+/u,
-                );
-                let end = numbered < 0 ? rest.length : numbered;
-                for (const other of rule.allowedValues ?? []) {
-                  if (other === value) continue;
-                  const otherLabel = normalize(other);
-                  const escaped = otherLabel.replace(
-                    /[.*+?^${}()|[\]\\]/gu,
-                    "\\$&",
+              (indexedDefinition(value, definition.text) ??
+                excerpts.some((excerpt) => {
+                  const text = normalize(excerpt);
+                  const label = normalize(value);
+                  const start = text.indexOf(label);
+                  if (start < 0) return false;
+                  const rest = text.slice(start + label.length);
+                  // Stop at the next numbered entry or declared category, rather than
+                  // accepting a real definition quoted from a different entry.
+                  const numbered = rest.search(
+                    /[a-z](?:\.[0-9]+)+(?:\.[a-z])?|[0-9]+(?:\.[0-9]+)+/u,
                   );
-                  const inline = rest.search(
-                    new RegExp(`[。;；]${escaped}[:：]`, "u"),
-                  );
-                  if (inline >= 0) end = Math.min(end, inline + 1);
-                  let position = 0;
-                  for (const line of excerpt.split(/\r?\n/u)) {
-                    const normalized = normalize(line);
-                    const boundary = position - start - label.length;
-                    const heading = normalized.replace(
-                      /^(?:#{1,6}|[-*+]|[0-9]+[.)、])/u,
-                      "",
+                  let end = numbered < 0 ? rest.length : numbered;
+                  for (const other of rule.allowedValues ?? []) {
+                    if (other === value) continue;
+                    const otherLabel = normalize(other);
+                    const escaped = otherLabel.replace(
+                      /[.*+?^${}()|[\]\\]/gu,
+                      "\\$&",
                     );
-                    if (boundary >= 0 && heading.startsWith(otherLabel))
-                      end = Math.min(end, boundary);
-                    position += normalized.length;
+                    const inline = rest.search(
+                      new RegExp(`[。;；]${escaped}[:：]`, "u"),
+                    );
+                    if (inline >= 0) end = Math.min(end, inline + 1);
+                    let position = 0;
+                    for (const line of excerpt.split(/\r?\n/u)) {
+                      const normalized = normalize(line);
+                      const boundary = position - start - label.length;
+                      const heading = normalized.replace(
+                        /^(?:#{1,6}|[-*+]|[0-9]+[.)、])/u,
+                        "",
+                      );
+                      if (boundary >= 0 && heading.startsWith(otherLabel))
+                        end = Math.min(end, boundary);
+                      position += normalized.length;
+                    }
                   }
-                }
-                const quoted = normalize(definition.text);
-                if (/^[a-z]?(?:\.[0-9a-z]+)+$/u.test(label) && quoted === label)
-                  return false;
-                return (label + rest.slice(0, end)).includes(quoted);
-              })),
+                  const quoted = normalize(definition.text);
+                  if (
+                    /^[a-z]?(?:\.[0-9a-z]+)+$/u.test(label) &&
+                    quoted === label
+                  )
+                    return false;
+                  return (label + rest.slice(0, end)).includes(quoted);
+                }))),
         )
       ) {
         const quoted =
