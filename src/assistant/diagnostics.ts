@@ -75,7 +75,9 @@ export function assistantFailure(
     ].includes(code)
   ) {
     if (
-      /not_found|forbidden|unavailable|context_deleted|interrupted/.test(code)
+      /not_found|forbidden|unavailable|context_deleted|interrupted|assistant_reference_invalid|assistant_source_invalid/.test(
+        code,
+      )
     )
       return result(
         "business",
@@ -103,7 +105,7 @@ export function assistantFailure(
       "当前操作的参数或范围未通过校验。",
       toolFailure && toolFailure.effect !== "none"
         ? "先核对真实操作回执，再继续未完成部分。"
-        : "按操作记录中的具体字段或范围更正要求后继续。",
+        : "助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。",
     );
   }
   if (provider && modelTransport) {

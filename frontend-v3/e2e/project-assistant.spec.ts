@@ -966,3 +966,58 @@ test("OPT-24 fixed confirmation cards come from server proposals and confirmatio
   expect(state.posts.filter((p) => p.path.endsWith("/confirm"))).toHaveLength(1);
   expect(state.posts.filter((p) => p.path.endsWith("/turns"))).toHaveLength(0);
 });
+
+for (const latestError of ["assistant_tool_input_invalid", "assistant_no_progress", null]) {
+  test(`OPT-26 keeps internal parameter hints collapsed after latest status ${latestError}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 480, height: 850 });
+    const raw = "create_draft /instructions: additionalProperties; allowed: name,purpose";
+    const state = await fixture(page, {
+      task: { requirementProblem: raw },
+      messages: [
+        {
+          ...turn("opt26", "已有数据已保留"),
+          status: "failed",
+          errorCode: "assistant_tool_input_invalid",
+          tools: [
+            {
+              key: "failed",
+              name: "create_draft",
+              status: "failed",
+              error: { code: "assistant_tool_input_invalid", hint: raw },
+            },
+            {
+              key: "completed",
+              name: "query_project",
+              status: "succeeded",
+              result: { name: "已有草稿", url: "/projects/assistant_project/test-sets" },
+            },
+          ],
+        },
+      ],
+    });
+    if (latestError !== "assistant_tool_input_invalid")
+      state.messages.push({
+        ...turn("latest"),
+        status: latestError ? "failed" : "succeeded",
+        errorCode: latestError,
+      });
+    await page.goto(`${url}/one`);
+    const records = page
+      .getByRole("log")
+      .locator("details")
+      .filter({ has: page.locator("summary", { hasText: "操作记录" }) });
+    await records.locator("summary").first().click();
+    await expect(records.getByText(raw, { exact: true })).not.toBeVisible();
+    await expect(page.getByRole("link", { name: "查看结果" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: raw })).toHaveCount(0);
+    const diagnostic = records.getByText("技术详情", { exact: true });
+    await diagnostic.focus();
+    await page.keyboard.press("Enter");
+    await expect(records.getByText(raw, { exact: true })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  });
+}

@@ -1294,7 +1294,7 @@ describe("project assistant public contract", () => {
         .json()
         .turns.at(-1);
       expect(missingSource.tools[0].error.code).toBe(
-        "assistant_source_invalid",
+        "assistant_tool_input_invalid",
       );
       requestedTool = {
         name: "submit_processing",
@@ -15529,6 +15529,197 @@ describe("project assistant public contract", () => {
     } finally {
       sessionId = previous;
       await db.end();
+    }
+  });
+  it("OPT-26 advertises action-specific plan inputs from the actual tools", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    try {
+      const start = calls.length;
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      await send("查询项目");
+      const tools = calls
+        .slice(start)
+        .find((body) =>
+          body.tools?.some((tool: any) => tool.function.name === "plan_task"),
+        )!.tools;
+      const plan = tools.find((tool: any) => tool.function.name === "plan_task")
+        .function.parameters;
+      const variants = plan.properties.steps.items.oneOf;
+      expect(variants).toBeInstanceOf(Array);
+      const ajv = new Ajv({ strict: false });
+      for (const [action, input] of [
+        ["create_draft", { name: "合成草稿", instructions: "错误字段" }],
+        ["submit_processing", { operation: "rewrite", allSelected: true }],
+        [
+          "read_records",
+          { source: { kind: "assets", id: "background-document" } },
+        ],
+      ] as const) {
+        const variant = variants.find(
+          (item: any) => item.properties.action.enum[0] === action,
+        );
+        const direct = tools.find((tool: any) => tool.function.name === action)
+          .function.parameters;
+        expect(variant.properties.input.properties).toEqual(direct.properties);
+        expect(ajv.compile(variant)({ title: "检查合同", action, input })).toBe(
+          false,
+        );
+        expect(ajv.compile(direct)(input)).toBe(false);
+      }
+      expect(
+        ajv.compile(plan)({
+          executionMode: "plan",
+          steps: [{ title: "以后读取", action: "read_processing" }],
+        }),
+      ).toBe(true);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+
+  it.each(["plan", "direct"])(
+    "OPT-26 repairs a %s parameter error within the same turn without duplicate drafts",
+    async (path) => {
+      const previous = sessionId;
+      const draftName = `OPT26-${randomUUID()}`;
+      sessionId = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions`,
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const start = calls.length;
+      try {
+        const invalid = { name: draftName, instructions: "not supported" };
+        toolSequence =
+          path === "plan"
+            ? [
+                {
+                  name: "plan_task",
+                  input: {
+                    executionMode: "execute",
+                    steps: [
+                      {
+                        title: "创建草稿",
+                        action: "create_draft",
+                        input: invalid,
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "plan_task",
+                  input: {
+                    executionMode: "execute",
+                    steps: [
+                      {
+                        title: "创建草稿",
+                        action: "create_draft",
+                        input: { name: draftName },
+                      },
+                    ],
+                  },
+                },
+                { name: "create_draft", input: { name: draftName } },
+              ]
+            : [
+                { name: "create_draft", input: invalid },
+                { name: "create_draft", input: { name: draftName } },
+              ];
+        const state = (await send("创建一个草稿")).json();
+        const turn = state.turns.at(-1);
+        expect(turn.status).toBe("succeeded");
+        expect(
+          turn.tools.filter(
+            (tool: any) =>
+              tool.name === "create_draft" && tool.status === "succeeded",
+          ),
+        ).toHaveLength(1);
+        const db = createPool(databaseUrl);
+        try {
+          expect(
+            (
+              await db.query(
+                "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+                [projectId, draftName],
+              )
+            ).rows,
+          ).toHaveLength(1);
+        } finally {
+          await db.end();
+        }
+        const hints = turn.tools
+          .filter((tool: any) => tool.status === "failed")
+          .map((tool: any) => tool.error.hint)
+          .join(" ");
+        expect(hints).toContain("create_draft");
+        expect(hints).toContain("instructions");
+        expect(hints).not.toContain("select_candidates");
+        expect(calls.length - start).toBeLessThanOrEqual(5);
+      } finally {
+        sessionId = previous;
+        toolSequence = [];
+        requestedTool = undefined;
+      }
+    },
+  );
+
+  it("OPT-26 stops repeated invalid plan inputs without writes or a new budget", async () => {
+    const previous = sessionId;
+    sessionId = (
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions`,
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const start = calls.length;
+    const draftName = `OPT26-repeated-${randomUUID()}`;
+    try {
+      toolSequence = Array.from({ length: 8 }, () => ({
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          steps: [
+            {
+              title: "创建草稿",
+              action: "create_draft",
+              input: { name: draftName, instructions: "unsupported" },
+            },
+          ],
+        },
+      }));
+      const state = (await send("创建草稿", undefined, "failed")).json();
+      expect(state.turns.at(-1).errorCode).toBe("assistant_no_progress");
+      expect(calls.length - start).toBeLessThanOrEqual(4);
+      const db = createPool(databaseUrl);
+      try {
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+              [projectId, draftName],
+            )
+          ).rows,
+        ).toHaveLength(0);
+      } finally {
+        await db.end();
+      }
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
     }
   });
 });

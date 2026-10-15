@@ -219,10 +219,21 @@ const sourceSchema = {
   },
   required: ["kind"],
   additionalProperties: false,
+  allOf: [
+    {
+      if: { properties: { kind: { const: "assets" } }, required: ["kind"] },
+      then: { required: ["assetIds"], properties: { id: false } },
+      else: { required: ["id"], properties: { assetIds: false } },
+    },
+  ],
 };
 const ajv = new Ajv({ strict: false });
-function inputHint(errors: ErrorObject[] | null | undefined) {
-  return (errors ?? [])
+function inputHint(
+  errors: ErrorObject[] | null | undefined,
+  name?: string,
+  properties?: Record<string, unknown>,
+) {
+  const problem = (errors ?? [])
     .slice(0, 3)
     .map((error) => {
       const path = error.instancePath || "参数";
@@ -233,12 +244,16 @@ function inputHint(errors: ErrorObject[] | null | undefined) {
       return `${path} ${error.message ?? "不合法"}`;
     })
     .join("；");
+  return name && properties
+    ? `${name}：${problem} 允许字段：${Object.keys(properties).join("、")}。`
+    : problem;
 }
 function schema(
   properties: Record<string, unknown>,
   required: string[],
   name: string,
   invalid?: (hint: string) => void,
+  explain?: (value: any, errors: ErrorObject[] | null | undefined) => string,
 ) {
   const definition = {
     type: "object",
@@ -261,7 +276,9 @@ function schema(
       validate: (value) => {
         if (validate(value))
           return { success: true, value: value as Record<string, any> };
-        const hint = inputHint(validate.errors);
+        const hint =
+          explain?.(value, validate.errors) ??
+          inputHint(validate.errors, name, properties);
         invalid?.(hint);
         return {
           success: false,
@@ -340,6 +357,10 @@ export async function executeAssistantTurn(
   let queue: Promise<unknown> = Promise.resolve();
   const fixedInputValidators = new Map<string, ValidateFunction>();
   const planInputValidators = new Map<string, ValidateFunction>();
+  const toolInputs = new Map<
+    string,
+    { properties: Record<string, unknown>; required: string[] }
+  >();
   const fixedReceipts: ModelMessage[] = [];
   let toolCalls = 0;
   let plannedAction: string | undefined;
@@ -528,8 +549,8 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v1",
-      promptVersion: "assistant-prompt-v5",
-      toolsVersion: "assistant-tools-v4",
+      promptVersion: "assistant-prompt-v6",
+      toolsVersion: "assistant-tools-v5",
       modelRevision,
       requestAttempts: requests.length,
       transportRetries: turnBudget.transportRetries,
@@ -778,32 +799,33 @@ export async function executeAssistantTurn(
       additionalProperties: false,
     });
     fixedInputValidators.set(name, validateInput);
+    const modelRequired = required.filter(
+      (field) =>
+        ![
+          "source",
+          "runId",
+          "draftId",
+          "previewId",
+          "allowedFields",
+          "instructions",
+        ].includes(field) &&
+        !(name === "request_processing_apply" && field === "target"),
+    );
+    toolInputs.set(name, { properties, required: modelRequired });
     planInputValidators.set(
       name,
-      ajv.compile({ type: "object", properties, additionalProperties: false }),
+      ajv.compile({
+        type: "object",
+        properties,
+        additionalProperties: false,
+      }),
     );
     return tool({
       description,
-      inputSchema: schema(
-        properties,
-        required.filter(
-          (field) =>
-            ![
-              "source",
-              "runId",
-              "draftId",
-              "previewId",
-              "allowedFields",
-              "instructions",
-            ].includes(field) &&
-            !(name === "request_processing_apply" && field === "target"),
-        ),
-        name,
-        (hint) => {
-          schemaHints.set(name, hint);
-          recordFailure(name, "assistant_tool_input_invalid", hint);
-        },
-      ),
+      inputSchema: schema(properties, modelRequired, name, (hint) => {
+        schemaHints.set(name, hint);
+        recordFailure(name, "assistant_tool_input_invalid", hint);
+      }),
       execute: (input) => {
         // Explicit reuse has the same receipt identity as the legacy omission.
         if (name === "submit_processing" && input.selection === null) {
@@ -843,7 +865,7 @@ export async function executeAssistantTurn(
             referenceError = new AssistantError(
               422,
               "assistant_tool_input_invalid",
-              inputHint(validateInput.errors),
+              inputHint(validateInput.errors, name, properties),
             );
           await turnFence(db, scope, turn.id, turn.execution_token);
           if (exhaustedProcessing)
@@ -1300,7 +1322,11 @@ export async function executeAssistantTurn(
               e.hint
             ) {
               Object.assign(error, { hint: e.hint });
-              await updateTask(db, turn, { requirementProblem: e.hint });
+              if (e instanceof RequirementError)
+                await updateTask(db, turn, {
+                  requirementProblem: e.hint,
+                  requirementProblemKind: "business",
+                });
             }
             const noEffect =
               !actionStarted || validationWithoutEffect.has(error.code);
@@ -1436,30 +1462,6 @@ export async function executeAssistantTurn(
               input: {
                 type: "object",
                 maxProperties: 20,
-                properties: {
-                  instructions: {
-                    type: "string",
-                    maxLength: 8000,
-                    description:
-                      "仅submit_processing/refine_candidates的处理文字要求；select_candidates使用selection，request_processing_apply使用target，不传instructions。",
-                  },
-                  operation: {
-                    enum: ["clean", "rewrite", "augment"],
-                    description:
-                      "仅submit_processing；清理空白用clean。refine_candidates不传operation。",
-                  },
-                  allRecords: {
-                    type: "boolean",
-                    description:
-                      "submit_processing：用户明确全部当前来源记录时true；与recordIds或selection二选一，不用outputCount表达输入数量。",
-                  },
-                  recordIds: ids,
-                  allSelected: {
-                    type: "boolean",
-                    description:
-                      "已勾选的处理候选用refine_candidates（修改）或request_processing_apply（采用），不能用submit_processing；true使用服务端固定的勾选范围。",
-                  },
-                },
                 description:
                   "当前步骤已知的业务工具参数；处理步骤使用operation、instructions（复数，单个字符串不是数组）、allowedFields及allRecords/selection；select_candidates使用runId及selection:{method,conditions,mode,value}，不能用submit_processing的operation:select；仅启用已有方案应省略steps，不重填input。后续未知参数省略字段，不填空字符串或假引用，执行前补齐。仅填写对应工具的参数，服务端再次校验。真实来源与已固定选择保持不变。",
               },
@@ -1715,7 +1717,11 @@ export async function executeAssistantTurn(
             throw new AssistantError(
               422,
               "assistant_tool_input_invalid",
-              `步骤 ${step.action}：${inputHint(validate.errors)}。处理要求参数为instructions（复数）；只启用已有方案可省略steps，使用executionMode:execute。select_candidates筛选参数放在selection对象中，例如selection:{method:random,mode:count,value:目标条数,conditions:[]}，不能把method/value直接放到input。method:all表示全部匹配记录，不搭配mode/value；指定条数需random和mode:count。preview_selection仅用于原始资料文件选取，清洗结果用read_processing核对。`,
+              inputHint(
+                validate.errors,
+                step.action,
+                toolInputs.get(step.action)?.properties,
+              ),
             );
         }
         const documents = (
@@ -3389,6 +3395,54 @@ export async function executeAssistantTurn(
       },
     ),
   };
+  // Plan inputs use the same contracts as direct calls. Future references may be
+  // omitted entirely; supplied input must match its action instead of a generic bag.
+  const planProperties = toolInputs.get("plan_task")!.properties;
+  const stepDefinition = (planProperties.steps as any).items;
+  (planProperties.steps as any).items = {
+    oneOf: PLAN_ACTIONS.map((action) => ({
+      ...stepDefinition,
+      properties: {
+        ...stepDefinition.properties,
+        action: { enum: [action] },
+        input: {
+          type: "object",
+          properties: toolInputs.get(action)!.properties,
+          additionalProperties: false,
+        },
+      },
+    })),
+  };
+  fixedInputValidators.set(
+    "plan_task",
+    ajv.compile({
+      type: "object",
+      properties: planProperties,
+      additionalProperties: false,
+    }),
+  );
+  tools.plan_task.inputSchema = schema(
+    planProperties,
+    [],
+    "plan_task",
+    (hint) => {
+      schemaHints.set("plan_task", hint);
+      recordFailure("plan_task", "assistant_tool_input_invalid", hint);
+    },
+    (value, errors) => {
+      for (const step of Array.isArray(value?.steps) ? value.steps : []) {
+        if (!step || typeof step !== "object") continue;
+        const validate = planInputValidators.get(step.action);
+        if (step.input && validate && !validate(step.input))
+          return inputHint(
+            validate.errors,
+            step.action,
+            toolInputs.get(step.action)?.properties,
+          );
+      }
+      return inputHint(errors, "plan_task", planProperties);
+    },
+  );
   // Consume already fixed parameters through the same guarded tools; the model
   // supplies only missing parameters or genuine business choices. Confirmation stays manual.
   async function finishExhaustedProcessing() {
@@ -3720,6 +3774,7 @@ export async function executeAssistantTurn(
       instructions:
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
+        "现有生成能力仅支持依据真实输入记录扩充，不支持仅凭背景文档或空草稿从零生成。遇到这种请求说明当前能力限制，不能伪造来源、编造种子或反复提交空输入；内部参数错误由你按当前工具合同修正，不要求用户提供工具名、参数或内部ID。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
         "简单任务直接使用必要业务工具，不强制多步骤计划；复杂任务先plan_task保存executionMode与业务steps，资料查询后可补齐后续参数。只给方案设plan并仅查询；用户明确要求执行时设execute，不重复开工确认。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +
@@ -4132,11 +4187,10 @@ export async function executeAssistantTurn(
       )
     ).rows[0];
     const failure = unresolvedFailure(state?.tool_results ?? []);
-    let errorCode =
-      failure?.error?.code ??
-      (noProgress
-        ? "assistant_no_progress"
-        : e instanceof AssistantError
+    let errorCode = noProgress
+      ? "assistant_no_progress"
+      : (failure?.error?.code ??
+        (e instanceof AssistantError
           ? e.code
           : e instanceof Error &&
               "code" in e &&
@@ -4145,7 +4199,7 @@ export async function executeAssistantTurn(
             : (plannedAction || processingEventRunId) &&
                 ToolChoiceViolationError.isInstance(e)
               ? "assistant_task_not_executed"
-              : "assistant_model_failed");
+              : "assistant_model_failed"));
     if (abortSignal.aborted && abortSignal.reason?.name === "TimeoutError") {
       errorCode = "assistant_budget_exhausted";
     }

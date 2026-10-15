@@ -121,6 +121,7 @@ type Conversation = {
     requirements?: string[];
     requirementSummary?: string[];
     requirementProblem?: string | null;
+    requirementProblemKind?: "business" | "diagnostic";
     executionPlan?: {
       mode: "plan" | "execute";
       current: number;
@@ -240,7 +241,8 @@ const messages: Record<string, string> = {
   assistant_turn_running: "本会话还有一条消息正在处理，请稍候。",
   assistant_busy: "当前已有任务正在使用助手，请稍后再试。",
   assistant_session_full: "本会话已达到消息上限，请新建会话继续。",
-  assistant_context_unavailable: "本会话引用的资料已回收或不可用。可恢复资料，或新建会话继续。",
+  assistant_context_unavailable:
+    "当前引用的资料不可用或类型不匹配。已有成果保留，请重新选择来源后继续。",
   assistant_context_deleted: "相关内容已删除，本会话正文已清理。",
   assistant_interrupted: "这一轮已中断。请先核对下方已完成的操作，再发送后续要求。",
   assistant_model_failed: "模型未完成本轮回复。已完成操作仍保留在下方，可核对后重试。",
@@ -1237,12 +1239,19 @@ export function ProjectAssistant({
                                     {item.result?.name ? ` · ${item.result.name}` : ""}
                                     {item.status === "failed" && (
                                       <span className="block text-xs text-destructive">
-                                        {item.error?.hint ??
-                                          messages[item.error?.code ?? ""] ??
+                                        {messages[item.error?.code ?? ""] ??
                                           "操作未完成，请核对范围后重试。"}
                                       </span>
                                     )}
                                   </span>
+                                  {item.status === "failed" && item.error?.hint && (
+                                    <details className="w-full min-w-0 text-xs text-muted-foreground">
+                                      <summary className="cursor-pointer">技术详情</summary>
+                                      <p className="mt-2 whitespace-pre-wrap break-words">
+                                        {item.error.hint}
+                                      </p>
+                                    </details>
+                                  )}
                                   {validLink(item.result?.url) && (
                                     <Link
                                       to={validLink(item.result?.url)!}
@@ -1624,9 +1633,22 @@ export function ProjectAssistant({
                       </details>
                     )}
                   {visible.task.requirementProblem && (
-                    <p role="alert" className="break-words text-sm text-destructive">
-                      {visible.task.requirementProblem}。原有要求与已完成结果已保留。
-                    </p>
+                    <div className="space-y-2 text-sm">
+                      <p role="alert" className="break-words text-destructive">
+                        {visible.task.requirementProblemKind === "business"
+                          ? visible.task.requirementProblem
+                          : "本次要求尚未应用，可重试未完成步骤"}
+                        。原有要求与已完成结果已保留。
+                      </p>
+                      {visible.task.requirementProblemKind !== "business" && (
+                        <details className="text-xs text-muted-foreground">
+                          <summary className="cursor-pointer">技术详情</summary>
+                          <p className="mt-2 whitespace-pre-wrap break-words">
+                            {visible.task.requirementProblem}
+                          </p>
+                        </details>
+                      )}
+                    </div>
                   )}
                   {workTab === "sources" && visible.task.target && (
                     <p className="text-xs text-muted-foreground">

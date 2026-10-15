@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { assistantFailure } from "../../src/assistant/diagnostics.js";
+import { taskPresentation } from "../../src/assistant/store.js";
 
 describe("assistant diagnostic metadata", () => {
+  it("OPT-26 treats untyped historical hints as diagnostics and retains typed business feedback", () => {
+    expect(
+      taskPresentation({
+        title: "旧任务",
+        requirementProblem: "old internal hint",
+      })!.requirementProblemKind,
+    ).toBe("diagnostic");
+    expect(
+      taskPresentation({
+        title: "业务冲突",
+        requirementProblem: "数量冲突",
+        requirementProblemKind: "business",
+      })!.requirementProblemKind,
+    ).toBe("business");
+  });
   it.each([
     ["assistant_no_progress", "budget", "budget_exhausted"],
     ["model_connection_unavailable", "model", "provider_rejected"],
@@ -68,5 +84,18 @@ describe("assistant diagnostic metadata", () => {
     expect(
       assistantFailure({ statusCode: 503 }, "assistant_model_failed"),
     ).toMatchObject({ layer: "application", httpStatus: null });
+  });
+  it("OPT-26 keeps parameter repair with the assistant and identifies unavailable sources", () => {
+    const invalid = assistantFailure({}, "assistant_tool_input_invalid", {
+      effect: "none",
+    });
+    expect(invalid.nextAction).not.toContain("具体字段");
+    expect(invalid.nextAction).toContain("重试");
+    expect(assistantFailure({}, "assistant_reference_invalid").category).toBe(
+      "permission_or_source",
+    );
+    expect(
+      assistantFailure({}, "assistant_context_unavailable").nextAction,
+    ).not.toContain("新建会话");
   });
 });

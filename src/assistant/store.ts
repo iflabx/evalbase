@@ -47,11 +47,13 @@ export function taskPresentation(
     delete presented.executionPlan.requirementsKey;
   }
   let requirementProblem = task.requirementProblem ?? null;
+  let requirementProblemKind = task.requirementProblemKind ?? "diagnostic";
   try {
     presented.classifications = validateRules(task);
   } catch (error) {
     if (!(error instanceof RequirementError)) throw error;
     requirementProblem = error.hint;
+    requirementProblemKind = "business";
     presented.classifications = effectiveRules(task);
   }
   delete presented.allowedLabels;
@@ -59,6 +61,7 @@ export function taskPresentation(
     ...presented,
     requirementSummary: requirementSummary(task, processing),
     requirementProblem,
+    requirementProblemKind,
     ...(task.candidateScope
       ? {
           candidateScope: {
