@@ -1816,6 +1816,7 @@ export function ProjectAssistant({
                   [
                     "awaiting_review",
                     "awaiting_confirmation",
+                    "waiting_input",
                     "failed",
                     "stopped",
                     "complete",
