@@ -781,6 +781,17 @@ export function taskCompatibilityProblem(
       : source.kind === "assets"
         ? { kind: "assets", assetIds: [...source.assetIds].sort() }
         : { kind: source.kind, id: source.id };
+  // Background generation has no draft input. Only the server-bound output draft
+  // can also appear as the task target without becoming an invented input source.
+  const generatedDestination =
+    task.target?.kind === "draft" &&
+    task.target.id === task.createdDraftId &&
+    runs.length > 0 &&
+    runs.every(
+      ({ run }) =>
+        run.source.kind === "background" &&
+        run.targetDraftId === task.target.id,
+    );
   // A changed destination is independent of the input; targetDraftId names it explicitly.
   const sources = (task.executionPlan?.steps ?? []).flatMap((step: any) =>
     step.input?.source ? [step.input.source] : [],
@@ -789,8 +800,8 @@ export function taskCompatibilityProblem(
     task.target &&
     !(
       task.target.kind === "draft" &&
-      task.targetDraftId &&
-      task.target.id === task.targetDraftId
+      ((task.targetDraftId && task.target.id === task.targetDraftId) ||
+        generatedDestination)
     )
   )
     sources.push(task.target);

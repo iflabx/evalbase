@@ -10,6 +10,61 @@ import { requirementSummary } from "../../src/assistant/requirements.js";
 import { canonicalJson } from "../../src/package/contract.js";
 
 describe("current task result compatibility", () => {
+  it("OPT-31 distinguishes a bound background output draft from a changed input source", () => {
+    const task = { target: { kind: "draft", id: "D" }, createdDraftId: "D" };
+    const runs = [
+      {
+        run: {
+          source: { kind: "background", id: "S", recordIds: [] },
+          targetDraftId: "D",
+        },
+      },
+    ] as any;
+    expect(taskCompatibilityProblem(task, runs)).toBeNull();
+    expect(
+      taskCompatibilityProblem(
+        { ...task, target: { kind: "draft", id: "other" } },
+        runs,
+      ),
+    ).not.toBeNull();
+    expect(
+      taskCompatibilityProblem({ ...task, createdDraftId: "other" }, runs),
+    ).not.toBeNull();
+    expect(
+      taskCompatibilityProblem(task, [
+        { run: { ...runs[0].run, targetDraftId: "other" } },
+      ] as any),
+    ).not.toBeNull();
+    expect(
+      taskCompatibilityProblem(task, [
+        {
+          run: {
+            ...runs[0].run,
+            source: { kind: "assets", assetIds: ["A"], recordIds: ["A:1"] },
+          },
+        },
+      ] as any),
+    ).not.toBeNull();
+    expect(
+      taskCompatibilityProblem(
+        {
+          ...task,
+          executionPlan: {
+            steps: [
+              { input: { source: { kind: "assets", assetIds: ["other"] } } },
+            ],
+          },
+        },
+        runs,
+      ),
+    ).not.toBeNull();
+    expect(
+      taskCompatibilityProblem(
+        { ...task, executionPlan: { needsReview: true, steps: [] } },
+        runs,
+      ),
+    ).not.toBeNull();
+  });
   it("OPT-28 keeps a recorded 50 goal separate from requests 50, 30 and 2 and overall 400", () => {
     const runs = [50, 30, 2].map((outputCount) => ({
       rootOperation: "augment",
