@@ -1,3 +1,5 @@
+2026-10-16 数量旧文案残留补修已更新同一4217 Web `c76621f`；原会话Computer Use以原短提示修正实际要求，保留语义与业务数据。27个定向用例通过，此前独立残留发现关闭，Owner整票验收pending，见[验证记录第9节](opt33-verification.md#9-2026-10-16-修改数量后旧要求文案残留补修)。
+
 2026-10-16 OPT-33复测补修已更新同一4217 Web `7d67bc4`：本地无损归一直接返回、单步骤纠错、超时诊断与安全继续规划。原失败会话已通过Computer Use恢复，原短提示再次保存八类各50方案；48个不同定向自动用例通过，数据保留，Owner pending。历史失败及独立数量要求文字残留未改写为通过，见[补修记录](opt33-verification.md#8-2026-10-16-gb-八类规划失败补修)。
 
 2026-10-15 最新实施：[OPT-33](issues/33-document-classification-and-short-plan.md) 已完成通用文档分类引用、短提示可执行方案及实际要求保存；应用 f411325631bdad8ccd160c5b2a81d4c5261d3247 已更新同一4217 Web，现有验收数据保留。82个不同定向用例、最终六种固定文档复测、全部开发失败及场景人工核对见[验证记录](opt33-verification.md)。Implementation completed，Owner pending；OPT-31 保持 not-started。
