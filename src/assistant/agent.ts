@@ -4907,6 +4907,35 @@ export async function executeAssistantTurn(
           // A new serialized call must not inherit the preceding call's diagnostic.
           parameterRepairStatus = undefined;
           try {
+            // A declared tool outside this step's active set must remain non-executable.
+            // Return its SDK error to the next bounded model step; this is context
+            // sequencing, not an argument repair and not permission to run it.
+            if (
+              Object.hasOwn(tools, input.toolCall.toolName) &&
+              !activeRepairTools.has(input.toolCall.toolName) &&
+              activeRepairTools.size > 0 &&
+              !summarizing &&
+              !budgetBoundary &&
+              modelSteps < 10
+            ) {
+              await turnFence(db, scope, turn.id, turn.execution_token);
+              parameterRepairs.push({
+                name: input.toolCall.toolName,
+                outcome: "context_required",
+              });
+              parameterRepairStatus = {
+                turnId: turn.id,
+                name: input.toolCall.toolName,
+                intent: "tool",
+                phase: "finished",
+                scope: "call",
+                issues: [{ path: "/", keyword: "inactive_tool" }],
+                outcome: "context_required",
+                remainingMs: Math.max(0, turnBudget.deadlineAt - Date.now()),
+              };
+              await updateTask(db, turn, { parameterRepairStatus });
+              return null;
+            }
             // Missing business requirements or unparseable JSON need the original context; never guess a partial input.
             if (
               input.toolCall.toolName === "plan_task" &&

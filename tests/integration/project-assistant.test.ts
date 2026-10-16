@@ -17837,6 +17837,91 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT31 keeps a known temporarily inactive tool non-executable and lets the model return to the legal step", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    await opt21Session();
+    const start = calls.length;
+    const before = (
+      await db.query(
+        "SELECT count(*)::int AS n FROM collaborative_draft WHERE project_id=$1",
+        [projectId],
+      )
+    ).rows[0].n;
+    try {
+      toolSequence = [
+        { name: "request_processing_apply", input: {} },
+        {
+          name: "plan_task",
+          input: { title: "只说明当前能力", nextAction: "none" },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit("先说明当前能做什么，暂不执行。"),
+      );
+      const turn = state.turns.at(-1);
+      expect(turn.status).toBe("succeeded");
+      expect(state.task.title).toBe("只说明当前能力");
+      expect(
+        turn.tools.filter(
+          (t: any) =>
+            t.name === "request_processing_apply" && t.status === "succeeded",
+        ),
+      ).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM collaborative_draft WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].n,
+      ).toBe(before);
+      expect(calls.length - start).toBeLessThanOrEqual(4);
+      expect(turn.diagnostics.parameterRepairs).toContainEqual({
+        name: "request_processing_apply",
+        outcome: "context_required",
+      });
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+      await db.end();
+    }
+  });
+
+  it("OPT31 bounds repeated inactive-tool calls without executing them", async () => {
+    const previous = sessionId;
+    await opt21Session();
+    const start = calls.length;
+    try {
+      toolSequence = Array.from({ length: 12 }, () => ({
+        name: "request_processing_apply",
+        input: {},
+      }));
+      const state = await opt21End(
+        await opt21Submit("先说明当前能做什么，暂不执行。"),
+      );
+      const turn = state.turns.at(-1);
+      expect(
+        turn.diagnostics.parameterRepairs.filter(
+          (r: any) => r.outcome === "context_required",
+        ).length,
+      ).toBeGreaterThan(1);
+      expect(calls.length - start).toBeLessThanOrEqual(10);
+      expect(
+        turn.tools.filter(
+          (t: any) =>
+            t.name === "request_processing_apply" && t.status === "succeeded",
+        ),
+      ).toHaveLength(0);
+      expect(state.task.createdDraftId).toBeUndefined();
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+
   it("OPT32 rejects an unknown tool without guessing another tool or executing", async () => {
     const previous = sessionId;
     await opt21Session();
