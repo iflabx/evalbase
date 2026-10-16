@@ -4726,7 +4726,11 @@ export async function executeAssistantTurn(
         }
       }
     }
-    if (task.executionPaused && (turn.event !== "user" || restoring)) {
+    if (
+      task.executionPaused &&
+      (turn.event !== "user" || restoring) &&
+      !requirementsOnly
+    ) {
       await updateTask(db, turn, { stage: "waiting_input", nextAction: null });
       finishReason = "paused";
       await saveDiagnostics();
@@ -4903,22 +4907,25 @@ export async function executeAssistantTurn(
           // A new serialized call must not inherit the preceding call's diagnostic.
           parameterRepairStatus = undefined;
           try {
-            // Missing semantic requirements need the user's context, not the lossless shape-only repair model.
+            // Missing business requirements or unparseable JSON need the original context; never guess a partial input.
             if (
               input.toolCall.toolName === "plan_task" &&
-              recordingRequirements &&
+              (recordingRequirements || requirementsOnly) &&
               !documentPlanning &&
               InvalidToolInputError.isInstance(input.error)
             ) {
               let value: unknown;
+              let malformed = false;
               try {
                 value = JSON.parse(input.toolCall.input);
               } catch {
-                /* malformed JSON stays in structural repair */
+                malformed = true;
               }
               if (
-                isPlainObject(value) &&
-                !Object.hasOwn(value, "requirements")
+                malformed ||
+                (recordingRequirements &&
+                  isPlainObject(value) &&
+                  !Object.hasOwn(value, "requirements"))
               ) {
                 if (requirementInputCorrections++ < 2) {
                   parameterRepairs.push({
@@ -4931,7 +4938,12 @@ export async function executeAssistantTurn(
                     intent: "tool",
                     phase: "finished",
                     scope: "call",
-                    issues: [{ path: "/requirements", keyword: "required" }],
+                    issues: [
+                      {
+                        path: malformed ? "/" : "/requirements",
+                        keyword: malformed ? "parse" : "required",
+                      },
+                    ],
                     outcome: "context_required",
                     remainingMs: Math.max(
                       0,

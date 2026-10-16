@@ -41,6 +41,7 @@ describe("project assistant public contract", () => {
   let requestedTool:
     | { name: string; input: Record<string, unknown> }
     | undefined;
+  let rawToolArguments: string[] = [];
   let toolSequence: { name: string; input: Record<string, unknown> }[] = [];
   let toolBatch: { name: string; input: Record<string, unknown> }[] | undefined;
   let backgroundCheckpoint:
@@ -409,7 +410,10 @@ describe("project assistant public contract", () => {
           {
             id: `call_${calls.length}`,
             type: "function",
-            function: { name: action, arguments: JSON.stringify(args) },
+            function: {
+              name: action,
+              arguments: rawToolArguments.shift() ?? JSON.stringify(args),
+            },
           },
         ],
       };
@@ -4159,6 +4163,75 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
     }
   });
+
+  it.each(["context", "retry"])(
+    "OPT33 recovers malformed requirement updates without resuming data execution (%s)",
+    async (mode) => {
+      const previous = sessionId;
+      try {
+        await opt21Session();
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            targetCount: 3,
+            requirements: ["保留事实", "每条保留2个要点"],
+            nextAction: "none",
+          },
+        };
+        await send("记录要求：做3条，保留事实，每条保留2个要点。先不执行。");
+        const valid = {
+          name: "plan_task",
+          input: { targetCount: 5, nextAction: "none" },
+        };
+        rawToolArguments =
+          mode === "context"
+            ? ['{"targetCount":']
+            : Array(3).fill('{"targetCount":');
+        toolSequence =
+          mode === "context" ? [valid, valid] : [valid, valid, valid];
+        let state = (
+          await send(
+            "数量改为5条，其他不变，先不执行。",
+            undefined,
+            mode === "context" ? "succeeded" : "failed",
+          )
+        ).json();
+        if (mode === "retry") {
+          expect(state.task.targetCount).toBe(3);
+          const id = state.turns.at(-1).id;
+          rawToolArguments = [];
+          toolSequence = [valid];
+          expect(
+            (
+              await app.inject({
+                method: "POST",
+                url: base() + "/sessions/" + sessionId + "/retry",
+                headers,
+                payload: {},
+              })
+            ).statusCode,
+          ).toBe(200);
+          state = await opt21End(id);
+        }
+        expect(state.turns.at(-1).status).toBe("succeeded");
+        expect(state.task.targetCount).toBe(5);
+        expect(state.task.executionPaused).toBe(true);
+        expect(state.task.recovery).toBeFalsy();
+        expect(state.task.requirements).toEqual([
+          "保留事实",
+          "每条保留2个要点",
+        ]);
+        expect(
+          state.turns.at(-1).tools.every((t: any) => t.name === "plan_task"),
+        ).toBe(true);
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        rawToolArguments = [];
+      }
+    },
+  );
 
   it("OPT33 rejects repeated acknowledgement without a save receipt", async () => {
     const previous = sessionId;
