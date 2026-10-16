@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { canonicalJson, sha256 } from "../../src/package/contract.js";
 import {
   contentHash,
   reviewRulesHash,
@@ -47,6 +48,21 @@ const state = () => ({
   items: [],
 });
 describe("OPT-31 bounded content review", () => {
+  it("does not reuse a pass from the earlier topic-anchored review policy", () => {
+    const oldPolicy = {
+      ...state(),
+      rulesHash: sha256(canonicalJson({ options, background: null })),
+      items: [
+        {
+          sourceId: "a",
+          contentHash: contentHash(rows[0]!),
+          verdict: "conforms" as const,
+          reason: "旧策略未发现问题",
+        },
+      ],
+    };
+    expect(contentVerdict(rows[0]!, oldPolicy, rules).verdict).toBe("pending");
+  });
   it("rejects array-wrapped check statuses instead of coercing a hidden failure into a pass", () => {
     const result = checkContent(
       {
