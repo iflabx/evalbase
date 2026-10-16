@@ -17839,8 +17839,10 @@ describe("project assistant public contract", () => {
 
   it.each([
     ["processing_result_invalid", false],
+    ["assistant_candidate_review_incomplete", false],
     ["assistant_operation_unknown", false],
     ["processing_result_invalid", true],
+    ["assistant_candidate_review_incomplete", true],
     ["assistant_operation_unknown", true],
   ] as const)(
     "OPT31 revalidates a pre-confirmation invalid selection but keeps uncertain effects frozen (%s, preserve:%s)",
@@ -17925,7 +17927,7 @@ describe("project assistant public contract", () => {
             sessionId,
           ])
         ).rows[0].task;
-        if (code === "processing_result_invalid" || preserve) {
+        if (code !== "assistant_operation_unknown" || preserve) {
           expect(plan, JSON.stringify(current)).toMatchObject({
             status: "succeeded",
           });
@@ -17933,7 +17935,7 @@ describe("project assistant public contract", () => {
           expect(state.task.executionPlan.steps[0].input.allValid).toBe(
             preserve ? undefined : true,
           );
-          if (code === "processing_result_invalid")
+          if (code !== "assistant_operation_unknown")
             expect(stored.executionPlan.steps[0].operation).toBeUndefined();
           else expect(stored.executionPlan.steps[0].operation.key).toBe(key);
         } else {

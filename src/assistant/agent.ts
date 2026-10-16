@@ -115,13 +115,17 @@ const validationWithoutEffect = new Set([
   "assistant_plan_count_conflict",
   "model_connection_unavailable",
 ]);
+const processingProposalValidationWithoutEffect = new Set([
+  "processing_result_invalid",
+  "assistant_candidate_review_incomplete",
+]);
 function hasNoEffect(record: Record<string, any>) {
   return (
     record.effect === "none" ||
     (record.status === "failed" &&
       (validationWithoutEffect.has(record.error?.code) ||
         (record.name === "request_processing_apply" &&
-          record.error?.code === "processing_result_invalid")))
+          processingProposalValidationWithoutEffect.has(record.error?.code))))
   );
 }
 function unresolvedFailure(records: Record<string, any>[]) {
@@ -2385,7 +2389,9 @@ export async function executeAssistantTurn(
                 (record) =>
                   record.status === "failed" &&
                   record.name === "request_processing_apply" &&
-                  record.error?.code === "processing_result_invalid",
+                  processingProposalValidationWithoutEffect.has(
+                    record.error?.code,
+                  ),
               )
             ) {
               plan = {
