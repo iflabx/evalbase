@@ -4109,6 +4109,7 @@ describe("project assistant public contract", () => {
         expect(resumed.turns.at(-1).status).toBe("succeeded");
         expect(resumed.task.executionPlan.mode).toBe("plan");
         expect(resumed.task.targetCount).toBe(6);
+        expect(resumed.task.recovery ?? null).toBeNull();
         expect(calls.slice(start)).toHaveLength(1);
         expect(
           calls[start].messages.some((message: any) =>

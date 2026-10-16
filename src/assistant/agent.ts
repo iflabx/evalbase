@@ -818,6 +818,7 @@ export async function executeAssistantTurn(
       stage: "planning",
       error: null,
       planningRecovery: null,
+      recovery: null,
     });
     await saveDiagnostics();
     const completed = await updateTurn(
