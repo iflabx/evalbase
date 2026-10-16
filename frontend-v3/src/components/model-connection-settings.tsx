@@ -3,6 +3,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { request } from "@/services/workspace";
 
 type Connection = {
@@ -18,6 +25,7 @@ type Connection = {
 };
 type Settings = { connection: Connection | null; encryptionReady: boolean };
 const path = "/api/settings/model-connection";
+const presetModels = ["qwen-new", "qwen3.8-27b-un"];
 const errors: Record<string, string> = {
   model_connection_invalid:
     "请检查连接名称、服务地址和模型名称。地址不能包含用户名、密码、查询参数或片段。",
@@ -77,7 +85,13 @@ function ConnectionForm({
   const connection = settings.connection;
   const [name, setName] = useState(connection?.name ?? "");
   const [endpoint, setEndpoint] = useState(connection?.endpoint ?? "");
-  const [model, setModel] = useState(connection?.model ?? "");
+  const [modelChoice, setModelChoice] = useState(
+    presetModels.includes(connection?.model ?? "") ? connection!.model : "custom",
+  );
+  const [customModel, setCustomModel] = useState(
+    presetModels.includes(connection?.model ?? "") ? "" : (connection?.model ?? ""),
+  );
+  const model = modelChoice === "custom" ? customModel : modelChoice;
   const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(connection?.enabled ?? true);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
@@ -166,14 +180,6 @@ function ConnectionForm({
             placeholder: "https://model.example.com/v1",
             max: 2048,
           },
-          {
-            id: "model-connection-model",
-            label: "模型名称",
-            value: model,
-            change: setModel,
-            placeholder: "服务端提供的模型标识",
-            max: 200,
-          },
         ].map((field) => (
           <div className="profile-row" key={field.id}>
             <label className="profile-row-label" htmlFor={field.id}>
@@ -190,6 +196,37 @@ function ConnectionForm({
             />
           </div>
         ))}
+        <div className="profile-row">
+          <label className="profile-row-label" htmlFor="model-connection-model">
+            模型名称
+          </label>
+          <div className="min-w-0 space-y-2">
+            <Select value={modelChoice} onValueChange={setModelChoice} disabled={!!busy}>
+              <SelectTrigger id="model-connection-model">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {presetModels.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {value}
+                  </SelectItem>
+                ))}
+                <SelectItem value="custom">自定义模型名称</SelectItem>
+              </SelectContent>
+            </Select>
+            {modelChoice === "custom" && (
+              <Input
+                aria-label="自定义模型名称"
+                required
+                maxLength={200}
+                value={customModel}
+                placeholder="服务端提供的模型标识"
+                disabled={!!busy}
+                onChange={(event) => setCustomModel(event.target.value)}
+              />
+            )}
+          </div>
+        </div>
         <div className="profile-row">
           <label className="profile-row-label" htmlFor="model-connection-key">
             API key
