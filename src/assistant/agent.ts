@@ -1874,7 +1874,7 @@ export async function executeAssistantTurn(
           input.requirements?.length
         ) {
           const pureCount =
-            /^(?:做|生成|新增|设计|创建)\s*([1-9]\d*)\s*条[。.]?$/u;
+            /^(?:本次|当前)?(?:做|生成|新增|设计|创建|处理)\s*([1-9]\d*)\s*条(?:记录|数据|题目|问题)?[。.]?$/u;
           const counts = [
             ...new Set(
               [

@@ -257,13 +257,43 @@ export function reviseRequirements(
       "assistant_requirement_conflict",
       "整体交付目标不能小于当前目标。请分别核对全部测试集与当前测试集的条数。",
     );
+  const knownCounts = new Set([current.targetCount, merged.targetCount]);
+  const processingCount =
+    /^(?:本次|当前)?处理\s*([1-9]\d*)\s*条(?:记录|数据)?[。.]?$/u;
+  if (
+    merged.countKind !== "final" &&
+    input.targetCount !== undefined &&
+    input.requirements === undefined &&
+    current.requirements?.some((r) => processingCount.test(r.trim()))
+  )
+    throw new RequirementError(
+      "assistant_requirement_conflict",
+      "现有要求包含处理条数，不能仅凭目标数量认定它是旧目标或真实输入范围。请结合用户原要求完整提交requirements：旧目标数量句删除；真实输入范围保留并明确为输入范围。其余语义要求不变，不让用户填写工具参数。",
+    );
   return {
     ...input,
     requirements: [
       ...new Set(
         (input.requirements ?? current.requirements ?? [])
           .map((r) => r.trim())
-          .filter(Boolean),
+          .filter(Boolean)
+          .filter((r) => {
+            // A scalar goal is shown from execution facts; input scope is not a goal.
+            if (
+              /^(?:本次|当前)?目标(?:数量|条数)?\s*(?:为|是|：|:)?\s*[1-9]\d*\s*条[。.]?$/u.test(
+                r,
+              )
+            )
+              return merged.targetCount == null;
+            const count = r.match(
+              /^(?:(?:本次|当前)?(?:做|生成|新增|设计|创建|扩写|扩充))\s*([1-9]\d*)\s*条(?:记录|数据|测试题|题目|问题|候选)?[。.]?$/u,
+            );
+            return (
+              !count ||
+              merged.countKind === "final" ||
+              !knownCounts.has(Number(count[1]))
+            );
+          }),
       ),
     ],
     targetCount: merged.targetCount,

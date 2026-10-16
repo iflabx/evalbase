@@ -9,6 +9,73 @@ import {
 } from "../../src/assistant/plan.js";
 
 describe("OPT-22 current task contract", () => {
+  it.each(["做3条", "目标数量：3 条", "生成3条问题"])(
+    "OPT33 removes the redundant saved count %s when the target changes",
+    (countText) => {
+      const current = {
+        targetCount: 3,
+        requirements: [countText, "保留事实", "不添加新信息"],
+      };
+      expect(reviseRequirements(current, { targetCount: 5 })).toMatchObject({
+        targetCount: 5,
+        requirements: ["保留事实", "不添加新信息"],
+      });
+      expect(
+        reviseRequirements(current, {
+          targetCount: 5,
+          requirements: current.requirements,
+        }).requirements,
+      ).toEqual(["保留事实", "不添加新信息"]);
+    },
+  );
+  it("OPT33 repairs a legacy target caption and preserves ambiguous processing scope until reconciled", () => {
+    expect(
+      reviseRequirements(
+        { targetCount: 5, requirements: ["目标数量3条", "保留事实"] },
+        { targetCount: 5 },
+      ).requirements,
+    ).toEqual(["保留事实"]);
+    const current = {
+      targetCount: 5,
+      requirements: ["本次处理3条记录", "保留事实"],
+    };
+    expect(() => reviseRequirements(current, { targetCount: 5 })).toThrow(
+      "assistant_requirement_conflict",
+    );
+    expect(
+      reviseRequirements(current, {
+        targetCount: 5,
+        requirements: ["保留事实"],
+      }).requirements,
+    ).toEqual(["保留事实"]);
+    const final = {
+      targetCount: 100,
+      countKind: "final" as const,
+      requirements: ["本次处理3条记录", "其余97条保留", "新增3条问题"],
+    };
+    expect(
+      reviseRequirements(final, { targetCount: 100 }).requirements,
+    ).toEqual(final.requirements);
+  });
+  it("OPT33 preserves quotas, input scope, negation and semantic constraints containing numbers", () => {
+    const requirements = [
+      "每类至少3条",
+      "输入包含3条记录",
+      "每题保留3个要点",
+      "整体交付3条",
+      "不要生成3条",
+      "处理3条并保留事实",
+    ];
+    expect(
+      reviseRequirements({ targetCount: 3, requirements }, { targetCount: 5 })
+        .requirements,
+    ).toEqual(requirements);
+    expect(
+      reviseRequirements({ requirements: ["本次处理3条记录"] }, {})
+        .requirements,
+    ).toEqual(["本次处理3条记录"]);
+  });
+
   it("compares real normalized requirements independently of order, duplicates and edge whitespace", () => {
     const task = {
       target: { kind: "draft", id: "D" },

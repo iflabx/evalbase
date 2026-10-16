@@ -3819,6 +3819,72 @@ describe("project assistant public contract", () => {
       toolSequence = [];
     }
   });
+
+  it("OPT33 updates a count without keeping the old count as a text requirement", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          requirements: ["本次处理3条记录", "保留事实", "不添加新信息"],
+          nextAction: "none",
+        },
+      };
+      const first = (
+        await send("记录要求：做3条，保留事实，不添加新信息。先不要执行")
+      ).json();
+      expect(first.task.targetCount).toBe(3);
+      requestedTool = { name: "plan_task", input: { targetCount: 5 } };
+      const updated = (await send("只把数量改成5条，其他要求不变")).json();
+      expect(updated.task.targetCount).toBe(5);
+      expect(updated.task.requirements).toEqual(["保留事实", "不添加新信息"]);
+      expect(updated.task.requirementSummary).toContain("新增候选：5 条");
+      expect(updated.task.requirementSummary.join("；")).not.toContain("3条");
+      expect(updated.turns.at(-1).assistantText).not.toContain("3条");
+      const refreshed = (await read()).json();
+      expect(refreshed.task.requirements).toEqual(updated.task.requirements);
+      const db = createPool(databaseUrl);
+      try {
+        await db.query(
+          "UPDATE assistant_session SET task=jsonb_set(task,'{requirements}',$2::jsonb) WHERE id=$1",
+          [
+            sessionId,
+            JSON.stringify(["本次处理3条记录", "保留事实", "不添加新信息"]),
+          ],
+        );
+      } finally {
+        await db.end();
+      }
+      requestedTool = undefined;
+      toolSequence = [
+        { name: "plan_task", input: { targetCount: 5 } },
+        {
+          name: "plan_task",
+          input: { targetCount: 5, requirements: ["保留事实", "不添加新信息"] },
+        },
+      ];
+      const legacy = (await send("数量仍是5条，其他要求不变")).json();
+      expect(legacy.task.targetCount).toBe(5);
+      expect(legacy.task.requirements).toEqual(["保留事实", "不添加新信息"]);
+      expect(legacy.turns.at(-1).tools).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "failed",
+            error: expect.objectContaining({
+              code: "assistant_requirement_conflict",
+            }),
+          }),
+          expect.objectContaining({ name: "plan_task", status: "succeeded" }),
+        ]),
+      );
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+
   it("OPT33 rejects repeated acknowledgement without a save receipt", async () => {
     const previous = sessionId;
     try {
