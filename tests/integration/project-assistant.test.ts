@@ -19178,7 +19178,11 @@ describe("project assistant public contract", () => {
           name: "plan_task",
           input: { executionMode: "execute" },
         };
-        const submitted = await opt21End(await opt21Submit("执行方案"));
+        const startExecution = calls.length;
+        const submitted = await opt21End(
+          await opt21Submit("按当前已保存方案执行"),
+        );
+        expect(calls.length - startExecution).toBe(0);
         const runId = submitted.task.runId;
         expect(runId).toBeTruthy();
         if (mode !== "execute") {
@@ -19306,6 +19310,81 @@ describe("project assistant public contract", () => {
       }
     },
   );
+
+  it("OPT31 does not treat the execute control as an answer to a real business question", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt29Background();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          target: null,
+          targetCount: 2,
+          countKind: "new",
+          executionMode: "plan",
+          nextAction: "none",
+          steps: [
+            {
+              title: "生成两条",
+              action: "generate_candidates",
+              input: {
+                name: "OPT31-clarify",
+                outputCount: 2,
+                instructions: "按背景生成完整问题",
+              },
+            },
+            { title: "核对", action: "read_processing" },
+            {
+              title: "确认采用",
+              action: "request_processing_apply",
+              input: { allValid: true },
+            },
+          ],
+        },
+      };
+      const planned = await opt21End(
+        await opt21Submit("先给两条数据的生成方案，不执行"),
+      );
+      expect(planned.task.executionPlan?.steps.length).toBe(3);
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          {
+            question: "本次要客服问题，还是客服对话？",
+            stage: "waiting_input",
+            nextAction: null,
+          },
+        ],
+      );
+      const before = calls.length;
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      await opt21End(await opt21Submit("按当前已保存方案执行"));
+      expect(calls.length - before).toBeGreaterThan(0);
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM processing_run WHERE source->>'id'=$1",
+            [sessionId],
+          )
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM assistant_proposal WHERE session_id=$1",
+            [sessionId],
+          )
+        ).rowCount,
+      ).toBe(0);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
   it.each([5, 50])(
     "OPT29 plans and generates %i source-free candidates, reviews and confirms into its own draft",
     async (count) => {

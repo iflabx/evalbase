@@ -5336,6 +5336,30 @@ export async function executeAssistantTurn(
       });
       recoveredProcessingKey = undefined;
     }
+    // Existing explicit UI controls need no language-model reinterpretation.
+    // Revalidate through plan_task; this does not authorize a new or ambiguous plan.
+    if (
+      turn.event === "user" &&
+      ["按当前已保存方案执行", "继续执行已保存方案"].includes(
+        turn.user_text.trim().replace(/[。！!]$/u, ""),
+      ) &&
+      task.executionPlan?.steps?.length &&
+      !task.question
+    ) {
+      const verified = await tools.plan_task.execute!(
+        { executionMode: "execute" },
+        {
+          toolCallId: `execute-plan:${turn.id}`,
+          messages,
+          context: {},
+          abortSignal,
+        },
+      );
+      if (!(verified as Record<string, any>)?.error) {
+        await continueFixedSteps(messages);
+        messages.push(...fixedReceipts.splice(0));
+      }
+    }
     // Continue fixed work through the same validated business tools and fences.
     // The model is needed again only when parameters or a semantic decision are missing.
     if (processingEventRunId) {
