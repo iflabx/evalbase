@@ -181,6 +181,33 @@ export function validateRules(goal: CandidateGoal): Rule[] {
   return [...fields.values()];
 }
 
+/** Only standalone, affirmative goal clauses; per-row counts and input scopes are not goals. */
+export function explicitRequirementCount(
+  text: string,
+  countKind?: "new" | "final",
+) {
+  if (
+    /(?:解释|说明含义|举例|例如|比如|引用)/u.test(text) ||
+    /(?:不要|不得|别|不再|禁止)[^，,；;。\n]*\d+\s*条/u.test(text)
+  )
+    return undefined;
+  const goals = text.split(/[：:，,；;。\n]/u).flatMap((part) => {
+    const match = part
+      .trim()
+      .match(
+        /^(?:请)?(最终总数|(?:当前)?(?:目标数量|数量))\s*(?:再)?(?:改为|改成|调整为|为|是)?\s*([1-9]\d*)\s*条$/u,
+      );
+    if (!match || Number(match[2]) > 10000) return [];
+    return [
+      {
+        targetCount: Number(match[2]),
+        countKind: match[1] === "最终总数" ? ("final" as const) : countKind,
+      },
+    ];
+  });
+  return goals.length === 1 ? goals[0] : undefined;
+}
+
 /** Omission preserves a field; an explicit field update replaces it; clear revokes it. */
 export function reviseRequirements(
   current: Requirements,
@@ -279,6 +306,12 @@ export function reviseRequirements(
           .filter(Boolean)
           .filter((r) => {
             // A scalar goal is shown from execution facts; input scope is not a goal.
+            if (
+              merged.countKind === "final" &&
+              merged.targetCount != null &&
+              /^最终总数\s*(?:为|是|：|:)?\s*[1-9]\d*\s*条[。.]?$/u.test(r)
+            )
+              return false;
             if (
               /^(?:本次|当前)?目标(?:数量|条数)?\s*(?:为|是|：|:)?\s*[1-9]\d*\s*条[。.]?$/u.test(
                 r,

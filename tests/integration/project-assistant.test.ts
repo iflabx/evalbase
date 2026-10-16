@@ -3885,6 +3885,281 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT33 preserves final count meaning through recording and updates", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          requirements: ["最终总数100条", "保留事实", "不添加新信息"],
+          nextAction: "none",
+        },
+      };
+      const first = (
+        await send(
+          "记录要求：最终总数100条，保留事实，不添加新信息。先不执行。",
+        )
+      ).json();
+      expect(first.task.targetCount).toBe(100);
+      expect(first.task.countKind).toBe("final");
+      expect(first.task.requirements).toEqual(["保留事实", "不添加新信息"]);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          targetCount: 120,
+          countKind: "new",
+          executionMode: "plan",
+          nextAction: "none",
+        },
+      };
+      const changed = (
+        await send("最终总数改为120条，其他要求不变，先不执行。")
+      ).json();
+      expect(changed.task.countKind).toBe("final");
+      expect(changed.task.requirementSummary).toContain("最终总数：120 条");
+      expect(changed.task.requirementSummary).not.toContain("新增候选：120 条");
+      expect(changed.task.requirements).toEqual(first.task.requirements);
+      requestedTool = {
+        name: "plan_task",
+        input: { targetCount: 130, nextAction: "none" },
+      };
+      const again = (await send("数量改为130条，其他不变，先不执行。")).json();
+      expect(again.task.countKind).toBe("final");
+      expect((await read()).json().task.requirementSummary).toContain(
+        "最终总数：130 条",
+      );
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          requirements: ["最终总数100条", "本轮只处理其中3条", "其余97条保留"],
+          nextAction: "none",
+        },
+      };
+      const scoped = (
+        await send(
+          "记录要求：最终总数100条，本轮只处理其中3条，其余97条保留。先不执行。",
+        )
+      ).json();
+      expect(scoped.task.targetCount).toBe(100);
+      expect(scoped.task.countKind).toBe("final");
+      expect(scoped.task.requirements).toEqual([
+        "本轮只处理其中3条",
+        "其余97条保留",
+      ]);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+
+  it("OPT33 corrects missing requirement content in the contextual loop", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      const start = calls.length;
+      toolSequence = [
+        { name: "plan_task", input: {} },
+        {
+          name: "plan_task",
+          input: {
+            requirements: ["最终总数100条", "保留事实", "不添加新信息"],
+            question: "请提供要处理的来源文件或草稿名称。",
+            nextAction: "none",
+          },
+        },
+      ];
+      const state = (
+        await send(
+          "记录要求：最终总数100条，保留事实，不添加新信息。先不执行。",
+        )
+      ).json();
+      expect(state.turns.at(-1).tools.map((t: any) => t.status)).toEqual([
+        "failed",
+        "succeeded",
+      ]);
+      expect(calls.length - start).toBe(2);
+      expect(state.task.countKind).toBe("final");
+      expect(state.task.question).toBeFalsy();
+      expect(state.task.stage).toBe("planning");
+      expect(state.task.executionPaused).toBe(true);
+      expect(state.turns.at(-1).assistantText).toContain("尚未开始");
+      expect(state.turns.at(-1).assistantText).not.toContain("来源文件");
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+
+  it("OPT33 clears current recovery only after a confirmed requirement retry", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = { name: "plan_task", input: {} };
+      const failed = (
+        await send(
+          "记录要求：最终总数100条，保留事实，不添加新信息。先不执行。",
+          undefined,
+          "failed",
+        )
+      ).json();
+      expect(failed.task.recovery).toBeTruthy();
+      expect(failed.task.targetCount).toBeUndefined();
+      expect(
+        failed.turns.at(-1).diagnostics.requestAttempts,
+      ).toBeLessThanOrEqual(4);
+      const id = failed.turns.at(-1).id;
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          requirements: ["最终总数100条", "保留事实", "不添加新信息"],
+          nextAction: "none",
+        },
+      };
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/retry",
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      const saved = await opt21End(id);
+      expect(saved.turns.at(-1).status).toBe("succeeded");
+      expect(saved.task.error).toBeFalsy();
+      expect(saved.task.recovery).toBeFalsy();
+      expect(saved.task.countKind).toBe("final");
+      expect(
+        saved.turns.at(-1).tools.some((t: any) => t.status === "failed"),
+      ).toBe(true);
+      expect((await read()).json().task.recovery).toBeFalsy();
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+
+  it("OPT33 does not reconfirm an explicit count while retaining numeric semantics", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          targetCount: 3,
+          countKind: "new",
+          requirements: ["保留事实", "每条保留2个要点"],
+          nextAction: "none",
+        },
+      };
+      await send("记录要求：做3条，保留事实，每条保留2个要点。先不执行。");
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          targetCount: 2,
+          requirements: ["保留事实", "每条保留2个要点"],
+          question: "请确认：当前数量是 2 条，对吗？",
+          nextAction: "none",
+        },
+      };
+      const saved = (await send("数量再改为2条，其余不变，先不执行。")).json();
+      expect(saved.task.targetCount).toBe(2);
+      expect(saved.task.question).toBeFalsy();
+      expect(saved.task.executionPaused).toBe(true);
+      expect(saved.task.stage).toBe("planning");
+      expect(saved.task.requirements).toContain("每条保留2个要点");
+      expect(saved.turns.at(-1).assistantText).not.toContain("请确认");
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+
+  it("OPT33 retains a genuine clarification during a requirement-only update", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          targetCount: 2,
+          requirements: ["保留事实"],
+          question: "两个来源同名，请选择要使用的来源。",
+          nextAction: "none",
+        },
+      };
+      const state = (
+        await send("记录要求：数量改为2条，保留事实。先不执行。")
+      ).json();
+      expect(state.task.question).toBe("两个来源同名，请选择要使用的来源。");
+      expect(state.task.stage).toBe("waiting_input");
+      expect(
+        state.turns.at(-1).tools.every((t: any) => t.name === "plan_task"),
+      ).toBe(true);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+
+  it("OPT33 blocks a direct write before recording a paused request", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const count = async () =>
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM collaborative_draft WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].n;
+      const before = await count();
+      toolSequence = [
+        { name: "create_draft", input: { name: "未授权执行" } },
+        {
+          name: "plan_task",
+          input: { requirements: ["保留事实"], nextAction: "none" },
+        },
+      ];
+      const state = (
+        await send("记录要求：保留事实。先不执行。", undefined, "failed")
+      ).json();
+      expect(await count()).toBe(before);
+      expect(state.turns.at(-1).tools).toContainEqual(
+        expect.objectContaining({
+          name: "create_draft",
+          status: "failed",
+          error: expect.objectContaining({ code: "assistant_plan_only" }),
+        }),
+      );
+      expect(state.task.executionPaused).toBe(true);
+    } finally {
+      await db.end();
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+  it("OPT33 leaves a count explanation unchanged when the model pauses", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      requestedTool = { name: "plan_task", input: { nextAction: "none" } };
+      const state = (await send("请解释：最终总数100条，先不要执行。")).json();
+      expect(state.task.targetCount).toBeUndefined();
+      expect(state.task.countKind).toBeUndefined();
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+    }
+  });
+
   it("OPT33 rejects repeated acknowledgement without a save receipt", async () => {
     const previous = sessionId;
     try {

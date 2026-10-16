@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { reviseRequirements } from "../../src/assistant/requirements.js";
+import {
+  reviseRequirements,
+  explicitRequirementCount,
+} from "../../src/assistant/requirements.js";
 import {
   bindTaskInput,
   availableTaskTools,
@@ -9,6 +12,20 @@ import {
 } from "../../src/assistant/plan.js";
 
 describe("OPT-22 current task contract", () => {
+  it.each([
+    "不要最终总数100条，保留事实",
+    "请解释：最终总数100条，先不要执行。",
+    "记录要求：不要生成3条，数量改成5条，保留事实，先不执行",
+    "最终总数100条，最终总数120条",
+    "每条保留2个要点，本轮处理3条",
+    "例如最终总数100条，但先解释它的意思",
+    "最终总数10001条",
+  ])(
+    "OPT33 does not infer a goal from an ambiguous or non-goal clause: %s",
+    (text) => {
+      expect(explicitRequirementCount(text)).toBeUndefined();
+    },
+  );
   it.each(["做3条", "目标数量：3 条", "生成3条问题"])(
     "OPT33 removes the redundant saved count %s when the target changes",
     (countText) => {
