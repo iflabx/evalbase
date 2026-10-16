@@ -4359,6 +4359,7 @@ export async function executeAssistantTurn(
         ])
       ).rows[0].task;
       const step = current.executionPlan?.steps[current.executionPlan.current];
+      const preparesApply = step?.action === "request_processing_apply";
       if (
         current.executionPaused ||
         current.executionPlan?.mode !== "execute" ||
@@ -4371,8 +4372,9 @@ export async function executeAssistantTurn(
             "generate_candidates",
             "refine_candidates",
             "read_processing",
+            "request_processing_apply",
           ].includes(step.action)) ||
-        step.action.startsWith("request_")
+        (step.action.startsWith("request_") && !preparesApply)
       )
         break;
       const command = tools[step.action as keyof typeof tools];
@@ -4444,6 +4446,15 @@ export async function executeAssistantTurn(
         ),
       );
       if ((result as Record<string, any>)?.error) break;
+      // Preparing this already-authorized step only creates the existing fixed card.
+      // Stop here; the user must still confirm before any candidate is adopted.
+      if (
+        preparesApply &&
+        (result as Record<string, any>)?.requiresUserConfirmation
+      ) {
+        yieldToProcessing = true;
+        break;
+      }
       const after = (
         await db.query("SELECT task FROM assistant_session WHERE id=$1", [
           turn.session_id,

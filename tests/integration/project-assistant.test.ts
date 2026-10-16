@@ -19134,6 +19134,178 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
     }
   });
+
+  it.each(["execute", "plan", "paused", "needsReview"])(
+    "OPT31 prepares only an authorized fixed adoption card and waits for confirmation (%s)",
+    async (mode) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        await opt29Background();
+        const name = `OPT31-fixed-card-${randomUUID()}`;
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            target: null,
+            targetCount: 2,
+            countKind: "new",
+            allowedFields: ["question", "expectedOutput", "metadata"],
+            executionMode: "plan",
+            steps: [
+              {
+                title: "生成两条",
+                action: "generate_candidates",
+                input: {
+                  name,
+                  outputCount: 2,
+                  instructions: "按背景生成完整问题和逐题期望行为",
+                },
+              },
+              { title: "核对两条", action: "read_processing" },
+              {
+                title: "等待人工采用",
+                action: "request_processing_apply",
+                input: { allValid: true },
+              },
+            ],
+          },
+        };
+        const plan = await opt21End(
+          await opt21Submit("先给两条数据的生成方案，不执行"),
+        );
+        expect(plan.proposals ?? []).toHaveLength(0);
+        requestedTool = {
+          name: "plan_task",
+          input: { executionMode: "execute" },
+        };
+        const submitted = await opt21End(await opt21Submit("执行方案"));
+        const runId = submitted.task.runId;
+        expect(runId).toBeTruthy();
+        if (mode !== "execute") {
+          const task = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task;
+          if (mode === "plan") task.executionPlan.mode = "plan";
+          if (mode === "paused") task.executionPaused = true;
+          if (mode === "needsReview") task.executionPlan.needsReview = true;
+          await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+            sessionId,
+            task,
+          ]);
+        }
+        await opt29Worker(runId);
+        const before = calls.length;
+        requestedTool = { name: "read_processing", input: { runId } };
+        toolSequence = [];
+        await taskModule.collectProcessingEvents(db);
+        await expect
+          .poll(
+            async () =>
+              (await read())
+                .json()
+                .turns.some((t: any) =>
+                  ["queued", "running"].includes(t.status),
+                ),
+            { timeout: 15000 },
+          )
+          .toBe(false);
+        const state = (await read()).json();
+        const proposals = (
+          await db.query(
+            "SELECT id,status FROM assistant_proposal WHERE session_id=$1 AND action='processing'",
+            [sessionId],
+          )
+        ).rows;
+        if (mode !== "execute") {
+          expect(proposals, JSON.stringify(state.turns.at(-1))).toHaveLength(0);
+          expect(
+            (
+              await db.query(
+                "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+                [state.task.createdDraftId],
+              )
+            ).rowCount,
+          ).toBe(0);
+          return;
+        }
+        expect(proposals, JSON.stringify(state.turns.at(-1))).toHaveLength(1);
+        expect(proposals[0].status).toBe("pending");
+        expect(state.task.stage).toBe("awaiting_confirmation");
+        expect(calls.length - before).toBe(0);
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some(
+              (t: any) =>
+                t.name === "request_processing_apply" &&
+                t.status === "succeeded",
+            ),
+        ).toBe(true);
+        const draftId = state.task.createdDraftId;
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+              [draftId],
+            )
+          ).rowCount,
+        ).toBe(0);
+        await taskModule.collectProcessingEvents(db);
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM assistant_proposal WHERE session_id=$1 AND action='processing'",
+              [sessionId],
+            )
+          ).rowCount,
+        ).toBe(1);
+        expect(
+          (
+            await db.query(
+              "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+              [draftId],
+            )
+          ).rowCount,
+        ).toBe(0);
+        requestedTool = undefined;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const confirmed = await app.inject({
+            method: "POST",
+            url: `${base()}/proposals/${proposals[0].id}/confirm`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: {},
+          });
+          expect(confirmed.statusCode, confirmed.body).toBe(200);
+          expect(
+            (
+              await db.query(
+                "SELECT id FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+                [draftId],
+              )
+            ).rowCount,
+          ).toBe(2);
+        }
+        await expect
+          .poll(
+            async () =>
+              (await read())
+                .json()
+                .turns.some((t: any) =>
+                  ["queued", "running"].includes(t.status),
+                ),
+            { timeout: 15000 },
+          )
+          .toBe(false);
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        await db.end();
+      }
+    },
+  );
   it.each([5, 50])(
     "OPT29 plans and generates %i source-free candidates, reviews and confirms into its own draft",
     async (count) => {
