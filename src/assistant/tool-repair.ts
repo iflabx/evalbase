@@ -11,6 +11,88 @@ import {
 } from "ai";
 import { canonicalJson } from "../package/contract.js";
 import { isPlainObject } from "../server/support.js";
+import { Ajv } from "ajv";
+
+export type RepairDetails = {
+  scope: "call" | "step";
+  stepIndex?: number;
+  issues: { path: string; keyword: string }[];
+};
+
+// This validator chooses a smaller repair scope; the tool's own validator is final.
+function repairScope(value: unknown, schema: any) {
+  const repairValidator = new Ajv({ strict: false, allErrors: true });
+  const validate = repairValidator.compile(schema);
+  validate(value);
+  const issues = (validate.errors ?? []).slice(0, 8).map((error) => ({
+    path: (() => {
+      const field =
+        error.keyword === "required"
+          ? error.params.missingProperty
+          : error.keyword === "additionalProperties"
+            ? error.params.additionalProperty
+            : undefined;
+      const suffix =
+        typeof field === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(field)
+          ? "/" + field
+          : "";
+      return (error.instancePath + suffix).slice(0, 240);
+    })(),
+    keyword: error.keyword,
+  }));
+  if (
+    isPlainObject(value) &&
+    Array.isArray(value.steps) &&
+    value.steps.length > 1 &&
+    schema.properties?.steps?.items
+  ) {
+    const steps = schema.properties.steps;
+    const validOutline = repairValidator.compile({
+      ...schema,
+      properties: { ...schema.properties, steps: { ...steps, items: {} } },
+    });
+    const validStep = repairValidator.compile(steps.items);
+    const invalid = value.steps.flatMap((step, index) =>
+      validStep(step) ? [] : [index],
+    );
+    if (validOutline(value) && invalid.length === 1) {
+      const index = invalid[0]!;
+      const originalSteps = value.steps;
+      return {
+        value: { steps: [value.steps[index]] },
+        schema: {
+          type: "object",
+          properties: { steps: { ...steps, minItems: 1, maxItems: 1 } },
+          required: ["steps"],
+          additionalProperties: false,
+        },
+        details: { scope: "step", stepIndex: index, issues } as RepairDetails,
+        merge: (fixed: any) => {
+          if (
+            !isPlainObject(fixed) ||
+            Object.keys(fixed).length !== 1 ||
+            !Array.isArray(fixed.steps) ||
+            fixed.steps.length !== 1
+          )
+            return undefined;
+          const repairedSteps = fixed.steps;
+          return {
+            ...value,
+            steps: originalSteps.map((step, i) =>
+              i === index ? repairedSteps[0] : step,
+            ),
+          };
+        },
+      };
+    }
+  }
+  return {
+    value,
+    schema,
+    details: { scope: "call", issues } as RepairDetails,
+    merge: (fixed: unknown) => fixed,
+  };
+}
 
 function inputContract(value: unknown, definition: any): any {
   const variants = definition.oneOf ?? definition.anyOf;
@@ -179,8 +261,16 @@ export function argumentRepair(options: {
   check: (name: string) => Promise<boolean>;
   observed: (
     name: string,
-    outcome: "repaired" | "unsafe" | "invalid" | "unavailable" | "exhausted",
-  ) => void;
+    outcome:
+      | "repaired"
+      | "unsafe"
+      | "invalid"
+      | "unavailable"
+      | "exhausted"
+      | "interrupted"
+      | "failed",
+  ) => void | Promise<void>;
+  started?: (name: string, details: RepairDetails) => void | Promise<void>;
 }): ToolCallRepairFunction<ToolSet> {
   return async ({ toolCall, tools, inputSchema, error, abortSignal }) => {
     const name = toolCall.toolName;
@@ -189,30 +279,49 @@ export function argumentRepair(options: {
       !Object.hasOwn(tools, name) ||
       !(await options.check(name))
     ) {
-      options.observed(name, "unavailable");
+      await options.observed(name, "unavailable");
       return null;
     }
     let original: unknown;
     try {
       original = JSON.parse(toolCall.input);
     } catch {
-      options.observed(name, "invalid");
+      await options.observed(name, "invalid");
       return null;
     }
     const schema = await inputSchema({ toolName: name });
     const normalized = repairInputMeaning(original, schema);
+    const fullSchema = asSchema(tools[name]!.inputSchema);
+    const local = await fullSchema.validate?.(normalized);
+    if (local?.success && sameRepairMeaning(original, local.value, schema)) {
+      if (abortSignal?.aborted) {
+        await options.observed(name, "interrupted");
+        abortSignal.throwIfAborted();
+      }
+      if (!(await options.check(name))) {
+        await options.observed(name, "unavailable");
+        return null;
+      }
+      await options.observed(name, "repaired");
+      return { ...toolCall, input: JSON.stringify(local.value) };
+    }
+    const focus = repairScope(normalized, schema);
     // Reuse the authoritative validator; expose only supplied root fields to the
     // repair model, without business instructions embedded in descriptions.
     const repairSchema = JSON.parse(
-      JSON.stringify(repairInputSchema(normalized, schema), (key, value) =>
-        key === "description" && typeof value === "string" ? undefined : value,
+      JSON.stringify(
+        repairInputSchema(focus.value, focus.schema),
+        (key, value) =>
+          key === "description" && typeof value === "string"
+            ? undefined
+            : value,
       ),
     );
-    const fullSchema = asSchema(tools[name]!.inputSchema);
     for (let attempt = 0; attempt < 2; attempt++) {
       if (!(await options.reserve(name))) break;
       let reply: Awaited<ReturnType<typeof generateText>>;
       try {
+        await options.started?.(name, focus.details);
         reply = await generateText({
           model: options.model,
           maxRetries: 0,
@@ -224,41 +333,65 @@ export function argumentRepair(options: {
           prompt: JSON.stringify({
             operation: "repair_tool_arguments",
             toolName: name,
-            original,
-            normalizedInput: normalized,
-            error: error.message.slice(0, 4000),
+            original: focus.value,
+            normalizedInput: focus.value,
+            error: focus.details.issues,
           }),
           tools: {
             [name]: tool({
               inputSchema: jsonSchema(repairSchema, {
-                validate: fullSchema.validate,
+                validate: async (value) => {
+                  const merged = focus.merge(value);
+                  const checked = await fullSchema.validate?.(merged);
+                  return checked?.success
+                    ? { success: true, value }
+                    : {
+                        success: false,
+                        error: new Error(
+                          "repair must satisfy the complete original contract",
+                        ),
+                      };
+                },
               }),
             }),
           },
           toolChoice: { type: "tool", toolName: name },
         });
       } catch (failure) {
-        abortSignal?.throwIfAborted();
-        if (!ToolChoiceViolationError.isInstance(failure)) throw failure;
-        options.observed(name, "invalid");
+        if (abortSignal?.aborted) {
+          await options.observed(name, "interrupted");
+          abortSignal.throwIfAborted();
+        }
+        if (!ToolChoiceViolationError.isInstance(failure)) {
+          await options.observed(name, "failed");
+          throw failure;
+        }
+        await options.observed(name, "invalid");
         continue;
       }
-      abortSignal?.throwIfAborted();
+      if (abortSignal?.aborted) {
+        await options.observed(name, "interrupted");
+        abortSignal.throwIfAborted();
+      }
       if (!(await options.check(name))) {
-        options.observed(name, "unavailable");
+        await options.observed(name, "unavailable");
         return null;
       }
       const call =
         reply.toolCalls.length === 1 ? reply.toolCalls[0] : undefined;
       if (call?.toolName === name && !call.invalid) {
-        if (sameRepairMeaning(original, call.input, schema)) {
-          options.observed(name, "repaired");
-          return { ...toolCall, input: JSON.stringify(call.input) };
+        const merged = focus.merge(call.input);
+        if (
+          (await fullSchema.validate?.(merged))?.success &&
+          sameRepairMeaning(original, merged, schema)
+        ) {
+          await options.observed(name, "repaired");
+          return { ...toolCall, input: JSON.stringify(merged) };
         }
-        options.observed(name, "unsafe");
-      } else options.observed(name, "invalid");
+        await options.observed(name, "unsafe");
+      } else await options.observed(name, "invalid");
     }
-    options.observed(name, "exhausted");
+    await options.observed(name, "exhausted");
     return null;
   };
 }

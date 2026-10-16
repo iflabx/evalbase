@@ -3973,6 +3973,182 @@ describe("project assistant public contract", () => {
       requestedTool = undefined;
     }
   });
+  it.each(["checkpoint", "legacy", "changed"])(
+    "OPT33 continues an interrupted document plan with current evidence and records the repair stage (%s)",
+    async (mode) => {
+      const previous = sessionId;
+      const db = createPool(databaseUrl);
+      const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+      let timer: ReturnType<typeof vi.spyOn> | undefined;
+      let finish!: () => void;
+      let entered!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const release = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      try {
+        await opt21Session();
+        const doc = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "客服规范.txt",
+              contentBase64: Buffer.from(
+                "客服测试问题应独立完整，覆盖退货与物流，期望输出逐题说明正常应答行为。",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        requestedTool = {
+          name: "read_background",
+          input: { documentId: doc.id },
+        };
+        await send("读取附件");
+        const valid = {
+          executionMode: "plan",
+          requirements: ["问题独立完整，逐题描述正常应答行为"],
+          steps: [
+            {
+              title: "设计客服测试",
+              action: "generate_candidates",
+              input: {
+                name: "客服测试",
+                instructions: "按客服规范设计自然完整的问题",
+                outputCount: 6,
+                scenarios: ["退货咨询", "物流查询"],
+                classifications: [],
+              },
+            },
+          ],
+        };
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            ...valid,
+            steps: [
+              {
+                ...valid.steps[0],
+                input: { ...valid.steps[0].input, outputCount: [6, 7] },
+              },
+            ],
+          },
+        };
+        parameterRepairReply = async ({ original }) => {
+          entered();
+          await release;
+          return original;
+        };
+        timer = vi
+          .spyOn(AbortSignal, "timeout")
+          .mockImplementation((ms) => realTimeout(ms >= 70000 ? 800 : ms));
+        const id = await opt21Submit("按附件设计6条客服测试，先给方案，不执行");
+        await waiting;
+        const failed = await opt21End(id);
+        expect(
+          failed.turns.at(-1).diagnostics.parameterRepairStatus,
+        ).toMatchObject({
+          intent: "document_plan",
+          phase: "finished",
+          outcome: "interrupted",
+          issues: expect.any(Array),
+        });
+        expect(failed.turns.at(-1).diagnostics.failure.reason).toContain(
+          "方案参数校验",
+        );
+        expect(failed.task.executionPlan).toBeUndefined();
+        expect(failed.task.planningRecovery).toBeUndefined();
+        expect(failed.task.parameterRepairStatus).toBeUndefined();
+        const raw = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        expect(raw.planningRecovery.turnId).toBe(id);
+        expect(raw.parameterRepairLimits.plan_task.used).toBe(1);
+        timer.mockRestore();
+        timer = undefined;
+        finish();
+        parameterRepairReply = undefined;
+        requestedTool = { name: "plan_task", input: valid };
+        if (mode === "legacy")
+          await db.query(
+            "UPDATE assistant_session SET task=task-'planningRecovery' WHERE id=$1",
+            [sessionId],
+          );
+        if (mode === "changed")
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "新规范.txt",
+              contentBase64:
+                Buffer.from("替换后的另一份要求。").toString("base64"),
+            },
+          });
+        const start = calls.length;
+        const resumed = (
+          await send(
+            "继续规划",
+            undefined,
+            mode === "changed" ? "failed" : "succeeded",
+          )
+        ).json();
+        if (mode === "changed") {
+          expect(resumed.turns.at(-1).errorCode).toBe(
+            "assistant_plan_revalidation_required",
+          );
+          expect(calls.slice(start)).toHaveLength(0);
+          expect(resumed.task.executionPlan).toBeUndefined();
+          return;
+        }
+        expect(resumed.turns.at(-1).status).toBe("succeeded");
+        expect(resumed.task.executionPlan.mode).toBe("plan");
+        expect(resumed.task.targetCount).toBe(6);
+        expect(calls.slice(start)).toHaveLength(1);
+        expect(
+          calls[start].messages.some((message: any) =>
+            String(message.content).includes(
+              "按附件设计6条客服测试，先给方案，不执行",
+            ),
+          ),
+        ).toBe(true);
+        expect(
+          calls[start].messages.some((message: any) =>
+            String(message.content).includes("客服测试问题应独立完整"),
+          ),
+        ).toBe(true);
+        expect(
+          (
+            await db.query(
+              "SELECT task->'planningRecovery' AS pending FROM assistant_session WHERE id=$1",
+              [sessionId],
+            )
+          ).rows[0].pending,
+        ).toBeNull();
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int AS count FROM processing_run WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].count,
+        ).toBe(0);
+      } finally {
+        timer?.mockRestore();
+        finish();
+        parameterRepairReply = undefined;
+        requestedTool = undefined;
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+
   it("OPT33 resolves split hierarchy queries and stores eight compact deliveries without writes", async () => {
     const previous = sessionId;
     const db = createPool(databaseUrl);
@@ -17035,15 +17211,24 @@ describe("project assistant public contract", () => {
     try {
       requestedTool = {
         name: "query_project",
-        input: { kind: "project", offset: "0" },
+        input: { kind: "project", offset: ["0", "1"] },
       };
-      parameterRepairReply = ({ original }) => ({ ...original, offset: 0 });
+      parameterRepairReply = ({ original }) => original;
       parameterRepairTextOnce = true;
-      const state = (await send("查询项目")).json();
+      const state = (await send("查询项目", undefined, "failed")).json();
       expect(state.turns.at(-1).diagnostics.parameterRepairs).toEqual([
         { name: "query_project", outcome: "invalid" },
-        { name: "query_project", outcome: "repaired" },
+        { name: "query_project", outcome: "invalid" },
+        { name: "query_project", outcome: "exhausted" },
       ]);
+      expect(
+        state.turns.at(-1).diagnostics.parameterRepairStatus,
+      ).toMatchObject({
+        name: "query_project",
+        phase: "finished",
+        outcome: "exhausted",
+        issues: expect.arrayContaining([{ path: "/offset", keyword: "type" }]),
+      });
       expect(
         calls
           .slice(start)
@@ -17054,7 +17239,7 @@ describe("project assistant public contract", () => {
           ),
       ).toHaveLength(2);
       expect(
-        state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
+        state.turns.at(-1).tools.filter((t: any) => t.status === "succeeded"),
       ).toHaveLength(0);
     } finally {
       sessionId = previous;
@@ -17115,11 +17300,7 @@ describe("project assistant public contract", () => {
               String(m.content).includes('"operation":"repair_tool_arguments"'),
             ),
           );
-        expect(repairCalls).toHaveLength(1);
-        expect(repairCalls[0].tools).toHaveLength(1);
-        expect(repairCalls[0].tools[0].function.name).toBe(
-          path === "direct" ? "create_draft" : "plan_task",
-        );
+        expect(repairCalls).toHaveLength(0);
         const db = createPool(databaseUrl);
         try {
           expect(
@@ -17157,7 +17338,7 @@ describe("project assistant public contract", () => {
       },
     ],
   ])(
-    "OPT32 refuses repairs that change frozen business meaning (%j)",
+    "OPT32 normalizes locally without exposing business values to an unsafe repair (%j)",
     async (original, corrected) => {
       const previous = sessionId;
       await opt21Session();
@@ -17165,14 +17346,15 @@ describe("project assistant public contract", () => {
       try {
         requestedTool = { name: "plan_task", input: original };
         parameterRepairReply = () => corrected;
-        const state = (await send("只给方案", undefined, "failed")).json();
-        expect(state.turns.at(-1).errorCode).toBe(
-          "assistant_tool_input_invalid",
-        );
+        const state = (await send("只给方案")).json();
+        expect(state.turns.at(-1).status).toBe("succeeded");
         expect(
-          state.turns.at(-1).tools.every((t: any) => t.status !== "succeeded"),
+          state.turns.at(-1).tools.every((t: any) => t.status !== "failed"),
         ).toBe(true);
-        expect(state.task.targetCount ?? null).toBeNull();
+        expect(state.task.targetCount ?? null).toBe(
+          "targetCount" in original ? 2 : null,
+        );
+        expect(state.task.target).toBeUndefined();
         expect(state.task.parameterRepairLimits).toBeUndefined();
         expect(
           calls
@@ -17182,7 +17364,7 @@ describe("project assistant public contract", () => {
                 '"operation":"repair_tool_arguments"',
               ),
             ),
-        ).toHaveLength(2);
+        ).toHaveLength(0);
       } finally {
         sessionId = previous;
         requestedTool = undefined;
@@ -17304,7 +17486,7 @@ describe("project assistant public contract", () => {
         finish = resolve;
       });
       try {
-        requestedTool = { name: "create_draft", input: { name: [name] } };
+        requestedTool = { name: "create_draft", input: { name: [name, name] } };
         parameterRepairReply = async () => {
           entered();
           await resume;
@@ -17389,19 +17571,20 @@ describe("project assistant public contract", () => {
     try {
       requestedTool = {
         name: "query_project",
-        input: { kind: "project", offset: "0" },
+        input: { kind: "project", offset: ["0", "1"] },
       };
-      parameterRepairReply = ({ original }) => ({ ...original, offset: 0 });
+      parameterRepairReply = ({ original }) => original;
       providerFaults = [null, 503, null];
-      const state = (await send("查询项目")).json();
+      const state = (await send("查询项目", undefined, "failed")).json();
       const diagnostics = state.turns.at(-1).diagnostics;
       expect(diagnostics.transportRetries).toBe(1);
       expect(diagnostics.modelSteps).toBe(calls.length - start);
       expect(diagnostics.parameterRepairs).toEqual([
-        { name: "query_project", outcome: "repaired" },
+        { name: "query_project", outcome: "invalid" },
+        { name: "query_project", outcome: "exhausted" },
       ]);
       expect(
-        state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
+        state.turns.at(-1).tools.filter((t: any) => t.status === "succeeded"),
       ).toHaveLength(0);
     } finally {
       sessionId = previous;
