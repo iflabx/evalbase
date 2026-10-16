@@ -242,7 +242,18 @@ export async function presentTaskCandidates(
     (await readProcessingRun(db, artifacts, scope, task.runId, { limit: "1" }));
   const data = {
     ...primary,
-    records: collection.records,
+    records: taskCompatibilityProblem(task, collection.runs)
+      ? collection.records.map((row) => ({
+          ...row,
+          contentReview: row.contentReview
+            ? {
+                ...row.contentReview,
+                verdict: "pending" as const,
+                reason: "要求已变化，旧核对结论已失效",
+              }
+            : undefined,
+        }))
+      : collection.records,
     allIds: collection.records.map((row) => row.id),
     total: collection.records.length,
     issues: collection.runs.flatMap((run) => run.issues),
@@ -672,6 +683,18 @@ export async function reviewTask(
           }
         : {}),
       compatibilityProblem,
+      ...(compatibilityProblem
+        ? {
+            content: {
+              ...review.content,
+              checked: 0,
+              conforms: 0,
+              nonconforms: 0,
+              uncertain: 0,
+              pending: review.candidateCount,
+            },
+          }
+        : {}),
       complete: review.complete && !compatibilityProblem,
       ...(task.candidateScope
         ? {

@@ -9,11 +9,20 @@ import { generateText } from "ai";
 import { contentKey } from "./deduplication.js";
 import {
   GENERATION_RECIPE,
+  isGenerationRecipe,
   generationBudget,
   generationContext,
   generationPosition,
   type GenerationPlan,
 } from "./generation.js";
+import {
+  applyContentReview,
+  contentHash,
+  contentReviewPrompt,
+  contentVerdict,
+  reviewRulesHash,
+  CONTENT_RECIPE,
+} from "./content-review.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import type { Config } from "../config.js";
 import type { Database } from "../db/pool.js";
@@ -302,6 +311,85 @@ function batches(
   return result;
 }
 
+// Store candidates and an attempted phase before the request. A reclaimed lease may
+// retain a pending verdict, but cannot replay an unknown review/repair indefinitely.
+async function checkpointReview(
+  db: Database,
+  artifacts: ArtifactRepository,
+  job: ProcessingJob,
+  run: ProcessingRun,
+  ordinal: number,
+  result: ProcessingResult,
+  indices: number[],
+) {
+  const client = await db.connect();
+  let stored: { objectRef: string } | undefined;
+  try {
+    await client.query("BEGIN");
+    await fence(client, job, true);
+    const current = await client.query(
+      "SELECT input_ref FROM processing_run WHERE id=$1 FOR UPDATE",
+      [run.id],
+    );
+    if (!current.rows[0]?.input_ref)
+      throw new ProcessingError(404, "processing_not_found");
+    await processingAccess(
+      client,
+      { projectId: job.project_id, actorId: job.actor_id },
+      true,
+    );
+    await processingSourceAvailable(client, job.project_id, run.source, true);
+    const old = (
+      await client.query(
+        "SELECT result_ref FROM processing_batch WHERE run_id=$1 AND ordinal=$2 FOR UPDATE",
+        [run.id, ordinal],
+      )
+    ).rows[0];
+    const body = Buffer.from(canonicalJson(result));
+    const used = (
+      await client.query(
+        "SELECT coalesce(sum(output_bytes),0)::bigint AS bytes FROM processing_batch WHERE run_id=$1 AND ordinal<>$2",
+        [run.id, ordinal],
+      )
+    ).rows[0];
+    if (Number(used.bytes) + body.byteLength > 100000000)
+      throw new ProcessingError(422, "processing_capacity_exceeded");
+    stored = await artifacts.storeProcessing(body, run.id, `batch-${ordinal}`);
+    await client.query(
+      `INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes,result_indices)
+      VALUES($1,$2,$3,$4,$5,'content_review_in_progress',$6,$7)
+      ON CONFLICT(run_id,ordinal) DO UPDATE SET result_ref=excluded.result_ref,output_count=excluded.output_count,
+      issues=excluded.issues,error_code=excluded.error_code,output_bytes=excluded.output_bytes,result_indices=excluded.result_indices`,
+      [
+        run.id,
+        ordinal,
+        stored.objectRef,
+        result.records.length,
+        JSON.stringify(result.issues),
+        body.byteLength,
+        indices,
+      ],
+    );
+    if (old?.result_ref && old.result_ref !== stored.objectRef)
+      await client.query(
+        "INSERT INTO processing_cleanup(project_id,object_ref) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [job.project_id, old.result_ref],
+      );
+    await client.query("COMMIT");
+    return stored.objectRef;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    if (stored)
+      await db.query(
+        "INSERT INTO processing_cleanup(project_id,object_ref) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [job.project_id, stored.objectRef],
+      );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function runProcessing(
   db: Database,
   artifacts: ArtifactRepository,
@@ -323,12 +411,11 @@ export async function runProcessing(
   if (sha256(bytes) !== run.input_hash)
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
-  const generation =
-    run.execution_config.recipeVersion === GENERATION_RECIPE
-      ? input.generation
-      : undefined;
+  const generation = isGenerationRecipe(run.execution_config.recipeVersion)
+    ? input.generation
+    : undefined;
   if (
-    run.execution_config.recipeVersion === GENERATION_RECIPE &&
+    isGenerationRecipe(run.execution_config.recipeVersion) &&
     (!generation || generation.positions.length !== run.options.outputCount)
   )
     throw new ProcessingError(409, "processing_input_corrupt");
@@ -338,11 +425,15 @@ export async function runProcessing(
     "processing-v6",
     "processing-v7",
     "processing-v8",
+    "processing-v9",
+    CONTENT_RECIPE,
     GENERATION_RECIPE,
   ].includes(run.execution_config.recipeVersion);
   const recovery = [
     "processing-v7",
     "processing-v8",
+    "processing-v9",
+    CONTENT_RECIPE,
     GENERATION_RECIPE,
   ].includes(run.execution_config.recipeVersion);
   const deduplication =
@@ -354,6 +445,8 @@ export async function runProcessing(
     "processing-v6",
     "processing-v7",
     "processing-v8",
+    "processing-v9",
+    CONTENT_RECIPE,
     GENERATION_RECIPE,
   ].includes(run.execution_config.recipeVersion);
   if (
@@ -366,6 +459,8 @@ export async function runProcessing(
       "processing-v6",
       "processing-v7",
       "processing-v8",
+      "processing-v9",
+      CONTENT_RECIPE,
       GENERATION_RECIPE,
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
@@ -439,7 +534,7 @@ export async function runProcessing(
     await fence(db, job);
     await processingAccess(db, scope);
     await processingSourceAvailable(db, job.project_id, run.source);
-    const prior = (
+    let prior = (
       await db.query(
         "SELECT result_ref,output_count,issues,error_code,result_indices,model_attempts,model_started_at,diagnostics FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
         [run.id, index],
@@ -479,7 +574,7 @@ export async function runProcessing(
       lastFailure: trace.calls.at(-1)?.code ?? generation?.previousFailure,
     };
     try {
-      let result;
+      let result: ProcessingResult;
       if (!model) result = cleanRecords(group.inputs, run.options);
       else if (!modelInputs.length && run.options.operation !== "generate")
         result = cleanRecords(group.inputs, {
@@ -622,12 +717,16 @@ export async function runProcessing(
                 "processing-v6",
                 "processing-v7",
                 "processing-v8",
+                "processing-v9",
+                CONTENT_RECIPE,
                 GENERATION_RECIPE,
               ].includes(run.execution_config.recipeVersion)
                 ? {
-                    temperature: ["processing-v8", GENERATION_RECIPE].includes(
-                      run.execution_config.recipeVersion,
-                    )
+                    temperature: [
+                      "processing-v8",
+                      "processing-v9",
+                      GENERATION_RECIPE,
+                    ].includes(run.execution_config.recipeVersion)
                       ? 0.7
                       : 0.2,
                   }
@@ -783,6 +882,227 @@ export async function runProcessing(
             : undefined;
         } else result.issues.push(...diagnostics);
       }
+      if (
+        model &&
+        (modelInputs.length > 0 || run.options.operation === "generate") &&
+        result.records.length &&
+        [CONTENT_RECIPE, GENERATION_RECIPE].includes(
+          run.execution_config.recipeVersion,
+        )
+      ) {
+        const rulesHash = reviewRulesHash(run.options, input.background);
+        result.contentReview =
+          priorResult?.contentReview?.rulesHash === rulesHash
+            ? priorResult.contentReview
+            : undefined;
+        const reviewIndices = result.records.map((row, i) =>
+          input.refinement
+            ? positions.get(row.sourceId)!
+            : generatesRecords(run.options.operation)
+              ? i
+              : group.inputs.findIndex((input) => input.id === row.sourceId),
+        );
+        const sources = new Map(
+          result.records.map((row, i) => [
+            `review:${index}:${reviewIndices[i]}`,
+            row.sourceId,
+          ]),
+        );
+        let qualityRows = result.records.map((row, i) => ({
+          ...row,
+          sourceId: `review:${index}:${reviewIndices[i]}`,
+        }));
+        const saveReview = async () => {
+          result.records = qualityRows.map((row) => ({
+            ...row,
+            sourceId: sources.get(row.sourceId)!,
+          }));
+          const indices = result.records.map((row, i) =>
+            input.refinement
+              ? positions.get(row.sourceId)!
+              : generatesRecords(run.options.operation)
+                ? i
+                : group.inputs.findIndex((input) => input.id === row.sourceId),
+          );
+          const ref = await checkpointReview(
+            db,
+            artifacts,
+            job,
+            run,
+            index,
+            result,
+            indices,
+          );
+          // Final commit replaces this checkpoint, including after a recovered lease.
+          prior ??= {};
+          prior.result_ref = ref;
+          prior.error_code = "content_review_in_progress";
+          prior.result_indices = indices;
+          priorResult = structuredClone(result);
+        };
+        for (const phase of ["initial", "recheck"] as const) {
+          if (phase === "initial" && result.contentReview?.initialAttempted)
+            continue;
+          if (
+            phase === "recheck" &&
+            (!result.contentReview || result.contentReview.recheckAttempted)
+          )
+            continue;
+          const candidates =
+            phase === "initial"
+              ? qualityRows
+              : qualityRows.filter((row) => {
+                  const item = contentVerdict(
+                    row,
+                    result.contentReview,
+                    rulesHash,
+                  );
+                  return item.repaired && item.verdict === "pending";
+                });
+          if (!candidates.length) continue;
+          result.contentReview ??= {
+            version: 1,
+            rulesHash,
+            initialAttempted: true,
+            items: [],
+          };
+          if (phase === "recheck") result.contentReview.recheckAttempted = true;
+          result.contentReview.pendingReason = "内容核对未完成，候选已保留";
+          await saveReview();
+          await fence(db, job);
+          await processingAccess(db, scope);
+          await processingSourceAvailable(db, job.project_id, run.source);
+          const prompt = contentReviewPrompt(
+            candidates,
+            run.options,
+            input.background,
+            phase === "initial",
+            new Map(
+              candidates.flatMap((row) => {
+                const original = modelInputs.find(
+                  (input) => input.id === sources.get(row.sourceId),
+                );
+                return original ? [[row.sourceId, original] as const] : [];
+              }),
+            ),
+          );
+          const oversized =
+            Buffer.byteLength(prompt.system + prompt.prompt) >
+            run.execution_config.maxInputBytesPerBatch;
+          const reserved = !oversized
+            ? await reserveModelCall(db, job, run, index, Boolean(generation))
+            : null;
+          if (!reserved) {
+            result.contentReview.pendingReason = oversized
+              ? "本批内容超出核对长度，待人工核对"
+              : "本轮核对额度不足，待人工核对";
+            break;
+          }
+          const batch = (
+            await db.query(
+              "SELECT model_started_at,model_attempts FROM processing_batch WHERE run_id=$1 AND ordinal=$2",
+              [run.id, index],
+            )
+          ).rows[0];
+          const deadline = Math.min(
+            new Date(batch.model_started_at).getTime() +
+              run.execution_config.batchTimeoutMs,
+            reserved.deadline ?? Infinity,
+          );
+          const calledAt = Date.now();
+          const call: CallDiagnostic = {
+            attempt: Number(batch.model_attempts),
+            purpose:
+              phase === "initial" ? "content_initial" : "content_recheck",
+            durationMs: 0,
+            code: "ok",
+            generated: 0,
+            validated: 0,
+            duplicates: 0,
+            invalid: 0,
+            accepted: 0,
+          };
+          try {
+            const response = await generateText({
+              model: model.model,
+              ...prompt,
+              temperature: 0.1,
+              maxOutputTokens: run.execution_config.maxOutputTokens,
+              maxRetries: 0,
+              abortSignal: AbortSignal.timeout(
+                Math.max(1, deadline - Date.now()),
+              ),
+              experimental_telemetry: { isEnabled: false },
+            });
+            call.finishReason = response.finishReason;
+            if (response.finishReason === "length")
+              throw new Error("model_output_invalid");
+            const value = JSON.parse(
+              response.text
+                .trim()
+                .replace(/^```(?:json)?\s*/u, "")
+                .replace(/\s*```$/u, ""),
+            );
+            const checked = applyContentReview(
+              value,
+              candidates,
+              run.options,
+              input.background,
+              result.contentReview,
+              phase === "initial",
+            );
+            const seen = new Set(qualityRows.map(contentKey));
+            const replacements = new Map(
+              checked.records.map((row, i) => {
+                const key = contentKey(row),
+                  changed = contentHash(row) !== contentHash(candidates[i]!);
+                // A repair cannot trade quality for a collision or erase an existing row.
+                if (
+                  changed &&
+                  (seen.has(key) ||
+                    (generatesRecords(run.options.operation) &&
+                      acceptedContent.has(key)))
+                ) {
+                  const item = checked.review.items.find(
+                    (item) => item.sourceId === row.sourceId,
+                  )!;
+                  delete item.repaired;
+                  delete item.initialReason;
+                  Object.assign(item, {
+                    contentHash: contentHash(candidates[i]!),
+                    verdict: "nonconforms",
+                    reason: "局部修复产生重复，保留原候选",
+                  });
+                  row = candidates[i]!;
+                }
+                seen.add(contentKey(row));
+                return [row.sourceId, row] as const;
+              }),
+            );
+            qualityRows = qualityRows.map(
+              (row) => replacements.get(row.sourceId) ?? row,
+            );
+            result.contentReview = checked.review;
+            call.validated = candidates.filter((row) =>
+              checked.review.items.some(
+                (item) => item.sourceId === row.sourceId,
+              ),
+            ).length;
+            call.generated = candidates.length;
+            call.invalid = candidates.length - call.validated;
+          } catch (error) {
+            call.code = modelFailure(error, Date.now() >= deadline);
+            result.contentReview.pendingReason =
+              call.code === "timeout"
+                ? "内容核对超时，候选已保留"
+                : "未取得有效内容核对结果，候选已保留";
+          }
+          call.durationMs = Date.now() - calledAt;
+          trace.calls.push(call);
+          await fence(db, job);
+          await saveReview();
+        }
+      }
       if (input.refinement && modelInputs.length) {
         const changed = new Map(
           result.records.map((row) => [row.sourceId, row]),
@@ -843,7 +1163,11 @@ export async function runProcessing(
         throw new ProcessingError(422, "processing_capacity_exceeded");
       outputBytes = body.byteLength;
     } catch (error) {
-      if (error instanceof ProcessingError) throw error;
+      if (
+        error instanceof ProcessingError ||
+        prior?.error_code === "content_review_in_progress"
+      )
+        throw error;
       errorCode = "processing_batch_failed";
       failed++;
       if (input.refinement) {

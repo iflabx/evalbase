@@ -1674,7 +1674,7 @@ export async function executeAssistantTurn(
               scope: {
                 enum: ["preview", "all"],
                 description:
-                  "读取步骤只看样例用preview；全量统计用all。模型仍只看到内容预览，不能声称全量语义已审核。",
+                  "读取步骤只看样例用preview；全量统计用all。必须按effectiveness报告本轮实际修改、未变化、未处理数；改写未生效可仅选该范围重做。content为已持久化模型核对的真实统计，pending/uncertain/nonconforms不能称内容合格，autoRepaired也不代表人工审核。标签种数、标点变化、结构完整不能说明语义质量；模型仅看到预览，禁止声称全量人工审核。",
               },
             },
             required: ["title", "action"],

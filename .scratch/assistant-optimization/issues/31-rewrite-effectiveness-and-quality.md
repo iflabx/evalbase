@@ -1,7 +1,7 @@
 # OPT-31 改写有效性、内容一致性与同会话交付验收
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 Blocked by: OPT-28, OPT-30, OPT-32, OPT-33
 
 优先级：P1。第三批质量修复与最终验收。依赖现有 [OPT-28](28-result-scope-and-goal-count.md)、[OPT-30](30-generation-diversity-and-recovery.md)，以及待实施的 [OPT-32](32-tool-argument-repair.md)、[OPT-33](33-document-classification-and-short-plan.md) 定向验证通过。顺序为 OPT-32 → OPT-33 → OPT-31，不按票号顺序执行。本次仅更新文档，开发待后续授权；最终业务场景、预算和一次集中验收见 [总方案](../../../docs/assistant-generation-repair-batches.md#5-验证与完成口径)。
@@ -60,3 +60,5 @@ Blocked by: OPT-28, OPT-30, OPT-32, OPT-33
 - 2026-10-15：包含直接相关质量修复及一次最终集成验收；仅整理文档，所有验收待执行。自动验证不代替 Owner 验收。
 - 2026-10-15：Owner 确认新增两张前置修复票并更新本票；增加 OPT-32/33 依赖，将内容类别一致性、有限修复及真实语义验收归入本票。原 R31-1–7 保留并细化，新增 R31-8–11；Implementation 仍 not-started，Owner 验收 pending。
 - 2026-10-15：沿用 OPT-33 的两份非 GB 小样本，补强意图分类与无编号改写规范的内容核对；每组 3–5 条，保持现有调用上限和一次最终大批验收。仅文档，Implementation 仍 not-started。
+
+- 2026-10-16：Owner 单张授权开发及同一 4217 更新。实现与验证见 [OPT-31 记录](../opt31-verification.md)，Owner pending；沿用现有分支，不合并/推送。

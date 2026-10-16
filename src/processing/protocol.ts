@@ -6,7 +6,7 @@ import {
 } from "../server/support.js";
 
 export const PROCESSING_EXECUTION = {
-  recipeVersion: "processing-v7",
+  recipeVersion: "processing-v11",
   batchSize: 20,
   maxInputBytesPerBatch: 40000,
   maxOutputTokens: 8192,
@@ -43,6 +43,7 @@ export type ProcessingIssue = {
   count?: number;
 };
 export type ProcessingResult = {
+  contentReview?: import("./content-review.js").ContentReview;
   records: ProcessingOutput[];
   issues: ProcessingIssue[];
 };

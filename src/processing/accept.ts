@@ -1,3 +1,4 @@
+import { contentVerdict, reviewRulesHash } from "./content-review.js";
 import { contentKey, deduplicate } from "./deduplication.js";
 import { guardAssistantCommit } from "../assistant/fence.js";
 import { adoptedCandidateKeys } from "./adoption.js";
@@ -76,16 +77,23 @@ export async function selectedProcessingGroup(
     [runId, [...new Set(ids.map((id) => Number(id.split(":")[0])))]],
   );
   const available = new Map<string, ProcessingOutput>();
+  const contentReviews = new Map<string, ReturnType<typeof contentVerdict>>();
   for (const batch of batches.rows) {
     const result = JSON.parse(
       (await artifacts.readBytes(batch.result_ref, 100000000)).toString("utf8"),
     ) as ProcessingResult;
-    result.records.forEach((row, index) =>
-      available.set(
-        `${batch.ordinal}:${batch.result_indices?.[index] ?? index}`,
-        row,
-      ),
-    );
+    result.records.forEach((row, index) => {
+      const id = `${batch.ordinal}:${batch.result_indices?.[index] ?? index}`;
+      available.set(id, row);
+      contentReviews.set(
+        id,
+        contentVerdict(
+          { ...row, sourceId: `review:${id}` },
+          result.contentReview,
+          reviewRulesHash(run.options, snapshot.background),
+        ),
+      );
+    });
   }
   return {
     run,
@@ -109,6 +117,12 @@ export async function selectedProcessingGroup(
         id,
         ...row,
         runId,
+        contentReview: contentReviews.get(id)!,
+        processingOperation: run.options.operation,
+        unprocessed: Boolean(
+          snapshot.refinement &&
+          !snapshot.refinement.selectedIds.includes(row.sourceId),
+        ),
         candidateOrigin: origins.get(row.sourceId) ?? { runId, resultId: id },
         input,
         source: run.source,

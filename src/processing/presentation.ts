@@ -120,7 +120,10 @@ export async function processingSourceSummary(
 export function processingReviewPage(
   data: Awaited<ReturnType<typeof readProcessingRun>>,
   query: { offset?: string; limit?: string; view?: string; search?: string },
-  runData?: ReadonlyMap<string, Pick<typeof data, "issues" | "rootOperation">>,
+  runData?: ReadonlyMap<
+    string,
+    Pick<typeof data, "issues" | "rootOperation" | "run">
+  >,
 ) {
   const offset = Number(query.offset ?? 0),
     limit = Number(query.limit ?? 20),
@@ -153,6 +156,18 @@ export function processingReviewPage(
       generatesRecords(
         row.original?.adoptionOperation ?? actual.rootOperation,
       ) || !row.original;
+    const roundChanges = row.original
+      ? (actual.run?.options.allowedFields.filter(
+          (field) =>
+            JSON.stringify(row.original![field]) !==
+            JSON.stringify(row.result[field]),
+        ) ?? [])
+      : [];
+    const ineffectiveRewrite =
+      row.processingOperation === "rewrite" &&
+      !row.unprocessed &&
+      !!row.original &&
+      !roundChanges.length;
     const changedFields = added
       ? ["new"]
       : (["question", "expectedOutput", "metadata"] as const).filter(
@@ -172,7 +187,18 @@ export function processingReviewPage(
     if (duplicateIds.has(row.id)) issues.push({ code: "duplicate_content" });
     if (questionCollisionIds.has(row.id))
       issues.push({ code: "question_collision" });
-    return { ...row, changedFields, issues };
+    if (ineffectiveRewrite) issues.push({ code: "ineffective_rewrite" });
+    const content = row.contentReview;
+    if (content?.verdict !== "conforms")
+      issues.push({
+        code:
+          content?.verdict === "nonconforms"
+            ? "content_nonconforms"
+            : content?.verdict === "uncertain"
+              ? "content_uncertain"
+              : "content_pending",
+      });
+    return { ...row, changedFields, roundChanges, ineffectiveRewrite, issues };
   });
   const text = (query.search ?? "").trim().toLowerCase();
   const searched = rows.filter(
@@ -205,12 +231,42 @@ export function processingReviewPage(
     allIds: matched.map((row) => row.id),
     total: matched.length,
     duplicateCount: duplicate.duplicateIds.length,
+    ineffectiveIds: searched
+      .filter((row) => row.ineffectiveRewrite)
+      .map((row) => row.id),
     usableCount: data.usableCount ?? usableCount,
     stats: {
       duplicates: searched.filter((row) => duplicateIds.has(row.id)).length,
       all: searched.length,
+      structurallyValid: searched.filter(
+        (row) => row.result.question.trim() && !duplicateIds.has(row.id),
+      ).length,
       changed: searched.filter((row) => row.changedFields.length).length,
       needsReview: searched.filter((row) => row.issues.length).length,
+      modified: searched.filter(
+        (row) => row.roundChanges.length && !row.unprocessed,
+      ).length,
+      unchanged: searched.filter(
+        (row) =>
+          !row.roundChanges.length &&
+          !row.unprocessed &&
+          row.processingOperation !== "generate" &&
+          row.processingOperation !== "augment",
+      ).length,
+      unprocessed: searched.filter((row) => row.unprocessed).length,
+      ineffectiveRewrite: searched.filter((row) => row.ineffectiveRewrite)
+        .length,
+      contentChecked: searched.filter(
+        (row) => row.contentReview && row.contentReview.verdict !== "pending",
+      ).length,
+      contentPending: searched.filter(
+        (row) => !row.contentReview || row.contentReview.verdict === "pending",
+      ).length,
+      contentProblems: searched.filter((row) =>
+        ["nonconforms", "uncertain"].includes(row.contentReview?.verdict ?? ""),
+      ).length,
+      autoRepaired: searched.filter((row) => row.contentReview?.repaired)
+        .length,
     },
     offset,
     limit,

@@ -35,9 +35,51 @@ export type ReviewRow = {
   sourceLabel?: string;
   changedFields?: string[];
   unprocessed?: boolean;
+  contentReview?: {
+    verdict: "conforms" | "nonconforms" | "uncertain" | "pending";
+    reason: string;
+    repaired?: boolean;
+  };
   issues?: { code: string }[];
 };
+export type ContentStats = {
+  all: number;
+  changed: number;
+  needsReview: number;
+  duplicates?: number;
+  structurallyValid?: number;
+  modified?: number;
+  unchanged?: number;
+  unprocessed?: number;
+  ineffectiveRewrite?: number;
+  contentChecked?: number;
+  contentPending?: number;
+  contentProblems?: number;
+};
+export function ContentReviewSummary({ stats }: { stats?: ContentStats | undefined }) {
+  if (!stats || stats.contentChecked === undefined) return null;
+  return (
+    <div className="space-y-1 text-xs text-muted-foreground" role="status">
+      <p>
+        当前范围 {stats.all} 条 · 结构有效 {stats.structurallyValid ?? 0} 条 · 内容已核对{" "}
+        {stats.contentChecked} 条 · 待核对 {stats.contentPending ?? 0} 条 · 有问题或存疑{" "}
+        {stats.contentProblems ?? 0} 条
+      </p>
+      {stats.modified || stats.unchanged || stats.unprocessed ? (
+        <p>
+          本轮修改 {stats.modified ?? 0} 条 · 未变化 {stats.unchanged ?? 0} 条 · 未处理{" "}
+          {stats.unprocessed ?? 0} 条
+          {stats.ineffectiveRewrite ? ` · 其中 ${stats.ineffectiveRewrite} 条改写未生效` : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 export const issueLabels: Record<string, string> = {
+  ineffective_rewrite: "本轮改写未生效",
+  content_nonconforms: "内容不符合要求",
+  content_uncertain: "内容存疑",
+  content_pending: "内容待核对",
   empty_question: "问题为空",
   question_collision: "问题相同，其他字段不同",
   duplicate_content: "内容重复",
@@ -428,11 +470,27 @@ export function ProcessingReview({
                           .map((field) => fieldLabels[field] ?? field)
                           .join("、") || (changes(row).length ? "" : "未改变")}
                   </p>
-                  {row.issues?.map((issue, i) => (
-                    <p key={i} className="text-xs text-destructive">
-                      自动检查：{issueLabels[issue.code] ?? "此结果需要核对"}
+                  {row.contentReview && (
+                    <p
+                      className={`text-xs ${row.contentReview.verdict === "conforms" ? "text-muted-foreground" : "text-destructive"}`}
+                    >
+                      {row.contentReview.repaired ? "已局部修复 · " : ""}
+                      {row.contentReview.verdict === "conforms"
+                        ? "模型核对未发现问题"
+                        : row.contentReview.verdict === "nonconforms"
+                          ? "内容不符合要求"
+                          : row.contentReview.verdict === "uncertain"
+                            ? "内容存疑"
+                            : "内容待核对"}
                     </p>
-                  ))}
+                  )}
+                  {row.issues
+                    ?.filter((issue) => !issue.code.startsWith("content_"))
+                    .map((issue, i) => (
+                      <p key={i} className="text-xs text-destructive">
+                        自动检查：{issueLabels[issue.code] ?? "此结果需要核对"}
+                      </p>
+                    ))}
                 </td>
               </tr>
             ))}
@@ -517,6 +575,11 @@ export function ProcessingReview({
                     : undefined)
                 }
               />
+              {detail.contentReview && (
+                <p className="rounded-md border bg-muted/30 p-3 text-sm">
+                  {detail.contentReview.reason}。模型核对不代替人工审核。
+                </p>
+              )}
               <Card className="bg-muted/30 text-sm">
                 <CardContent className="p-4">
                   <h3 className="mb-2 font-semibold">

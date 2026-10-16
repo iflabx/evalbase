@@ -29,6 +29,66 @@ const candidates = () =>
   }) as unknown as Page;
 
 describe("full candidate review", () => {
+  it("OPT-31 reports 3 current-round changes, 47 ineffective rewrites; clean no-op remains valid", () => {
+    const data = candidates();
+    data.run.options.operation = "rewrite";
+    data.run.options.outputCount = undefined;
+    data.run.inputCount = 50;
+    data.total = 50;
+    data.records = Array.from({ length: 50 }, (_, i) => ({
+      ...data.records[0]!,
+      id: `0:${i}`,
+      processingOperation: "rewrite" as const,
+      original: {
+        id: String(i),
+        question: `本轮输入${i}`,
+        expectedOutput: "标签",
+        metadata: [],
+        baseline: {
+          id: String(i),
+          question: "更早的源数据",
+          expectedOutput: "标签",
+          metadata: [],
+        },
+      },
+      result: {
+        sourceId: String(i),
+        question: `本轮输入${i}${i < 3 ? "？" : ""}`,
+        expectedOutput: "标签",
+        metadata: [],
+      },
+    }));
+    const checked = reviewCandidates(data);
+    expect(checked.effectiveness).toMatchObject({
+      modified: 3,
+      unchanged: 47,
+      unprocessed: 0,
+      ineffectiveRewrite: 47,
+    });
+    expect(checked.content).toMatchObject({
+      checked: 0,
+      pending: 50,
+      conforms: 0,
+    });
+    expect(checked.complete).toBe(true); // No new adoption quality gate.
+    data.run.options.operation = "clean";
+    expect(reviewCandidates(data).effectiveness.ineffectiveRewrite).toBe(0);
+  });
+  it("OPT-31 separates question collisions from labels and invalidates changed content evidence", () => {
+    const data = candidates();
+    data.records[1]!.result.question = data.records[0]!.result.question;
+    data.records[1]!.result.expectedOutput = "不同答案";
+    data.records[0]!.contentReview = {
+      sourceId: "review:0:0",
+      contentHash: "stale",
+      verdict: "conforms",
+      reason: "旧结论",
+    };
+    const review = reviewCandidates(data);
+    expect(review.questionCollisions).toBe(2);
+    expect(review.content).toMatchObject({ checked: 0, pending: 3 });
+    expect(review.semanticReview).toBe("required");
+  });
   it("OPT-28 does not declare an unverified goal complete by summing generation requests", () => {
     const runs = [50, 30, 2].map((requested, index) => {
       const data = candidates();

@@ -50,7 +50,13 @@ import {
 import { useListSearch } from "@/hooks/use-list-search";
 import { ProcessingSourcePicker } from "@/components/processing-source-picker";
 import { ProcessingFilters } from "@/components/processing-filters";
-import { ProcessingReview, issueLabels, type ReviewRow } from "@/components/processing-review";
+import {
+  ProcessingReview,
+  ContentReviewSummary,
+  issueLabels,
+  type ContentStats,
+  type ReviewRow,
+} from "@/components/processing-review";
 import type { SelectionCondition } from "@/services/selection";
 import { MetadataSummary } from "@/components/material-record-table";
 import { request, canRetainReadResult, type MetadataEntry } from "@/services/workspace";
@@ -185,7 +191,8 @@ type ResultPage = {
   adoptedIds?: string[];
   usableCount?: number;
   duplicateCount?: number;
-  stats?: { all: number; changed: number; needsReview: number; duplicates?: number };
+  stats?: ContentStats;
+  ineffectiveIds?: string[];
   receipts?: Receipt[];
   total: number;
   offset?: number;
@@ -2094,7 +2101,7 @@ function ProcessingResults({
                   )
                     ? ` · 尚缺 ${value.task?.generation || ["augment", "generate"].includes(run.options.operation) ? completionMissing : run.missingCount} 条`
                     : ""}
-                  {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条自动检查问题` : ""}
+                  {value.stats?.needsReview ? ` · ${value.stats.needsReview} 条需核对` : ""}
                 </span>
               </div>
             </div>
@@ -2175,6 +2182,9 @@ function ProcessingResults({
                 )
               )}
             </div>
+          </div>
+          <div className="mt-2">
+            <ContentReviewSummary stats={value.stats} />
           </div>
           {terminal &&
             (completionMissing > 0 || (run.missingCount ?? 0) > 0 || run.status === "failed") && (
@@ -2353,7 +2363,7 @@ function ProcessingResults({
         {[
           ["all", "全部"],
           ["changed", "有变化"],
-          ["issues", "自动检查问题"],
+          ["issues", "只看需核对"],
           ["duplicates", "只看重复"],
         ].map(([key, label]) => (
           <Button
@@ -2413,6 +2423,21 @@ function ProcessingResults({
             >
               选择全部匹配结果
             </Button>
+            {(value.ineffectiveIds?.length ?? 0) > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!terminal || busy || data.isError || stale || unknownSave}
+                onClick={() => {
+                  setSelected(
+                    new Set(value.ineffectiveIds!.filter((id) => !value.adoptedIds?.includes(id))),
+                  );
+                  setKey(crypto.randomUUID());
+                }}
+              >
+                只选改写未生效
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"

@@ -3,7 +3,10 @@ import type { FailureCode } from "./recovery.js";
 import { contentKey } from "./deduplication.js";
 import { PROCESSING_EXECUTION, type ProcessingOutput } from "./protocol.js";
 
-export const GENERATION_RECIPE = "processing-v9";
+export const GENERATION_RECIPE = "processing-v10";
+export function isGenerationRecipe(version: string | undefined) {
+  return version === GENERATION_RECIPE || version === "processing-v9";
+}
 export type GenerationPlan = {
   rootRunId: string;
   total: number;
@@ -117,11 +120,11 @@ export async function generationBudget(
       coalesce(bool_or(pb.diagnostics->>'stopReason'='provider_rejected'),false) AS blocked
     FROM processing_run cur JOIN processing_task t ON t.id=cur.task_id
     JOIN processing_run root ON root.id=t.root_run_id
-    LEFT JOIN processing_run family ON family.task_id=t.id AND family.execution_config->>'recipeVersion'=$2
+    LEFT JOIN processing_run family ON family.task_id=t.id AND family.execution_config->>'recipeVersion'=root.execution_config->>'recipeVersion'
     LEFT JOIN processing_batch pb ON pb.run_id=family.id
-    WHERE cur.id=$1 AND root.execution_config->>'recipeVersion'=$2
+    WHERE cur.id=$1 AND root.execution_config->>'recipeVersion'=ANY($2::text[])
     GROUP BY root.id`,
-      [runId, GENERATION_RECIPE],
+      [runId, [GENERATION_RECIPE, "processing-v9"]],
     )
   ).rows[0];
   if (!row) return undefined;

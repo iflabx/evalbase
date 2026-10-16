@@ -1,6 +1,6 @@
 import { generatesRecords } from "./protocol.js";
 import {
-  GENERATION_RECIPE,
+  isGenerationRecipe,
   remainingGenerationPositions,
   generationPosition,
 } from "./generation.js";
@@ -161,10 +161,11 @@ async function taskState(
               ref.runId === run.parent_run_id &&
               `candidate:${ref.resultId}` === located?.row.id,
           );
-          const position =
-            run.execution_config.recipeVersion === GENERATION_RECIPE
-              ? generationPosition(output)
-              : undefined;
+          const position = isGenerationRecipe(
+            run.execution_config.recipeVersion,
+          )
+            ? generationPosition(output)
+            : undefined;
           const generatedRef =
             position === undefined
               ? undefined
@@ -499,7 +500,7 @@ export async function readProcessingTask(
   let generation:
     | { targetCount: number; validCount: number; missingCount: number }
     | undefined;
-  if (root.execution_config.recipeVersion === GENERATION_RECIPE) {
+  if (isGenerationRecipe(root.execution_config.recipeVersion)) {
     const input = await frozen(artifacts, root);
     if (!input.generation)
       throw new ProcessingError(409, "processing_input_corrupt");
@@ -736,7 +737,7 @@ export async function createProcessingTaskRound(
     const recovery = await processingRecovery(db, latest);
     const root = runs[0]!;
     if (
-      root.execution_config.recipeVersion === GENERATION_RECIPE &&
+      isGenerationRecipe(root.execution_config.recipeVersion) &&
       !(latest.options.operation !== "generate" && recovery.canContinue)
     ) {
       const input = await frozen(artifacts, root);

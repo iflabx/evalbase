@@ -1,6 +1,7 @@
+import { CONTENT_RECIPE } from "./content-review.js";
 import type { Database } from "../db/pool.js";
 import type { ProcessingRun } from "./store.js";
-import { GENERATION_RECIPE, generationBudget } from "./generation.js";
+import { isGenerationRecipe, generationBudget } from "./generation.js";
 
 export type FailureCode =
   | "temporary_service"
@@ -19,6 +20,7 @@ export type CallDiagnostic = {
   durationMs: number;
   code: FailureCode;
   finishReason?: string;
+  purpose?: "content_initial" | "content_recheck";
   generated: number;
   validated: number;
   duplicates: number;
@@ -80,12 +82,14 @@ export async function processingRecovery(
       b.error_code ||
       b.issues.some((i: { code: string }) => i.code === "missing_output"),
   );
-  const bounded = [
-    "processing-v6",
-    "processing-v7",
-    "processing-v8",
-    GENERATION_RECIPE,
-  ].includes(run.execution_config.recipeVersion);
+  const bounded =
+    isGenerationRecipe(run.execution_config.recipeVersion) ||
+    [
+      "processing-v6",
+      "processing-v7",
+      "processing-v8",
+      CONTENT_RECIPE,
+    ].includes(run.execution_config.recipeVersion);
   const available = pending.some(
     (b) =>
       b.diagnostics?.stopReason !== "provider_rejected" &&
@@ -116,8 +120,9 @@ export async function processingRecovery(
   const canRetry =
     terminal && incomplete && !businessFailure && (unstarted || available);
   const budget = await generationBudget(db, run.id);
-  const sharedGeneration =
-    run.execution_config.recipeVersion === GENERATION_RECIPE;
+  const sharedGeneration = isGenerationRecipe(
+    run.execution_config.recipeVersion,
+  );
   const retryAllowed =
     canRetry && !(sharedGeneration && (budget?.exhausted || budget?.blocked));
   return {

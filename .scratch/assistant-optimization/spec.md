@@ -112,7 +112,7 @@ Implementation: in-progress
 | [OPT-28](issues/28-result-scope-and-goal-count.md) | 当前成果范围与业务目标数量一致性 | 现有实现；与 OPT-26/27 独立 | completed | 当前集合及目标数量、兼容修复和验证见 [记录](opt28-verification.md)；Owner pending |
 | [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | none | completed | [实施与验证](opt29-verification.md)、[四项补修及浏览器复测](opt29-followup-verification.md)，Owner pending |
 | [OPT-30](issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性与有界重复补齐 | OPT-29 | completed | 2026-10-15 实现及同一4217交付；Owner pending，GB规划/语义未全通过，见验证记录 |
-| [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33 | not-started | 2026-10-15 更新范围及依赖；Owner pending，验收未执行 |
+| [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33 | in-progress | [OPT-31 实施与验证](opt31-verification.md)；Owner pending |
 | [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | completed | [实现及收尾补修验证](opt32-verification.md)；4217 Web 2cdd519，Owner pending；已保存要求的收尾回放通过，纯文本确认未保存仍留作短提示问题，整体未签通过 |
 | [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划及实际要求保存 | OPT-32 已完成 | completed | [实施及定向验证](opt33-verification.md)；同一4217 Web f411325，Owner pending，候选质量留 OPT-31 |
 

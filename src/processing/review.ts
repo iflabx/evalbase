@@ -1,10 +1,12 @@
 import { canonicalJson } from "../package/contract.js";
+import { contentHash } from "./content-review.js";
 import { contentKey } from "./deduplication.js";
 import type { readProcessingRun } from "./store.js";
 import type { ProcessingInput } from "./protocol.js";
 import { effectiveRules } from "../assistant/requirements.js";
 
 export type CandidateGoal = {
+  requirements?: string[];
   countUnverified?: boolean;
   targetCount?: number | null;
   countKind?: "new" | "final";
@@ -175,8 +177,62 @@ export function reviewCandidates(
         !missingCategories.length,
     };
   });
+  const effectiveness = {
+    modified: 0,
+    unchanged: 0,
+    unprocessed: 0,
+    ineffectiveRewrite: 0,
+  };
+  const content = {
+    checked: 0,
+    pending: 0,
+    conforms: 0,
+    nonconforms: 0,
+    uncertain: 0,
+    autoRepaired: 0,
+  };
+  const questions = new Map<string, Set<string>>();
+  for (const record of records) {
+    const key = record.question.trim();
+    const values = questions.get(key) ?? new Set<string>();
+    values.add(contentKey(record));
+    questions.set(key, values);
+  }
+  for (const batch of runs) {
+    for (const row of batch.records) {
+      const modified =
+        row.original &&
+        batch.run.options.allowedFields.some(
+          (field) =>
+            canonicalJson(row.original![field]) !==
+            canonicalJson(row.result[field]),
+        );
+      if (row.unprocessed) effectiveness.unprocessed++;
+      else if (!["generate", "augment"].includes(batch.run.options.operation)) {
+        if (modified) effectiveness.modified++;
+        else {
+          effectiveness.unchanged++;
+          if (batch.run.options.operation === "rewrite")
+            effectiveness.ineffectiveRewrite++;
+        }
+      }
+      const verdict =
+        row.contentReview?.contentHash === contentHash(row.result)
+          ? row.contentReview
+          : undefined;
+      const status = verdict?.verdict ?? "pending";
+      content[status]++;
+      if (status !== "pending") content.checked++;
+      if (verdict?.repaired) content.autoRepaired++;
+    }
+  }
   return {
     runId: data.run.id,
+    effectiveness,
+    content,
+    questionCollisions: records.filter(
+      (row) => (questions.get(row.question.trim())?.size ?? 0) > 1,
+    ).length,
     total,
     countKind: goal?.countKind ?? "new",
     candidateCount,
@@ -214,5 +270,7 @@ export function reviewCandidates(
       !protectedFieldChanges &&
       !formatIssues.length,
     semanticReview: "required",
+    contentReviewMeaning:
+      "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
   };
 }

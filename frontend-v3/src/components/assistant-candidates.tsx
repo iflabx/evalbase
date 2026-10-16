@@ -9,7 +9,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { request, canRetainReadResult } from "@/services/workspace";
-import { ProcessingReview, issueLabels, type ReviewRow } from "@/components/processing-review";
+import {
+  ProcessingReview,
+  ContentReviewSummary,
+  issueLabels,
+  type ContentStats,
+  type ReviewRow,
+} from "@/components/processing-review";
 
 export type CandidateSelection =
   | { runId: string; resultIds: string[] }
@@ -32,7 +38,8 @@ type CandidatePage = {
     resultIds: string[];
   };
   rootOperation?: string;
-  stats?: { all: number; changed: number; needsReview: number };
+  stats?: ContentStats;
+  ineffectiveIds?: string[];
   issues?: { code: string; count?: number; inputOrdinal?: number }[];
 };
 export function AssistantCandidates({
@@ -175,6 +182,7 @@ export function AssistantCandidates({
             ? `共 ${data.data.taskTotal ?? data.data.total} 条 · 已保存 ${data.data.savedCount ?? 0} 条 · 待保存 ${(data.data.taskTotal ?? data.data.total) - (data.data.savedCount ?? 0)} 条`
             : "候选数量读取后显示；已有成果保留。"}
         </p>
+        <ContentReviewSummary stats={value?.stats} />
         {!readOnly && (
           <p className="text-xs text-muted-foreground">
             内容待审核；勾选后可在对话中调整或确认采用。
@@ -208,7 +216,7 @@ export function AssistantCandidates({
         {[
           ["all", "全部"],
           ["changed", "有变化"],
-          ["issues", "自动检查问题"],
+          ["issues", "只看需核对"],
         ].map(([key, label]) => (
           <Button
             key={key}
@@ -261,6 +269,22 @@ export function AssistantCandidates({
         >
           选择全部匹配结果
         </Button>
+        {(value?.ineffectiveIds?.length ?? 0) > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={readOnly || stale || !data.isSuccess || data.isFetching}
+            onClick={() =>
+              onSelect({
+                scope: "task",
+                reviewRevision: revision ?? "",
+                resultIds: value!.ineffectiveIds!.filter((id) => !value!.savedIds?.includes(id)),
+              })
+            }
+          >
+            只选改写未生效
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"

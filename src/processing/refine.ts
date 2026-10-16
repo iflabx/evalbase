@@ -1,5 +1,5 @@
 import { generatesRecords } from "./protocol.js";
-import { GENERATION_RECIPE, generationBudget } from "./generation.js";
+import { isGenerationRecipe, generationBudget } from "./generation.js";
 import {
   guardAssistantCommit,
   linkAssistantProcessing,
@@ -180,10 +180,11 @@ export async function createRefinementRun(
     const generationRoot = plan
       ? await getProcessingRun(client, scope, plan.rootRunId)
       : undefined;
-    const generation =
-      generationRoot?.execution_config.recipeVersion === GENERATION_RECIPE
-        ? plan
-        : undefined;
+    const generation = isGenerationRecipe(
+      generationRoot?.execution_config.recipeVersion,
+    )
+      ? plan
+      : undefined;
     if (
       options.operation === "generate" &&
       ((generationRoot?.source ?? parent.source).kind !== "background" ||
@@ -197,7 +198,7 @@ export async function createRefinementRun(
       throw new ProcessingError(422, "processing_configuration_invalid");
     if (
       options.operation === "generate" &&
-      generationRoot?.execution_config.recipeVersion === GENERATION_RECIPE
+      isGenerationRecipe(generationRoot?.execution_config.recipeVersion)
     ) {
       const budget = await generationBudget(client, parentId);
       if (
@@ -471,9 +472,10 @@ export async function createRefinementRun(
           ...PROCESSING_EXECUTION,
           recipeVersion:
             options.operation === "generate"
-              ? generationRoot?.execution_config.recipeVersion ===
-                GENERATION_RECIPE
-                ? GENERATION_RECIPE
+              ? isGenerationRecipe(
+                  generationRoot?.execution_config.recipeVersion,
+                )
+                ? generationRoot!.execution_config.recipeVersion
                 : "processing-v8"
               : PROCESSING_EXECUTION.recipeVersion,
         },

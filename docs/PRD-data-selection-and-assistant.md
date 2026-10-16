@@ -207,7 +207,7 @@ Owner 确认将八类测试集实测问题按三个批次整理为 [OPT-26–31 
 
 ### 7.8 调用纠错、文档规划与内容一致性补修（2026-10-15，待实施）
 
-Owner 确认新增 [OPT-32](../.scratch/assistant-optimization/issues/32-tool-argument-repair.md)、[OPT-33](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md)，并更新 [OPT-31](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md)。本次仅编写修复文档，开发顺序与现有三批的衔接见 [总方案 §7](assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)，实现和 Owner 验收状态以台账为准。
+Owner 确认新增 [OPT-32](../.scratch/assistant-optimization/issues/32-tool-argument-repair.md)、[OPT-33](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md)，并更新 [OPT-31](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md)。创建时仅编写修复文档；后续已按 Owner 单张授权实施，开发顺序与现有三批的衔接见 [总方案 §7](assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)，实现和 Owner 验收状态以台账为准。
 
 - 内部工具参数在执行前校验并在原预算内有限修复，失败不改变用户目标、权限及范围；合法修复再次校验后才执行。未知写入先核对回执，真正业务歧义才交给用户，技术字段纠错不转嫁给用户。
 - 文档章节、子项、名称与定义按可证原文关联；短提示生成非空可执行方案，自然语言期望行为不擅自改为固定标签。只给方案时不创建草稿或处理任务，GB 分类仅作验收数据。

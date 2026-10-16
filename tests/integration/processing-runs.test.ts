@@ -8,7 +8,7 @@ import { createPool } from "../../src/db/pool.js";
 import { migrate } from "../../src/db/migrate.js";
 import { loadConfig } from "../../src/config.js";
 
-import { runProcessing } from "../../src/processing/execute.js";
+import { runProcessing as executeProcessing } from "../../src/processing/execute.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
 import { acceptProcessingResults } from "../../src/processing/accept.js";
 import { createRefinementRun } from "../../src/processing/refine.js";
@@ -27,6 +27,16 @@ describe("durable data processing", () => {
   let headers: Record<string, string>;
   let projectId: string;
   let collectionId: string;
+  let opt31Recipe = false;
+  let fixtureDb: ReturnType<typeof createPool>;
+  async function runProcessing(...args: Parameters<typeof executeProcessing>) {
+    if (!opt31Recipe)
+      await args[0].query(
+        "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}','\"processing-v7\"') WHERE id=$1 AND execution_config->>'recipeVersion'='processing-v11'",
+        [args[3].payload.runId],
+      );
+    return executeProcessing(...args);
+  }
   beforeAll(async () => {
     const root = createPool(baseUrl);
     try {
@@ -45,6 +55,24 @@ describe("durable data processing", () => {
       },
       { disableLegacyTestBootstrap: true },
     );
+    fixtureDb = createPool(databaseUrl);
+    // Older fixed relays exercise their original frozen recipe; OPT31 covers the new default.
+    app.addHook("onSend", async (request, reply, payload) => {
+      if (
+        !opt31Recipe &&
+        request.method === "POST" &&
+        reply.statusCode === 201 &&
+        typeof payload === "string"
+      ) {
+        const run = JSON.parse(payload).run;
+        if (run?.id)
+          await fixtureDb.query(
+            "UPDATE processing_run SET execution_config=jsonb_set(execution_config,'{recipeVersion}','\"processing-v7\"') WHERE id=$1 AND options->>'operation'<>'generate'",
+            [run.id],
+          );
+      }
+      return payload;
+    });
     const account = {
       email: "admin@example.test",
       password: "Processing123",
@@ -88,6 +116,7 @@ describe("durable data processing", () => {
   });
   afterAll(async () => {
     await app?.close();
+    await fixtureDb?.end();
     const root = createPool(baseUrl);
     try {
       await root.query(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
@@ -397,7 +426,7 @@ describe("durable data processing", () => {
       });
       expect(changed.json()).toMatchObject({
         total: 44,
-        stats: { all: 45, changed: 44, needsReview: 1 },
+        stats: { all: 45, changed: 44, needsReview: 45 },
         run: {
           sourceSummary: { name: "selection-origin.jsonl" },
           actorName: "管理员",
@@ -412,7 +441,7 @@ describe("durable data processing", () => {
       expect(bySource.statusCode, bySource.body).toBe(200);
       expect(bySource.json()).toMatchObject({
         total: 45,
-        stats: { all: 45, changed: 44, needsReview: 1 },
+        stats: { all: 45, changed: 44, needsReview: 45 },
       });
       expect(bySource.json().records).toHaveLength(2);
       expect(bySource.json().allIds).toHaveLength(45);
@@ -429,11 +458,17 @@ describe("durable data processing", () => {
       });
       const warning = await app.inject({
         method: "GET",
-        url: `${path}?view=issues`,
+        url: `${path}?view=issues&limit=100`,
         headers,
       });
-      expect(warning.json().records).toHaveLength(1);
-      expect(warning.json().records[0].original.id).toBe(`${assetId}:45`);
+      expect(warning.json().records).toHaveLength(45);
+      expect(
+        warning
+          .json()
+          .records.find((row: any) =>
+            row.issues.some((issue: any) => issue.code === "empty_question"),
+          ).original.id,
+      ).toBe(`${assetId}:45`);
       const accepted = await app.inject({
         method: "POST",
         url: `${path}/accept`,
@@ -2663,6 +2698,200 @@ describe("durable data processing", () => {
     }
   });
 
+  it("OPT31 never reviews or repairs an entirely unselected batch", async () => {
+    opt31Recipe = true;
+    const db = createPool(databaseUrl),
+      config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
+      },
+      artifacts = new ArtifactRepository(config.minio);
+    const calls: any[] = [];
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const prompt = JSON.parse(JSON.parse(body).messages.at(-1).content);
+      calls.push(prompt);
+      const value = prompt.candidates
+        ? {
+            reviews: prompt.candidates.map((row: any) => ({
+              id: row.id,
+              checks: {
+                question: "conforms",
+                category: "conforms",
+                expectedBehavior: "conforms",
+                facts: "conforms",
+              },
+              reason: "符合当前要求",
+            })),
+          }
+        : {
+            records: prompt.records.map((row: any) => ({
+              sourceId: row.id,
+              question: row.question + "，请说明。",
+              expectedOutput: row.expectedOutput,
+              metadata: row.metadata,
+            })),
+          };
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: "opt31-local",
+          object: "chat.completion",
+          created: 1,
+          model: "synthetic",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: JSON.stringify(value) },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    try {
+      const draft = (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/collaborative-drafts`,
+          headers,
+          payload: {},
+        })
+      ).json().draft;
+      const ids = [];
+      for (let i = 0; i < 21; i++)
+        ids.push(
+          (
+            await app.inject({
+              method: "POST",
+              url: `/api/projects/${projectId}/collaborative-drafts/${draft.id}/records`,
+              headers,
+              payload: {
+                question: `完整问题${i}`,
+                expectedOutput: "Protected",
+                metadata: [],
+              },
+            })
+          ).json().record.id,
+        );
+      const revision =
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/settings/model-connection",
+            headers,
+          })
+        ).json().connection?.revision ?? 0;
+      expect(
+        (
+          await app.inject({
+            method: "PUT",
+            url: "/api/settings/model-connection",
+            headers,
+            payload: {
+              revision,
+              name: "OPT31 local",
+              endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+              model: "synthetic",
+              apiKey: "synthetic-test",
+              enabled: true,
+            },
+          })
+        ).statusCode,
+      ).toBe(200);
+      const base = `/api/projects/${projectId}/processing-runs`;
+      const parent = (
+        await app.inject({
+          method: "POST",
+          url: base,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: {
+            source: { kind: "draft", id: draft.id, recordIds: ids },
+            options: {
+              operation: "clean",
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          },
+        })
+      ).json().run;
+      async function finish(run: { id: string; jobId: string }) {
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=1,lease_owner='opt31-local',lease_expires_at=now()+interval '120 seconds' WHERE id=$1 RETURNING *",
+            [run.jobId],
+          )
+        ).rows[0];
+        const result = await runProcessing(db, artifacts, config, job);
+        await db.query(
+          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+          [job.id, result],
+        );
+      }
+      await finish(parent);
+      const scope = {
+        projectId,
+        actorId: (
+          await db.query("SELECT actor_id FROM processing_run WHERE id=$1", [
+            parent.id,
+          ])
+        ).rows[0].actor_id,
+      };
+      const { readProcessingRun } =
+        await import("../../src/processing/store.js");
+      const before = await readProcessingRun(
+        db,
+        artifacts,
+        scope,
+        parent.id,
+        { limit: "100" },
+        true,
+      );
+      const child = await createRefinementRun(
+        db,
+        artifacts,
+        scope,
+        parent.id,
+        randomUUID(),
+        {
+          resultIds: ["0:0"],
+          instructions: "将问题改为完整自然问法",
+          allowedFields: ["question"],
+        },
+      );
+      await finish(child.run);
+      const after = await readProcessingRun(
+        db,
+        artifacts,
+        scope,
+        child.run.id,
+        { limit: "100" },
+        true,
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls[1].candidates).toHaveLength(1);
+      expect(after.records).toHaveLength(21);
+      expect(after.records[0]!.result.question).toBe(
+        before.records[0]!.result.question + "，请说明。",
+      );
+      expect(after.records.slice(1).map((row) => row.result.question)).toEqual(
+        before.records.slice(1).map((row) => row.result.question),
+      );
+      expect(after.records.slice(1).map((row) => row.candidateOrigin)).toEqual(
+        before.records.slice(1).map((row) => row.candidateOrigin),
+      );
+    } finally {
+      opt31Recipe = false;
+      await db.end();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   it.each([
     [0, false],
     [1, false],
@@ -3311,6 +3540,377 @@ describe("durable data processing", () => {
       ).toBe(2);
     } finally {
       await db.end();
+    }
+  });
+  it.each([
+    "normal",
+    "invalid",
+    "interrupted",
+    "exhausted",
+    "collision",
+    "cancelled",
+    "revoked",
+  ])("OPT31 bounded batch review: %s", async (scenario) => {
+    opt31Recipe = true;
+    const db = createPool(databaseUrl),
+      config = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
+      },
+      artifacts = new ArtifactRepository(config.minio);
+    const draft = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts`,
+        headers,
+        payload: {},
+      })
+    ).json().draft;
+    const seed = (
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/collaborative-drafts/${draft.id}/records`,
+        headers,
+        payload: {
+          question: "参考问题",
+          expectedOutput: "Protected",
+          metadata: [{ key: "keep", value: "yes" }],
+        },
+      })
+    ).json().record;
+    let calls = 0,
+      activeRun = "";
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const prompt = JSON.parse(JSON.parse(body).messages.at(-1).content);
+      calls++;
+      if (scenario === "cancelled" && prompt.candidates)
+        await db.query(
+          "UPDATE job SET status='cancel_requested' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+          [activeRun],
+        );
+      if (scenario === "revoked" && prompt.candidates)
+        await db.query(
+          "UPDATE app_user SET role='user' WHERE id=(SELECT actor_id FROM processing_run WHERE id=$1)",
+          [activeRun],
+        );
+      const output =
+        scenario === "invalid" && prompt.candidates
+          ? {
+              reviews: [
+                { id: "unknown", verdict: "conforms", reason: "not real" },
+              ],
+            }
+          : prompt.candidates
+            ? {
+                reviews: prompt.candidates.map((row: any) => ({
+                  checks: {
+                    question:
+                      row.question === "错误问法"
+                        ? "nonconforms"
+                        : row.question === "边界问法"
+                          ? "uncertain"
+                          : "conforms",
+                    category: "conforms",
+                    expectedBehavior: "conforms",
+                    facts: "conforms",
+                  },
+                  id: row.id,
+                  verdict:
+                    row.question === "错误问法"
+                      ? "nonconforms"
+                      : row.question === "边界问法"
+                        ? "uncertain"
+                        : "conforms",
+                  reason:
+                    row.question === "边界问法"
+                      ? "背景不足"
+                      : "已依据当前要求核对",
+                  ...(row.question === "错误问法"
+                    ? {
+                        replacement: {
+                          question:
+                            scenario === "collision"
+                              ? "正常问法"
+                              : "完整自然的修复问法",
+                          expectedOutput: "不得覆盖",
+                          metadata: [],
+                        },
+                      }
+                    : {}),
+                })),
+              }
+            : {
+                records: ["正常问法", "错误问法", "边界问法"].map(
+                  (question) => ({
+                    sourceId: prompt.records[0].id,
+                    question,
+                    expectedOutput: "Protected",
+                    metadata: prompt.records[0].metadata,
+                  }),
+                ),
+              };
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: "opt31",
+          object: "chat.completion",
+          created: 1,
+          model: "synthetic",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: JSON.stringify(output) },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    try {
+      const revision =
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/settings/model-connection",
+            headers,
+          })
+        ).json().connection?.revision ?? 0;
+      expect(
+        (
+          await app.inject({
+            method: "PUT",
+            url: "/api/settings/model-connection",
+            headers,
+            payload: {
+              revision,
+              name: "OPT31",
+              endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+              model: "synthetic",
+              apiKey: "synthetic-test",
+              enabled: true,
+            },
+          })
+        ).statusCode,
+      ).toBe(200);
+      const path = `/api/projects/${projectId}/processing-runs`;
+      const created = await app.inject({
+        method: "POST",
+        url: path,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: { kind: "draft", id: draft.id, recordIds: [seed.id] },
+          options: {
+            operation: "augment",
+            instructions: "生成自然完整的问题，保持原标签",
+            allowedFields: ["question"],
+            outputCount: 3,
+          },
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const run = created.json().run;
+      activeRun = run.id;
+      if (["interrupted", "exhausted"].includes(scenario)) {
+        const options = created.json().run.options;
+        const { reviewRulesHash } =
+          await import("../../src/processing/content-review.js");
+        const result = {
+          records: ["正常问法", "错误问法", "边界问法"].map((question) => ({
+            sourceId: seed.id,
+            question,
+            expectedOutput: "Protected",
+            metadata: seed.metadata,
+          })),
+          issues: [],
+          ...(scenario === "interrupted"
+            ? {
+                contentReview: {
+                  version: 1,
+                  rulesHash: reviewRulesHash(options, undefined),
+                  initialAttempted: true,
+                  items: [],
+                  pendingReason: "核对中断",
+                },
+              }
+            : {}),
+        };
+        const stored = await artifacts.storeProcessing(
+          Buffer.from(JSON.stringify(result)),
+          run.id,
+          "batch-0",
+        );
+        await db.query(
+          "INSERT INTO processing_batch(run_id,ordinal,result_ref,output_count,issues,error_code,output_bytes,result_indices,model_attempts,model_started_at) VALUES($1,0,$2,3,'[]','content_review_in_progress',100,ARRAY[0,1,2],$3,now())",
+          [run.id, stored.objectRef, scenario === "exhausted" ? 3 : 2],
+        );
+      }
+      const job = (
+        await db.query(
+          "UPDATE job SET status='running',attempt=1,lease_owner='opt31',lease_expires_at=now()+interval '120 seconds' WHERE id=$1 RETURNING *",
+          [run.jobId],
+        )
+      ).rows[0];
+      if (["cancelled", "revoked"].includes(scenario)) {
+        await expect(
+          runProcessing(db, artifacts, config, job),
+        ).rejects.toThrow();
+        const retained = (
+          await db.query(
+            "SELECT result_ref,model_attempts FROM processing_batch WHERE run_id=$1",
+            [run.id],
+          )
+        ).rows[0];
+        expect(retained.result_ref).toBeTruthy();
+        expect(retained.model_attempts).toBe(2);
+        const frozen = JSON.parse(
+          (await artifacts.readBytes(retained.result_ref, 100000000)).toString(
+            "utf8",
+          ),
+        );
+        expect(frozen.records.map((row: any) => row.question)).toEqual([
+          "正常问法",
+          "错误问法",
+          "边界问法",
+        ]);
+        expect(frozen.contentReview.items).toEqual([]);
+        return;
+      }
+      const result = await runProcessing(db, artifacts, config, job);
+      await db.query(
+        "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+        [job.id, result],
+      );
+      const page = (
+        await app.inject({
+          method: "GET",
+          url: `${path}/${run.id}?view=all`,
+          headers,
+        })
+      ).json();
+      if (scenario === "collision") {
+        expect(calls).toBe(2);
+        expect(page.records.map((row: any) => row.result.question)).toEqual([
+          "正常问法",
+          "错误问法",
+          "边界问法",
+        ]);
+        expect(page.records[1].contentReview.verdict).toBe("nonconforms");
+        expect(page.stats.autoRepaired).toBe(0);
+        return;
+      }
+      if (scenario !== "normal") {
+        expect(calls).toBe(scenario === "invalid" ? 2 : 0);
+        expect(page.stats).toMatchObject({
+          contentChecked: 0,
+          contentPending: 3,
+        });
+        await db.query("UPDATE job SET status='running' WHERE id=$1", [job.id]);
+        await runProcessing(db, artifacts, config, job);
+        expect(calls).toBe(scenario === "invalid" ? 2 : 0);
+        return;
+      }
+      expect(calls).toBe(3);
+      expect(page.records.map((row: any) => row.id)).toEqual([
+        "0:0",
+        "0:1",
+        "0:2",
+      ]);
+      expect(page.records.map((row: any) => row.result.question)).toEqual([
+        "正常问法",
+        "完整自然的修复问法",
+        "边界问法",
+      ]);
+      expect(
+        page.records.every(
+          (row: any) =>
+            row.result.expectedOutput === "Protected" &&
+            row.result.metadata[0].value === "yes",
+        ),
+      ).toBe(true);
+      expect(page.stats).toMatchObject({
+        all: 3,
+        contentChecked: 3,
+        contentPending: 0,
+        contentProblems: 1,
+        autoRepaired: 1,
+      });
+      expect(page.records[1].contentReview).toMatchObject({
+        verdict: "conforms",
+        repaired: true,
+      });
+      expect(page.records[2].contentReview.verdict).toBe("uncertain");
+      const persisted = (
+        await db.query(
+          "SELECT model_attempts,diagnostics FROM processing_batch WHERE run_id=$1",
+          [run.id],
+        )
+      ).rows[0];
+      expect(persisted.model_attempts).toBe(3);
+      const { generationBudget } =
+        await import("../../src/processing/generation.js");
+      const frozenRun = (
+        await db.query(
+          "SELECT options,execution_config FROM processing_run WHERE id=$1",
+          [run.id],
+        )
+      ).rows[0];
+      for (const recipe of ["processing-v10", "processing-v9"]) {
+        await db.query(
+          "UPDATE processing_run SET options=$2,execution_config=$3 WHERE id=$1",
+          [
+            run.id,
+            { ...frozenRun.options, operation: "generate", outputCount: 50 },
+            { ...frozenRun.execution_config, recipeVersion: recipe },
+          ],
+        );
+        expect(await generationBudget(db, run.id)).toMatchObject({
+          targetCount: 50,
+          limit: 15,
+          used: 3,
+          remaining: 12,
+        });
+      }
+      await db.query(
+        "UPDATE processing_run SET options=$2,execution_config=$3 WHERE id=$1",
+        [run.id, frozenRun.options, frozenRun.execution_config],
+      );
+      expect(
+        persisted.diagnostics.calls.map((c: any) => c.purpose).filter(Boolean),
+      ).toEqual(["content_initial", "content_recheck"]);
+      const refreshed = (
+        await app.inject({
+          method: "GET",
+          url: `${path}/${run.id}?view=issues`,
+          headers,
+        })
+      ).json();
+      expect(refreshed.total).toBe(1);
+      const saved = await app.inject({
+        method: "POST",
+        url: `${path}/${run.id}/accept`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          resultIds: ["0:2"],
+          target: { kind: "newDraft", name: "OPT31 存疑部分采用", purpose: "" },
+        },
+      });
+      expect(saved.statusCode, saved.body).toBe(201);
+      expect(saved.json().receipt.adopted).toBe(1);
+      await db.query("UPDATE job SET status='running' WHERE id=$1", [job.id]);
+      await runProcessing(db, artifacts, config, job);
+      expect(calls).toBe(3);
+    } finally {
+      opt31Recipe = false;
+      await db.query("UPDATE app_user SET role='admin'");
+      await db.end();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

@@ -1,3 +1,4 @@
+import { contentVerdict, reviewRulesHash } from "./content-review.js";
 import { processingRecovery } from "./recovery.js";
 import {
   guardAssistantCommit,
@@ -913,7 +914,15 @@ export async function readProcessingRun(
     "SELECT * FROM processing_batch WHERE run_id=$1 ORDER BY ordinal",
     [runId],
   );
-  const records = [];
+  const records: {
+    id: string;
+    candidateOrigin: CandidateOrigin;
+    original: InputSnapshot["records"][number] | undefined;
+    result: ProcessingResult["records"][number];
+    contentReview?: import("./content-review.js").ContentReviewItem;
+    processingOperation?: ProcessingOptions["operation"];
+    unprocessed?: boolean;
+  }[] = [];
   const issues = [];
   let cursor = 0;
   for (const batch of batches.rows) {
@@ -949,6 +958,21 @@ export async function readProcessingRun(
                   } as InputSnapshot["records"][number])
                 : undefined),
             result: result.records[i],
+            contentReview: contentVerdict(
+              {
+                ...result.records[i],
+                sourceId: `review:${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
+              },
+              result.contentReview,
+              reviewRulesHash(run.options, input.background),
+            ),
+            processingOperation: run.options.operation,
+            unprocessed: Boolean(
+              input.refinement &&
+              !input.refinement.selectedIds.includes(
+                result.records[i].sourceId,
+              ),
+            ),
           });
     }
     issues.push(
