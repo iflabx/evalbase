@@ -4,7 +4,7 @@ Status: ready-for-agent
 Implementation: in-progress
 Blocked by: OPT-28, OPT-30, OPT-32, OPT-33
 
-优先级：P1。第三批质量修复与最终验收。依赖现有 [OPT-28](28-result-scope-and-goal-count.md)、[OPT-30](30-generation-diversity-and-recovery.md)，以及待实施的 [OPT-32](32-tool-argument-repair.md)、[OPT-33](33-document-classification-and-short-plan.md) 定向验证通过。顺序为 OPT-32 → OPT-33 → OPT-31，不按票号顺序执行。本次仅更新文档，开发待后续授权；最终业务场景、预算和一次集中验收见 [总方案](../../../docs/assistant-generation-repair-batches.md#5-验证与完成口径)。
+优先级：P1。第三批质量修复与最终验收。依赖现有 [OPT-28](28-result-scope-and-goal-count.md)、[OPT-30](30-generation-diversity-and-recovery.md)，以及已实施的 [OPT-32](32-tool-argument-repair.md)、[OPT-33](33-document-classification-and-short-plan.md) 定向验证通过。顺序为 OPT-32 → OPT-33 → OPT-31，不按票号顺序执行；前置实施证据沿用各票记录。2026-10-16 已获本票开发及同一4217更新授权；最终业务场景、预算和一次集中验收见 [总方案](../../../docs/assistant-generation-repair-batches.md#5-验证与完成口径)。
 
 ## 问题与目标
 
@@ -53,7 +53,7 @@ Blocked by: OPT-28, OPT-30, OPT-32, OPT-33
 
 非 GB 样例和判据复用 [OPT-33 通用文档矩阵](33-document-classification-and-short-plan.md#通用文档验收矩阵)；本票仅验证相应候选的内容核对及已有有界修复，不重复测试所有文档变体，不另建通用评分器。文档依据不足时保持存疑/待审核，不凭格式通过给出内容合格结论。
 
-不改变原件、正式版本、权限、三字段格式和采用/发布确认。不新增通用评分体系、向量相似度、跨会话知识库；核对结果优先复用当前任务/结果元数据，仅在实施证明确有需要时做最小兼容增补。当前文档不代表开发、部署、合并或人工验收完成。
+不改变原件、正式版本、权限、三字段格式和采用/发布确认。不新增通用评分体系、向量相似度、跨会话知识库；核对结果优先复用当前任务/结果元数据，仅在实施证明确有需要时做最小兼容增补。实施、部署及实际未通过项以验证记录为准；自动验证不代表 Owner 验收，合并/推送不在本轮授权内。
 
 ## Comments
 
@@ -62,3 +62,5 @@ Blocked by: OPT-28, OPT-30, OPT-32, OPT-33
 - 2026-10-15：沿用 OPT-33 的两份非 GB 小样本，补强意图分类与无编号改写规范的内容核对；每组 3–5 条，保持现有调用上限和一次最终大批验收。仅文档，Implementation 仍 not-started。
 
 - 2026-10-16：Owner 单张授权开发及同一 4217 更新。实现与验证见 [OPT-31 记录](../opt31-verification.md)，Owner pending；沿用现有分支，不合并/推送。
+
+- 2026-10-16 收尾状态：主要功能与80项不同定向通过，4217代码5dbb6c7，数据无损保留；Computer Use唯一八类集成实际100条生成/50条保存，复杂会话恢复仍参数纠错超时。Implementation保持in-progress，Owner pending；R31-4/5/6全量门槛未关闭，详见验证记录。不合并/推送。
