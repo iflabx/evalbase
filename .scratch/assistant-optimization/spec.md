@@ -1,3 +1,5 @@
+2026-10-16 OPT-33复测补修已更新同一4217 Web `7d67bc4`：本地无损归一直接返回、单步骤纠错、超时诊断与安全继续规划。原失败会话已通过Computer Use恢复，原短提示再次保存八类各50方案；48个不同定向自动用例通过，数据保留，Owner pending。历史失败及独立数量要求文字残留未改写为通过，见[补修记录](opt33-verification.md#8-2026-10-16-gb-八类规划失败补修)。
+
 2026-10-15 最新实施：[OPT-33](issues/33-document-classification-and-short-plan.md) 已完成通用文档分类引用、短提示可执行方案及实际要求保存；应用 f411325631bdad8ccd160c5b2a81d4c5261d3247 已更新同一4217 Web，现有验收数据保留。82个不同定向用例、最终六种固定文档复测、全部开发失败及场景人工核对见[验证记录](opt33-verification.md)。Implementation completed，Owner pending；OPT-31 保持 not-started。
 
 2026-10-15 最新文档：Owner 确认新增 [OPT-32](issues/32-tool-argument-repair.md) 调用前参数纠错、[OPT-33](issues/33-document-classification-and-short-plan.md) 文档分类引用与短提示规划，并扩充 [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) 的内容一致性与有限修复。开发顺序为 OPT-32 → OPT-33 → OPT-31；OPT-32 已按后续授权实施并完成本轮收尾补修，Owner pending；OPT-33 已按后续授权实施，Owner pending；OPT-31 仍 not-started。共同边界和验证安排见 [补修说明](../../docs/assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整)。
