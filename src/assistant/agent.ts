@@ -119,7 +119,9 @@ function hasNoEffect(record: Record<string, any>) {
   return (
     record.effect === "none" ||
     (record.status === "failed" &&
-      validationWithoutEffect.has(record.error?.code))
+      (validationWithoutEffect.has(record.error?.code) ||
+        (record.name === "request_processing_apply" &&
+          record.error?.code === "processing_result_invalid")))
   );
 }
 function unresolvedFailure(records: Record<string, any>[]) {
@@ -1534,7 +1536,7 @@ export async function executeAssistantTurn(
                 });
             }
             const noEffect =
-              !actionStarted || validationWithoutEffect.has(error.code);
+              !actionStarted || hasNoEffect({ name, status: "failed", error });
             if (
               !noEffect &&
               [
@@ -2364,20 +2366,40 @@ export async function executeAssistantTurn(
           requirementsKey,
         );
         for (const bound of current.executionPlan?.steps ?? []) {
-          if (
-            !bound.operation ||
-            bound.status !== "pending" ||
-            plan?.steps.some(
-              (step) => step.operation?.key === bound.operation.key,
-            )
-          )
-            continue;
+          if (!bound.operation || bound.status !== "pending") continue;
+          const retained = plan?.steps.some(
+            (step) => step.operation?.key === bound.operation.key,
+          );
           const records = (
             await db.query(
               "SELECT x FROM assistant_turn t, jsonb_array_elements(t.tool_results) x WHERE t.session_id=$1 AND x->>'key'=$2",
               [turn.session_id, bound.operation.key],
             )
           ).rows.map((row) => row.x);
+          if (retained) {
+            // Older versions could freeze a range validation before any proposal existed.
+            // Retain the declared input; release only this proven no-effect reservation.
+            if (
+              records.length &&
+              records.every(
+                (record) =>
+                  record.status === "failed" &&
+                  record.name === "request_processing_apply" &&
+                  record.error?.code === "processing_result_invalid",
+              )
+            ) {
+              plan = {
+                ...plan!,
+                steps: plan!.steps.map((step) => {
+                  if (step.operation?.key !== bound.operation.key) return step;
+                  const unbound = { ...step };
+                  delete unbound.operation;
+                  return unbound;
+                }),
+              };
+            }
+            continue;
+          }
           if (
             !records.length ||
             records.some(

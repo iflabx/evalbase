@@ -17837,6 +17837,130 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it.each([
+    ["processing_result_invalid", false],
+    ["assistant_operation_unknown", false],
+    ["processing_result_invalid", true],
+    ["assistant_operation_unknown", true],
+  ] as const)(
+    "OPT31 revalidates a pre-confirmation invalid selection but keeps uncertain effects frozen (%s, preserve:%s)",
+    async (code, preserve) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      await opt21Session();
+      try {
+        requestedTool = { name: "query_project", input: { kind: "project" } };
+        const initial = await opt21End(await opt21Submit("查询项目"));
+        const turnId = initial.turns.at(-1).id,
+          key = "assistant:fixture:selection-before-confirmation";
+        const input = {
+          runId: "processing_fixture",
+          target: { kind: "newDraft", name: "范围修复验收" },
+        };
+        await db.query(
+          "UPDATE assistant_turn SET tool_results=$2::jsonb WHERE id=$1",
+          [
+            turnId,
+            JSON.stringify([
+              {
+                key,
+                name: "request_processing_apply",
+                input,
+                status: "failed",
+                error: { code },
+              },
+            ]),
+          ],
+        );
+        const task = {
+          ...initial.task,
+          stage: "failed",
+          executionPlan: {
+            mode: "execute",
+            current: 0,
+            needsReview: false,
+            requirementsKey: planRequirementsKey(initial.task),
+            steps: [
+              {
+                id: "step_fixture",
+                title: "保存当前候选",
+                action: "request_processing_apply",
+                status: "pending",
+                input,
+                operation: { key, input },
+              },
+            ],
+          },
+        };
+        await db.query(
+          "UPDATE assistant_session SET task=$2::jsonb WHERE id=$1",
+          [sessionId, JSON.stringify(task)],
+        );
+        toolSequence = [
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              ...(!preserve
+                ? {
+                    steps: [
+                      {
+                        title: "保存当前候选",
+                        action: "request_processing_apply",
+                        input: { ...input, allValid: true },
+                      },
+                    ],
+                  }
+                : {}),
+            },
+          },
+        ];
+        const state = await opt21End(
+          await opt21Submit("修正采用范围，先只保存方案，暂不执行。"),
+        );
+        const current = state.turns.at(-1),
+          plan = current.tools.find((t: any) => t.name === "plan_task");
+        const stored = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        if (code === "processing_result_invalid" || preserve) {
+          expect(plan, JSON.stringify(current)).toMatchObject({
+            status: "succeeded",
+          });
+          expect(state.task.executionPlan.mode).toBe("plan");
+          expect(state.task.executionPlan.steps[0].input.allValid).toBe(
+            preserve ? undefined : true,
+          );
+          if (code === "processing_result_invalid")
+            expect(stored.executionPlan.steps[0].operation).toBeUndefined();
+          else expect(stored.executionPlan.steps[0].operation.key).toBe(key);
+        } else {
+          expect(plan).toMatchObject({
+            status: "failed",
+            error: { code: "assistant_retry_parameters_changed" },
+          });
+          expect(stored.executionPlan.steps[0].operation.key).toBe(key);
+        }
+        expect(
+          current.tools.filter(
+            (t: any) =>
+              t.name === "request_processing_apply" && t.status === "succeeded",
+          ),
+        ).toHaveLength(0);
+        expect(
+          state.proposals.filter((p: any) => p.status === "pending"),
+        ).toHaveLength(0);
+      } finally {
+        sessionId = previous;
+        toolSequence = [];
+        requestedTool = undefined;
+        await db.end();
+      }
+    },
+  );
+
   it("OPT31 keeps a known temporarily inactive tool non-executable and lets the model return to the legal step", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);
