@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useInfiniteQuery, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ChevronLeft,
   Maximize2,
@@ -320,6 +320,10 @@ export function ProjectAssistant({
   pageContext?: AssistantPageContext | undefined;
   canWrite: boolean;
 }) {
+  const assistantIndex = useRouterState({
+    select: (state) =>
+      state.location.pathname.replace(/\/$/, "") === `/projects/${projectId}/assistant`,
+  });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [sessionSearch, setSessionSearch] = useState(""),
@@ -481,7 +485,7 @@ export function ProjectAssistant({
     retry: false,
   });
   useEffect(() => {
-    if (sessionId || sessionSearch || !sessions.data) return;
+    if (!assistantIndex || sessionId || sessionSearch || !sessions.data) return;
     let remembered: string | null = null;
     try {
       remembered = sessionStorage.getItem(scopeKey + "last");
@@ -518,6 +522,7 @@ export function ProjectAssistant({
       });
     return () => controller.abort();
   }, [
+    assistantIndex,
     sessionId,
     sessions.data,
     sessionSearch,
@@ -1797,7 +1802,7 @@ export function ProjectAssistant({
                         {visible.task.review.countKind === "final" &&
                           visible.task.review.baseCount !== undefined && (
                             <p className="text-muted-foreground">
-                              草稿已有 {visible.task.review.baseCount} 条 · 待采用{" "}
+                              核对时：草稿原有 {visible.task.review.baseCount} 条 · 本轮拟采用{" "}
                               {visible.task.review.remainingCount} 条
                             </p>
                           )}

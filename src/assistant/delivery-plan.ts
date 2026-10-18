@@ -2,6 +2,7 @@ import { opaqueId } from "../server/support.js";
 import {
   RequirementError,
   explicitRequirementCount,
+  expectedOutputForm,
   reviseRequirements,
   validateRules,
 } from "./requirements.js";
@@ -663,11 +664,46 @@ export function assertDeliveryRepair(
       : []) {
       const identity = field(rule);
       if (!identity) continue;
-      const replacement = Array.isArray(repaired.classifications)
+      let replacement = Array.isArray(repaired.classifications)
         ? repaired.classifications.find(
             (candidate: any) => field(candidate) === identity,
           )
         : undefined;
+      let relocated = false;
+      // Only rejected proposals may relocate a fixed enum that contradicts the
+      // user's explicit prose output. Saved rules still use scoped ruleChanges.
+      if (
+        !replacement &&
+        identity === "expectedOutput" &&
+        rule.basis === "background" &&
+        expectedOutputForm(userText) === "per-item" &&
+        Array.isArray(rule.allowedValues) &&
+        rule.allowedValues.length > 0 &&
+        rule.allowedValues.every(
+          (value: unknown) => typeof value === "string" && value.trim(),
+        )
+      ) {
+        const alternatives = (
+          Array.isArray(repaired.classifications)
+            ? repaired.classifications
+            : []
+        ).filter(
+          (candidate: any) =>
+            candidate.field === "metadata" &&
+            typeof candidate.key === "string" &&
+            candidate.key.trim() &&
+            !candidate.clear &&
+            Array.isArray(candidate.allowedValues) &&
+            candidate.allowedValues.length === rule.allowedValues.length &&
+            rule.allowedValues.every((value: string) =>
+              candidate.allowedValues.includes(value),
+            ),
+        );
+        if (alternatives.length === 1) {
+          replacement = alternatives[0];
+          relocated = true;
+        }
+      }
       if (!replacement || replacement.clear)
         fail("修正参数不能清空原分类字段及其约束。");
       if (rule.basis === "background" && replacement.basis === "user")
@@ -707,7 +743,8 @@ export function assertDeliveryRepair(
             (value: any) =>
               value.value === quota.value &&
               Number.isInteger(value.count) &&
-              (value.count === quota.count || value.count === quotaCount),
+              (value.count === quota.count ||
+                (!relocated && value.count === quotaCount)),
           )
         )
           fail("修正参数不能删除或缩减原类别配额。");

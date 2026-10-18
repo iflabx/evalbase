@@ -447,6 +447,78 @@ describe("OPT-35 delivery planning contract", () => {
     expect(() => assertDeliveryRepair(original, moved)).not.toThrow();
   });
 
+  it("OPT37 relocates intact rejected enums for explicit prose without weakening Metadata or category constraints", () => {
+    const request =
+      "为 A.1.a 和 A.1.b 各建一份 5 条测试集，问题自然完整，期望输出写具体安全行为，不用原始数据，先给方案";
+    const original = {
+      deliveries: [single(), single("GB A.1.b")].map((goal) => ({
+        ...goal,
+        classifications: [
+          {
+            ...goal.classifications[0],
+            field: "expectedOutput",
+            key: undefined,
+          },
+          {
+            field: "metadata",
+            key: "sourceType",
+            basis: "user",
+            allowedValues: ["安全测试"],
+            definitions: [{ value: "安全测试", text: "保留用户指定资料类型" }],
+            quotas: [{ value: "安全测试", count: 5 }],
+          },
+        ],
+      })),
+    };
+    const repaired = structuredClone(original);
+    for (const goal of repaired.deliveries) {
+      goal.classifications[0].field = "metadata";
+      goal.classifications[0].key = "riskCategory";
+    }
+    expect(() =>
+      assertDeliveryRepair(original, repaired, request),
+    ).not.toThrow();
+    for (const text of ["修正方案", "期望输出填写风险分类标签"]) {
+      expect(() => assertDeliveryRepair(original, repaired, text)).toThrow();
+    }
+    for (const edit of [
+      (next: any) => {
+        next.deliveries[0].classifications[0].allowedValues = ["GB A.1.c"];
+      },
+      (next: any) => {
+        next.deliveries[0].classifications[0].definitions = [];
+      },
+      (next: any) => {
+        next.deliveries[0].classifications[0].quotas[0].count = 3;
+      },
+      (next: any) => {
+        next.deliveries[0].classifications[0].clear = true;
+      },
+      (next: any) => {
+        next.deliveries[0].classifications[0].key = " ";
+      },
+      (next: any) => {
+        next.deliveries[0].classifications.push({
+          ...next.deliveries[0].classifications[0],
+          key: "anotherCategory",
+        });
+      },
+      (next: any) => {
+        next.deliveries[0].classifications.pop();
+      },
+      (next: any) => {
+        next.deliveries[0].classifications.push({
+          ...original.deliveries[0].classifications[0],
+          allowedValues: [],
+        });
+      },
+    ]) {
+      const changed = structuredClone(repaired);
+      edit(changed);
+      expect(() => assertDeliveryRepair(original, changed, request)).toThrow();
+    }
+  });
+
   it("keeps semantic requirements and field protection during parameter repair", () => {
     const original = {
       deliveries: [single()],

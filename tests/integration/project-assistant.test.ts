@@ -15963,6 +15963,83 @@ describe("project assistant public contract", () => {
     ]);
     return { db, source, runs, artifacts, cfg };
   }
+  it("OPT37 rejects a historical candidate refinement when a completed task starts a saved draft edit", async () => {
+    const previous = sessionId,
+      f = await opt25Results(false, [3, 3]);
+    try {
+      // Existing draft and runs remain; a new request after completion has no current candidates.
+      await f.db.query(
+        'UPDATE assistant_session SET task=task||\'{"stage":"complete"}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      const before = (
+        await f.db.query("SELECT count(*)::int AS n FROM processing_run")
+      ).rows[0].n;
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            nextAction: "refine_candidates",
+            steps: [
+              {
+                title: "改写草稿前两条问题",
+                action: "refine_candidates",
+                input: {
+                  runId: f.runs[0],
+                  allResults: true,
+                  instructions: "仅改写前两条，其余保留",
+                  allowedFields: ["question"],
+                },
+              },
+            ],
+          },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit(
+          "把这份草稿的前两条问题改写得更口语化，保留期望输出和Metadata，其余4条不变",
+          { kind: "draft", id: f.source },
+        ),
+      );
+      const rejected = state.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "plan_task");
+      expect(rejected).toMatchObject({
+        status: "failed",
+        error: { code: "assistant_tool_input_invalid" },
+      });
+      expect(rejected.error.hint).toContain("read_records");
+      expect(rejected.error.hint).toContain("recordIds");
+      expect(rejected.error.hint).toContain("submit_processing");
+      expect(state.task.runId).toBeUndefined();
+      expect(
+        (await f.db.query("SELECT count(*)::int AS n FROM processing_run"))
+          .rows[0].n,
+      ).toBe(before);
+      expect(
+        (
+          await f.db.query(
+            "SELECT count(*)::int AS n FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+            [f.source],
+          )
+        ).rows[0].n,
+      ).toBe(6);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
   it.each(["permission", "content"])(
     "OPT-25 fences historical candidate reads when %s changes during presentation",
     async (change) => {

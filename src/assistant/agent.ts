@@ -465,6 +465,17 @@ export async function executeAssistantTurn(
   let currentStep: { id: string | null; action: string } | null = null;
   const restoring = Number(turn.execution_attempt) > 1 || turn.resuming;
 
+  const draftRewriteHint =
+    "当前没有待修改的处理候选。已保存草稿先用read_records读取目标记录的真实recordIds，再用submit_processing，operation:rewrite、source为该草稿且recordIds仅含这些记录；保留未选记录和受保护字段，不能把历史运行或allResults当成本轮范围。";
+  function hasCurrentCandidates(task: Record<string, any>) {
+    const picked = turn.candidate_selection ?? task.selectedCandidates;
+    return Boolean(
+      task.runId ||
+      task.runIds?.length ||
+      (picked?.resultIds?.length && (picked.runId || picked.groups?.length)),
+    );
+  }
+
   async function fixedSelection(
     source: Record<string, any>,
     configuration: Record<string, any>,
@@ -1658,7 +1669,7 @@ export async function executeAssistantTurn(
                                 ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
                                 : error.code ===
                                     "assistant_candidate_selection_invalid"
-                                  ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求整批时用where:{field:question,operator:contains,value:空字符串}，不要翻页猜ID；已有勾选范围不得扩大。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
+                                  ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求当前全部候选时用allResults:true，不能用空where条件；已保存草稿应先read_records读取目标真实recordIds，再submit_processing rewrite，不能从历史运行扩大范围。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
                                   : error.code === "processing_scope_invalid"
                                     ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
                                     : [
@@ -1907,6 +1918,15 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        if (
+          !hasCurrentCandidates(current) &&
+          (input.steps?.[0]?.action ?? input.nextAction) === "refine_candidates"
+        )
+          throw new AssistantError(
+            422,
+            "assistant_tool_input_invalid",
+            draftRewriteHint,
+          );
         const documents = (
           await db.query(
             'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
@@ -3381,7 +3401,7 @@ export async function executeAssistantTurn(
     ),
     submit_processing: businessTool(
       "submit_processing",
-      "提交当前原始输入的清洗、改写或扩充，不采用或发布。勾选当前候选后改写应调用refine_candidates与allSelected:true，不能调用本工具。省略来源、字段和已有步骤参数时复用当前任务事实；省略范围只复用同来源固定选择。首次处理必须给selection/recordIds或明确allRecords，不能默认全量。参考资料扩写时也须确定参考输入：在用户指定来源内选读出的真实recordIds，或用户已指明全部当前资料时allRecords:true；outputCount不定义参考范围。clean/rewrite一条输入对应一条候选；augment的outputCount为新增数量，默认继承当前新增目标。切换来源先更新plan_task并重新选取。",
+      "提交原始资料或已保存草稿的清洗、改写或扩充，不采用或发布。已保存草稿的局部改写先read_records读取目标记录，再以该草稿source和这些真实recordIds提交rewrite，未选记录保留；当前未采用候选的勾选改写才用refine_candidates与allSelected:true。省略来源、字段和已有步骤参数时复用当前任务事实；省略范围只复用同来源固定选择。首次处理必须给selection/recordIds或明确allRecords，不能默认全量。参考资料扩写时也须确定参考输入：在用户指定来源内选读出的真实recordIds，或用户已指明全部当前资料时allRecords:true；outputCount不定义参考范围。clean/rewrite一条输入对应一条候选；augment的outputCount为新增数量，默认继承当前新增目标。切换来源先更新plan_task并重新选取。",
       {
         source: sourceSchema,
         recordIds: ids,
@@ -3677,7 +3697,7 @@ export async function executeAssistantTurn(
     ),
     refine_candidates: businessTool(
       "refine_candidates",
-      "按用户明确范围改写当前整任务有效成果，保留未选记录，不新增或补齐数量。明确全部用allResults:true，无需先勾选；按条件用where，在全部当前成果匹配，不能用空条件冒充全量；UI固定勾选用allSelected:true，不能因未勾选扩大范围。三者与历史单批resultIds互斥；runId只定位当前任务，不把历史运行当当前全部。allowedFields仅包含用户允许修改字段。",
+      "按用户明确范围改写当前任务未采用的有效候选，保留未选记录，不新增或补齐数量。已保存草稿使用read_records读取准确记录，再submit_processing rewrite，不能借历史runId重开候选。明确当前全部候选用allResults:true，无需先勾选；按条件用where，在全部当前成果匹配，不能用空条件冒充全量；UI固定勾选用allSelected:true，不能因未勾选扩大范围。三者与历史单批resultIds互斥；runId只定位当前任务，不把历史运行当当前全部。allowedFields仅包含用户允许修改字段。",
       {
         runId: string,
         resultIds: ids,
@@ -3710,6 +3730,12 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0]?.task;
+        if (!hasCurrentCandidates(task))
+          throw new AssistantError(
+            422,
+            "assistant_tool_input_invalid",
+            draftRewriteHint,
+          );
         const picked = turn.candidate_selection ?? task.selectedCandidates;
         if (input.where && !input.where.value.trim())
           throw new AssistantError(
@@ -5356,6 +5382,7 @@ export async function executeAssistantTurn(
       model: model.model,
       temperature: 0.2,
       instructions:
+        "区分未采用候选和已保存草稿：refine_candidates只改当前未采用候选；草稿已保存后的局部改写，先read_records按明确范围读取真实记录，再submit_processing rewrite并传相同draft来源及这些recordIds，保留未选记录和受保护字段。不能从历史生成运行恢复全量候选代替当前草稿，也不能用allResults处理只要求的前两条。" +
         "新文档规划使用deliveries，一份集合内多类配额放同项；已保存集合id保持稳定，省略保持，只有用户明确取消才remove。步骤和整体数量由服务端派生，不另写嵌套工具计划。当前全部候选改写用allResults:true，按非空条件用where，UI固定勾选用allSelected:true，三者不混用；没有勾选不等于全部。数量含义分开：targetCount是当前测试集交付目标，overallTargetCount是多测试集合计目标，outputCount仅为本次新增量。首次明确目标先保存plan_task；普通补齐、省略数量和计划重建不能改变当前目标。read_processing报告countUnverified时，先从原始请求和生效要求核对；原话明确可直接plan_task恢复，不明确才问业务数量。不能累加各批请求量、拿现有候选数反推目标，或把八类各50的400填成首类目标。" +
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
