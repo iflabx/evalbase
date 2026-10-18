@@ -110,6 +110,18 @@ type Conversation = {
     stage: string;
     executionPaused?: boolean;
     overallTargetCount?: number | null;
+    deliveries?: {
+      id: string;
+      name: string;
+      count: number;
+      countKind: "new" | "final";
+      status: string;
+      generatedCount: number | null;
+      savedCount: number;
+      confirmed: boolean;
+      run?: { id: string; status: string; url: string };
+      draft?: { id: string; url: string; count: number };
+    }[];
     runId?: string;
     runIds?: string[];
     checkedStatus?: string;
@@ -215,6 +227,19 @@ const toolLabels: Record<string, string> = {
   request_processing_apply: "准备采用处理结果",
   request_publish: "准备发布版本",
 };
+const deliveryStatuses: Record<string, string> = {
+  planned: "方案已保存",
+  pending: "待执行",
+  processing: "处理中",
+  awaiting_review: "待审核",
+  awaiting_confirmation: "待确认保存",
+  partially_saved: "部分已保存",
+  saved: "已保存",
+  failed: "需要重试",
+  paused: "已暂停",
+  stopped: "已停止",
+  needs_review: "需重新核对",
+};
 const messages: Record<string, string> = {
   assistant_document_format: "请选择 PDF、Markdown 或 TXT 文档。",
   assistant_document_capacity:
@@ -232,7 +257,7 @@ const messages: Record<string, string> = {
   assistant_background_capacity: "选用的背景过长，请缩小当前任务的依据范围。",
   assistant_background_changed: "背景已经变化，请重新核对要求。",
   assistant_background_rule_mismatch: "分类规则与选用的文档定义不一致，请先纠正规则。",
-  assistant_tool_input_invalid: "操作参数不符合要求，助手需要纠正参数后继续。已有成果保留。",
+  assistant_tool_input_invalid: "本步未完成，原有要求和成果已保留。可重试未完成步骤。",
   processing_scope_changed: "资料内容已经变化，请重新确定处理范围。",
   processing_already_adopted: "这些候选已采用到相同草稿，请核对剩余结果。",
   processing_results_overlap: "同一记录有两份竞争结果，请先明确保留哪一份或进行局部重改。",
@@ -266,7 +291,7 @@ const messages: Record<string, string> = {
   draft_field_conflict: "同一字段已有新修改，未覆盖当前内容。",
   model_connection_unavailable: "请管理员先在设置中启用模型连接。",
   assistant_not_found: "当前会话不可访问。",
-  assistant_reference_invalid: "对象引用无效，请重新查询或明确选择目标。",
+  assistant_reference_invalid: "当前资料已不可用，请重新选择来源后继续。",
   assistant_source_invalid: "缺少来源，请明确文件、草稿或版本。",
   processing_scope_invalid: "尚未确定处理记录，请明确范围。",
   processing_still_running: "处理任务仍在运行，可在任务卡中查看进度。",
@@ -1194,21 +1219,19 @@ export function ProjectAssistant({
                         </p>
                       )}
                       {turn.errorCode && (
-                        <div className="space-y-2">
-                          <p role="alert" className="text-destructive">
-                            {turn.diagnostics?.failure?.reason ??
-                              messages[turn.errorCode] ??
-                              "本轮未完成，请核对已执行的操作后再试。"}
-                          </p>
-                          {turn.diagnostics?.failure?.nextAction && (
-                            <p className="text-sm text-muted-foreground">
-                              {turn.diagnostics.failure.nextAction}
+                        <details className="text-xs text-muted-foreground">
+                          <summary className="cursor-pointer">本轮诊断</summary>
+                          <div className="mt-2 space-y-2 break-words">
+                            <p>
+                              {turn.diagnostics?.failure?.reason ??
+                                messages[turn.errorCode] ??
+                                "本轮未完成，已执行操作保留在下方。"}
                             </p>
-                          )}
-                          <details className="text-xs text-muted-foreground">
-                            <summary className="cursor-pointer">诊断详情</summary>
-                            {turn.diagnostics?.failure ? (
-                              <div className="mt-2 space-y-1 break-words">
+                            {turn.diagnostics?.failure?.nextAction && (
+                              <p>{turn.diagnostics.failure.nextAction}</p>
+                            )}
+                            {turn.diagnostics?.failure && (
+                              <div className="space-y-1">
                                 {turn.diagnostics.currentStep && (
                                   <p>
                                     失败步骤：
@@ -1223,11 +1246,9 @@ export function ProjectAssistant({
                                 </p>
                                 <p>诊断编号：{turn.diagnostics.diagnosticId}</p>
                               </div>
-                            ) : (
-                              <p className="mt-2">没有详细诊断，已执行操作可在下方核对。</p>
                             )}
-                          </details>
-                        </div>
+                          </div>
+                        </details>
                       )}
                       {turn.tools.length > 0 && (
                         <details className="rounded-md border bg-card p-3">
@@ -1572,6 +1593,51 @@ export function ProjectAssistant({
                   aria-label="当前任务"
                   className="space-y-3 rounded-md border bg-card p-4 shadow-sm"
                 >
+                  {Boolean(visible.task.deliveries?.length) && (
+                    <div className="space-y-2 border-b pb-3">
+                      <h3 className="text-sm font-medium">交付目标</h3>
+                      <ul aria-label="交付目标" className="divide-y">
+                        {visible.task.deliveries!.map((delivery) => (
+                          <li key={delivery.id} className="space-y-2 py-3 first:pt-0 last:pb-0">
+                            <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
+                              <span className="min-w-0 break-words font-medium">
+                                {delivery.name}
+                              </span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {deliveryStatuses[delivery.status] ?? "待核对"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {delivery.countKind === "final" && delivery.draft
+                                ? `草稿总数 ${delivery.draft.count} / 目标 ${delivery.count} 条`
+                                : `${delivery.countKind === "final" ? "目标总数" : "目标新增"} ${delivery.count} 条`}
+                              {delivery.generatedCount !== null &&
+                                ` · 候选 ${delivery.generatedCount} 条`}
+                              {` · 本次已保存 ${delivery.savedCount} 条`}
+                            </p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                              {validLink(delivery.draft?.url) && (
+                                <Link
+                                  to={validLink(delivery.draft?.url)!}
+                                  className="text-primary hover:underline"
+                                >
+                                  {delivery.savedCount > 0 ? "查看已保存草稿" : "查看草稿"}
+                                </Link>
+                              )}
+                              {validLink(delivery.run?.url) && (
+                                <Link
+                                  to={validLink(delivery.run?.url)!}
+                                  className="text-primary hover:underline"
+                                >
+                                  查看处理任务
+                                </Link>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {workTab === "sources" && Boolean(visible.task.executionPlan?.steps.length) && (
                     <div className="space-y-2">
                       {visible.task.executionPlan?.mode === "plan" && (

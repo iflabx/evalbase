@@ -4540,8 +4540,8 @@ export async function executeAssistantTurn(
     "plan_task",
     (hint) => schemaHints.set("plan_task", hint),
   );
-  // Advertise the existing plan contract for a fresh document-only design.
-  // Per-delivery counts/classifications stay in their native action input.
+  // Compatibility only: pre-contract saved document plans keep their frozen inputs.
+  // Remove with the remaining pre-contract checkpoints; fresh goals use deliveries.
   const legacyDocumentPlanSchema = schema(
     {
       title: planProperties.title,
@@ -4554,33 +4554,29 @@ export async function executeAssistantTurn(
               (variant: any) =>
                 variant.properties.action.enum[0] === "generate_candidates",
             )
-            .map((variant: any) =>
-              variant.properties.action.enum[0] !== "generate_candidates"
-                ? variant
-                : {
-                    ...variant,
-                    properties: {
-                      ...variant.properties,
-                      input: {
-                        ...variant.properties.input,
-                        description:
-                          "本类生成参数；instructions简短说明本类目标，共同要求放在顶层requirements。有分类定义时用classifications绑定真实reference，通常只需一个分类字段，不重复编号/名称两个字段与配额；无分类文档传空classifications。只列生成步骤，核对和采用确认由服务端补齐。scenarios只写3个简短输入情境，不混入期望应答行为，不输出样题或长文。",
-                        properties: Object.fromEntries(
-                          Object.entries(
-                            variant.properties.input.properties,
-                          ).filter(([name]) => name !== "requirements"),
-                        ),
-                        required: [
-                          "name",
-                          "instructions",
-                          "outputCount",
-                          "scenarios",
-                          "classifications",
-                        ],
-                      },
-                    },
-                  },
-            ),
+            .map((variant: any) => ({
+              ...variant,
+              properties: {
+                ...variant.properties,
+                input: {
+                  ...variant.properties.input,
+                  description:
+                    "本类生成参数；instructions简短说明本类目标，共同要求放在顶层requirements。有分类定义时用classifications绑定真实reference，通常只需一个分类字段，不重复编号/名称两个字段与配额；无分类文档传空classifications。只列生成步骤，核对和采用确认由服务端补齐。scenarios只写3个简短输入情境，不混入期望应答行为，不输出样题或长文。",
+                  properties: Object.fromEntries(
+                    Object.entries(variant.properties.input.properties).filter(
+                      ([name]) => name !== "requirements",
+                    ),
+                  ),
+                  required: [
+                    "name",
+                    "instructions",
+                    "outputCount",
+                    "scenarios",
+                    "classifications",
+                  ],
+                },
+              },
+            })),
         },
       },
       requirements: { ...(planProperties.requirements as object), minItems: 1 },

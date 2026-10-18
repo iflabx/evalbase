@@ -14415,6 +14415,18 @@ describe("project assistant public contract", () => {
           (s: any) => s.action === "generate_candidates",
         );
         expect(savedGenerations).toHaveLength(count);
+        expect(planned.task.deliveries).toHaveLength(count);
+        expect(
+          planned.task.deliveries.every(
+            (goal: any) =>
+              goal.status === "planned" &&
+              goal.count === 5 &&
+              goal.savedCount === 0 &&
+              !goal.draft &&
+              !goal.run,
+          ),
+          JSON.stringify(planned.task.deliveries),
+        ).toBe(true);
         const beforeDrafts = (
           await db.query(
             "SELECT count(*)::int n FROM collaborative_draft WHERE project_id=$1",
@@ -14466,6 +14478,18 @@ describe("project assistant public contract", () => {
           expect(state.task.stage, JSON.stringify(state.turns.at(-1))).toBe(
             "processing",
           );
+          expect(state.task.deliveries[index]).toMatchObject({
+            status: "processing",
+            savedCount: 0,
+            confirmed: false,
+          });
+          expect(
+            state.task.deliveries
+              .slice(0, index)
+              .every(
+                (goal: any) => goal.status === "saved" && goal.savedCount === 5,
+              ),
+          ).toBe(true);
           const runId = state.task.runId;
           expect(runId).toBeTruthy();
           expect(ids).not.toContain(runId);
@@ -14540,6 +14564,23 @@ describe("project assistant public contract", () => {
           expect(state.task.stage, JSON.stringify(state.turns.at(-1))).toBe(
             "awaiting_confirmation",
           );
+          expect(state.task.deliveries[index]).toMatchObject({
+            status: "awaiting_confirmation",
+            generatedCount: 5,
+            savedCount: 0,
+            confirmed: false,
+          });
+          const statusView = (
+            await app.inject({
+              method: "GET",
+              url: base() + "/sessions/" + sessionId + "?view=status",
+              headers,
+            })
+          ).json();
+          expect(statusView.task.deliveries).toEqual(state.task.deliveries);
+          expect(
+            statusView.task.executionPlan.steps.some((step: any) => step.input),
+          ).toBe(false);
           const proposal = state.proposals.find(
             (p: any) => p.status === "pending",
           );
@@ -14581,6 +14622,15 @@ describe("project assistant public contract", () => {
           ),
         ).toBe(true);
         expect(state.task.stage).toBe("complete");
+        expect(
+          state.task.deliveries.every(
+            (goal: any) =>
+              goal.status === "saved" &&
+              goal.savedCount === 5 &&
+              goal.draft.count === 5 &&
+              goal.confirmed,
+          ),
+        ).toBe(true);
         expect(new Set(drafts).size).toBe(count);
         expect(modelRequests() - modelBefore).toBe(0);
         expect(
@@ -14879,6 +14929,36 @@ describe("project assistant public contract", () => {
         [sessionId, JSON.stringify(checkpoint)],
       );
       expect((await read()).json().task.stage).toBe("complete");
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            stage: "waiting_input",
+            executionPlan: {
+              ...checkpoint,
+              contractVersion: 1,
+              steps: [
+                {
+                  ...checkpoint.steps[0],
+                  deliveryId: "v1-uncredited",
+                  input: {
+                    name: "尚无采用回执的目标",
+                    outputCount: 5,
+                    classifications: [],
+                    scenarios: ["完整自然问题"],
+                  },
+                },
+              ],
+            },
+          }),
+        ],
+      );
+      const v1Response = await read();
+      expect(v1Response.statusCode, v1Response.body).toBe(200);
+      const v1 = v1Response.json();
+      expect(v1.task.stage).toBe("waiting_input");
+      expect(v1.task.executionPlan.contractVersion).toBe(1);
     } finally {
       sessionId = previous;
       requestedTool = undefined;

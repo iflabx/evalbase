@@ -6,6 +6,7 @@ import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import { backgroundCatalog } from "./background.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
+import { deliveryProgress, type WorkspaceFacts } from "./workspace.js";
 import {
   taskCandidateCollection,
   resolveTaskSelection,
@@ -28,6 +29,7 @@ function initialTaskTitle(text: string) {
 export function taskPresentation(
   task: Record<string, any> | null,
   processing?: Parameters<typeof requirementSummary>[1],
+  workspace?: WorkspaceFacts,
 ) {
   if (!task || !Object.keys(task).length) return task;
   const presented = { ...task };
@@ -62,6 +64,7 @@ export function taskPresentation(
   delete presented.allowedLabels;
   return {
     ...presented,
+    ...(workspace ? { deliveries: deliveryProgress(task, workspace) } : {}),
     requirementSummary: requirementSummary(task, processing),
     requirementProblem,
     requirementProblemKind,
@@ -286,11 +289,12 @@ export async function readSession(
     scope,
     checkedTurns.some((t) => t.requires_write),
   );
-  // The confirmed publication is the completion fact, even when the model only rereads candidates.
-  // A later request has a new task revision and cannot inherit this completion.
+  // Compatibility for pre-contract publication receipts. New delivery plans settle
+  // only in advanceExecution; reading a workspace must not become a second controller.
   await db.query(
     `UPDATE assistant_session s SET task=task||'{"stage":"complete"}'::jsonb
      WHERE s.id=$1 AND s.content_revision=$2
+       AND s.task->'executionPlan'->>'contractVersion' IS DISTINCT FROM '1'
        AND s.task->>'stage' IN ('awaiting_review','waiting_input')
        AND (s.task->'review'->>'deliveryComplete') IS DISTINCT FROM 'false'
        AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(s.task->'executionPlan'->'steps','[]'::jsonb)) step WHERE step->>'status' IS DISTINCT FROM 'executed')
@@ -329,12 +333,45 @@ export async function readSession(
     canResumeAssistantTurn(latestTurn, current.task) &&
     (await hasProjectCapability(db, scope.projectId, scope.actorId, "write")),
   );
+  const planSteps =
+    current.task?.executionPlan?.contractVersion === 1
+      ? current.task.executionPlan.steps
+      : [];
+  const refs = (field: string) => [
+    ...new Set(
+      planSteps.map((step: any) => step.receipt?.[field]).filter(Boolean),
+    ),
+  ];
+  const workspace = planSteps.some((step: any) => step.deliveryId)
+    ? await Promise.all([
+        db.query(
+          `SELECT r.id,j.status,coalesce((SELECT sum(b.output_count)::int FROM processing_batch b WHERE b.run_id=r.id AND b.result_ref IS NOT NULL),0) AS count
+         FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.id=ANY($3::text[])`,
+          [scope.projectId, scope.actorId, refs("runId")],
+        ),
+        db.query(
+          `SELECT d.id,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS count
+         FROM collaborative_draft d WHERE d.project_id=$1 AND d.id=ANY($2::text[])`,
+          [scope.projectId, refs("draftId")],
+        ),
+        db.query(
+          "SELECT id,status,summary,receipt FROM assistant_proposal WHERE session_id=$1 AND project_id=$2 AND actor_id=$3 AND action='processing' AND id=ANY($4::text[])",
+          [id, scope.projectId, scope.actorId, refs("proposalId")],
+        ),
+      ]).then(([runs, drafts, confirmations]) => ({
+        projectId: scope.projectId,
+        runs: runs.rows,
+        drafts: drafts.rows,
+        confirmations: confirmations.rows,
+      }))
+    : undefined;
   const presentedTask = taskPresentation(
     current.task,
     processing?.id === current.task?.runId &&
       processing?.task_revision === current.task_revision
       ? processing
       : undefined,
+    workspace,
   );
   if (view && presentedTask) {
     delete presentedTask.observations;
