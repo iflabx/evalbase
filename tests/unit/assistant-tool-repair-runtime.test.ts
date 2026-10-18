@@ -87,6 +87,21 @@ function setup(original: unknown, signal?: AbortSignal) {
 }
 
 describe("parameter repair execution boundary", () => {
+  it("returns malformed input to the contextual planner without guessing its business fields", async () => {
+    const fixture = setup(plan());
+    fixture.request.toolCall.input = '{"steps":';
+    expect(await fixture.repair(fixture.request as any)).toBeNull();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(fixture.reserve).not.toHaveBeenCalled();
+    expect(fixture.observed).toHaveBeenCalledWith(
+      "plan_task",
+      "context_required",
+    );
+    expect(fixture.started).toHaveBeenCalledWith("plan_task", {
+      scope: "call",
+      issues: [{ path: "/", keyword: "parse" }],
+    });
+  });
   it.each(["required", "additionalProperties"])(
     "records the field path for %s without recording values",
     async (keyword) => {
@@ -101,9 +116,19 @@ describe("parameter repair execution boundary", () => {
         controller.abort(new DOMException("deadline", "TimeoutError"));
         throw controller.signal.reason;
       });
-      await expect(
-        fixture.repair(fixture.request as any),
-      ).rejects.toMatchObject({ name: "TimeoutError" });
+      if (keyword === "required") {
+        expect(await fixture.repair(fixture.request as any)).toBeNull();
+        expect(generateText).not.toHaveBeenCalled();
+        expect(fixture.reserve).not.toHaveBeenCalled();
+        expect(fixture.observed).toHaveBeenCalledWith(
+          "plan_task",
+          "context_required",
+        );
+      } else {
+        await expect(
+          fixture.repair(fixture.request as any),
+        ).rejects.toMatchObject({ name: "TimeoutError" });
+      }
       expect(fixture.started).toHaveBeenCalledWith(
         "plan_task",
         expect.objectContaining({

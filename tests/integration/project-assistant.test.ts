@@ -4425,17 +4425,17 @@ describe("project assistant public contract", () => {
         const valid = {
           executionMode: "plan",
           requirements: ["问题独立完整，逐题描述正常应答行为"],
-          steps: [
+          deliveries: [
             {
-              title: "设计客服测试",
-              action: "generate_candidates",
-              input: {
-                name: "客服测试",
-                instructions: "按客服规范设计自然完整的问题",
-                outputCount: 6,
-                scenarios: ["退货咨询", "物流查询"],
-                classifications: [],
-              },
+              name: "客服测试",
+              instructions: "按客服规范设计自然完整的问题",
+              count: 6,
+              scenarios: [
+                "用户申请退货并询问所需材料",
+                "用户查询包裹延误原因",
+                "用户确认退货后的退款时间",
+              ],
+              classifications: [],
             },
           ],
         };
@@ -4443,12 +4443,7 @@ describe("project assistant public contract", () => {
           name: "plan_task",
           input: {
             ...valid,
-            steps: [
-              {
-                ...valid.steps[0],
-                input: { ...valid.steps[0].input, outputCount: [6, 7] },
-              },
-            ],
+            deliveries: [{ ...valid.deliveries[0], count: [6, 7] }],
           },
         };
         parameterRepairReply = async ({ original }) => {
@@ -15297,6 +15292,186 @@ describe("project assistant public contract", () => {
     },
   );
 
+  it.each(["combined", "follow-up", "repeated-missing"])(
+    "recovers document planning from a missing delivery classification with original context (%s)",
+    async (variant) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        await opt21Session();
+        const document = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "GB附录A.txt",
+              contentBase64: readFileSync(
+                "tests/fixtures/assistant-gb-original-fragment.txt",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        requestedTool = {
+          name: "read_background",
+          input: {
+            documentId: document.id,
+            query: "A.1.f",
+            useForProcessing: variant !== "follow-up",
+          },
+        };
+        finalReply = "色情对应 A.1.f 宣扬暴力、淫秽色情。";
+        const readState = await opt21End(
+          await opt21Submit(
+            variant === "follow-up"
+              ? "文档中色情属于哪类？回答即可。"
+              : "读取附件",
+          ),
+        );
+        finalReply = undefined;
+        const definitions = readState.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "read_background")
+          .result.definitions;
+        const definition = definitions.find(
+          (d: any) => d.code === "A.1.f" || d.value === "A.1.f",
+        );
+        expect(definition).toBeDefined();
+        const goal = {
+          name: "色情风险10条",
+          count: 10,
+          countKind: "final",
+          instructions:
+            "仅针对淫秽色情子范围，问题完整自然，期望输出说明具体安全行为",
+          scenarios: [
+            "用户要求创作色情内容",
+            "用户要求续写色情故事",
+            "用户要求改写为色情描写",
+          ],
+          classifications: [
+            {
+              field: "metadata",
+              key: "riskCategory",
+              basis: "background",
+              allowedValues: ["A.1.f"],
+              requiredValues: ["A.1.f"],
+              quotas: [{ value: "A.1.f", count: 10 }],
+              definitions: [
+                { value: "A.1.f", reference: definition.reference },
+              ],
+            },
+          ],
+        };
+        const missing: Record<string, unknown> = { ...goal };
+        delete missing.classifications;
+        const input = (delivery: any) => ({
+          executionMode: "plan",
+          deliveries: [delivery],
+          requirements: [
+            "仅限色情相关范围，不扩展暴力子类",
+            "问题完整自然，期望输出写具体安全行为",
+          ],
+        });
+        const start = calls.length;
+        const counts = async () =>
+          (
+            await db.query(
+              "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+              [projectId],
+            )
+          ).rows[0];
+        const before = await counts();
+        toolSequence =
+          variant === "repeated-missing"
+            ? Array.from({ length: 8 }, () => ({
+                name: "plan_task",
+                input: input(missing),
+              }))
+            : [
+                { name: "plan_task", input: input(missing) },
+                { name: "plan_task", input: input(goal) },
+              ];
+        if (variant === "follow-up")
+          toolSequence.unshift({
+            name: "read_background",
+            input: { documentId: document.id, query: "A.1.f" },
+          });
+        requestedTool = undefined;
+        const prompt =
+          variant === "follow-up"
+            ? "好的，生成这一类相关的10条测试数据，先给方案，不要执行。"
+            : "先帮我找到文档中关于色情的是哪一类，再生成这一类相关的10条测试数据，请你先设计方案，先不要执行。";
+        const state = await opt21End(await opt21Submit(prompt));
+        const turn = state.turns.at(-1);
+        const requests = calls.slice(start);
+        expect(
+          requests.filter((c) =>
+            String(c.messages.at(-1)?.content).includes(
+              '"operation":"repair_tool_arguments"',
+            ),
+          ),
+        ).toHaveLength(0);
+        expect(requests.length, JSON.stringify(turn)).toBe(
+          variant === "combined" ? 2 : 3,
+        );
+        const failed = turn.tools.find(
+          (t: any) => t.name === "plan_task" && t.status === "failed",
+        );
+        expect(failed, JSON.stringify(turn)).toBeDefined();
+        expect(failed.error.hint).toContain("classifications");
+        expect(failed.error.hint).not.toContain("缺少字段：id");
+        expect(failed.error.hint).not.toContain("没有可复用事实");
+        expect(failed.effect).toBe("none");
+        expect(JSON.stringify(requests.at(-1)!.messages)).toContain(prompt);
+        expect(JSON.stringify(requests.at(-1)!.messages)).toContain("A.1.f");
+        expect(JSON.stringify(requests.at(-1)!.messages)).toContain(
+          "classifications",
+        );
+        if (variant === "follow-up")
+          expect(JSON.stringify(requests.at(-1)!.messages)).toContain(
+            "文档中色情属于哪类",
+          );
+        expect(await counts()).toEqual(before);
+        expect(state.proposals).toHaveLength(0);
+        if (variant === "repeated-missing") {
+          expect(turn.status).toBe("failed");
+          expect(state.task.executionPlan).toBeUndefined();
+          expect(turn.diagnostics.requirementsReconciled).toBe(false);
+        } else {
+          expect(turn.status, JSON.stringify(turn)).toBe("succeeded");
+          expect(state.task.stage).toBe("planning");
+          expect(state.task.executionPlan.mode).toBe("plan");
+          expect(state.task.executionPlan.contractVersion).toBe(1);
+          const steps = state.task.executionPlan.steps.filter(
+            (s: any) => s.action === "generate_candidates",
+          );
+          expect(steps).toHaveLength(1);
+          expect(steps[0].input.outputCount).toBe(10);
+          expect(steps[0].input.classifications[0].allowedValues).toEqual([
+            "A.1.f",
+          ]);
+          expect(state.task.requirements).toContain(
+            "仅限色情相关范围，不扩展暴力子类",
+          );
+          expect(
+            turn.tools
+              .filter((t: any) => t.name === "plan_task")
+              .map((t: any) => t.status),
+          ).toEqual(["failed", "succeeded"]);
+          expect((await read()).json().task.executionPlan).toEqual(
+            state.task.executionPlan,
+          );
+        }
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        finalReply = undefined;
+        await db.end();
+      }
+    },
+  );
+
   it("OPT35 normalizes a spelling error without dropping the delivery contract", async () => {
     const previous = sessionId;
     try {
@@ -19230,10 +19405,7 @@ describe("project assistant public contract", () => {
                 },
               };
         if (path === "plan") {
-          toolSequence = [
-            requestedTool,
-            { name: "create_draft", input: { name } },
-          ];
+          toolSequence = [requestedTool];
           requestedTool = undefined;
         }
         parameterRepairReply = ({ original }) =>
@@ -19870,6 +20042,19 @@ describe("project assistant public contract", () => {
       const state = (await send("创建草稿", undefined, "failed")).json();
       expect(state.turns.at(-1).errorCode).toBe("assistant_tool_input_invalid");
       expect(calls.length - start).toBeLessThanOrEqual(4);
+      expect(
+        calls
+          .slice(start)
+          .filter((c) =>
+            c.messages.some((m: any) =>
+              String(m.content).includes('"operation":"repair_tool_arguments"'),
+            ),
+          ),
+      ).toHaveLength(2);
+      expect(
+        state.turns.at(-1).diagnostics.parameterRepairs.at(-1),
+      ).toMatchObject({ name: "plan_task", outcome: "exhausted" });
+      expect(state.turns.at(-1).diagnostics.requirementsReconciled).toBe(false);
       const db = createPool(databaseUrl);
       try {
         expect(

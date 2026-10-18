@@ -262,6 +262,7 @@ export function argumentRepair(options: {
   observed: (
     name: string,
     outcome:
+      | "context_required"
       | "repaired"
       | "unsafe"
       | "invalid"
@@ -286,7 +287,11 @@ export function argumentRepair(options: {
     try {
       original = JSON.parse(toolCall.input);
     } catch {
-      await options.observed(name, "invalid");
+      await options.started?.(name, {
+        scope: "call",
+        issues: [{ path: "/", keyword: "parse" }],
+      });
+      await options.observed(name, "context_required");
       return null;
     }
     const schema = await inputSchema({ toolName: name });
@@ -306,6 +311,12 @@ export function argumentRepair(options: {
       return { ...toolCall, input: JSON.stringify(local.value) };
     }
     const focus = repairScope(normalized, schema);
+    if (focus.details.issues.some((issue) => issue.keyword === "required")) {
+      // Required business information cannot be invented by a lossless repair.
+      await options.started?.(name, focus.details);
+      await options.observed(name, "context_required");
+      return null;
+    }
     // Reuse the authoritative validator; expose only supplied root fields to the
     // repair model, without business instructions embedded in descriptions.
     const repairSchema = JSON.parse(
