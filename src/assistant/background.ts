@@ -88,7 +88,8 @@ export function documentDefinitionReferences(
             "definition:" +
             sha256(
               canonicalJson({
-                version: "background-section-v1",
+                version: "background-section-v2",
+                projectId: scope.projectId,
                 actorId: scope.actorId,
                 sessionId,
                 documentId: document.id,
@@ -111,6 +112,7 @@ export function backgroundDefinitionReferences(
   documents: DefinitionDocument[],
   scope: AssistantScope,
   sessionId: string,
+  legacy = false,
 ) {
   validateBackgroundRules(task, documents);
   const references: Record<string, any>[] = [];
@@ -161,6 +163,7 @@ export function backgroundDefinitionReferences(
         });
         if (!fragment) continue;
         const binding = {
+          ...(legacy ? {} : { projectId: scope.projectId }),
           actorId: scope.actorId,
           sessionId,
           documentId: document.id,
@@ -203,7 +206,10 @@ export function resolveBackgroundDefinitions(
     scope,
     sessionId,
   );
-  let available: ReturnType<typeof backgroundDefinitionReferences> | undefined;
+  const referenceCache = new Map<
+    string,
+    ReturnType<typeof backgroundDefinitionReferences>
+  >();
   return {
     ...patch,
     classifications: patch.classifications.map((rule: any) => ({
@@ -268,12 +274,29 @@ export function resolveBackgroundDefinitions(
           );
           return quoted;
         }
-        available ??= backgroundDefinitionReferences(
-          current,
-          documents,
-          scope,
-          sessionId,
-        );
+        // Legacy tokens are usable only when registered on this same task;
+        // every original binding is recomputed against the current documents.
+        const cacheKey = canonicalJson([rule.field, rule.key?.trim() ?? null]);
+        let available = referenceCache.get(cacheKey);
+        if (!available) {
+          available = [false, true].flatMap((legacy) =>
+            backgroundDefinitionReferences(
+              {
+                ...current,
+                classifications: validateRules(current).filter(
+                  (entry) =>
+                    entry.field === rule.field &&
+                    entry.key === rule.key?.trim(),
+                ),
+              },
+              documents,
+              scope,
+              sessionId,
+              legacy,
+            ),
+          );
+          referenceCache.set(cacheKey, available);
+        }
         const ref = available.find(
           (entry) =>
             entry.reference === definition.reference &&
@@ -679,6 +702,120 @@ export async function freezeBackground(
   };
 }
 
+type OutputForm = "labels" | "per-item";
+
+/** Recognize explicit field declarations, never category headings or model summaries. */
+function expectedOutputForm(
+  text: string,
+  document = false,
+): OutputForm | undefined {
+  let form: OutputForm | undefined;
+  for (const clause of text.normalize("NFKC").split(/[。；;，,\n]/u)) {
+    const field = clause.match(/(?:期望输出|expectedOutput)(.*)/iu)?.[1];
+    if (document && field === undefined) continue;
+    if (field === undefined && /metadata|问题/iu.test(clause)) continue;
+    if (
+      field === undefined &&
+      !/(?:固定(?:值|标签|输出)|枚举|原样填写)/u.test(clause)
+    )
+      continue;
+    const declaration = field ?? clause;
+    if (
+      /(?:不设|不使用|不要|不得|不再).{0,6}(?:固定标签|枚举|固定值|标签)/u.test(
+        declaration,
+      )
+    )
+      form = "per-item";
+    else if (
+      /(?:固定(?:值|标签|输出|为)|枚举|标签|原样填写|(?:对应|所属).{0,6}(?:意图|类别|分类)(?:名称)?|(?:意图|类别|分类)名称)/u.test(
+        declaration,
+      )
+    )
+      form = "labels";
+    else if (
+      field !== undefined &&
+      /自然语言|逐题|具体.{0,8}(?:行为|应答)|安全行为|期望行为|应答行为/u.test(
+        declaration,
+      )
+    )
+      form = "per-item";
+  }
+  return form;
+}
+
+/** User text authorizes adopting a document's data contract, never its operations. */
+function fixedOutputRequested(
+  userRequests: string[],
+  excerpts: string[],
+  values: string[],
+) {
+  let delegation: string | undefined;
+  for (let index = userRequests.length - 1; index >= 0; index--) {
+    const request = userRequests[index]!;
+    const explicit = expectedOutputForm(request);
+    if (explicit) return explicit === "labels";
+    delegation = request
+      .split(/[。；;，,\n]/u)
+      .findLast((clause) =>
+        /(?:按(?:照)?|根据|遵循|依据|依照|参照).{0,24}(?:附件|文档|规范|标准)/u.test(
+          clause,
+        ),
+      );
+    if (delegation) {
+      const localOnly =
+        /问题|metadata|元数据/iu.test(delegation) &&
+        !/输出|expectedOutput/iu.test(delegation);
+      const earlierChoice = userRequests
+        .slice(0, index)
+        .some((text) => expectedOutputForm(text) !== undefined);
+      if (!localOnly || !earlierChoice) break;
+      delegation = undefined;
+    }
+  }
+  if (
+    !delegation ||
+    /(?:不要|不得|不再|停止|取消).{0,4}(?:按|根据|遵循|依据|依照|参照)/u.test(
+      delegation,
+    )
+  )
+    return false;
+  const declarations = excerpts
+    .flatMap((text) => text.split(/[。；;\n]/u))
+    .map((text) => ({ text, form: expectedOutputForm(text, true) }))
+    .filter((entry) => entry.form !== undefined);
+  const forms = new Set(declarations.map((entry) => entry.form));
+  if (forms.size > 1)
+    throw new AssistantError(
+      422,
+      "assistant_background_rule_mismatch",
+      "已读文档的期望输出约定冲突：同时要求分类标签和逐题自然语言行为。请明确本次期望输出采用哪一种，其他要求保持。",
+    );
+  if (!forms.has("labels")) return false;
+  for (const declaration of declarations) {
+    const field = declaration.text.match(
+      /(?:期望输出|expectedOutput)(.*)/iu,
+    )![1]!;
+    const literal = field.match(
+      /(?:固定(?:值|标签|输出)?|枚举|标签|原样填写)[^：:\n]{0,12}[:：]([^。；;\n]+)/u,
+    )?.[1];
+    if (!literal) continue;
+    const labels = literal
+      .split(/[、,，/|]/u)
+      .map((value) =>
+        normalizedExcerpt(
+          value.replace(/^[\s“”"'「」『』]+|[\s“”"'「」『』]+$/gu, ""),
+        ),
+      );
+    if (values.some((value) => !labels.includes(normalizedExcerpt(value))))
+      throw new AssistantError(
+        422,
+        "assistant_background_rule_mismatch",
+        "期望输出标签与附件明确规定的输出标签不一致。请保留 Metadata 分类，按附件输出约定修正期望输出；若要改用其他输出方式，请明确说明。",
+      );
+  }
+  return true;
+}
+
 /** This checks cited vocabulary, not whether each candidate is semantically classified correctly. */
 export function validateBackgroundRules(
   task: Record<string, any>,
@@ -687,30 +824,54 @@ export function validateBackgroundRules(
   const userRequests = [task.goal, ...(task.supplements ?? [])].filter(
     (text): text is string => typeof text === "string",
   );
-  const outputRequest = userRequests.findLast((text) =>
-    /期望输出|固定标签|枚举|意图识别|分类测试/u.test(text),
+  if (
+    task.backgroundEvidence?.some((ref: any) => {
+      const doc = documents.find((entry) => entry.id === ref.documentId),
+        fragment = doc?.fragments.find(
+          (entry) => entry.index === ref.fragmentIndex,
+        );
+      return (
+        !fragment ||
+        (ref.sha256 && doc?.sha256 && ref.sha256 !== doc.sha256) ||
+        (ref.extractorVersion &&
+          ref.extractorVersion !== doc?.extractorVersion) ||
+        (ref.textHash && ref.textHash !== sha256(fragment.text))
+      );
+    })
+  )
+    throw new AssistantError(409, "assistant_background_changed");
+  const normalize = (value: string) =>
+    value.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
+  const excerpts = documents.flatMap((doc) =>
+    doc.fragments
+      .filter((fragment) =>
+        task.backgroundEvidence?.some(
+          (ref: any) =>
+            ref.documentId === doc.id && ref.fragmentIndex === fragment.index,
+        ),
+      )
+      .map((fragment) => fragment.text),
   );
-  const fixedOutput =
-    outputRequest &&
-    /固定(?:值|标签|输出|为)?|枚举|标签|只能|取值|原样填写|(?:期望输出).{0,8}(?:填|为|使用).{0,8}(?:意图|类别|分类)/u.test(
-      outputRequest,
-    ) &&
-    !/(?:不设|不使用|不要|不得).{0,4}(?:固定标签|枚举|固定值)/u.test(
-      outputRequest,
-    );
-  for (const rule of validateRules(task)) {
+  const rules = validateRules(task);
+  for (const rule of rules) {
     if (
       rule.field === "expectedOutput" &&
       userRequests.length &&
       (rule.allowedValues?.length ||
         rule.requiredValues?.length ||
         rule.quotas?.length) &&
-      !fixedOutput
+      !fixedOutputRequested(userRequests, excerpts, [
+        ...new Set([
+          ...(rule.allowedValues ?? []),
+          ...(rule.requiredValues ?? []),
+          ...(rule.quotas ?? []).map((quota) => quota.value),
+        ]),
+      ])
     )
       throw new AssistantError(
         422,
         "assistant_background_rule_mismatch",
-        "逐题期望行为应保存为自然语言要求，不能因文档标题或模型自报依据就固化为单一标签；只有用户明确指定固定值或分类标签任务才设置期望输出枚举。",
+        "期望输出的形式尚未明确。请采用用户明确指定的标签，或已委托使用的附件输出约定；逐题具体应答行为保持自然语言，不因类别标题改成固定标签。",
       );
     if (rule.basis !== "user") continue;
     for (const value of new Set([
@@ -741,34 +902,6 @@ export function validateBackgroundRules(
     }
   }
   if (!task.backgroundEvidence?.length) return;
-  if (
-    task.backgroundEvidence.some((ref: any) => {
-      const doc = documents.find((entry) => entry.id === ref.documentId),
-        fragment = doc?.fragments.find(
-          (entry) => entry.index === ref.fragmentIndex,
-        );
-      return (
-        !fragment ||
-        (ref.sha256 && doc?.sha256 && ref.sha256 !== doc.sha256) ||
-        (ref.extractorVersion &&
-          ref.extractorVersion !== doc?.extractorVersion) ||
-        (ref.textHash && ref.textHash !== sha256(fragment.text))
-      );
-    })
-  )
-    throw new AssistantError(409, "assistant_background_changed");
-  const normalize = (value: string) =>
-    value.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
-  const excerpts = documents.flatMap((doc) =>
-    doc.fragments
-      .filter((fragment) =>
-        task.backgroundEvidence.some(
-          (ref: any) =>
-            ref.documentId === doc.id && ref.fragmentIndex === fragment.index,
-        ),
-      )
-      .map((fragment) => fragment.text),
-  );
   const indexedDefinition = (value: string, quote: string) => {
     const results = documents
       .filter((doc) =>

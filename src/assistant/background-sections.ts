@@ -65,7 +65,7 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
       entry.end = Math.min(entry.end, offset);
     }
     entries.push({
-      name: name.trim(),
+      name: name.trim().replace(/^(?:[-*+]\s+|\d+[.)、]\s+)/u, ""),
       code,
       start: offset,
       end: body.length,
@@ -178,8 +178,14 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
 }
 
 export function sectionAliases(section: BackgroundSection) {
+  // Keep a literal list-marked alias for already-saved definitions.
+  const originalName = section.text.split(/[:：\n]/u)[0].trim();
   return [
     section.name,
+    ...(originalName !== section.name &&
+    originalName.replace(/^(?:[-*+]\s+|\d+[.)、]\s+)/u, "") === section.name
+      ? [originalName]
+      : []),
     ...(section.code ? [section.code, section.code + " " + section.name] : []),
   ];
 }

@@ -1,10 +1,10 @@
 # OPT-34 文档引用与输出约定一致性
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。基于现有 OPT-23/33 实现，不等待旧票最终人工验收。治理入口：[整改方案 §8](../../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)、[PRD §7.9](../../../docs/PRD-data-selection-and-assistant.md#79-业务编排收敛2026-10-18待实施)。本次仅获文档授权，尚未授权开发或部署。
+优先级：P1。基于现有 OPT-23/33 实现，不等待旧票最终人工验收。治理入口：[整改方案 §8](../../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)、[PRD §7.9](../../../docs/PRD-data-selection-and-assistant.md#79-业务编排收敛2026-10-18待实施)。Owner 已于 2026-10-18 单独授权本张开发及定向验证；交付与限制见 [验证记录](../opt34-verification.md)。
 
 ## 目标与问题
 
@@ -40,4 +40,4 @@ Blocked by: none
 
 ## Comments
 
-- 2026-10-18：依据 AI SDK / DeepSeek Harness 同条件对照新建。仅文档，Implementation not-started；4217 及现有验收数据保持。
+- 2026-10-18：依据 AI SDK / DeepSeek Harness 同条件对照新建；初始仅文档。后续获单张开发授权，已完成实现、定向验证及 Standards/Spec 审阅补修，Implementation completed，Owner pending。详细证据仅维护于 [验证记录](../opt34-verification.md)；本轮未切换4217，现有验收数据保留。

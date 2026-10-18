@@ -14359,6 +14359,199 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT34 saves a delegated document output contract and changes only the requested field", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const beforeCounts = await db.query(
+        "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+        [projectId],
+      );
+      await opt21Session();
+      const document = (
+        await app.inject({
+          method: "POST",
+          url: `${base()}/sessions/${sessionId}/background-documents`,
+          headers,
+          payload: {
+            fileName: "客服问法验收规范.md",
+            contentBase64: readFileSync(
+              "tests/fixtures/assistant-customer-intent.md",
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: document.id },
+      };
+      const readState = await opt21End(await opt21Submit("读取附件"));
+      const response = readState.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "read_background").result;
+      expect(response.fragments[0]).toMatchObject({
+        startLine: 1,
+        endLine: 13,
+      });
+      const definitions = ["退款申请", "物流查询"].map((value) => ({
+        value,
+        reference: response.definitions.find((ref: any) => ref.value === value)!
+          .reference,
+      }));
+      const rules = ["expectedOutput", "metadata"].map((field) => ({
+        field,
+        ...(field === "metadata" ? { key: "intent" } : {}),
+        basis: "background",
+        allowedValues: definitions.map((d) => d.value),
+        quotas: definitions.map((d) => ({ value: d.value, count: 3 })),
+        definitions,
+      }));
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          requirements: [
+            "问题完整自然",
+            "期望输出填写对应意图名称",
+            "intent与意图一致",
+          ],
+          steps: [
+            {
+              title: "生成6条客服题",
+              action: "generate_candidates",
+              input: {
+                name: "客服意图6条",
+                instructions: "按附件输出规范生成自然完整问题",
+                outputCount: 6,
+                scenarios: [
+                  "已付款商品申请退还款项",
+                  "误付款项咨询退款方式",
+                  "包裹配送进度和预计送达查询",
+                ],
+                classifications: rules,
+              },
+            },
+          ],
+        },
+      };
+      const saved = await opt21End(
+        await opt21Submit(
+          "按附件规范建一个6条客服意图测试集，退款申请和物流查询各3条，不用原始数据。先给方案，暂不生成。",
+        ),
+      );
+      expect(
+        saved.turns.at(-1).tools.at(-1),
+        JSON.stringify(saved.turns.at(-1)),
+      ).toMatchObject({ name: "plan_task", status: "succeeded" });
+      expect(saved.task.executionPlan.mode).toBe("plan");
+      expect(saved.task.classifications.map((r: any) => r.field)).toEqual([
+        "expectedOutput",
+        "metadata",
+      ]);
+      expect(saved.task.classifications[0].definitions[0].text).toContain(
+        "- 退款申请：用户希望退还",
+      );
+      expect((await read()).json().task.classifications).toEqual(
+        saved.task.classifications,
+      );
+      expect(
+        (
+          await db.query(
+            "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+            [projectId],
+          )
+        ).rows[0],
+      ).toEqual(beforeCounts.rows[0]);
+      const metadataRule = saved.task.classifications.find(
+        (r: any) => r.field === "metadata",
+      );
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          classifications: [{ field: "expectedOutput", clear: true }],
+          requirements: [
+            "问题完整自然",
+            "期望输出写逐题具体应答行为",
+            "intent与意图一致",
+          ],
+          nextAction: "none",
+        },
+      };
+      const changed = await opt21End(
+        await opt21Submit(
+          "期望输出改为逐题自然语言应答行为，不使用固定标签；Metadata intent分类和每类3条保持。",
+        ),
+      );
+      expect(
+        changed.turns.at(-1).tools.at(-1),
+        JSON.stringify(changed.turns.at(-1)),
+      ).toMatchObject({ name: "plan_task", status: "succeeded" });
+      expect(changed.task.classifications).toEqual([metadataRule]);
+      expect(changed.task.targetCount).toBe(6);
+      expect(changed.task.executionPaused).toBe(true);
+      expect(changed.task.nextAction).toBeNull();
+      expect(changed.task.executionPlan.mode).toBe("plan");
+      expect((await read()).json().task.requirements).toEqual(
+        changed.task.requirements,
+      );
+      // The source text cannot authorize publishing or generation by itself.
+      expect(changed.task.runId).toBeUndefined();
+      expect(changed.proposals).toEqual([]);
+      const originalSession = sessionId;
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          classifications: [rules[1]],
+          requirements: ["按附件规范分类"],
+          nextAction: "none",
+        },
+      };
+      const unrelated = await opt21End(
+        await opt21Submit("按附件规范记录分类，只记录要求。"),
+      );
+      expect(
+        unrelated.turns.at(-1).tools[0].error.code,
+        JSON.stringify(unrelated.turns.at(-1)),
+      ).toBe("assistant_background_reference_invalid");
+      sessionId = originalSession;
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url: `${base()}/sessions/${sessionId}/background-documents/${document.id}`,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(200);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          classifications: [rules[1]],
+          requirements: ["按附件规范分类"],
+          nextAction: "none",
+        },
+      };
+      const deleted = await opt21End(
+        await opt21Submit("沿用原附件分类，只记录要求。"),
+      );
+      expect(deleted.turns.at(-1).tools[0].status).toBe("failed");
+      expect(
+        (
+          await db.query(
+            "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+            [projectId],
+          )
+        ).rows[0],
+      ).toEqual(beforeCounts.rows[0]);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
   it("OPT-23 reuses verified background definitions and freezes identical original evidence", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);
