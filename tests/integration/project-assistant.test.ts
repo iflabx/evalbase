@@ -4419,7 +4419,7 @@ describe("project assistant public contract", () => {
         ).json().document;
         requestedTool = {
           name: "read_background",
-          input: { documentId: doc.id },
+          input: { documentId: doc.id, useForProcessing: false },
         };
         await send("读取附件");
         const valid = {
@@ -4446,6 +4446,14 @@ describe("project assistant public contract", () => {
             deliveries: [{ ...valid.deliveries[0], count: [6, 7] }],
           },
         };
+        toolSequence = [
+          {
+            name: "read_background",
+            input: { documentId: doc.id, useForProcessing: false },
+          },
+          requestedTool,
+        ];
+        requestedTool = undefined;
         parameterRepairReply = async ({ original }) => {
           entered();
           await release;
@@ -4553,6 +4561,7 @@ describe("project assistant public contract", () => {
         finish();
         parameterRepairReply = undefined;
         requestedTool = undefined;
+        toolSequence = [];
         sessionId = previous;
         await db.end();
       }
@@ -15329,6 +15338,8 @@ describe("project assistant public contract", () => {
           ),
         );
         finalReply = undefined;
+        if (variant === "follow-up")
+          expect(readState.task.backgroundEvidence).toEqual([]);
         const definitions = readState.turns
           .at(-1)
           .tools.find((t: any) => t.name === "read_background")
@@ -15394,7 +15405,11 @@ describe("project assistant public contract", () => {
         if (variant === "follow-up")
           toolSequence.unshift({
             name: "read_background",
-            input: { documentId: document.id, query: "A.1.f" },
+            input: {
+              documentId: document.id,
+              query: "A.1.f",
+              useForProcessing: false,
+            },
           });
         requestedTool = undefined;
         const prompt =
