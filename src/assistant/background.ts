@@ -840,7 +840,7 @@ export function validateBackgroundRules(
       throw new AssistantError(
         422,
         "assistant_background_rule_mismatch",
-        "期望输出的形式尚未明确。请采用用户明确指定的标签，或已委托使用的附件输出约定；逐题具体应答行为保持自然语言，不因类别标题改成固定标签。",
+        "固定期望输出须由用户明确指定，或来自已读取附件的明确输出约定。若用户要求逐题具体行为，请将类别约束改放 Metadata，完整保留类别、定义和配额，并移除 expectedOutput 枚举；不要删除分类或让用户提供工具参数。",
       );
     if (rule.basis !== "user") continue;
     for (const value of new Set([
