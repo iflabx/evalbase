@@ -754,7 +754,59 @@ describe("OPT-34 document output contracts", () => {
       ),
     ).toHaveLength(0);
   });
-  it("requires actual user delegation and already-read output evidence, not a model assertion", async () => {
+  it("OPT37 uses a selected explicit data output contract for an ordinary short request", async () => {
+    const doc = document(
+      await readFile(
+        new URL("../fixtures/assistant-customer-intent.md", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect(() =>
+      validateBackgroundRules(
+        state("一份 6 条，退款申请和物流查询各 3 条，不用原始数据，先给方案"),
+        [doc],
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateBackgroundRules(
+        {
+          ...state("一份 6 条，退款申请和物流查询各 3 条"),
+          backgroundEvidence: [],
+        },
+        [doc],
+      ),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(state("只参考附件的问题，不采用附件的输出约定"), [
+        doc,
+      ]),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(
+        state("不采用附件的输出约定，只按照附件的主题生成问题"),
+        [doc],
+      ),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(
+        {
+          ...state("不采用附件的输出约定"),
+          supplements: ["按附件主题继续生成问题"],
+        },
+        [doc],
+      ),
+    ).toThrow();
+    expect(() =>
+      validateBackgroundRules(
+        {
+          ...state("不采用附件的输出约定"),
+          supplements: ["期望输出改按附件的输出约定"],
+        },
+        [doc],
+      ),
+    ).not.toThrow();
+  });
+  it("requires already-read output evidence and preserves explicit field choices", async () => {
     const text = await readFile(
       new URL("../fixtures/assistant-customer-intent.md", import.meta.url),
       "utf8",
@@ -766,7 +818,7 @@ describe("OPT-34 document output contracts", () => {
         { ...state("创建客服测试集"), requirements: ["按附件规范"] },
         [doc],
       ),
-    ).toThrow();
+    ).not.toThrow();
     const split = {
       ...doc,
       fragments: [

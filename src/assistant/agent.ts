@@ -414,6 +414,7 @@ export async function executeAssistantTurn(
     );
   let documentPlanning = false;
   let planningRequestTurnId = turn.id;
+  let planningRequestText = turn.event === "user" ? turn.user_text : "";
   let documentPlanSaved = false;
   const planningRepairInputs = new Map<string, Record<string, any>>();
   let planningCheckpointRequired = false;
@@ -1981,19 +1982,19 @@ export async function executeAssistantTurn(
             assertDeliveryRepair(
               context.decode(originalCall.input),
               input,
-              turn.event === "user" ? turn.user_text : "",
+              planningRequestText,
             );
           businessDeliveries = reviseDeliveryGoals(
             deliveryGoals(oldPlan),
             input.deliveries,
-            turn.event === "user" ? turn.user_text : "",
+            planningRequestText,
           );
           // Initial explicit category quotas cannot be omitted. Saved rules are
           // protected by scoped updates, without reinterpreting generic headings.
           if (!deliveryGoals(oldPlan).length)
             validateRequestedCategories(
               businessDeliveries,
-              turn.event === "user" ? turn.user_text : "",
+              planningRequestText,
               documentDefinitionReferences(
                 documents,
                 current.backgroundEvidence ?? [],
@@ -2009,11 +2010,7 @@ export async function executeAssistantTurn(
             );
           input = {
             ...input,
-            ...reviseDeliveryRequirements(
-              current,
-              input,
-              turn.event === "user" ? turn.user_text : "",
-            ),
+            ...reviseDeliveryRequirements(current, input, planningRequestText),
           };
           delete input.deliveries;
           delete input.removeRequirements;
@@ -5119,6 +5116,8 @@ export async function executeAssistantTurn(
             ).rows[0];
       if (!original)
         throw new AssistantError(409, "assistant_plan_revalidation_required");
+      // A resume command changes no business requirement or execution authority.
+      planningRequestText = original.user_text;
       const reads = previous.tool_results
         .filter(
           (record: any) =>
@@ -5482,7 +5481,7 @@ export async function executeAssistantTurn(
               assertDeliveryRepair(
                 planningRepairInputs.get(input.toolCall.toolCallId),
                 JSON.parse(corrected.input),
-                turn.event === "user" ? turn.user_text : "",
+                planningRequestText,
               );
             if (!corrected) {
               budgetBoundary = true;

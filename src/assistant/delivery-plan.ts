@@ -260,6 +260,15 @@ const numeric = (value: string) =>
 /** Only explicit collection/count clauses; internal category quotas never create collections. */
 function validateRequestedShape(goals: DeliveryGoal[], request: string) {
   const number = "([1-9]\\d*|两|[一二三四五六七八九十])";
+  const eachOne = request.match(/各\s*(?:建|创建)?\s*一份\s*([1-9]\d*)\s*条/u);
+  const compact = request.match(
+    new RegExp(
+      "(?:^|[，,。；;\\n])\\s*" +
+        number +
+        "\\s*份\\s*([1-9]\\d*)\\s*条(?=\\s*(?:[，,。；;\\n]|$))",
+      "u",
+    ),
+  );
   const separate = request.match(
     new RegExp(
       number + "\\s*份(?:[^，。；;\\n]{0,20})?(?:各|每份)\\s*([1-9]\\d*)\\s*条",
@@ -268,14 +277,18 @@ function validateRequestedShape(goals: DeliveryGoal[], request: string) {
   );
   const count = separate
     ? numeric(separate[1])
-    : request.match(
-        new RegExp(
-          "(?<!各)" +
-            number +
-            "\\s*(?:份|个)[^，。；;\\n]{0,15}(?:测试集|集合)",
-          "u",
-        ),
-      )?.[1];
+    : compact
+      ? numeric(compact[1])
+      : eachOne
+        ? undefined
+        : request.match(
+            new RegExp(
+              "(?<!各)" +
+                number +
+                "\\s*(?:份|个)[^，。；;\\n]{0,15}(?:测试集|集合)",
+              "u",
+            ),
+          )?.[1];
   if (
     count !== undefined &&
     goals.length !== (typeof count === "number" ? count : numeric(count))
@@ -284,12 +297,14 @@ function validateRequestedShape(goals: DeliveryGoal[], request: string) {
       "方案的测试集份数与本轮明确要求不一致。集合内的分类配额不能拆成独立测试集。",
     );
   const per =
-    separate?.[2] ?? request.match(/各\s*一份\s*([1-9]\d*)\s*条/u)?.[1];
+    separate?.[2] ??
+    (compact && numeric(compact[1]) === 1 ? compact[2] : undefined) ??
+    eachOne?.[1];
   if (per && goals.some((goal) => goal.count !== Number(per)))
     fail("每份测试集的数量与本轮明确要求不一致，请保留全部交付并修正数量。");
-  if (/各\s*一份\s*[1-9]\d*\s*条/u.test(request)) {
+  if (eachOne) {
     const named = request
-      .split(/各\s*一份/u)[0]
+      .slice(0, eachOne.index)
       .split(/和|与|及|、/u)
       .filter((part) => part.trim());
     if (named.length > 1 && goals.length !== named.length)

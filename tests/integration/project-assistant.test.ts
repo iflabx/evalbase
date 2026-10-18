@@ -15038,7 +15038,7 @@ describe("project assistant public contract", () => {
       );
       const saved = await opt21End(
         await opt21Submit(
-          "按附件规范建一份客服意图测试集共6条，退款申请和物流查询各3条，不用原始数据。先给方案，暂不执行。",
+          "一份 6 条，退款申请和物流查询各 3 条，不用原始数据，先给方案",
         ),
       );
       expect(
@@ -15089,7 +15089,7 @@ describe("project assistant public contract", () => {
     }
   });
 
-  it.each(["cleared", "merged"])(
+  it.each(["cleared", "merged", "resumed"])(
     "OPT35 keeps both GB deliveries through rejected references and %s correction",
     async (variant) => {
       const previous = sessionId,
@@ -15173,35 +15173,57 @@ describe("project assistant public contract", () => {
             ],
           };
           weakened.splice(1);
-        } else weakened[0].classifications = [];
-        toolSequence = [bad, weakened, goals].map((deliveries) => ({
+        } else if (variant === "resumed") weakened.splice(1);
+        else weakened[0].classifications = [];
+        const call = (deliveries: typeof goals) => ({
           name: "plan_task",
           input: {
             executionMode: "plan",
             deliveries,
             requirements: ["语义完整自然，期望输出写逐题具体安全行为"],
           },
-        }));
-        const saved = await opt21End(
-          await opt21Submit(
-            "按附件规范，GB A.1.a 和 A.1.b 各一份5条，不用原始数据。先给方案，暂不执行。",
-          ),
-        );
+        });
+        const request =
+          "按附件规范，GB A.1.a 和 A.1.b 各一份5条，不用原始数据。先给方案，暂不执行。";
+        let saved;
+        if (variant === "resumed") {
+          toolSequence = [call(bad)];
+          const failed = await opt21End(await opt21Submit(request));
+          expect(failed.task.executionPlan).toBeUndefined();
+          expect(
+            (
+              await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+                sessionId,
+              ])
+            ).rows[0].task.planningRecovery,
+          ).toBeTruthy();
+          toolSequence = [call(weakened), call(goals)];
+          saved = await opt21End(await opt21Submit("继续规划"));
+        } else {
+          toolSequence = [bad, weakened, goals].map(call);
+          saved = await opt21End(await opt21Submit(request));
+        }
         const records = saved.turns
           .at(-1)
           .tools.filter((tool: any) => tool.name === "plan_task");
-        expect(records, JSON.stringify(saved.turns.at(-1))).toHaveLength(3);
-        expect(records.map((tool: any) => tool.status)).toEqual([
-          "failed",
-          "failed",
-          "succeeded",
-        ]);
-        expect(records[0].error.code).toBe(
-          "assistant_background_reference_invalid",
+        expect(records, JSON.stringify(saved.turns.at(-1))).toHaveLength(
+          variant === "resumed" ? 2 : 3,
         );
-        expect(records[1].error.hint).toContain(
-          variant === "merged" ? "不能删除、合并" : "不能清空",
+        expect(records.map((tool: any) => tool.status)).toEqual(
+          variant === "resumed"
+            ? ["failed", "succeeded"]
+            : ["failed", "failed", "succeeded"],
         );
+        if (variant === "resumed")
+          expect(records[0].error.code).toBe("assistant_requirement_conflict");
+        else {
+          expect(records[0].error.code).toBe(
+            "assistant_background_reference_invalid",
+          );
+          expect(records[1].error.hint).toContain(
+            variant === "merged" ? "不能删除、合并" : "不能清空",
+          );
+        }
         const generations = () =>
           saved.task.executionPlan.steps.filter(
             (step: any) => step.action === "generate_candidates",

@@ -68,24 +68,46 @@ describe("OPT-35 delivery planning contract", () => {
         },
       ],
     };
-    const request = "一份客服意图测试集共6条，退款申请和物流查询各3条";
-    expect(reviseDeliveryGoals([], [intent], request)).toHaveLength(1);
-    expect(() =>
-      reviseDeliveryGoals(
-        [],
-        [single("退款申请", 3), single("物流查询", 3)],
-        request,
-      ),
-    ).toThrowError(
-      expect.objectContaining({ hint: expect.stringMatching(/份数/) }),
-    );
-    expect(() =>
-      reviseDeliveryGoals([], [{ ...intent, count: 5 }], request),
-    ).toThrow();
+    for (const request of [
+      "一份客服意图测试集共6条，退款申请和物流查询各3条",
+      "一份 6 条，退款申请和物流查询各 3 条，不用原始数据，先给方案",
+    ]) {
+      expect(reviseDeliveryGoals([], [intent], request)).toHaveLength(1);
+      expect(() =>
+        reviseDeliveryGoals(
+          [],
+          [single("退款申请", 3), single("物流查询", 3)],
+          request,
+        ),
+      ).toThrowError(
+        expect.objectContaining({ hint: expect.stringMatching(/份数/) }),
+      );
+      expect(() =>
+        reviseDeliveryGoals([], [single("客服意图", 5)], request),
+      ).toThrow();
+    }
     expect(() =>
       reviseDeliveryGoals([], [single()], "GB A.1.a 和 A.1.b 各一份5条"),
     ).toThrowError(
       expect.objectContaining({ hint: expect.stringMatching(/分别交付/) }),
+    );
+    expect(
+      reviseDeliveryGoals(
+        [],
+        [single(), single("GB A.1.b")],
+        "为 A.1.a 和 A.1.b 各建一份 5 条测试集，先给方案",
+      ),
+    ).toHaveLength(2);
+    // A compact plural clause fixes the number of collections, not their allocation.
+    expect(
+      reviseDeliveryGoals(
+        [],
+        [single("退款申请", 2), single("物流查询", 4)],
+        "两份 6 条",
+      ),
+    ).toHaveLength(2);
+    expect(() => reviseDeliveryGoals([], [intent], "两份 6 条")).toThrowError(
+      expect.objectContaining({ hint: expect.stringMatching(/份数/) }),
     );
   });
 

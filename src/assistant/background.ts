@@ -709,11 +709,16 @@ function fixedOutputRequested(
   excerpts: string[],
   values: string[],
 ) {
+  const refusesDocumentOutput = (request: string) =>
+    /(?:不要|不采用|不用|忽略|不参考).{0,12}(?:附件|文档|规范|标准|输出约定)|(?:只|仅).{0,8}(?:问题|Metadata|元数据)/iu.test(
+      request,
+    );
   let delegation: string | undefined;
   for (let index = userRequests.length - 1; index >= 0; index--) {
     const request = userRequests[index]!;
     const explicit = expectedOutputForm(request);
     if (explicit) return explicit === "labels";
+    if (refusesDocumentOutput(request)) return false;
     delegation = request
       .split(/[。；;，,\n]/u)
       .findLast((clause) =>
@@ -722,18 +727,22 @@ function fixedOutputRequested(
         ),
       );
     if (delegation) {
-      const localOnly =
-        /问题|metadata|元数据/iu.test(delegation) &&
-        !/输出|expectedOutput/iu.test(delegation);
+      const localOnly = !/输出|expectedOutput/iu.test(delegation);
       const earlierChoice = userRequests
         .slice(0, index)
-        .some((text) => expectedOutputForm(text) !== undefined);
+        .some(
+          (text) =>
+            expectedOutputForm(text) !== undefined ||
+            refusesDocumentOutput(text),
+        );
       if (!localOnly || !earlierChoice) break;
       delegation = undefined;
     }
   }
+  // Selected, already-read standards supply a data format by default. Explicit
+  // user choices above still win; document text never authorizes an operation.
   if (
-    !delegation ||
+    delegation &&
     /(?:不要|不得|不再|停止|取消).{0,4}(?:按|根据|遵循|依据|依照|参照)/u.test(
       delegation,
     )
