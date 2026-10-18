@@ -4884,7 +4884,6 @@ export async function executeAssistantTurn(
     if (
       deliveriesConfirmed &&
       plan?.contractVersion === 1 &&
-      deliveryGoals(plan).length > 0 &&
       plan.mode === "execute" &&
       !plan.needsReview &&
       !final.executionPaused &&

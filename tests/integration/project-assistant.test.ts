@@ -15963,6 +15963,160 @@ describe("project assistant public contract", () => {
     ]);
     return { db, source, runs, artifacts, cfg };
   }
+  it("OPT37 completes a generic v1 draft edit from real adoption receipts and safely resumes an already saved checkpoint", async () => {
+    const previous = sessionId,
+      f = await opt25Results(false, [2, 4]);
+    const rows = () =>
+      f.db.query(
+        "SELECT * FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted ORDER BY position,id",
+        [f.source],
+      );
+    const state = async () =>
+      (
+        await f.db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+    const domains = async () =>
+      (
+        await f.db.query(
+          "SELECT (SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs,(SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_acceptance WHERE project_id=$1) adoptions",
+          [projectId],
+        )
+      ).rows[0];
+    try {
+      // Reuse two deterministic clean results in a six-row source; the other
+      // independent fixture run is not part of this local edit's candidates.
+      await f.db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            runId: f.runs[0],
+            runIds: [f.runs[0]],
+            targetCount: 6,
+            countKind: "final",
+          }),
+        ],
+      );
+      const before = (await rows()).rows;
+      const revision = Number(
+        (
+          await f.db.query(
+            "SELECT revision FROM collaborative_draft WHERE id=$1",
+            [f.source],
+          )
+        ).rows[0].revision,
+      );
+      requestedTool = undefined;
+      toolSequence = [
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            steps: [
+              {
+                title: "保存本轮两条成果回原草稿",
+                action: "request_processing_apply",
+                input: {
+                  runId: f.runs[0],
+                  allTask: true,
+                  allValid: true,
+                  target: { kind: "draft", id: f.source },
+                },
+              },
+            ],
+          },
+        },
+      ];
+      const prepared = await opt21End(
+        await opt21Submit("将本轮2条清洗结果保存回原草稿，其余4条不变", {
+          kind: "draft",
+          id: f.source,
+        }),
+      );
+      expect(prepared.task.executionPlan.contractVersion).toBe(1);
+      expect(prepared.task.deliveries ?? []).toHaveLength(0);
+      expect(prepared.task.stage).toBe("awaiting_confirmation");
+      expect((await rows()).rows).toEqual(before);
+      const proposal = prepared.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal.summary).toMatchObject({ count: 2, range: "task" });
+      toolSequence = [];
+      const adopted = await app.inject({
+        method: "POST",
+        url: `${base()}/proposals/${proposal.id}/confirm`,
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {},
+      });
+      expect(adopted.statusCode, adopted.body).toBe(200);
+      expect(adopted.json().receipt.receipt).toMatchObject({
+        draftId: f.source,
+        adopted: 2,
+        revision: revision + 1,
+      });
+      // Wait through the database so a GET cannot supply the completion write.
+      await expect
+        .poll(
+          async () =>
+            (
+              await f.db.query(
+                "SELECT count(*)::int AS n FROM assistant_turn WHERE session_id=$1 AND status IN('queued','running')",
+                [sessionId],
+              )
+            ).rows[0].n,
+          { timeout: 15000 },
+        )
+        .toBe(0);
+      const completed = await state();
+      expect(completed.stage).toBe("complete");
+      expect(
+        completed.executionPlan.steps.every(
+          (s: any) => s.status === "executed",
+        ),
+      ).toBe(true);
+      const refreshed = await read();
+      expect(refreshed.statusCode, refreshed.body).toBe(200);
+      expect(refreshed.json().task.stage).toBe("complete");
+      expect(await state()).toEqual(completed);
+      const after = (await rows()).rows;
+      expect(after).toHaveLength(6);
+      expect(after.slice(2)).toEqual(before.slice(2));
+      for (let index = 0; index < 2; index++) {
+        expect(after[index].question).toBe(before[index].question.trim());
+        expect(after[index].expected_output).toBe(
+          before[index].expected_output,
+        );
+        expect(after[index].metadata).toEqual(before[index].metadata);
+      }
+      // An older persisted checkpoint may already have this same real receipt
+      // while still displaying awaiting_review. Continue must only reconcile it.
+      const domainBefore = await domains();
+      await f.db.query(
+        'UPDATE assistant_session SET task=task||\'{"stage":"awaiting_review"}\'::jsonb WHERE id=$1',
+        [sessionId],
+      );
+      requestedTool = undefined;
+      const resumed = await opt21End(await opt21Submit("继续执行已保存方案"));
+      expect(resumed.task.stage).toBe("complete");
+      expect((await state()).stage).toBe("complete");
+      expect(await domains()).toEqual(domainBefore);
+      expect((await rows()).rows).toEqual(after);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      await app.inject({
+        method: "POST",
+        url: `${base()}/sessions/${sessionId}/stop`,
+        headers,
+        payload: {},
+      });
+      sessionId = previous;
+      await f.db.end();
+    }
+  });
+
   it("OPT37 rejects a historical candidate refinement when a completed task starts a saved draft edit", async () => {
     const previous = sessionId,
       f = await opt25Results(false, [3, 3]);
