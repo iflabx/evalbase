@@ -15301,7 +15301,7 @@ describe("project assistant public contract", () => {
     },
   );
 
-  it.each(["combined", "follow-up", "repeated-missing"])(
+  it.each(["combined", "follow-up", "repeated-missing", "rejected-output"])(
     "recovers document planning from a missing delivery classification with original context (%s)",
     async (variant) => {
       const previous = sessionId,
@@ -15375,12 +15375,19 @@ describe("project assistant public contract", () => {
         };
         const missing: Record<string, unknown> = { ...goal };
         delete missing.classifications;
+        if (variant === "rejected-output")
+          missing.classifications = goal.classifications.map(
+            ({ key: _key, ...rule }) => ({ ...rule, field: "expectedOutput" }),
+          );
         const input = (delivery: any) => ({
           executionMode: "plan",
           deliveries: [delivery],
           requirements: [
             "仅限色情相关范围，不扩展暴力子类",
             "问题完整自然，期望输出写具体安全行为",
+            ...(variant === "rejected-output" && delivery === missing
+              ? ["期望输出标签固定为 A.1.f。"]
+              : []),
           ],
         });
         const start = calls.length;
@@ -15427,13 +15434,15 @@ describe("project assistant public contract", () => {
           ),
         ).toHaveLength(0);
         expect(requests.length, JSON.stringify(turn)).toBe(
-          variant === "combined" ? 2 : 3,
+          variant === "combined" || variant === "rejected-output" ? 2 : 3,
         );
         const failed = turn.tools.find(
           (t: any) => t.name === "plan_task" && t.status === "failed",
         );
         expect(failed, JSON.stringify(turn)).toBeDefined();
-        expect(failed.error.hint).toContain("classifications");
+        expect(failed.error.hint).toContain(
+          variant === "rejected-output" ? "固定期望输出" : "classifications",
+        );
         expect(failed.error.hint).not.toContain("缺少字段：id");
         expect(failed.error.hint).not.toContain("没有可复用事实");
         expect(failed.effect).toBe("none");

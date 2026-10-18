@@ -628,7 +628,14 @@ export function assertDeliveryRepair(
   originalInput: any,
   nextInput: any,
   userText = "",
+  rejectedOutputEnum = false,
 ) {
+  const relocatedLabels = new Set<string>();
+  const label = (text: string) =>
+    text
+      .normalize("NFKC")
+      .replace(/[\s“”"'「」『』]/gu, "")
+      .replace(/[。.]$/u, "");
   const next = nextInput?.deliveries;
   if (Array.isArray(originalInput?.deliveries) && !Array.isArray(next))
     fail("修正参数时须保留全部交付和分类要求，不能改为不含交付的方案。");
@@ -670,13 +677,15 @@ export function assertDeliveryRepair(
           )
         : undefined;
       let relocated = false;
-      // Only rejected proposals may relocate a fixed enum that contradicts the
-      // user's explicit prose output. Saved rules still use scoped ruleChanges.
+      // Only rejected proposals may relocate an intact enum. The extra allowance
+      // comes from a server validation receipt, never a model parameter; saved
+      // rules still use scoped ruleChanges.
       if (
         !replacement &&
         identity === "expectedOutput" &&
         rule.basis === "background" &&
-        expectedOutputForm(userText) === "per-item" &&
+        (expectedOutputForm(userText) === "per-item" ||
+          (rejectedOutputEnum && expectedOutputForm(userText) !== "labels")) &&
         Array.isArray(rule.allowedValues) &&
         rule.allowedValues.length > 0 &&
         rule.allowedValues.every(
@@ -702,6 +711,9 @@ export function assertDeliveryRepair(
         if (alternatives.length === 1) {
           replacement = alternatives[0];
           relocated = true;
+          if (rejectedOutputEnum)
+            for (const value of rule.allowedValues)
+              relocatedLabels.add(label(value));
         }
       }
       if (!replacement || replacement.clear)
@@ -776,11 +788,22 @@ export function assertDeliveryRepair(
       )
     : [];
   if (
-    requirements.some(
-      (value: string) =>
-        !Array.isArray(nextInput?.requirements) ||
-        !nextInput.requirements.includes(value),
-    )
+    requirements.some((value: string) => {
+      if (
+        Array.isArray(nextInput?.requirements) &&
+        nextInput.requirements.includes(value)
+      )
+        return false;
+      // A rejected model proposal is not a user contract. Discard only a
+      // standalone directive for the exact relocated label, not a compound
+      // instruction or any other semantic requirement.
+      const directive = value
+        .trim()
+        .match(
+          /^(?:每条(?:记录)?的?)?(?:期望输出|expectedOutput)\s*(?:标签)?\s*(?:固定为|固定值为|填写|填为|[:：=])\s*(.+?)\s*$/iu,
+        )?.[1];
+      return !directive || !relocatedLabels.has(label(directive));
+    })
   )
     fail("修正参数不能删除原语义要求；本轮有效要求必须保留。");
 }

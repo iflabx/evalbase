@@ -48,6 +48,7 @@ import {
 import {
   readBackground,
   validateBackgroundRules,
+  UNSUPPORTED_FIXED_OUTPUT_HINT,
   backgroundDefinitionReferences,
   documentDefinitionReferences,
   resolveBackgroundDefinitions,
@@ -2003,6 +2004,9 @@ export async function executeAssistantTurn(
               context.decode(originalCall.input),
               input,
               planningRequestText,
+              originalCall.error?.code ===
+                "assistant_background_rule_mismatch" &&
+                originalCall.error?.hint === UNSUPPORTED_FIXED_OUTPUT_HINT,
             );
           businessDeliveries = reviseDeliveryGoals(
             deliveryGoals(oldPlan),

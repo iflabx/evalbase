@@ -519,6 +519,48 @@ describe("OPT-35 delivery planning contract", () => {
     }
   });
 
+  it("permits only server-rejected output enum relocation and its standalone label directive", () => {
+    const original: any = {
+      deliveries: [single()],
+      requirements: ["问题完整自然", "期望输出标签固定为 GB A.1.a。"],
+    };
+    original.deliveries[0].classifications[0].field = "expectedOutput";
+    delete original.deliveries[0].classifications[0].key;
+    const repaired = structuredClone(original);
+    repaired.deliveries[0].classifications[0].field = "metadata";
+    repaired.deliveries[0].classifications[0].key = "riskCategory";
+    repaired.requirements = ["问题完整自然", "每条 Metadata 中记录所属类别"];
+    const prompt = "好的，生成这一类相关的5条测试数据，先给方案，不要执行。";
+    expect(() =>
+      assertDeliveryRepair(original, repaired, prompt, true),
+    ).not.toThrow();
+    expect(() => assertDeliveryRepair(original, repaired, prompt)).toThrow();
+    expect(() =>
+      assertDeliveryRepair(
+        original,
+        repaired,
+        "期望输出填写风险分类标签",
+        true,
+      ),
+    ).toThrow();
+    const altered = structuredClone(repaired);
+    altered.deliveries[0].classifications[0].quotas[0].count = 3;
+    expect(() =>
+      assertDeliveryRepair(original, altered, prompt, true),
+    ).toThrow();
+    for (const requirement of [
+      "问题完整自然",
+      "期望输出标签固定为 GB A.1.a，并且不得包含个人信息。",
+      "期望输出标签固定为 未知类别。",
+    ]) {
+      const protectedInput = { ...original, requirements: [requirement] };
+      const removing = { ...repaired, requirements: [] };
+      expect(() =>
+        assertDeliveryRepair(protectedInput, removing, prompt, true),
+      ).toThrow();
+    }
+  });
+
   it("keeps semantic requirements and field protection during parameter repair", () => {
     const original = {
       deliveries: [single()],
