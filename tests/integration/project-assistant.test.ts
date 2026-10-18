@@ -5403,7 +5403,7 @@ describe("project assistant public contract", () => {
       }
     },
   );
-  it("continues an authorized pending step after the query budget without recreating its draft", async () => {
+  it("OPT36 executes a known source read immediately without model reconstruction or duplicate drafts", async () => {
     const previous = sessionId;
     const source = await app.inject({
       method: "POST",
@@ -5424,15 +5424,6 @@ describe("project assistant public contract", () => {
       {
         name: "plan_task",
         input: {
-          title: "待纠正方案",
-          requirements: [],
-          question: "错误的澄清",
-          nextAction: "create_draft",
-        },
-      },
-      {
-        name: "plan_task",
-        input: {
           title: "跨轮执行方案",
           requirements: ["建立一个草稿后检查资料，不采用或发布"],
           nextAction: "create_draft",
@@ -5448,14 +5439,6 @@ describe("project assistant public contract", () => {
         },
       },
       { name: "create_draft", input: { name: "跨轮唯一草稿" } },
-      ...Array.from({ length: 9 }, (_, index) => ({
-        name: "query_project",
-        input: { kind: "files", search: `分类资料${index + 1}` },
-      })),
-      {
-        name: "read_records",
-        input: { source: { kind: "draft", id: source.json().draft.id } },
-      },
     ];
     try {
       const result = await app.inject({
@@ -5465,11 +5448,6 @@ describe("project assistant public contract", () => {
         payload: { message: "执行刚才的方案：建立一个草稿后检查资料" },
       });
       expect(result.statusCode).toBe(202);
-      await expect
-        .poll(async () => (await read()).json().turns.length, {
-          timeout: 15000,
-        })
-        .toBeGreaterThan(1);
       await expect
         .poll(
           async () =>
@@ -5497,7 +5475,7 @@ describe("project assistant public contract", () => {
           })),
         }),
       ).toBe(true);
-      expect(state.turns[1].event).toBe("budget_yield");
+      expect(state.turns).toHaveLength(1);
       expect(
         state.turns[0].tools.some(
           (tool: any) =>
@@ -5516,9 +5494,9 @@ describe("project assistant public contract", () => {
       expect(
         state.task.executionPlan.steps.map((step: any) => step.status),
       ).toEqual(["executed", "executed"]);
-      expect(state.turns[0].assistantText).toContain("继续");
-      expect(state.turns[1].assistantText).toContain("任务进度与保留成果");
-      expect(state.turns[1].assistantText).not.toContain("候选");
+      expect(
+        state.turns[0].tools.some((tool: any) => tool.name === "query_project"),
+      ).toBe(false);
       expect(state.task.diagnostics.modelSteps).toBeLessThanOrEqual(10);
     } finally {
       toolSequence = [];
@@ -14359,6 +14337,556 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it.each([1, 2])(
+    "OPT36 executes %i saved deliveries through background and confirmation without model reconstruction",
+    async (count) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      let lost: ReturnType<typeof vi.spyOn> | undefined;
+      let tailReturnedAt = 0;
+      try {
+        await opt21Session();
+        const document = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "GB附录A原始摘录.txt",
+              contentBase64: readFileSync(
+                "tests/fixtures/assistant-gb-original-fragment.txt",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        requestedTool = {
+          name: "read_background",
+          input: { documentId: document.id },
+        };
+        const background = await opt21End(await opt21Submit("读取附件"));
+        const catalog = background.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "read_background")
+          .result.definitions;
+        const deliveries = ["A.1.a", "A.1.b"].slice(0, count).map((value) => ({
+          name: "OPT36 " + value + " " + randomUUID(),
+          count: 5,
+          instructions: "按对应定义生成完整自然的用户问题",
+          scenarios: [
+            "用户说明背景后提出具体请求",
+            "用户带限定条件提出请求",
+            "用户询问实现对应目标的方法",
+          ],
+          classifications: [
+            {
+              field: "metadata",
+              key: "riskCategory",
+              basis: "background",
+              allowedValues: [value],
+              requiredValues: [value],
+              quotas: [{ value, count: 5 }],
+              definitions: [
+                {
+                  value,
+                  reference: catalog.find((entry: any) => entry.value === value)
+                    .reference,
+                },
+              ],
+            },
+          ],
+        }));
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries,
+            requirements: ["问题语义完整，期望输出写逐题具体安全行为"],
+          },
+        };
+        const planned = await opt21End(
+          await opt21Submit(
+            count === 2
+              ? "GB A.1.a和A.1.b各一份5条，先给方案，暂不执行。"
+              : "按文档为GB A.1.a建一份5条测试集，先给方案，暂不执行。",
+          ),
+        );
+        expect(planned.task.executionPlan.mode).toBe("plan");
+        const savedGenerations = planned.task.executionPlan.steps.filter(
+          (s: any) => s.action === "generate_candidates",
+        );
+        expect(savedGenerations).toHaveLength(count);
+        const beforeDrafts = (
+          await db.query(
+            "SELECT count(*)::int n FROM collaborative_draft WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].n;
+        const create = processingStoreModule.createProcessingRun;
+        lost = vi
+          .spyOn(processingStoreModule, "createProcessingRun")
+          .mockImplementationOnce(async (...args) => {
+            await create(...args);
+            await new Promise((resolve) => setTimeout(resolve, 35));
+            tailReturnedAt = Date.now();
+            throw new Error("synthetic committed response lost");
+          });
+        requestedTool = undefined;
+        toolSequence = [];
+        const modelRequests = () =>
+          calls.filter((call) => Array.isArray(call.tools)).length;
+        const modelBefore = modelRequests();
+        let state = await opt21End(await opt21Submit("按当前已保存方案执行"));
+        const finalBudget = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        expect(
+          finalBudget.executionBudget.lastTurn.elapsedMs,
+        ).toBeGreaterThanOrEqual(
+          tailReturnedAt - finalBudget.turnBudget.startedAt,
+        );
+        const ids: string[] = [],
+          drafts: string[] = [];
+        const idle = async () => {
+          await expect
+            .poll(
+              async () =>
+                (await read())
+                  .json()
+                  .turns.some((t: any) =>
+                    ["queued", "running"].includes(t.status),
+                  ),
+              { timeout: 15000 },
+            )
+            .toBe(false);
+          return (await read()).json();
+        };
+        for (let index = 0; index < count; index++) {
+          expect(state.task.stage, JSON.stringify(state.turns.at(-1))).toBe(
+            "processing",
+          );
+          const runId = state.task.runId;
+          expect(runId).toBeTruthy();
+          expect(ids).not.toContain(runId);
+          ids.push(runId);
+          const run = (
+            await db.query(
+              "SELECT target_draft_id,options,input_ref FROM processing_run WHERE id=$1",
+              [runId],
+            )
+          ).rows[0];
+          drafts.push(run.target_draft_id);
+          expect(run.options.outputCount).toBe(5);
+          expect(run.options.scenarios).toEqual(
+            savedGenerations[index].input.scenarios,
+          );
+          const frozen = JSON.parse(
+            (
+              await new ArtifactRepository(loadConfig().minio).readBytes(
+                run.input_ref,
+                100000000,
+              )
+            ).toString(),
+          );
+          expect(frozen.background.classifications).toEqual(
+            savedGenerations[index].input.classifications,
+          );
+          if (index === 0) {
+            const turnId = state.turns.at(-1).id;
+            const originalKey = state.task.executionPlan.steps[0].receipt.key;
+            await db.query(
+              "UPDATE assistant_turn SET status='failed',error_code='assistant_model_failed' WHERE id=$1",
+              [turnId],
+            );
+            await db.query(
+              "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+              [
+                sessionId,
+                JSON.stringify({ recovery: { kind: "model_reply" } }),
+              ],
+            );
+            const recoveries = await Promise.all([
+              app.inject({
+                method: "POST",
+                url: base() + "/sessions/" + sessionId + "/retry",
+                headers,
+                payload: {},
+              }),
+              app.inject({
+                method: "POST",
+                url: base() + "/sessions/" + sessionId + "/retry",
+                headers,
+                payload: {},
+              }),
+            ]);
+            expect(
+              recoveries.map((result) => result.statusCode).sort(),
+            ).toEqual([200, 409]);
+            state = await idle();
+            expect(state.task.executionPlan.steps[0].receipt.key).toBe(
+              originalKey,
+            );
+            expect(state.task.runId).toBe(runId);
+          }
+          await taskModule.collectProcessingEvents(db);
+          await taskModule.collectProcessingEvents(db);
+          expect((await idle()).task.runId).toBe(runId);
+          expect(modelRequests()).toBe(modelBefore);
+          await opt29Worker(runId);
+          await taskModule.collectProcessingEvents(db);
+          await taskModule.collectProcessingEvents(db);
+          state = await idle();
+          expect(state.task.stage, JSON.stringify(state.turns.at(-1))).toBe(
+            "awaiting_confirmation",
+          );
+          const proposal = state.proposals.find(
+            (p: any) => p.status === "pending",
+          );
+          expect(proposal, JSON.stringify(state.turns.at(-1))).toBeDefined();
+          const actual = (
+            await db.query(
+              "SELECT parameters FROM assistant_proposal WHERE id=$1",
+              [proposal.id],
+            )
+          ).rows[0].parameters;
+          expect(actual.target.id).toBe(run.target_draft_id);
+          expect(actual.resultIds).toHaveLength(5);
+          for (let repeat = 0; repeat < 2; repeat++) {
+            const confirmed = await app.inject({
+              method: "POST",
+              url: base() + "/proposals/" + proposal.id + "/confirm",
+              headers,
+              payload: {},
+            });
+            expect(confirmed.statusCode, confirmed.body).toBe(200);
+          }
+          await taskModule.collectProcessingEvents(db);
+          state = await idle();
+          expect(
+            (
+              await db.query(
+                "SELECT count(*)::int n FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+                [run.target_draft_id],
+              )
+            ).rows[0].n,
+          ).toBe(5);
+        }
+        expect(state.task.executionPlan.current).toBe(
+          state.task.executionPlan.steps.length,
+        );
+        expect(
+          state.task.executionPlan.steps.every(
+            (s: any) => s.status === "executed",
+          ),
+        ).toBe(true);
+        expect(state.task.stage).toBe("complete");
+        expect(new Set(drafts).size).toBe(count);
+        expect(modelRequests() - modelBefore).toBe(0);
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM collaborative_draft WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].n - beforeDrafts,
+        ).toBe(count);
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM processing_run WHERE id=ANY($1::text[])",
+              [ids],
+            )
+          ).rows[0].n,
+        ).toBe(count);
+        expect(
+          state.turns
+            .flatMap((t: any) => t.tools)
+            .filter(
+              (t: any) =>
+                t.name === "generate_candidates" && t.status === "succeeded",
+            ),
+        ).toHaveLength(count);
+        expect(
+          state.turns.some((t: any) =>
+            t.tools.some(
+              (r: any) =>
+                r.name === "generate_candidates" && r.result?.recovered,
+            ),
+          ),
+        ).toBe(true);
+        expect((await read()).json().task.executionPlan).toEqual(
+          state.task.executionPlan,
+        );
+      } finally {
+        lost?.mockRestore();
+        requestedTool = undefined;
+        toolSequence = [];
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+
+  it("OPT36 yields fixed reads at the original tool boundary without a model polling loop", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const source = await opt22Draft("OPT36固定读取预算");
+      await opt21Session();
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          steps: Array.from({ length: 13 }, (_, offset) => ({
+            title: "读取固定位置" + offset,
+            action: "read_records",
+            input: { source: { kind: "draft", id: source }, offset, limit: 1 },
+          })),
+        },
+      };
+      const before = calls.length;
+      await opt21End(await opt21Submit("执行这些已确定的读取步骤，不修改数据"));
+      await taskModule.collectProcessingEvents(db);
+      await expect
+        .poll(
+          async () => {
+            const state = (await read()).json();
+            return (
+              state.task.executionPlan.steps.every(
+                (step: any) => step.status === "executed",
+              ) &&
+              !state.turns.some((turn: any) =>
+                ["queued", "running"].includes(turn.status),
+              )
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const state = (await read()).json();
+      expect(
+        state.turns.some((turn: any) => turn.event === "budget_yield"),
+      ).toBe(true);
+      expect(calls.length - before).toBe(1);
+      const budget = (
+        await db.query(
+          "SELECT task->'executionBudget' budget FROM assistant_session WHERE id=$1",
+          [sessionId],
+        )
+      ).rows[0].budget;
+      expect(budget.modelSteps).toBe(1);
+      expect(budget.toolCalls).toBe(14);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+
+  it.each(["retry", "time"])(
+    "OPT36 enforces cumulative %s limits before another request",
+    async (kind) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        await opt21Session();
+        requestedTool = { name: "query_project", input: { kind: "project" } };
+        await opt21End(await opt21Submit("查询项目"));
+        const task = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        await db.query(
+          "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+          [
+            sessionId,
+            JSON.stringify({
+              executionBudget: {
+                ...task.executionBudget,
+                transportRetries: kind === "retry" ? 25 : 0,
+                activeMs: kind === "time" ? 1040000 - 80 : 0,
+              },
+            }),
+          ],
+        );
+        if (kind === "retry") {
+          providerFailure = 503;
+          providerFailureRemaining = 3;
+        } else {
+          hold = true;
+          entered = () => undefined;
+        }
+        const before = calls.length;
+        requestedTool = { name: "query_project", input: { kind: "project" } };
+        const state = await opt21End(await opt21Submit("继续查询项目"));
+        expect(state.turns.at(-1).status).toBe("failed");
+        const saved = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        if (kind === "retry") {
+          expect(calls.length - before).toBe(2);
+          expect(saved.executionBudget.transportRetries).toBe(26);
+          expect(state.turns.at(-1).errorCode).toBe("assistant_task_limit");
+        } else {
+          expect(calls.length - before).toBeLessThanOrEqual(1);
+          expect(
+            saved.turnBudget.deadlineAt - saved.turnBudget.startedAt,
+          ).toBeLessThanOrEqual(80);
+          expect([
+            "assistant_budget_exhausted",
+            "assistant_task_limit",
+          ]).toContain(state.turns.at(-1).errorCode);
+        }
+      } finally {
+        release();
+        hold = false;
+        providerFailure = undefined;
+        providerFailureRemaining = 1;
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        await db.end();
+      }
+    },
+  );
+
+  it("OPT36 keeps cumulative execution limits across new user turns", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      await opt21End(await opt21Submit("查询项目"));
+      const first = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(first.executionBudget.modelSteps).toBeGreaterThan(0);
+      requestedTool = { name: "query_project", input: { kind: "project" } };
+      await opt21End(await opt21Submit("再次查询项目"));
+      const second = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(second.executionBudget.modelSteps).toBeGreaterThan(
+        first.executionBudget.modelSteps,
+      );
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            autoCount: 12,
+            stage: "failed",
+            error: "assistant_task_limit",
+            executionBudget: { ...second.executionBudget, modelSteps: 130 },
+          }),
+        ],
+      );
+      const before = calls.length;
+      const blocked = await opt21End(await opt21Submit("继续查询项目"));
+      expect(blocked.turns.at(-1).status).toBe("failed");
+      expect(blocked.turns.at(-1).errorCode).toBe("assistant_task_limit");
+      expect(blocked.task.autoCount).toBe(12);
+      expect(calls.length).toBe(before);
+      expect(
+        (
+          await db.query(
+            "SELECT task->'executionBudget' budget FROM assistant_session WHERE id=$1",
+            [sessionId],
+          )
+        ).rows[0].budget.modelSteps,
+      ).toBe(130);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+
+  it("OPT36 does not let a prior publication hide an unfinished saved step", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const draft = await opt22Draft("OPT36已发布但仍有待办");
+      await opt21Session();
+      requestedTool = { name: "request_publish", input: { draftId: draft } };
+      const prepared = await opt21End(
+        await opt21Submit("准备发布", { kind: "draft", id: draft }),
+      );
+      const proposal = prepared.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal).toBeDefined();
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [sessionId, JSON.stringify({ executionPaused: true })],
+      );
+      const confirmed = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers,
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .turns.some((t: any) => ["queued", "running"].includes(t.status)),
+          { timeout: 15000 },
+        )
+        .toBe(false);
+      const checkpoint = {
+        mode: "execute",
+        needsReview: false,
+        current: 0,
+        steps: [
+          {
+            id: "remaining",
+            title: "下一份尚未生成",
+            action: "generate_candidates",
+            status: "pending",
+          },
+        ],
+      };
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            stage: "waiting_input",
+            executionPaused: false,
+            question: null,
+            executionPlan: checkpoint,
+          }),
+        ],
+      );
+      expect((await read()).json().task.stage).not.toBe("complete");
+      checkpoint.steps[0].status = "executed";
+      checkpoint.current = 1;
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{executionPlan}',$2::jsonb) WHERE id=$1",
+        [sessionId, JSON.stringify(checkpoint)],
+      );
+      expect((await read()).json().task.stage).toBe("complete");
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+
   it("OPT35 saves one intent collection from business goals without side effects", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);
@@ -20872,6 +21400,16 @@ describe("project assistant public contract", () => {
       let spy: any;
       try {
         await opt29Background();
+        // Persisted pre-contract tasks keep their original nested plan API.
+        await db.query(
+          "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+          [
+            sessionId,
+            JSON.stringify({
+              executionPlan: { mode: "plan", current: 0, steps: [] },
+            }),
+          ],
+        );
         const name = `OPT29-receipt-${randomUUID()}`;
         const input = {
           name,
@@ -20978,7 +21516,7 @@ describe("project assistant public contract", () => {
             await app.inject({ method: "GET", url: path, headers })
           ).json();
           expect(stable.records).toHaveLength(5);
-          expect(stable.run.execution.recipeVersion).toBe("processing-v9");
+          expect(stable.run.execution.recipeVersion).toBe("processing-v10");
         }
       } finally {
         spy?.mockRestore();

@@ -1,7 +1,11 @@
 import type { Database } from "../db/pool.js";
 import { AssistantError, assistantAccess } from "./store.js";
 import { carryCandidateScope } from "./candidates.js";
-import { advancePlan, pendingPlanAction, planRequirementsKey } from "./plan.js";
+import {
+  settleExecutionPlan,
+  pendingPlanAction,
+  planRequirementsKey,
+} from "./plan.js";
 
 /** Supplied only by server-side assistant callers, after locking domain sources. */
 export type AssistantGuard = {
@@ -116,8 +120,8 @@ export async function linkAssistantProcessing(
     throw new AssistantError(422, "processing_capacity_exceeded");
   const step = state.executionPlan?.steps[state.executionPlan.current];
   let plan = step?.operation
-    ? advancePlan(
-        state.executionPlan,
+    ? settleExecutionPlan(
+        state,
         step.action,
         {
           runId,
@@ -128,7 +132,7 @@ export async function linkAssistantProcessing(
         step.operation.key,
         scope.assistantGuard.revision,
         step.operation.input,
-      )
+      ).executionPlan
     : state.executionPlan;
   if (freshDelivery && plan)
     plan = {
@@ -137,7 +141,7 @@ export async function linkAssistantProcessing(
         ...state,
         target: null,
         targetCount: run.options.outputCount,
-        countKind: "new",
+        countKind: step?.countKind ?? "new",
         targetDraftId: run.target_draft_id,
       }),
     };
@@ -154,7 +158,7 @@ export async function linkAssistantProcessing(
               target: null,
               targetName: step?.input?.name ?? "依据背景文档生成",
               targetCount: run.options.outputCount,
-              countKind: "new",
+              countKind: step?.countKind ?? "new",
               createdDraftId: run.target_draft_id,
               targetDraftId: run.target_draft_id,
               processingScope: null,

@@ -20,6 +20,7 @@ export function currentTaskFacts(
   delete facts.selectedCandidates;
   delete facts.backgroundDefinitions;
   delete facts.turnBudget;
+  delete facts.executionBudget;
   delete facts.diagnostics;
   delete facts.retryOperations;
   const picked = selection ?? task.selectedCandidates;

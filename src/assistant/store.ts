@@ -293,6 +293,10 @@ export async function readSession(
      WHERE s.id=$1 AND s.content_revision=$2
        AND s.task->>'stage' IN ('awaiting_review','waiting_input')
        AND (s.task->'review'->>'deliveryComplete') IS DISTINCT FROM 'false'
+       AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(s.task->'executionPlan'->'steps','[]'::jsonb)) step WHERE step->>'status' IS DISTINCT FROM 'executed')
+       AND NOT coalesce((s.task->'executionPlan'->>'needsReview')::boolean,false)
+       AND NOT coalesce((s.task->>'executionPaused')::boolean,false)
+       AND s.task->>'question' IS NULL
        AND EXISTS(SELECT 1 FROM assistant_proposal p WHERE p.session_id=s.id
          AND p.task_revision=s.task_revision AND p.action='publish' AND p.status='succeeded'
          AND p.receipt->'version'->>'id' IS NOT NULL)
@@ -335,6 +339,7 @@ export async function readSession(
   if (view && presentedTask) {
     delete presentedTask.observations;
     delete presentedTask.turnBudget;
+    delete presentedTask.executionBudget;
     delete presentedTask.retryOperations;
     delete presentedTask.supplements;
     delete presentedTask.classifications;
@@ -812,10 +817,7 @@ export async function startTurn(
                 },
               }
             : {}),
-          autoCount:
-            session.task.error === "assistant_task_limit"
-              ? 0
-              : session.task.autoCount,
+          autoCount: session.task.autoCount,
         }
       : {
           goal: text.trim(),

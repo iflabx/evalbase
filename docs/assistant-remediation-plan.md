@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-18 最新安排：保留 AI SDK、收敛业务编排的 [§8](#8-2026-10-18-业务编排收敛整改) 已拆为 OPT-34–37。后续 Owner 单独授权的 OPT-34 已完成，详细实施、定向验证及限制见 [记录](../.scratch/assistant-optimization/opt34-verification.md)；后续单独授权的 OPT-35 亦已完成，见 [记录](../.scratch/assistant-optimization/opt35-verification.md)；OPT-36/37 未实施。§1–7 和下方旧记录保留历史范围；OPT-31 仍为 in-progress，内容质量与原八类验收未被本次代签。
+2026-10-18 最新安排：保留 AI SDK、收敛业务编排的 [§8](#8-2026-10-18-业务编排收敛整改) 已拆为 OPT-34–37。后续 Owner 单独授权的 OPT-34 已完成，详细实施、定向验证及限制见 [记录](../.scratch/assistant-optimization/opt34-verification.md)；后续单独授权的 OPT-35 亦已完成，见 [记录](../.scratch/assistant-optimization/opt35-verification.md)；后续单独授权的 OPT-36 亦已完成，见 [记录](../.scratch/assistant-optimization/opt36-verification.md)；OPT-37 未实施。§1–7 和下方旧记录保留历史范围；OPT-31 仍为 in-progress，内容质量与原八类验收未被本次代签。
 
 2026-10-08：OPT-06/07/08 已完成实施验证及既有隔离验收环境交付；原 200 条内容任务仍未完成，模型保存方案未转执行的限制已如实记录。人工验收仍 pending。依据 [实施台账](../.scratch/assistant-optimization/spec.md) 和 [OPT-08 记录](../.scratch/assistant-optimization/opt08-verification.md) 核对实际进度。
 

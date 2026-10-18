@@ -1,10 +1,10 @@
 # OPT-36 确定性执行、回执与恢复统一
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-35
+Implementation: completed
+Blocked by: none
 
-优先级：P1。依赖 [OPT-35](35-delivery-goals-and-plan-contract.md) 的持久目标与步骤绑定；OPT-34 为传递依赖。治理入口：[整改方案 §8](../../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)。仅文档，尚未授权开发或部署。
+优先级：P1。依赖 [OPT-35](35-delivery-goals-and-plan-contract.md) 的持久目标与步骤绑定；OPT-34 为传递依赖。治理入口：[整改方案 §8](../../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)。2026-10-19 Owner 已授权本票开发与定向验证；实施与限制见 [验证记录](../opt36-verification.md)。Owner pending，本轮未授权部署。
 
 ## 目标与问题
 
@@ -44,3 +44,5 @@ Blocked by: OPT-35
 ## Comments
 
 - 2026-10-18：按最终方案新建，Implementation not-started；本票不承担生产切换或旧票人工验收。
+
+- 2026-10-19：完成统一固定步骤推进、交付内引用/原操作回执绑定、作用域错误恢复和累计预算；保留既有 Worker 与安全守卫。定向证据见验证记录，未更新4217、合并或推送；OPT-37保持未实施。

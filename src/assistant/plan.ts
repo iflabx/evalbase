@@ -57,8 +57,12 @@ export function completeDocumentDeliveries(
     Step,
     "title" | "action" | "input" | "scope" | "deliveryId" | "countKind"
   >[],
+  includeSingle = false,
 ) {
-  if (steps.filter((step) => step.action === "generate_candidates").length < 2)
+  if (
+    steps.filter((step) => step.action === "generate_candidates").length <
+    (includeSingle ? 1 : 2)
+  )
     return steps;
   const completed: typeof steps = [];
   for (let i = 0; i < steps.length; i++) {
@@ -87,6 +91,7 @@ export function completeDocumentDeliveries(
         title: "确认采用本类结果",
         ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
         action: "request_processing_apply",
+        input: { allTask: true, allValid: true, target: { kind: "draft" } },
       });
     completed.push(...block);
     i = end - 1;
@@ -391,11 +396,15 @@ export function advancePlan(
   const step = plan.steps[plan.current];
   if (!step) return plan;
   if (step.revision !== undefined && step.revision !== revision) return plan;
+  const expectedInput =
+    plan.contractVersion === 1 && step.deliveryId
+      ? resolvedStepInput(plan)
+      : step.input;
   if (
     action === step.action &&
-    step.input &&
+    expectedInput &&
     input &&
-    Object.entries(step.input).some(
+    Object.entries(expectedInput).some(
       ([field, expected]) =>
         !(
           action === "read_background" &&
@@ -542,27 +551,65 @@ export function pendingPlanAction(
   return step?.status === "pending" ? step.action : undefined;
 }
 
+/** The executor and domain receipt callbacks project the same persisted step facts. */
+export function settleExecutionPlan(
+  task: Record<string, any>,
+  action: string,
+  value: Record<string, any>,
+  key: string,
+  revision?: number,
+  input?: Record<string, any>,
+) {
+  const previous: ExecutionPlan | undefined = task.executionPlan;
+  const plan = advancePlan(
+    previous && !previous.target && task.target
+      ? { ...previous, target: task.target }
+      : previous,
+    action,
+    value,
+    key,
+    revision,
+    input,
+  );
+  return {
+    executionPlan: plan,
+    nextAction:
+      !task.question && !task.executionPaused
+        ? (pendingPlanAction(plan) ?? null)
+        : null,
+  };
+}
+
 /** Bind dependencies only to committed receipts in this plan, never to a session's latest object. */
 export function resolvedStepInput(
   plan: ExecutionPlan | undefined,
   supplied?: Record<string, any>,
 ) {
   const step = plan?.steps[plan.current];
-  const input = { ...(step?.input ?? {}), ...(supplied ?? {}) };
+  const input = {
+    ...(step?.operation?.input ?? step?.input ?? {}),
+    ...(supplied ?? {}),
+  };
   if (!plan || !step) return input;
+  const delivery = plan.contractVersion === 1 && step.deliveryId;
+  const receipts = plan.steps
+    .slice(0, plan.current)
+    .filter(
+      (prior) =>
+        prior.status !== "pending" &&
+        (!delivery || prior.deliveryId === delivery),
+    )
+    .reverse();
   if (step.action === "request_selection_apply") {
     // A preview belongs to exactly one draft; do not combine independent latest receipts.
-    const preview = plan.steps
-      .slice(0, plan.current)
-      .reverse()
-      .find(
-        (prior) =>
-          prior.status === "executed" &&
-          prior.receipt?.previewId &&
-          prior.receipt.draftId &&
-          (!input.previewId || input.previewId === prior.receipt.previewId) &&
-          (!input.draftId || input.draftId === prior.receipt.draftId),
-      )?.receipt;
+    const preview = receipts.find(
+      (prior) =>
+        prior.status === "executed" &&
+        prior.receipt?.previewId &&
+        prior.receipt.draftId &&
+        (!input.previewId || input.previewId === prior.receipt.previewId) &&
+        (!input.draftId || input.draftId === prior.receipt.draftId),
+    )?.receipt;
     if (preview) {
       input.draftId ??= preview.draftId;
       input.previewId ??= preview.previewId;
@@ -585,19 +632,23 @@ export function resolvedStepInput(
           : [];
   for (const field of fields) {
     if (input[field]) continue;
-    const receipt = plan.steps
-      .slice(0, plan.current)
-      .reverse()
-      .find(
-        (prior) =>
-          prior.status !== "pending" &&
-          prior.receipt?.[field as keyof NonNullable<Step["receipt"]>],
-      );
+    const receipt = receipts.find(
+      (prior) => prior.receipt?.[field as keyof NonNullable<Step["receipt"]>],
+    );
     const value =
       receipt?.receipt?.[field as keyof NonNullable<Step["receipt"]>];
     if (value) input[field] = value;
-    else if (field === "draftId" && plan.target?.kind === "draft")
+    else if (!delivery && field === "draftId" && plan.target?.kind === "draft")
       input[field] = plan.target.id;
+  }
+  if (delivery && step.action === "request_processing_apply") {
+    const draftId = receipts.find((prior) => prior.receipt?.draftId)?.receipt
+      ?.draftId;
+    if (draftId && (!input.target || input.target.kind === "draft"))
+      input.target = {
+        ...(input.target ?? { kind: "draft" }),
+        id: input.target?.id ?? draftId,
+      };
   }
   return input;
 }
@@ -650,6 +701,10 @@ export function bindTaskInput(
   selection?: Record<string, any> | null,
 ) {
   const plan = task.executionPlan;
+  const delivery =
+    plan?.contractVersion === 1 &&
+    plan.steps[plan.current]?.action === name &&
+    plan.steps[plan.current]?.deliveryId;
   const input =
     plan?.steps[plan.current]?.action === name
       ? resolvedStepInput(plan, supplied)
@@ -678,16 +733,18 @@ export function bindTaskInput(
       "refine_candidates",
       "retry_processing",
       "request_processing_apply",
-    ].includes(name)
+    ].includes(name) &&
+    !delivery
   )
     input.runId ??=
       name === "refine_candidates" &&
       (selection?.runId || selection?.groups?.[0]?.runId)
         ? (selection.runId ?? selection.groups[0].runId)
         : task.runId;
-  const draftId =
-    task.targetDraftId ??
-    (target?.kind === "draft" ? target.id : task.createdDraftId);
+  const draftId = !delivery
+    ? (task.targetDraftId ??
+      (target?.kind === "draft" ? target.id : task.createdDraftId))
+    : undefined;
   if (["preview_selection", "request_publish"].includes(name))
     input.draftId ??= draftId;
   if (name === "request_processing_apply" && draftId) {

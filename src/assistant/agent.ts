@@ -1,4 +1,15 @@
 import {
+  hasNoEffect,
+  unresolvedFailure,
+  processingProposalValidationWithoutEffect,
+} from "./receipts.js";
+import {
+  checkpointExecutionBudget,
+  executionBudgetExhausted,
+  EXECUTION_BUDGET_LIMITS,
+  type ExecutionBudget,
+} from "./budget.js";
+import {
   deliveryGoals,
   reviseDeliveryGoals,
   generationSteps,
@@ -20,7 +31,7 @@ import {
 import {
   PLAN_ACTIONS,
   revisePlan,
-  advancePlan,
+  settleExecutionPlan,
   pendingPlanAction,
   planRequirementsKey,
   planSource,
@@ -105,51 +116,18 @@ export type DraftCommand = (
 ) => Promise<Record<string, any>>;
 const string = { type: "string", minLength: 1, maxLength: 250 },
   shortText = { type: "string", maxLength: 2000 };
-// These failures occur before a domain commit (or roll its transaction back).
-// Unknown failures keep the operation binding until a real receipt is reconciled.
-const validationWithoutEffect = new Set([
-  "assistant_tool_input_invalid",
-  "processing_scope_invalid",
-  "processing_configuration_invalid",
-  "processing_capacity_exceeded",
-  "test_set_capacity_exceeded",
-  "assistant_document_range",
-  "assistant_background_required",
-  "assistant_delivery_pending",
-  "assistant_background_not_read",
-  "assistant_background_rule_mismatch",
-  "assistant_background_reference_invalid",
-  "assistant_requirement_conflict",
-  "assistant_candidate_selection_invalid",
-  "assistant_plan_count_conflict",
-  "model_connection_unavailable",
-]);
-const processingProposalValidationWithoutEffect = new Set([
-  "processing_result_invalid",
-  "assistant_candidate_review_incomplete",
-]);
-function hasNoEffect(record: Record<string, any>) {
-  return (
-    record.effect === "none" ||
-    (record.status === "failed" &&
-      (validationWithoutEffect.has(record.error?.code) ||
-        (record.name === "request_processing_apply" &&
-          processingProposalValidationWithoutEffect.has(record.error?.code))))
-  );
-}
-function unresolvedFailure(records: Record<string, any>[]) {
-  return records.findLast(
-    (record, index) =>
-      record.status === "failed" &&
-      !records
-        .slice(index + 1)
-        .some(
-          (later) =>
-            later.name === record.name &&
-            later.status === "succeeded" &&
-            (hasNoEffect(record) || later.key === record.key),
-        ),
-  );
+function executionBinding(
+  task: Record<string, any>,
+  name: string,
+  revision: number,
+) {
+  const step = task.executionPlan?.steps[task.executionPlan.current];
+  return {
+    revision,
+    ...(step?.action === name
+      ? { stepId: step.id ?? null, deliveryId: step.deliveryId ?? null }
+      : {}),
+  };
 }
 function receiptMessages(
   name: string,
@@ -390,7 +368,8 @@ export async function executeAssistantTurn(
   let noProgress = false;
   let lastFailure: { name: string; code: string; hint: string } | undefined;
   const schemaHints = new Map<string, string>();
-  let repairFailure = false;
+  let executionBudget: ExecutionBudget | undefined;
+  let reconciledExecution = false;
   let activeRepair: { name: string; identity: string } | undefined;
   let activeRepairTools = new Set<string>();
   let repairQueue: Promise<unknown> = Promise.resolve();
@@ -447,6 +426,7 @@ export async function executeAssistantTurn(
   const startedAt = Date.now();
   let turnBudget = {
     turnId: turn.id,
+    startedAt,
     deadlineAt: startedAt + 80000,
     modelSteps: 0,
     toolCalls: 0,
@@ -619,9 +599,17 @@ export async function executeAssistantTurn(
       ...(failureDiagnostic ? { failure: failureDiagnostic } : {}),
     };
   }
-  async function saveBudget() {
+  function checkpointBudget() {
     Object.assign(turnBudget, { modelSteps, toolCalls, requests, retryWaits });
-    await updateTask(db, turn, { turnBudget });
+    executionBudget = checkpointExecutionBudget(
+      executionBudget,
+      turnBudget,
+      Math.max(0, Date.now() - turnBudget.startedAt),
+    );
+    return { turnBudget, executionBudget };
+  }
+  async function saveBudget() {
+    await updateTask(db, turn, checkpointBudget());
   }
   function retainedFacts(task: any, results: Record<string, any>[]) {
     retainedOperations = results.filter(
@@ -683,6 +671,7 @@ export async function executeAssistantTurn(
     retainedFacts(saved.task, tools);
     const observation = { turnId: turn.id, ...diagnostics("budget_yield") };
     const patch = {
+      ...checkpointBudget(),
       transportRecovery: null,
       stage: "yielding",
       error: null,
@@ -717,6 +706,7 @@ export async function executeAssistantTurn(
     return true;
   }
   async function saveDiagnostics(errorCode?: string) {
+    if (budgetLoaded) await saveBudget();
     const task = (
       await db.query("SELECT task FROM assistant_session WHERE id=$1", [
         turn.session_id,
@@ -829,7 +819,7 @@ export async function executeAssistantTurn(
       task.executionPlan?.mode !== "plan" ||
       !task.executionPlan.steps.length ||
       task.question ||
-      tools.slice(index).some((item) => item.status === "failed") ||
+      Boolean(unresolvedFailure(tools)) ||
       canonicalJson(currentTaskFacts(task)?.executionPlan) !==
         canonicalJson(latest.result?.task?.executionPlan)
     )
@@ -873,34 +863,24 @@ export async function executeAssistantTurn(
         turn.session_id,
       ])
     ).rows[0].task;
-    const original = task.executionPlan;
-    const restored =
-      original && !original.target && task.target
-        ? { ...original, target: task.target }
-        : original;
-    const plan = advancePlan(
-      restored,
+    const settled = settleExecutionPlan(
+      task,
       name,
       value,
       key,
       turn.task_revision,
       input,
     );
-    if (plan)
-      plannedAction =
-        task.question || task.executionPaused
-          ? undefined
-          : pendingPlanAction(plan);
-    if (plan === task.executionPlan) {
-      if (plan && task.nextAction !== (plannedAction ?? null))
-        await updateTask(db, turn, { nextAction: plannedAction ?? null });
+    if (!settled.executionPlan) return;
+    plannedAction = settled.nextAction ?? undefined;
+    if (
+      settled.executionPlan === task.executionPlan &&
+      task.nextAction === settled.nextAction
+    )
       return;
-    }
-    await updateTask(db, turn, {
-      executionPlan: plan,
-      nextAction: plannedAction ?? null,
-    });
+    await updateTask(db, turn, settled);
   }
+
   async function depend(refs: Dependency[]) {
     await dependenciesAvailable(db, scope, refs);
     await updateTurn(
@@ -1028,6 +1008,10 @@ export async function executeAssistantTurn(
               status: "deferred",
               message: "本轮已有真实处理回执，后续步骤由服务端继续安排。",
             };
+          const exhaustedTaskTools = Boolean(
+            executionBudget &&
+            executionBudget.toolCalls >= EXECUTION_BUDGET_LIMITS.toolCalls,
+          );
           if (toolCalls >= 12) {
             summarizing = true;
             budgetBoundary = true;
@@ -1036,7 +1020,7 @@ export async function executeAssistantTurn(
               message: "本段工具预算已用尽，未执行此操作；保存进度后继续。",
             };
           }
-          toolCalls++;
+          if (!exhaustedTaskTools) toolCalls++;
           abortSignal.throwIfAborted();
           await saveBudget();
           if (
@@ -1085,9 +1069,26 @@ export async function executeAssistantTurn(
             (step?.action === name ? step.operation?.key : undefined) ??
             legacy?.key ??
             `assistant:${turn.id}:${sha256(canonicalJson({ name, input }))}`;
+          if (
+            step?.operation?.key === key &&
+            !saved.some((item) => item.key === key)
+          ) {
+            const original = await db.query(
+              "SELECT x FROM assistant_turn t, jsonb_array_elements(t.tool_results) x WHERE t.session_id=$1 AND x->>'key'=$2 ORDER BY t.created_at DESC,t.id DESC LIMIT 1",
+              [turn.session_id, key],
+            );
+            saved.push(...original.rows.map((row) => row.x));
+          }
+          const binding = executionBinding(
+            currentTask,
+            name,
+            turn.task_revision,
+          );
           let actionStarted = false;
           let boundStep = false;
           try {
+            if (exhaustedTaskTools)
+              throw new AssistantError(422, "assistant_task_limit");
             if (
               ![
                 "query_project",
@@ -1172,9 +1173,13 @@ export async function executeAssistantTurn(
                   409,
                   "assistant_plan_revalidation_required",
                 );
+              const expectedInput =
+                plan.contractVersion === 1 && step.deliveryId
+                  ? resolvedStepInput(plan)
+                  : step.input;
               if (
-                step.input &&
-                Object.entries(step.input).some(
+                expectedInput &&
+                Object.entries(expectedInput).some(
                   ([field, expected]) =>
                     !(
                       name === "read_background" &&
@@ -1274,7 +1279,7 @@ export async function executeAssistantTurn(
                   result: recovered.result,
                 });
                 await updateTurn(
-                  "UPDATE assistant_turn SET tool_results=(SELECT jsonb_agg(CASE WHEN x->>'key'=$2 THEN $3::jsonb ELSE x END) FROM jsonb_array_elements(tool_results) x) WHERE id=$1 AND status='running'",
+                  "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(x),'[]') FROM jsonb_array_elements(tool_results) x WHERE x->>'key'<>$2)||jsonb_build_array($3::jsonb) WHERE id=$1 AND status='running'",
                   [turn.id, key, JSON.stringify(uncertain)],
                 );
               }
@@ -1387,7 +1392,9 @@ export async function executeAssistantTurn(
               "UPDATE assistant_turn SET tool_results=tool_results||$2::jsonb WHERE id=$1 AND status='running'",
               [
                 turn.id,
-                JSON.stringify([{ key, name, status: "started", input }]),
+                JSON.stringify([
+                  { key, name, binding, status: "started", input },
+                ]),
               ],
             );
             actionStarted = true;
@@ -1416,7 +1423,14 @@ export async function executeAssistantTurn(
                 turn.id,
                 key,
                 JSON.stringify([
-                  { key, name, status: "succeeded", input, result: value },
+                  {
+                    key,
+                    name,
+                    binding,
+                    status: "succeeded",
+                    input,
+                    result: value,
+                  },
                 ]),
               ],
             );
@@ -1495,7 +1509,14 @@ export async function executeAssistantTurn(
                   turn.id,
                   key,
                   JSON.stringify([
-                    { key, name, status: "succeeded", input, result: value },
+                    {
+                      key,
+                      name,
+                      binding,
+                      status: "succeeded",
+                      input,
+                      result: value,
+                    },
                   ]),
                 ],
               );
@@ -1597,6 +1618,7 @@ export async function executeAssistantTurn(
                   {
                     key: failureKey,
                     name,
+                    binding,
                     status: "failed",
                     input,
                     error,
@@ -2197,7 +2219,13 @@ export async function executeAssistantTurn(
             );
         }
         if (input.steps) {
-          input = { ...input, steps: completeDocumentDeliveries(input.steps) };
+          input = {
+            ...input,
+            steps: completeDocumentDeliveries(
+              input.steps,
+              Boolean(businessDeliveries),
+            ),
+          };
           const countHint =
             !businessDeliveries && documentPlanning && !input.question
               ? documentPlanCountHint(turn.user_text, input.steps)
@@ -2695,7 +2723,9 @@ export async function executeAssistantTurn(
             ...(plan || replacingSimplePlan
               ? { executionPlan: plan ?? null }
               : {}),
-            ...(input.countKind === "new" ? { targetDraftId: null } : {}),
+            ...(input.countKind === "new" && !businessDeliveries
+              ? { targetDraftId: null }
+              : {}),
             nextAction,
             question: input.question ?? null,
             ...(input.target
@@ -3261,14 +3291,23 @@ export async function executeAssistantTurn(
             [turn.session_id],
           )
         ).rows;
+        const deliveryStep =
+          current.executionPlan?.steps[current.executionPlan.current];
+        const fixedDelivery =
+          current.executionPlan?.contractVersion === 1 &&
+          deliveryStep?.deliveryId;
         const delivery = reviseRequirements(
-          current,
+          fixedDelivery
+            ? { ...current, classifications: [], allowedLabels: [] }
+            : current,
           resolveBackgroundDefinitions(
             current,
             {
               target: null,
               targetCount: input.outputCount,
-              countKind: "new",
+              countKind: fixedDelivery
+                ? (deliveryStep.countKind ?? "new")
+                : "new",
               allowedFields: current.allowedFields ?? options.allowedFields,
               ...(input.metadataKeys
                 ? { metadataKeys: input.metadataKeys }
@@ -4575,7 +4614,81 @@ export async function executeAssistantTurn(
     return true;
   }
 
-  async function continueFixedSteps(messages: ModelMessage[]) {
+  async function advanceExecution(
+    messages: ModelMessage[],
+    observeOnly = false,
+  ) {
+    await turnFence(db, scope, turn.id, turn.execution_token);
+    if (!reconciledExecution) {
+      reconciledExecution = true;
+      const task = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          turn.session_id,
+        ])
+      ).rows[0].task;
+      const waitingStep = task.executionPlan?.steps[task.executionPlan.current];
+      if (
+        !yieldToProcessing &&
+        !processingEventRunId &&
+        task.executionPlan?.mode === "execute" &&
+        !task.executionPlan.needsReview &&
+        !task.executionPaused &&
+        !task.question &&
+        waitingStep?.status === "waiting" &&
+        waitingStep.receipt?.runId
+      )
+        processingEventRunId = waitingStep.receipt.runId;
+      if (
+        turn.event === "confirmed" &&
+        task.executionPlan?.mode === "execute"
+      ) {
+        const step = task.executionPlan.steps[task.executionPlan.current];
+        if (step?.receipt?.proposalId) {
+          const receipt = (
+            await db.query(
+              "SELECT id,status,receipt FROM assistant_proposal WHERE id=$1 AND session_id=$2 AND task_revision=$3",
+              [step.receipt.proposalId, turn.session_id, turn.task_revision],
+            )
+          ).rows[0];
+          if (receipt) {
+            await settlePlan("confirmed", receipt, step.receipt.key);
+          }
+        }
+      }
+
+      if (processingEventRunId) {
+        const receipt = await tools.read_processing.execute!(
+          { runId: processingEventRunId },
+          {
+            toolCallId: `event:${turn.id}`,
+            messages,
+            context: {},
+            abortSignal,
+          },
+        );
+        const current = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            turn.session_id,
+          ])
+        ).rows[0].task;
+        messages.push(
+          ...receiptMessages(
+            "read_processing",
+            `event:${turn.id}`,
+            context.encode({ runId: processingEventRunId }),
+            context.encode({ ...receipt, review: smallReview(current.review) }),
+          ),
+        );
+        if (
+          current.stage === "processing" ||
+          (!plannedAction &&
+            (current.review?.complete || current.checkedStatus === "failed"))
+        )
+          yieldToProcessing = true;
+      }
+    }
+    if (observeOnly) return;
+
     for (
       let count = 0;
       count < 12 &&
@@ -4593,7 +4706,7 @@ export async function executeAssistantTurn(
         ])
       ).rows[0].task;
       const step = current.executionPlan?.steps[current.executionPlan.current];
-      const preparesApply = step?.action === "request_processing_apply";
+      const preparesApply = step?.action?.startsWith("request_");
       if (
         current.executionPaused ||
         current.executionPlan?.mode !== "execute" ||
@@ -4607,8 +4720,13 @@ export async function executeAssistantTurn(
             "refine_candidates",
             "read_processing",
             "request_processing_apply",
-          ].includes(step.action)) ||
-        (step.action.startsWith("request_") && !preparesApply)
+            "request_selection_apply",
+            "request_publish",
+            "create_draft",
+            "preview_selection",
+            "select_candidates",
+            "retry_processing",
+          ].includes(step.action))
       )
         break;
       const command = tools[step.action as keyof typeof tools];
@@ -4703,18 +4821,88 @@ export async function executeAssistantTurn(
         yieldToProcessing = true;
       if (after.executionPlan?.current === current.executionPlan.current) break;
     }
+    if (toolCalls >= 10 && plannedAction && !yieldToProcessing) {
+      summarizing = true;
+      budgetBoundary = true;
+    }
+    const final = (
+      await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+        turn.session_id,
+      ])
+    ).rows[0].task;
+    const plan = final.executionPlan;
+    const confirmations =
+      plan?.steps.filter((step: any) => step.action.startsWith("request_")) ??
+      [];
+    const confirmationIds = confirmations
+      .map((step: any) => step.receipt?.proposalId)
+      .filter(Boolean);
+    const confirmedFacts = confirmationIds.length
+      ? (
+          await db.query(
+            "SELECT status,summary,receipt FROM assistant_proposal WHERE session_id=$1 AND id=ANY($2::text[])",
+            [turn.session_id, confirmationIds],
+          )
+        ).rows
+      : [];
+    const deliveriesConfirmed =
+      confirmations.length > 0 &&
+      confirmationIds.length === confirmations.length &&
+      confirmedFacts.length === confirmations.length &&
+      confirmedFacts.every(
+        (fact) =>
+          fact.status === "succeeded" &&
+          fact.receipt &&
+          fact.summary?.range !== "partial",
+      );
+    if (
+      deliveriesConfirmed &&
+      plan?.contractVersion === 1 &&
+      deliveryGoals(plan).length > 0 &&
+      plan.mode === "execute" &&
+      !plan.needsReview &&
+      !final.executionPaused &&
+      !final.question &&
+      plan.steps.length &&
+      plan.steps.every((step: any) => step.status === "executed") &&
+      plan.steps.at(-1).action.startsWith("request_") &&
+      !unresolvedFailure(
+        (
+          await db.query(
+            "SELECT tool_results FROM assistant_turn WHERE id=$1",
+            [turn.id],
+          )
+        ).rows[0].tool_results,
+      )
+    ) {
+      await updateTask(db, turn, {
+        stage: "complete",
+        nextAction: null,
+        error: null,
+        recovery: null,
+      });
+      plannedAction = undefined;
+      yieldToProcessing = true;
+    }
   }
   try {
     const savedState = (
       await db.query(
-        "SELECT task->'turnBudget' AS budget,task->'observations' AS observations,task->'parameterRepairLimits' AS repair_limits FROM assistant_session WHERE id=$1",
+        "SELECT task->'turnBudget' AS budget,task->'executionBudget' AS execution_budget,task->'observations' AS observations,task->'parameterRepairLimits' AS repair_limits FROM assistant_session WHERE id=$1",
         [turn.session_id],
       )
     ).rows[0];
     const savedBudget = savedState?.budget;
+    executionBudget = savedState?.execution_budget;
+    if (executionBudget && executionBudgetExhausted(executionBudget))
+      throw new AssistantError(422, "assistant_task_limit");
     parameterRepairLimits = savedState?.repair_limits ?? {};
     if (savedBudget?.turnId === turn.id) {
-      turnBudget = { ...turnBudget, ...savedBudget };
+      turnBudget = {
+        ...turnBudget,
+        ...savedBudget,
+        startedAt: savedBudget.startedAt ?? savedBudget.deadlineAt - 80000,
+      };
       requests.push(...turnBudget.requests);
       retryWaits.push(...turnBudget.retryWaits);
     } else if (restoring) {
@@ -4728,6 +4916,18 @@ export async function executeAssistantTurn(
     budgetLoaded = true;
     modelSteps = turnBudget.modelSteps;
     toolCalls = turnBudget.toolCalls;
+    const chargedHere =
+      executionBudget?.lastTurn?.turnId === turn.id
+        ? (executionBudget?.lastTurn?.elapsedMs ?? 0)
+        : 0;
+    const availableActiveMs =
+      EXECUTION_BUDGET_LIMITS.activeMs -
+      (executionBudget?.activeMs ?? 0) +
+      chargedHere;
+    turnBudget.deadlineAt = Math.min(
+      turnBudget.deadlineAt,
+      turnBudget.startedAt + availableActiveMs,
+    );
     abortSignal = AbortSignal.any([
       AbortSignal.timeout(Math.max(1, turnBudget.deadlineAt - Date.now())),
       ...(cancellation ? [cancellation] : []),
@@ -4751,6 +4951,15 @@ export async function executeAssistantTurn(
           beforeRequest: () =>
             controlModelRequest(async () => {
               await turnFence(db, scope, turn.id, turn.execution_token);
+              if (
+                executionBudget &&
+                (executionBudget.modelSteps >=
+                  EXECUTION_BUDGET_LIMITS.modelSteps ||
+                  executionBudget.toolCalls >=
+                    EXECUTION_BUDGET_LIMITS.toolCalls ||
+                  executionBudget.activeMs >= EXECUTION_BUDGET_LIMITS.activeMs)
+              )
+                throw new AssistantError(422, "assistant_task_limit");
               if (activeRepair) {
                 const limit = parameterRepairLimits[activeRepair.name];
                 if (
@@ -4780,9 +4989,18 @@ export async function executeAssistantTurn(
               modelTransportErrors.add(error);
           },
           onRetry: async (value) => {
+            if (
+              executionBudget &&
+              executionBudget.transportRetries >=
+                EXECUTION_BUDGET_LIMITS.transportRetries
+            ) {
+              await controlModelRequest(async () => {
+                throw new AssistantError(422, "assistant_task_limit");
+              });
+            }
             turnBudget.transportRetries = value.used;
             retryWaits.push(value);
-            Object.assign(turnBudget, { requests, retryWaits });
+            await controlModelRequest(saveBudget);
             await controlModelRequest(() =>
               updateTask(db, turn, {
                 turnBudget,
@@ -4971,34 +5189,8 @@ export async function executeAssistantTurn(
       ) &&
       !/(?:改为|改成|修改|调整|增加|补充|删除|取消|执行)/u.test(turn.user_text);
     planningCheckpointRequired = task?.planningCheckpointTurnId === turn.id;
-    if (turn.event === "confirmed" && task.executionPlan?.mode === "execute") {
-      const step = task.executionPlan.steps[task.executionPlan.current];
-      if (step?.receipt?.proposalId) {
-        const receipt = (
-          await db.query(
-            "SELECT id,status,receipt FROM assistant_proposal WHERE id=$1 AND session_id=$2 AND task_revision=$3",
-            [step.receipt.proposalId, turn.session_id, turn.task_revision],
-          )
-        ).rows[0];
-        if (receipt) {
-          const plan = advancePlan(
-            task.executionPlan,
-            "confirmed",
-            receipt,
-            step.receipt.key,
-            turn.task_revision,
-          );
-          if (plan !== task.executionPlan) {
-            task.executionPlan = plan;
-            task.nextAction = pendingPlanAction(plan) ?? null;
-            await updateTask(db, turn, {
-              executionPlan: plan,
-              nextAction: task.nextAction,
-            });
-          }
-        }
-      }
-    }
+    if (turn.event === "confirmed" && (task.question || task.executionPaused))
+      await advanceExecution(messages, true);
     if (
       task.executionPaused &&
       (turn.event !== "user" || restoring) &&
@@ -5278,7 +5470,6 @@ export async function executeAssistantTurn(
                   await updateTask(db, turn, { parameterRepairStatus });
                   return null;
                 }
-                repairFailure = true;
                 budgetBoundary = true;
                 return null;
               }
@@ -5291,12 +5482,10 @@ export async function executeAssistantTurn(
                 turn.event === "user" ? turn.user_text : "",
               );
             if (!corrected) {
-              repairFailure = true;
               budgetBoundary = true;
             }
             return corrected;
           } catch (error) {
-            repairFailure = true;
             budgetBoundary = true;
             throw error;
           } finally {
@@ -5322,10 +5511,17 @@ export async function executeAssistantTurn(
             call.invalid &&
             InvalidToolInputError.isInstance(call.error);
           // Known tools disabled for the final summary are a budget boundary.
+          const changedCommittedOperation =
+            restoring &&
+            turn.tool_results.some(
+              (record: any) =>
+                record.name === failure.toolName && !hasNoEffect(record),
+            );
           if (
             invalid &&
             !invalidInput &&
-            Object.hasOwn(tools, failure.toolName)
+            Object.hasOwn(tools, failure.toolName) &&
+            !changedCommittedOperation
           )
             continue;
           if (invalid || !Object.hasOwn(tools, failure.toolName))
@@ -5347,13 +5543,24 @@ export async function executeAssistantTurn(
                     failure.toolName === "plan_task"
                       ? (planningRepairInputs.get(failure.toolCallId) ?? {})
                       : {},
+                  binding: executionBinding(
+                    (
+                      await db.query(
+                        "SELECT task FROM assistant_session WHERE id=$1",
+                        [turn.session_id],
+                      )
+                    ).rows[0].task,
+                    failure.toolName,
+                    turn.task_revision,
+                  ),
                   status: "failed",
                   ...(invalidInput || !Object.hasOwn(tools, failure.toolName)
                     ? { effect: "none" }
                     : {}),
                   error: {
-                    code:
-                      invalidInput || !Object.hasOwn(tools, failure.toolName)
+                    code: changedCommittedOperation
+                      ? "assistant_retry_parameters_changed"
+                      : invalidInput || !Object.hasOwn(tools, failure.toolName)
                         ? "assistant_tool_input_invalid"
                         : "assistant_operation_failed",
                     ...(invalidInput
@@ -5370,7 +5577,7 @@ export async function executeAssistantTurn(
           );
         }
         await saveBudget();
-        await continueFixedSteps(messages);
+        await advanceExecution(messages);
       },
       stopWhen: [
         () =>
@@ -5385,7 +5592,11 @@ export async function executeAssistantTurn(
       prepareStep: async ({ instructions, responseMessages }) => {
         await turnFence(db, scope, turn.id, turn.execution_token);
         abortSignal.throwIfAborted();
-        if (modelSteps >= 10)
+        if (
+          modelSteps >= 10 ||
+          (executionBudget &&
+            executionBudget.modelSteps >= EXECUTION_BUDGET_LIMITS.modelSteps)
+        )
           throw new AssistantError(422, "assistant_budget_exhausted");
         stepMessages = [...responseMessages, ...fixedReceipts];
         const fixedState = fixedReceipts.length
@@ -5580,8 +5791,12 @@ export async function executeAssistantTurn(
       maxRetries: 0,
       experimental_telemetry: { isEnabled: false },
     });
+    // Compatibility for pre-contract checkpoints without delivery-bound receipts;
+    // new execution contracts reconcile their waiting step in advanceExecution.
     const savedProcessing =
-      restoring && !processingEventRunId
+      restoring &&
+      !processingEventRunId &&
+      task.executionPlan?.contractVersion !== 1
         ? turn.tool_results.findLast(
             (r: Record<string, any>) =>
               r.status === "succeeded" &&
@@ -5636,49 +5851,16 @@ export async function executeAssistantTurn(
         },
       );
       if (!(verified as Record<string, any>)?.error) {
-        await continueFixedSteps(messages);
+        await advanceExecution(messages);
         messages.push(...fixedReceipts.splice(0));
       }
     }
     // Continue fixed work through the same validated business tools and fences.
     // The model is needed again only when parameters or a semantic decision are missing.
-    if (processingEventRunId) {
-      const receipt = await tools.read_processing.execute!(
-        { runId: processingEventRunId },
-        {
-          toolCallId: `event:${turn.id}`,
-          messages,
-          context: {},
-          abortSignal,
-        },
-      );
-      const current = (
-        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
-          turn.session_id,
-        ])
-      ).rows[0].task;
-      messages.push(
-        ...receiptMessages(
-          "read_processing",
-          `event:${turn.id}`,
-          context.encode({ runId: processingEventRunId }),
-          context.encode({ ...receipt, review: smallReview(current.review) }),
-        ),
-      );
-      if (
-        !plannedAction &&
-        (current.review?.complete || current.checkedStatus === "failed")
-      )
-        yieldToProcessing = true;
-    }
     if (await finishExhaustedProcessing()) return;
-    if (
-      ["processing_completed", "budget_yield"].includes(turn.event) ||
-      restoring
-    ) {
-      await continueFixedSteps(messages);
-      messages.push(...fixedReceipts.splice(0));
-    }
+    await advanceExecution(messages);
+    messages.push(...fixedReceipts.splice(0));
+    if (await yieldPendingStep()) return;
     if (await finishExhaustedProcessing()) return;
     // A provider may emit its tool template as text. Request native calls once;
     // never execute the text as commands or expose it as a completed reply.
@@ -5805,8 +5987,6 @@ export async function executeAssistantTurn(
     }
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
-    if (repairFailure)
-      throw new AssistantError(422, "assistant_tool_input_invalid");
     const failedReceipt = unresolvedFailure(
       (
         await db.query("SELECT tool_results FROM assistant_turn WHERE id=$1", [
@@ -5864,7 +6044,7 @@ export async function executeAssistantTurn(
       await updateTask(db, turn, { stage: "awaiting_confirmation" });
     else if (
       !waitingForInput &&
-      !["processing", "awaiting_review"].includes(state?.stage)
+      !["processing", "awaiting_review", "complete"].includes(state?.stage)
     ) {
       const processing =
         state?.runId &&
