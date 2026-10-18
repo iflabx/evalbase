@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-18 最新安排：保留 AI SDK、收敛业务编排的 [§8](#8-2026-10-18-业务编排收敛整改) 已拆为 OPT-34–37。后续 Owner 单独授权的 OPT-34 已完成，详细实施、定向验证及限制见 [记录](../.scratch/assistant-optimization/opt34-verification.md)；后续单独授权的 OPT-35 亦已完成，见 [记录](../.scratch/assistant-optimization/opt35-verification.md)；后续单独授权的 OPT-36 亦已完成，见 [记录](../.scratch/assistant-optimization/opt36-verification.md)；OPT-37 未实施。§1–7 和下方旧记录保留历史范围；OPT-31 仍为 in-progress，内容质量与原八类验收未被本次代签。
+2026-10-19 最新实施：保留 AI SDK、收敛业务编排的 [§8](#8-2026-10-18-业务编排收敛整改) 已拆为 OPT-34–37。后续 Owner 单独授权的 OPT-34 已完成，详细实施、定向验证及限制见 [记录](../.scratch/assistant-optimization/opt34-verification.md)；后续单独授权的 OPT-35 亦已完成，见 [记录](../.scratch/assistant-optimization/opt35-verification.md)；后续单独授权的 OPT-36 亦已完成，见 [记录](../.scratch/assistant-optimization/opt36-verification.md)；OPT-37 已实现工作区接入、旧任务兼容及必要接入补修，并按后续授权更新同一 4217，详见 [记录](../.scratch/assistant-optimization/opt37-verification.md)。OPT-37 真实闭环仍在收尾，Owner pending。§1–7 和下方旧记录保留历史范围；OPT-31 仍为 in-progress，内容质量与原八类验收未被本次代签。
 
 2026-10-08：OPT-06/07/08 已完成实施验证及既有隔离验收环境交付；原 200 条内容任务仍未完成，模型保存方案未转执行的限制已如实记录。人工验收仍 pending。依据 [实施台账](../.scratch/assistant-optimization/spec.md) 和 [OPT-08 记录](../.scratch/assistant-optimization/opt08-verification.md) 核对实际进度。
 
@@ -157,6 +157,8 @@ OPT-08 的界面、同会话调整、真实模型矩阵、恢复与隔离交付�
 
 本批只增加现有 JSON 所需的最小可选字段与兼容读取，不预设新表、公开 API、通用规则语言、工作流 DSL、第二套任务存储或调度服务。不为文件行数进行全库拆分；被新路径替代且无消费者的分支同步退出，必需的旧任务兼容明确保留边界。
 
+OPT-37 已接入各交付目标的真实运行、草稿和采用回执，区分候选、部分保存与已保存，并保留历史核对信息。工作区读取新合同事实，不承担第二套步骤推进；旧任务只按持久合同版本与冻结回执兼容，不能因读取页面重放业务。实施、兼容保留点及本轮实测的实际限制统一见 [OPT-37 记录](../.scratch/assistant-optimization/opt37-verification.md)，不据此宣告内容质量或 Owner 验收通过。
+
 ### 8.3 开发票与依赖
 
 | 阶段 | Ticket | 修改范围 | 硬依赖 |
@@ -187,4 +189,4 @@ OPT-08 的界面、同会话调整、真实模型矩阵、恢复与隔离交付�
 
 UI 仍严格对齐 frontend-v1，正式改动位于 frontend-v3，仅接入必要状态与操作，不重做视觉或新增工作台。没有新主业务阶段或确认顺序变化，因此本次不改冻结原型和主流程图。
 
-当前文档任务不调用模型、不写业务数据、不重建/重启 4217、不合并或推送。后续获授权交付本批时，只构建受影响服务并记录固定代码与模型配置；不增加 400 条生成、5/10 人压测、两小时稳定试验或验收服务器重启。一次小流程通过不等于任意文档、任意模型零失败。
+方案创建时仅获文档授权；后续 Owner 已单独授权 OPT-34–37 开发及 OPT-37 更新 4217。本轮仅更新受影响服务，固定代码、模型配置和数据保留证据集中见 [OPT-37 记录](../.scratch/assistant-optimization/opt37-verification.md)，不包含合并或推送。不增加 400 条生成、5/10 人压测、两小时稳定试验或验收服务器重启。一次小流程通过不等于任意文档、任意模型零失败。

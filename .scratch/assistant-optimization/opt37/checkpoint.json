@@ -1,0 +1,37 @@
+{
+  "code": "5f00fe51c7d43bb4350a79751678e5407d9818d9",
+  "image": "evalbase-agent-checkpoint:5f00fe51c7d4",
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "5f00fe51c7d43bb4350a79751678e5407d9818d9"
+  },
+  "updated_services": [
+    "web"
+  ],
+  "unchanged_services": [
+    "postgres",
+    "minio",
+    "worker",
+    "model-worker"
+  ],
+  "business_counts_equal": true,
+  "draft_content_unchanged": true,
+  "database_backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt37/owner-before-5f00fe51c7d4.dump",
+  "counts": [
+    "app_user|2",
+    "project|3",
+    "data_asset|32",
+    "source_record|20873",
+    "collaborative_draft|36",
+    "collaborative_draft_record|1795",
+    "test_set_version|8",
+    "processing_run|109",
+    "assistant_session|39",
+    "assistant_background_document|29"
+  ],
+  "frontend_asset": "/assets/index-BkUigssn.js"
+}

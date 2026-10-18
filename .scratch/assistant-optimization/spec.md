@@ -1,3 +1,5 @@
+2026-10-19 最新实施：[OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) 的工作区交付事实、旧任务兼容及接入补修已实现，同一 4217 已按授权更新并保留现有验收数据；固定代码、定向验证、真实短提示流程及所有失败见 [记录](opt37-verification.md)。Implementation completed，Owner pending；OPT-31 仍 in-progress，内容质量及原八类验收未代签。下方有日期的既有实施记录保留历史状态。
+
 2026-10-19 最新实施：[OPT-36](issues/36-execution-receipts-and-recovery.md) 已按单张授权完成固定步骤、回执与恢复收敛；实施、定向验证及两轴审阅见 [记录](opt36-verification.md)。Implementation completed，Owner pending。OPT-37仍not-started，OPT-31仍in-progress；未更新4217、合并或推送，现有验收数据保留。
 
 2026-10-19 最新实施：Owner 单独授权的 [OPT-35](issues/35-delivery-goals-and-plan-contract.md) 已完成交付目标合同、薄规划入口、服务端步骤编译与约束保留；定向检查和两轴审阅见 [记录](opt35-verification.md)。Implementation completed，Owner pending；OPT-36/37 保持 not-started，OPT-31 仍 in-progress。本轮未更新4217、合并或推送，现有验收数据保留。
@@ -128,7 +130,7 @@ Implementation: in-progress
 | [OPT-34](issues/34-document-evidence-and-output-contract.md) | 文档规范引用与输出约定 | 当前已实现代码；无未完成票硬依赖 | completed | [实施与定向验证](opt34-verification.md)；Owner pending，4217未切换 |
 | [OPT-35](issues/35-delivery-goals-and-plan-contract.md) | 交付分组、数量、约束保留与薄规划入口 | OPT-34 | completed | Owner pending；[定向验证与审阅](opt35-verification.md)；未部署 |
 | [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | completed | Owner pending；[定向验证与审阅](opt36-verification.md)；未部署 |
-| [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | not-started | 仅文档；一个最终checkpoint，旧验收状态保持 |
+| [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | completed | 接入已实现、同一4217已更新；[实施与实测记录](opt37-verification.md)，Owner pending，内容质量与OPT-31未签通过 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

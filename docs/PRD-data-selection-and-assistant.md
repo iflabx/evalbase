@@ -218,9 +218,11 @@ Owner 确认新增 [OPT-32](../.scratch/assistant-optimization/issues/32-tool-ar
 
 ### 7.9 业务编排收敛（2026-10-18，分票实施）
 
-Owner 根据同条件 AI SDK / DeepSeek Harness 对照，确认保留现有 AI SDK 并修正业务编排，方案创建时仅授权文档和开发票拆分；后续单独授权的 OPT-34/35/36 已完成，OPT-37未实施，实际验证与限制见 [OPT-34 记录](../.scratch/assistant-optimization/opt34-verification.md) 、[OPT-35 记录](../.scratch/assistant-optimization/opt35-verification.md) 和 [OPT-36 记录](../.scratch/assistant-optimization/opt36-verification.md)。细化范围、依赖与本批验证规模统一见 [整改方案 §8](assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)，实施状态见 OPT 台账中的 OPT-34–37。
+Owner 根据同条件 AI SDK / DeepSeek Harness 对照，确认保留现有 AI SDK 并修正业务编排，方案创建时仅授权文档和开发票拆分；后续单独授权的 OPT-34/35/36 已完成，OPT-37已获授权实施，进展与限制见 [OPT-37 记录](../.scratch/assistant-optimization/opt37-verification.md)，实际验证与限制见 [OPT-34 记录](../.scratch/assistant-optimization/opt34-verification.md) 、[OPT-35 记录](../.scratch/assistant-optimization/opt35-verification.md) 和 [OPT-36 记录](../.scratch/assistant-optimization/opt36-verification.md)。细化范围、依赖与本批验证规模统一见 [整改方案 §8](assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)，实施状态见 OPT 台账中的 OPT-34–37。
 
 本增补落实 §7.1–7.5 已有合同：文档依据和输出约定可信，单份集合内类别与多份交付明确，纠错保留用户要求，已确定步骤按固定事实推进，完成由业务回执和未完成事项共同判定。保持通用数据任务、三字段、权限与确认边界；新旧任务兼容、现有验收数据及原 OPT-31 内容验收保留，不增加新的主业务阶段。
+
+用户已选择且助手已读取的规范中，明确、无冲突的数据输出形式作为默认；用户明确选择或拒绝优先，规范之间冲突则澄清。文档不能因此授权项目操作。
 
 ## 8. 兼容、体验及验收
 

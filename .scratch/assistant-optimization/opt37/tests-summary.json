@@ -1,0 +1,426 @@
+{
+  "unit": {
+    "passed": 82,
+    "failed": 0,
+    "tests": {
+      "OPT36 fixed execution facts compiles an actionable confirmation card without another model decision": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 fixed execution facts binds run and destination to this delivery even when a different delivery ran last": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 fixed execution facts never invents missing delivery dependencies from task or another delivery": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 fixed execution facts restores the frozen operation input but leaves explicit conflicts visible to guards": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 fixed execution facts keeps a waiting real run until that exact run completes": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 fixed execution facts projects only unpaused current work and preserves manual confirmation": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 fixed execution facts compiles review and adoption for a single new delivery while keeping legacy plans unchanged": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 receipt failure resolution resolves a corrected attempt only within its original step and revision without erasing history": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 receipt failure resolution does not let a different delivery or revision hide the failure": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 receipt failure resolution requires the same domain key for an unknown write": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 receipt failure resolution retains another action's failure and a new unsaved requirement": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT36 receipt failure resolution preserves recorded legacy no-effect semantics without promoting unknown outcomes": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      },
+      "OPT37 workspace delivery facts keeps the first saved delivery visible while the second waits for confirmation": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-unit.json"
+      },
+      "OPT37 workspace delivery facts does not turn a pending card or an executed step into a saved result": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-unit.json"
+      },
+      "OPT37 workspace delivery facts reports partial saves and uses the real draft total for a final-count goal": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-unit.json"
+      },
+      "OPT37 workspace delivery facts shows actual retained results for a failed run without inheriting another delivery's failure": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-unit.json"
+      },
+      "OPT37 workspace delivery facts shows a saved unexecuted plan as planned rather than a user pause": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-unit.json"
+      },
+      "OPT37 workspace delivery facts does not reinterpret a legacy plan or substitute a latest run from another delivery": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-unit.json"
+      },
+      "OPT-23 verified definition references resolves the verified original text without changing frozen classification rules": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: fake": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: label": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: actor": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: project": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: session": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: removed": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: hash": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: extractor": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: text": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: location": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-23 verified definition references rejects stale or unrelated reference: basis": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions OPT29 treats a physical line citation with literal text as a fresh quote, never as a reusable token": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions keeps a user-specified fallback separate from document-defined categories": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions permits explicit 其他 fallback when the document only uses that word inside a longer entry": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions keeps unrelated negation separate from fixed labels and does not let background basis invent an enum": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions accepts a verbatim user fallback quote with its sentence punctuation": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions rejects borrowed definitions across named headings: 甲类\n甲定义。\n## 乙类\n乙定义。": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions rejects borrowed definitions across named headings: 甲类：甲定义。乙类：乙定义。": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions rejects an invented number even when its definition is quoted from the document": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions gives an exact usable name when a hierarchy prefix was invented": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions does not relabel a semantic document heading as a user fallback": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions returns a short verbatim excerpt so a paraphrased definition can be corrected": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions does not treat a category word inside a definition as the next heading": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-10 document definitions rejects a definition borrowed from a different numbered entry": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "background document extraction preserves UTF-8 text and original line positions without executing document instructions": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "background document extraction extracts PDF text with real physical page numbers and rejects corrupt PDFs": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries binds a first-read reference to complete original locations and rejects stale scopes": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries accepts a proved parent/item alias: A.1.a": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries accepts a proved parent/item alias: 甲类问题": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries accepts a proved parent/item alias: A.1.a 甲类问题": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries rejects sibling text even when only one class is requested": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries supports bounded numbering: 1.2.3": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries supports bounded numbering: 1.1": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries rejects an ambiguous duplicate heading": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries rejects misaligned table evidence": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries does not borrow numbering across a new chapter or table definitions from a footer": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT33 document entry boundaries does not accept a model invented expected-output enum as a user declaration": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts replays the customer document with - list formatting and preserves its original locations": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts replays the customer document with * list formatting and preserves its original locations": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts replays the customer document with 1. list formatting and preserves its original locations": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts does not strip a real hyphen or accept a neighbouring or ambiguous definition": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts OPT37 uses a selected explicit data output contract for an ordinary short request": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts requires already-read output evidence and preserves explicit field choices": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts uses the latest user output choice while keeping Metadata classification independent": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts does not infer an enum from a prose heading and reports contradictory document output clauses": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts keeps a declared output enum separate from other document categories": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts lets a later output delegation replace an older explicit form without changing Metadata": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-34 document output contracts keeps registered legacy references readable without granting unregistered legacy tokens": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-output-scoped.json"
+      },
+      "OPT-35 delivery planning contract keeps two independent deliveries, computed total and stable IDs in generation steps": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract keeps internal intent quotas inside one six-row collection": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract preserves omitted goals and fields, uses IDs for updates, and only removes an explicitly cancelled named goal": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract updates clear per-delivery and overall counts without losing class definitions": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract does not mistake a negated or explanatory count for a user update": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract preserves omitted rule properties and requires user intent to revoke a saved constraint": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract refuses invalid counts, empty contracts, duplicate scenarios and quota conflicts": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract allows correcting an unknown field but rejects weakening an unsuccessful delivery proposal": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract OPT37 relocates intact rejected enums for explicit prose without weakening Metadata or category constraints": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract keeps semantic requirements and field protection during parameter repair": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract authorizes changes only for the named Metadata key and honors explicit preservation": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract does not silently change definitions or references of an existing category": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract repairs an incorrect model quantity to the explicit user goal without weakening valid goals": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT-35 delivery planning contract requires explicitly requested catalog categories and exact quotas but permits ordinary documents": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-field-final.json"
+      },
+      "OPT36 receipt failure resolution OPT37 releases only a failed candidate lookup while retaining unknown domain outcomes": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-lookup-green.json"
+      }
+    }
+  },
+  "http": {
+    "passed": 21,
+    "failed": 0,
+    "tests": {
+      "project assistant public contract keeps clarification paused when its processing run completes": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-http-green.json"
+      },
+      "project assistant public contract OPT36 executes 1 saved deliveries through background and confirmation without model reconstruction": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-saved-draft-green.json"
+      },
+      "project assistant public contract OPT36 executes 2 saved deliveries through background and confirmation without model reconstruction": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-saved-draft-green.json"
+      },
+      "project assistant public contract OPT36 does not let a prior publication hide an unfinished saved step": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT35 saves one intent collection from business goals without side effects": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT29 recovers a before-run lost response using one target and the original key": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-http-green.json"
+      },
+      "project assistant public contract OPT29 recovers a after-run lost response using one target and the original key": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-http-green.json"
+      },
+      "project assistant public contract OPT36 executes a known source read immediately without model reconstruction or duplicate drafts": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-saved-draft-green.json"
+      },
+      "project assistant public contract OPT36 yields fixed reads at the original tool boundary without a model polling loop": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-saved-draft-green.json"
+      },
+      "project assistant public contract OPT36 enforces cumulative retry limits before another request": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT36 enforces cumulative time limits before another request": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT36 keeps cumulative execution limits across new user turns": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT35 keeps both GB deliveries through rejected references and cleared correction": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT35 keeps both GB deliveries through rejected references and merged correction": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT35 keeps both GB deliveries through rejected references and resumed correction": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT35 normalizes a spelling error without dropping the delivery contract": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT35 never reports an unsaved oral plan and retains the last valid plan after persistence failure": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-short-scoped.json"
+      },
+      "project assistant public contract OPT37 rejects a historical candidate refinement when a completed task starts a saved draft edit": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-saved-draft-green.json"
+      },
+      "project assistant public contract OPT-20 does not count a pending confirmation as a completed data operation": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-finish-control.json"
+      },
+      "project assistant public contract OPT37 completes a generic v1 draft edit from real adoption receipts and safely resumes an already saved checkpoint": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-finish-control.json"
+      },
+      "project assistant public contract OPT-25 partially adopts cross-batch results to the original draft with real receipts and leaves the task unfinished": {
+        "status": "passed",
+        "report": ".scratch/assistant-optimization/opt37-finish-control.json"
+      }
+    }
+  }
+}

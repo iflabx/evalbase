@@ -301,12 +301,14 @@ OPT-25 默认 candidates 的 `scope=task` 复用 processing task 的当前有效
 
 ## 16. OPT-34–37 业务编排收敛（分票实施）
 
-2026-10-18 Owner 确认的细化合同见 [整改方案 §8](../assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)，后续单独授权的 OPT-34 已按 [验证记录](../../.scratch/assistant-optimization/opt34-verification.md) 完成；OPT-35 亦已完成，交付目标以现有 executionPlan 的生成步骤为唯一权威，稳定 deliveryId 区分独立集合，派生当前/整体数量及模型摘要，不新增目标副本。模型提交 deliveries 业务决策，服务端编译步骤；contractVersion:1 与旧任务兼容路径分开。定向证据见 [OPT-35 记录](../../.scratch/assistant-optimization/opt35-verification.md)，OPT-36已完成，见 [记录](../../.scratch/assistant-optimization/opt36-verification.md)；OPT-37仍待实施。沿用 ADR 0014 和现有 AI SDK；不迁移运行时、不增加第二套任务服务。本节对 §9/14/15 中重叠的规划入口、参数绑定、推进及完成判定补充当前职责边界，未受影响合同保持。
+2026-10-18 Owner 确认的细化合同见 [整改方案 §8](../assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)，后续单独授权的 OPT-34 已按 [验证记录](../../.scratch/assistant-optimization/opt34-verification.md) 完成；OPT-35 亦已完成，交付目标以现有 executionPlan 的生成步骤为唯一权威，稳定 deliveryId 区分独立集合，派生当前/整体数量及模型摘要，不新增目标副本。模型提交 deliveries 业务决策，服务端编译步骤；contractVersion:1 与旧任务兼容路径分开。定向证据见 [OPT-35 记录](../../.scratch/assistant-optimization/opt35-verification.md)，OPT-36已完成，见 [记录](../../.scratch/assistant-optimization/opt36-verification.md)；OPT-37 已实现工作区接入与旧任务兼容，同一 4217 切换、真实流程及限制见 [记录](../../.scratch/assistant-optimization/opt37-verification.md)，Owner pending，内容质量与 OPT-31 未签通过。沿用 ADR 0014 和现有 AI SDK；不迁移运行时、不增加第二套任务服务。本节对 §9/14/15 中重叠的规划入口、参数绑定、推进及完成判定补充当前职责边界，未受影响合同保持。
 
 OPT-34 提供规范文档引用与有依据的输出约定；OPT-35 将业务交付目标规范化并持久保存，再生成现有有序执行步骤；OPT-36 统一已确定工作与回执恢复的推进入口；OPT-37 接入现有工作区和新旧任务兼容。各票维护详细修改范围及验收断言，避免在多处复制完整字段设计。
 
 复用现有 task JSON、processing run、proposal、真实操作回执和累计预算；必要的可选合同版本只用于本次新旧任务识别。文档/模型输出不提供权限，未知副作用必须对账，已经采用或发布的数据不得由重试覆盖。新任务替代旧入口时删除重复控制分支；旧运行按冻结事实恢复，保留必要兼容而不批量迁移历史聊天。
 
-OPT-36：执行、后台终态、确认和恢复汇入既有 advanceExecution；同一 settleExecutionPlan 投影普通工具和领域事务的真实步骤回执。新交付（包含单份）固定核对及采用卡片，运行/草稿只从同 delivery 的回执绑定；实际提交仍走原权限、内容、修订和事务 fence。错误恢复匹配步骤、修订或原操作键，不能用另一交付的同名动作掩盖失败。旧版无交付合同的检查点保留明确兼容路径，OPT-37切换时再核验退出条件。
+OPT-36：执行、后台终态、确认和恢复汇入既有 advanceExecution；同一 settleExecutionPlan 投影普通工具和领域事务的真实步骤回执。新交付（包含单份）固定核对及采用卡片，运行/草稿只从同 delivery 的回执绑定；实际提交仍走原权限、内容、修订和事务 fence。错误恢复匹配步骤、修订或原操作键，不能用另一交付的同名动作掩盖失败。旧版无交付合同的检查点保留明确兼容路径，其消费者及退出条件见 OPT-37 记录。
 
 同一任务的 executionBudget 在现有 JSON 内累计扣账，不增加任务服务。沿原每段10模型/12工具/2传输重试、最多12次自动续做，初始段加12段折算总上限为130/156/26及1,040,000ms活跃时长；单段仍受原80秒与更小计数限制。成功、错误、重试预留和让出检查点均结算，后台等待不耗活跃时间；恢复不更新原计时起点，实际截止时间同时受剩余累计时长约束。
+
+OPT-37：工作区的交付进度仅从现有生成步骤、同交付运行、草稿记录数及真实采用回执派生，不另存目标或进度副本；历史质量核对结果标明核对时语境，不能冒充保存后的当前数量。新合同的步骤推进仍唯一汇入 advanceExecution，读取会话不再通过已发布回执另写新合同的完成状态。旧合同的已发布完成兼容、冻结生成输入及恢复检查点只服务对应持久旧任务；新建任务不提供旧入口选项，不批量迁移或清理历史任务。沿用原权限、修订、字段保护及人工采用/发布确认，未知提交优先核对真实回执。
