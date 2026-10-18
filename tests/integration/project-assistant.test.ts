@@ -15089,166 +15089,191 @@ describe("project assistant public contract", () => {
     }
   });
 
-  it("OPT35 keeps both GB deliveries through rejected references and bounded correction", async () => {
-    const previous = sessionId,
-      db = createPool(databaseUrl);
-    try {
-      const counts = () =>
-        db.query(
-          "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
-          [projectId],
-        );
-      const before = (await counts()).rows[0];
-      await opt21Session();
-      const document = (
-        await app.inject({
-          method: "POST",
-          url: base() + "/sessions/" + sessionId + "/background-documents",
-          headers,
-          payload: {
-            fileName: "GB附录A原始摘录.txt",
-            contentBase64: readFileSync(
-              "tests/fixtures/assistant-gb-original-fragment.txt",
-            ).toString("base64"),
-          },
-        })
-      ).json().document;
-      requestedTool = {
-        name: "read_background",
-        input: { documentId: document.id },
-      };
-      const background = await opt21End(await opt21Submit("读取附件"));
-      const catalog = background.turns
-        .at(-1)
-        .tools.find((tool: any) => tool.name === "read_background")
-        .result.definitions;
-      const goals = ["A.1.a", "A.1.b"].map((value) => ({
-        name: "GB " + value,
-        count: 5,
-        instructions: "按对应定义生成完整自然的用户问题",
-        scenarios: [
-          "用户说明前提后提出请求",
-          "用户带具体限制提出请求",
-          "用户询问完成目标的方法",
-        ],
-        classifications: [
-          {
-            field: "metadata",
-            key: "riskCategory",
-            basis: "background",
-            allowedValues: [value],
-            requiredValues: [value],
-            quotas: [{ value, count: 5 }],
-            definitions: [
+  it.each(["cleared", "merged"])(
+    "OPT35 keeps both GB deliveries through rejected references and %s correction",
+    async (variant) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        const counts = () =>
+          db.query(
+            "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+            [projectId],
+          );
+        const before = (await counts()).rows[0];
+        await opt21Session();
+        const document = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "GB附录A原始摘录.txt",
+              contentBase64: readFileSync(
+                "tests/fixtures/assistant-gb-original-fragment.txt",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        requestedTool = {
+          name: "read_background",
+          input: { documentId: document.id },
+        };
+        const background = await opt21End(await opt21Submit("读取附件"));
+        const catalog = background.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "read_background")
+          .result.definitions;
+        const goals = ["A.1.a", "A.1.b"].map((value) => ({
+          name: "GB " + value,
+          count: 5,
+          instructions: "按对应定义生成完整自然的用户问题",
+          scenarios: [
+            "用户说明前提后提出请求",
+            "用户带具体限制提出请求",
+            "用户询问完成目标的方法",
+          ],
+          classifications: [
+            {
+              field: "metadata",
+              key: "riskCategory",
+              basis: "background",
+              allowedValues: [value],
+              requiredValues: [value],
+              quotas: [{ value, count: 5 }],
+              definitions: [
+                {
+                  value,
+                  reference: catalog.find((entry: any) => entry.value === value)
+                    .reference,
+                },
+              ],
+            },
+          ],
+        }));
+        const bad = structuredClone(goals);
+        bad[0].classifications[0].definitions[0].reference =
+          goals[1].classifications[0].definitions[0].reference;
+        const weakened = structuredClone(goals);
+        if (variant === "merged") {
+          weakened[0] = {
+            ...weakened[0],
+            name: "合并后的错误集合",
+            count: 10,
+            classifications: [
               {
-                value,
-                reference: catalog.find((entry: any) => entry.value === value)
-                  .reference,
+                ...goals[0].classifications[0],
+                allowedValues: ["A.1.a", "A.1.b"],
+                requiredValues: ["A.1.a", "A.1.b"],
+                quotas: goals.flatMap((goal) => goal.classifications[0].quotas),
+                definitions: goals.flatMap(
+                  (goal) => goal.classifications[0].definitions,
+                ),
               },
             ],
+          };
+          weakened.splice(1);
+        } else weakened[0].classifications = [];
+        toolSequence = [bad, weakened, goals].map((deliveries) => ({
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries,
+            requirements: ["语义完整自然，期望输出写逐题具体安全行为"],
           },
-        ],
-      }));
-      const bad = structuredClone(goals);
-      bad[0].classifications[0].definitions[0].reference =
-        goals[1].classifications[0].definitions[0].reference;
-      const weakened = structuredClone(goals);
-      weakened[0].classifications = [];
-      toolSequence = [bad, weakened, goals].map((deliveries) => ({
-        name: "plan_task",
-        input: {
-          executionMode: "plan",
-          deliveries,
-          requirements: ["语义完整自然，期望输出写逐题具体安全行为"],
-        },
-      }));
-      const saved = await opt21End(
-        await opt21Submit(
-          "按附件规范，GB A.1.a 和 A.1.b 各一份5条，不用原始数据。先给方案，暂不执行。",
-        ),
-      );
-      const records = saved.turns
-        .at(-1)
-        .tools.filter((tool: any) => tool.name === "plan_task");
-      expect(records, JSON.stringify(saved.turns.at(-1))).toHaveLength(3);
-      expect(records.map((tool: any) => tool.status)).toEqual([
-        "failed",
-        "failed",
-        "succeeded",
-      ]);
-      expect(records[0].error.code).toBe(
-        "assistant_background_reference_invalid",
-      );
-      expect(records[1].error.hint).toContain("不能清空");
-      const generations = () =>
-        saved.task.executionPlan.steps.filter(
+        }));
+        const saved = await opt21End(
+          await opt21Submit(
+            "按附件规范，GB A.1.a 和 A.1.b 各一份5条，不用原始数据。先给方案，暂不执行。",
+          ),
+        );
+        const records = saved.turns
+          .at(-1)
+          .tools.filter((tool: any) => tool.name === "plan_task");
+        expect(records, JSON.stringify(saved.turns.at(-1))).toHaveLength(3);
+        expect(records.map((tool: any) => tool.status)).toEqual([
+          "failed",
+          "failed",
+          "succeeded",
+        ]);
+        expect(records[0].error.code).toBe(
+          "assistant_background_reference_invalid",
+        );
+        expect(records[1].error.hint).toContain(
+          variant === "merged" ? "不能删除、合并" : "不能清空",
+        );
+        const generations = () =>
+          saved.task.executionPlan.steps.filter(
+            (step: any) => step.action === "generate_candidates",
+          );
+        expect(generations()).toHaveLength(2);
+        const ids = generations().map((step: any) => step.deliveryId);
+        expect(new Set(ids).size).toBe(2);
+        expect(saved.task).toMatchObject({
+          targetCount: 5,
+          overallTargetCount: 10,
+        });
+        expect(
+          generations().map(
+            (step: any) => step.input.classifications[0].quotas[0].count,
+          ),
+        ).toEqual([5, 5]);
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: goals.map((goal, index) => ({
+              ...goal,
+              id: ids[index],
+              count: 3,
+              classifications: goal.classifications.map((rule) => ({
+                ...rule,
+                quotas: rule.quotas.map((quota) => ({ ...quota, count: 3 })),
+              })),
+            })),
+          },
+        };
+        const resized = await opt21End(
+          await opt21Submit("改为各3条，其他要求不变，先不要执行。"),
+        );
+        expect(
+          resized.turns.at(-1).tools.at(-1),
+          JSON.stringify(resized.turns.at(-1)),
+        ).toMatchObject({ status: "succeeded" });
+        expect(resized.task).toMatchObject({
+          targetCount: 3,
+          overallTargetCount: 6,
+        });
+        const rows = resized.task.executionPlan.steps.filter(
           (step: any) => step.action === "generate_candidates",
         );
-      expect(generations()).toHaveLength(2);
-      const ids = generations().map((step: any) => step.deliveryId);
-      expect(new Set(ids).size).toBe(2);
-      expect(saved.task).toMatchObject({
-        targetCount: 5,
-        overallTargetCount: 10,
-      });
-      expect(
-        generations().map(
-          (step: any) => step.input.classifications[0].quotas[0].count,
-        ),
-      ).toEqual([5, 5]);
-      requestedTool = {
-        name: "plan_task",
-        input: {
-          executionMode: "plan",
-          deliveries: goals.map((goal, index) => ({
-            ...goal,
-            id: ids[index],
-            count: 3,
-            classifications: goal.classifications.map((rule) => ({
-              ...rule,
-              quotas: rule.quotas.map((quota) => ({ ...quota, count: 3 })),
-            })),
-          })),
-        },
-      };
-      const resized = await opt21End(
-        await opt21Submit("改为各3条，其他要求不变，先不要执行。"),
-      );
-      expect(
-        resized.turns.at(-1).tools.at(-1),
-        JSON.stringify(resized.turns.at(-1)),
-      ).toMatchObject({ status: "succeeded" });
-      expect(resized.task).toMatchObject({
-        targetCount: 3,
-        overallTargetCount: 6,
-      });
-      const rows = resized.task.executionPlan.steps.filter(
-        (step: any) => step.action === "generate_candidates",
-      );
-      expect(rows.map((step: any) => step.deliveryId)).toEqual(ids);
-      expect(
-        rows.map((step: any) => step.input.classifications[0].quotas[0].count),
-      ).toEqual([3, 3]);
-      expect(rows[1].input.classifications[0].definitions).toEqual(
-        generations()[1].input.classifications[0].definitions,
-      );
-      expect((await read()).json().task.executionPlan).toEqual(
-        resized.task.executionPlan,
-      );
-      requestedTool = { name: "plan_task", input: { executionMode: "plan" } };
-      const overall = await opt21End(
-        await opt21Submit("总共6条，先不要执行。"),
-      );
-      expect(overall.task.overallTargetCount).toBe(6);
-      expect(overall.task.runId).toBeUndefined();
-      expect((await counts()).rows[0]).toEqual(before);
-    } finally {
-      requestedTool = undefined;
-      toolSequence = [];
-      sessionId = previous;
-      await db.end();
-    }
-  });
+        expect(rows.map((step: any) => step.deliveryId)).toEqual(ids);
+        expect(
+          rows.map(
+            (step: any) => step.input.classifications[0].quotas[0].count,
+          ),
+        ).toEqual([3, 3]);
+        expect(rows[1].input.classifications[0].definitions).toEqual(
+          generations()[1].input.classifications[0].definitions,
+        );
+        expect((await read()).json().task.executionPlan).toEqual(
+          resized.task.executionPlan,
+        );
+        requestedTool = { name: "plan_task", input: { executionMode: "plan" } };
+        const overall = await opt21End(
+          await opt21Submit("总共6条，先不要执行。"),
+        );
+        expect(overall.task.overallTargetCount).toBe(6);
+        expect(overall.task.runId).toBeUndefined();
+        expect((await counts()).rows[0]).toEqual(before);
+      } finally {
+        requestedTool = undefined;
+        toolSequence = [];
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
 
   it("OPT35 normalizes a spelling error without dropping the delivery contract", async () => {
     const previous = sessionId;

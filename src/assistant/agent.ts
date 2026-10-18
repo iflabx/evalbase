@@ -1968,14 +1968,21 @@ export async function executeAssistantTurn(
               [turn.id],
             )
           ).rows[0].tool_results;
-          for (const prior of priorCalls) {
-            if (prior.name === "plan_task" && prior.status === "failed")
-              assertDeliveryRepair(
-                context.decode(prior.input ?? {}),
-                input,
-                turn.event === "user" ? turn.user_text : "",
-              );
-          }
+          // Rejected corrections cannot become new requirements for later repairs.
+          // Keep the first eligible proposal; saved goals and user clauses stay authoritative.
+          const originalCall = priorCalls.find(
+            (prior: any) =>
+              prior.name === "plan_task" &&
+              prior.status === "failed" &&
+              prior.error?.code !== "assistant_requirement_conflict" &&
+              Array.isArray(context.decode(prior.input ?? {}).deliveries),
+          );
+          if (originalCall)
+            assertDeliveryRepair(
+              context.decode(originalCall.input),
+              input,
+              turn.event === "user" ? turn.user_text : "",
+            );
           businessDeliveries = reviseDeliveryGoals(
             deliveryGoals(oldPlan),
             input.deliveries,
