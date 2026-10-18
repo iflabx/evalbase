@@ -229,3 +229,17 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 - 最后执行一次既定同会话八类各 50 条流程，400 条全量结构检查及逐条内容复核；区分原生结果、自动恢复、人工修改与未完成项。参数合法、规划可执行、业务完成、内容符合和保存事实分别报告，不将任一层通过替代其他层。
 
 开发依赖与共同边界只在 [总方案 §7](assistant-generation-repair-batches.md#7-后续补修与-opt-31-调整) 维护。复用同一 4217 并保留旧数据；本次不运行模型、业务测试或部署，不将文档检查记为上述验收完成。
+
+
+### 5.17 OPT-34–37 业务编排收敛
+
+本批范围与数据保留见 [整改方案 §8](assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)。以下仅索引，各票验收表是详细断言的唯一维护处；本次文档编写不代表下列验证已执行。
+
+| 票据 | 验收范围 | 验证方式 |
+| --- | --- | --- |
+| [OPT-34](../.scratch/assistant-optimization/issues/34-document-evidence-and-output-contract.md) | R34-1–5：列表条目、稳定引用、输出约定与权限 | 当前失败文档、固定响应及直接受影响的解析/HTTP 回归 |
+| [OPT-35](../.scratch/assistant-optimization/issues/35-delivery-goals-and-plan-contract.md) | R35-1–6：交付分组、数量、约束保留与真实方案保存 | 现有真实轨迹的可控重放及持久状态核对 |
+| [OPT-36](../.scratch/assistant-optimization/issues/36-execution-receipts-and-recovery.md) | R36-1–6：固定推进、恢复状态、未知结果、预算、停止与修订 | 隔离数据库和故障注入，模拟检查点重读，不重启验收环境 |
+| [OPT-37](../.scratch/assistant-optimization/issues/37-workspace-cutover-and-small-flow-acceptance.md) | R37-1–7：真实小流程、页面接入、旧任务兼容和数据保留 | 本批唯一真实模型闭环及针对性 Computer Use/浏览器检查 |
+
+不重复运行未变化的全库测试；失败和修复后的复测均保留并标明代码/模型配置。受控参数纠错不能当真实模型可靠性证明，结构与内容、采用事实分别判定。OPT-31 的原八类内容验收仍未关闭，本批不扩大为 400 条生成或压力/长时间稳定性测试。

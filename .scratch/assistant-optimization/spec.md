@@ -1,3 +1,5 @@
+2026-10-18 最新文档：Owner 基于运行时小规模对照确认保留 AI SDK、收敛业务编排，新增 OPT-34–37；四张均为 ready-for-agent / not-started，尚未授权开发或更新4217。当前范围、依赖及最小验证规模以 [整改方案 §8](../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改) 为准；本次未改业务代码与验收数据。OPT-31 仍为 in-progress，其内容质量与原八类验收未代签。以下有日期的实施记录保留历史状态。
+
 2026-10-16 三项保存体验补修已更新同一4217 Web `ab38b60`：最终总数语义、缺字段/不可解析参数有限纠正、成功后的旧提示清理、明确数量不重复确认。50个不同自动用例通过；Computer Use首次模型失败保留，补修后连续改数量/刷新和总数与范围区分通过。数据保留、Owner整票pending，见[验证记录第10节](opt33-verification.md#10-2026-10-16-三项要求保存体验补修)。
 
 2026-10-16 OPT-31 当前实施：[记录](opt31-verification.md)。主要功能及81项不同定向用例通过，同一4217已无损更新到728ffeb；唯一八类集成未通过（248条生成/200条保存，第五类缺额恢复及保存指令进入生成要求仍失败），Implementation in-progress、Owner pending，不合并/推送。下列2026-10-15条目为历史状态。
@@ -72,6 +74,8 @@ Implementation: in-progress
 
 ## 整改批次执行约定
 
+2026-10-18 新批次按 OPT-34 → OPT-35 → OPT-36 → OPT-37 推进，细化边界仅在整改方案 §8 和各票维护。本次只授权文档；后续单张/整批授权沿 AGENTS.md 执行，不逐票重复建立分支或人工 checkpoint。旧批次的固定历史起点不作为新批次检出要求；实施时以本分支当时实际代码为基线，保留当前4217数据。
+
 - 文档起点为 `24a7434d3dfb6e03a2c2a1fe0befbca67d948d6f`，应用代码仍为 `65a5055`；沿用 `codex/assistant-optimization` 和现有工作区，不从 main 重建或改写已有开发提交。实施前核对最新 HEAD、工作区和调用方。
 - 原整改实施顺序为 OPT-06 → OPT-07 → OPT-08 → OPT-09；最新验收退回由 OPT-10 承接。OPT-10 依赖现有实现，不等待 OPT-09 或 OPT-05 的最终验收，避免循环；OPT-05 不再单独排期，最终收口须含 OPT-09 及 OPT-10 的实际修复证据。
 - `ready-for-agent` 表示任务已写清；仍须有开发授权并满足 `Blocked by`。Owner 授权整个整改批次后，前一张满足本张验收及必要审阅即可继续下一张，不逐张要求人工 checkpoint。只授权单张时仅执行该张。
@@ -117,6 +121,10 @@ Implementation: in-progress
 | [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33 | in-progress | [OPT-31 实施与验证](opt31-verification.md)；Owner pending |
 | [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | completed | [实现及收尾补修验证](opt32-verification.md)；4217 Web 2cdd519，Owner pending；已保存要求的收尾回放通过，纯文本确认未保存仍留作短提示问题，整体未签通过 |
 | [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划及实际要求保存 | OPT-32 已完成 | completed | [实施及定向验证](opt33-verification.md)；同一4217 Web f411325，Owner pending，候选质量留 OPT-31 |
+| [OPT-34](issues/34-document-evidence-and-output-contract.md) | 文档规范引用与输出约定 | 当前已实现代码；无未完成票硬依赖 | not-started | 仅文档，待开发授权 |
+| [OPT-35](issues/35-delivery-goals-and-plan-contract.md) | 交付分组、数量、约束保留与薄规划入口 | OPT-34 | not-started | 仅文档，待开发授权 |
+| [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | not-started | 仅文档，待开发授权 |
+| [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | not-started | 仅文档；一个最终checkpoint，旧验收状态保持 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
@@ -187,3 +195,8 @@ OPT-12 是 OPT-11 后续体验调整，Owner 已单独授权开发；不等待�
 - 2026-10-09 OPT-09 实施与验证完成：当前依赖、无副作用纠错/未知写保护、有效范围/背景、最初字段基线及实际发布核对已补修，三项服务固定 `abc9863`。同会话三条短提示的通用 6 条任务完成唯一发布；既有失败会话完成只读恢复并清除过期提示，原 200 条候选哈希不变。详细证据和范围见 [OPT-09 验证](opt09-verification.md)，最终 Owner checkpoint 及 OPT-05 内容交付仍未收口。
 
 - 2026-10-09 OPT-10 实施收口：固定输入、有效候选与确认范围一致，文档依据及用户兜底受校验，参数错误可有界纠正；原会话必要重做同一 200 条分类并自动到采用卡，未采用/发布用户数据。最终应用 `4ee577c`、16 项定向 green、三服务及浏览器证据见 [验证记录](opt10-verification.md)。OPT-10 Implementation completed；整个批次、OPT-05 内容交付及 OPT-09 Owner 退回验收仍 pending，历史记录保留。
+
+
+### 2026-10-18 业务编排收敛文档
+
+仅更新整改合同与关联文档，并新增 OPT-34–37 四张开发票；范围、依赖、验收及旧票关系见整改方案 §8。没有开发、模型调用、业务数据改写或4217切换。继续保留 OPT-31 未完成的内容质量验收及全部历史证据，未合并或推送。
