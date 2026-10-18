@@ -27,6 +27,10 @@ export function hasNoEffect(record: Record<string, any>) {
     record.effect === "none" ||
     (record.status === "failed" &&
       (validationWithoutEffect.has(record.error?.code) ||
+        // Candidate lookup 404s precede the shared refinement transaction commit;
+        // its post-commit dependency checks use a different error code.
+        (record.name === "refine_candidates" &&
+          record.error?.code === "processing_not_found") ||
         (record.name === "request_processing_apply" &&
           processingProposalValidationWithoutEffect.has(record.error?.code))))
   );

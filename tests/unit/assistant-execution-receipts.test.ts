@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { unresolvedFailure } from "../../src/assistant/receipts.js";
+import {
+  hasNoEffect,
+  unresolvedFailure,
+} from "../../src/assistant/receipts.js";
 const binding = { revision: 1, stepId: "one", deliveryId: "a" };
 const failure = {
   name: "generate_candidates",
@@ -17,6 +20,24 @@ const success = {
   result: { runId: "run-one" },
 };
 describe("OPT36 receipt failure resolution", () => {
+  it("OPT37 releases only a failed candidate lookup while retaining unknown domain outcomes", () => {
+    const lookup = {
+      name: "refine_candidates",
+      status: "failed",
+      error: { code: "processing_not_found" },
+    };
+    expect(hasNoEffect(lookup)).toBe(true);
+    for (const name of ["submit_processing", "generate_candidates"])
+      expect(hasNoEffect({ ...lookup, name })).toBe(false);
+    for (const status of ["started", "succeeded"])
+      expect(hasNoEffect({ ...lookup, status })).toBe(false);
+    for (const code of [
+      "assistant_operation_unknown",
+      "assistant_context_unavailable",
+      "assistant_interrupted",
+    ])
+      expect(hasNoEffect({ ...lookup, error: { code } })).toBe(false);
+  });
   it("resolves a corrected attempt only within its original step and revision without erasing history", () => {
     const records = [failure, success];
     expect(unresolvedFailure(records)).toBeUndefined();
