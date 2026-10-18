@@ -1,10 +1,10 @@
 # OPT-35 交付目标与规划契约收敛
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-34
+Implementation: completed
+Blocked by: none
 
-优先级：P1。依赖 [OPT-34](34-document-evidence-and-output-contract.md) 的引用与输出约定定向验证；不等待旧票 Owner 验收。治理入口：[整改方案 §8](../../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)。本次仅文档，尚未授权开发或部署。
+优先级：P1。依赖 [OPT-34](34-document-evidence-and-output-contract.md) 的引用与输出约定定向验证；不等待旧票 Owner 验收。治理入口：[整改方案 §8](../../../docs/assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改)。2026-10-19 Owner 已单独授权本票开发及定向验证；实施与限制见 [验证记录](../opt35-verification.md)。Owner 验收 pending，本轮未授权部署。
 
 ## 目标与问题
 
@@ -43,3 +43,5 @@ Blocked by: OPT-34
 ## Comments
 
 - 2026-10-18：按最终选型方案新建；Status 表示已写清，Implementation not-started。依赖完成以定向证据为准，不另加中间人工验收。
+
+- 2026-10-19：完成交付合同 v1、服务端步骤编译、局部要求更新与约束保留；兼容旧任务。定向检查和 Standards/Spec 问题修复见验证记录。OPT-36/37 未实施，保留既有验收数据。

@@ -1,3 +1,11 @@
+import {
+  deliveryGoals,
+  reviseDeliveryGoals,
+  generationSteps,
+  assertDeliveryRepair,
+  validateRequestedCategories,
+} from "./delivery-plan.js";
+import { reviseDeliveryRequirements } from "./requirements.js";
 import { createRefinementGroups } from "../processing/refine.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { selectRecords, type SelectionRecord } from "../selection/index.js";
@@ -30,6 +38,7 @@ import {
   readBackground,
   validateBackgroundRules,
   backgroundDefinitionReferences,
+  documentDefinitionReferences,
   resolveBackgroundDefinitions,
 } from "./background.js";
 import {
@@ -427,6 +436,7 @@ export async function executeAssistantTurn(
   let documentPlanning = false;
   let planningRequestTurnId = turn.id;
   let documentPlanSaved = false;
+  const planningRepairInputs = new Map<string, Record<string, any>>();
   let planningCheckpointRequired = false;
   let stepMessages: ModelMessage[] = [];
   let recoveredProcessingKey: string | undefined;
@@ -591,9 +601,9 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v1",
-      promptVersion: "assistant-prompt-v11",
+      promptVersion: "assistant-prompt-v12",
       requirementsReconciled: requirementRepair,
-      toolsVersion: "assistant-tools-v9",
+      toolsVersion: "assistant-tools-v10",
       parameterRepairVersion: "arguments-v2",
       modelRevision,
       requestAttempts: requests.length,
@@ -811,7 +821,11 @@ export async function executeAssistantTurn(
     if (
       latest?.status !== "succeeded" ||
       latest.input?.executionMode !== "plan" ||
-      !latest.input?.steps?.length ||
+      !(
+        latest.input?.steps?.length ||
+        latest.input?.deliveries?.length ||
+        task.executionPlan?.contractVersion === 1
+      ) ||
       task.executionPlan?.mode !== "plan" ||
       !task.executionPlan.steps.length ||
       task.question ||
@@ -1454,7 +1468,10 @@ export async function executeAssistantTurn(
               documentPlanning &&
               name === "plan_task" &&
               input.executionMode === "plan" &&
-              input.steps?.length &&
+              (input.steps?.length ||
+                input.deliveries?.length ||
+                (completionValue as any).task?.executionPlan
+                  ?.contractVersion === 1) &&
               !input.question
             )
               documentPlanSaved = true;
@@ -1653,8 +1670,14 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。用户暂停或只要求解释时用nextAction:none，优先于旧待执行步骤；恢复需本轮用户明确要求执行，不能由自动事件恢复。question仅用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。文档生成的多类方案每类依次为generate_candidates、read_processing、request_processing_apply，核对不等于采用；每类都保留采用确认，不能用read_processing合并保存动作。target省略或null，背景不是资产；当前classifications只约束第一待生成类，其他类别规则保存在各自生成步骤input.classifications。规划不增加权限。",
+      "文档生成方案通过deliveries提交独立集合，每项含count及内部classifications配额，不将类别拆为集合。当前合同版本1时只提交变化的交付与必要要求，不提交steps/targetCount/overallTargetCount/真实对象；服务端编译保存并返回真实摘要，旧计划保留兼容。只提交当前变化的要求或下一动作；省略保留，requirements完整替换（空数组撤销），classifications按field/key更新或clear撤销。来源、固定范围、目标草稿与真实回执由服务端绑定。数量/分类/字段保护用结构字段；只给方案用plan，用户要求执行用execute。用户暂停或只要求解释时用nextAction:none，优先于旧待执行步骤；恢复需本轮用户明确要求执行，不能由自动事件恢复。question仅用于业务澄清。步骤有序，input按对应工具参数填写，未确定的未来引用省略；标题不是操作身份。仅启用已有方案时填写executionMode:execute，省略steps以保留原参数；steps只含title/action/input/scope，不复制快照的id/status/revision/receipt。已有候选只更改数量时使用select_candidates，不重做submit_processing；request_selection_apply仅用于原始资料导入预览。文档生成的多类方案每类依次为generate_candidates、read_processing、request_processing_apply，核对不等于采用；每类都保留采用确认，不能用read_processing合并保存动作。target省略或null，背景不是资产；当前classifications只约束第一待生成类，其他类别规则保存在各自生成步骤input.classifications。规划不增加权限。",
       {
+        deliveries: { type: "array", maxItems: 10, items: { type: "object" } },
+        removeRequirements: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", minLength: 1, maxLength: 1000 },
+        },
         title: { type: "string", minLength: 1, maxLength: 40 },
         executionMode: {
           enum: ["plan", "execute"],
@@ -1861,6 +1884,132 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        const documents = (
+          await db.query(
+            'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
+            [turn.session_id],
+          )
+        ).rows;
+        const oldPlan = current.executionPlan;
+        const legacyDeliveryPlan = oldPlan && oldPlan.contractVersion !== 1;
+        if (
+          !legacyDeliveryPlan &&
+          input.steps?.some(
+            (step: any) => step.action === "generate_candidates",
+          )
+        )
+          throw new AssistantError(
+            422,
+            "assistant_tool_input_invalid",
+            "请按集合提交交付目标，步骤由服务端生成；保留每份数量、分类与依据，不将集合内部的类别拆为多份交付。",
+          );
+        let businessDeliveries;
+        if (
+          input.deliveries !== undefined ||
+          (oldPlan?.contractVersion === 1 && deliveryGoals(oldPlan).length)
+        ) {
+          if (
+            input.steps ||
+            [
+              "targetCount",
+              "overallTargetCount",
+              "countKind",
+              "classifications",
+              "allowedLabels",
+              "target",
+              "targetDraftId",
+            ].some((field) => Object.hasOwn(input, field))
+          )
+            throw new AssistantError(
+              422,
+              "assistant_tool_input_invalid",
+              "当前规划只提交交付目标或本轮要求变化；真实对象、当前及整体数量、分类和执行步骤由服务端绑定。",
+            );
+          // Compare canonical verified definitions, so an equivalent server
+          // reference is not mistaken for a semantic change.
+          if (input.deliveries)
+            input = {
+              ...input,
+              deliveries: input.deliveries.map((delivery: any) =>
+                resolveBackgroundDefinitions(
+                  current,
+                  delivery,
+                  documents,
+                  scope,
+                  turn.session_id,
+                ),
+              ),
+            };
+          const priorCalls = (
+            await db.query(
+              "SELECT tool_results FROM assistant_turn WHERE id=$1",
+              [turn.id],
+            )
+          ).rows[0].tool_results;
+          for (const prior of priorCalls) {
+            if (prior.name === "plan_task" && prior.status === "failed")
+              assertDeliveryRepair(
+                context.decode(prior.input ?? {}),
+                input,
+                turn.event === "user" ? turn.user_text : "",
+              );
+          }
+          businessDeliveries = reviseDeliveryGoals(
+            deliveryGoals(oldPlan),
+            input.deliveries,
+            turn.event === "user" ? turn.user_text : "",
+          );
+          // Initial explicit category quotas cannot be omitted. Saved rules are
+          // protected by scoped updates, without reinterpreting generic headings.
+          if (!deliveryGoals(oldPlan).length)
+            validateRequestedCategories(
+              businessDeliveries,
+              turn.event === "user" ? turn.user_text : "",
+              documentDefinitionReferences(
+                documents,
+                current.backgroundEvidence ?? [],
+                scope,
+                turn.session_id,
+              ),
+            );
+          if (!businessDeliveries.length && !input.question)
+            throw new AssistantError(
+              422,
+              "assistant_tool_input_invalid",
+              "方案缺少交付目标，请保留完整集合及各自数量与要求。",
+            );
+          input = {
+            ...input,
+            ...reviseDeliveryRequirements(
+              current,
+              input,
+              turn.event === "user" ? turn.user_text : "",
+            ),
+          };
+          delete input.deliveries;
+          delete input.removeRequirements;
+          if (businessDeliveries.length) {
+            const activeId = oldPlan?.steps[oldPlan.current]?.deliveryId;
+            const active =
+              businessDeliveries.find((goal: any) => goal.id === activeId) ??
+              businessDeliveries[0];
+            input = {
+              ...input,
+              target: null,
+              steps: generationSteps(businessDeliveries),
+              targetCount: active.count,
+              countKind: active.countKind,
+              classifications: active.classifications,
+              overallTargetCount: businessDeliveries.reduce(
+                (sum: number, goal: any) => sum + goal.count,
+                0,
+              ),
+              executionMode:
+                input.executionMode ??
+                (documentPlanning ? "plan" : (oldPlan?.mode ?? "plan")),
+            };
+          }
+        }
         const explicitCount =
           turn.event === "user" &&
           !documentPlanning &&
@@ -2050,7 +2199,7 @@ export async function executeAssistantTurn(
         if (input.steps) {
           input = { ...input, steps: completeDocumentDeliveries(input.steps) };
           const countHint =
-            documentPlanning && !input.question
+            !businessDeliveries && documentPlanning && !input.question
               ? documentPlanCountHint(turn.user_text, input.steps)
               : undefined;
           if (countHint)
@@ -2251,13 +2400,9 @@ export async function executeAssistantTurn(
           )
         )
           await preflightDocumentGeneration(db, executionScope);
-        const documents = (
-          await db.query(
-            'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
-            [turn.session_id],
-          )
-        ).rows;
-        const revokeBackgroundRules = input.classifications?.length === 0;
+
+        const revokeBackgroundRules =
+          !businessDeliveries && input.classifications?.length === 0;
         if (input.steps) {
           for (const step of input.steps) {
             if (
@@ -2302,7 +2447,15 @@ export async function executeAssistantTurn(
           scope,
           turn.session_id,
         );
-        input = { ...input, ...reviseRequirements(current, input) };
+        input = {
+          ...input,
+          ...reviseRequirements(
+            businessDeliveries
+              ? { ...current, classifications: [], allowedLabels: [] }
+              : current,
+            input,
+          ),
+        };
         if (
           current.executionPlan?.mode === "plan" &&
           input.executionMode === "execute" &&
@@ -2335,7 +2488,13 @@ export async function executeAssistantTurn(
           scope,
           turn.session_id,
         );
-        const requirementsKey = planRequirementsKey({ ...current, ...fields });
+        const requirementsKey = planRequirementsKey({
+          ...current,
+          ...fields,
+          ...(businessDeliveries
+            ? { executionPlan: { contractVersion: 1, steps: input.steps } }
+            : {}),
+        });
         const previousPlan =
           current.executionPlan?.requirementsKey ===
           planRequirementsKey(current, true)
@@ -2369,6 +2528,8 @@ export async function executeAssistantTurn(
           input.target === undefined ? current.target : input.target,
           requirementsKey,
         );
+        if (plan && (businessDeliveries || !oldPlan))
+          plan = { ...plan, contractVersion: 1 };
         for (const bound of current.executionPlan?.steps ?? []) {
           if (!bound.operation || bound.status !== "pending") continue;
           const retained = plan?.steps.some(
@@ -4228,6 +4389,41 @@ export async function executeAssistantTurn(
       },
     })),
   };
+  const generationProperties = toolInputs.get(
+    "generate_candidates",
+  )!.properties;
+  planProperties.deliveries = {
+    type: "array",
+    maxItems: 10,
+    description:
+      "每项为一个独立测试集集合，内部多个类别放同项classifications，不按类别自动拆集合。新增交付省略id，服务端生成；修改使用当前事实中的id，只提交本轮变化，未列交付保持。remove仅在用户明确取消该集合时使用。",
+    items: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        id: string,
+        name: generationProperties.name,
+        count: { type: "integer", minimum: 1, maximum: 10000 },
+        countKind: { enum: ["new", "final"] },
+        instructions: generationProperties.instructions,
+        scenarios: generationProperties.scenarios,
+        classifications: planProperties.classifications,
+        remove: { type: "boolean" },
+      },
+      anyOf: [
+        { required: ["id"] },
+        {
+          required: [
+            "name",
+            "count",
+            "instructions",
+            "scenarios",
+            "classifications",
+          ],
+        },
+      ],
+    },
+  };
   fixedInputValidators.set(
     "plan_task",
     ajv.compile({
@@ -4258,9 +4454,47 @@ export async function executeAssistantTurn(
     },
   );
   const fullPlanSchema = tools.plan_task.inputSchema;
+  const deliveryPlanProperties = Object.fromEntries(
+    [
+      "title",
+      "executionMode",
+      "deliveries",
+      "requirements",
+      "removeRequirements",
+      "allowedFields",
+      "metadataKeys",
+      "nextAction",
+      "question",
+    ].map((field) => [field, planProperties[field]]),
+  );
+  const deliveryPlanSchema = schema(
+    deliveryPlanProperties,
+    [],
+    "plan_task",
+    (hint) => schemaHints.set("plan_task", hint),
+  );
+  // Old persisted plans retain their contract; new generated goals have one write path.
+  const singlePlanProperties = {
+    ...planProperties,
+    steps: {
+      ...(planProperties.steps as any),
+      items: {
+        oneOf: (planProperties.steps as any).items.oneOf.filter(
+          (variant: any) =>
+            variant.properties.action.enum[0] !== "generate_candidates",
+        ),
+      },
+    },
+  };
+  const singlePlanSchema = schema(
+    singlePlanProperties,
+    [],
+    "plan_task",
+    (hint) => schemaHints.set("plan_task", hint),
+  );
   const recordRequirementsSchema = schema(
     {
-      ...planProperties,
+      ...singlePlanProperties,
       requirements: { ...(planProperties.requirements as object), minItems: 1 },
     },
     ["requirements"],
@@ -4269,7 +4503,7 @@ export async function executeAssistantTurn(
   );
   // Advertise the existing plan contract for a fresh document-only design.
   // Per-delivery counts/classifications stay in their native action input.
-  const documentPlanSchema = schema(
+  const legacyDocumentPlanSchema = schema(
     {
       title: planProperties.title,
       executionMode: { enum: ["plan"] },
@@ -4928,7 +5162,7 @@ export async function executeAssistantTurn(
       model: model.model,
       temperature: 0.2,
       instructions:
-        "当前全部候选改写用allResults:true，按非空条件用where，UI固定勾选用allSelected:true，三者不混用；没有勾选不等于全部。数量含义分开：targetCount是当前测试集交付目标，overallTargetCount是多测试集合计目标，outputCount仅为本次新增量。首次明确目标先保存plan_task；普通补齐、省略数量和计划重建不能改变当前目标。read_processing报告countUnverified时，先从原始请求和生效要求核对；原话明确可直接plan_task恢复，不明确才问业务数量。不能累加各批请求量、拿现有候选数反推目标，或把八类各50的400填成首类目标。" +
+        "新文档规划使用deliveries，一份集合内多类配额放同项；已保存集合id保持稳定，省略保持，只有用户明确取消才remove。步骤和整体数量由服务端派生，不另写嵌套工具计划。当前全部候选改写用allResults:true，按非空条件用where，UI固定勾选用allSelected:true，三者不混用；没有勾选不等于全部。数量含义分开：targetCount是当前测试集交付目标，overallTargetCount是多测试集合计目标，outputCount仅为本次新增量。首次明确目标先保存plan_task；普通补齐、省略数量和计划重建不能改变当前目标。read_processing报告countUnverified时，先从原始请求和生效要求核对；原话明确可直接plan_task恢复，不明确才问业务数量。不能累加各批请求量、拿现有候选数反推目标，或把八类各50的400填成首类目标。" +
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "依据已读取背景文档从零生成使用generate_candidates；基于真实记录扩充使用submit_processing，两者的输入合同不同，不要求用户补种子或把背景当资产。内部参数错误由你按当前工具合同修正，不能用question把工具参数错误转交用户，不要求用户提供工具名、参数或内部ID。只给方案时保存完整plan后说明步骤，不询问是否同意先给方案；本轮用户已明确执行时直接启用execute，不复述历史问题要求再次开工确认。勾选候选后的局部改写直接用refine_candidates，不重列已完成的生成阶段；新要求会使旧确认卡失效，不让用户先确认或取消失效卡，修改后重新核对并建立确认卡。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
@@ -4946,6 +5180,29 @@ export async function executeAssistantTurn(
           // A new serialized call must not inherit the preceding call's diagnostic.
           parameterRepairStatus = undefined;
           try {
+            if (input.toolCall.toolName === "plan_task") {
+              try {
+                const proposal = JSON.parse(input.toolCall.input);
+                if (Array.isArray(proposal?.deliveries)) {
+                  const floor = Object.fromEntries(
+                    [
+                      "deliveries",
+                      "requirements",
+                      "allowedFields",
+                      "metadataKeys",
+                    ]
+                      .filter((field) => proposal[field] !== undefined)
+                      .map((field) => [field, proposal[field]]),
+                  );
+                  if (Buffer.byteLength(JSON.stringify(floor)) > 100000)
+                    throw new AssistantError(422, "assistant_context_capacity");
+                  planningRepairInputs.set(input.toolCall.toolCallId, floor);
+                }
+              } catch (error) {
+                if (error instanceof AssistantError) throw error;
+              }
+            }
+
             // A declared tool outside this step's active set must remain non-executable.
             // Return its SDK error to the next bounded model step; this is context
             // sequencing, not an argument repair and not permission to run it.
@@ -5027,6 +5284,12 @@ export async function executeAssistantTurn(
               }
             }
             const corrected = await repair(input);
+            if (corrected && input.toolCall.toolName === "plan_task")
+              assertDeliveryRepair(
+                planningRepairInputs.get(input.toolCall.toolCallId),
+                JSON.parse(corrected.input),
+                turn.event === "user" ? turn.user_text : "",
+              );
             if (!corrected) {
               repairFailure = true;
               budgetBoundary = true;
@@ -5080,7 +5343,10 @@ export async function executeAssistantTurn(
                   name: Object.hasOwn(tools, failure.toolName)
                     ? failure.toolName
                     : "unknown_tool",
-                  input: {},
+                  input:
+                    failure.toolName === "plan_task"
+                      ? (planningRepairInputs.get(failure.toolCallId) ?? {})
+                      : {},
                   status: "failed",
                   ...(invalidInput || !Object.hasOwn(tools, failure.toolName)
                     ? { effect: "none" }
@@ -5153,10 +5419,20 @@ export async function executeAssistantTurn(
           ),
         ) as (keyof typeof tools)[];
         activeRepairTools = new Set(activeTools);
-        tools.plan_task.inputSchema =
-          recordingRequirements && !requirementsSaved
+        const goalContract =
+          (currentTask.executionPlan?.contractVersion === 1 &&
+            deliveryGoals(currentTask.executionPlan).length > 0) ||
+          (documentPlanning &&
+            (!currentTask.executionPlan ||
+              currentTask.executionPlan.contractVersion === 1));
+        tools.plan_task.inputSchema = goalContract
+          ? deliveryPlanSchema
+          : recordingRequirements && !requirementsSaved
             ? recordRequirementsSchema
-            : fullPlanSchema;
+            : !currentTask.executionPlan ||
+                currentTask.executionPlan.contractVersion === 1
+              ? singlePlanSchema
+              : fullPlanSchema;
         if (
           documentPlanning &&
           activeTools.includes("plan_task") &&
@@ -5166,8 +5442,12 @@ export async function executeAssistantTurn(
             !currentTask.target &&
             !currentTask.draftId &&
             !(context.state as any).pageObject
-              ? documentPlanSchema
-              : fullPlanSchema;
+              ? goalContract
+                ? deliveryPlanSchema
+                : legacyDocumentPlanSchema
+              : goalContract
+                ? deliveryPlanSchema
+                : fullPlanSchema;
           if (requirementRepair && responseMessages.length === 0) {
             activeRepairTools = new Set(["plan_task"]);
             return {
@@ -5434,10 +5714,13 @@ export async function executeAssistantTurn(
           !result.result?.unchanged &&
           (!recordingRequirements || result.input?.requirements?.length) &&
           (!documentPlanning ||
-            (result.input?.executionMode === "plan" &&
-              result.input?.steps?.length)) &&
+            (result.result?.task?.executionPlan?.mode === "plan" &&
+              (result.input?.steps?.length ||
+                result.input?.deliveries?.length ||
+                result.result?.task?.executionPlan?.contractVersion === 1))) &&
           Object.keys(result.input ?? {}).some((field) =>
             [
+              "deliveries",
               "requirements",
               "targetCount",
               "countKind",

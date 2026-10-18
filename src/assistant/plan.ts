@@ -53,7 +53,10 @@ export function groundDocumentGeneration(input: Record<string, any>) {
 
 /** Multiple independent deliveries always review and request confirmation before the next one. */
 export function completeDocumentDeliveries(
-  steps: Pick<Step, "title" | "action" | "input" | "scope">[],
+  steps: Pick<
+    Step,
+    "title" | "action" | "input" | "scope" | "deliveryId" | "countKind"
+  >[],
 ) {
   if (steps.filter((step) => step.action === "generate_candidates").length < 2)
     return steps;
@@ -76,11 +79,13 @@ export function completeDocumentDeliveries(
     )
       block.splice(apply < 0 ? block.length : apply, 0, {
         title: "核对本类生成结果",
+        ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
         action: "read_processing",
       });
     if (apply < 0)
       block.push({
         title: "确认采用本类结果",
+        ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
         action: "request_processing_apply",
       });
     completed.push(...block);
@@ -107,6 +112,8 @@ export const PLAN_ACTIONS = [
 ] as const;
 
 type Step = {
+  deliveryId?: string;
+  countKind?: "new" | "final";
   id?: string;
   revision?: number;
   title: string;
@@ -125,6 +132,7 @@ type Step = {
   };
 };
 export type ExecutionPlan = {
+  contractVersion?: 1;
   mode: "plan" | "execute";
   steps: Step[];
   current: number;
@@ -161,8 +169,26 @@ export function sourceWithinTask(
 
 export function planRequirementsKey(task: Record<string, any>, legacy = false) {
   return sha256(
-    canonicalJson(
-      Object.fromEntries(
+    canonicalJson({
+      ...(task.executionPlan?.contractVersion === 1 &&
+      task.executionPlan.steps.some(
+        (step: any) => step.deliveryId && step.action === "generate_candidates",
+      )
+        ? {
+            deliveryContract: task.executionPlan.steps
+              .filter((step: any) => step.action === "generate_candidates")
+              .map((step: any) => ({
+                id: step.deliveryId,
+                countKind: step.countKind ?? "new",
+                name: step.input?.name,
+                count: step.input?.outputCount,
+                instructions: step.input?.instructions,
+                scenarios: step.input?.scenarios,
+                classifications: step.input?.classifications,
+              })),
+          }
+        : {}),
+      ...Object.fromEntries(
         [
           "target",
           "targetCount",
@@ -200,7 +226,7 @@ export function planRequirementsKey(task: Record<string, any>, legacy = false) {
                 : task[field],
           ]),
       ),
-    ),
+    }),
   );
 }
 
@@ -210,6 +236,8 @@ export function revisePlan(
   input: {
     executionMode?: "plan" | "execute";
     steps?: {
+      deliveryId?: string;
+      countKind?: "new" | "final";
       title: string;
       action: string;
       input?: Record<string, any>;
@@ -235,7 +263,10 @@ export function revisePlan(
         input.executionMode === "execute" &&
         previous?.mode === "plan" &&
         (input.steps ?? []).filter(
-          (item) => item.action === step.action && item.title === step.title,
+          (item) =>
+            item.action === step.action &&
+            item.title === step.title &&
+            item.deliveryId === step.deliveryId,
         ).length === 1 &&
         previous.requirementsKey === requirementsKey &&
         canonicalJson(planSource(previous.target ?? {})) ===
@@ -282,6 +313,7 @@ export function revisePlan(
       prefix =
         prefix &&
         prior?.action === step.action &&
+        prior?.deliveryId === step.deliveryId &&
         prior?.scope === step.scope &&
         canonicalJson(
           prior?.input?.source
@@ -292,6 +324,7 @@ export function revisePlan(
       // Later adoption/publication still rechecks the current goal against actual content.
       const committed =
         prior?.action === step.action &&
+        prior?.deliveryId === step.deliveryId &&
         prior.status === "executed" &&
         ((prior.action.startsWith("request_") && prior.receipt?.proposalId) ||
           (prior.action === "create_draft" && prior.receipt?.draftId) ||
@@ -308,10 +341,18 @@ export function revisePlan(
             : (prior.input ?? null),
         ) === canonicalJson(parameters ?? null);
       return prefix || committed
-        ? { ...prior!, title: step.title, revision }
+        ? {
+            ...prior!,
+            title: step.title,
+            revision,
+            ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
+            ...(step.countKind ? { countKind: step.countKind } : {}),
+          }
         : {
             title: step.title,
             action: step.action,
+            ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
+            ...(step.countKind ? { countKind: step.countKind } : {}),
             scope: step.scope,
             id: opaqueId("step"),
             revision,
@@ -322,6 +363,9 @@ export function revisePlan(
     previous?.steps ??
     [];
   return {
+    ...(previous?.contractVersion
+      ? { contractVersion: previous.contractVersion }
+      : {}),
     mode: input.executionMode ?? previous?.mode ?? "plan",
     target,
     requirementsKey,

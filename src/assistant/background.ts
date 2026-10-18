@@ -20,6 +20,7 @@ import {
 } from "./background-sections.js";
 import {
   requirementSummary,
+  expectedOutputForm,
   validateRules,
   validateProcessingRequirements,
 } from "./requirements.js";
@@ -700,47 +701,6 @@ export async function freezeBackground(
     ),
     documents: selected,
   };
-}
-
-type OutputForm = "labels" | "per-item";
-
-/** Recognize explicit field declarations, never category headings or model summaries. */
-function expectedOutputForm(
-  text: string,
-  document = false,
-): OutputForm | undefined {
-  let form: OutputForm | undefined;
-  for (const clause of text.normalize("NFKC").split(/[。；;，,\n]/u)) {
-    const field = clause.match(/(?:期望输出|expectedOutput)(.*)/iu)?.[1];
-    if (document && field === undefined) continue;
-    if (field === undefined && /metadata|问题/iu.test(clause)) continue;
-    if (
-      field === undefined &&
-      !/(?:固定(?:值|标签|输出)|枚举|原样填写)/u.test(clause)
-    )
-      continue;
-    const declaration = field ?? clause;
-    if (
-      /(?:不设|不使用|不要|不得|不再).{0,6}(?:固定标签|枚举|固定值|标签)/u.test(
-        declaration,
-      )
-    )
-      form = "per-item";
-    else if (
-      /(?:固定(?:值|标签|输出|为)|枚举|标签|原样填写|(?:对应|所属).{0,6}(?:意图|类别|分类)(?:名称)?|(?:意图|类别|分类)名称)/u.test(
-        declaration,
-      )
-    )
-      form = "labels";
-    else if (
-      field !== undefined &&
-      /自然语言|逐题|具体.{0,8}(?:行为|应答)|安全行为|期望行为|应答行为/u.test(
-        declaration,
-      )
-    )
-      form = "per-item";
-  }
-  return form;
 }
 
 /** User text authorizes adopting a document's data contract, never its operations. */

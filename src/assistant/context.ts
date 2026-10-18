@@ -1,3 +1,4 @@
+import { deliveryGoals } from "./delivery-plan.js";
 import type { Database } from "../db/pool.js";
 import { sha256 } from "../package/contract.js";
 import type { ModelMessage } from "ai";
@@ -38,6 +39,8 @@ export function currentTaskFacts(
     .slice(-6)
     .map((text: string) => text.slice(0, 1000));
   delete facts.supplements;
+  if (task.executionPlan?.contractVersion === 1)
+    facts.deliveries = deliveryGoals(task.executionPlan);
   if (facts.executionPlan)
     facts.executionPlan = {
       ...facts.executionPlan,

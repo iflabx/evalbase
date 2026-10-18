@@ -12,6 +12,7 @@ type Requirements = CandidateGoal & {
   requirements?: string[];
   allowedFields?: string[];
   metadataKeys?: string[] | null;
+  executionPlan?: { contractVersion?: number; steps: any[] };
 };
 
 /** Exact independent constraints, never semantic paraphrase equivalence. */
@@ -338,6 +339,133 @@ export function reviseRequirements(
   };
 }
 
+type OutputForm = "labels" | "per-item";
+
+/** Recognize explicit field declarations, never category headings or model summaries. */
+export function expectedOutputForm(
+  text: string,
+  document = false,
+): OutputForm | undefined {
+  let form: OutputForm | undefined;
+  for (const clause of text.normalize("NFKC").split(/[。；;，,\n]/u)) {
+    const field = clause.match(/(?:期望输出|expectedOutput)(.*)/iu)?.[1];
+    if (document && field === undefined) continue;
+    if (field === undefined && /metadata|问题/iu.test(clause)) continue;
+    if (
+      field === undefined &&
+      !/(?:固定(?:值|标签|输出)|枚举|原样填写)/u.test(clause)
+    )
+      continue;
+    const declaration = field ?? clause;
+    if (
+      /(?:不设|不使用|不要|不得|不再).{0,6}(?:固定标签|枚举|固定值|标签)/u.test(
+        declaration,
+      )
+    )
+      form = "per-item";
+    else if (
+      /(?:固定(?:值|标签|输出|为)|枚举|标签|原样填写|(?:对应|所属).{0,6}(?:意图|类别|分类)(?:名称)?|(?:意图|类别|分类)名称)/u.test(
+        declaration,
+      )
+    )
+      form = "labels";
+    else if (
+      field !== undefined &&
+      /自然语言|逐题|具体.{0,8}(?:行为|应答)|安全行为|期望行为|应答行为/u.test(
+        declaration,
+      )
+    )
+      form = "per-item";
+  }
+  return form;
+}
+
+/** New delivery planning sends changes; omission and internal repair never erase other semantics. */
+export function reviseDeliveryRequirements(
+  current: Requirements,
+  input: Record<string, any>,
+  userText: string,
+) {
+  const affirmative = (text: string) =>
+    /(?:取消|撤销|删除|去掉|不再|改为|改成|调整|允许|可以|可修改)/u.test(
+      text,
+    ) &&
+    !/(?:不要|不得|别|禁止|不允许|不能).{0,8}(?:取消|撤销|删除|去掉|允许|修改)/u.test(
+      text,
+    );
+  const touches = (old: string) =>
+    userText.split(/[。；;，,\n]/u).some((part) => {
+      if (!affirmative(part)) return false;
+      const cancelled = part
+        .match(
+          /(?:取消|撤销|删除|去掉|不再要求)\s*[“"「]?(.+?)(?:[”"」]?(?:的)?(?:要求|约束|限制)|$)/u,
+        )?.[1]
+        ?.trim();
+      return (
+        part.includes(old) ||
+        (cancelled && cancelled.length >= 2 && old.includes(cancelled)) ||
+        (/期望输出/iu.test(old) &&
+          /期望输出.{0,12}(?:改为|改成)/u.test(part) &&
+          expectedOutputForm(old, true) !== undefined)
+      );
+    });
+  const removed = input.removeRequirements ?? [];
+  if (
+    removed.some(
+      (value: string) =>
+        !current.requirements?.includes(value) || !touches(value),
+    )
+  )
+    throw new RequirementError(
+      "assistant_requirement_conflict",
+      "本轮未明确撤销这些要求，未变更的语义要求保持。",
+    );
+  const fields = {
+    question: "问题",
+    expectedOutput: "期望输出",
+    metadata: "Metadata",
+  };
+  for (const field of input.allowedFields ?? [])
+    if (
+      current.allowedFields &&
+      !current.allowedFields.includes(field) &&
+      !userText
+        .split(/[。；;，,\n]/u)
+        .some(
+          (part) =>
+            affirmative(part) &&
+            part
+              .toLowerCase()
+              .includes(fields[field as keyof typeof fields].toLowerCase()),
+        )
+    )
+      throw new RequirementError(
+        "assistant_requirement_conflict",
+        "本轮未明确放开受保护字段，原字段保护保持。",
+      );
+  if (
+    current.metadataKeys &&
+    Object.hasOwn(input, "metadataKeys") &&
+    (input.metadataKeys === null ||
+      input.metadataKeys.some(
+        (key: string) => !current.metadataKeys!.includes(key),
+      ))
+  )
+    if (!affirmative(userText) || !/metadata|元数据/iu.test(userText))
+      throw new RequirementError(
+        "assistant_requirement_conflict",
+        "本轮未明确扩大 Metadata 字段范围，原保护保持。",
+      );
+  return {
+    requirements: normalizedRequirements([
+      ...(current.requirements ?? []).filter(
+        (value) => !removed.includes(value),
+      ),
+      ...(input.requirements ?? []),
+    ]),
+  };
+}
+
 /** Runs inside the fenced transaction, before storing an input or creating a job. */
 export function validateProcessingRequirements(
   task: Requirements,
@@ -493,6 +621,14 @@ export function requirementSummary(
     rules = effectiveRules(task);
   }
   return [
+    ...(task.executionPlan?.contractVersion === 1
+      ? task.executionPlan.steps
+          .filter((step: any) => step.action === "generate_candidates")
+          .map(
+            (step: any) =>
+              `交付「${step.input.name}」：${step.countKind === "final" ? "最终总数" : "新增"} ${step.input.outputCount} 条`,
+          )
+      : []),
     ...(task.overallTargetCount != null
       ? [`整体交付：${task.overallTargetCount} 条（当前测试集单独核对）`]
       : []),

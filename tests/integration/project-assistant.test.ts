@@ -14359,6 +14359,460 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT35 saves one intent collection from business goals without side effects", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const counts = () =>
+        db.query(
+          "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+          [projectId],
+        );
+      const before = (await counts()).rows[0];
+      await opt21Session();
+      const upload = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + sessionId + "/background-documents",
+        headers,
+        payload: {
+          fileName: "客服意图规范.md",
+          contentBase64: readFileSync(
+            "tests/fixtures/assistant-customer-intent.md",
+          ).toString("base64"),
+        },
+      });
+      expect(upload.statusCode, upload.body).toBe(201);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: upload.json().document.id },
+      };
+      const readState = await opt21End(await opt21Submit("读取附件"));
+      const catalog = readState.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "read_background")
+        .result.definitions;
+      const rules = ["expectedOutput", "metadata"].map((field) => ({
+        field,
+        ...(field === "metadata" ? { key: "intent" } : {}),
+        basis: "background",
+        allowedValues: ["退款申请", "物流查询"],
+        quotas: [
+          { value: "退款申请", count: 3 },
+          { value: "物流查询", count: 3 },
+        ],
+        definitions: ["退款申请", "物流查询"].map((value) => ({
+          value,
+          reference: catalog.find((entry: any) => entry.value === value)
+            .reference,
+        })),
+      }));
+      const intent = {
+        name: "客服意图6条",
+        count: 6,
+        countKind: "new",
+        instructions: "生成语义完整自然的客服用户问题",
+        scenarios: [
+          "已付款用户希望退还货款",
+          "用户询问如何发起退款",
+          "用户查询配送进度和预计送达",
+        ],
+        classifications: rules,
+      };
+      toolSequence = [{ ...intent, classifications: [] }, intent].map(
+        (delivery) => ({
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [delivery],
+            requirements: ["语义完整自然，不编造具体订单号"],
+          },
+        }),
+      );
+      const saved = await opt21End(
+        await opt21Submit(
+          "按附件规范建一份客服意图测试集共6条，退款申请和物流查询各3条，不用原始数据。先给方案，暂不执行。",
+        ),
+      );
+      expect(
+        saved.turns.at(-1).tools.at(-1),
+        JSON.stringify(saved.turns.at(-1)),
+      ).toMatchObject({ name: "plan_task", status: "succeeded" });
+      expect(
+        saved.turns
+          .at(-1)
+          .tools.filter((tool: any) => tool.name === "plan_task")
+          .map((tool: any) => tool.status),
+      ).toEqual(["failed", "succeeded"]);
+      expect(
+        saved.turns.at(-1).tools.find((tool: any) => tool.status === "failed")
+          .error.hint,
+      ).toContain("不能用空分类");
+      expect(saved.turns.at(-1).assistantText).toContain("方案已保存");
+      expect(saved.task.executionPlan.contractVersion).toBe(1);
+      const generations = saved.task.executionPlan.steps.filter(
+        (step: any) => step.action === "generate_candidates",
+      );
+      expect(generations).toHaveLength(1);
+      expect(generations[0].deliveryId).toMatch(/^delivery_/);
+      expect(generations[0].input.classifications).toHaveLength(2);
+      expect(saved.task).toMatchObject({
+        targetCount: 6,
+        overallTargetCount: 6,
+      });
+      expect((await read()).json().task.executionPlan).toEqual(
+        saved.task.executionPlan,
+      );
+      requestedTool = { name: "plan_task", input: { executionMode: "plan" } };
+      const unchanged = await opt21End(
+        await opt21Submit("总共6条，其他要求不变，先不要执行。"),
+      );
+      expect(
+        unchanged.task.executionPlan.steps.find(
+          (step: any) => step.action === "generate_candidates",
+        ).deliveryId,
+      ).toBe(generations[0].deliveryId);
+      expect(unchanged.task.requirements).toEqual(saved.task.requirements);
+      expect((await counts()).rows[0]).toEqual(before);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it("OPT35 keeps both GB deliveries through rejected references and bounded correction", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const counts = () =>
+        db.query(
+          "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+          [projectId],
+        );
+      const before = (await counts()).rows[0];
+      await opt21Session();
+      const document = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "GB附录A原始摘录.txt",
+            contentBase64: readFileSync(
+              "tests/fixtures/assistant-gb-original-fragment.txt",
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: document.id },
+      };
+      const background = await opt21End(await opt21Submit("读取附件"));
+      const catalog = background.turns
+        .at(-1)
+        .tools.find((tool: any) => tool.name === "read_background")
+        .result.definitions;
+      const goals = ["A.1.a", "A.1.b"].map((value) => ({
+        name: "GB " + value,
+        count: 5,
+        instructions: "按对应定义生成完整自然的用户问题",
+        scenarios: [
+          "用户说明前提后提出请求",
+          "用户带具体限制提出请求",
+          "用户询问完成目标的方法",
+        ],
+        classifications: [
+          {
+            field: "metadata",
+            key: "riskCategory",
+            basis: "background",
+            allowedValues: [value],
+            requiredValues: [value],
+            quotas: [{ value, count: 5 }],
+            definitions: [
+              {
+                value,
+                reference: catalog.find((entry: any) => entry.value === value)
+                  .reference,
+              },
+            ],
+          },
+        ],
+      }));
+      const bad = structuredClone(goals);
+      bad[0].classifications[0].definitions[0].reference =
+        goals[1].classifications[0].definitions[0].reference;
+      const weakened = structuredClone(goals);
+      weakened[0].classifications = [];
+      toolSequence = [bad, weakened, goals].map((deliveries) => ({
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries,
+          requirements: ["语义完整自然，期望输出写逐题具体安全行为"],
+        },
+      }));
+      const saved = await opt21End(
+        await opt21Submit(
+          "按附件规范，GB A.1.a 和 A.1.b 各一份5条，不用原始数据。先给方案，暂不执行。",
+        ),
+      );
+      const records = saved.turns
+        .at(-1)
+        .tools.filter((tool: any) => tool.name === "plan_task");
+      expect(records, JSON.stringify(saved.turns.at(-1))).toHaveLength(3);
+      expect(records.map((tool: any) => tool.status)).toEqual([
+        "failed",
+        "failed",
+        "succeeded",
+      ]);
+      expect(records[0].error.code).toBe(
+        "assistant_background_reference_invalid",
+      );
+      expect(records[1].error.hint).toContain("不能清空");
+      const generations = () =>
+        saved.task.executionPlan.steps.filter(
+          (step: any) => step.action === "generate_candidates",
+        );
+      expect(generations()).toHaveLength(2);
+      const ids = generations().map((step: any) => step.deliveryId);
+      expect(new Set(ids).size).toBe(2);
+      expect(saved.task).toMatchObject({
+        targetCount: 5,
+        overallTargetCount: 10,
+      });
+      expect(
+        generations().map(
+          (step: any) => step.input.classifications[0].quotas[0].count,
+        ),
+      ).toEqual([5, 5]);
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: goals.map((goal, index) => ({
+            ...goal,
+            id: ids[index],
+            count: 3,
+            classifications: goal.classifications.map((rule) => ({
+              ...rule,
+              quotas: rule.quotas.map((quota) => ({ ...quota, count: 3 })),
+            })),
+          })),
+        },
+      };
+      const resized = await opt21End(
+        await opt21Submit("改为各3条，其他要求不变，先不要执行。"),
+      );
+      expect(
+        resized.turns.at(-1).tools.at(-1),
+        JSON.stringify(resized.turns.at(-1)),
+      ).toMatchObject({ status: "succeeded" });
+      expect(resized.task).toMatchObject({
+        targetCount: 3,
+        overallTargetCount: 6,
+      });
+      const rows = resized.task.executionPlan.steps.filter(
+        (step: any) => step.action === "generate_candidates",
+      );
+      expect(rows.map((step: any) => step.deliveryId)).toEqual(ids);
+      expect(
+        rows.map((step: any) => step.input.classifications[0].quotas[0].count),
+      ).toEqual([3, 3]);
+      expect(rows[1].input.classifications[0].definitions).toEqual(
+        generations()[1].input.classifications[0].definitions,
+      );
+      expect((await read()).json().task.executionPlan).toEqual(
+        resized.task.executionPlan,
+      );
+      requestedTool = { name: "plan_task", input: { executionMode: "plan" } };
+      const overall = await opt21End(
+        await opt21Submit("总共6条，先不要执行。"),
+      );
+      expect(overall.task.overallTargetCount).toBe(6);
+      expect(overall.task.runId).toBeUndefined();
+      expect((await counts()).rows[0]).toEqual(before);
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it("OPT35 normalizes a spelling error without dropping the delivery contract", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      const document = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "普通规范.md",
+            contentBase64: Buffer.from(
+              "# 普通问法规范\n每题完整自然，覆盖不同使用场景。",
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: document.id },
+      };
+      await opt21End(await opt21Submit("读取附件"));
+      const goal = {
+        name: "普通问题",
+        count: 3,
+        instructions: "完整自然的用户问法",
+        scenarios: [
+          "新用户询问操作步骤",
+          "用户说明背景询问原因",
+          "用户带限制寻求建议",
+        ],
+        classifications: [],
+      };
+      toolSequence = [5, 3].map((count) => ({
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [{ ...goal, count }],
+          requirements: ["语义完整自然"],
+        },
+      }));
+      const { instructions, ...rest } = goal;
+      rawToolArguments = [
+        JSON.stringify({
+          executionMode: "plan",
+          deliveries: [{ ...rest, count: 5, instruction: instructions }],
+          requirements: ["语义完整自然"],
+        }),
+      ];
+      const saved = await opt21End(
+        await opt21Submit("按附件规范建一份测试集共3条。先给方案，暂不执行。"),
+      );
+      expect(
+        saved.turns.at(-1).tools.at(-1),
+        JSON.stringify(saved.turns.at(-1)),
+      ).toMatchObject({ name: "plan_task", status: "succeeded" });
+      expect(
+        saved.task.executionPlan.steps.filter(
+          (step: any) => step.action === "generate_candidates",
+        ),
+      ).toHaveLength(1);
+      expect(saved.task.targetCount).toBe(3);
+      expect(
+        saved.turns
+          .at(-1)
+          .tools.filter((tool: any) => tool.name === "plan_task")
+          .map((tool: any) => tool.status),
+      ).toEqual(["failed", "succeeded"]);
+      expect(saved.turns.at(-1).diagnostics.parameterRepairs).toContainEqual({
+        name: "plan_task",
+        outcome: "repaired",
+      });
+    } finally {
+      requestedTool = undefined;
+      toolSequence = [];
+      rawToolArguments = [];
+      sessionId = previous;
+    }
+  });
+
+  it("OPT35 never reports an unsaved oral plan and retains the last valid plan after persistence failure", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    let saveSpy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const counts = () =>
+        db.query(
+          "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+          [projectId],
+        );
+      const before = (await counts()).rows[0];
+      await opt21Session();
+      const document = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "普通问法规范.md",
+            contentBase64: Buffer.from(
+              "# 普通问法规范\n问题须完整自然，使用不同场景。",
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: document.id },
+      };
+      await opt21End(await opt21Submit("读取附件"));
+      textualReplies = ["方案已保存，准备生成5条。"];
+      const oral = await opt21End(
+        await opt21Submit("按附件规范建一份测试集共5条，只给方案，暂不执行。"),
+      );
+      expect(oral.task.executionPlan).toBeUndefined();
+      expect(oral.turns.at(-1).assistantText).not.toContain("方案已保存");
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [
+            {
+              name: "普通测试集",
+              count: 5,
+              instructions: "问题完整自然",
+              scenarios: [
+                "初次使用询问步骤",
+                "遇到异常询问原因",
+                "带具体限制寻求建议",
+              ],
+              classifications: [],
+            },
+          ],
+          requirements: ["语义完整自然"],
+        },
+      };
+      const saved = await opt21End(
+        await opt21Submit("按附件规范建一份测试集共5条，只给方案，暂不执行。"),
+      );
+      expect(
+        saved.turns.at(-1).tools.at(-1),
+        JSON.stringify(saved.turns.at(-1)),
+      ).toMatchObject({ status: "succeeded" });
+      const update = taskModule.updateTask;
+      saveSpy = vi
+        .spyOn(taskModule, "updateTask")
+        .mockImplementation(async (...args: any[]) => {
+          if (args[2].executionPlan?.contractVersion === 1)
+            throw new Error("synthetic plan persistence unavailable");
+          return update(...(args as Parameters<typeof update>));
+        });
+      requestedTool = { name: "plan_task", input: { executionMode: "plan" } };
+      const failed = await opt21End(await opt21Submit("总共6条，先不要执行。"));
+      expect(failed.task.executionPlan).toEqual({
+        ...saved.task.executionPlan,
+        needsReview: true,
+      });
+      expect(failed.task.targetCount).toBe(5);
+      expect(failed.task.requirements).toEqual(saved.task.requirements);
+      expect(failed.turns.at(-1).assistantText).not.toContain("方案已保存");
+      expect((await counts()).rows[0]).toEqual(before);
+    } finally {
+      saveSpy?.mockRestore();
+      requestedTool = undefined;
+      toolSequence = [];
+      textualReplies = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
   it("OPT34 saves a delegated document output contract and changes only the requested field", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);
@@ -14415,21 +14869,17 @@ describe("project assistant public contract", () => {
             "期望输出填写对应意图名称",
             "intent与意图一致",
           ],
-          steps: [
+          deliveries: [
             {
-              title: "生成6条客服题",
-              action: "generate_candidates",
-              input: {
-                name: "客服意图6条",
-                instructions: "按附件输出规范生成自然完整问题",
-                outputCount: 6,
-                scenarios: [
-                  "已付款商品申请退还款项",
-                  "误付款项咨询退款方式",
-                  "包裹配送进度和预计送达查询",
-                ],
-                classifications: rules,
-              },
+              name: "客服意图6条",
+              instructions: "按附件输出规范生成自然完整问题",
+              count: 6,
+              scenarios: [
+                "已付款商品申请退还款项",
+                "误付款项咨询退款方式",
+                "包裹配送进度和预计送达查询",
+              ],
+              classifications: rules,
             },
           ],
         },
@@ -14468,7 +14918,15 @@ describe("project assistant public contract", () => {
       requestedTool = {
         name: "plan_task",
         input: {
-          classifications: [{ field: "expectedOutput", clear: true }],
+          deliveries: [
+            {
+              id: saved.task.executionPlan.steps.find(
+                (step: any) => step.action === "generate_candidates",
+              ).deliveryId,
+              classifications: [{ field: "expectedOutput", clear: true }],
+            },
+          ],
+          removeRequirements: ["期望输出填写对应意图名称"],
           requirements: [
             "问题完整自然",
             "期望输出写逐题具体应答行为",
@@ -14488,7 +14946,6 @@ describe("project assistant public contract", () => {
       ).toMatchObject({ name: "plan_task", status: "succeeded" });
       expect(changed.task.classifications).toEqual([metadataRule]);
       expect(changed.task.targetCount).toBe(6);
-      expect(changed.task.executionPaused).toBe(true);
       expect(changed.task.nextAction).toBeNull();
       expect(changed.task.executionPlan.mode).toBe("plan");
       expect((await read()).json().task.requirements).toEqual(
@@ -14527,7 +14984,14 @@ describe("project assistant public contract", () => {
       requestedTool = {
         name: "plan_task",
         input: {
-          classifications: [rules[1]],
+          deliveries: [
+            {
+              id: changed.task.executionPlan.steps.find(
+                (step: any) => step.action === "generate_candidates",
+              ).deliveryId,
+              classifications: [rules[1]],
+            },
+          ],
           requirements: ["按附件规范分类"],
           nextAction: "none",
         },

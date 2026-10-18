@@ -1,3 +1,5 @@
+2026-10-19 最新实施：Owner 单独授权的 [OPT-35](issues/35-delivery-goals-and-plan-contract.md) 已完成交付目标合同、薄规划入口、服务端步骤编译与约束保留；定向检查和两轴审阅见 [记录](opt35-verification.md)。Implementation completed，Owner pending；OPT-36/37 保持 not-started，OPT-31 仍 in-progress。本轮未更新4217、合并或推送，现有验收数据保留。
+
 2026-10-18 最新实施：Owner 单独授权的 [OPT-34](issues/34-document-evidence-and-output-contract.md) 已完成文档列表归一、稳定引用与附件输出约定修复；定向验证和审阅见 [记录](opt34-verification.md)。Implementation completed，Owner pending；OPT-35–37 保持 not-started，本轮未切换4217、未合并或推送，现有验收数据保留。OPT-31 仍 in-progress，其内容质量与原八类验收未代签。以下有日期的实施记录保留历史状态。
 
 2026-10-16 三项保存体验补修已更新同一4217 Web `ab38b60`：最终总数语义、缺字段/不可解析参数有限纠正、成功后的旧提示清理、明确数量不重复确认。50个不同自动用例通过；Computer Use首次模型失败保留，补修后连续改数量/刷新和总数与范围区分通过。数据保留、Owner整票pending，见[验证记录第10节](opt33-verification.md#10-2026-10-16-三项要求保存体验补修)。
@@ -122,7 +124,7 @@ Implementation: in-progress
 | [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | completed | [实现及收尾补修验证](opt32-verification.md)；4217 Web 2cdd519，Owner pending；已保存要求的收尾回放通过，纯文本确认未保存仍留作短提示问题，整体未签通过 |
 | [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划及实际要求保存 | OPT-32 已完成 | completed | [实施及定向验证](opt33-verification.md)；同一4217 Web f411325，Owner pending，候选质量留 OPT-31 |
 | [OPT-34](issues/34-document-evidence-and-output-contract.md) | 文档规范引用与输出约定 | 当前已实现代码；无未完成票硬依赖 | completed | [实施与定向验证](opt34-verification.md)；Owner pending，4217未切换 |
-| [OPT-35](issues/35-delivery-goals-and-plan-contract.md) | 交付分组、数量、约束保留与薄规划入口 | OPT-34 | not-started | 仅文档，待开发授权 |
+| [OPT-35](issues/35-delivery-goals-and-plan-contract.md) | 交付分组、数量、约束保留与薄规划入口 | OPT-34 | completed | Owner pending；[定向验证与审阅](opt35-verification.md)；未部署 |
 | [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | not-started | 仅文档，待开发授权 |
 | [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | not-started | 仅文档；一个最终checkpoint，旧验收状态保持 |
 

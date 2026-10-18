@@ -791,12 +791,20 @@ export async function startTurn(
                       action: string;
                       title: string;
                       status: string;
+                      deliveryId?: string;
+                      countKind?: "new" | "final";
                     }) =>
                       step.status === "waiting" &&
                       step.action.startsWith("request_")
                         ? {
                             title: step.title,
                             action: step.action,
+                            ...(step.deliveryId
+                              ? { deliveryId: step.deliveryId }
+                              : {}),
+                            ...(step.countKind
+                              ? { countKind: step.countKind }
+                              : {}),
                             status: "pending",
                           }
                         : step,
