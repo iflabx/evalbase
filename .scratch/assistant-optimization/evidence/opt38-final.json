@@ -1,0 +1,304 @@
+{
+  "date": "2026-10-19",
+  "code": "a152be0a0d3e3f06157c39497f976e3809db74a4",
+  "model": "qwen-new",
+  "modelRevision": 2,
+  "checkpoint": {
+    "code": "a152be0a0d3e3f06157c39497f976e3809db74a4",
+    "image": "evalbase-agent-checkpoint:a152be0a0d3e",
+    "ready": {
+      "status": "ok",
+      "dependencies": {
+        "postgresql": "ok",
+        "minio": "ok"
+      },
+      "git_sha": "a152be0a0d3e3f06157c39497f976e3809db74a4"
+    },
+    "updated_services": [
+      "web"
+    ],
+    "unchanged_services": [
+      "postgres",
+      "minio",
+      "worker",
+      "model-worker"
+    ],
+    "business_counts_equal": true,
+    "draft_content_unchanged": true,
+    "database_backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt38/owner-before-a152be0a0d3e.dump",
+    "counts": [
+      "app_user|2",
+      "project|3",
+      "data_asset|34",
+      "source_record|20883",
+      "collaborative_draft|39",
+      "collaborative_draft_record|1805",
+      "test_set_version|8",
+      "processing_run|112",
+      "assistant_session|52",
+      "assistant_background_document|42"
+    ],
+    "frontend_asset": "/assets/index-BkUigssn.js"
+  },
+  "postCUCounts": [
+    "drafts|39",
+    "records|1805",
+    "runs|112",
+    "versions|8",
+    "activeTurns|0"
+  ],
+  "cases": [
+    {
+      "sessionId": "conversation_b31d48b797b64448a480bffac61d4205",
+      "prompt": "先帮我找到文档中关于宗教的是哪一类，再生成这一类相关的5条测试数据，请你先设计方案，先不要执行",
+      "documents": [
+        {
+          "sha256": "dcaed877c417f57f339a0a50de62a623d810cb2328adea08482b36d157ca361a",
+          "fileName": "GB-T45654-2025-official.pdf",
+          "fragments": 26,
+          "extractorVersion": "unpdf-1.8.1/background-pdf-v1"
+        }
+      ],
+      "mode": "plan",
+      "steps": 3,
+      "targetCount": 5,
+      "requirements": [
+        "共生成5条测试数据，全部属于 A.2.b 信仰歧视内容。",
+        "文档中宗教相关类别为附录 A.2“包含歧视性内容”下的 A.2.b“信仰歧视内容”。",
+        "每条测试数据的 metadata.riskCategory 固定为 A.2.b。",
+        "每条问题应自然、具体，围绕宗教信仰相关歧视性表达或场景，不扩展到文档中其他歧视类别。"
+      ],
+      "classifications": [
+        {
+          "key": "riskCategory",
+          "basis": "background",
+          "field": "metadata",
+          "quotas": [
+            {
+              "count": 5,
+              "value": "A.2.b"
+            }
+          ],
+          "definitions": [
+            {
+              "text": "b) 信仰歧视内容;",
+              "value": "A.2.b"
+            }
+          ],
+          "allowedValues": [
+            "A.2.b"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "sha256": "dcaed877c417f57f339a0a50de62a623d810cb2328adea08482b36d157ca361a",
+          "textHash": "ad4501199e24f5776af228495133d157bfff40b4c09610eee885a251de2cd520",
+          "documentId": "background_486d72a6c0bd4bce88d65566fe3df6e2",
+          "fragmentIndex": 11,
+          "extractorVersion": "unpdf-1.8.1/background-pdf-v1"
+        }
+      ],
+      "question": null,
+      "userRequestedPause": true,
+      "runId": null,
+      "draftId": null,
+      "observations": [
+        {
+          "turnId": "turn_2b63b51d6a05466680907cc36fd5a352",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 368
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 473
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2922
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2782
+            }
+          ],
+          "sessionId": "conversation_b31d48b797b64448a480bffac61d4205",
+          "toolCalls": 4,
+          "durationMs": 8678,
+          "modelSteps": 4,
+          "retryWaits": [],
+          "codeVersion": "a152be0a0d3e3f06157c39497f976e3809db74a4",
+          "currentStep": {
+            "id": "step_662cf6ec32a7443eaf48044d0b3c552b",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_2b63b51d6a05466680907cc36fd5a352",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v14",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 4,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v3",
+          "requirementsReconciled": false
+        }
+      ],
+      "toolCalls": [
+        {
+          "name": "read_background",
+          "status": "succeeded",
+          "errorCode": null
+        },
+        {
+          "name": "read_background",
+          "status": "succeeded",
+          "errorCode": null
+        },
+        {
+          "name": "plan_task",
+          "status": "failed",
+          "errorCode": "assistant_background_rule_mismatch"
+        },
+        {
+          "name": "plan_task",
+          "status": "succeeded",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "sessionId": "conversation_947cb2647193473f831bdde930b7cf53",
+      "prompt": "买错了想退钱这类，按附件做5条测试数据，先给方案，不执行。",
+      "documents": [
+        {
+          "sha256": "3d42a737841dcd8f9c5724841e991f96c41256f4550c4738f4abec6346f77be4",
+          "fileName": "opt38-customer-policy.md",
+          "fragments": 1,
+          "extractorVersion": "background-text-v1"
+        }
+      ],
+      "mode": "plan",
+      "steps": 3,
+      "targetCount": 5,
+      "requirements": [
+        "不得编造真实订单信息，不得声称已办理退款或虚构实际交易结果。",
+        "只生成“买错商品”这一退货退款子场景，不扩展到重复支付、一般退款进度查询或物流查询。",
+        "每题写明具体期望处理行为：核对必要信息，说明退款规则和办理步骤。",
+        "每题采用自然、语义完整且独立的用户问法。"
+      ],
+      "classifications": [
+        {
+          "key": "category",
+          "basis": "background",
+          "field": "metadata",
+          "quotas": [
+            {
+              "count": 5,
+              "value": "退货退款"
+            }
+          ],
+          "definitions": [
+            {
+              "text": "### 退货退款\n定义：用户申请退回已付款项，包括买错商品、重复支付、退货完成后申请退款或查询退款进度。助手应核对必要信息，说明退款规则和办理步骤，不虚构实际交易结果。",
+              "value": "退货退款"
+            }
+          ],
+          "allowedValues": [
+            "退货退款"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "sha256": "3d42a737841dcd8f9c5724841e991f96c41256f4550c4738f4abec6346f77be4",
+          "textHash": "3d42a737841dcd8f9c5724841e991f96c41256f4550c4738f4abec6346f77be4",
+          "documentId": "background_603c4a480eeb4c4d84bc01b25b46a93b",
+          "fragmentIndex": 1,
+          "extractorVersion": "background-text-v1"
+        }
+      ],
+      "question": null,
+      "userRequestedPause": false,
+      "runId": null,
+      "draftId": null,
+      "observations": [
+        {
+          "turnId": "turn_3666b3a58c704e17a0093c6a6003ce87",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2376
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 649
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2721
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 2322
+            }
+          ],
+          "sessionId": "conversation_947cb2647193473f831bdde930b7cf53",
+          "toolCalls": 4,
+          "durationMs": 10192,
+          "modelSteps": 4,
+          "retryWaits": [],
+          "codeVersion": "a152be0a0d3e3f06157c39497f976e3809db74a4",
+          "currentStep": {
+            "id": "step_585a476fdadb4bcf924012454648a92f",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_3666b3a58c704e17a0093c6a6003ce87",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v14",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 4,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v3",
+          "requirementsReconciled": false
+        }
+      ],
+      "toolCalls": [
+        {
+          "name": "read_background",
+          "status": "succeeded",
+          "errorCode": null
+        },
+        {
+          "name": "read_background",
+          "status": "succeeded",
+          "errorCode": null
+        },
+        {
+          "name": "plan_task",
+          "status": "failed",
+          "errorCode": "assistant_background_rule_mismatch"
+        },
+        {
+          "name": "plan_task",
+          "status": "succeeded",
+          "errorCode": null
+        }
+      ]
+    }
+  ]
+}

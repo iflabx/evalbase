@@ -1,7 +1,7 @@
 # OPT-38 背景检索、依据选择与普通重试规划恢复
 
-Status: ready-for-agent
-Implementation: in-progress
+Status: ready-for-human
+Implementation: completed
 Blocked by: none
 
 优先级：P1。基于已实现的 OPT-32–37 及两会话补修，没有未开发票的硬依赖。本票定向验证通过后，才恢复 [OPT-31](31-rewrite-effectiveness-and-quality.md) 的真实内容与交付验收。2026-10-19 已获 Owner 授权开发、定向验证、更新同一4217并进行Computer Use新会话复测；保留全部验收数据。
@@ -85,3 +85,5 @@ Blocked by: none
 - 2026-10-19：按用户要求建立修复票并更新 OPT-31 依赖。[两会话补修验证](../two-session-repair-verification.md) 的精确命中与定向通过证据保留，但未覆盖本次“未命中→依据污染→澄清→普通重试”链，不能证明本次故障已修复。未修改代码、数据或运行环境，Implementation not-started，新增验收均 pending。
 
 - 2026-10-19 实施中：修复当前定义优先、真实目录独立续读、只读浏览与12片段选用分离、当前澄清/普通重试恢复和容量诊断；审阅发现的描述性“执行”、已删除无关文档及多文档依据丢失边界已补防护。自动验证与4217/CU结果见[实施记录](../opt38-verification.md)，Owner pending。
+
+- 2026-10-19 完成：定向自动验证、独立双轴审阅及同一4217 Web更新已完成；最终应用`a152be0`，Computer Use两条新会话均一次提交保存5条仅规划方案，内部各自动纠正1次无依据固定输出枚举，无用户技术提示。前两轮失败及补修、零生成和数据保留事实见[验证记录](../opt38-verification.md)。Implementation completed，Owner pending；未合并或推送，不代签OPT-31。
