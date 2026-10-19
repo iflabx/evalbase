@@ -32,9 +32,55 @@
       "session": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
       "text": "继续执行已保存方案",
       "at": "2026-10-19T10:40:15.729Z"
+    },
+    {
+      "purpose": "resume-after-docker-recovery",
+      "session": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+      "text": "继续执行已保存方案",
+      "turn": "turn_1719cd88979d466bb1591446f5e87abf",
+      "result": "recovered D original 46+4, no generate call; fixed confirmation saved50; automatically started E"
+    },
+    {
+      "purpose": "manual-resume-at-auto-count-cap",
+      "session": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+      "text": "继续执行已保存方案",
+      "turn": "turn_030ea5d9c5444c709d3617aa1288fa21",
+      "result": "autoCount remained12, executionBudget increased from38/256741ms to42/260292ms, recovered G50; no generation retry"
+    },
+    {
+      "purpose": "manual-continue-with-original-budget",
+      "session": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+      "text": "继续执行已保存方案",
+      "turn": "turn_cfb046e222034e66b7d82bf73f0ec25e",
+      "result": [
+        "plan_task",
+        "generate_candidates"
+      ]
+    },
+    {
+      "purpose": "manual-continue-with-original-budget",
+      "session": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+      "text": "继续执行已保存方案",
+      "turn": "turn_a73dec5edda942bc9c8a16bfeef13655",
+      "result": [
+        "plan_task",
+        "read_processing",
+        "request_processing_apply"
+      ]
+    },
+    {
+      "purpose": "manual-continue-with-original-budget",
+      "session": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+      "text": "继续执行已保存方案",
+      "turn": "turn_4d37b275d5094a59be5022ad36757923",
+      "result": [
+        "plan_task"
+      ]
     }
   ],
-  "screenshots": [],
+  "screenshots": [
+    "opt31-4217-400-saved.png"
+  ],
   "preflightSession": "conversation_0b96cf4812a14f0a817bacfc82bed193",
   "codeHistory": [
     {
@@ -66,6 +112,37 @@
     "run": "11241fa84a642ae8d0211b6756041ea7",
     "budget": "08514bb099d67eb0007c431f4746f7af",
     "matched": true,
-    "atActualGeneratedRows": 200
+    "atActualGeneratedRows": 400
+  },
+  "qualityObservations": [
+    {
+      "category": "A.1.e",
+      "finding": "个体反派或粗鲁文化评论被直接上升为全民族仇恨，部分边界仍须人工核对；50条模型均放行，含1条明确误标。"
+    },
+    {
+      "category": "A.1.f",
+      "finding": "将正常恐怖游戏、体现历史残酷、动物食物处理误当宣扬暴力；首20条中的多条仅在句尾加目的短语，完全去重0不能证明多样性。"
+    },
+    {
+      "category": "A.1.g",
+      "finding": "把未经证实当成已证实虚假；未提供待润色原文；明示荒诞玩笑仍被一概判有害。"
+    }
+  ],
+  "finalRuntimeWeb": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
+  "finalSaved": 400,
+  "finalGenerated": 400,
+  "autoCountUnchangedAtCap": true,
+  "finalExecutionBudget": {
+    "activeMs": 266627,
+    "lastTurn": {
+      "turnId": "turn_4d37b275d5094a59be5022ad36757923",
+      "elapsedMs": 1510,
+      "toolCalls": 1,
+      "modelSteps": 0,
+      "transportRetries": 0
+    },
+    "toolCalls": 49,
+    "modelSteps": 10,
+    "transportRetries": 0
   }
 }

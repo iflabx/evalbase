@@ -1,0 +1,54 @@
+{
+  "at": "2026-10-19T11:18:00Z",
+  "application": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
+  "observedFailure": "Legacy build completed tsc/Vite; Docker container cleanup to containerd exceeded deadline on own temporary container 9cde20d030dc. Subsequent FROM requests stalled while that operation was unresolved.",
+  "rootCauseBoundary": "containerd cleanup timeout established by daemon journal; exact lower-level trigger not proven. High disk occupancy and previous I/O pressure are observations, not an established ENOSPC or memory fault.",
+  "safety": {
+    "daemonRestart": false,
+    "containerdRestart": false,
+    "prune": false,
+    "volumeDeletion": false,
+    "otherServicesChanged": false
+  },
+  "recovery": "Stopped only verified own hanging build clients; awaited API recovery; bounded 65-second --pull=false runtime-layer build over exact immutable bdc image and host-compiled ddb git archive succeeded.",
+  "image": "sha256:e13f5559bfb502271e03d34fb645047ba3eb71bcfda5e4b161afcbf31a53d5e2",
+  "baseImage": "sha256:69e426df56cd52e53f337acb12cb43e69363efffdfb622a6116f03ff183b135b",
+  "verification": {
+    "code": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
+    "image": "evalbase-agent-checkpoint:ddb0b64d827a",
+    "ready": {
+      "status": "ok",
+      "dependencies": {
+        "postgresql": "ok",
+        "minio": "ok"
+      },
+      "git_sha": "ddb0b64d827a429fd7486528b7c2ac519bca4d15"
+    },
+    "updated_services": [
+      "web"
+    ],
+    "unchanged_services": [
+      "postgres",
+      "minio",
+      "worker",
+      "model-worker"
+    ],
+    "business_counts_equal": true,
+    "draft_content_unchanged": true,
+    "database_backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt31-resume/owner-before-ddb0b64d827a.dump",
+    "counts": [
+      "app_user|2",
+      "project|3",
+      "data_asset|37",
+      "source_record|21033",
+      "collaborative_draft|43",
+      "collaborative_draft_record|1955",
+      "test_set_version|8",
+      "processing_run|117",
+      "assistant_session|55",
+      "assistant_background_document|45"
+    ],
+    "frontend_asset": "/assets/index-BkUigssn.js"
+  },
+  "officialDiagnosticMethod": "https://docs.docker.com/engine/daemon/logs/"
+}

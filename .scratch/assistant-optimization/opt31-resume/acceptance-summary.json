@@ -1,8 +1,8 @@
 {
-  "actualRows": 200,
-  "reviewed": 200,
-  "identityHashesVerified": 200,
-  "structureValid": 200,
+  "actualRows": 400,
+  "reviewed": 400,
+  "identityHashesVerified": 400,
+  "structureValid": 400,
   "byCategory": [
     {
       "category": "A.1.a",
@@ -68,21 +68,80 @@
       "modelPassedClearNon": 10,
       "exactDuplicates": 0,
       "questionCollisionRows": 0
+    },
+    {
+      "category": "A.1.e",
+      "count": 50,
+      "manual": {
+        "conforms": 42,
+        "uncertain": 7,
+        "nonconform": 1
+      },
+      "model": {
+        "conforms": 50
+      },
+      "modelPassedClearNon": 1,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 0
+    },
+    {
+      "category": "A.1.f",
+      "count": 50,
+      "manual": {
+        "uncertain": 20,
+        "conforms": 23,
+        "nonconform": 7
+      },
+      "model": {
+        "conforms": 50
+      },
+      "modelPassedClearNon": 7,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 0
+    },
+    {
+      "category": "A.1.g",
+      "count": 50,
+      "manual": {
+        "uncertain": 22,
+        "conforms": 20,
+        "nonconform": 8
+      },
+      "model": {
+        "conforms": 50
+      },
+      "modelPassedClearNon": 8,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 15
+    },
+    {
+      "category": "A.1.h",
+      "count": 50,
+      "manual": {
+        "uncertain": 40,
+        "nonconform": 10
+      },
+      "model": {
+        "conforms": 50
+      },
+      "modelPassedClearNon": 10,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 0
     }
   ],
   "code": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
-  "runtimeWeb": "bdc20cc8da26d8a1b3d834ca1166e06e259fe535",
+  "runtimeWeb": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
   "modelWorker": "ab636038af52ad08f345bfa8aacb40d59ba45073",
   "target": 400,
-  "saved": 150,
+  "saved": 400,
+  "sessionId": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
   "oldBudgetReset": false,
   "oldFingerprints": {
     "run": "11241fa84a642ae8d0211b6756041ea7",
     "budget": "08514bb099d67eb0007c431f4746f7af",
     "matched": true,
-    "atActualGeneratedRows": 200
+    "atActualGeneratedRows": 400
   },
-  "sessionId": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
   "runRequests": [
     {
       "runId": "processing_43aafb2e8573400499abd81f4cb4edbb",
@@ -118,14 +177,74 @@
       "status": "succeeded",
       "count": 4,
       "requests": 2
+    },
+    {
+      "runId": "processing_503618f8bb5943c2829f41ae7b83fb76",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 11
+    },
+    {
+      "runId": "processing_8d0e9c6274f94b19be9bdabda96df557",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 11
+    },
+    {
+      "runId": "processing_19397c50cf9a4c589216e26b5285be4e",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 10
+    },
+    {
+      "runId": "processing_3f4fe47d967a4d8b90c15b116e1f2127",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 10
     }
   ],
+  "executionBudget": {
+    "activeMs": 266627,
+    "lastTurn": {
+      "turnId": "turn_4d37b275d5094a59be5022ad36757923",
+      "elapsedMs": 1510,
+      "toolCalls": 1,
+      "modelSteps": 0,
+      "transportRetries": 0
+    },
+    "toolCalls": 49,
+    "modelSteps": 10,
+    "transportRetries": 0
+  },
+  "autoCount": 12,
+  "directedTests": 91,
   "blockers": [
-    "Container image builds stalled twice in legacy builder and once on local runtime FROM; own clients stopped, no service restart/cutover",
-    "Fourth class bounded completion has 50 actual candidates but latest receipt recovery ddb0b64 not deployed; 50 unsaved",
-    "E-H not started; 400-row and 8-confirmation gates not met",
-    "Real semantic review misses remain; generated/saved not equal usable",
-    "Preflight one-goal-to-eight-goal correction failed; preserved without generation"
+    "Full semantic quality not passed: 180 conforms,87 nonconform,133 uncertain;77 clear nonconforms model-passed. Developer judgment is not Owner acceptance.",
+    "Natural diversity weak; question collisions19rows and many suffix-only variants. Exact duplicate count0 is not semantic diversity proof.",
+    "Automatic event cap12 paused at G and H; four further ordinary continue messages required for G confirmation,H generation,H confirmation,final receipt reconciliation; counters never reset.",
+    "Preflight one-goal-to-eight-goal correction still failed; preserved without generation.",
+    "After final ordinary receipt reconciliation task.stage=complete and all8 saved, top-level classification fell back to A.1.a while current run remained H. presentTaskCandidates/taskCompatibilityProblem invalidated displayed H review: UI0reviewed/50pending vs frozen run50model-reviewed. No evidence was deleted or rechecked. R31-11 remains open."
   ],
-  "directedTests": 91
+  "finalTask": {
+    "stage": "complete",
+    "revision": 13,
+    "remainingSteps": 0,
+    "currentRun": "processing_3f4fe47d967a4d8b90c15b116e1f2127",
+    "currentTopClassification": [
+      "A.1.a"
+    ],
+    "autoCount": 12
+  },
+  "manualTotals": {
+    "conforms": 180,
+    "nonconform": 87,
+    "uncertain": 133
+  },
+  "modelPassedClearNon": 77,
+  "modelRequests": 91,
+  "sameQuestionCollisionRows": 19
 }

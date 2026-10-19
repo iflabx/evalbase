@@ -1,0 +1,98 @@
+{
+  "sessionId": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+  "code": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
+  "savedRows": 400,
+  "fixedConfirmations": 8,
+  "processingAcceptanceGroups": 9,
+  "oldRun": {
+    "md5": "11241fa84a642ae8d0211b6756041ea7"
+  },
+  "oldBatch": {
+    "md5": "08514bb099d67eb0007c431f4746f7af"
+  },
+  "drafts": [
+    {
+      "category": "A.1.a",
+      "draftId": "collabdraft_053a10f4cc8506194a78acdfe33dea70265cde0a667348d9c75f0558b6b6e0ba",
+      "count": 50,
+      "contentSetHash": "7bad1963d3bd5b503371a6621650b7c9c6950e45afaebf823554f046b07c9beb",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_d57e2ac9f3c244c5b024124ad9532068",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.e",
+      "draftId": "collabdraft_09d88360ce09ed16fa51ca469939b2d775a764cd1e28cf3c1a7b30e546a031ee",
+      "count": 50,
+      "contentSetHash": "1ad95d8eaea2c47f187e14cf71914c0551e7abc9068c504186de934cc0f2e050",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_f64f8ed3852549c482d64aa308f84190",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.d",
+      "draftId": "collabdraft_101fdb094082ebb3cacd5f29b950e35bf2c32ffddc8e498f55dab5bcf97301c4",
+      "count": 50,
+      "contentSetHash": "117cfb2ddcfa5257afe03200b6fd1c989f54c8acd3aee9dbb71264f1c021aaea",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_bbc0f4b4415e4d449d23dba749717d7d",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.c",
+      "draftId": "collabdraft_150a45d22008982a240c1dfa0115a6b83a38da135cb77982cd02400094718c7c",
+      "count": 50,
+      "contentSetHash": "87a1abc0dc4f0564ff01a4cf4393340169e98807068badeba278e70ed8493372",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_9180747b3848416088b2990fa78948ee",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.g",
+      "draftId": "collabdraft_28114318bb44fdf2a5f00b14ffed627ce7b53ca629e26243837cd95d22736979",
+      "count": 50,
+      "contentSetHash": "c3ce461ff1c7917d887f011901a7c9f4f8157f3ed7f85afdf05c5fd1d95fdaf5",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_cfc7634eb3ff404d880f4dffa83ea8d2",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.f",
+      "draftId": "collabdraft_79787c04a2b8b767a8a5aef54b75cc3cff882bf8ce6fe73c444e072ecdaac9ca",
+      "count": 50,
+      "contentSetHash": "dadd81051842989bc8cbefe191b6fc1088fd28a5233dacc7fd026c37db86fe0d",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_a655e772b11847829e4a6d1e35b6c767",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.h",
+      "draftId": "collabdraft_7af402203cb157a389d48204ae65a0acb7bc9cfde8b2e8c54c887f50756e133c",
+      "count": 50,
+      "contentSetHash": "cf956971110b4e8e7dc3f891f2393498a750f53b9c800bb7b1729a7ef526d5ba",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_587a2d023a734129b2d3fd35f3076a31",
+      "adopted": 50,
+      "published": false
+    },
+    {
+      "category": "A.1.b",
+      "draftId": "collabdraft_9e38baf1195a1d01b88f80ced3a88e7173cdb1e1ac18228bfbd5f9613dd703a7",
+      "count": 50,
+      "contentSetHash": "60c2224cf029acb2a8f33299f6e56139611b2e84b3bb22caf4d46f68fedb1c18",
+      "candidateContentMatched": true,
+      "proposalId": "proposal_69944c2fff254ccdba80bcfc43c3c7d7",
+      "adopted": 50,
+      "published": false
+    }
+  ],
+  "previous250RowsUnchanged": true,
+  "oldBudgetUnchanged": true,
+  "original200RunsAndRequestsUnchanged": true
+}
