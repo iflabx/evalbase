@@ -1,3 +1,5 @@
+2026-10-19 最新文档：新增 [OPT-38 背景检索、依据选择与普通重试规划恢复](issues/38-background-retrieval-and-planning-recovery.md)，修复最新普通问法失败链；Implementation not-started。OPT-31 保持 in-progress，增加 OPT-38 前置及入口检查，内容与原八类验收要求保留。本次仅文档，未更新代码、业务数据或 4217；下列实施记录保留历史状态。
+
 2026-10-19 最新实施：[OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) 的工作区交付事实、旧任务兼容及接入补修已实现，同一 4217 已按授权更新并保留现有验收数据；固定代码、定向验证、真实短提示流程及所有失败见 [记录](opt37-verification.md)。Implementation completed，Owner pending；OPT-31 仍 in-progress，内容质量及原八类验收未代签。下方有日期的既有实施记录保留历史状态。
 
 2026-10-19 最新实施：[OPT-36](issues/36-execution-receipts-and-recovery.md) 已按单张授权完成固定步骤、回执与恢复收敛；实施、定向验证及两轴审阅见 [记录](opt36-verification.md)。Implementation completed，Owner pending。OPT-37仍not-started，OPT-31仍in-progress；未更新4217、合并或推送，现有验收数据保留。
@@ -124,13 +126,14 @@ Implementation: in-progress
 | [OPT-28](issues/28-result-scope-and-goal-count.md) | 当前成果范围与业务目标数量一致性 | 现有实现；与 OPT-26/27 独立 | completed | 当前集合及目标数量、兼容修复和验证见 [记录](opt28-verification.md)；Owner pending |
 | [OPT-29](issues/29-document-grounded-generation.md) | 依据文档从零生成与执行能力预检 | none | completed | [实施与验证](opt29-verification.md)、[四项补修及浏览器复测](opt29-followup-verification.md)，Owner pending |
 | [OPT-30](issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性与有界重复补齐 | OPT-29 | completed | 2026-10-15 实现及同一4217交付；Owner pending，GB规划/语义未全通过，见验证记录 |
-| [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33 | in-progress | [OPT-31 实施与验证](opt31-verification.md)；Owner pending |
+| [OPT-31](issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、八类集成验收 | OPT-28/30/32/33；新增 OPT-38 | in-progress | [OPT-31 实施与验证](opt31-verification.md)；先完成 OPT-38 定向验收，内容及原八类验收保留，Owner pending |
 | [OPT-32](issues/32-tool-argument-repair.md) | 调用前参数纠错、统一预算与真实模型恢复验证 | 现有实现，无未完成票硬依赖 | completed | [实现及收尾补修验证](opt32-verification.md)；4217 Web 2cdd519，Owner pending；已保存要求的收尾回放通过，纯文本确认未保存仍留作短提示问题，整体未签通过 |
 | [OPT-33](issues/33-document-classification-and-short-plan.md) | 文档分类引用、期望输出要求与短提示规划及实际要求保存 | OPT-32 已完成 | completed | [实施及定向验证](opt33-verification.md)；同一4217 Web f411325，Owner pending，候选质量留 OPT-31 |
 | [OPT-34](issues/34-document-evidence-and-output-contract.md) | 文档规范引用与输出约定 | 当前已实现代码；无未完成票硬依赖 | completed | [实施与定向验证](opt34-verification.md)；Owner pending，4217未切换 |
 | [OPT-35](issues/35-delivery-goals-and-plan-contract.md) | 交付分组、数量、约束保留与薄规划入口 | OPT-34 | completed | Owner pending；[定向验证与审阅](opt35-verification.md)；未部署 |
 | [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | completed | Owner pending；[定向验证与审阅](opt36-verification.md)；未部署 |
 | [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | completed | 接入已实现、同一4217已更新；[实施与实测记录](opt37-verification.md)，Owner pending，内容质量与OPT-31未签通过 |
+| [OPT-38](issues/38-background-retrieval-and-planning-recovery.md) | 未命中检索、定义目录、依据选择与普通重试规划恢复 | 当前已实现代码，无未开发票硬依赖 | not-started | 仅编写 Ticket；作为 OPT-31 真实内容与交付验收的前置，新增验收 pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

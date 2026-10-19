@@ -1,5 +1,7 @@
 # 项目助手整改方案
 
+2026-10-19 最新补修安排：按最新会话只读诊断建立 [OPT-38](../.scratch/assistant-optimization/issues/38-background-retrieval-and-planning-recovery.md)，范围和定向验收集中在该票。先完成未命中检索、依据选择和普通重试恢复，再继续 OPT-31 内容与交付验收；沿用本章架构与预算，不更换框架。本次仅编写文档，OPT-38 not-started，OPT-31 in-progress，4217 与现有验收数据保持。
+
 2026-10-19 最新实施：保留 AI SDK、收敛业务编排的 [§8](#8-2026-10-18-业务编排收敛整改) 已拆为 OPT-34–37。后续 Owner 单独授权的 OPT-34 已完成，详细实施、定向验证及限制见 [记录](../.scratch/assistant-optimization/opt34-verification.md)；后续单独授权的 OPT-35 亦已完成，见 [记录](../.scratch/assistant-optimization/opt35-verification.md)；后续单独授权的 OPT-36 亦已完成，见 [记录](../.scratch/assistant-optimization/opt36-verification.md)；OPT-37 已实现工作区接入、旧任务兼容及必要接入补修，并按后续授权更新同一 4217，详见 [记录](../.scratch/assistant-optimization/opt37-verification.md)。OPT-37 真实闭环仍在收尾，Owner pending。§1–7 和下方旧记录保留历史范围；OPT-31 仍为 in-progress，内容质量与原八类验收未被本次代签。
 
 2026-10-08：OPT-06/07/08 已完成实施验证及既有隔离验收环境交付；原 200 条内容任务仍未完成，模型保存方案未转执行的限制已如实记录。人工验收仍 pending。依据 [实施台账](../.scratch/assistant-optimization/spec.md) 和 [OPT-08 记录](../.scratch/assistant-optimization/opt08-verification.md) 核对实际进度。
@@ -177,7 +179,7 @@ OPT-37 已接入各交付目标的真实运行、草稿和采用回执，区分�
 - OPT-22/26/32 的工具与参数恢复能力继续复用；OPT-35/36 收敛其仍重复或冲突的业务入口，不再给每个错误追加独立外层循环。
 - OPT-23/33 的背景读取与定义基础继续复用，当前对照暴露的通用文档及规划缺口由 OPT-34/35 接管；旧记录不改写为全部通过。
 - OPT-28/29/30 的有效候选范围、无输入生成、场景与累计预算继续沿用；本批不增加生成模式或更换质量审核模型。
-- OPT-31 当前为 in-progress，已有八类集成失败、类别误判和内容审核限制保留。OPT-34–37 消除其上游业务编排问题，但不替它承担或取消内容质量验收，也不以新的 16 条代签原 400 条完成；后续内容及大规模复验按明确授权另行安排。
+- OPT-31 当前为 in-progress，已有八类集成失败、类别误判和内容审核限制保留。OPT-34–37 已完成各自实施，最新会话仍暴露未命中检索、依据选择和普通重试恢复缺口，由 [OPT-38](../.scratch/assistant-optimization/issues/38-background-retrieval-and-planning-recovery.md) 接管；其定向验收通过后再恢复 OPT-31 内容与交付验收。小规模规划或生成通过不代签原 400 条完成，后续大规模复验按明确范围安排。
 
 ### 8.5 验证、数据保留与完成口径
 
