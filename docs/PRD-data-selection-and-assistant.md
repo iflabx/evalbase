@@ -224,6 +224,16 @@ Owner 根据同条件 AI SDK / DeepSeek Harness 对照，确认保留现有 AI S
 
 用户已选择且助手已读取的规范中，明确、无冲突的数据输出形式作为默认；用户明确选择或拒绝优先，规范之间冲突则澄清。文档不能因此授权项目操作。
 
+### 7.10 交付收尾与生成审核补修（2026-10-19，待实施）
+
+本次 Owner 要求基于只读定位编写修复票，当前仅文档。具体范围、依赖和断言分别见 [OPT-39](../.scratch/assistant-optimization/issues/39-delivery-review-scope-and-continuation.md)、[OPT-40](../.scratch/assistant-optimization/issues/40-generation-boundaries-and-question-dedup.md)、[OPT-41](../.scratch/assistant-optimization/issues/41-content-review-evidence-and-budget.md)，实施状态见 [台账](../.scratch/assistant-optimization/spec.md)。
+
+- 成果核对按所属交付的要求与实际冻结输入解释，历史模型结论与当前采用资格分开。已经提交的保存回执先核对收尾；正常多份交付的自动续步额度根据批准方案有界确定，仍受原调用/时间及无进展限制，旧预算不重置。
+- 场景不扩大类别定义。依据不足时仅暂停受影响交付及其依赖，保留原目标与已有成果。新题生成默认排除同题不同答案，用户明确要求对照样本及旧成果保持原选择语义；这是对旧“同题仅提示”的新题默认规则补充，不扩展为通用语义删除。
+- 内容核对保留简短、可校验的判断证据，区分新断言缺乏依据、存疑和未核对；在原预算内安排初检与有限修复。模型核对不是人工通过保证，质量问题不新增保存/发布硬门槛。
+
+数据和预算保护、现有400条质量未通过事实及有限验证统一见 [OPT-31衔接](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。不改变主业务阶段、确认顺序或权限，UI 继续对齐 frontend-v1。
+
 ## 8. 兼容、体验及验收
 
 - 正式版本不可覆盖，发布继续复用 Delta/Checkpoint 与草稿唯一发布；不改 CSV 既有三字段合同。

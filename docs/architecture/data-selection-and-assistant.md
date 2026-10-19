@@ -315,3 +315,13 @@ OPT-37：工作区的交付进度仅从现有生成步骤、同交付运行、�
 
 
 2026-10-19 OPT-38：背景浏览与方案选用分离，可信目录可受限续读，普通澄清/重试按当前修订与依据恢复并保留仅规划授权；容量、权限及冻结输入边界不变。实施状态、复审与真实新会话证据统一见[OPT-38记录](../../.scratch/assistant-optimization/opt38-verification.md)，Owner pending。
+
+## 17. OPT-39–41 交付归属与质量修复设计（待实施）
+
+本节记录待实施修复，不改写 §15/16 的历史实现事实。产品依据为 [PRD §7.10](../PRD-data-selection-and-assistant.md#710-交付收尾与生成审核补修2026-10-19待实施)，详细范围及验收只在三张票维护。
+
+- [OPT-39](../../.scratch/assistant-optimization/issues/39-delivery-review-scope-and-continuation.md)：复用 deliveryId、运行/根任务和真实回执解析所属合同；先对账终态，再判断是否领取新的有界自动事件。新任务冻结按方案计算的事件额度，旧事件计数和所有原调用/时间预算保持。
+- [OPT-40](../../.scratch/assistant-optimization/issues/40-generation-boundaries-and-question-dedup.md)：复用冻结定义、要求及场景投影；新题配方默认增加问题文本碰撞排除，覆盖全获准范围，模型只接收受限排除样例。仅此新题默认策略覆盖 §15 OPT-30 中“同题不同答案保留”的旧实现描述；旧运行与明确对照需求保持原语义。
+- [OPT-41](../../.scratch/assistant-optimization/issues/41-content-review-evidence-and-budget.md)：在现有 contentReview 可选元数据中保留逐项证据、修复未执行原因及冻结策略版本；优先分配原预算中的初检机会。旧策略证据继续按原版本解释，不通过全局策略常量变更触发历史重检。
+
+沿用 ADR 0014、AI SDK、PostgreSQL/MinIO/Worker、任务 JSON 和固定确认。需要的版本字段采用最小兼容增补，不增表、公开路由、第二套调度或审核服务；核对引文存在不等于证明语义推论正确。已有成果和预算不批量迁移，详细保留约束及原验收未通过事实见 [OPT-31](../../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。
