@@ -457,8 +457,11 @@ export async function readBackground(
   from = 1,
   limit = 3,
   query?: string,
+  directoryFrom = 1,
 ) {
   if (
+    !Number.isInteger(directoryFrom) ||
+    directoryFrom < 1 ||
     !Number.isInteger(from) ||
     from < 1 ||
     !Number.isInteger(limit) ||
@@ -542,7 +545,12 @@ export async function readBackground(
         ),
     ),
   );
-  const ranked = relevant.length ? relevant : references;
+  const current = references.filter((reference) =>
+    reference.fragmentIndices.some((index) =>
+      returned.some((part: BackgroundFragment) => part.index === index),
+    ),
+  );
+  const ranked = [...new Set([...relevant, ...current, ...references])];
   const definitions: typeof references = [];
   for (const reference of ranked) {
     if (
@@ -552,10 +560,55 @@ export async function readBackground(
       break;
     definitions.push(reference);
   }
+  const directory = structure.sections
+    .filter(
+      (section) => section.name.length <= 160 && section.name !== section.code,
+    )
+    .sort(
+      (a, b) =>
+        (a.code?.split(".").length ?? 3) - (b.code?.split(".").length ?? 3) ||
+        a.name.length - b.name.length,
+    )
+    .map((section) => ({
+      ...(section.code ? { code: section.code } : {}),
+      name: section.name,
+      fragmentIndices: section.fragments,
+    }));
+  const sectionDirectory: typeof directory = [];
+  if (
+    (query !== undefined && !fragments.length) ||
+    definitions.length < ranked.length ||
+    directoryFrom > 1
+  )
+    for (const section of directory.slice(directoryFrom - 1)) {
+      if (
+        sectionDirectory.length >= 40 ||
+        Buffer.byteLength(JSON.stringify([...sectionDirectory, section])) > 6000
+      )
+        break;
+      sectionDirectory.push(section);
+    }
   return {
     ...row,
     definitions,
     definitionsTruncated: definitions.length < ranked.length,
+    ...(sectionDirectory.length
+      ? {
+          sectionDirectory,
+          sectionDirectoryTruncated:
+            directoryFrom - 1 + sectionDirectory.length < directory.length,
+          sectionDirectoryNextFrom:
+            directoryFrom - 1 + sectionDirectory.length < directory.length
+              ? directoryFrom + sectionDirectory.length
+              : null,
+        }
+      : {}),
+    ...(definitions.length < ranked.length
+      ? {
+          navigationHint:
+            "定义目录已截短；当前返回片段的定义优先。按sectionDirectory中的真实章节名称或编号查询，或省略query并用fragmentIndices定位原文；目录未读完时用sectionDirectoryNextFrom作为directoryFrom继续，独立于原文nextFrom；不要反复读取旧目录前缀。",
+        }
+      : {}),
     ...(structure.malformedTable
       ? {
           navigationHint:
@@ -568,7 +621,7 @@ export async function readBackground(
     ...(query !== undefined && fragments.length === 0
       ? {
           navigationHint:
-            "没有匹配文本。不要继续猜章节编号；可省略query，用已读片段的index定位原文，再读取相邻片段。原文片段范围为1到fragmentCount，分类层级和子项以原文为准。",
+            "当前关键词没有字面匹配，不代表文档没有相关内容。先查看sectionDirectory的真实章节名称和位置，选择语义相关章节读取；不能仅凭主题词认定类别，必要时按原文区别澄清要测的行为。用真实章节名称作query，或省略query按fragmentIndices定位，目录未读完时用sectionDirectoryNextFrom作为directoryFrom继续；不从封面逐页扫描或猜编号。",
         }
       : {}),
   };

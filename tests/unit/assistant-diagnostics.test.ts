@@ -99,4 +99,20 @@ describe("assistant diagnostic metadata", () => {
       assistantFailure({}, "assistant_context_unavailable").nextAction,
     ).not.toContain("新建会话");
   });
+  it.each(["assistant_background_capacity", "assistant_budget_exhausted"])(
+    "OPT38 preserves the actionable evidence-capacity cause for %s",
+    (code) => {
+      const result = assistantFailure(new Error("private-document"), code, {
+        effect: "none",
+        error: { code: "assistant_background_capacity" },
+      });
+      expect(result).toMatchObject({
+        layer: "business",
+        category: "background_capacity",
+      });
+      expect(result.reason).toContain("文档依据");
+      expect(result.nextAction).toContain("收拢相关章节");
+      expect(JSON.stringify(result)).not.toContain("private-document");
+    },
+  );
 });

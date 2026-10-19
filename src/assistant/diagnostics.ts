@@ -50,6 +50,17 @@ export function assistantFailure(
       "尚未上传可用的背景文档。",
       "请上传本次生成所依据的文档，再继续原方案。",
     );
+  if (
+    code === "assistant_background_capacity" ||
+    (code === "assistant_budget_exhausted" &&
+      toolFailure?.error?.code === "assistant_background_capacity")
+  )
+    return result(
+      "business",
+      "background_capacity",
+      "方案选用的文档依据超出容量，尚未完成规划。",
+      "原文和已读内容已保留。助手需按当前目标收拢相关章节后继续，无需重新上传或新建测试集。",
+    );
   if (code.startsWith("model_"))
     return result(
       "model",

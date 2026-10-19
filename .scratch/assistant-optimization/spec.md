@@ -133,7 +133,7 @@ Implementation: in-progress
 | [OPT-35](issues/35-delivery-goals-and-plan-contract.md) | 交付分组、数量、约束保留与薄规划入口 | OPT-34 | completed | Owner pending；[定向验证与审阅](opt35-verification.md)；未部署 |
 | [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | completed | Owner pending；[定向验证与审阅](opt36-verification.md)；未部署 |
 | [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | completed | 接入已实现、同一4217已更新；[实施与实测记录](opt37-verification.md)，Owner pending，内容质量与OPT-31未签通过 |
-| [OPT-38](issues/38-background-retrieval-and-planning-recovery.md) | 未命中检索、定义目录、依据选择与普通重试规划恢复 | 当前已实现代码，无未开发票硬依赖 | not-started | 仅编写 Ticket；作为 OPT-31 真实内容与交付验收的前置，新增验收 pending |
+| [OPT-38](issues/38-background-retrieval-and-planning-recovery.md) | 未命中检索、定义目录、依据选择与普通重试规划恢复 | 当前已实现代码，无未开发票硬依赖 | in-progress | 已获开发及同一4217更新授权；[实施记录](opt38-verification.md)，自动验证通过、CU待完成，Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 

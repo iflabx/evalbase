@@ -235,3 +235,6 @@ Owner 根据同条件 AI SDK / DeepSeek Harness 对照，确认保留现有 AI S
 ## 历史补充
 
 [持续任务](assistant-task-experience.md)、[实测优化](assistant-optimization.md) 和 [长任务](assistant-long-task-execution.md) 保留历史设计及证据。当前助手行为以 §7 为准；未冲突的来源、附件与事务约束继续沿用。
+
+
+2026-10-19 OPT-38：背景浏览与方案选用分离，可信目录可受限续读，普通澄清/重试按当前修订与依据恢复并保留仅规划授权；容量、权限及冻结输入边界不变。实施状态、复审与真实新会话证据统一见[OPT-38记录](../.scratch/assistant-optimization/opt38-verification.md)，Owner pending。

@@ -148,7 +148,12 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
         /(?:^|[。；;])([^:：。；;\n]{1,80})[:：]\s*\S/gu,
       )) {
         if (
-          /^(?:定义|说明|示例|要求|限制|注意|期望行为)$/u.test(colon[1].trim())
+          /^(?:定义|说明|示例|要求|限制|注意|期望行为|注\d*|\[?来源)$/u.test(
+            colon[1].trim(),
+          ) ||
+          /^(?:(?:本文件|本标准|本规范).*(?:起草|按照|编制)|(?:主要)?起草(?:单位|人))/u.test(
+            colon[1].replace(/\s+/gu, ""),
+          )
         )
           continue;
         offset = start + colon.index + (/^[。；;]/u.test(colon[0]) ? 1 : 0);

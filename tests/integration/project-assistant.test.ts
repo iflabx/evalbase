@@ -22258,4 +22258,779 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+  it("OPT38 prioritizes current definitions and navigates a literal miss without scanning the preface", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const doc = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "完整规范.txt",
+            contentBase64: Buffer.from("占位提取").toString("base64"),
+          },
+        })
+      ).json().document;
+      const fragments = JSON.parse(
+        readFileSync("tests/fixtures/opt38-background-fragments.json", "utf8"),
+      );
+      await db.query(
+        "UPDATE assistant_background_document SET fragments=$2 WHERE id=$1",
+        [doc.id, JSON.stringify(fragments)],
+      );
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          sessionId,
+          JSON.stringify({
+            backgroundEvidence: fragments.slice(0, 12).map((f: any) => ({
+              documentId: doc.id,
+              fragmentIndex: f.index,
+            })),
+          }),
+        ],
+      );
+      requestedTool = {
+        name: "read_background",
+        input: {
+          documentId: doc.id,
+          from: 11,
+          limit: 1,
+          useForProcessing: false,
+        },
+      };
+      const current = await opt21End(await opt21Submit("查看当前章节"));
+      const result = current.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "read_background").result;
+      expect(result.definitions.some((d: any) => d.value === "A.1.a")).toBe(
+        true,
+      );
+      expect(
+        Buffer.byteLength(JSON.stringify(result.definitions)),
+      ).toBeLessThanOrEqual(6000);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: doc.id, query: "宗教", useForProcessing: false },
+      };
+      const miss = await opt21End(await opt21Submit("找一下宗教相关内容"));
+      const navigation = miss.turns
+        .at(-1)
+        .tools.find((t: any) => t.name === "read_background").result;
+      expect(navigation.matchCount).toBe(0);
+      expect(
+        navigation.sectionDirectory.some(
+          (s: any) => s.code === "A.2.b" && s.name.includes("信仰"),
+        ),
+      ).toBe(true);
+      expect(
+        navigation.sectionDirectory.some((s: any) => s.name.includes("起草")),
+      ).toBe(false);
+      expect(miss.task.backgroundEvidence).toHaveLength(12);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: doc.id, query: "A.2.b", useForProcessing: false },
+      };
+      const located = await opt21End(await opt21Submit("查看目录里的信仰条目"));
+      expect(
+        located.turns
+          .at(-1)
+          .tools.find((t: any) => t.name === "read_background").result
+          .definitions[0].value,
+      ).toBe("A.2.b");
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+
+  it("OPT38 browses beyond twelve fragments and binds only read definitions when saving a plan", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const doc = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "客服规范.txt",
+            contentBase64: Buffer.from("占位提取").toString("base64"),
+          },
+        })
+      ).json().document;
+      const fragments = Array.from({ length: 14 }, (_, i) => ({
+        index: i + 1,
+        startLine: i + 1,
+        endLine: i + 1,
+        text:
+          i === 13
+            ? "### 退货退款\n定义：用户申请退回已付款项。"
+            : "前言 " + (i + 1) + "。",
+      }));
+      await db.query(
+        "UPDATE assistant_background_document SET fragments=$2 WHERE id=$1",
+        [doc.id, JSON.stringify(fragments)],
+      );
+      toolSequence = Array.from({ length: 5 }, (_, i) => ({
+        name: "read_background",
+        input: {
+          documentId: doc.id,
+          from: i * 3 + 1,
+          limit: i === 4 ? 2 : 3,
+          useForProcessing: false,
+        },
+      }));
+      const browsed = await opt21End(
+        await opt21Submit("买错了想退钱这类做5条，先给方案不执行"),
+      );
+      expect(
+        browsed.turns
+          .at(-1)
+          .tools.filter(
+            (t: any) =>
+              t.name === "read_background" && t.status === "succeeded",
+          ),
+      ).toHaveLength(5);
+      expect(browsed.task.backgroundEvidence ?? []).toHaveLength(0);
+      const reference = browsed.turns
+        .at(-1)
+        .tools.filter((t: any) => t.name === "read_background")
+        .at(-1)
+        .result.definitions.find((d: any) => d.value === "退货退款").reference;
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          requirements: ["问题语义完整，逐题写具体期望行为"],
+          deliveries: [
+            {
+              name: "退款测试",
+              count: 5,
+              instructions: "按规范生成退款问题",
+              scenarios: [
+                "买错商品申请退款",
+                "重复扣款申请退回",
+                "退货后查询退款",
+              ],
+              classifications: [
+                {
+                  field: "metadata",
+                  key: "intent",
+                  basis: "background",
+                  allowedValues: ["退货退款"],
+                  definitions: [{ value: "退货退款", reference }],
+                },
+              ],
+            },
+          ],
+        },
+      };
+      const saved = await opt21End(await opt21Submit("请你重试"));
+      expect(
+        saved.turns.at(-1).status,
+        JSON.stringify(saved.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(saved.task.executionPlan.mode).toBe("plan");
+      expect(saved.task.executionPlan.steps.length).toBeGreaterThan(0);
+      expect(
+        saved.task.backgroundEvidence.map((r: any) => r.fragmentIndex),
+      ).toEqual([14]);
+      expect(saved.task.targetCount).toBe(5);
+      requestedTool = {
+        name: "read_background",
+        input: {
+          documentId: doc.id,
+          from: 1,
+          limit: 1,
+          useForProcessing: true,
+          replaceEvidence: true,
+        },
+      };
+      const replacement = await opt21End(
+        await opt21Submit("查看前言，保留当前方案"),
+      );
+      expect(
+        replacement.turns
+          .at(-1)
+          .tools.find((r: any) => r.name === "read_background").status,
+      ).toBe("failed");
+      expect(
+        replacement.task.backgroundEvidence.map((r: any) => r.fragmentIndex),
+      ).toEqual([14]);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+
+  it.each([
+    "请你重试",
+    "请重试",
+    "重试",
+    "期望行为是拒绝执行危险指令",
+    "只测试危险指令，开始执行前必须拒绝",
+  ])(
+    "OPT38 resumes clarification and latest requirements with ordinary retry: %s",
+    async (retry) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        await opt21Session();
+        const before = (
+          await db.query(
+            "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+            [projectId],
+          )
+        ).rows[0];
+        const doc = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "客服规范.md",
+              contentBase64: Buffer.from(
+                "# 客服分类\n### 退货退款\n定义：用户申请退回已付款项。\n### 物流查询\n定义：用户查询配送进度。",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        toolSequence = [
+          {
+            name: "read_background",
+            input: {
+              documentId: doc.id,
+              query: "买错",
+              useForProcessing: false,
+            },
+          },
+          {
+            name: "read_background",
+            input: { documentId: doc.id, useForProcessing: false },
+          },
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              question: "需要退货退款还是物流查询？",
+              nextAction: "none",
+            },
+          },
+        ];
+        await opt21End(
+          await opt21Submit("买错东西想退钱相关做5条，先设计方案，不执行"),
+        );
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            question: "只包含退款申请这一类，对吗？",
+            nextAction: "none",
+          },
+        };
+        await opt21End(await opt21Submit("只要退货退款，期望行为逐题写"));
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            requirements: ["只测退货退款，逐题写具体期望行为"],
+            deliveries: [
+              {
+                name: "退款测试",
+                count: 5,
+                instructions: "按文档退款类生成自然完整问题",
+                scenarios: [
+                  "买错商品申请退款",
+                  "重复付款申请退款",
+                  "退货完成查询退款",
+                ],
+                classifications: [],
+              },
+            ],
+          },
+        };
+        if (retry.includes("执行")) {
+          toolSequence = [
+            {
+              name: "plan_task",
+              input: { ...requestedTool.input, executionMode: "execute" },
+            },
+            requestedTool,
+          ];
+          requestedTool = undefined;
+        }
+        const start = calls.length,
+          state = await opt21End(await opt21Submit(retry));
+        expect(
+          state.turns.at(-1).status,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBe("succeeded");
+        expect(state.task.executionPlan.mode).toBe("plan");
+        expect(state.task.targetCount).toBe(5);
+        expect(state.task.question ?? null).toBeNull();
+        const prompts = JSON.stringify(calls.slice(start));
+        expect(prompts).toContain(
+          "买错东西想退钱相关做5条，先设计方案，不执行",
+        );
+        expect(prompts).toContain("只要退货退款，期望行为逐题写");
+        expect(
+          (
+            await db.query(
+              "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+              [projectId],
+            )
+          ).rows[0],
+        ).toEqual(before);
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        await db.end();
+      }
+    },
+  );
+  it("OPT38 recovers the full miss-capacity-invalid-reference-clarification-retry chain without executing", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const before = (
+        await db.query(
+          "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+          [projectId],
+        )
+      ).rows[0];
+      const doc = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "GB完整规范.txt",
+            contentBase64: Buffer.from("真实提取夹具").toString("base64"),
+          },
+        })
+      ).json().document;
+      const fragments = JSON.parse(
+        readFileSync("tests/fixtures/opt38-background-fragments.json", "utf8"),
+      );
+      await db.query(
+        "UPDATE assistant_background_document SET fragments=$2 WHERE id=$1",
+        [doc.id, JSON.stringify(fragments)],
+      );
+      toolSequence = [
+        {
+          name: "read_background",
+          input: { documentId: doc.id, query: "宗教", useForProcessing: false },
+        },
+        ...[1, 4, 7, 10].map((from) => ({
+          name: "read_background",
+          input: { documentId: doc.id, from, useForProcessing: true },
+        })),
+        {
+          name: "read_background",
+          input: { documentId: doc.id, from: 13, useForProcessing: true },
+        },
+        {
+          name: "read_background",
+          input: {
+            documentId: doc.id,
+            query: "A.2.b",
+            replaceEvidence: true,
+            useForProcessing: true,
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            question:
+              "文档包含信仰歧视和宣扬极端主义等不同类别，需要测试哪种行为？",
+            nextAction: "none",
+          },
+        },
+      ];
+      const first = await opt21End(
+        await opt21Submit(
+          "先帮我找到文档中关于宗教的是哪一类，再生成这一类相关的5条测试数据，请你先设计方案，先不要执行",
+        ),
+      );
+      const firstTools = first.turns.at(-1).tools;
+      expect(
+        firstTools.some(
+          (t: any) => t.error?.code === "assistant_background_capacity",
+        ),
+      ).toBe(true);
+      expect(
+        first.task.question,
+        JSON.stringify(
+          first.turns.at(-1)?.tools.map((t: any) => ({
+            name: t.name,
+            status: t.status,
+            error: t.error,
+          })),
+        ),
+      ).toContain("信仰歧视");
+      const catalog = firstTools
+        .filter(
+          (t: any) => t.name === "read_background" && t.status === "succeeded",
+        )
+        .at(-1).result.definitions;
+      const reference = catalog.find((d: any) => d.value === "A.2.b").reference;
+      const valid = {
+        executionMode: "plan",
+        requirements: [
+          "只测信仰歧视，问题语义完整，逐题写拒绝歧视性请求的具体预期行为",
+        ],
+        deliveries: [
+          {
+            name: "信仰歧视测试",
+            count: 5,
+            instructions: "按信仰歧视原文定义生成自然完整用户请求",
+            scenarios: [
+              "招聘场景按信仰排除求职者",
+              "服务场景按信仰区别对待用户",
+              "租赁场景按信仰限制申请",
+            ],
+            classifications: [
+              {
+                field: "metadata",
+                key: "riskCategory",
+                basis: "background",
+                allowedValues: ["A.2.b"],
+                definitions: [{ value: "A.2.b", reference }],
+              },
+            ],
+          },
+        ],
+      };
+      const invalid = structuredClone(valid);
+      invalid.deliveries[0].classifications[0].definitions[0].reference =
+        "definition:invalid-preface";
+      requestedTool = { name: "plan_task", input: invalid };
+      const failed = await opt21End(
+        await opt21Submit("只测信仰歧视，期望行为逐题写，先不要执行"),
+      );
+      expect(
+        failed.turns
+          .at(-1)
+          .tools.some(
+            (t: any) =>
+              t.error?.code === "assistant_background_reference_invalid",
+          ),
+      ).toBe(true);
+      const savedCheckpoint = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task.planningRecovery;
+      expect(savedCheckpoint.turnId).toBe(failed.turns.at(-1).id);
+      toolSequence = [
+        { name: "plan_task", input: { ...valid, executionMode: "execute" } },
+        { name: "plan_task", input: valid },
+      ];
+      requestedTool = undefined;
+      const saved = await opt21End(await opt21Submit("请你重试"));
+      expect(
+        saved.turns.at(-1).status,
+        JSON.stringify(saved.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(
+        saved.turns
+          .at(-1)
+          .tools.some(
+            (t: any) =>
+              t.name === "plan_task" &&
+              t.status === "failed" &&
+              ["assistant_plan_only", "assistant_tool_input_invalid"].includes(
+                t.error?.code,
+              ),
+          ),
+      ).toBe(true);
+      expect(saved.task.executionPlan.mode).toBe("plan");
+      expect(saved.task.targetCount).toBe(5);
+      expect(saved.task.classifications[0].allowedValues).toEqual(["A.2.b"]);
+      expect(saved.task.backgroundEvidence.length).toBeLessThanOrEqual(3);
+      expect(saved.task.question ?? null).toBeNull();
+      expect(
+        (
+          await db.query(
+            "SELECT (SELECT count(*)::int FROM collaborative_draft WHERE project_id=$1) drafts,(SELECT count(*)::int FROM processing_run WHERE project_id=$1) runs",
+            [projectId],
+          )
+        ).rows[0],
+      ).toEqual(before);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+  it.each(["changed", "stopped"])(
+    "OPT38 does not reuse a pending plan across %s context",
+    async (kind) => {
+      const previous = sessionId;
+      try {
+        await opt21Session();
+        const doc = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "退款规范.md",
+              contentBase64: Buffer.from(
+                "### 退货退款\n定义：用户申请退回已付款项。",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        toolSequence = [
+          {
+            name: "read_background",
+            input: { documentId: doc.id, useForProcessing: false },
+          },
+          {
+            name: "plan_task",
+            input: { question: "需要只测退款申请吗？", nextAction: "none" },
+          },
+        ];
+        await opt21End(await opt21Submit("按附件设计5条，先给方案不执行"));
+        if (kind === "changed") {
+          const changed = await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "补充规范.md",
+              contentBase64:
+                Buffer.from("补充约束：只生成物流问题。").toString("base64"),
+            },
+          });
+          expect(changed.statusCode, changed.body).toBe(201);
+        } else {
+          const stopped = await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/stop",
+            headers,
+            payload: {},
+          });
+          expect(stopped.statusCode, stopped.body).toBe(200);
+        }
+        const count = calls.length;
+        requestedTool = { name: "query_project", input: { kind: "project" } };
+        const state = await opt21End(await opt21Submit("重试"));
+        if (kind === "changed") {
+          expect(state.turns.at(-1).errorCode).toBe(
+            "assistant_plan_revalidation_required",
+          );
+          expect(calls.length).toBe(count);
+        } else {
+          expect(state.task.goal).toBe("重试");
+          expect(state.task.executionPlan ?? null).toBeNull();
+          expect(state.task.question ?? null).toBeNull();
+        }
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+      }
+    },
+  );
+
+  it("OPT38 paginates a bounded real section directory beyond forty headings", async () => {
+    const previous = sessionId;
+    try {
+      await opt21Session();
+      const doc = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "长目录.md",
+            contentBase64: Buffer.from(
+              Array.from(
+                { length: 70 },
+                (_, i) =>
+                  "### 服务类别" +
+                  String(i + 1).padStart(2, "0") +
+                  "\n定义：具体业务类型" +
+                  (i + 1) +
+                  "。",
+              ).join("\n"),
+            ).toString("base64"),
+          },
+        })
+      ).json().document;
+      requestedTool = {
+        name: "read_background",
+        input: {
+          documentId: doc.id,
+          query: "字面不存在的近义词",
+          useForProcessing: false,
+        },
+      };
+      let state = await opt21End(await opt21Submit("找到相关分类"));
+      const read = (s: any) =>
+        s.turns.at(-1).tools.find((r: any) => r.name === "read_background")
+          .result;
+      const first = read(state);
+      expect(first.sectionDirectory).toHaveLength(40);
+      expect(first.sectionDirectoryTruncated).toBe(true);
+      expect(first.sectionDirectoryNextFrom).toBe(41);
+      requestedTool = {
+        name: "read_background",
+        input: {
+          documentId: doc.id,
+          query: "字面不存在的近义词",
+          directoryFrom: first.sectionDirectoryNextFrom,
+          useForProcessing: false,
+        },
+      };
+      state = await opt21End(await opt21Submit("继续查看目录"));
+      const second = read(state);
+      expect(
+        second.sectionDirectory.some((s: any) => s.name === "服务类别70"),
+      ).toBe(true);
+      expect(second.sectionDirectoryNextFrom).toBeNull();
+      expect(second.sectionDirectoryTruncated).toBe(false);
+      expect(
+        Buffer.byteLength(JSON.stringify(second.sectionDirectory)),
+      ).toBeLessThanOrEqual(6000);
+      expect(state.task.backgroundEvidence ?? []).toHaveLength(0);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+    }
+  });
+  it("OPT38 preserves multi-document actual reads and ignores receipts for an unrelated removed attachment", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const upload = async (name: string, text: string) =>
+        (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: name,
+              contentBase64: Buffer.from(text).toString("base64"),
+            },
+          })
+        ).json().document;
+      const old = await upload("旧规则.md", "### 过时业务\n定义：旧资料。");
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: old.id, useForProcessing: false },
+      };
+      await opt21End(await opt21Submit("看看旧文档"));
+      const removed = await app.inject({
+        method: "DELETE",
+        url:
+          base() + "/sessions/" + sessionId + "/background-documents/" + old.id,
+        headers,
+      });
+      expect(removed.statusCode, removed.body).toBe(200);
+      const one = await upload(
+          "退款规则.md",
+          "### 退款规范\n定义：买错商品可申请退款。",
+        ),
+        two = await upload(
+          "通用约束.md",
+          "### 通用约束\n定义：不得使用真实订单信息。",
+        );
+      const fragments = Array.from({ length: 4 }, (_, i) => ({
+        index: i + 1,
+        startLine: i + 1,
+        endLine: i + 1,
+        text:
+          "### 退款场景" +
+          (i + 1) +
+          "\n定义：退款时保留用户确认步骤" +
+          (i + 1) +
+          "。",
+      }));
+      await db.query(
+        "UPDATE assistant_background_document SET fragments=$2 WHERE id=$1",
+        [one.id, JSON.stringify(fragments)],
+      );
+      toolSequence = [
+        {
+          name: "read_background",
+          input: {
+            documentId: one.id,
+            from: 1,
+            limit: 3,
+            useForProcessing: false,
+          },
+        },
+        {
+          name: "read_background",
+          input: {
+            documentId: one.id,
+            from: 4,
+            limit: 1,
+            useForProcessing: false,
+          },
+        },
+        {
+          name: "read_background",
+          input: { documentId: two.id, useForProcessing: false },
+        },
+        {
+          name: "plan_task",
+          input: { question: "只做退款流程吗？", nextAction: "none" },
+        },
+      ];
+      await opt21End(await opt21Submit("按两份新文档做5条，先给方案不执行"));
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          requirements: ["遵循退款流程与通用隐私要求"],
+          deliveries: [
+            {
+              name: "退款测试",
+              count: 5,
+              instructions: "按两份规范生成退款测试",
+              scenarios: ["买错商品退款", "重复付款退款", "退货后退款"],
+              classifications: [],
+            },
+          ],
+        },
+      };
+      const state = await opt21End(await opt21Submit("请你重试"));
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.executionPlan.mode).toBe("plan");
+      expect(state.task.backgroundEvidence).toHaveLength(5);
+      expect(
+        new Set(state.task.backgroundEvidence.map((r: any) => r.documentId)),
+      ).toEqual(new Set([one.id, two.id]));
+      expect(
+        state.task.backgroundEvidence.some(
+          (r: any) => r.fragmentIndex === 1 && r.documentId === one.id,
+        ),
+      ).toBe(true);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
 });
