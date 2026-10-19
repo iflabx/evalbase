@@ -1,3 +1,4 @@
+import { reviewBackgroundHash } from "./content-review.js";
 import { generatesRecords } from "./protocol.js";
 import { isGenerationRecipe, generationBudget } from "./generation.js";
 import {
@@ -404,6 +405,32 @@ export async function createRefinementRun(
         }),
       };
     }
+    // Carry proofs by stable candidate identity, never a run-local row number.
+    if (mode === "refine" && !generatesRecords(options.operation)) {
+      const basis = reviewBackgroundHash(background);
+      const previous = new Map(
+        data!.records.map((row) => [candidateKey(row.candidateOrigin), row]),
+      );
+      for (const row of records) {
+        if (refinement.selectedIds.includes(row.id)) {
+          delete row.retainedContentReview;
+          continue;
+        }
+        const prior =
+          row.candidateOrigin &&
+          previous.get(candidateKey(row.candidateOrigin));
+        const proof =
+          row.retainedContentReview ??
+          (prior?.contentReview && prior.contentReview.verdict !== "pending"
+            ? {
+                item: prior.contentReview,
+                backgroundHash: reviewBackgroundHash(inheritedInput.background),
+              }
+            : undefined);
+        if (proof?.backgroundHash === basis) row.retainedContentReview = proof;
+        else delete row.retainedContentReview;
+      }
+    }
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     const bytes = Buffer.from(
@@ -598,6 +625,18 @@ export async function createRefinementGroups(
           id: `candidate:${row.id}`,
           taskRecordKey: row.id,
           candidateOrigin: row.candidateOrigin,
+          ...(!selected.has(row.id) &&
+          "contentReview" in row &&
+          row.contentReview &&
+          row.contentReview.verdict !== "pending" &&
+          "contentReviewBackgroundHash" in row
+            ? {
+                retainedContentReview: {
+                  item: row.contentReview,
+                  backgroundHash: row.contentReviewBackgroundHash,
+                },
+              }
+            : {}),
           question: row.result.question,
           expectedOutput: row.result.expectedOutput,
           metadata: row.result.metadata,

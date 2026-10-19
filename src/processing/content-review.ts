@@ -28,6 +28,28 @@ export type ContentReview = {
   items: ContentReviewItem[];
   pendingReason?: string;
 };
+const CONTENT_REVIEW_POLICY = "content-intent-v2";
+export type RetainedContentReview = {
+  item: ContentReviewItem;
+  backgroundHash: string;
+};
+export function reviewBackgroundHash(background?: BackgroundSnapshot) {
+  const basis = background ? { ...background } : undefined;
+  if (basis?.currentRequirements) delete basis.userRequests;
+  return sha256(
+    canonicalJson({ policy: CONTENT_REVIEW_POLICY, background: basis ?? null }),
+  );
+}
+export function retainedContentVerdict(
+  row: ProcessingOutput,
+  retained: RetainedContentReview | undefined,
+  background?: BackgroundSnapshot,
+): ContentReviewItem | undefined {
+  return retained?.backgroundHash === reviewBackgroundHash(background) &&
+    retained.item.contentHash === contentHash(row)
+    ? { ...retained.item, sourceId: row.sourceId }
+    : undefined;
+}
 export const CONTENT_RECIPE = "processing-v11";
 export function contentHash(
   row: Pick<ProcessingOutput, "question" | "expectedOutput" | "metadata">,
@@ -46,7 +68,7 @@ export function reviewRulesHash(
 ) {
   return sha256(
     canonicalJson({
-      policy: "content-intent-v2",
+      policy: CONTENT_REVIEW_POLICY,
       options,
       background: background ?? null,
     }),

@@ -2698,200 +2698,244 @@ describe("durable data processing", () => {
     }
   });
 
-  it("OPT31 never reviews or repairs an entirely unselected batch", async () => {
-    opt31Recipe = true;
-    const db = createPool(databaseUrl),
-      config = {
-        ...loadConfig(),
-        databaseUrl,
-        modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
-      },
-      artifacts = new ArtifactRepository(config.minio);
-    const calls: any[] = [];
-    const server = createServer(async (request, response) => {
-      let body = "";
-      for await (const chunk of request) body += chunk;
-      const prompt = JSON.parse(JSON.parse(body).messages.at(-1).content);
-      calls.push(prompt);
-      const value = prompt.candidates
-        ? {
-            reviews: prompt.candidates.map((row: any) => ({
-              id: row.id,
-              checks: {
-                question: "conforms",
-                category: "conforms",
-                expectedBehavior: "conforms",
-                facts: "conforms",
+  it.each(["run", "workspace"])(
+    "OPT31 never reviews or repairs an entirely unselected batch: %s",
+    async (entry) => {
+      opt31Recipe = true;
+      const db = createPool(databaseUrl),
+        config = {
+          ...loadConfig(),
+          databaseUrl,
+          modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
+        },
+        artifacts = new ArtifactRepository(config.minio);
+      const calls: any[] = [];
+      const server = createServer(async (request, response) => {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const prompt = JSON.parse(JSON.parse(body).messages.at(-1).content);
+        calls.push(prompt);
+        const value = prompt.candidates
+          ? {
+              reviews: prompt.candidates.map((row: any) => ({
+                id: row.id,
+                checks: {
+                  question: "conforms",
+                  category: "conforms",
+                  expectedBehavior: "conforms",
+                  facts: "conforms",
+                },
+                reason: "符合当前要求",
+              })),
+            }
+          : {
+              records: prompt.records.map((row: any) => ({
+                sourceId: row.id,
+                question: row.question + "，请说明。",
+                expectedOutput: row.expectedOutput,
+                metadata: row.metadata,
+              })),
+            };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            id: "opt31-local",
+            object: "chat.completion",
+            created: 1,
+            model: "synthetic",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: JSON.stringify(value) },
+                finish_reason: "stop",
               },
-              reason: "符合当前要求",
-            })),
-          }
-        : {
-            records: prompt.records.map((row: any) => ({
-              sourceId: row.id,
-              question: row.question + "，请说明。",
-              expectedOutput: row.expectedOutput,
-              metadata: row.metadata,
-            })),
-          };
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({
-          id: "opt31-local",
-          object: "chat.completion",
-          created: 1,
-          model: "synthetic",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: JSON.stringify(value) },
-              finish_reason: "stop",
-            },
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-        }),
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+        );
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
       );
-    });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    try {
-      const draft = (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/collaborative-drafts`,
-          headers,
-          payload: {},
-        })
-      ).json().draft;
-      const ids = [];
-      for (let i = 0; i < 21; i++)
-        ids.push(
+      try {
+        const draft = (
+          await app.inject({
+            method: "POST",
+            url: `/api/projects/${projectId}/collaborative-drafts`,
+            headers,
+            payload: {},
+          })
+        ).json().draft;
+        const ids = [];
+        for (let i = 0; i < 21; i++)
+          ids.push(
+            (
+              await app.inject({
+                method: "POST",
+                url: `/api/projects/${projectId}/collaborative-drafts/${draft.id}/records`,
+                headers,
+                payload: {
+                  question: `完整问题${i}`,
+                  expectedOutput: "Protected",
+                  metadata: [],
+                },
+              })
+            ).json().record.id,
+          );
+        const revision =
           (
             await app.inject({
-              method: "POST",
-              url: `/api/projects/${projectId}/collaborative-drafts/${draft.id}/records`,
+              method: "GET",
+              url: "/api/settings/model-connection",
+              headers,
+            })
+          ).json().connection?.revision ?? 0;
+        expect(
+          (
+            await app.inject({
+              method: "PUT",
+              url: "/api/settings/model-connection",
               headers,
               payload: {
-                question: `完整问题${i}`,
-                expectedOutput: "Protected",
-                metadata: [],
+                revision,
+                name: "OPT31 local",
+                endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
+                model: "synthetic",
+                apiKey: "synthetic-test",
+                enabled: true,
               },
             })
-          ).json().record.id,
-        );
-      const revision =
-        (
+          ).statusCode,
+        ).toBe(200);
+        const base = `/api/projects/${projectId}/processing-runs`;
+        const parent = (
           await app.inject({
-            method: "GET",
-            url: "/api/settings/model-connection",
-            headers,
-          })
-        ).json().connection?.revision ?? 0;
-      expect(
-        (
-          await app.inject({
-            method: "PUT",
-            url: "/api/settings/model-connection",
-            headers,
+            method: "POST",
+            url: base,
+            headers: { ...headers, "idempotency-key": randomUUID() },
             payload: {
-              revision,
-              name: "OPT31 local",
-              endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
-              model: "synthetic",
-              apiKey: "synthetic-test",
-              enabled: true,
+              source: { kind: "draft", id: draft.id, recordIds: ids },
+              options: {
+                operation: "clean",
+                instructions: "保持当前语义与字段，仅整理问法",
+                allowedFields: ["question"],
+              },
             },
           })
-        ).statusCode,
-      ).toBe(200);
-      const base = `/api/projects/${projectId}/processing-runs`;
-      const parent = (
-        await app.inject({
-          method: "POST",
-          url: base,
-          headers: { ...headers, "idempotency-key": randomUUID() },
-          payload: {
-            source: { kind: "draft", id: draft.id, recordIds: ids },
-            options: {
-              operation: "clean",
-              instructions: "",
-              allowedFields: ["question"],
-            },
-          },
-        })
-      ).json().run;
-      async function finish(run: { id: string; jobId: string }) {
-        const job = (
+        ).json().run;
+        async function finish(run: { id: string; jobId: string }) {
+          const job = (
+            await db.query(
+              "UPDATE job SET status='running',attempt=1,lease_owner='opt31-local',lease_expires_at=now()+interval '120 seconds' WHERE id=$1 RETURNING *",
+              [run.jobId],
+            )
+          ).rows[0];
+          const result = await runProcessing(db, artifacts, config, job);
           await db.query(
-            "UPDATE job SET status='running',attempt=1,lease_owner='opt31-local',lease_expires_at=now()+interval '120 seconds' WHERE id=$1 RETURNING *",
-            [run.jobId],
-          )
-        ).rows[0];
-        const result = await runProcessing(db, artifacts, config, job);
-        await db.query(
-          "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
-          [job.id, result],
+            "UPDATE job SET status='succeeded',result=$2 WHERE id=$1",
+            [job.id, result],
+          );
+        }
+        await finish(parent);
+        const scope = {
+          projectId,
+          actorId: (
+            await db.query("SELECT actor_id FROM processing_run WHERE id=$1", [
+              parent.id,
+            ])
+          ).rows[0].actor_id,
+        };
+        const { readProcessingRun } =
+          await import("../../src/processing/store.js");
+        const before = await readProcessingRun(
+          db,
+          artifacts,
+          scope,
+          parent.id,
+          { limit: "100" },
+          true,
         );
+        const child =
+          entry === "run"
+            ? await createRefinementRun(
+                db,
+                artifacts,
+                scope,
+                parent.id,
+                randomUUID(),
+                {
+                  resultIds: ["0:0"],
+                  instructions: "将问题改为完整自然问法",
+                  allowedFields: ["question"],
+                },
+              )
+            : (
+                await (
+                  await import("../../src/processing/refine.js")
+                ).createRefinementGroups(
+                  db,
+                  artifacts,
+                  scope,
+                  [{ runId: parent.id, resultIds: ["0:0"] }],
+                  randomUUID(),
+                  {
+                    instructions: "将问题改为完整自然问法",
+                    allowedFields: ["question"],
+                  },
+                )
+              )[0]!;
+        await finish(child.run);
+        const after = await readProcessingRun(
+          db,
+          artifacts,
+          scope,
+          child.run.id,
+          { limit: "100" },
+          true,
+        );
+        expect(calls).toHaveLength(6);
+        expect(calls[5].candidates).toHaveLength(1);
+        expect(
+          before.records.every(
+            (row) => row.contentReview?.verdict === "conforms",
+          ),
+        ).toBe(true);
+        expect(
+          after.records.every(
+            (row) => row.contentReview?.verdict === "conforms",
+          ),
+        ).toBe(true);
+        const { selectedProcessingGroup } =
+          await import("../../src/processing/accept.js");
+        const selectedAgain = await selectedProcessingGroup(
+          db,
+          artifacts,
+          scope,
+          child.run.id,
+          after.allIds,
+        );
+        expect(
+          selectedAgain.selected.every(
+            (row) => row.contentReview.verdict === "conforms",
+          ),
+        ).toBe(true);
+        expect(after.records).toHaveLength(21);
+        expect(after.records[0]!.result.question).toBe(
+          before.records[0]!.result.question + "，请说明。",
+        );
+        expect(
+          after.records.slice(1).map((row) => row.result.question),
+        ).toEqual(before.records.slice(1).map((row) => row.result.question));
+        expect(
+          after.records.slice(1).map((row) => row.candidateOrigin),
+        ).toEqual(before.records.slice(1).map((row) => row.candidateOrigin));
+      } finally {
+        opt31Recipe = false;
+        await db.end();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
       }
-      await finish(parent);
-      const scope = {
-        projectId,
-        actorId: (
-          await db.query("SELECT actor_id FROM processing_run WHERE id=$1", [
-            parent.id,
-          ])
-        ).rows[0].actor_id,
-      };
-      const { readProcessingRun } =
-        await import("../../src/processing/store.js");
-      const before = await readProcessingRun(
-        db,
-        artifacts,
-        scope,
-        parent.id,
-        { limit: "100" },
-        true,
-      );
-      const child = await createRefinementRun(
-        db,
-        artifacts,
-        scope,
-        parent.id,
-        randomUUID(),
-        {
-          resultIds: ["0:0"],
-          instructions: "将问题改为完整自然问法",
-          allowedFields: ["question"],
-        },
-      );
-      await finish(child.run);
-      const after = await readProcessingRun(
-        db,
-        artifacts,
-        scope,
-        child.run.id,
-        { limit: "100" },
-        true,
-      );
-      expect(calls).toHaveLength(2);
-      expect(calls[1].candidates).toHaveLength(1);
-      expect(after.records).toHaveLength(21);
-      expect(after.records[0]!.result.question).toBe(
-        before.records[0]!.result.question + "，请说明。",
-      );
-      expect(after.records.slice(1).map((row) => row.result.question)).toEqual(
-        before.records.slice(1).map((row) => row.result.question),
-      );
-      expect(after.records.slice(1).map((row) => row.candidateOrigin)).toEqual(
-        before.records.slice(1).map((row) => row.candidateOrigin),
-      );
-    } finally {
-      opt31Recipe = false;
-      await db.end();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  });
+    },
+  );
   it.each([
     [0, false],
     [1, false],

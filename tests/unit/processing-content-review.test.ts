@@ -3,6 +3,8 @@ import { canonicalJson, sha256 } from "../../src/package/contract.js";
 import {
   contentHash,
   reviewRulesHash,
+  reviewBackgroundHash,
+  retainedContentVerdict,
   applyContentReview as checkContent,
   contentVerdict,
   contentReviewPrompt,
@@ -314,5 +316,70 @@ describe("OPT-31 bounded content review", () => {
       "pending",
     );
     expect(contentVerdict(rows[0]!, undefined, rules).verdict).toBe("pending");
+  });
+});
+
+describe("OPT-31 retained review contract", () => {
+  const background = (text: string) =>
+    ({
+      currentRequirements: true,
+      requirements: [text],
+      documents: [
+        { id: "doc", sha256: "hash", fragments: [{ index: 1, text: "定义" }] },
+      ],
+    }) as any;
+  const first = background("按题描述预期行为");
+  const second = background("输出固定意图标签");
+  const proof = (basis: any) => ({
+    backgroundHash: reviewBackgroundHash(basis),
+    item: {
+      sourceId: "old:0",
+      contentHash: contentHash(rows[0]!),
+      verdict: "conforms" as const,
+      reason: "原冻结合同已核对",
+    },
+  });
+  it("reuses unchanged input across local result identities without mutating its frozen proof", () => {
+    const prior = proof(first),
+      frozen = structuredClone(prior);
+    expect(
+      retainedContentVerdict({ ...rows[0]!, sourceId: "new:0" }, prior, first),
+    ).toEqual({ ...prior.item, sourceId: "new:0" });
+    expect(prior).toEqual(frozen);
+    expect(
+      retainedContentVerdict(rows[0]!, prior, {
+        ...first,
+        userRequests: ["只重做选中1条，其他不动"],
+      })?.verdict,
+    ).toBe("conforms");
+    expect(
+      retainedContentVerdict({ ...rows[0]!, question: "已改写" }, prior, first),
+    ).toBeUndefined();
+  });
+  it("invalidates only the changed delivery contract and leaves independent frozen verdicts intact", () => {
+    const savedFirst = proof(first),
+      savedSecond = proof(second);
+    expect(
+      retainedContentVerdict(
+        rows[0]!,
+        savedFirst,
+        background("改为具体拒绝行为"),
+      ),
+    ).toBeUndefined();
+    expect(retainedContentVerdict(rows[0]!, savedSecond, second)?.verdict).toBe(
+      "conforms",
+    );
+    expect(retainedContentVerdict(rows[0]!, savedFirst, first)?.verdict).toBe(
+      "conforms",
+    );
+  });
+  it("does not treat missing or changed document evidence as a content failure or a fresh pass", () => {
+    const prior = proof(first);
+    expect(retainedContentVerdict(rows[0]!, prior, undefined)).toBeUndefined();
+    const changed = structuredClone(first);
+    changed.documents[0].sha256 = "changed";
+    expect(retainedContentVerdict(rows[0]!, prior, changed)).toBeUndefined();
+    expect(prior.item.verdict).toBe("conforms");
+    expect(retainedContentVerdict(rows[0]!, undefined, first)).toBeUndefined();
   });
 });

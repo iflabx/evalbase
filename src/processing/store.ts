@@ -1,4 +1,8 @@
-import { contentVerdict, reviewRulesHash } from "./content-review.js";
+import {
+  contentVerdict,
+  retainedContentVerdict,
+  reviewRulesHash,
+} from "./content-review.js";
 import { processingRecovery } from "./recovery.js";
 import {
   guardAssistantCommit,
@@ -88,6 +92,7 @@ export type InputSnapshot = {
   background?: BackgroundSnapshot;
   records: (ProcessingInput & {
     candidateOrigin?: CandidateOrigin;
+    retainedContentReview?: import("./content-review.js").RetainedContentReview;
     taskRecordKey?: string;
     adoptionOperation?: ProcessingOptions["operation"];
     adoptionFields?: ProcessingOptions["allowedFields"];
@@ -958,14 +963,24 @@ export async function readProcessingRun(
                   } as InputSnapshot["records"][number])
                 : undefined),
             result: result.records[i],
-            contentReview: contentVerdict(
-              {
-                ...result.records[i],
-                sourceId: `review:${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
-              },
-              result.contentReview,
-              reviewRulesHash(run.options, input.background),
-            ),
+            contentReview:
+              (input.refinement &&
+              !input.refinement.selectedIds.includes(result.records[i].sourceId)
+                ? retainedContentVerdict(
+                    result.records[i],
+                    originals.get(result.records[i].sourceId)
+                      ?.retainedContentReview,
+                    input.background,
+                  )
+                : undefined) ??
+              contentVerdict(
+                {
+                  ...result.records[i],
+                  sourceId: `review:${batch.ordinal}:${batch.result_indices?.[i] ?? i}`,
+                },
+                result.contentReview,
+                reviewRulesHash(run.options, input.background),
+              ),
             processingOperation: run.options.operation,
             unprocessed: Boolean(
               input.refinement &&

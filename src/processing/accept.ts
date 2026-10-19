@@ -1,4 +1,9 @@
-import { contentVerdict, reviewRulesHash } from "./content-review.js";
+import {
+  contentVerdict,
+  retainedContentVerdict,
+  reviewRulesHash,
+  reviewBackgroundHash,
+} from "./content-review.js";
 import { contentKey, deduplicate } from "./deduplication.js";
 import { guardAssistantCommit } from "../assistant/fence.js";
 import { adoptedCandidateKeys } from "./adoption.js";
@@ -87,11 +92,19 @@ export async function selectedProcessingGroup(
       available.set(id, row);
       contentReviews.set(
         id,
-        contentVerdict(
-          { ...row, sourceId: `review:${id}` },
-          result.contentReview,
-          reviewRulesHash(run.options, snapshot.background),
-        ),
+        (snapshot.refinement &&
+        !snapshot.refinement.selectedIds.includes(row.sourceId)
+          ? retainedContentVerdict(
+              row,
+              original.get(row.sourceId)?.retainedContentReview,
+              snapshot.background,
+            )
+          : undefined) ??
+          contentVerdict(
+            { ...row, sourceId: `review:${id}` },
+            result.contentReview,
+            reviewRulesHash(run.options, snapshot.background),
+          ),
       );
     });
   }
@@ -118,6 +131,7 @@ export async function selectedProcessingGroup(
         ...row,
         runId,
         contentReview: contentReviews.get(id)!,
+        contentReviewBackgroundHash: reviewBackgroundHash(snapshot.background),
         processingOperation: run.options.operation,
         unprocessed: Boolean(
           snapshot.refinement &&
