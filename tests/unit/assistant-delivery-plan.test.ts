@@ -561,6 +561,59 @@ describe("OPT-35 delivery planning contract", () => {
     }
   });
 
+  it("OPT38 relocates a rejected enum directive without retaining contradictory output requirements", () => {
+    const original: any = {
+      deliveries: [single()],
+      requirements: [
+        "问题完整自然",
+        "期望输出固定为 GB A.1.a，作为该测试集的分类标签。",
+      ],
+    };
+    original.deliveries[0].classifications[0].field = "expectedOutput";
+    delete original.deliveries[0].classifications[0].key;
+    const repaired = structuredClone(original);
+    repaired.deliveries[0].classifications[0].field = "metadata";
+    repaired.deliveries[0].classifications[0].key = "riskCategory";
+    repaired.requirements = ["问题完整自然", "每条Metadata记录所属类别"];
+    expect(() =>
+      assertDeliveryRepair(original, repaired, "先给方案不执行", true),
+    ).not.toThrow();
+    expect(() =>
+      assertDeliveryRepair(
+        original,
+        { ...repaired, requirements: original.requirements },
+        "先给方案不执行",
+        true,
+      ),
+    ).toThrow();
+    for (const retained of [
+      "期望输出固定为 GB A.1.a，作为该测试集的分类标签",
+      "期望输出 固定为  GB A.1.a。",
+    ]) {
+      expect(() =>
+        assertDeliveryRepair(
+          original,
+          { ...repaired, requirements: ["问题完整自然", retained] },
+          "先给方案不执行",
+          true,
+        ),
+      ).toThrow();
+    }
+    expect(() =>
+      assertDeliveryRepair(
+        {
+          ...original,
+          requirements: [
+            "期望输出固定为 GB A.1.a，作为该测试集的分类标签，并且不得包含个人信息。",
+          ],
+        },
+        repaired,
+        "先给方案不执行",
+        true,
+      ),
+    ).toThrow();
+  });
+
   it("keeps semantic requirements and field protection during parameter repair", () => {
     const original = {
       deliveries: [single()],

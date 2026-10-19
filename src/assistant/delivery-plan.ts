@@ -787,22 +787,35 @@ export function assertDeliveryRepair(
         (value: unknown) => typeof value === "string" && value.trim(),
       )
     : [];
+  const outputLabelDirective = (value: string) =>
+    value
+      .trim()
+      .replace(/[，,]\s*作为(?:该|本)(?:测试集)?的?分类标签[。.]?$/u, "")
+      .match(
+        /^(?:每条(?:记录)?的?)?(?:期望输出|expectedOutput)\s*(?:标签)?\s*(?:固定为|固定值为|填写|填为|[:：=])\s*(.+?)\s*$/iu,
+      )?.[1];
+  const nextRequirements = Array.isArray(nextInput?.requirements)
+    ? nextInput.requirements
+    : [];
+  if (
+    nextRequirements.some((value: unknown) => {
+      const directive =
+        typeof value === "string" ? outputLabelDirective(value) : undefined;
+      return directive && relocatedLabels.has(label(directive));
+    })
+  )
+    fail(
+      "该固定期望输出已经校验拒绝，类别已移到Metadata；请同步移除或改写这条单独标签说明，保留类别、定义、配额及其他业务要求。",
+    );
   if (
     requirements.some((value: string) => {
-      if (
-        Array.isArray(nextInput?.requirements) &&
-        nextInput.requirements.includes(value)
-      )
-        return false;
-      // A rejected model proposal is not a user contract. Discard only a
-      // standalone directive for the exact relocated label, not a compound
-      // instruction or any other semantic requirement.
-      const directive = value
-        .trim()
-        .match(
-          /^(?:每条(?:记录)?的?)?(?:期望输出|expectedOutput)\s*(?:标签)?\s*(?:固定为|固定值为|填写|填为|[:：=])\s*(.+?)\s*$/iu,
-        )?.[1];
-      return !directive || !relocatedLabels.has(label(directive));
+      // Only the standalone directive for a server-rejected, intact relocated
+      // label may change. Compound clauses and user requirements stay protected.
+      const directive = outputLabelDirective(value);
+      return (
+        !(directive && relocatedLabels.has(label(directive))) &&
+        !nextRequirements.includes(value)
+      );
     })
   )
     fail("修正参数不能删除原语义要求；本轮有效要求必须保留。");

@@ -15386,7 +15386,7 @@ describe("project assistant public contract", () => {
             "仅限色情相关范围，不扩展暴力子类",
             "问题完整自然，期望输出写具体安全行为",
             ...(variant === "rejected-output" && delivery === missing
-              ? ["期望输出标签固定为 A.1.f。"]
+              ? ["期望输出固定为 A.1.f，作为该测试集的分类标签。"]
               : []),
           ],
         });
@@ -15409,6 +15409,17 @@ describe("project assistant public contract", () => {
                 { name: "plan_task", input: input(missing) },
                 { name: "plan_task", input: input(goal) },
               ];
+        if (variant === "rejected-output")
+          toolSequence.splice(1, 0, {
+            name: "plan_task",
+            input: {
+              ...input(goal),
+              requirements: [
+                ...input(goal).requirements,
+                "期望输出固定为 A.1.f，作为该测试集的分类标签",
+              ],
+            },
+          });
         if (variant === "follow-up")
           toolSequence.unshift({
             name: "read_background",
@@ -15434,7 +15445,7 @@ describe("project assistant public contract", () => {
           ),
         ).toHaveLength(0);
         expect(requests.length, JSON.stringify(turn)).toBe(
-          variant === "combined" || variant === "rejected-output" ? 2 : 3,
+          variant === "combined" ? 2 : 3,
         );
         const failed = turn.tools.find(
           (t: any) => t.name === "plan_task" && t.status === "failed",
@@ -15481,7 +15492,11 @@ describe("project assistant public contract", () => {
             turn.tools
               .filter((t: any) => t.name === "plan_task")
               .map((t: any) => t.status),
-          ).toEqual(["failed", "succeeded"]);
+          ).toEqual(
+            variant === "rejected-output"
+              ? ["failed", "failed", "succeeded"]
+              : ["failed", "succeeded"],
+          );
           expect((await read()).json().task.executionPlan).toEqual(
             state.task.executionPlan,
           );
