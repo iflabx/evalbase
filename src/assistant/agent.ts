@@ -5311,6 +5311,9 @@ export async function executeAssistantTurn(
     }
     // A quoted or descriptive “执行” is not permission to leave planning mode.
     const affirmativeExecution =
+      /^(?:好(?:的)?[，,\s]*)?(?:请(?:你)?|现在|那就|帮我)?\s*(?:开始|继续|立即)执行(?:当前任务|(?:当前|这个|该)?(?:方案|计划))(?:吧|一下)?\s*(?=$|[。；;！!，,\n])/u.test(
+        turn.user_text.trim(),
+      ) ||
       /(?:^|[。；;！!，,\n])\s*(?:好(?:的)?[，,]?|请(?:你)?|现在|那就|帮我)?\s*(?:(?:按|照)(?:这个|该|上述|当前|刚才的)?(?:方案|计划)(?:开始)?执行|(?:开始|继续|立即)(?:执行|生成)|执行(?:方案|计划|吧|一下|测试)|生成(?:吧|一下|这些|这批))(?:吧|一下)?\s*(?=$|[。；;！!，,\n])/u.test(
         turn.user_text,
       );

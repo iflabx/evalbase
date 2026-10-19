@@ -22501,6 +22501,8 @@ describe("project assistant public contract", () => {
     "重试",
     "期望行为是拒绝执行危险指令",
     "只测试危险指令，开始执行前必须拒绝",
+    "日志如下：\n开始执行方案\n这是否表示已经启动？",
+    "页面显示“继续执行当前任务”，请解释含义",
   ])(
     "OPT38 resumes clarification and latest requirements with ordinary retry: %s",
     async (retry) => {
@@ -22620,6 +22622,97 @@ describe("project assistant public contract", () => {
       }
     },
   );
+
+  it.each(["开始执行方案", "好的，现在开始执行方案", "继续执行当前任务"])(
+    "OPT31 executes a saved document plan on explicit request: %s",
+    async (request) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        await opt21Session();
+        const doc = (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + sessionId + "/background-documents",
+            headers,
+            payload: {
+              fileName: "客服规范.md",
+              contentBase64: Buffer.from(
+                "# 客服问法\n生成完整独立的客服问题，期望行为说明如何核对和处理。",
+              ).toString("base64"),
+            },
+          })
+        ).json().document;
+        toolSequence = [
+          {
+            name: "read_background",
+            input: { documentId: doc.id, useForProcessing: false },
+          },
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              requirements: ["生成完整客服问题，逐题写具体处理行为"],
+              deliveries: [
+                {
+                  name: "客服测试",
+                  count: 5,
+                  instructions: "按附件生成自然完整客服问法",
+                  scenarios: [
+                    "买错商品申请退款",
+                    "重复支付核对款项",
+                    "包裹延迟查询物流",
+                  ],
+                  classifications: [],
+                },
+              ],
+            },
+          },
+        ];
+        const planned = await opt21End(
+          await opt21Submit("按附件做5条，先设计方案，不执行"),
+        );
+        expect(
+          planned.turns.at(-1).status,
+          JSON.stringify(planned.turns.at(-1)),
+        ).toBe("succeeded");
+        expect(planned.task.executionPlan.mode).toBe("plan");
+        const prior = (
+          await db.query(
+            "SELECT count(*)::int n FROM processing_run WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].n;
+        const start = calls.length;
+        toolSequence = [
+          { name: "plan_task", input: { executionMode: "execute" } },
+        ];
+        const state = await opt21End(await opt21Submit(request));
+        expect(JSON.stringify(calls.slice(start))).not.toContain(
+          "当前待完成文档方案；只规划",
+        );
+        expect(state.task.executionPlan.mode).toBe("execute");
+        expect(
+          state.turns.at(-1).status,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBe("succeeded");
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM processing_run WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].n,
+        ).toBe(prior + 1);
+      } finally {
+        sessionId = previous;
+        requestedTool = undefined;
+        toolSequence = [];
+        await db.end();
+      }
+    },
+  );
+
   it("OPT38 recovers the full miss-capacity-invalid-reference-clarification-retry chain without executing", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);
