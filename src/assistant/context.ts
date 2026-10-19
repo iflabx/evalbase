@@ -1,6 +1,6 @@
 import { deliveryGoals } from "./delivery-plan.js";
 import type { Database } from "../db/pool.js";
-import { sha256 } from "../package/contract.js";
+import { canonicalJson, sha256 } from "../package/contract.js";
 import type { ModelMessage } from "ai";
 import { hasProjectCapability } from "../security/project-access.js";
 import { backgroundCatalog } from "./background.js";
@@ -46,8 +46,19 @@ export function currentTaskFacts(
     facts.executionPlan = {
       ...facts.executionPlan,
       steps: facts.executionPlan.steps.map(
-        ({ input: _input, backgroundRead: _backgroundRead, ...step }: any) =>
-          step,
+        ({ input: _input, backgroundRead: _backgroundRead, ...step }: any) => {
+          if (task.executionPlan.contractVersion !== 1) return step;
+          // Full delivery contracts are already present above. The model needs
+          // progress and object references, not repeated headings or ledger keys.
+          delete step.title;
+          delete step.revision;
+          delete step.countKind;
+          if (step.receipt) {
+            step.receipt = { ...step.receipt };
+            delete step.receipt.key;
+          }
+          return step;
+        },
       ),
     };
   facts.classifications = (facts.classifications ?? []).map((rule: any) =>
@@ -68,6 +79,25 @@ export function currentTaskFacts(
         }
       : rule,
   );
+  // Result prose is rereadable evidence, not an active requirement. Keep counts
+  // and identity without copying every narrative answer into each turn.
+  if (Array.isArray(facts.review?.labels)) {
+    const { labels, ...review } = facts.review;
+    facts.review = {
+      ...review,
+      labelKinds:
+        review.labelKinds ?? labels.length + (review.additionalLabels ?? 0),
+      labelsHash: sha256(canonicalJson(labels)),
+      ...(review.runId
+        ? {
+            readAgain: {
+              tool: "read_processing",
+              input: { runId: review.runId },
+            },
+          }
+        : {}),
+    };
+  }
   if (Buffer.byteLength(JSON.stringify(facts)) > 30000)
     throw new AssistantError(
       422,

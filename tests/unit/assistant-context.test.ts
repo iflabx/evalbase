@@ -151,6 +151,77 @@ describe("OPT-23 bounded current facts", () => {
     });
     expect(Buffer.byteLength(JSON.stringify(messages))).toBeLessThan(6000);
   });
+
+  it("OPT31 summarizes narrative result labels without dropping the eight delivery contracts", () => {
+    const task = {
+      requirements: ["保留全部八个类别定义和各50条目标"],
+      executionPlan: {
+        mode: "execute",
+        current: 2,
+        contractVersion: 1,
+        steps: Array.from({ length: 8 }, (_, i) => ({
+          id: "step" + i,
+          deliveryId: "delivery" + i,
+          action: "generate_candidates",
+          title: "独立交付" + i,
+          status: "executed",
+          receipt: {
+            key: "internal-ledger-key".repeat(20),
+            runId: "run" + i,
+            draftId: "draft" + i,
+          },
+          input: {
+            name: "分类" + i,
+            outputCount: 50,
+            instructions: "完整交付约定".repeat(40),
+            scenarios: ["用户自然完整问法".repeat(20)],
+            classifications: [],
+          },
+        })),
+      },
+      runId: "run",
+      review: {
+        runId: "run",
+        total: 50,
+        content: { checked: 40, pending: 10, conforms: 40 },
+        labels: Array.from({ length: 50 }, (_, i) => ({
+          label: "逐题具体安全处理行为".repeat(50) + i,
+          count: 1,
+        })),
+      },
+    };
+    const before = structuredClone(task);
+    const facts = currentTaskFacts(task);
+    expect(facts.requirements).toEqual(task.requirements);
+    expect(facts.deliveries).toHaveLength(8);
+    expect(facts.deliveries[7]).toMatchObject({
+      count: 50,
+      instructions: task.executionPlan.steps[7].input.instructions,
+      scenarios: task.executionPlan.steps[7].input.scenarios,
+    });
+    expect(facts.review).toMatchObject({
+      total: 50,
+      labelKinds: 50,
+      content: { checked: 40, pending: 10, conforms: 40 },
+      readAgain: { tool: "read_processing", input: { runId: "run" } },
+    });
+    expect(facts.executionPlan.steps[0]).toMatchObject({
+      id: "step0",
+      deliveryId: "delivery0",
+      action: "generate_candidates",
+      status: "executed",
+      receipt: { runId: "run0", draftId: "draft0" },
+    });
+    expect(facts.executionPlan.steps[0].receipt.key).toBeUndefined();
+    expect(facts.review.labels).toBeUndefined();
+    expect(facts.review.labelsHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(Buffer.byteLength(canonicalJson(facts))).toBeLessThan(30000);
+    expect(task).toEqual(before);
+    task.review.labels[0].label += "已变动";
+    expect(currentTaskFacts(task).review.labelsHash).not.toBe(
+      facts.review.labelsHash,
+    );
+  });
   it("never silently truncates effective requirements", () => {
     expect(() =>
       currentTaskFacts({ requirements: ["必须保留的要求".repeat(10000)] }),
