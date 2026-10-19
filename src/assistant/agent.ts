@@ -6033,9 +6033,14 @@ export async function executeAssistantTurn(
     // Revalidate through plan_task; this does not authorize a new or ambiguous plan.
     if (
       turn.event === "user" &&
-      ["按当前已保存方案执行", "继续执行已保存方案"].includes(
-        turn.user_text.trim().replace(/[。！!]$/u, ""),
-      ) &&
+      [
+        "按当前已保存方案执行",
+        "继续执行已保存方案",
+        "继续执行当前任务",
+        "执行方案",
+        "开始执行方案",
+        "好的，现在开始执行方案",
+      ].includes(turn.user_text.trim().replace(/[。！!]$/u, "")) &&
       task.executionPlan?.steps?.length &&
       !task.question
     ) {

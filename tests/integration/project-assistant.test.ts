@@ -22685,12 +22685,14 @@ describe("project assistant public contract", () => {
         ).rows[0].n;
         const start = calls.length;
         toolSequence = [
-          { name: "plan_task", input: { executionMode: "execute" } },
+          {
+            name: "plan_task",
+            input: { executionMode: "execute", deliveries: ["客服测试"] },
+          },
         ];
         const state = await opt21End(await opt21Submit(request));
-        expect(JSON.stringify(calls.slice(start))).not.toContain(
-          "当前待完成文档方案；只规划",
-        );
+        expect(calls.slice(start)).toHaveLength(0);
+        expect(toolSequence).toHaveLength(1);
         expect(state.task.executionPlan.mode).toBe("execute");
         expect(
           state.turns.at(-1).status,
