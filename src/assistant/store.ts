@@ -346,8 +346,16 @@ export async function readSession(
   const workspace = planSteps.some((step: any) => step.deliveryId)
     ? await Promise.all([
         db.query(
-          `SELECT r.id,j.status,coalesce((SELECT sum(b.output_count)::int FROM processing_batch b WHERE b.run_id=r.id AND b.result_ref IS NOT NULL),0) AS count
-         FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.id=ANY($3::text[])`,
+          `SELECT r.id,coalesce(lj.status,j.status) AS status,
+          t.latest_run_id,t.applied_run_id,t.applied_hash,
+          CASE WHEN t.id IS NOT NULL THEN jsonb_array_length(t.current_refs)
+          ELSE coalesce((SELECT sum(b.output_count)::int FROM processing_batch b WHERE b.run_id=r.id AND b.result_ref IS NOT NULL),0) END AS count,
+          coalesce((SELECT jsonb_agg(jsonb_build_object('result_ref',b.result_ref,'result_indices',b.result_indices,'issues',b.issues) ORDER BY b.ordinal) FROM processing_batch b WHERE b.run_id=latest.id),'[]'::jsonb) AS batches
+         FROM processing_run r JOIN job j ON j.id=r.job_id
+         LEFT JOIN processing_task t ON t.id=r.task_id
+         LEFT JOIN processing_run latest ON latest.id=t.latest_run_id
+         LEFT JOIN job lj ON lj.id=latest.job_id
+         WHERE r.project_id=$1 AND r.actor_id=$2 AND r.id=ANY($3::text[])`,
           [scope.projectId, scope.actorId, refs("runId")],
         ),
         db.query(
@@ -361,7 +369,19 @@ export async function readSession(
         ),
       ]).then(([runs, drafts, confirmations]) => ({
         projectId: scope.projectId,
-        runs: runs.rows,
+        runs: runs.rows.map((run) => ({
+          id: run.id,
+          status: run.status,
+          count:
+            !run.latest_run_id ||
+            (run.applied_run_id === run.latest_run_id &&
+              run.applied_hash ===
+                sha256(
+                  canonicalJson({ status: run.status, batches: run.batches }),
+                ))
+              ? run.count
+              : null,
+        })),
         drafts: drafts.rows,
         confirmations: confirmations.rows,
       }))

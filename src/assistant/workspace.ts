@@ -1,6 +1,6 @@
 export type WorkspaceFacts = {
   projectId: string;
-  runs: { id: string; status: string; count: number }[];
+  runs: { id: string; status: string; count: number | null }[];
   drafts: { id: string; count: number }[];
   confirmations: {
     id: string;

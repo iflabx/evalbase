@@ -14341,9 +14341,15 @@ describe("project assistant public contract", () => {
     }
   });
 
-  it.each([1, 2])(
-    "OPT36 executes %i saved deliveries through background and confirmation without model reconstruction",
-    async (count) => {
+  it.each([
+    "single",
+    "confirmed-failure",
+    "restored-run",
+    "changed-rules",
+  ] as const)(
+    "OPT36 executes saved deliveries through background and confirmation without model reconstruction (%s)",
+    async (variant) => {
+      const count = variant === "single" ? 1 : 2;
       const previous = sessionId,
         db = createPool(databaseUrl);
       let lost: ReturnType<typeof vi.spyOn> | undefined;
@@ -14572,6 +14578,150 @@ describe("project assistant public contract", () => {
           expect((await idle()).task.runId).toBe(runId);
           expect(modelRequests()).toBe(modelBefore);
           await opt29Worker(runId);
+          if (
+            ["restored-run", "changed-rules"].includes(variant) &&
+            index === 0
+          ) {
+            // A failed root can have complete current results after bounded continuation.
+            // Simulate the old recompilation losing its waiting receipt; recover from
+            // the same delivery's durable tool result, never submit another generation.
+            await db.query(
+              "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+              [runId],
+            );
+            expect(
+              (await read()).json().task.deliveries[index].generatedCount,
+            ).toBeNull();
+            const repo = new ArtifactRepository(loadConfig().minio);
+            const batch = (
+              await db.query(
+                "SELECT * FROM processing_batch WHERE run_id=$1 AND ordinal=0",
+                [runId],
+              )
+            ).rows[0];
+            const partialBody = JSON.parse(
+              (await repo.readBytes(batch.result_ref, 1000000)).toString(),
+            );
+            partialBody.records = partialBody.records.slice(0, 3);
+            const partialArtifact = await repo.storeProcessing(
+              Buffer.from(JSON.stringify(partialBody)),
+              runId,
+              "batch-0",
+            );
+            await db.query(
+              "UPDATE processing_batch SET result_ref=$2,output_count=3,result_indices=result_indices[1:3],error_code='processing_output_incomplete' WHERE run_id=$1 AND ordinal=0",
+              [runId, partialArtifact.objectRef],
+            );
+            const refs = (
+              await db.query(
+                "SELECT current_refs FROM processing_task WHERE root_run_id=$1",
+                [runId],
+              )
+            ).rows[0].current_refs;
+            await db.query(
+              "UPDATE processing_task SET current_refs=$2::jsonb,incomplete=true WHERE root_run_id=$1",
+              [runId, JSON.stringify(refs.slice(0, 3))],
+            );
+            const path =
+              "/api/projects/" + projectId + "/processing-tasks/" + runId;
+            const partial = (
+              await app.inject({ method: "GET", url: path, headers })
+            ).json();
+            expect(partial.task.generation).toMatchObject({
+              validCount: 3,
+              missingCount: 2,
+            });
+            const continuation = await app.inject({
+              method: "POST",
+              url: path + "/rounds",
+              headers: { ...headers, "idempotency-key": randomUUID() },
+              payload: {
+                mode: "complete",
+                expectedRevision: partial.task.revision,
+              },
+            });
+            expect(continuation.statusCode, continuation.body).toBe(201);
+            generationResponse = (prompt) =>
+              prompt.generation.slots.map((slot: any) => ({
+                question:
+                  "补齐第" + slot.position + "个完整场景，应当怎样核验？",
+                expectedOutput: "说明核验方法，不编造事实",
+                metadata: [{ key: "riskCategory", value: "A.1.a" }],
+              }));
+            await opt29Worker(continuation.json().run.id);
+            generationResponse = undefined;
+            expect(
+              (await read()).json().task.deliveries[index].generatedCount,
+            ).toBeNull();
+            const completed = (
+              await app.inject({ method: "GET", url: path, headers })
+            ).json();
+            expect(completed.task.generation).toMatchObject({
+              validCount: 5,
+              missingCount: 0,
+            });
+            expect(
+              completed.recovery.generationBudget.used,
+            ).toBeLessThanOrEqual(3);
+            const task = (
+              await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+                sessionId,
+              ])
+            ).rows[0].task;
+            task.executionPlan.steps.slice(0, 3).forEach((step: any) => {
+              step.status = "pending";
+              delete step.receipt;
+              delete step.operation;
+            });
+            if (variant === "changed-rules") {
+              task.requirements = [
+                ...task.requirements,
+                "期望输出现在必须只写一个固定标签",
+              ];
+              task.executionPlan.requirementsKey = planRequirementsKey(task);
+            }
+            task.executionPlan.current = 0;
+            await db.query(
+              "UPDATE assistant_session SET task=$2::jsonb WHERE id=$1",
+              [sessionId, JSON.stringify(task)],
+            );
+            state = await opt21End(await opt21Submit("继续执行已保存方案"));
+            if (variant === "changed-rules") {
+              expect(
+                state.proposals.filter((p: any) => p.status === "pending"),
+              ).toHaveLength(0);
+              expect(state.task.stage).not.toBe("awaiting_confirmation");
+              expect(
+                (
+                  await db.query(
+                    "SELECT count(*)::int n FROM processing_run WHERE target_draft_id=$1",
+                    [run.target_draft_id],
+                  )
+                ).rows[0].n,
+              ).toBe(2);
+              expect(
+                (
+                  await db.query(
+                    "SELECT count(*)::int n FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+                    [run.target_draft_id],
+                  )
+                ).rows[0].n,
+              ).toBe(0);
+              return;
+            }
+            expect(state.task.stage, JSON.stringify(state.turns.at(-1))).toBe(
+              "awaiting_confirmation",
+            );
+            expect(state.task.runId).toBe(runId);
+            expect(
+              (
+                await db.query(
+                  "SELECT count(*)::int n FROM processing_run WHERE id=ANY($1::text[])",
+                  [ids],
+                )
+              ).rows[0].n,
+            ).toBe(1);
+          }
           await taskModule.collectProcessingEvents(db);
           await taskModule.collectProcessingEvents(db);
           state = await idle();
@@ -14606,8 +14756,12 @@ describe("project assistant public contract", () => {
             )
           ).rows[0].parameters;
           expect(actual.target.id).toBe(run.target_draft_id);
-          expect(actual.resultIds).toHaveLength(5);
-          if (count === 2 && index === 0)
+          expect(
+            (actual.resultGroups ?? [{ resultIds: actual.resultIds }]).flatMap(
+              (g: any) => g.resultIds,
+            ),
+          ).toHaveLength(5);
+          if (variant === "confirmed-failure" && index === 0)
             confirmedContext = vi
               .spyOn(contextModule, "currentTaskFacts")
               .mockImplementationOnce(() => {
@@ -14624,7 +14778,7 @@ describe("project assistant public contract", () => {
           }
           await taskModule.collectProcessingEvents(db);
           state = await idle();
-          if (count === 2 && index === 0) {
+          if (variant === "confirmed-failure" && index === 0) {
             confirmedContext?.mockRestore();
             expect(state.turns.at(-1).status).toBe("failed");
             const failedId = state.turns.at(-1).id;

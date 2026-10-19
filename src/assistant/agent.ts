@@ -2733,6 +2733,64 @@ export async function executeAssistantTurn(
         );
         if (plan && (businessDeliveries || !oldPlan))
           plan = { ...plan, contractVersion: 1 };
+        // A bounded continuation can complete a waiting generation outside this
+        // turn. Rebind only its own durable receipt under an unchanged contract;
+        // the original reader must still verify the full current result set.
+        const generation = plan?.steps[plan.current];
+        if (
+          preserveSavedDeliveries &&
+          current.runId &&
+          generation?.action === "generate_candidates" &&
+          generation.deliveryId &&
+          generation.status !== "executed"
+        ) {
+          const original = (
+            await db.query(
+              "SELECT x FROM assistant_turn t, jsonb_array_elements(t.tool_results) x WHERE t.session_id=$1 AND x->>'name'='generate_candidates' AND x->>'status'='succeeded' AND x->'binding'->>'deliveryId'=$2 AND x->'result'->>'runId'=$3 ORDER BY t.created_at DESC LIMIT 1",
+              [turn.session_id, generation.deliveryId, current.runId],
+            )
+          ).rows[0]?.x;
+          if (
+            original &&
+            canonicalJson(original.input) === canonicalJson(generation.input)
+          ) {
+            const data = await readProcessingRun(
+              db,
+              artifacts,
+              scope,
+              current.runId,
+              { limit: "1" },
+              true,
+            );
+            if (
+              data.run.source.kind === "background" &&
+              data.run.source.id === turn.session_id &&
+              data.run.targetDraftId === original.result.draftId &&
+              !taskCompatibilityProblem(
+                { ...current, ...fields, executionPlan: plan },
+                [{ ...data, records: undefined }],
+              )
+            ) {
+              plan = {
+                ...plan!,
+                steps: plan!.steps.map((step, index) =>
+                  index === plan!.current
+                    ? {
+                        ...step,
+                        status: "waiting",
+                        operation: { key: original.key, input: original.input },
+                        receipt: {
+                          key: original.key,
+                          runId: current.runId,
+                          draftId: original.result.draftId,
+                        },
+                      }
+                    : step,
+                ),
+              };
+            }
+          }
+        }
         for (const bound of current.executionPlan?.steps ?? []) {
           if (!bound.operation || bound.status !== "pending") continue;
           const retained = plan?.steps.some(
