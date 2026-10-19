@@ -14348,6 +14348,7 @@ describe("project assistant public contract", () => {
         db = createPool(databaseUrl);
       let lost: ReturnType<typeof vi.spyOn> | undefined;
       let tailReturnedAt = 0;
+      let confirmedContext: ReturnType<typeof vi.spyOn> | undefined;
       try {
         await opt21Session();
         const document = (
@@ -14493,6 +14494,15 @@ describe("project assistant public contract", () => {
               .every(
                 (goal: any) => goal.status === "saved" && goal.savedCount === 5,
               ),
+            JSON.stringify({
+              deliveries: state.task.deliveries,
+              steps: state.task.executionPlan.steps.map((s: any) => ({
+                id: s.id,
+                status: s.status,
+                receipt: s.receipt,
+              })),
+              last: state.turns.at(-1),
+            }),
           ).toBe(true);
           const runId = state.task.runId;
           expect(runId).toBeTruthy();
@@ -14597,6 +14607,12 @@ describe("project assistant public contract", () => {
           ).rows[0].parameters;
           expect(actual.target.id).toBe(run.target_draft_id);
           expect(actual.resultIds).toHaveLength(5);
+          if (count === 2 && index === 0)
+            confirmedContext = vi
+              .spyOn(contextModule, "currentTaskFacts")
+              .mockImplementationOnce(() => {
+                throw new Error("synthetic confirmation context failure");
+              });
           for (let repeat = 0; repeat < 2; repeat++) {
             const confirmed = await app.inject({
               method: "POST",
@@ -14608,6 +14624,23 @@ describe("project assistant public contract", () => {
           }
           await taskModule.collectProcessingEvents(db);
           state = await idle();
+          if (count === 2 && index === 0) {
+            confirmedContext?.mockRestore();
+            expect(state.turns.at(-1).status).toBe("failed");
+            const failedId = state.turns.at(-1).id;
+            await db.query(
+              "UPDATE assistant_session SET task=jsonb_set(task,'{turnBudget,deadlineAt}','0') WHERE id=$1",
+              [sessionId],
+            );
+            state = await opt21End(await opt21Submit("继续执行已保存方案"));
+            expect(state.task.stage, JSON.stringify(state.turns.at(-1))).toBe(
+              "processing",
+            );
+            expect(
+              state.turns.find((item: any) => item.id === failedId).status,
+            ).toBe("failed");
+            expect(modelRequests()).toBe(modelBefore);
+          }
           expect(
             (
               await db.query(
@@ -14674,6 +14707,7 @@ describe("project assistant public contract", () => {
         );
       } finally {
         lost?.mockRestore();
+        confirmedContext?.mockRestore();
         requestedTool = undefined;
         toolSequence = [];
         sessionId = previous;

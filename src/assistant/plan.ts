@@ -260,6 +260,34 @@ export function revisePlan(
   )
     return previous;
   if (!previous && !input.steps && input.executionMode === "execute") return;
+  // Saved deliveries are historical facts. Recompiling unresolved templates
+  // must not erase their bound read/apply receipts when the contract is unchanged.
+  const savedDeliveries = new Set(
+    previous?.contractVersion === 1
+      ? previous.steps
+          .filter(
+            (step) =>
+              step.action === "generate_candidates" &&
+              step.deliveryId &&
+              previous.steps.some(
+                (item) =>
+                  item.deliveryId === step.deliveryId &&
+                  item.action === "request_processing_apply" &&
+                  item.status === "executed" &&
+                  item.receipt?.proposalId,
+              ) &&
+              input.steps?.some(
+                (item) =>
+                  item.action === step.action &&
+                  item.deliveryId === step.deliveryId &&
+                  (item.countKind ?? "new") === (step.countKind ?? "new") &&
+                  canonicalJson(item.input ?? null) ===
+                    canonicalJson(step.input ?? null),
+              ),
+          )
+          .map((step) => step.deliveryId)
+      : [],
+  );
   let prefix = previous?.requirementsKey === requirementsKey;
   const steps =
     (input.steps ?? previous?.steps)?.map((step, index) => {
@@ -345,7 +373,12 @@ export function revisePlan(
             ? { ...prior.input, source: planSource(prior.input.source) }
             : (prior.input ?? null),
         ) === canonicalJson(parameters ?? null);
-      return prefix || committed
+      const saved =
+        prior?.status === "executed" &&
+        prior.action === step.action &&
+        prior.deliveryId === step.deliveryId &&
+        savedDeliveries.has(step.deliveryId);
+      return prefix || committed || saved
         ? {
             ...prior!,
             title: step.title,

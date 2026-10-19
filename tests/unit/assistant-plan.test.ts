@@ -740,3 +740,108 @@ it("OPT29 preserves per-delivery generation receipts and waits for completed res
     ),
   ).toEqual({ name: "A.1.b", outputCount: 50 });
 });
+
+it.each(["saved", "changed", "unconfirmed"])(
+  "OPT31 preserves only unchanged saved delivery history during resume: %s",
+  (variant) => {
+    const generation = {
+      name: "A",
+      outputCount: 5,
+      instructions: "原生成合同",
+      scenarios: ["自然完整问法"],
+      classifications: [],
+    };
+    const old: ExecutionPlan = {
+      mode: "execute",
+      contractVersion: 1,
+      current: 3,
+      requirementsKey: "active-A",
+      steps: [
+        {
+          id: "a-gen",
+          deliveryId: "A",
+          title: "生成A",
+          action: "generate_candidates",
+          input: generation,
+          status: "executed",
+          revision: 1,
+          receipt: { key: "gen", runId: "run-A", draftId: "draft-A" },
+        },
+        {
+          id: "a-read",
+          deliveryId: "A",
+          title: "核对A",
+          action: "read_processing",
+          input: { runId: "run-A" },
+          status: "executed",
+          revision: 1,
+          receipt: { key: "read", runId: "run-A" },
+        },
+        {
+          id: "a-apply",
+          deliveryId: "A",
+          title: "保存A",
+          action: "request_processing_apply",
+          input: { runId: "run-A", target: { kind: "draft", id: "draft-A" } },
+          status: variant === "unconfirmed" ? "waiting" : "executed",
+          revision: 1,
+          receipt: {
+            key: "apply",
+            proposalId: "proposal-A",
+            draftId: "draft-A",
+          },
+        },
+        {
+          id: "b-gen",
+          deliveryId: "B",
+          title: "生成B",
+          action: "generate_candidates",
+          input: { ...generation, name: "B" },
+          status: "pending",
+          revision: 1,
+        },
+      ],
+    };
+    const before = structuredClone(old);
+    const steps = old.steps.map(
+      ({
+        id: _id,
+        status: _status,
+        receipt: _receipt,
+        revision: _revision,
+        ...step
+      }) => ({
+        ...step,
+        ...(step.action === "read_processing" ? { input: undefined } : {}),
+        ...(step.action === "request_processing_apply"
+          ? { input: { target: { kind: "draft" } } }
+          : {}),
+        ...(variant === "changed" &&
+        step.deliveryId === "A" &&
+        step.action === "generate_candidates"
+          ? { input: { ...generation, instructions: "已变更合同" } }
+          : {}),
+      }),
+    );
+    const resumed = revisePlan(
+      old,
+      { executionMode: "execute", steps },
+      2,
+      null,
+      "active-B",
+    )!;
+    if (variant === "saved") {
+      expect(resumed.current).toBe(3);
+      expect(resumed.steps.slice(0, 3)).toEqual(
+        old.steps.slice(0, 3).map((s) => ({ ...s, revision: 2 })),
+      );
+      expect(resumed.steps[3].status).toBe("pending");
+    } else {
+      expect(resumed.steps[1].status).toBe("pending");
+      expect(resumed.steps[1].receipt).toBeUndefined();
+      expect(resumed.steps[2].status).toBe("pending");
+      expect(resumed.steps[2].receipt).toBeUndefined();
+    }
+    expect(old).toEqual(before);
+  },
+);

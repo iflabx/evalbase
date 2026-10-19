@@ -4,6 +4,7 @@ import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
+import { advancePlan } from "./plan.js";
 import { backgroundCatalog } from "./background.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { deliveryProgress, type WorkspaceFacts } from "./workspace.js";
@@ -807,6 +808,39 @@ export async function startTurn(
         ],
       )
     ).rows[0];
+    // Preserve a committed confirmation before a new turn invalidates pending
+    // proposals and requires the remaining plan to be checked again.
+    const priorStep =
+      session.task?.executionPlan?.steps[session.task.executionPlan.current];
+    if (
+      priorStep?.status === "waiting" &&
+      priorStep.action.startsWith("request_") &&
+      priorStep.receipt?.proposalId
+    ) {
+      const committed = (
+        await client.query(
+          "SELECT id,status,receipt FROM assistant_proposal WHERE id=$1 AND session_id=$2 AND project_id=$3 AND actor_id=$4 AND task_revision=$5 AND status='succeeded'",
+          [
+            priorStep.receipt.proposalId,
+            sessionId,
+            scope.projectId,
+            scope.actorId,
+            session.task_revision,
+          ],
+        )
+      ).rows[0];
+      if (committed)
+        session.task = {
+          ...session.task,
+          executionPlan: advancePlan(
+            session.task.executionPlan,
+            "confirmed",
+            committed,
+            priorStep.receipt.key,
+            session.task_revision,
+          ),
+        };
+    }
     const continuing =
       session.task?.goal &&
       (!["complete", "stopped"].includes(session.task.stage) ||
