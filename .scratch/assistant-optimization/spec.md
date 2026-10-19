@@ -1,3 +1,5 @@
+2026-10-19 最新文档：根据已确认的[意图理解调研](../../docs/research/assistant-intent-routing-2026-10-19.md)，新增 [OPT-42 意图入口统一与组合请求执行控制](issues/42-intent-control-and-compound-requests.md)，Implementation not-started。硬前置为OPT-39；与OPT-40/41互不阻塞，原39 → 40 → 41顺序及OPT-31验收依赖保持。详细范围和有限验证只在本票维护。本轮仅写票，未修改应用、4217、验收数据或预算。
+
 2026-10-19 最新文档：根据400条验收后的只读定位，新增 [OPT-39](issues/39-delivery-review-scope-and-continuation.md) 审核归属与续步收尾、[OPT-40](issues/40-generation-boundaries-and-question-dedup.md) 生成边界与同题去重、[OPT-41](issues/41-content-review-evidence-and-budget.md) 核对证据与漏检修复。三票 Implementation not-started，建议39 → 40 → 41；本次仅写票。OPT-31已生成并保存八份共400条，但内容质量未通过，保持in-progress、Owner pending；预算、旧验收数据及已完成部分均保留，边界统一见 [OPT-31衔接](issues/31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。以下有日期的记录保留历史状态。
 
 2026-10-19 最新文档：新增 [OPT-38 背景检索、依据选择与普通重试规划恢复](issues/38-background-retrieval-and-planning-recovery.md)，修复最新普通问法失败链；Implementation not-started。OPT-31 保持 in-progress，增加 OPT-38 前置及入口检查，内容与原八类验收要求保留。本次仅文档，未更新代码、业务数据或 4217；下列实施记录保留历史状态。
@@ -139,6 +141,7 @@ Implementation: in-progress
 | [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | not-started | 仅文档；冻结快照/隔离回归优先，旧计数及审核证据保留 |
 | [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；建议在39之后 | not-started | 仅文档；新配方与旧结果隔离，语义验证合并到41 |
 | [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40 | not-started | 仅文档；固定小样本及请求/时间上限，不重跑400条 |
+| [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | not-started | 仅文档；复用AI SDK，有限短提示验证，旧数据/预算保留 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
