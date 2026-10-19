@@ -1,0 +1,131 @@
+{
+  "actualRows": 200,
+  "reviewed": 200,
+  "identityHashesVerified": 200,
+  "structureValid": 200,
+  "byCategory": [
+    {
+      "category": "A.1.a",
+      "count": 50,
+      "manual": {
+        "conforms": 33,
+        "nonconform": 10,
+        "uncertain": 7
+      },
+      "model": {
+        "conforms": 40,
+        "pending": 10
+      },
+      "modelPassedClearNon": 6,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 0
+    },
+    {
+      "category": "A.1.b",
+      "count": 50,
+      "manual": {
+        "nonconform": 36,
+        "uncertain": 11,
+        "conforms": 3
+      },
+      "model": {
+        "conforms": 47,
+        "nonconforms": 3
+      },
+      "modelPassedClearNon": 33,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 2
+    },
+    {
+      "category": "A.1.c",
+      "count": 50,
+      "manual": {
+        "conforms": 37,
+        "uncertain": 11,
+        "nonconform": 2
+      },
+      "model": {
+        "conforms": 30,
+        "pending": 20
+      },
+      "modelPassedClearNon": 2,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 2
+    },
+    {
+      "category": "A.1.d",
+      "count": 50,
+      "manual": {
+        "conforms": 22,
+        "nonconform": 13,
+        "uncertain": 15
+      },
+      "model": {
+        "conforms": 43,
+        "nonconforms": 1,
+        "pending": 6
+      },
+      "modelPassedClearNon": 10,
+      "exactDuplicates": 0,
+      "questionCollisionRows": 0
+    }
+  ],
+  "code": "ddb0b64d827a429fd7486528b7c2ac519bca4d15",
+  "runtimeWeb": "bdc20cc8da26d8a1b3d834ca1166e06e259fe535",
+  "modelWorker": "ab636038af52ad08f345bfa8aacb40d59ba45073",
+  "target": 400,
+  "saved": 150,
+  "oldBudgetReset": false,
+  "oldFingerprints": {
+    "run": "11241fa84a642ae8d0211b6756041ea7",
+    "budget": "08514bb099d67eb0007c431f4746f7af",
+    "matched": true,
+    "atActualGeneratedRows": 200
+  },
+  "sessionId": "conversation_d99b8b68513349e3b0be4ef93b2bb4a3",
+  "runRequests": [
+    {
+      "runId": "processing_43aafb2e8573400499abd81f4cb4edbb",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 12
+    },
+    {
+      "runId": "processing_169c40a5623045ffb461be0d0c72aa14",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 11
+    },
+    {
+      "runId": "processing_069623585cd84f90890615475dba01ef",
+      "parent": null,
+      "status": "succeeded",
+      "count": 50,
+      "requests": 13
+    },
+    {
+      "runId": "processing_68a804558cc344f78d75c78e170b69be",
+      "parent": null,
+      "status": "failed",
+      "count": 46,
+      "requests": 11
+    },
+    {
+      "runId": "processing_611e39b060a745a2acc995e06ff8ac69",
+      "parent": "processing_68a804558cc344f78d75c78e170b69be",
+      "status": "succeeded",
+      "count": 4,
+      "requests": 2
+    }
+  ],
+  "blockers": [
+    "Container image builds stalled twice in legacy builder and once on local runtime FROM; own clients stopped, no service restart/cutover",
+    "Fourth class bounded completion has 50 actual candidates but latest receipt recovery ddb0b64 not deployed; 50 unsaved",
+    "E-H not started; 400-row and 8-confirmation gates not met",
+    "Real semantic review misses remain; generated/saved not equal usable",
+    "Preflight one-goal-to-eight-goal correction failed; preserved without generation"
+  ],
+  "directedTests": 91
+}
