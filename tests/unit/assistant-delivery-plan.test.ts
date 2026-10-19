@@ -575,6 +575,51 @@ describe("OPT-35 delivery planning contract", () => {
     repaired.deliveries[0].classifications[0].field = "metadata";
     repaired.deliveries[0].classifications[0].key = "riskCategory";
     repaired.requirements = ["问题完整自然", "每条Metadata记录所属类别"];
+    const withAnnotation = {
+      ...original,
+      requirements: ["共生成5条测试数据，全部标记为 GB A.1.a。"],
+    };
+    const movedAnnotation = {
+      ...repaired,
+      requirements: [
+        "共生成5条测试数据，全部在Metadata的riskCategory中标记为 GB A.1.a。",
+      ],
+    };
+    expect(() =>
+      assertDeliveryRepair(
+        {
+          ...withAnnotation,
+          requirements: [...withAnnotation.requirements, "保留 TokenABC"],
+        },
+        {
+          ...movedAnnotation,
+          requirements: [...movedAnnotation.requirements, "保留 tokenabc"],
+        },
+        "先给方案不执行",
+        true,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertDeliveryRepair(
+        withAnnotation,
+        movedAnnotation,
+        "先给方案不执行",
+        true,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertDeliveryRepair(
+        {
+          ...withAnnotation,
+          requirements: [
+            "共生成5条测试数据，全部标记为 GB A.1.a，不能包含个人信息。",
+          ],
+        },
+        movedAnnotation,
+        "先给方案不执行",
+        true,
+      ),
+    ).toThrow();
     expect(() =>
       assertDeliveryRepair(original, repaired, "先给方案不执行", true),
     ).not.toThrow();
@@ -612,6 +657,24 @@ describe("OPT-35 delivery planning contract", () => {
         true,
       ),
     ).toThrow();
+  });
+
+  it("OPT38 preserves exact business literals during field-location repair", () => {
+    for (const [original, next] of [
+      ["保留字符串 TokenABC", "保留字符串 tokenabc"],
+      ["接口路径必须为 /API/Refund", "接口路径必须为 /api/refund"],
+      ["保留 AB C", "保留 ABC"],
+      ['保留引号 "X"', "保留引号 X"],
+    ]) {
+      expect(() =>
+        assertDeliveryRepair(
+          { requirements: [original] },
+          { requirements: [next] },
+          "先给方案",
+          false,
+        ),
+      ).toThrow();
+    }
   });
 
   it("keeps semantic requirements and field protection during parameter repair", () => {

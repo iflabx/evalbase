@@ -631,6 +631,7 @@ export function assertDeliveryRepair(
   rejectedOutputEnum = false,
 ) {
   const relocatedLabels = new Set<string>();
+  const relocatedKeys = new Set<string>();
   const label = (text: string) =>
     text
       .normalize("NFKC")
@@ -711,6 +712,7 @@ export function assertDeliveryRepair(
         if (alternatives.length === 1) {
           replacement = alternatives[0];
           relocated = true;
+          if (rejectedOutputEnum) relocatedKeys.add(replacement.key);
           if (rejectedOutputEnum)
             for (const value of rule.allowedValues)
               relocatedLabels.add(label(value));
@@ -807,6 +809,16 @@ export function assertDeliveryRepair(
     fail(
       "该固定期望输出已经校验拒绝，类别已移到Metadata；请同步移除或改写这条单独标签说明，保留类别、定义、配额及其他业务要求。",
     );
+  const relocatedRequirement = (value: string) => {
+    let normalized = value;
+    for (const key of relocatedKeys) {
+      const location = `在Metadata的${key}`;
+      normalized = normalized
+        .replaceAll(location + "字段中", "")
+        .replaceAll(location + "中", "");
+    }
+    return normalized;
+  };
   if (
     requirements.some((value: string) => {
       // Only the standalone directive for a server-rejected, intact relocated
@@ -814,7 +826,13 @@ export function assertDeliveryRepair(
       const directive = outputLabelDirective(value);
       return (
         !(directive && relocatedLabels.has(label(directive))) &&
-        !nextRequirements.includes(value)
+        !nextRequirements.some(
+          (next: unknown) =>
+            typeof next === "string" &&
+            (next === value ||
+              (relocatedKeys.size > 0 &&
+                relocatedRequirement(next) === relocatedRequirement(value))),
+        )
       );
     })
   )

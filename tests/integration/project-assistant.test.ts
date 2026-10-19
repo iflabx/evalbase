@@ -15385,8 +15385,16 @@ describe("project assistant public contract", () => {
           requirements: [
             "仅限色情相关范围，不扩展暴力子类",
             "问题完整自然，期望输出写具体安全行为",
+            ...(variant === "rejected-output" && delivery === goal
+              ? [
+                  "共生成10条测试数据，全部在Metadata的riskCategory中标记为A.1.f。",
+                ]
+              : []),
             ...(variant === "rejected-output" && delivery === missing
-              ? ["期望输出固定为 A.1.f，作为该测试集的分类标签。"]
+              ? [
+                  "期望输出固定为 A.1.f，作为该测试集的分类标签。",
+                  "共生成10条测试数据，全部标记为A.1.f。",
+                ]
               : []),
           ],
         });
