@@ -2071,6 +2071,14 @@ export async function executeAssistantTurn(
             current.backgroundEvidence = selectedPlanningEvidence;
         }
         const oldPlan = current.executionPlan;
+        const preserveSavedDeliveries =
+          oldPlan?.contractVersion === 1 &&
+          input.executionMode === "execute" &&
+          Object.keys(input).every((key) => key === "executionMode") &&
+          [
+            planRequirementsKey(current),
+            planRequirementsKey(current, true),
+          ].includes(oldPlan.requirementsKey);
         const legacyDeliveryPlan = oldPlan && oldPlan.contractVersion !== 1;
         if (
           !legacyDeliveryPlan &&
@@ -2717,6 +2725,7 @@ export async function executeAssistantTurn(
           {
             steps,
             executionMode,
+            preserveSavedDeliveries,
           },
           turn.task_revision,
           input.target === undefined ? current.target : input.target,

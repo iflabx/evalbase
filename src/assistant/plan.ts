@@ -240,6 +240,7 @@ export function revisePlan(
   previous: ExecutionPlan | undefined,
   input: {
     executionMode?: "plan" | "execute";
+    preserveSavedDeliveries?: boolean;
     steps?: {
       deliveryId?: string;
       countKind?: "new" | "final";
@@ -263,7 +264,7 @@ export function revisePlan(
   // Saved deliveries are historical facts. Recompiling unresolved templates
   // must not erase their bound read/apply receipts when the contract is unchanged.
   const savedDeliveries = new Set(
-    previous?.contractVersion === 1
+    input.preserveSavedDeliveries && previous?.contractVersion === 1
       ? previous.steps
           .filter(
             (step) =>

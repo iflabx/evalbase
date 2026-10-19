@@ -741,7 +741,7 @@ it("OPT29 preserves per-delivery generation receipts and waits for completed res
   ).toEqual({ name: "A.1.b", outputCount: 50 });
 });
 
-it.each(["saved", "changed", "unconfirmed"])(
+it.each(["saved", "changed", "unconfirmed", "shared"])(
   "OPT31 preserves only unchanged saved delivery history during resume: %s",
   (variant) => {
     const generation = {
@@ -825,7 +825,11 @@ it.each(["saved", "changed", "unconfirmed"])(
     );
     const resumed = revisePlan(
       old,
-      { executionMode: "execute", steps },
+      {
+        executionMode: "execute",
+        steps,
+        preserveSavedDeliveries: variant !== "shared",
+      },
       2,
       null,
       "active-B",
