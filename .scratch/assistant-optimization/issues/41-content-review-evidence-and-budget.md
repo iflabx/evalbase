@@ -1,10 +1,10 @@
 # OPT-41 内容核对证据、漏检修复与预算内审核
 
 Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-39, OPT-40
+Implementation: completed
+Blocked by: none
 
-优先级：P1。消费 [OPT-39](39-delivery-review-scope-and-continuation.md) 的交付归属与状态、[OPT-40](40-generation-boundaries-and-question-dedup.md) 的生成合同与问题碰撞规则，集中完成三票的有限语义验证。当前仅授权文档。产品依据：[PRD §7.4](../../../docs/PRD-data-selection-and-assistant.md#74-审核与确认)、[内容审核词汇](../../../CONTEXT.md#助手整改领域词汇)；沿用 [OPT-31](31-rewrite-effectiveness-and-quality.md) 的一次局部修复及既有固定确认。
+优先级：P1。消费 [OPT-39](39-delivery-review-scope-and-continuation.md) 的交付归属与状态、[OPT-40](40-generation-boundaries-and-question-dedup.md) 的生成合同与问题碰撞规则，集中完成三票的有限语义验证。Owner于2026-10-20授权开发、定向验证与有上限的小样本语义验证；实现和完整失败/验证结果见[记录](../opt41-verification.md)，Owner人工验收pending。产品依据：[PRD §7.4](../../../docs/PRD-data-selection-and-assistant.md#74-审核与确认)、[内容审核词汇](../../../CONTEXT.md#助手整改领域词汇)；沿用 [OPT-31](31-rewrite-effectiveness-and-quality.md) 的一次局部修复及既有固定确认。
 
 ## 原因与证据边界
 
@@ -75,5 +75,7 @@ Blocked by: OPT-39, OPT-40
 数据、原预算与 OPT-31 门槛见 [共同约束](31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。本票通过只证明修复及明确范围的小样本结果；原 400 条质量结论、全部失败与 Owner pending 保持，不得代签全量可用。
 
 ## Comments
+
+- 2026-10-20：Implementation completed；应用代码e961ea1，69个不同定向用例通过。真实24条固定审核及6条生成共10次模型请求/60712ms，达到预定门槛；仍有5条依据不足判不符、2条待核对，首次失败与F5错误放行保留，详见[完整验证](../opt41-verification.md)。新会话普通提示已到固定确认，未保存。旧400/248条、原预算和质量未通过结论保持；4217未切换，未合并/推送，Owner pending。
 
 - 2026-10-19：基于已确认的 77 条漏检、36 条未核对和缺失修复诊断创建；Implementation not-started、Owner pending。当前仅写票，未消耗任何模型或验收预算。

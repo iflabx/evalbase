@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "fixtureHash": "b9dca7effa712c9c7a7589c4244d357009809d97850b1abf2f9b0e63f8f6d175",
+  "limits": {
+    "distinctSamples": 30,
+    "requests": 12,
+    "activeMs": 600000
+  },
+  "codeRevisions": [
+    "12ed805d8808250c803e2687d0283cc2fe88782f",
+    "bfde2ad9d37b86dc210f001f1caf49cf17ee8acc",
+    "e961ea12165a05943ae04058f4f8a1959c2bd1db"
+  ],
+  "model": {
+    "name": "测试 Qwen",
+    "model": "qwen-new",
+    "revision": 2
+  },
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "databaseName": "opt41_956ba65a34cb4d598a0de92b49590d40",
+  "calls": [
+    {
+      "index": 1,
+      "code": "12ed805d8808250c803e2687d0283cc2fe88782f",
+      "startedAt": "2026-10-20T02:52:20.015Z",
+      "durationMs": 12667,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    },
+    {
+      "index": 2,
+      "code": "12ed805d8808250c803e2687d0283cc2fe88782f",
+      "startedAt": "2026-10-20T02:52:32.714Z",
+      "durationMs": 3921,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    },
+    {
+      "index": 3,
+      "code": "bfde2ad9d37b86dc210f001f1caf49cf17ee8acc",
+      "startedAt": "2026-10-20T02:54:55.943Z",
+      "durationMs": 6670,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    },
+    {
+      "index": 4,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:01:02.072Z",
+      "durationMs": 2207,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    },
+    {
+      "index": 5,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:01:35.391Z",
+      "durationMs": 15476,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    },
+    {
+      "index": 6,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:01:50.898Z",
+      "durationMs": 4006,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    },
+    {
+      "index": 7,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:08:11.208Z",
+      "durationMs": 645,
+      "limitMs": 60000,
+      "purpose": "assistant",
+      "httpStatus": 200
+    },
+    {
+      "index": 8,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:08:11.930Z",
+      "durationMs": 2404,
+      "limitMs": 60000,
+      "purpose": "assistant",
+      "httpStatus": 200
+    },
+    {
+      "index": 9,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:08:23.688Z",
+      "durationMs": 1674,
+      "limitMs": 60000,
+      "purpose": "generation",
+      "httpStatus": 200
+    },
+    {
+      "index": 10,
+      "code": "e961ea12165a05943ae04058f4f8a1959c2bd1db",
+      "startedAt": "2026-10-20T03:08:25.411Z",
+      "durationMs": 11042,
+      "limitMs": 60000,
+      "purpose": "content_review",
+      "httpStatus": 200
+    }
+  ],
+  "activeMs": 60712,
+  "blocked": 0,
+  "createdAt": "2026-10-20T02:52:18.928Z",
+  "projectId": "project_6b89fbfda93c407f94cd0612a2d332e9",
+  "sessionId": "conversation_00a7b944a0a34a9ab4619f93b9de4c32",
+  "documentId": "background_e045b74c8c8447b1a3599e76933bd697"
+}

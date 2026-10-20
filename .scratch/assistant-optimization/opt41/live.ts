@@ -506,16 +506,38 @@ const call = (method: "GET" | "POST", url: string, payload?: any) =>
     ...(payload === undefined ? {} : { payload }),
   });
 if (!state.projectId) {
-  state.projectId = (
-    await call("POST", "/api/projects", { name: "OPT41小样本语义验收" })
-  ).json().project.id;
-  state.sessionId = (
-    await call(
-      "POST",
-      "/api/projects/" + state.projectId + "/assistant/sessions",
-      {},
-    )
-  ).json().session.id;
+  const prior = (
+    await db.query("SELECT id FROM project WHERE name=$1", [
+      "OPT41小样本语义验收",
+    ])
+  ).rows;
+  assert(prior.length <= 1);
+  state.projectId =
+    prior[0]?.id ??
+    (
+      await call("POST", "/api/projects", { name: "OPT41小样本语义验收" })
+    ).json().project.id;
+  persist();
+}
+if (!state.sessionId) {
+  const prior = (
+    await db.query("SELECT id FROM assistant_session WHERE project_id=$1", [
+      state.projectId,
+    ])
+  ).rows;
+  assert(prior.length <= 1);
+  state.sessionId =
+    prior[0]?.id ??
+    (
+      await call(
+        "POST",
+        "/api/projects/" + state.projectId + "/assistant/sessions",
+        {},
+      )
+    ).json().sessionId;
+  persist();
+}
+if (!state.documentId) {
   const uploaded = await call(
     "POST",
     "/api/projects/" +
@@ -534,6 +556,7 @@ if (!state.projectId) {
   state.documentId = uploaded.json().document.id;
   persist();
 }
+
 async function snapshot() {
   const session = (
     await call(
