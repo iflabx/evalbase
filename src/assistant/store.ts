@@ -600,6 +600,7 @@ export async function startTurn(
   candidateSelection?: unknown,
   expectedTaskRevision?: unknown,
   artifacts?: ArtifactRepository,
+  operation?: unknown,
 ) {
   if (
     expectedTaskRevision !== undefined &&
@@ -614,6 +615,13 @@ export async function startTurn(
     typeof text !== "string" ||
     !text.trim() ||
     text.length > 4000
+  )
+    throw new AssistantError(422, "assistant_message_invalid");
+  if (
+    operation !== undefined &&
+    (!["execute_plan", "resume"].includes(String(operation)) ||
+      typeof operation !== "string" ||
+      expectedTaskRevision === undefined)
   )
     throw new AssistantError(422, "assistant_message_invalid");
   let page: Dependency | undefined;
@@ -704,7 +712,13 @@ export async function startTurn(
   const requestHash =
     expectedTaskRevision === undefined
       ? legacyRequestHash
-      : sha256(canonicalJson({ legacyRequestHash, expectedTaskRevision }));
+      : sha256(
+          canonicalJson({
+            legacyRequestHash,
+            expectedTaskRevision,
+            ...(operation ? { operation } : {}),
+          }),
+        );
   await readSession(db, scope, sessionId);
   let prepared:
       | {
@@ -795,6 +809,21 @@ export async function startTurn(
       ).includes((candidateSelection as { runId: string }).runId)
     )
       throw new AssistantError(409, "assistant_candidate_selection_changed");
+    if (operation) {
+      await assistantAccess(client, scope, true);
+      const task = session.task;
+      if (
+        !task?.executionPlan?.steps?.length ||
+        task.question ||
+        task.requirementProblem ||
+        task.planValidationRequired ||
+        (operation === "resume"
+          ? !task.executionPaused
+          : task.executionPlan.mode !== "plan" ||
+            task.executionPlan.needsReview)
+      )
+        throw new AssistantError(409, "assistant_plan_revalidation_required");
+    }
     const turns = (
       await client.query(
         "SELECT status,dependencies,requires_write FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id",
@@ -880,53 +909,11 @@ export async function startTurn(
           ),
         };
     }
-    const continuing =
-      session.task?.goal &&
-      (!["complete", "stopped"].includes(session.task.stage) ||
-        (session.task.stage === "stopped" &&
-          Array.isArray(candidateSelection?.resultIds) &&
-          candidateSelection.resultIds.length > 0));
+    const continuing = Boolean(session.task?.goal);
     const task: Record<string, any> = continuing
       ? {
           ...session.task,
           supplements: [...(session.task.supplements ?? []), text.trim()],
-          stage: "inspecting",
-          error: null,
-          budgetCheckpoint: null,
-          ...(session.task.executionPlan
-            ? {
-                nextAction: null,
-                review: null,
-                checkedStatus: null,
-                executionPlan: {
-                  ...session.task.executionPlan,
-                  needsReview: true,
-                  steps: session.task.executionPlan.steps.map(
-                    (step: {
-                      action: string;
-                      title: string;
-                      status: string;
-                      deliveryId?: string;
-                      countKind?: "new" | "final";
-                    }) =>
-                      step.status === "waiting" &&
-                      step.action.startsWith("request_")
-                        ? {
-                            title: step.title,
-                            action: step.action,
-                            ...(step.deliveryId
-                              ? { deliveryId: step.deliveryId }
-                              : {}),
-                            ...(step.countKind
-                              ? { countKind: step.countKind }
-                              : {}),
-                            status: "pending",
-                          }
-                        : step,
-                  ),
-                },
-              }
-            : {}),
           autoCount: session.task.autoCount,
         }
       : {
@@ -946,6 +933,34 @@ export async function startTurn(
             : {}),
           ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
         };
+    task.turnControl = {
+      turnId: turn.id,
+      taskRevision: turn.task_revision,
+      source: "pending",
+    };
+    // A new revision invalidates only uncommitted confirmation cards. Restore
+    // their pending preparation; committed receipts above remain historical facts.
+    if (task.executionPlan)
+      task.executionPlan = {
+        ...task.executionPlan,
+        steps: task.executionPlan.steps.map((step: Record<string, any>) => {
+          if (step.status !== "waiting" || !step.action.startsWith("request_"))
+            return step;
+          const pending = { ...step };
+          delete pending.receipt;
+          delete pending.operation;
+          delete pending.revision;
+          return { ...pending, status: "pending" };
+        }),
+      };
+    if (operation)
+      task.turnControl = {
+        mode: "execute",
+        source: "ui",
+        turnId: turn.id,
+        taskRevision: turn.task_revision,
+        updateSaved: true,
+      };
     if (candidateSelection !== undefined)
       task.selectedCandidates = prepared?.selection ?? candidateSelection;
     await client.query(

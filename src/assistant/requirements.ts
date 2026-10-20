@@ -385,6 +385,7 @@ export function reviseDeliveryRequirements(
   current: Requirements,
   input: Record<string, any>,
   userText: string,
+  replaceSemantics = false,
 ) {
   const affirmative = (text: string) =>
     /(?:取消|撤销|删除|去掉|不再|改为|改成|调整|允许|可以|可修改)/u.test(
@@ -457,12 +458,16 @@ export function reviseDeliveryRequirements(
         "本轮未明确扩大 Metadata 字段范围，原保护保持。",
       );
   return {
-    requirements: normalizedRequirements([
-      ...(current.requirements ?? []).filter(
-        (value) => !removed.includes(value),
-      ),
-      ...(input.requirements ?? []),
-    ]),
+    requirements: normalizedRequirements(
+      replaceSemantics && input.requirements !== undefined
+        ? input.requirements
+        : [
+            ...(current.requirements ?? []).filter(
+              (value) => !removed.includes(value),
+            ),
+            ...(input.requirements ?? []),
+          ],
+    ),
   };
 }
 

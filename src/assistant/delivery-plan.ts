@@ -446,12 +446,14 @@ export function reviseDeliveryGoals(
   current: DeliveryGoal[],
   changes: DeliveryChange[] | undefined,
   userText: string,
+  amendCounts = false,
 ): DeliveryGoal[] {
   if (changes && (!Array.isArray(changes) || !changes.length))
     fail("交付目标不能为空；省略表示保持，取消已有交付须明确指定该项。");
-  const scalarCount = current.length
-    ? explicitRequirementCount(userText, current[0].countKind)
-    : undefined;
+  const scalarCount =
+    !amendCounts && current.length
+      ? explicitRequirementCount(userText, current[0].countKind)
+      : undefined;
   if (scalarCount && current.length > 1)
     fail(
       "当前有多份交付，单个目标数量的指向不明确；请说明每份数量或整体数量，原方案保持。",
@@ -523,6 +525,7 @@ export function reviseDeliveryGoals(
       );
     if (!positive(candidate.count)) fail("每份交付数量须为1至10000的整数。");
     if (
+      !amendCounts &&
       prior &&
       candidate.countKind !== prior.countKind &&
       scalarCount?.countKind !== candidate.countKind &&
@@ -541,6 +544,7 @@ export function reviseDeliveryGoals(
     )
       fail("本轮未改变新增或最终数量的含义，原数量约定保持。");
     if (
+      !amendCounts &&
       prior &&
       candidate.count !== prior.count &&
       scalarCount?.targetCount !== candidate.count &&
@@ -601,10 +605,11 @@ export function reviseDeliveryGoals(
       goals[goals.findIndex((goal) => goal.id === prior.id)] = candidate;
     else goals.push(candidate);
   }
-  const count: { each?: number; overall?: number } | undefined = current.length
-    ? (changedCount(userText) ??
-      (scalarCount ? { each: scalarCount.targetCount } : undefined))
-    : undefined;
+  const count: { each?: number; overall?: number } | undefined =
+    !amendCounts && current.length
+      ? (changedCount(userText) ??
+        (scalarCount ? { each: scalarCount.targetCount } : undefined))
+      : undefined;
   if (count) {
     const unequal =
       count.overall !== undefined &&

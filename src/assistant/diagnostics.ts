@@ -43,6 +43,13 @@ export function assistantFailure(
       "模型回复超过接口容量上限。",
       "核对保留成果后减少本轮输出范围再试。",
     );
+  if (code === "assistant_intent_required")
+    return result(
+      "business",
+      "intent_not_ready",
+      "本轮操作或要求尚未核对完成，未开始新的处理。",
+      "已有成果保留。请说明要继续调整、只看方案还是开始执行；无需填写内部参数。",
+    );
   if (code === "assistant_background_required")
     return result(
       "business",

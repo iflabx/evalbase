@@ -1,4 +1,15 @@
 import {
+  turnControlSchema,
+  validControl,
+  restoredDecision,
+  mayExecute,
+  continuationAllowed,
+  intentTools,
+  legacyExecute,
+  readTools,
+  type TurnDecision,
+} from "./intent.js";
+import {
   hasNoEffect,
   unresolvedFailure,
   reconcileExecutionConfirmations,
@@ -411,22 +422,109 @@ export async function executeAssistantTurn(
   let protocolRepair = false;
   let requirementRepair = false;
   let recordingRequirements = false;
-  let requirementsSaved = false;
   let requirementsOnlySaved = false;
   let requirementInputCorrections = 0;
-  const requirementsOnly =
-    turn.event === "user" &&
-    /(?:先不执行|先不要执行|暂不执行|只记录要求|只保存要求)[。！!\s]*$/u.test(
-      turn.user_text,
-    );
+  let decision: TurnDecision | undefined;
+  let requirementsOnly = false;
   let documentPlanning = false;
   let planningRequestTurnId = turn.id;
   let planningRequestText = turn.event === "user" ? turn.user_text : "";
   let planningDocumentsKey: string | undefined;
-  const planningIntent =
-    /(?:先|只)(?:帮我)?(?:给|出|写|做|设计|规划|制定).{0,6}(?:方案|计划)|(?:先|只)(?:帮我)?规划/u;
-  const planningRetry =
-    /^(?:请(?:你)?|麻烦(?:你)?)?(?:继续|重试|重新)(?:一下|一次|刚才的)?(?:规划|方案|计划)?[。！!]?$/u;
+  async function acceptControl(value: unknown, current: Record<string, any>) {
+    if (value !== undefined) {
+      if (!validControl(value))
+        throw new AssistantError(
+          422,
+          "assistant_intent_required",
+          "本轮操作方式不完整，请结合用户要求重新判断；不要执行旧计划。",
+        );
+      if (
+        decision &&
+        canonicalJson({
+          mode: decision.mode,
+          requiresUpdate: Boolean(decision.requiresUpdate),
+          pauseFirst: Boolean(decision.pauseFirst),
+        }) !==
+          canonicalJson({
+            mode: value.mode,
+            requiresUpdate: Boolean(value.requiresUpdate),
+            pauseFirst: Boolean(value.pauseFirst),
+          })
+      )
+        throw new AssistantError(
+          422,
+          "assistant_intent_required",
+          "参数纠正不能改变本轮操作授权。",
+        );
+      if (!decision) {
+        if (turn.event !== "user")
+          throw new AssistantError(422, "assistant_plan_only");
+        await assistantAccess(db, scope, value.mode !== "query");
+        decision = {
+          ...value,
+          source: "model",
+          turnId: turn.id,
+          taskRevision: turn.task_revision,
+          updateSaved: !value.requiresUpdate,
+        };
+        requirementsOnly = value.mode === "plan" || value.mode === "pause";
+        recordingRequirements = Boolean(value.requiresUpdate);
+        documentPlanning =
+          value.mode === "plan" &&
+          Boolean(context.state.backgroundDocuments?.length);
+        await updateTask(db, turn, {
+          turnControl: decision,
+          ...(requirementsOnly || value.pauseFirst
+            ? {
+                executionPaused: true,
+                stage: "waiting_input",
+                nextAction: null,
+              }
+            : {}),
+        });
+        if (documentPlanning) {
+          const pending = current.planningRecovery;
+          if (
+            pending &&
+            ((pending.documentsKey &&
+              pending.documentsKey !== planningDocumentsKey) ||
+              pending.evidenceKey !==
+                sha256(canonicalJson(current.backgroundEvidence ?? [])) ||
+              pending.taskRevision !== turn.task_revision - 1)
+          )
+            throw new AssistantError(
+              409,
+              "assistant_plan_revalidation_required",
+            );
+          planningRequestTurnId =
+            pending?.requestTurnId ?? pending?.turnId ?? turn.id;
+          planningRequestText = [
+            current.goal,
+            ...(current.supplements ?? []),
+            turn.user_text,
+          ]
+            .filter(Boolean)
+            .join("\n");
+        }
+        if (
+          (value.mode === "pause" && !value.requiresUpdate) ||
+          (value.mode === "query" && value.explanation)
+        )
+          waitingForInput = true;
+        if (value.explanation)
+          await updateTurn(
+            "UPDATE assistant_turn SET assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
+            [turn.id, value.explanation],
+          );
+      }
+    }
+    if (!decision)
+      throw new AssistantError(
+        422,
+        "assistant_intent_required",
+        "先按本轮用户要求保存plan_task.control；纯查询可直接只读回答，不执行旧方案。",
+      );
+  }
   async function backgroundReadReceipts() {
     const rows = (
       await db.query(
@@ -509,6 +607,7 @@ export async function executeAssistantTurn(
     source: Record<string, any>,
     configuration: Record<string, any>,
     reselect = false,
+    access: "read" | "write" = "write",
   ) {
     const saved = (
       await db.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -534,7 +633,7 @@ export async function executeAssistantTurn(
       db,
       scope,
       { source, limit: 10000 },
-      "write",
+      access,
       true,
     );
     let selection: ReturnType<
@@ -622,7 +721,21 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v1",
-      promptVersion: "assistant-prompt-v14",
+      promptVersion: "assistant-prompt-v15",
+      intent: decision
+        ? {
+            mode: decision.mode,
+            source: decision.source,
+            requiresUpdate: Boolean(decision.requiresUpdate),
+            updateSaved: decision.updateSaved,
+            pauseFirst: Boolean(decision.pauseFirst),
+            reasonCode: `turn_${decision.mode}`,
+          }
+        : {
+            mode: "unresolved",
+            source: "none",
+            reasonCode: "intent_not_recorded",
+          },
       requirementsReconciled: requirementRepair,
       toolsVersion: "assistant-tools-v12",
       parameterRepairVersion: "arguments-v3",
@@ -851,7 +964,7 @@ export async function executeAssistantTurn(
     }
     if (
       latest?.status !== "succeeded" ||
-      latest.input?.executionMode !== "plan" ||
+      (latest.input?.executionMode !== "plan" && decision?.mode !== "plan") ||
       !(
         latest.input?.steps?.length ||
         latest.input?.deliveries?.length ||
@@ -1064,10 +1177,16 @@ export async function executeAssistantTurn(
           if (!exhaustedTaskTools) toolCalls++;
           abortSignal.throwIfAborted();
           await saveBudget();
+          const queryControlOnly =
+            name === "plan_task" &&
+            validControl(input.control) &&
+            input.control.mode === "query" &&
+            Object.keys(input).every((key) => key === "control");
           if (
-            !["query_project", "read_records", "read_background"].includes(
-              name,
-            ) ||
+            (!queryControlOnly &&
+              !["query_project", "read_records", "read_background"].includes(
+                name,
+              )) ||
             (name === "query_project" && input.kind === "drafts") ||
             (name === "read_records" && input.source?.kind === "draft")
           ) {
@@ -1151,6 +1270,56 @@ export async function executeAssistantTurn(
                 409,
                 "assistant_retry_parameters_changed",
               );
+            if (name === "plan_task") {
+              await acceptControl(input.control, currentTask);
+              if (
+                decision?.mode === "execute" &&
+                Object.keys(input).some(
+                  (field) =>
+                    ![
+                      "control",
+                      "executionMode",
+                      "nextAction",
+                      "question",
+                    ].includes(field),
+                )
+              ) {
+                decision = {
+                  ...decision,
+                  requiresUpdate: true,
+                  updateSaved: false,
+                };
+                recordingRequirements = true;
+                await updateTask(db, turn, { turnControl: decision });
+              }
+            }
+            if (
+              name !== "plan_task" &&
+              !readTools.includes(name) &&
+              !mayExecute(decision)
+            )
+              throw new AssistantError(
+                422,
+                "assistant_intent_required",
+                "本轮尚未明确执行或要求尚未保存。先按用户原意保存plan_task.control，不沿用旧计划执行；查询只读，修改成功后才能继续。",
+              );
+            if (
+              name !== "plan_task" &&
+              !readTools.includes(name) &&
+              unresolvedFailure(
+                (
+                  await db.query(
+                    "SELECT tool_results FROM assistant_turn WHERE id=$1",
+                    [turn.id],
+                  )
+                ).rows[0].tool_results,
+              )?.name === "plan_task"
+            )
+              throw new AssistantError(
+                422,
+                "assistant_intent_required",
+                "本轮要求尚未通过校验，先完成要求更新；不能按旧参数执行。",
+              );
             if (referenceError) throw referenceError;
             if (
               name === "submit_processing" &&
@@ -1202,6 +1371,7 @@ export async function executeAssistantTurn(
                 `当前步骤「${step?.title ?? "已完成方案"}」与请求动作不一致。请先修正未执行的方案步骤，再继续；已有成果保留。`,
               );
             if (
+              mayExecute(decision) &&
               step?.action === name &&
               plan.mode === "execute" &&
               !plan.needsReview
@@ -1493,15 +1663,36 @@ export async function executeAssistantTurn(
               await updateTask(db, turn, { nextAction: null, question: null });
               plannedAction = undefined;
             }
-            if (!(name === "plan_task" && (completionValue as any).unchanged))
+            if (
+              name === "plan_task" &&
+              decision?.requiresUpdate &&
+              Object.keys(input).some(
+                (field) =>
+                  ![
+                    "control",
+                    "executionMode",
+                    "nextAction",
+                    "question",
+                  ].includes(field),
+              ) &&
+              !(completionValue as any).unchanged &&
+              !(completionValue as any).task?.question
+            ) {
+              decision = { ...decision, updateSaved: true };
+              recordingRequirements = false;
+              if (decision.mode === "pause") waitingForInput = true;
+              await updateTask(db, turn, { turnControl: decision });
+            }
+            if (
+              !(name === "plan_task" && (completionValue as any).unchanged) &&
+              (name === "plan_task" || mayExecute(decision))
+            )
               await settlePlan(
                 name,
                 completionValue as Record<string, any>,
                 key,
                 input,
               );
-            if (name === "plan_task" && input.requirements?.length)
-              requirementsSaved = true;
             if (
               requirementsOnly &&
               name === "plan_task" &&
@@ -1522,7 +1713,7 @@ export async function executeAssistantTurn(
             if (
               documentPlanning &&
               name === "plan_task" &&
-              input.executionMode === "plan" &&
+              (input.executionMode === "plan" || decision?.mode === "plan") &&
               (input.steps?.length ||
                 input.deliveries?.length ||
                 (completionValue as any).task?.executionPlan
@@ -1733,8 +1924,9 @@ export async function executeAssistantTurn(
   const tools = {
     plan_task: businessTool(
       "plan_task",
-      "文档生成方案通过deliveries提交独立集合，每项count和classifications配额属于该集合，不将类别自动拆成多份。新增集合提供name、count、instructions、scenarios、classifications，省略id；修改已保存集合使用真实id及变化字段，未列集合保持。服务端编译步骤并返回真实摘要，不填写steps/targetCount/overallTargetCount或未创建对象引用。共同要求放requirements；分类依据已读取definitions，缺失时先读取，不猜ID或用空分类绕过用户要求。只给方案用plan，明确执行已有方案只需executionMode:execute。暂停或纯解释用nextAction:none，question仅用于真实业务澄清。历史非deliveries合同才使用steps与原targetCount/classifications：input按对应工具参数，未确定的未来引用省略，启用时省略steps保持原参数，不复制状态、回执或ID。局部修改已有候选用refine_candidates；只改数量用select_candidates。方案不增加权限，核对不等于采用，采用和发布仍由既有确认执行。",
+      "文档生成方案通过deliveries提交独立集合，每项count和classifications配额属于该集合，不将类别自动拆成多份。新增集合提供name、count、instructions、scenarios、classifications，省略id；修改已保存集合使用真实id及变化字段，未列集合保持。服务端编译步骤并返回真实摘要，不填写steps/targetCount/overallTargetCount或未创建对象引用。共同要求放requirements；分类依据已读取definitions，缺失时先读取，不猜ID或用空分类绕过用户要求。只给方案用plan，明确执行已有方案只需executionMode:execute。操作由control表达：query只查询；plan只规划/修改不执行；execute明确执行；pause暂停。组合修改设requiresUpdate:true，更新成功前不能执行。先暂停后修改须先单独保存control:{mode:pause,pauseFirst:true,requiresUpdate:true}再保存修改；query不暂停旧任务。question仅用于真实业务澄清。历史非deliveries合同才使用steps与原targetCount/classifications：input按对应工具参数，未确定的未来引用省略，启用时省略steps保持原参数，不复制状态、回执或ID。局部修改已有候选用refine_candidates；只改数量用select_candidates。方案不增加权限，核对不等于采用，采用和发布仍由既有确认执行。",
       {
+        control: turnControlSchema,
         deliveries: { type: "array", maxItems: 10, items: { type: "object" } },
         removeRequirements: {
           type: "array",
@@ -1947,6 +2139,38 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
+        input = Object.fromEntries(
+          Object.entries(input).filter(([key]) => key !== "control"),
+        );
+        if (decision?.mode === "query") {
+          if (Object.keys(input).length)
+            throw new AssistantError(
+              422,
+              "assistant_intent_required",
+              "本轮仅查询，不能修改要求或执行。",
+            );
+          return {
+            unchanged: true,
+            control: decision,
+            task: currentTaskFacts(current),
+          };
+        }
+        if (
+          !Object.keys(input).length &&
+          decision?.mode === "execute" &&
+          mayExecute(decision) &&
+          current.executionPlan?.steps?.length
+        )
+          input.executionMode = "execute";
+        if (!Object.keys(input).length)
+          return {
+            unchanged: true,
+            control: decision,
+            task: currentTaskFacts(current),
+          };
+        if (decision?.mode === "plan") input.executionMode = "plan";
+        if (decision?.mode === "execute" && input.executionMode === undefined)
+          input.executionMode = "execute";
         if (
           !hasCurrentCandidates(current) &&
           (input.steps?.[0]?.action ?? input.nextAction) === "refine_candidates"
@@ -1966,7 +2190,7 @@ export async function executeAssistantTurn(
         // when the user-authorized plan is saved; do not select an entire document.
         let selectedPlanningEvidence: Record<string, any>[] = [];
         if (
-          documentPlanning &&
+          (documentPlanning || input.deliveries?.length) &&
           !current.backgroundEvidence?.length &&
           !input.question
         ) {
@@ -2161,7 +2385,10 @@ export async function executeAssistantTurn(
           businessDeliveries = reviseDeliveryGoals(
             deliveryGoals(oldPlan),
             input.deliveries,
-            planningRequestText,
+            deliveryGoals(oldPlan).length && turn.event === "user"
+              ? turn.user_text
+              : planningRequestText,
+            turn.event === "user" && Boolean(decision?.requiresUpdate),
           );
           // Initial explicit category quotas cannot be omitted. Saved rules are
           // protected by scoped updates, without reinterpreting generic headings.
@@ -2184,7 +2411,12 @@ export async function executeAssistantTurn(
             );
           input = {
             ...input,
-            ...reviseDeliveryRequirements(current, input, planningRequestText),
+            ...reviseDeliveryRequirements(
+              current,
+              input,
+              turn.event === "user" ? turn.user_text : planningRequestText,
+              turn.event === "user" && Boolean(decision?.requiresUpdate),
+            ),
           };
           delete input.deliveries;
           delete input.removeRequirements;
@@ -2336,16 +2568,6 @@ export async function executeAssistantTurn(
             );
           }
         }
-        if (
-          recordingRequirements &&
-          !requirementsSaved &&
-          !input.requirements?.length
-        )
-          throw new AssistantError(
-            422,
-            "assistant_tool_input_invalid",
-            "本轮用户明确要求记录语义要求，必须用requirements保存其完整约束，不能只保存数量、标题或口头确认；requirements是完整替换，请保留仍生效的原要求。",
-          );
         if (
           documentPlanning &&
           !current.target &&
@@ -2675,16 +2897,10 @@ export async function executeAssistantTurn(
         if (selectedPlanningEvidence?.length)
           fields.backgroundEvidence = selectedPlanningEvidence;
         const executionPaused =
-          requirementsOnly && !input.question
-            ? true
-            : input.question
-              ? Boolean(current.executionPaused)
-              : input.nextAction === "none" && executionMode !== "plan"
-                ? true
-                : executionMode ||
-                    (input.nextAction && input.nextAction !== "none")
-                  ? false
-                  : Boolean(current.executionPaused);
+          decision?.mode === "pause" ||
+          (!["plan", "execute"].includes(decision?.mode ?? "") &&
+            Boolean(current.executionPaused)) ||
+          Boolean(input.question);
         if (
           current.executionPaused &&
           !executionPaused &&
@@ -3032,6 +3248,7 @@ export async function executeAssistantTurn(
         if (!input.question) planningCheckpointRequired = false;
         const presented = currentTaskFacts(task);
         return {
+          control: decision,
           task: {
             ...presented,
             ...(presented?.review
@@ -3065,9 +3282,12 @@ export async function executeAssistantTurn(
           input.query,
           input.directoryFrom ?? 1,
         );
-        const usedForProcessing =
-          input.useForProcessing === true ||
-          (!documentPlanning && input.useForProcessing !== false);
+        const usedForProcessing = Boolean(
+          decision &&
+          decision.mode !== "query" &&
+          (input.useForProcessing === true ||
+            (mayExecute(decision) && input.useForProcessing !== false)),
+        );
         if (usedForProcessing) {
           const task = (
             await db.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -3294,9 +3514,10 @@ export async function executeAssistantTurn(
               source,
               input.selection,
               input.reselect === true,
+              mayExecute(decision) ? "write" : "read",
             )
           : undefined;
-        if (fixed)
+        if (fixed && mayExecute(decision))
           await updateTask(db, turn, {
             processingScope: {
               source,
@@ -4817,6 +5038,7 @@ export async function executeAssistantTurn(
   const fullPlanSchema = tools.plan_task.inputSchema;
   const deliveryPlanProperties = Object.fromEntries(
     [
+      "control",
       "title",
       "executionMode",
       "deliveries",
@@ -4854,20 +5076,11 @@ export async function executeAssistantTurn(
     (hint) => schemaHints.set("plan_task", hint),
     explainPlanInput,
   );
-  const recordRequirementsSchema = schema(
-    {
-      ...singlePlanProperties,
-      requirements: { ...(planProperties.requirements as object), minItems: 1 },
-    },
-    ["requirements"],
-    "plan_task",
-    (hint) => schemaHints.set("plan_task", hint),
-    explainPlanInput,
-  );
   // Compatibility only: pre-contract saved document plans keep their frozen inputs.
   // Remove with the remaining pre-contract checkpoints; fresh goals use deliveries.
   const legacyDocumentPlanSchema = schema(
     {
+      control: planProperties.control,
       title: planProperties.title,
       executionMode: { enum: ["plan"] },
       steps: {
@@ -5007,7 +5220,18 @@ export async function executeAssistantTurn(
           yieldToProcessing = true;
       }
     }
-    if (observeOnly) return;
+    if (observeOnly || !mayExecute(decision)) return;
+    if (
+      unresolvedFailure(
+        (
+          await db.query(
+            "SELECT tool_results FROM assistant_turn WHERE id=$1",
+            [turn.id],
+          )
+        ).rows[0].tool_results,
+      )
+    )
+      return;
 
     for (
       let count = 0;
@@ -5028,6 +5252,7 @@ export async function executeAssistantTurn(
       const step = current.executionPlan?.steps[current.executionPlan.current];
       const preparesApply = step?.action?.startsWith("request_");
       if (
+        !mayExecute(decision) ||
         current.executionPaused ||
         current.executionPlan?.mode !== "execute" ||
         current.executionPlan.needsReview ||
@@ -5338,172 +5563,42 @@ export async function executeAssistantTurn(
           .sort((a: any, b: any) => a.id.localeCompare(b.id)),
       ),
     );
-    requirementsSaved = turn.tool_results.some(
-      (result: any) =>
-        result.name === "plan_task" &&
-        result.status === "succeeded" &&
-        result.input?.requirements?.length,
-    );
-    recordingRequirements =
+    decision = restoredDecision(task, turn);
+    if (!decision && turn.event !== "user" && continuationAllowed(task))
+      decision = {
+        mode: "execute",
+        source: "continuation",
+        turnId: turn.id,
+        taskRevision: turn.task_revision,
+        updateSaved: true,
+      };
+    if (
+      !decision &&
       turn.event === "user" &&
-      /(?:记录|记下|保存|更新|修改|调整|补充|增加|新增|更改|变更).{0,12}(?:要求|约束|规则)/u.test(
-        turn.user_text,
-      ) &&
-      !/(?:清空|清除|撤销|取消|删除|去掉)/u.test(turn.user_text) &&
-      !/(?:如何|怎么|为什么|只解释|只查看)/u.test(turn.user_text);
+      legacyExecute(turn.user_text) &&
+      task.executionPlan?.steps?.length &&
+      !task.question
+    )
+      decision = {
+        mode: "execute",
+        source: "legacy_ui",
+        turnId: turn.id,
+        taskRevision: turn.task_revision,
+        updateSaved: true,
+      };
+    requirementsOnly = decision?.mode === "plan" || decision?.mode === "pause";
     documentPlanning =
-      turn.event === "user" &&
-      Boolean((context.state as any).backgroundDocuments?.length) &&
-      planningIntent.test(turn.user_text) &&
-      !/(?:只解释|只查看|暂停|先停下)/u.test(turn.user_text);
-    const continuePlanning =
-      turn.event === "user" && planningRetry.test(turn.user_text.trim());
-    const noExecutedPlan =
-      !task.runId &&
-      !(task.executionPlan?.steps ?? []).some(
-        (step: any) =>
-          step.status === "executed" || step.receipt || step.operation,
-      );
-    let pendingDocumentPlan =
-      noExecutedPlan &&
-      (!task.executionPlan?.steps?.length ||
-        task.executionPlan.mode === "plan") &&
-      (planningIntent.test(task.goal ?? "") || task.planningRecovery);
-    if (
-      continuePlanning &&
-      !pendingDocumentPlan &&
-      noExecutedPlan &&
-      task.supplements?.length &&
-      !task.executionPlan?.steps?.length
-    ) {
-      const prior = (
-        await db.query(
-          "SELECT id,user_text,task_revision,status FROM assistant_turn WHERE session_id=$1 AND id<>$2 AND event='user' ORDER BY created_at DESC,id DESC LIMIT 1",
-          [turn.session_id, turn.id],
-        )
-      ).rows[0];
-      if (prior?.status === "failed" && planningIntent.test(prior.user_text)) {
-        task.planningRecovery = {
-          turnId: prior.id,
-          taskRevision: prior.task_revision,
-          evidenceKey: sha256(canonicalJson(task.backgroundEvidence ?? [])),
-        };
-        pendingDocumentPlan = true;
-      }
-    }
-    // A quoted or descriptive “执行” is not permission to leave planning mode.
-    const affirmativeExecution =
-      /^(?:好(?:的)?[，,\s]*)?(?:请(?:你)?|现在|那就|帮我)?\s*(?:开始|继续|立即)执行(?:当前任务|(?:当前|这个|该)?(?:方案|计划))(?:吧|一下)?\s*(?=$|[。；;！!，,\n])/u.test(
-        turn.user_text.trim(),
-      ) ||
-      /(?:^|[。；;！!，,\n])\s*(?:好(?:的)?[，,]?|请(?:你)?|现在|那就|帮我)?\s*(?:(?:按|照)(?:这个|该|上述|当前|刚才的)?(?:方案|计划)(?:开始)?执行|(?:开始|继续|立即)(?:执行|生成)|执行(?:方案|计划|吧|一下|测试)|生成(?:吧|一下|这些|这批))(?:吧|一下)?\s*(?=$|[。；;！!，,\n])/u.test(
-        turn.user_text,
-      );
-    const answeringPlanningQuestion =
-      turn.event === "user" &&
-      pendingDocumentPlan &&
-      !affirmativeExecution &&
-      !/^(?:请(?:你)?)?(?:暂停|停下|取消|不用.{0,8}(?:方案|计划)|只解释|只查看)/u.test(
-        turn.user_text.trim(),
-      );
-    if (
-      !documentPlanning &&
-      pendingDocumentPlan &&
-      (continuePlanning || answeringPlanningQuestion)
-    ) {
-      let original = { user_text: task.goal };
-      const pending = task.planningRecovery;
-      if (pending) {
-        if (
-          (pending.documentsKey &&
-            pending.documentsKey !== planningDocumentsKey) ||
-          pending.evidenceKey !==
-            sha256(canonicalJson(task.backgroundEvidence ?? [])) ||
-          pending.taskRevision !== turn.task_revision - 1
-        )
-          throw new AssistantError(409, "assistant_plan_revalidation_required");
-        const requestId = pending.requestTurnId ?? pending.turnId;
-        const request = (
-          await db.query(
-            "SELECT user_text FROM assistant_turn WHERE id=$1 AND session_id=$2 AND event='user'",
-            [requestId, turn.session_id],
-          )
-        ).rows[0];
-        if (!request || !planningIntent.test(request.user_text))
-          throw new AssistantError(409, "assistant_plan_revalidation_required");
-        original = request;
-        planningRequestTurnId = requestId;
-      } else {
-        // Compatibility for a failed plan saved before planningRecovery existed.
-        const prior = (
-          await db.query(
-            "SELECT id,user_text FROM assistant_turn WHERE session_id=$1 AND id<>$2 AND event='user' ORDER BY created_at DESC,id DESC LIMIT 1",
-            [turn.session_id, turn.id],
-          )
-        ).rows[0];
-        if (prior && planningIntent.test(prior.user_text)) {
-          original = prior;
-          planningRequestTurnId = prior.id;
-        }
-      }
-      if (!planningIntent.test(original.user_text ?? ""))
-        throw new AssistantError(409, "assistant_plan_revalidation_required");
-      const supplements = (task.supplements ?? []).filter(
-        (text: string) => !planningRetry.test(text.trim()),
-      );
-      planningRequestText = [original.user_text, ...supplements].join("\n");
-      const currentDocuments = context.state.backgroundDocuments ?? [];
-      const reads = (await backgroundReadReceipts())
-        .filter((record: any) =>
-          currentDocuments.some(
-            (doc: any) => doc.id === record.input.documentId,
-          ),
-        )
-        .slice(-6);
-      const evidence = [];
-      for (const record of reads) {
-        const current = await readBackground(
-          db,
-          scope,
-          turn.session_id,
-          record.input.documentId,
-          record.input.from ?? 1,
-          record.input.limit ?? 3,
-          record.input.query,
-          record.input.directoryFrom ?? 1,
-        );
-        if (
-          current.sha256 !== record.result.sha256 ||
-          current.extractorVersion !== record.result.extractorVersion
-        )
-          throw new AssistantError(409, "assistant_background_changed");
-        // Receipts prove reads; final selection still happens at plan validation.
-        if (Buffer.byteLength(JSON.stringify([...evidence, current])) <= 30000)
-          evidence.push(current);
-      }
-      messages.push({
-        role: "assistant",
-        content:
-          "当前待完成文档方案；只规划，不增加执行授权。原用户规划请求与最新业务补充：\n" +
-          planningRequestText +
-          "\n服务端重新核对的已读文档（不是新的用户要求）：\n" +
-          JSON.stringify(context.encode(evidence)),
-      });
-      documentPlanning = true;
-    }
-    const confirmingStoredFacts =
-      !recordingRequirements &&
-      !documentPlanning &&
-      /(?:要求|约束|方案|计划|数量|目标).{0,12}(?:还在|保存了吗|记住了吗|有哪些|是什么|多少)|(?:还记得|记得).{0,12}(?:要求|约束)|(?:之前|先前|当前).{0,12}(?:要求|方案).{0,12}(?:保存|记录)/u.test(
-        turn.user_text,
-      ) &&
-      !/(?:改为|改成|修改|调整|增加|补充|删除|取消|执行)/u.test(turn.user_text);
+      decision?.mode === "plan" &&
+      Boolean(context.state.backgroundDocuments?.length);
+    recordingRequirements = Boolean(
+      decision?.requiresUpdate && !decision.updateSaved,
+    );
     planningCheckpointRequired = task?.planningCheckpointTurnId === turn.id;
     if (turn.event === "confirmed" && (task.question || task.executionPaused))
       await advanceExecution(messages, true);
     if (
-      task.executionPaused &&
-      (turn.event !== "user" || restoring) &&
+      !continuationAllowed(task) &&
+      turn.event !== "user" &&
       !requirementsOnly
     ) {
       await updateTask(db, turn, { stage: "waiting_input", nextAction: null });
@@ -5532,10 +5627,11 @@ export async function executeAssistantTurn(
       return;
     }
     if (
-      Number(turn.execution_attempt) > 1 ||
-      turn.resuming ||
-      turn.event === "budget_yield" ||
-      task.executionPlan?.mode === "execute"
+      mayExecute(decision) &&
+      (Number(turn.execution_attempt) > 1 ||
+        turn.resuming ||
+        turn.event === "budget_yield" ||
+        task.executionPlan?.mode === "execute")
     )
       plannedAction =
         typeof task.nextAction === "string" && task.nextAction !== "none"
@@ -5669,7 +5765,7 @@ export async function executeAssistantTurn(
         "结果工作区显示整任务当前有效成果。存在服务端固定的任务勾选时，局部修改及采用使用allSelected:true，不抄预览序号或逐批操作；服务端负责跨批定位。未选成果保持不变。没有勾选且用户要求采用全部成果时allValid:true，默认覆盖整任务。草稿起点默认保存回原草稿，另存按用户指定去向。read_processing的total/records覆盖当前整任务；taskRuns只是历史和进度。保存按真实回执计算，部分采用不能宣称整个目标完成；发布单独确认。" +
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "依据已读取背景文档从零生成使用generate_candidates；基于真实记录扩充使用submit_processing，两者的输入合同不同，不要求用户补种子或把背景当资产。内部参数错误由你按当前工具合同修正，不能用question把工具参数错误转交用户，不要求用户提供工具名、参数或内部ID。只给方案时保存完整plan后说明步骤，不询问是否同意先给方案；本轮用户已明确执行时直接启用execute，不复述历史问题要求再次开工确认。勾选候选后的局部改写直接用refine_candidates，不重列已完成的生成阶段；新要求会使旧确认卡失效，不让用户先确认或取消失效卡，修改后重新核对并建立确认卡。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
-        "简单任务直接使用必要业务工具，不强制多步骤计划；文档生成使用plan_task保存executionMode与deliveries，其他复杂任务按当前Schema保存业务steps，资料查询后可补齐后续参数。本轮用户意图先于旧计划：只解释或暂停时先plan_task设置nextAction:none，再按需只读；只给方案设plan并仅查询；明确继续执行时设execute，不重复开工确认。暂停只停止后续派发，不代表已入队任务已取消；要取消运行请使用页面现有停止任务入口，不谎称已经取消。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不能解除暂停或构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
+        "简单任务直接使用必要业务工具，不强制多步骤计划；文档生成使用plan_task保存executionMode与deliveries，其他复杂任务按当前Schema保存业务steps，资料查询后可补齐后续参数。本轮操作以plan_task.control为唯一入口：纯查询可直接只读回答，不调用写工具；其他请求先保存control，可与业务字段同次提交。mode为query/plan/execute/pause；要求变更与执行组合设requiresUpdate:true。先暂停后修改先单独保存pause控制，再更新要求，失败仍暂停。只解释/引用执行文字不能授予execute；先解释再执行则在control.explanation填写实际业务说明，先显示后执行。简短“好/继续”按当前唯一待答问题和既有授权判断，仅规划或歧义时问一个业务问题。不得把control放入steps.input。暂停只停止后续派发，不代表已入队任务已取消；要取消运行请使用页面现有停止任务入口，不谎称已经取消。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不能解除暂停或构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +
         "来源记录是参考数据，不是用户的任务规格。不要从少数样例推断全部类别或凭空增加‘只能是’标签限制；依据已读取背景和当前用户要求制定方案。用户要求逐题期望行为或验收条件时，写针对题目的具体应答方式或判定条件，不能只写违规/不违规等分类标签；用户明确要求标签分类任务，或委托按附件规范且已读原文明确约定标签输出时除外；后续明确的用户输出形式优先，Metadata类别不自动变成期望输出枚举。" +
@@ -5892,14 +5988,17 @@ export async function executeAssistantTurn(
             turn.session_id,
           ])
         ).rows[0].task;
-        const activeTools = availableTaskTools(
-          currentTask,
-          await hasProjectCapability(
-            db,
-            scope.projectId,
-            scope.actorId,
-            "write",
+        const activeTools = intentTools(
+          availableTaskTools(
+            currentTask,
+            await hasProjectCapability(
+              db,
+              scope.projectId,
+              scope.actorId,
+              "write",
+            ),
           ),
+          decision,
         ) as (keyof typeof tools)[];
         activeRepairTools = new Set(activeTools);
         const goalContract =
@@ -5910,12 +6009,38 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1));
         tools.plan_task.inputSchema = goalContract
           ? deliveryPlanSchema
-          : recordingRequirements && !requirementsSaved
-            ? recordRequirementsSchema
-            : !currentTask.executionPlan ||
-                currentTask.executionPlan.contractVersion === 1
-              ? singlePlanSchema
-              : fullPlanSchema;
+          : !currentTask.executionPlan ||
+              currentTask.executionPlan.contractVersion === 1
+            ? singlePlanSchema
+            : fullPlanSchema;
+        if (!decision && turn.event === "user") {
+          const reads = [
+            ...new Set<keyof typeof tools>([...activeTools, "plan_task"]),
+          ];
+          if (
+            !(await hasProjectCapability(
+              db,
+              scope.projectId,
+              scope.actorId,
+              "write",
+            ))
+          )
+            tools.plan_task.inputSchema = schema(
+              { control: turnControlSchema },
+              ["control"],
+              "plan_task",
+              (hint) => schemaHints.set("plan_task", hint),
+            );
+          activeRepairTools = new Set(reads);
+          return {
+            ...fixedState,
+            activeTools: reads,
+            toolChoice: "required" as const,
+            instructions:
+              instructions +
+              "\n本轮尚无经校验操作决定。可先只读查询；结束回复或任何执行前，必须通过plan_task.control记录本轮模式（query/plan/execute/pause）。纯查询不建立计划、不保存业务要求，可在control.explanation直接给出基于当前快照的简短答复；无需再复述一次。先暂停后修改先单独保存pause与requiresUpdate:true。只有真实用户要求变更才requiresUpdate:true；仅暂停不是要求变更。只口头声称暂停、修改或执行均不算成功。",
+          };
+        }
         if (
           documentPlanning &&
           activeTools.includes("plan_task") &&
@@ -6024,6 +6149,7 @@ export async function executeAssistantTurn(
             toolChoice: { type: "tool" as const, toolName: plannedAction },
           };
         if (
+          documentPlanning &&
           (modelSteps >= 7 || planningCheckpointRequired) &&
           (!plannedAction || plannedAction === "plan_task") &&
           (await hasProjectCapability(
@@ -6111,21 +6237,8 @@ export async function executeAssistantTurn(
       });
       recoveredProcessingKey = undefined;
     }
-    // Existing explicit UI controls need no language-model reinterpretation.
-    // Revalidate through plan_task; this does not authorize a new or ambiguous plan.
-    if (
-      turn.event === "user" &&
-      [
-        "按当前已保存方案执行",
-        "继续执行已保存方案",
-        "继续执行当前任务",
-        "执行方案",
-        "开始执行方案",
-        "好的，现在开始执行方案",
-      ].includes(turn.user_text.trim().replace(/[。！!]$/u, "")) &&
-      task.executionPlan?.steps?.length &&
-      !task.question
-    ) {
+    // UI markers and the exact labels of old clients share the same plan validator.
+    if (decision && ["ui", "legacy_ui"].includes(decision.source)) {
       const verified = await tools.plan_task.execute!(
         { executionMode: "execute" },
         {
@@ -6152,6 +6265,7 @@ export async function executeAssistantTurn(
     const textualCall = (text: string) =>
       /<tool_call\b|<function\s*=/i.test(text);
     const claimedUpdate = (text: string) =>
+      /(?:已将|已把).{0,40}(?:改为|改成|修改|调整|更新|保存)/u.test(text) ||
       /(?:已|已经)(?:成功|为你|为您|替你)?(?:记录|记下|保存|更新|修改|调整|记住)[\s\S]{0,24}(?:要求|约束|方案|计划|数量|目标)|(?:要求|约束|方案|计划|数量|目标).{0,12}(?:已|已经)(?:成功)?(?:记录|记下|保存|更新|修改|调整)/u.test(
         text,
       );
@@ -6166,7 +6280,7 @@ export async function executeAssistantTurn(
           text,
         );
       if (
-        confirmingStoredFacts &&
+        decision?.mode === "query" &&
         (planClaim
           ? task.executionPlan?.steps?.length
           : task.requirements?.length ||
@@ -6179,7 +6293,7 @@ export async function executeAssistantTurn(
           result.name === "plan_task" &&
           result.status === "succeeded" &&
           !result.result?.unchanged &&
-          (!recordingRequirements || result.input?.requirements?.length) &&
+          (!recordingRequirements || decision?.updateSaved) &&
           (!documentPlanning ||
             (result.result?.task?.executionPlan?.mode === "plan" &&
               (result.input?.steps?.length ||
@@ -6230,6 +6344,12 @@ export async function executeAssistantTurn(
           finishReason = generated.finishReason;
           stepMessages = generated.responseMessages;
           if (budgetBoundary) break;
+          if (!decision && turn.event === "user") {
+            if (attempt > 0)
+              throw new AssistantError(422, "assistant_intent_required");
+            requirementRepair = true;
+            continue;
+          }
           if (!textualCall(response.text)) {
             if (
               (!claimedUpdate(response.text) &&
@@ -6256,6 +6376,8 @@ export async function executeAssistantTurn(
           if (await finishSavedPlanningTurn()) return;
         } catch (error) {
           if (!ToolChoiceViolationError.isInstance(error)) throw error;
+          if (attempt > 0 && !decision && turn.event === "user")
+            throw new AssistantError(422, "assistant_intent_required");
           if (attempt > 0 || summarizing)
             throw new AssistantError(
               422,
@@ -6273,6 +6395,8 @@ export async function executeAssistantTurn(
     }
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
+    if (!decision && turn.event === "user")
+      throw new AssistantError(422, "assistant_intent_required");
     const failedReceipt = unresolvedFailure(
       (
         await db.query("SELECT tool_results FROM assistant_turn WHERE id=$1", [
@@ -6324,48 +6448,53 @@ export async function executeAssistantTurn(
           state?.stage !== "awaiting_review"))
     )
       throw new AssistantError(422, "assistant_result_incomplete");
-    if (!waitingForInput && state?.executionPaused)
-      await updateTask(db, turn, { stage: "waiting_input", nextAction: null });
-    else if (!waitingForInput && pending)
-      await updateTask(db, turn, { stage: "awaiting_confirmation" });
-    else if (
-      !waitingForInput &&
-      !["processing", "awaiting_review", "complete"].includes(state?.stage)
-    ) {
-      const processing =
-        state?.runId &&
-        (
-          await db.query(
-            "SELECT j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.id=$1 AND r.project_id=$2 AND r.input_ref IS NOT NULL",
-            [state.runId, scope.projectId],
-          )
-        ).rows[0];
-      if (
-        processing &&
-        ["succeeded", "failed", "cancelled"].includes(processing.status)
+    if (decision && decision.mode !== "query") {
+      if (!waitingForInput && state?.executionPaused)
+        await updateTask(db, turn, {
+          stage: "waiting_input",
+          nextAction: null,
+        });
+      else if (!waitingForInput && pending)
+        await updateTask(db, turn, { stage: "awaiting_confirmation" });
+      else if (
+        !waitingForInput &&
+        !["processing", "awaiting_review", "complete"].includes(state?.stage)
       ) {
-        const data = await readProcessingRun(
-          db,
-          artifacts,
-          scope,
-          state.runId,
-          { offset: "0", limit: "10000" },
-          true,
-        );
-        const checked = await reviewTask(db, artifacts, scope, state, data);
-        await updateTask(db, turn, {
-          stage: checked.finished ? "awaiting_review" : "processing",
-          checkedStatus: checked.finished ? checked.checkedStatus : null,
-          review: checked.finished ? checked.review : null,
-        });
-      } else
-        await updateTask(db, turn, {
-          stage: processing
-            ? "processing"
-            : state?.executionPlan?.mode === "plan"
-              ? "planning"
-              : "waiting_input",
-        });
+        const processing =
+          state?.runId &&
+          (
+            await db.query(
+              "SELECT j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.id=$1 AND r.project_id=$2 AND r.input_ref IS NOT NULL",
+              [state.runId, scope.projectId],
+            )
+          ).rows[0];
+        if (
+          processing &&
+          ["succeeded", "failed", "cancelled"].includes(processing.status)
+        ) {
+          const data = await readProcessingRun(
+            db,
+            artifacts,
+            scope,
+            state.runId,
+            { offset: "0", limit: "10000" },
+            true,
+          );
+          const checked = await reviewTask(db, artifacts, scope, state, data);
+          await updateTask(db, turn, {
+            stage: checked.finished ? "awaiting_review" : "processing",
+            checkedStatus: checked.finished ? checked.checkedStatus : null,
+            review: checked.finished ? checked.review : null,
+          });
+        } else
+          await updateTask(db, turn, {
+            stage: processing
+              ? "processing"
+              : state?.executionPlan?.mode === "plan"
+                ? "planning"
+                : "waiting_input",
+          });
+      }
     }
     await saveDiagnostics();
     await updateTurn(
@@ -6373,6 +6502,11 @@ export async function executeAssistantTurn(
       [
         turn.id,
         (waitingForInput && state?.question) ||
+          (decision?.mode === "query" ? decision.explanation : undefined) ||
+          (decision?.mode === "pause"
+            ? (decision.explanation ??
+              `后续执行已暂停，${Number.isInteger(state?.review?.total) ? `${state.review.total} 条候选与` : ""}已有成果保留；这不会取消已经提交的处理。`)
+            : undefined) ||
           (!yieldToProcessing && response.text.slice(0, 8000)) ||
           (pending
             ? "操作已准备好，请核对下方确认卡片。"

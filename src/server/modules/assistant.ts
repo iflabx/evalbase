@@ -473,6 +473,7 @@ export function registerAssistant({
                 "context",
                 "candidates",
                 "expectedTaskRevision",
+                "operation",
               ].includes(k),
           )
         )
@@ -488,6 +489,7 @@ export function registerAssistant({
             request.body.candidates,
             request.body.expectedTaskRevision,
             artifacts,
+            request.body.operation,
           );
         if (!started.replayed)
           void dispatch().catch((error) => app.log.error(error));

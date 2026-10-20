@@ -217,6 +217,7 @@ type Submission = {
   turnId?: string;
   status: "submitting" | "accepted" | "failed";
   expectedTaskRevision?: number;
+  operation?: "execute_plan" | "resume";
 };
 const toolLabels: Record<string, string> = {
   query_project: "查询项目",
@@ -803,6 +804,7 @@ export function ProjectAssistant({
           message: text,
           ...(submission.context ? { context: submission.context } : {}),
           ...(submission.candidates !== undefined ? { candidates: submission.candidates } : {}),
+          ...(submission.operation ? { operation: submission.operation } : {}),
           ...(submission.expectedTaskRevision !== undefined
             ? { expectedTaskRevision: submission.expectedTaskRevision }
             : {}),
@@ -954,6 +956,7 @@ export function ProjectAssistant({
                     key: crypto.randomUUID(),
                     status: "submitting",
                     expectedTaskRevision: visible.taskRevision!,
+                    operation: visible.task?.executionPaused ? "resume" : "execute_plan",
                   })
                 }
               >

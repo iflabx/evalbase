@@ -1,3 +1,4 @@
+import { continuationAllowed } from "./intent.js";
 import type { Database } from "../db/pool.js";
 import { opaqueId } from "../server/support.js";
 import { sha256 } from "../package/contract.js";
@@ -81,7 +82,7 @@ export async function queueContinuation(
       session.task = reconciled;
     }
     if (
-      session.task.executionPaused ||
+      !continuationAllowed(session.task) ||
       session.task.executionPlan?.mode === "plan" ||
       ["stopped", "complete", "failed"].includes(session.task.stage)
     ) {
