@@ -738,3 +738,152 @@ it("OPT41 uses unambiguous questionQuote and never treats an answer or label as 
     ).review.items[0]?.verdict,
   ).toBe("pending");
 });
+
+it("OPT41 blinds supplied labels and compares independently assessed values on the server", () => {
+  const row = {
+    sourceId: "r",
+    question: "我要取消这笔订单。",
+    expectedOutput: "label-canary",
+    metadata: [{ key: "intent", value: "query-canary" }],
+  };
+  const background: any = {
+    contentReviewPolicy: "evidence-v1",
+    requirements: [],
+    documents: [],
+    classifications: [
+      {
+        field: "metadata",
+        key: "intent",
+        allowedValues: ["query-canary", "cancel"],
+        basis: "user",
+      },
+    ],
+  };
+  const opts: any = {
+    operation: "generate",
+    instructions: "按实际意图核对",
+    outputCount: 1,
+    allowedFields: ["question", "expectedOutput", "metadata"],
+  };
+  const projected = JSON.parse(
+    contentReviewPrompt([row], opts, background, false).prompt,
+  );
+  expect(projected.candidates[0].metadata).toEqual([]);
+  const checks: any = Object.fromEntries(
+    ["question", "category", "expectedBehavior", "facts"].map((key) => [
+      key,
+      {
+        verdict: "conforms",
+        reason: "明确取消订单",
+        questionQuote: row.question,
+        ...(key === "category"
+          ? {
+              assessedValues: [
+                { field: "metadata", key: "intent", value: "cancel" },
+              ],
+            }
+          : {}),
+        ...(key === "expectedBehavior"
+          ? { outputQuote: row.expectedOutput }
+          : {}),
+        ...(key === "facts" ? { basis: "no_assertion" } : {}),
+      },
+    ]),
+  );
+  const state: any = {
+    version: 2,
+    policy: "evidence-v1",
+    rulesHash: reviewRulesHash(opts, background),
+    initialAttempted: true,
+    items: [],
+  };
+  expect(
+    checkContent(
+      { reviews: [{ id: "r", checks }] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+    ).review.items[0]?.verdict,
+  ).toBe("nonconforms");
+  checks.category.assessedValues[0].value = null;
+  expect(
+    checkContent(
+      { reviews: [{ id: "r", checks }] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+    ).review.items[0]?.verdict,
+  ).toBe("uncertain");
+});
+
+it("OPT41 keeps legitimate outside labels and merges definite mismatch before an unknown rule", () => {
+  const row = {
+    sourceId: "r",
+    question: "这是一个独立完整的问题。",
+    expectedOutput: "outside",
+    metadata: [{ key: "a", value: "A" }],
+  };
+  const opts: any = {
+    operation: "generate",
+    instructions: "按定义核对",
+    outputCount: 1,
+    allowedFields: ["question", "expectedOutput", "metadata"],
+  };
+  const rules: any = [
+    { field: "expectedOutput", allowedValues: ["outside", "inside"] },
+    { field: "metadata", key: "a", allowedValues: ["A", "B"] },
+  ];
+  const background: any = {
+    contentReviewPolicy: "evidence-v1",
+    requirements: [],
+    documents: [],
+    classifications: rules,
+  };
+  const checks: any = Object.fromEntries(
+    ["question", "category", "expectedBehavior", "facts"].map((key) => [
+      key,
+      {
+        verdict: "conforms",
+        reason: "原句可定位",
+        questionQuote: row.question,
+        ...(key === "category"
+          ? {
+              assessedValues: [
+                { field: "expectedOutput", value: "outside" },
+                { field: "metadata", key: "a", value: "A" },
+              ],
+            }
+          : {}),
+        ...(key === "expectedBehavior" ? { outputQuote: "outside" } : {}),
+        ...(key === "facts" ? { basis: "no_assertion" } : {}),
+      },
+    ]),
+  );
+  const state: any = {
+    version: 2,
+    policy: "evidence-v1",
+    rulesHash: reviewRulesHash(opts, background),
+    initialAttempted: true,
+    items: [],
+  };
+  const verdict = () =>
+    checkContent(
+      { reviews: [{ id: "r", checks }] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+    ).review.items[0]?.verdict;
+  expect(verdict()).toBe("conforms");
+  checks.category.assessedValues[0].value = null;
+  checks.category.assessedValues[1].value = "B";
+  expect(verdict()).toBe("nonconforms");
+  checks.category.assessedValues[1].value = "A";
+  checks.category.assessedValues[0].outside = true;
+  expect(verdict()).toBe("nonconforms");
+});

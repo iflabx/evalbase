@@ -301,7 +301,8 @@ if (["development", "development-repair", "holdout"].includes(mode)) {
   const split = retry ? "development" : mode;
   assert(
     !results.groups.some(
-      (group: any) => group.split === split && Boolean(group.retry) === retry,
+      (group: any) =>
+        group.split === split && (!retry ? !group.retry : group.code === code),
     ),
     "never rerun a completed subset",
   );
@@ -309,14 +310,20 @@ if (["development", "development-repair", "holdout"].includes(mode)) {
     !retry || !results.groups.some((group: any) => group.split === "holdout"),
     "no tuning after holdout",
   );
+  const latest = new Map<string, any>();
+  for (const group of results.groups.filter(
+    (group: any) => group.split === "development",
+  ))
+    for (const row of group.rows ?? []) latest.set(row.id, row);
   const failedIds = new Set(
-    results.groups
-      .filter((group: any) => group.split === "development")
-      .flatMap((group: any) =>
-        group.rows
-          .filter((row: any) => row.review.verdict === "pending")
-          .map((row: any) => row.id),
-      ),
+    [...latest.values()]
+      .filter(
+        (row) =>
+          row.review.verdict === "pending" ||
+          (row.truth !== "conforms" && row.review.verdict === "conforms") ||
+          (row.truth === "conforms" && row.review.verdict !== "conforms"),
+      )
+      .map((row) => row.id),
   );
   const samples = fixtures.samples.filter(
     (row: any) => row.split === split && (!retry || failedIds.has(row.id)),
