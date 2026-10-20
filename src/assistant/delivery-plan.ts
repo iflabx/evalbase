@@ -21,6 +21,8 @@ type Rule = Omit<VerifiedRule, "definitions"> & {
   })[];
 };
 export type DeliveryGoal = {
+  question?: string;
+  boundaryVersion?: 1;
   id: string;
   name: string;
   count: number;
@@ -29,9 +31,12 @@ export type DeliveryGoal = {
   scenarios: string[];
   classifications: Rule[];
 };
-export type DeliveryChange = Partial<Omit<DeliveryGoal, "classifications">> & {
+export type DeliveryChange = Partial<
+  Omit<DeliveryGoal, "classifications" | "question">
+> & {
   classifications?: (Rule & { clear?: boolean })[];
   remove?: boolean;
+  question?: string | null;
 };
 
 function fail(hint: string): never {
@@ -190,6 +195,10 @@ export function deliveryGoals(
     )
     .map((step: any) => ({
       id: step.deliveryId,
+      ...(step.question ? { question: step.question } : {}),
+      ...(step.boundaryVersion
+        ? { boundaryVersion: step.boundaryVersion }
+        : {}),
       name: step.input.name,
       count: step.input.outputCount,
       countKind: step.countKind ?? "new",
@@ -489,8 +498,29 @@ export function reviseDeliveryGoals(
       ...prior,
       ...change,
       id: prior?.id ?? opaqueId("delivery"),
+      question:
+        change.question === null
+          ? undefined
+          : (change.question ?? prior?.question),
+      boundaryVersion: prior ? prior.boundaryVersion : 1,
       countKind: change.countKind ?? prior?.countKind ?? "new",
     } as DeliveryGoal;
+    if (
+      candidate.question !== undefined &&
+      (typeof candidate.question !== "string" ||
+        !candidate.question.trim() ||
+        candidate.question.length > 500)
+    )
+      fail("请说明这份交付缺少的具体业务依据；已明确的交付不要设置问题。");
+    if (
+      prior?.question &&
+      change.question === null &&
+      change.instructions === undefined &&
+      change.classifications === undefined
+    )
+      fail(
+        "补充依据后请同步保存该交付修正后的判定要求或分类定义，不能只清除待补充提示。",
+      );
     if (!positive(candidate.count)) fail("每份交付数量须为1至10000的整数。");
     if (
       prior &&
@@ -842,6 +872,8 @@ export function assertDeliveryRepair(
 export function generationSteps(goals: DeliveryGoal[]) {
   return goals.map((goal) => ({
     deliveryId: goal.id,
+    ...(goal.question ? { question: goal.question } : {}),
+    ...(goal.boundaryVersion ? { boundaryVersion: goal.boundaryVersion } : {}),
     countKind: goal.countKind,
     title: "生成「" + goal.name + "」",
     action: "generate_candidates",

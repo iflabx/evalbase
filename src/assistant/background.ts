@@ -1,3 +1,6 @@
+import { newQuestionPolicy } from "../processing/deduplication.js";
+import { deliveryGoals, currentDeliveryId } from "./delivery-plan.js";
+import { pendingDeliveryQuestion } from "./plan.js";
 import type { Database } from "../db/pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId } from "../server/support.js";
@@ -34,6 +37,8 @@ import {
 } from "../processing/store.js";
 
 export type BackgroundSnapshot = {
+  /** Frozen new-question policy; absence preserves legacy processing semantics. */
+  questionPolicy?: import("../processing/deduplication.js").QuestionPolicy;
   requirements: string[];
   currentRequirements?: true;
   userRequests?: string[];
@@ -651,6 +656,15 @@ export async function freezeBackground(
       )
   )
     throw new AssistantError(422, "assistant_background_not_read");
+  if (
+    processing?.options.operation === "generate" &&
+    pendingDeliveryQuestion(session.task.executionPlan)
+  )
+    throw new AssistantError(
+      422,
+      "assistant_background_rule_mismatch",
+      pendingDeliveryQuestion(session.task.executionPlan),
+    );
   const classifications = validateRules(session.task);
   if (processing) {
     let retained: ProcessingInput[] = [];
@@ -742,7 +756,27 @@ export async function freezeBackground(
     Buffer.byteLength(JSON.stringify(selected)) > 30000
   )
     throw new AssistantError(422, "assistant_background_capacity");
+  const userRequests = [
+    session.task.goal,
+    ...(session.task.supplements ?? []),
+  ].filter(
+    (text): text is string => typeof text === "string" && text.length > 0,
+  );
+  const goals = deliveryGoals(session.task.executionPlan);
+  const goal = goals.find(
+    (goal) => goal.id === currentDeliveryId(session.task.executionPlan),
+  );
+  const questionPolicy = processing
+    ? newQuestionPolicy(
+        processing.options.operation,
+        userRequests,
+        goal
+          ? { name: goal.name, names: goals.map((goal) => goal.name) }
+          : undefined,
+      )
+    : undefined;
   return {
+    ...(questionPolicy ? { questionPolicy } : {}),
     currentRequirements: true,
     requirements: requirementSummary(session.task),
     ...(classifications.length ? { classifications } : {}),

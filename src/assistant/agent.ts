@@ -36,6 +36,7 @@ import {
   revisePlan,
   settleExecutionPlan,
   pendingPlanAction,
+  pendingDeliveryQuestion,
   planRequirementsKey,
   deliverySharedRequirementsKey,
   planSource,
@@ -2632,8 +2633,11 @@ export async function executeAssistantTurn(
               },
               documents,
             );
-            if (documentPlanning) {
-              const grounded = groundDocumentGeneration(step.input);
+            if (documentPlanning || step.boundaryVersion === 1) {
+              const grounded = groundDocumentGeneration(
+                step.input,
+                step.boundaryVersion === 1,
+              );
               const validate = planInputValidators.get(step.action)!;
               if (!validate(grounded))
                 throw new AssistantError(
@@ -2925,8 +2929,9 @@ export async function executeAssistantTurn(
             limit: 1,
           });
         }
+        const clarification = input.question ?? pendingDeliveryQuestion(plan);
         const nextAction =
-          input.question || executionPaused || input.nextAction === "none"
+          clarification || executionPaused || input.nextAction === "none"
             ? null
             : plan
               ? (pendingPlanAction(plan) ?? null)
@@ -3008,12 +3013,12 @@ export async function executeAssistantTurn(
               ? { targetDraftId: null }
               : {}),
             nextAction: addedWorkExceedsLimit ? null : nextAction,
-            question: input.question ?? null,
+            question: clarification ?? null,
             ...(input.target
               ? { targetName: await sourceName(input.target) }
               : {}),
             stage:
-              input.question || executionPaused || addedWorkExceedsLimit
+              clarification || executionPaused || addedWorkExceedsLimit
                 ? "waiting_input"
                 : plan?.mode === "plan"
                   ? "planning"
@@ -3023,7 +3028,7 @@ export async function executeAssistantTurn(
         );
         // Recording requirements alone does not create an obligation to execute a tool.
         plannedAction = nextAction ?? undefined;
-        waitingForInput = Boolean(input.question);
+        waitingForInput = Boolean(clarification);
         if (!input.question) planningCheckpointRequired = false;
         const presented = currentTaskFacts(task);
         return {
@@ -4743,7 +4748,7 @@ export async function executeAssistantTurn(
     type: "array",
     maxItems: 10,
     description:
-      "每项为一个独立测试集集合，内部多个类别放同项classifications，不按类别自动拆集合。新增交付省略id，服务端生成；修改使用当前事实中的id，只提交本轮变化，未列交付保持。remove仅在用户明确取消该集合时使用。",
+      "每项为一个独立测试集集合，内部多个类别放同项classifications，不按类别自动拆集合。新增交付省略id，服务端生成；修改使用当前事实中的id，只提交本轮变化，未列交付保持。instructions写实际类别必要条件、排除边界及逐题输出约定，scenarios只写中性角色/情境，不把求证等同虚假或讨论等同鼓励。已核对原文和用户依据不足时仅在该项question写业务缺口，保留数量；不得猜造法律名称、事实或依赖关键词归类。remove仅在用户明确取消该集合时使用。",
     items: {
       type: "object",
       additionalProperties: false,
@@ -4756,6 +4761,12 @@ export async function executeAssistantTurn(
         scenarios: generationProperties.scenarios,
         classifications: planProperties.classifications,
         remove: { type: "boolean" },
+        question: {
+          type: ["string", "null"],
+          maxLength: 500,
+          description:
+            "仅本交付缺少决定类别或具体事实的必要依据时，写需要用户补充的业务信息；独立交付继续。依据补齐后同步修正instructions或classifications并置null，不能凭编号补造事实。",
+        },
       },
       // An existing ID selects an update; new deliveries never need a guessed ID.
       if: { required: ["id"] },

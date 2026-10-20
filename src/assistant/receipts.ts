@@ -131,6 +131,7 @@ export async function reconcileExecutionConfirmations(
   const complete =
     !task.executionPaused &&
     !task.question &&
+    !current.steps.some((step: any) => step.question) &&
     current.steps.length > 0 &&
     current.steps.every((step: any) => step.status === "executed") &&
     current.steps.at(-1).action.startsWith("request_") &&

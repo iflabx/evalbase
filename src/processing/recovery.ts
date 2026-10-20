@@ -16,6 +16,7 @@ export type FailureCode =
   | "budget_exhausted"
   | "ok";
 export type CallDiagnostic = {
+  questionCollisions?: number;
   attempt: number;
   durationMs: number;
   code: FailureCode;

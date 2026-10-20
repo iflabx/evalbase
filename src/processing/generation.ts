@@ -1,6 +1,6 @@
 import type { Database } from "../db/pool.js";
 import type { FailureCode } from "./recovery.js";
-import { contentKey } from "./deduplication.js";
+import { candidateKey, type QuestionPolicy } from "./deduplication.js";
 import { PROCESSING_EXECUTION, type ProcessingOutput } from "./protocol.js";
 
 export const GENERATION_RECIPE = "processing-v10";
@@ -53,19 +53,21 @@ export function remainingGenerationPositions(
         original?: { id?: string; baseline?: { id?: string } };
       }
   )[],
+  policy?: QuestionPolicy,
 ) {
   const used = new Set<number>(),
     seen = new Set<string>();
   for (const row of rows) {
     if ("rootOperation" in row && row.rootOperation === "augment") continue;
     const result = "result" in row ? row.result : row;
-    if (!result.question.trim() || seen.has(contentKey(result))) continue;
+    if (!result.question.trim() || seen.has(candidateKey(result, policy)))
+      continue;
     const position = generationPosition(row);
     // Later augmentation/saved rounds may contain additional records outside this generation goal.
     if (position === undefined) continue;
     if (position < 0 || position >= plan.total)
       throw new Error("processing_input_corrupt");
-    seen.add(contentKey(result));
+    seen.add(candidateKey(result, policy));
     used.add(position);
   }
   return plan.positions.filter((position) => !used.has(position));

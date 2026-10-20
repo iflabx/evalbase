@@ -15451,6 +15451,474 @@ describe("project assistant public contract", () => {
     }
   });
 
+  it("OPT40 preserves a blocked delivery while an independent goal completes and resumes only the supplied goal", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const upload = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + sessionId + "/background-documents",
+        headers,
+        payload: {
+          fileName: "客服规范.md",
+          contentBase64: readFileSync(
+            "tests/fixtures/assistant-customer-intent.md",
+          ).toString("base64"),
+        },
+      });
+      expect(upload.statusCode, upload.body).toBe(201);
+      requestedTool = {
+        name: "read_background",
+        input: { documentId: upload.json().document.id },
+      };
+      await opt21End(await opt21Submit("读取附件"));
+      const goal = (name: string) => ({
+        name,
+        count: 3,
+        instructions:
+          "只生成完整自然的用户退款申请，明确请求退还货款，排除仅讨论或查询退款规则。",
+        scenarios: [
+          "在手机端提交申请",
+          "收货后说明退款原因",
+          "重复付款后联系客服",
+        ],
+        classifications: [],
+      });
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [
+            {
+              ...goal("缺少适用依据的兜底交付"),
+              question: "请补充所依据的具体适用条件；仅有兜底条款不足以判定。",
+            },
+            goal("退款申请交付"),
+          ],
+          requirements: ["每条语义完整，不编造事实。"],
+        },
+      };
+      const planned = await opt21End(
+        await opt21Submit(
+          "按附件建两份测试集，各3条；兜底部分缺少具体依据，先保留它的目标，独立退款部分可以执行。先给方案，暂不执行。",
+        ),
+      );
+      expect(planned.task.deliveries[0]).toMatchObject({
+        count: 3,
+        status: "waiting_input",
+        savedCount: 0,
+      });
+      expect(planned.task.executionPlan.current).toBe(3);
+      const blockedId = planned.task.deliveries[0].id;
+      requestedTool = undefined;
+      const running = await opt21End(await opt21Submit("开始执行方案"));
+      expect(running.task.stage, JSON.stringify(running.turns.at(-1))).toBe(
+        "processing",
+      );
+      const runId = running.task.runId;
+      await opt29Worker(runId);
+      await taskModule.collectProcessingEvents(db);
+      await expect
+        .poll(
+          async () =>
+            (await read())
+              .json()
+              .proposals.some((p: any) => p.status === "pending"),
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const waiting = (await read()).json();
+      const proposal = waiting.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      const confirmed = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers,
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      await expect
+        .poll(async () => (await read()).json().task.stage, { timeout: 15000 })
+        .toBe("waiting_input");
+      const paused = (await read()).json();
+      expect(paused.task.deliveries[0]).toMatchObject({
+        id: blockedId,
+        count: 3,
+        status: "waiting_input",
+        savedCount: 0,
+      });
+      expect(paused.task.deliveries[1]).toMatchObject({
+        status: "saved",
+        savedCount: 3,
+      });
+      expect(
+        paused.task.executionPlan.steps
+          .slice(0, 3)
+          .every((s: any) => s.status === "pending"),
+      ).toBe(true);
+      const prior = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      const runCount = Number(
+        (
+          await db.query(
+            "SELECT count(*) n FROM processing_run WHERE project_id=$1",
+            [projectId],
+          )
+        ).rows[0].n,
+      );
+      requestedTool = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [
+            {
+              id: blockedId,
+              question: null,
+              instructions:
+                "依据用户补充：仅在客户重复付款且明确请求退回多收款项时生成；未付款及只查询规则不属于本类。",
+            },
+          ],
+        },
+      };
+      const supplied = await opt21End(
+        await opt21Submit(
+          "补充兜底适用条件：客户已重复付款并明确请求退回多收款项；把这个条件保存到第一份要求，只更新方案，暂不执行。",
+        ),
+      );
+      expect(supplied.task.deliveries[0].question).toBeUndefined();
+      expect(supplied.task.deliveries[1]).toMatchObject({
+        status: "saved",
+        savedCount: 3,
+      });
+      const after = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(after.autoEventLimit).toBe(prior.autoEventLimit);
+      expect(after.autoCount).toBe(prior.autoCount);
+      expect(
+        Number(
+          (
+            await db.query(
+              "SELECT count(*) n FROM processing_run WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].n,
+        ),
+      ).toBe(runCount);
+    } finally {
+      requestedTool = undefined;
+      generationResponse = undefined;
+      toolSequence = [];
+      sessionId = previous;
+      await db.end();
+    }
+  });
+
+  it.each(["distinct", "variants", "legacy"])(
+    "OPT40 freezes question policy and excludes cross-batch collisions through completion: %s",
+    async (variant) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl),
+        repo = new ArtifactRepository(loadConfig().minio);
+      try {
+        await opt21Session();
+        const uploaded = await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "客服规范.md",
+            contentBase64: readFileSync(
+              "tests/fixtures/assistant-customer-intent.md",
+            ).toString("base64"),
+          },
+        });
+        requestedTool = {
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id },
+        };
+        await opt21End(await opt21Submit("读取附件"));
+        const count = variant === "distinct" ? 21 : 3;
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [
+              {
+                name: "OPT40问题策略" + variant,
+                count,
+                instructions: "生成完整的问题。允许同题多答案。",
+                scenarios: ["手机端咨询", "邮件提交请求", "电话沟通"],
+                classifications: [],
+              },
+            ],
+            requirements: ["完整自然的问题，期望输出给出可核验的处理标准"],
+          },
+        };
+        const prompt =
+          variant === "variants"
+            ? "按文档创建一份3条测试集，需要生成同题多答案对照样本，先给方案，暂不执行。"
+            : "按文档创建一份" + count + "条测试集，先给方案，暂不执行。";
+        await opt21End(await opt21Submit(prompt));
+        const started = await opt21End(await opt21Submit("开始执行方案"));
+        const runId = started.task.runId;
+        expect(runId, JSON.stringify(started.turns.at(-1))).toBeTruthy();
+        const raw = (
+          await db.query(
+            "SELECT input_ref,input_hash,execution_config FROM processing_run WHERE id=$1",
+            [runId],
+          )
+        ).rows[0];
+        const snapshot = JSON.parse(
+          (await repo.readBytes(raw.input_ref, 100000000)).toString(),
+        );
+        expect(snapshot.background.questionPolicy).toBe(
+          variant === "variants" ? "variants-v1" : "distinct-v1",
+        );
+        if (variant === "legacy") {
+          delete snapshot.background.questionPolicy;
+          const old = await repo.storeProcessing(
+            Buffer.from(canonicalJson(snapshot)),
+            runId,
+            "input",
+          );
+          await db.query(
+            "UPDATE processing_run SET input_ref=$2,input_hash=$3 WHERE id=$1",
+            [runId, old.objectRef, old.sha256],
+          );
+        }
+        generationResponse = (p: any) =>
+          p.generation.slots.map((slot: any, index: number) => ({
+            question:
+              variant === "distinct"
+                ? slot.position === 11
+                  ? "唯一问题1"
+                  : "唯一问题" + slot.position
+                : index < 2
+                  ? "同一个完整问题"
+                  : "第三个完整问题",
+            expectedOutput: "不同应答" + slot.position,
+            metadata: [{ key: "index", value: String(slot.position) }],
+          }));
+        if (variant === "distinct") {
+          await expect(opt29Worker(runId)).rejects.toThrow(
+            "processing_batch_failed",
+          );
+          await db.query(
+            "UPDATE job SET status='failed',error_code='processing_batch_failed' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+            [runId],
+          );
+        } else await opt29Worker(runId);
+        const path =
+          "/api/projects/" + projectId + "/processing-tasks/" + runId;
+        const page = (
+          await app.inject({ method: "GET", url: path + "?limit=100", headers })
+        ).json();
+        if (variant !== "distinct") {
+          expect(page.task.generation).toMatchObject({
+            validCount: 3,
+            missingCount: 0,
+          });
+          return;
+        }
+        expect(page.task.generation).toMatchObject({
+          validCount: 20,
+          missingCount: 1,
+        });
+        const before = page.records.map((row: any) => ({
+          id: row.id,
+          result: row.result,
+        }));
+        const attempts = page.recovery.generationBudget.used;
+        const prompts = calls
+          .filter((call: any) => {
+            try {
+              return (
+                JSON.parse(call.messages.at(-1).content).questionPolicy ===
+                "distinct-v1"
+              );
+            } catch {
+              return false;
+            }
+          })
+          .map((call: any) => JSON.parse(call.messages.at(-1).content));
+        expect(
+          prompts.some((p: any) =>
+            p.previousBatchExamples?.some(
+              (row: any) =>
+                row.question === "唯一问题1" &&
+                !Object.hasOwn(row, "expectedOutput"),
+            ),
+          ),
+        ).toBe(true);
+        const completed = await app.inject({
+          method: "POST",
+          url: path + "/rounds",
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: { mode: "complete", expectedRevision: page.task.revision },
+        });
+        expect(completed.statusCode, completed.body).toBe(201);
+        generationResponse = (p: any) =>
+          p.generation.slots.map((slot: any) => ({
+            question: "补齐唯一问题" + slot.position,
+            expectedOutput: "可核验标准",
+            metadata: [],
+          }));
+        await opt29Worker(completed.json().run.id);
+        const final = (
+          await app.inject({ method: "GET", url: path + "?limit=100", headers })
+        ).json();
+        expect(final.task.generation).toMatchObject({
+          validCount: 21,
+          missingCount: 0,
+        });
+        expect(
+          final.records
+            .filter((row: any) =>
+              before.some((prior: any) => prior.id === row.id),
+            )
+            .map((row: any) => ({ id: row.id, result: row.result })),
+        ).toEqual(before);
+        expect(final.recovery.generationBudget.used).toBeGreaterThanOrEqual(
+          attempts,
+        );
+        expect(final.recovery.generationBudget.used).toBeLessThanOrEqual(
+          final.recovery.generationBudget.limit,
+        );
+        const unchanged = (
+          await db.query(
+            "SELECT input_ref,input_hash FROM processing_run WHERE id=$1",
+            [runId],
+          )
+        ).rows[0];
+        expect(unchanged.input_hash).toBe(raw.input_hash);
+      } finally {
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/stop",
+          headers,
+          payload: {},
+        });
+        generationResponse = undefined;
+        requestedTool = undefined;
+        toolSequence = [];
+        sessionId = previous;
+        await db.end();
+      }
+    },
+  );
+
+  it("OPT40 excludes a collision outside the selected input and retains exhausted attempt accounting", async () => {
+    const db = createPool(databaseUrl),
+      cfg = {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey: Buffer.alloc(32, 4).toString("base64"),
+      },
+      repo = new ArtifactRepository(cfg.minio);
+    const draft = await opt22Draft("OPT40全目标基线");
+    const extra = await app.inject({
+      method: "POST",
+      url:
+        "/api/projects/" +
+        projectId +
+        "/collaborative-drafts/" +
+        draft +
+        "/records",
+      headers,
+      payload: {
+        question: "背景约束下的具体场景问题",
+        expectedOutput: "另一份既有答案",
+        metadata: [],
+      },
+    });
+    expect(extra.statusCode, extra.body).toBe(201);
+    try {
+      const rows = (
+        await db.query(
+          "SELECT id,question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted ORDER BY position,id",
+          [draft],
+        )
+      ).rows;
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/projects/" + projectId + "/processing-runs",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {
+          source: { kind: "draft", id: draft, recordIds: [rows[0].id] },
+          options: {
+            operation: "augment",
+            instructions: "扩写一个新的完整问题",
+            allowedFields: ["question"],
+            outputCount: 1,
+          },
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const id = created.json().run.id;
+      const frozen = (
+        await db.query("SELECT input_ref FROM processing_run WHERE id=$1", [id])
+      ).rows[0];
+      const snapshot = JSON.parse(
+        (await repo.readBytes(frozen.input_ref, 100000000)).toString(),
+      );
+      expect(snapshot.background.questionPolicy).toBe("distinct-v1");
+      expect(snapshot.records).toHaveLength(1);
+      expect(snapshot.deduplicationBaseline).toHaveLength(4);
+      const execute = async () => {
+        const job = (
+          await db.query(
+            "UPDATE job SET status='running',attempt=attempt+1,lease_owner='opt40-baseline',lease_expires_at=now()+interval '120 seconds' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) RETURNING *",
+            [id],
+          )
+        ).rows[0];
+        await runProcessing(db, repo, cfg, job);
+      };
+      await expect(execute()).rejects.toThrow("processing_batch_failed");
+      const batch = (
+        await db.query(
+          "SELECT model_attempts,output_count,diagnostics FROM processing_batch WHERE run_id=$1",
+          [id],
+        )
+      ).rows[0];
+      expect(batch).toMatchObject({ model_attempts: 3, output_count: 0 });
+      expect(
+        batch.diagnostics.calls.reduce(
+          (n: number, c: any) => n + (c.questionCollisions ?? 0),
+          0,
+        ),
+      ).toBe(3);
+      const before = calls.length;
+      await expect(execute()).rejects.toThrow("processing_batch_failed");
+      expect(calls.length).toBe(before);
+      expect(
+        (
+          await db.query(
+            "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+            [id],
+          )
+        ).rows[0].model_attempts,
+      ).toBe(3);
+      expect(
+        (
+          await db.query(
+            "SELECT id,question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted ORDER BY position,id",
+            [draft],
+          )
+        ).rows,
+      ).toEqual(rows);
+    } finally {
+      await db.end();
+    }
+  });
+
   it("OPT35 saves one intent collection from business goals without side effects", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);

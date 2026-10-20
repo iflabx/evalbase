@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   advancePlan,
+  pendingPlanAction,
   bindTaskInput,
   revisePlan,
   planRequirementsKey,
@@ -847,5 +848,112 @@ it.each(["saved", "changed", "unconfirmed", "shared"])(
       expect(resumed.steps[2].receipt).toBeUndefined();
     }
     expect(old).toEqual(before);
+  },
+);
+
+it("OPT40 waits only for a delivery with missing evidence while an independent delivery advances", () => {
+  const old: any = {
+    contractVersion: 1,
+    mode: "execute",
+    current: 0,
+    steps: [
+      {
+        deliveryId: "H",
+        action: "generate_candidates",
+        title: "H",
+        question: "请补充适用的具体条件或原文。",
+        input: { name: "H", outputCount: 5 },
+        status: "pending",
+      },
+      {
+        deliveryId: "H",
+        action: "read_processing",
+        title: "核对H",
+        status: "pending",
+      },
+      {
+        deliveryId: "A",
+        action: "generate_candidates",
+        title: "A",
+        input: { name: "A", outputCount: 5 },
+        status: "pending",
+      },
+    ],
+  };
+  const revised = revisePlan(
+    old,
+    { executionMode: "execute" },
+    2,
+    null,
+    "same",
+  )!;
+  expect(revised.current).toBe(2);
+  const running = advancePlan(
+    revised,
+    "generate_candidates",
+    { runId: "A", draftId: "draftA", status: "queued" },
+    "a",
+    2,
+    revised.steps[2].input,
+  )!;
+  const done = advancePlan(
+    running,
+    "read_processing",
+    { runId: "A", status: "succeeded", partial: false, missingCount: 0 },
+    "read",
+    2,
+  )!;
+  expect(done.current).toBe(0);
+  expect(pendingPlanAction(done)).toBeUndefined();
+  expect(done.steps[0].input?.outputCount).toBe(5);
+  expect(done.steps[1].status).toBe("pending");
+});
+
+it.each([
+  {
+    value: "鼓励行为",
+    text: "实际请求鼓励该行为，研究或讨论本身不属于此类",
+    scene: "讨论该主题的背景",
+  },
+  {
+    value: "虚假且有害",
+    text: "实际传播虚假且有害的事实，未证实信息不构成虚假判定",
+    scene: "向专家求证消息",
+  },
+  {
+    value: "兜底",
+    text: "须有具体适用条件，不能仅凭兜底条款认定违法",
+    scene: "咨询规范名称",
+  },
+  {
+    value: "退款申请",
+    text: "实际请求退还已支付款项，查询退款政策不属于申请意图",
+    scene: "手机端联系客服",
+  },
+])(
+  "OPT40 separates frozen classification criteria from contextual scenarios: $value",
+  ({ value, text, scene }) => {
+    const input = {
+      instructions: "本类必要条件：" + text,
+      scenarios: [scene],
+      classifications: [
+        {
+          field: "metadata",
+          key: "category",
+          basis: "background",
+          allowedValues: [value],
+          definitions: [{ value, text }],
+        },
+      ],
+    };
+    const original = structuredClone(input),
+      grounded = groundDocumentGeneration(input, true);
+    expect(grounded.classifications).toEqual(original.classifications);
+    expect(grounded.scenarios).toEqual([scene]);
+    expect(grounded.instructions.startsWith("本类必要条件：" + text)).toBe(
+      true,
+    );
+    expect(groundDocumentGeneration(grounded, true)).toEqual(grounded);
+    expect(input).toEqual(original);
   },
 );

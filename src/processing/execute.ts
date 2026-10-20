@@ -6,7 +6,11 @@ import {
   type FailureCode,
 } from "./recovery.js";
 import { generateText } from "ai";
-import { contentKey } from "./deduplication.js";
+import {
+  contentKey,
+  candidateKey,
+  type QuestionPolicy,
+} from "./deduplication.js";
 import {
   GENERATION_RECIPE,
   isGenerationRecipe,
@@ -112,7 +116,7 @@ async function reserveModelCall(
   }
 }
 // Bounded batches keep context and retries small; one model consumer is sufficient for the current ten-user ceiling.
-function modelRequest(
+export function modelRequest(
   inputs: ProcessingInput[],
   options: ProcessingOptions,
   expected: number,
@@ -128,6 +132,7 @@ function modelRequest(
     rejectedDuplicates: { question: string; expectedOutput: string }[];
   },
   generation?: GenerationPlan,
+  questionPolicy?: QuestionPolicy,
 ) {
   const generationAccepted: ProcessingResult["records"] = [];
   const generationPositions = new Set<number>(),
@@ -135,7 +140,7 @@ function modelRequest(
   if (generation)
     for (const row of [...previous, ...accepted]) {
       const position = generationPosition(row),
-        key = contentKey(row);
+        key = candidateKey(row, questionPolicy);
       if (
         !row.question.trim() ||
         position === undefined ||
@@ -175,7 +180,13 @@ function modelRequest(
     ...(feedback
       ? {
           lastFailure: feedback.lastFailure,
-          rejectedDuplicates: feedback.rejectedDuplicates.slice(-5),
+          rejectedDuplicates: feedback.rejectedDuplicates
+            .slice(-5)
+            .map((row) =>
+              questionPolicy === "distinct-v1"
+                ? { question: row.question }
+                : row,
+            ),
         }
       : {}),
     ...(distinctBatches && generatesRecords(options.operation) && batch
@@ -185,17 +196,35 @@ function modelRequest(
             "This is the given global output range, not a new task. Allocate requested topics and taxonomy across the full total using this range. Vary scenarios and questions meaningfully across ranges; do not restart the first topics for every batch.",
         }
       : {}),
+    ...(questionPolicy
+      ? {
+          categoryCriteria: {
+            source:
+              "background.classifications and background.requirements (frozen below)",
+            rule: "Definitions and current requirements determine membership; slots/scenarios are context only. Discard conflicting scene goals. Unverified is not false; discussing is not promoting. A general catch-all rule does not establish specific legal or factual applicability. Do not invent missing facts or norms.",
+          },
+          questionPolicy,
+          questionPolicyRule:
+            questionPolicy === "distinct-v1"
+              ? "Every new question must differ from the FULL accepted and target baseline set; changing answers or metadata does not make a new question. Only exclusions are sampled here; the server checks all records."
+              : "The user explicitly requested same-question answer/contrast variants. Such questions may repeat with genuinely different content; exact duplicate rows remain excluded.",
+        }
+      : {}),
     originalOutputCount: expected,
     acceptedCount: accepted.length,
     alreadyAccepted: accepted.map((row) => ({
       question: row.question.slice(0, 300),
-      expectedOutput: row.expectedOutput.slice(0, 300),
+      ...(questionPolicy === "distinct-v1"
+        ? {}
+        : { expectedOutput: row.expectedOutput.slice(0, 300) }),
     })),
     ...(previous.length
       ? {
           previousBatchExamples: previous.slice(-20).map((row) => ({
             question: row.question.slice(0, 300),
-            expectedOutput: row.expectedOutput.slice(0, 300),
+            ...(questionPolicy === "distinct-v1"
+              ? {}
+              : { expectedOutput: row.expectedOutput.slice(0, 300) }),
           })),
         }
       : {}),
@@ -219,7 +248,14 @@ function modelRequest(
     else correction.alreadyAccepted.shift();
     prompt = JSON.stringify(correction);
   }
-  return { system: base.system, prompt };
+  return {
+    system:
+      base.system +
+      (questionPolicy === "variants-v1"
+        ? " Frozen questionPolicy permits same-question variants explicitly requested by the user; this overrides only the no-repeated-question instruction, never exact-row deduplication or category criteria."
+        : ""),
+    prompt,
+  };
 }
 function batches(
   inputs: ProcessingInput[],
@@ -411,6 +447,11 @@ export async function runProcessing(
   if (sha256(bytes) !== run.input_hash)
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
+  const questionPolicy = generatesRecords(run.options.operation)
+    ? input.background?.questionPolicy
+    : undefined;
+  const recordKey = (row: Parameters<typeof contentKey>[0]) =>
+    candidateKey(row, questionPolicy);
   const generation = isGenerationRecipe(run.execution_config.recipeVersion)
     ? input.generation
     : undefined;
@@ -501,7 +542,7 @@ export async function runProcessing(
       ...input.records,
       ...(input.deduplicationBaseline ?? []),
     ])
-      acceptedContent.add(contentKey(row));
+      acceptedContent.add(recordKey(row));
     if (run.options.operation === "generate")
       for (const row of input.deduplicationBaseline ?? [])
         acceptedRows.push({
@@ -523,7 +564,7 @@ export async function runProcessing(
         ),
       ) as ProcessingResult;
       for (const row of stored.records) {
-        const key = contentKey(row);
+        const key = recordKey(row);
         if (!acceptedContent.has(key)) acceptedRows.push(row);
         acceptedContent.add(key);
       }
@@ -677,6 +718,7 @@ export async function runProcessing(
             deduplication ? acceptedRows : [],
             recovery ? feedback : undefined,
             generation,
+            questionPolicy,
           );
           if (
             Buffer.byteLength(prompt.system + prompt.prompt) >
@@ -793,7 +835,7 @@ export async function runProcessing(
             );
             const seen = new Set([
               ...(deduplication ? acceptedContent : []),
-              ...result.records.map(contentKey),
+              ...result.records.map(recordKey),
             ]);
             const added = validated.records.filter((row) => {
               if (!generatesRecords(run.options.operation)) return true;
@@ -805,9 +847,11 @@ export async function runProcessing(
                 call.invalid++;
                 return false;
               }
-              const key = contentKey(row);
+              const key = recordKey(row);
               if (seen.has(key)) {
                 call.duplicates++;
+                if (questionPolicy === "distinct-v1")
+                  call.questionCollisions = (call.questionCollisions ?? 0) + 1;
                 feedback.rejectedDuplicates.push({
                   question: row.question.slice(0, 300),
                   expectedOutput: row.expectedOutput.slice(0, 300),
@@ -1051,14 +1095,16 @@ export async function runProcessing(
               result.contentReview,
               phase === "initial",
             );
-            const seen = new Set(qualityRows.map(contentKey));
+            const seen = new Set(qualityRows.map(recordKey));
             const replacements = new Map(
               checked.records.map((row, i) => {
-                const key = contentKey(row),
+                const key = recordKey(row),
                   changed = contentHash(row) !== contentHash(candidates[i]!);
                 // A repair cannot trade quality for a collision or erase an existing row.
                 if (
                   changed &&
+                  (questionPolicy !== "distinct-v1" ||
+                    key !== recordKey(candidates[i]!)) &&
                   (seen.has(key) ||
                     (generatesRecords(run.options.operation) &&
                       acceptedContent.has(key)))
@@ -1075,7 +1121,7 @@ export async function runProcessing(
                   });
                   row = candidates[i]!;
                 }
-                seen.add(contentKey(row));
+                seen.add(recordKey(row));
                 return [row.sourceId, row] as const;
               }),
             );
@@ -1252,7 +1298,7 @@ export async function runProcessing(
     if (deduplication && generatesRecords(run.options.operation) && body) {
       const saved = JSON.parse(body.toString("utf8")) as ProcessingResult;
       for (const row of saved.records) {
-        const key = contentKey(row);
+        const key = recordKey(row);
         if (!acceptedContent.has(key)) acceptedRows.push(row);
         acceptedContent.add(key);
       }

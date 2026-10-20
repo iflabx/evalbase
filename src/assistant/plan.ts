@@ -3,7 +3,22 @@ import { opaqueId } from "../server/support.js";
 import { normalizedRequirements } from "./requirements.js";
 
 /** A scene is a context variation; its verified single-class criterion remains mandatory. */
-export function groundDocumentGeneration(input: Record<string, any>) {
+export function groundDocumentGeneration(
+  input: Record<string, any>,
+  currentContract = false,
+) {
+  if (currentContract) {
+    const boundary =
+      "\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。";
+    return {
+      ...input,
+      instructions:
+        typeof input.instructions === "string" &&
+        !input.instructions.endsWith(boundary)
+          ? input.instructions + boundary
+          : input.instructions,
+    };
+  }
   const rules = input.classifications;
   if (
     typeof input.instructions !== "string" ||
@@ -55,7 +70,14 @@ export function groundDocumentGeneration(input: Record<string, any>) {
 export function completeDocumentDeliveries(
   steps: Pick<
     Step,
-    "title" | "action" | "input" | "scope" | "deliveryId" | "countKind"
+    | "title"
+    | "action"
+    | "input"
+    | "scope"
+    | "deliveryId"
+    | "countKind"
+    | "question"
+    | "boundaryVersion"
   >[],
   includeSingle = false,
 ) {
@@ -118,6 +140,8 @@ export const PLAN_ACTIONS = [
 
 type Step = {
   deliveryId?: string;
+  question?: string;
+  boundaryVersion?: 1;
   countKind?: "new" | "final";
   id?: string;
   revision?: number;
@@ -184,6 +208,10 @@ export function planRequirementsKey(task: Record<string, any>, legacy = false) {
               .filter((step: any) => step.action === "generate_candidates")
               .map((step: any) => ({
                 id: step.deliveryId,
+                ...(step.question ? { question: step.question } : {}),
+                ...(step.boundaryVersion
+                  ? { boundaryVersion: step.boundaryVersion }
+                  : {}),
                 countKind: step.countKind ?? "new",
                 name: step.input?.name,
                 count: step.input?.outputCount,
@@ -249,6 +277,36 @@ export function deliverySharedRequirementsKey(task: Record<string, any>) {
   });
 }
 
+/** Skip only the self-contained blocks of deliveries awaiting evidence; do not invent dependencies. */
+export function selectPlanStep(plan: ExecutionPlan): ExecutionPlan {
+  const blocked = new Set(
+    plan.steps
+      .filter((step) => step.action === "generate_candidates" && step.question)
+      .map((step) => step.deliveryId),
+  );
+  const ready = plan.steps.findIndex(
+    (step) =>
+      step.status !== "executed" &&
+      (!step.deliveryId || !blocked.has(step.deliveryId)),
+  );
+  const waiting = plan.steps.findIndex(
+    (step) => step.status !== "executed" || Boolean(step.question),
+  );
+  const current =
+    ready >= 0 ? ready : waiting >= 0 ? waiting : plan.steps.length;
+  return current === plan.current ? plan : { ...plan, current };
+}
+export function pendingDeliveryQuestion(plan: ExecutionPlan | undefined) {
+  const step = plan?.steps[plan.current];
+  return step?.deliveryId
+    ? plan?.steps.find(
+        (goal) =>
+          goal.deliveryId === step.deliveryId &&
+          goal.action === "generate_candidates",
+      )?.question
+    : undefined;
+}
+
 /** Changed steps invalidate subsequent receipts; unchanged prefixes keep their facts. */
 export function revisePlan(
   previous: ExecutionPlan | undefined,
@@ -257,6 +315,8 @@ export function revisePlan(
     preserveSavedDeliveries?: boolean;
     steps?: {
       deliveryId?: string;
+      question?: string;
+      boundaryVersion?: 1;
       countKind?: "new" | "final";
       title: string;
       action: string;
@@ -397,12 +457,16 @@ export function revisePlan(
         ? {
             ...prior!,
             title: step.title,
+            question: step.question,
+            boundaryVersion: step.boundaryVersion,
             revision,
             ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
             ...(step.countKind ? { countKind: step.countKind } : {}),
           }
         : {
             title: step.title,
+            question: step.question,
+            boundaryVersion: step.boundaryVersion,
             action: step.action,
             ...(step.deliveryId ? { deliveryId: step.deliveryId } : {}),
             ...(step.countKind ? { countKind: step.countKind } : {}),
@@ -415,7 +479,7 @@ export function revisePlan(
     }) ??
     previous?.steps ??
     [];
-  return {
+  return selectPlanStep({
     ...(previous?.contractVersion
       ? { contractVersion: previous.contractVersion }
       : {}),
@@ -428,7 +492,7 @@ export function revisePlan(
       steps.findIndex((step) => step.status !== "executed") < 0
         ? steps.length
         : steps.findIndex((step) => step.status !== "executed"),
-  };
+  });
 }
 
 /** A model tool receipt is evidence of execution, not evidence of semantic quality. */
@@ -554,7 +618,7 @@ export function advancePlan(
     (processing || (confirmation && !value.alreadyAdopted)) &&
     !completedRun &&
     !confirmed;
-  return {
+  return selectPlanStep({
     ...plan,
     current: waiting ? plan.current : plan.current + 1,
     steps: plan.steps.map((item, index) =>
@@ -587,14 +651,14 @@ export function advancePlan(
           }
         : item,
     ),
-  };
+  });
 }
 
 export function pendingPlanAction(
   plan: ExecutionPlan | undefined,
 ): string | undefined {
   if (plan?.mode !== "execute") return;
-  if (plan.needsReview) return;
+  if (plan.needsReview || pendingDeliveryQuestion(plan)) return;
   const step = plan.steps[plan.current];
   return step?.status === "pending" ? step.action : undefined;
 }
@@ -619,10 +683,12 @@ export function settleExecutionPlan(
     revision,
     input,
   );
+  const question = task.question || pendingDeliveryQuestion(plan);
   return {
     executionPlan: plan,
+    ...(question ? { question, stage: "waiting_input" } : {}),
     nextAction:
-      !task.question && !task.executionPaused
+      !question && !task.executionPaused
         ? (pendingPlanAction(plan) ?? null)
         : null,
   };

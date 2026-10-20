@@ -10,6 +10,8 @@ import {
   processingOptions,
   validateModelRows,
 } from "../../src/processing/protocol.js";
+import { modelRequest } from "../../src/processing/execute.js";
+import { newQuestionPolicy } from "../../src/processing/deduplication.js";
 import { deduplicate } from "../../src/processing/deduplication.js";
 
 const options = {
@@ -203,4 +205,153 @@ describe("OPT30 frozen generation allocation", () => {
       questionCollisionIds: ["0", "1", "2"],
     });
   });
+});
+
+it("OPT40 excludes exact question collisions only under a frozen new-question policy", () => {
+  const rows = ["问题一", "问题一", "问题二"].map((question, i) => ({
+    id: String(i),
+    sourceId: "generated:" + i,
+    question,
+    expectedOutput: "答案" + i,
+    metadata: [{ key: "类型", value: String(i) }],
+  }));
+  const plan = createGenerationPlan("root", 3, ["语境"]);
+  expect(remainingGenerationPositions(plan, rows, "distinct-v1")).toEqual([1]);
+  expect(remainingGenerationPositions(plan, rows)).toEqual([]);
+  expect(deduplicate(rows, [], "distinct-v1").keptIds).toEqual(["0", "2"]);
+  expect(deduplicate(rows, [], "variants-v1").keptIds).toEqual(["0", "1", "2"]);
+  expect(
+    deduplicate(
+      [...rows, { ...rows[2], id: "3", question: "近义但不同的问题" }],
+      [],
+      "distinct-v1",
+    ).keptIds,
+  ).toEqual(["0", "2", "3"]);
+});
+
+it("OPT40 freezes variants only from affirmative user requests and keeps old/import semantics", () => {
+  expect(newQuestionPolicy("generate", ["生成同题多答案对照样本"])).toBe(
+    "variants-v1",
+  );
+  for (const request of [
+    "不需要生成同题多答案",
+    "不要保留同题不同答案",
+    "请解释什么是生成对照样本",
+    "是否可以生成同题多答案",
+    "按照文档创建普通新题",
+  ])
+    expect(newQuestionPolicy("generate", [request])).toBe("distinct-v1");
+  expect(
+    newQuestionPolicy("augment", ["生成同题多答案", "不要保留同题多答案"]),
+  ).toBe("distinct-v1");
+  expect(newQuestionPolicy("rewrite", ["生成同题多答案"])).toBeUndefined();
+  expect(newQuestionPolicy("clean", ["生成同题多答案"])).toBeUndefined();
+});
+it("OPT40 trims exclusion hints but preserves full criteria and byte limits", () => {
+  const background: any = {
+    questionPolicy: "distinct-v1",
+    requirements: ["保留共同条件" + "说明".repeat(500)],
+    documents: [
+      {
+        id: "doc",
+        fileName: "通用规范",
+        sha256: "hash",
+        extractorVersion: "text",
+        fragments: [{ index: 1, text: "原文".repeat(2800) }],
+      },
+    ],
+  };
+  const prior = Array.from({ length: 200 }, (_, index) => ({
+    sourceId: "generated:" + index,
+    question: "唯一问题" + index + "场景".repeat(149),
+    expectedOutput: "答案".repeat(150),
+    metadata: [],
+  }));
+  const plan = createGenerationPlan("root", 201, ["中性情境"]);
+  const req = modelRequest(
+    [],
+    processingOptions({
+      ...options,
+      outputCount: 1,
+      instructions: "要求".repeat(1000),
+    }),
+    1,
+    1,
+    background,
+    [],
+    { offset: 200, total: 201, positions: [200] },
+    true,
+    true,
+    prior,
+    undefined,
+    plan,
+    "distinct-v1",
+  );
+  const body = JSON.parse(req.prompt);
+  expect(Buffer.byteLength(req.system + req.prompt)).toBeLessThanOrEqual(40000);
+  expect(body.previousBatchExamples.length).toBeLessThan(20);
+  expect(body.background).toEqual(background);
+  expect(body.categoryCriteria.source).toContain("background.classifications");
+  expect(
+    body.previousBatchExamples.every(
+      (row: any) => !Object.hasOwn(row, "expectedOutput"),
+    ),
+  ).toBe(true);
+  expect(
+    deduplicate(
+      [{ ...prior[0], id: "new", expectedOutput: "另外答案" }],
+      prior,
+      "distinct-v1",
+    ).keptIds,
+  ).toEqual([]);
+});
+
+it("OPT40 keeps explicit variant authorization within its named delivery", () => {
+  const requests = ["甲交付创建普通新问题，乙交付需要生成同题多答案对照样本"];
+  expect(
+    newQuestionPolicy("generate", requests, {
+      name: "甲交付",
+      names: ["甲交付", "乙交付"],
+    }),
+  ).toBe("distinct-v1");
+  expect(
+    newQuestionPolicy("generate", requests, {
+      name: "乙交付",
+      names: ["甲交付", "乙交付"],
+    }),
+  ).toBe("variants-v1");
+  for (const request of [
+    "生成时避免同题多答案",
+    "请生成不含对照样本的测试集",
+    "请生成没有同题多答案的测试集",
+  ])
+    expect(newQuestionPolicy("generate", [request])).toBe("distinct-v1");
+});
+
+it("OPT40 revokes an unqualified exception and does not expand a subset to other deliveries", () => {
+  const two = { name: "乙交付", names: ["甲交付", "乙交付"] };
+  expect(
+    newQuestionPolicy(
+      "generate",
+      ["两份都需要生成同题多答案", "不需要生成同题多答案"],
+      two,
+    ),
+  ).toBe("distinct-v1");
+  const three = { name: "丙交付", names: ["甲交付", "乙交付", "丙交付"] };
+  expect(
+    newQuestionPolicy("generate", ["前两份需要生成同题多答案"], three),
+  ).toBe("distinct-v1");
+  expect(
+    newQuestionPolicy("generate", ["全部交付需要生成同题多答案"], three),
+  ).toBe("variants-v1");
+  expect(
+    newQuestionPolicy(
+      "generate",
+      ["全部交付需要生成同题多答案", "甲交付不需要生成同题多答案"],
+      three,
+    ),
+  ).toBe("variants-v1");
+  expect(
+    newQuestionPolicy("generate", ["其中两份需要生成同题多答案"], two),
+  ).toBe("distinct-v1");
 });

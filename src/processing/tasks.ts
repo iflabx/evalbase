@@ -504,7 +504,11 @@ export async function readProcessingTask(
     const input = await frozen(artifacts, root);
     if (!input.generation)
       throw new ProcessingError(409, "processing_input_corrupt");
-    const pending = remainingGenerationPositions(input.generation, rows).length;
+    const pending = remainingGenerationPositions(
+      input.generation,
+      rows,
+      input.background?.questionPolicy,
+    ).length;
     const live =
       !terminal(latest.status) && latest.options.operation === "generate"
         ? Number(latest.output_count ?? 0)
@@ -751,7 +755,11 @@ export async function createProcessingTaskRound(
         latest.status === "cancelled"
       )
         throw new ProcessingError(409, "processing_completion_unavailable");
-      const positions = remainingGenerationPositions(input.generation, current);
+      const positions = remainingGenerationPositions(
+        input.generation,
+        current,
+        input.background?.questionPolicy,
+      );
       if (!positions.length)
         throw new ProcessingError(409, "processing_completion_unavailable");
       generation = {

@@ -1,3 +1,4 @@
+import { newQuestionPolicy } from "./deduplication.js";
 import {
   contentVerdict,
   retainedContentVerdict,
@@ -639,6 +640,16 @@ export async function createProcessingRun(
     ) {
       throw new ProcessingError(422, "assistant_background_required");
     }
+    const questionPolicy = scope.assistantGuard
+      ? data.background?.questionPolicy
+      : newQuestionPolicy(options.operation, [options.instructions]);
+    if (questionPolicy)
+      data.background = {
+        requirements: [],
+        documents: [],
+        ...data.background,
+        questionPolicy,
+      };
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     if (options.operation === "generate")

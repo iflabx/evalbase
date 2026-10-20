@@ -62,36 +62,41 @@ export function deliveryProgress(
         satisfied &&
         saved.every((row) => row.summary?.range !== "partial");
       const active = currentDelivery === goal.deliveryId;
-      const status = fullSave
-        ? "saved"
-        : savedCount > 0
-          ? "partially_saved"
-          : task.stage === "stopped"
-            ? "stopped"
-            : active && task.executionPaused && plan.mode !== "plan"
-              ? "paused"
-              : active && plan.needsReview
-                ? "needs_review"
-                : (active && task.stage === "failed") ||
-                    (run && ["failed", "cancelled"].includes(run.status))
-                  ? "failed"
-                  : confirmations.some((row) =>
-                        ["pending", "executing"].includes(row.status),
-                      )
-                    ? "awaiting_confirmation"
-                    : run &&
-                        ["queued", "running", "retry_wait"].includes(run.status)
-                      ? "processing"
-                      : run?.status === "succeeded"
-                        ? "awaiting_review"
-                        : plan.mode === "plan"
-                          ? "planned"
-                          : "pending";
+      const status = goal.question
+        ? "waiting_input"
+        : fullSave
+          ? "saved"
+          : savedCount > 0
+            ? "partially_saved"
+            : task.stage === "stopped"
+              ? "stopped"
+              : active && task.executionPaused && plan.mode !== "plan"
+                ? "paused"
+                : active && plan.needsReview
+                  ? "needs_review"
+                  : (active && task.stage === "failed") ||
+                      (run && ["failed", "cancelled"].includes(run.status))
+                    ? "failed"
+                    : confirmations.some((row) =>
+                          ["pending", "executing"].includes(row.status),
+                        )
+                      ? "awaiting_confirmation"
+                      : run &&
+                          ["queued", "running", "retry_wait"].includes(
+                            run.status,
+                          )
+                        ? "processing"
+                        : run?.status === "succeeded"
+                          ? "awaiting_review"
+                          : plan.mode === "plan"
+                            ? "planned"
+                            : "pending";
       return {
         id: goal.deliveryId,
         name: goal.input.name,
         count: goal.input.outputCount,
         countKind,
+        ...(goal.question ? { question: goal.question } : {}),
         status,
         generatedCount: run?.count ?? null,
         savedCount,

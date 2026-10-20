@@ -115,6 +115,7 @@ type Conversation = {
       name: string;
       count: number;
       countKind: "new" | "final";
+      question?: string;
       status: string;
       generatedCount: number | null;
       savedCount: number;
@@ -235,6 +236,7 @@ const toolLabels: Record<string, string> = {
   request_publish: "准备发布版本",
 };
 const deliveryStatuses: Record<string, string> = {
+  waiting_input: "待补充依据",
   planned: "方案已保存",
   pending: "待执行",
   processing: "处理中",
@@ -1634,6 +1636,9 @@ export function ProjectAssistant({
                                 ` · 候选 ${delivery.generatedCount} 条`}
                               {` · 本次已保存 ${delivery.savedCount} 条`}
                             </p>
+                            {delivery.question && (
+                              <p className="text-xs text-muted-foreground">{delivery.question}</p>
+                            )}
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                               {validLink(delivery.draft?.url) && (
                                 <Link

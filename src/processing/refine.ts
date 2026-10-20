@@ -1,3 +1,4 @@
+import { newQuestionPolicy } from "./deduplication.js";
 import { reviewBackgroundHash } from "./content-review.js";
 import { generatesRecords } from "./protocol.js";
 import { isGenerationRecipe, generationBudget } from "./generation.js";
@@ -365,6 +366,25 @@ export async function createRefinementRun(
           rootOperation: refinement.rootOperation,
         })
       : input.background;
+    if (generatesRecords(options.operation)) {
+      const questionPolicy =
+        scope.taskRound?.kind === "complete"
+          ? input.background?.questionPolicy
+          : scope.assistantGuard
+            ? background?.questionPolicy
+            : newQuestionPolicy(options.operation, [options.instructions]);
+      if (questionPolicy)
+        background = {
+          requirements: [],
+          documents: [],
+          ...background,
+          questionPolicy,
+        };
+      else if (background?.questionPolicy) {
+        background = { ...background };
+        delete background.questionPolicy;
+      }
+    }
     if (background && scope.completionBaseline && !generation) {
       background = {
         ...background,
@@ -437,6 +457,7 @@ export async function createRefinementRun(
       canonicalJson({
         source: input.source,
         ...(generation ? { generation } : {}),
+
         ...(input.revision === undefined ? {} : { revision: input.revision }),
         records,
         ...(generatesRecords(options.operation)
