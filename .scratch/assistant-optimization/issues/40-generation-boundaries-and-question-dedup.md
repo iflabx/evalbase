@@ -1,10 +1,10 @@
 # OPT-40 生成类别边界与新问题去重
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。基于 OPT-30/31/34/35/38 当前实现，无未开发票硬依赖；建议在 [OPT-39](39-delivery-review-scope-and-continuation.md) 后实施，再由 OPT-41 统一验证生成和审核效果。当前仅授权文档。产品依据：[PRD §7](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)、[OPT-31 内容合同](31-rewrite-effectiveness-and-quality.md#内容一致性与有限修复)；技术边界沿 [现有架构](../../../docs/architecture/data-selection-and-assistant.md) 与 [ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。
+优先级：P1。基于 OPT-30/31/34/35/38 当前实现，无未开发票硬依赖；建议在 [OPT-39](39-delivery-review-scope-and-continuation.md) 后实施，再由 OPT-41 统一验证生成和审核效果。Owner于2026-10-20授权本票开发和定向验证；实现及证据见[验证记录](../opt40-verification.md)，Owner人工验收pending。产品依据：[PRD §7](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)、[OPT-31 内容合同](31-rewrite-effectiveness-and-quality.md#内容一致性与有限修复)；技术边界沿 [现有架构](../../../docs/architecture/data-selection-and-assistant.md) 与 [ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。
 
 ## 原因与证据边界
 
@@ -63,3 +63,5 @@ Blocked by: none
 ## Comments
 
 - 2026-10-19：基于已确认问题创建，Implementation not-started、Owner pending。用户仅要求写 ticket；未调用模型、生成、补齐或修改任何验收数据。
+
+- 2026-10-20：本票开发完成，应用提交 `85cbc30`；63项单元、5项本票公开接口、2项既有修复/取消兼容回归通过，隔离浏览器状态核对及Standards/Spec窄复核通过。语义效果按R40-6留到OPT-41；原400条、248条历史及预算保留，本轮未切换4217、合并或推送。详见[验证记录](../opt40-verification.md)。Owner pending。

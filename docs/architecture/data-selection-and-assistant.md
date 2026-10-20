@@ -318,10 +318,10 @@ OPT-37：工作区的交付进度仅从现有生成步骤、同交付运行、�
 
 ## 17. OPT-39–41 交付归属与质量修复设计（分票实施）
 
-OPT-39已实现并完成定向验证，OPT-40/41仍待实施，不改写 §15/16 的历史实现事实。产品依据为 [PRD §7.10](../PRD-data-selection-and-assistant.md#710-交付收尾与生成审核补修2026-10-19分票实施)，详细范围及验收只在三张票维护。
+OPT-39/40已实现并完成定向验证，OPT-41仍待实施，不改写 §15/16 的历史实现事实。产品依据为 [PRD §7.10](../PRD-data-selection-and-assistant.md#710-交付收尾与生成审核补修2026-10-19分票实施)，详细范围及验收只在三张票维护。
 
 - [OPT-39](../../.scratch/assistant-optimization/issues/39-delivery-review-scope-and-continuation.md)：复用 deliveryId、运行/根任务和真实回执解析所属合同；先对账终态，再判断是否领取新的有界自动事件。新任务在原JSON以null标识尚未冻结，首次批准执行时将autoEventLimit冻结为异步完成与确认节点数加最多2次余量，受原会话容量约束；旧任务缺少字段仍按12次。额度、事件计数和原调用/时间预算不因修订扩大或清零。共享约束及单份生成合同未变的已保存步骤保留绑定回执；逐运行的当前资格与历史模型意见分开。实现与定向证据见[OPT-39记录](../../.scratch/assistant-optimization/opt39-verification.md)。
-- [OPT-40](../../.scratch/assistant-optimization/issues/40-generation-boundaries-and-question-dedup.md)：复用冻结定义、要求及场景投影；新题配方默认增加问题文本碰撞排除，覆盖全获准范围，模型只接收受限排除样例。仅此新题默认策略覆盖 §15 OPT-30 中“同题不同答案保留”的旧实现描述；旧运行与明确对照需求保持原语义。
+- [OPT-40](../../.scratch/assistant-optimization/issues/40-generation-boundaries-and-question-dedup.md)：复用冻结定义、要求及场景投影；新题配方默认增加问题文本碰撞排除，覆盖全获准范围，模型只接收受限排除样例。仅此新题默认策略覆盖 §15 OPT-30 中“同题不同答案保留”的旧实现描述；旧运行与明确对照需求保持原语义。实现以既有背景快照的可选questionPolicy版本标记冻结策略，缺省不改变旧快照；同根补齐继承原策略。交付步骤的可选question保留数量并阻断其自身及依赖，独立交付沿既有步骤继续。实现与验证见[OPT-40记录](../../.scratch/assistant-optimization/opt40-verification.md)。
 - [OPT-41](../../.scratch/assistant-optimization/issues/41-content-review-evidence-and-budget.md)：在现有 contentReview 可选元数据中保留逐项证据、修复未执行原因及冻结策略版本；优先分配原预算中的初检机会。旧策略证据继续按原版本解释，不通过全局策略常量变更触发历史重检。
 
 沿用 ADR 0014、AI SDK、PostgreSQL/MinIO/Worker、任务 JSON 和固定确认。需要的版本字段采用最小兼容增补，不增表、公开路由、第二套调度或审核服务；核对引文存在不等于证明语义推论正确。已有成果和预算不批量迁移，详细保留约束及原验收未通过事实见 [OPT-31](../../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。
