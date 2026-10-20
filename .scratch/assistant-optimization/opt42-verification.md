@@ -1,6 +1,6 @@
 # OPT-42 实施与定向验证
 
-日期：2026-10-20。应用提交：`93de778c57edc3459fc4ada1b454b6fb585a4691`。Implementation completed；真实交互验证 partial，Owner pending。合同见[OPT-42](issues/42-intent-control-and-compound-requests.md)。本轮按Owner决定不验证生成内容质量。
+日期：2026-10-20。应用提交：`93de778c57edc3459fc4ada1b454b6fb585a4691`。Implementation completed；本次补验已闭合“暂停/继续”缺口并更新4217，Owner pending。前轮partial及全部失败记录保留。合同见[OPT-42](issues/42-intent-control-and-compound-requests.md)。本轮按Owner决定不验证生成内容质量。
 
 ## 范围与最小实现
 
@@ -71,8 +71,37 @@ node node_modules/vitest/vitest.mjs run --dir tests/unit tests/unit/assistant-pl
 
 原始预算、模型请求与失败记录保留在服务器opt42/semantic-budget.json、semantic-results.json、live.log及同一隔离库；不提交私有连接配置或凭据。
 
-## 完成口径与下一步
+## 前轮截止记录（本次补验前）
 
 - 应用代码和定向回归完成；R42-1–8及10以固定自动场景验证，实际自然语言证据限上述输入，不能保证任意中文零误解。
 - R42-9 partial：生成链路实际完成2条，但暂停/继续修后未完成真实复测，整票验收和Owner签收未完成。不能用Mock、代码审阅或口头回复代替这项证据。
 - 本次不再追加真实调用、不重跑已完成生成，不改变旧质量门槛。需要后续另行授权的有界验证/4217更新时，复用既有成果和失败记录，仅验证剩余边界。
+
+## 2026-10-20 独立有界补验与4217更新
+
+Owner另行授权仅复测修后暂停/继续，通过后更新4217。使用固定bdf4e8946fb0b7bef6a4dc9e3f4f8932cba7c56e（与93de778应用源码相同），无业务代码修改、全套回归重跑或内容质量评价。
+
+### 新预算和真实结果
+
+- 新预算单独保存在opt42-pause-resume/semantic-budget.json：至多4次真实模型HTTP、累计120000ms活动时间、新增候选0、采用0、发布0。复用原隔离库、原会话和已有2条候选；无新项目、无迁移、无已完成部分重跑。
+- 实际2次请求、9310ms、0预算拦截、0生成/审核请求，余下额度不消费。仅通过Computer Use发送两句普通提示，不输入内部工具参数。
+- “先暂停后续执行，再解释当前状态。”：1次请求8161ms，plan_task成功；executionPaused=true、control=pause/model、修订8，页面真实显示“已暂停”。不是仅凭回复判断。
+- “继续刚才未完成的步骤。”：1次请求1149ms，plan_task及request_processing_apply成功；executionPaused=false、control=execute/model、修订9。只重新准备原处理运行的pending采用卡，页面显示“等待确认”，未点击确认。
+- 前后仍为1运行、1空草稿、2候选。原runId/runIds、目标2、要求、允许字段及createdDraftId一致；没有新增运行/生成、采用或发布。原失效卡保留，新卡pending，完成的生成与核对步骤没有重跑。
+- 原OPT-42预算仍为12次/30350ms，SHA256为2a70fa3bf42cb1e641557ea62c543d72fba16a61178fac3e8f96c0eb88ca1297；OPT-41旧预算哈希20e7cdfa5a869d7f6de12f09bc5d8b754cb0b381e83cf9c9afa7c990a0d9599c；原Owner快照哈希仍为本记录前述值。三个文件补验前后完全一致。
+- 原失败和预算不清零、不覆盖。新before/paused/resumed快照、summary.json、预算及live日志在服务器opt42-pause-resume目录保留；临时4220计算服务及本次标签关闭，隔离库/对象/文件仍保留。
+
+![暂停状态已保存](opt42-paused.png)
+
+![继续后只准备原候选的人工确认卡](opt42-resumed.png)
+
+### 4217无损更新
+
+- 复用原固定归档构建/切换逻辑；从固定bdf4e89完整构建正式前端及后端。依赖与Dockerfile未变化，沿已核实不可变ddb依赖镜像构建，无网络重装依赖；构建exit0。新镜像evalbase-agent-checkpoint:bdf4e8946fb0，ID前缀9f31a903d9aa。
+- 只更新evalbase-agent-owner-checkpoint的web/model-worker；postgres、minio、ordinary worker容器ID保持。4217继续绑定127.0.0.1，卷、网络、配置中的数据连接及权限保持。
+- 更新前确认无活动助手回合/任务，备份原库为opt42-pause-resume/owner-before-bdf4e8946fb0.dump，配置备份checkpoint.env.pre-opt42-bdf4e8946fb0，均保留私有权限，不提交。失败回滚沿原镜像逻辑准备，本次无需回滚。
+- /health及/health/ready正常，git_sha=bdf4e8946fb0b7bef6a4dc9e3f4f8932cba7c56e，PostgreSQL/MinIO依赖正常；实际首页及/assets/index-Cmja0YVQ.js返回200。Computer Use打开4217正常显示登录页，未另建账号或操作Owner原会话。
+- 切换前后15张业务表逐表数量与整行MD5集合指纹完全一致，含处理批次/运行、会话/回合/确认和历史预算；草稿记录指纹一致。原248/400条及全部历史结果未改变。数据库备份、运行镜像身份、切换报告checkpoint.json和完整日志均保留在独立补验目录，没有覆盖原39–41报告或旧预算。
+- 未合并、推送或打tag。复用此前有效的31项回归和两轴审阅，本次没有业务变更，不重跑全套。
+
+本次授权范围完成：原未完成的暂停/继续已用固定代码真实补验通过，4217已更新。此结论只覆盖上述固定场景，不代表任意自然语言、内容质量或Owner人工验收已通过。

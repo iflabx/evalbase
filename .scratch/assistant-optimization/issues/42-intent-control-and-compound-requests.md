@@ -2,10 +2,10 @@
 
 Status: ready-for-human
 Implementation: completed
-Validation: partial（真实暂停/继续修后复测未完成；详见验证记录）
+Validation: completed（固定场景定向与暂停/继续补验通过；Owner pending）
 Blocked by: none（OPT-39 已完成定向验证）
 
-优先级：P1。基于当前 AI SDK、plan_task、advanceExecution 及既有持久任务实现，统一普通中文与明确操作的执行边界。2026-10-20 用户已授权开发与定向验证。按最新决定，本轮不追加生成内容质量验证，内容由后续人工审核修改；历史质量问题、旧预算及验收数据保留。应用实现 `93de778`，自动定向验证通过；真实流程达到12次请求上限，R42-9仍为partial，不代签整票验收。详细命令、失败及保护证据统一见[OPT-42验证](../opt42-verification.md)。部署、合并与推送仍需独立授权。产品依据：[PRD §7.1–7.5](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[架构 §9/16/17](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。研究证据及取舍见 [意图理解调研](../../../docs/research/assistant-intent-routing-2026-10-19.md)。
+优先级：P1。基于当前 AI SDK、plan_task、advanceExecution 及既有持久任务实现，统一普通中文与明确操作的执行边界。2026-10-20 用户已授权开发与定向验证。按最新决定，本轮不追加生成内容质量验证，内容由后续人工审核修改；历史质量问题、旧预算及验收数据保留。应用实现 `93de778`，自动定向验证通过；前轮12次请求截止的暂停/继续缺口已按另行授权，以独立4次/2分钟上限补验通过（实际2次/9310ms）；4217已更新bdf4e89。旧预算和失败保留，Owner人工验收pending。详细命令、失败及保护证据统一见[OPT-42验证](../opt42-verification.md)。部署、合并与推送仍需独立授权。产品依据：[PRD §7.1–7.5](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[架构 §9/16/17](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。研究证据及取舍见 [意图理解调研](../../../docs/research/assistant-intent-routing-2026-10-19.md)。
 
 ## 目标与证据边界
 
@@ -92,3 +92,5 @@ Blocked by: none（OPT-39 已完成定向验证）
 - 2026-10-19：依据开源调研及Owner确认方案建立一张开发票，硬依赖OPT-39，与OPT-40/41无反向依赖；Implementation not-started、Owner pending。当前仅写票和更新台账，未修改业务代码、调用模型或改变4217。
 
 - 2026-10-20：完成实现93de778及31项公开接口定向回归，Standards/Spec审阅发现已修复并窄复核。保持AI SDK、既有表/Worker和确认入口，前端仅改明确按钮请求。隔离真实新会话生成2条候选、零采用/发布；12/12请求后停止。修复真实数量变更和无控制回执口头暂停漏口，后者修后真实暂停/继续未复测，R42-9 partial，Owner pending。未更新4217、合并或推送；原数据与预算保留。
+
+- 2026-10-20 补验：Owner另授权有界暂停/继续和4217更新。固定bdf4e89下同一隔离会话两句普通提示均成功；实际2次请求、9310ms，零新生成/采用/发布，旧预算哈希未变。4217仅Web/model-worker更新，15张业务表前后数量/指纹一致；详情见原验证记录追加章节。无业务代码变更，未合并或推送。

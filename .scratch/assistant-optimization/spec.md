@@ -149,7 +149,7 @@ Implementation: in-progress
 | [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | completed | [实施与定向验证](opt39-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
 | [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；39已完成 | completed | [实施与验证](opt40-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
 | [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40已完成 | completed | [有界语义验证](opt41-verification.md)；[4217联动](opt39-41-checkpoint.md)新增3条审核误报保留，Owner pending |
-| [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 代码93de778、31项公开回归通过；[真实验证partial](opt42-verification.md)，12/12请求，暂停/继续修后待复测，Owner pending；4217未切换 |
+| [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 代码93de778、31项公开回归通过；[暂停/继续补验](opt42-verification.md)独立2次/9310ms通过，旧预算保留；4217=bdf4e89，Owner pending |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
