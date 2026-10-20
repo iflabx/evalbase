@@ -62,6 +62,8 @@ Blocked by: none
 
 ## Comments
 
+- 2026-10-20：本票随OPT-39～41更新同一4217 Web/model-worker到0522efe，数据和原预算指纹保持；真实3条链路到待确认，但出现3条事实依据存疑误报；用户打开正常页面后Computer Use复核已完成，未保存。详见[联动记录](../opt39-41-checkpoint.md)。Owner pending，不改签原400条质量。
+
 - 2026-10-19：基于已确认问题创建，Implementation not-started、Owner pending。用户仅要求写 ticket；未调用模型、生成、补齐或修改任何验收数据。
 
 - 2026-10-20：本票开发完成，应用提交 `85cbc30`；63项单元、5项本票公开接口、2项既有修复/取消兼容回归通过，隔离浏览器状态核对及Standards/Spec窄复核通过。语义效果按R40-6留到OPT-41；原400条、248条历史及预算保留，本轮未切换4217、合并或推送。详见[验证记录](../opt40-verification.md)。Owner pending。

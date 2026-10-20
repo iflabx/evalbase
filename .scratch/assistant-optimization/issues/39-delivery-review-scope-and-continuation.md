@@ -60,6 +60,8 @@ Blocked by: none
 
 ## Comments
 
+- 2026-10-20：本票随OPT-39～41更新同一4217 Web/model-worker到0522efe，数据和原预算指纹保持；真实3条链路到待确认，但出现3条事实依据存疑误报；用户打开正常页面后Computer Use复核已完成，未保存。详见[联动记录](../opt39-41-checkpoint.md)。Owner pending，不改签原400条质量。
+
 - 2026-10-19：基于只读定位建立；当前仅文档，尚未开发、部署或验证，Owner pending。自动续步和审核归属的确定性问题在本票修复；语义判断质量留 OPT-40/41。
 
 - 2026-10-20：Owner授权开发，基线24eeaeb，沿用功能工作区。Implementation in-progress；原H冻结50条证据只读回放通过，现有验收数据和预算保持，最终检查与审阅收尾中。

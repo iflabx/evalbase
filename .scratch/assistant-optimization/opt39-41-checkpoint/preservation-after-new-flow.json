@@ -1,0 +1,37 @@
+{
+  "newSession": "conversation_8e56e68b1aa143688c231cbb241b907e",
+  "newDraft": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+  "originalTablesUnchanged": true,
+  "fingerprints": {
+    "app_user": "06fb4c83bb65c5f0afccd99c1ccba075",
+    "project": "b3d25fb34e86e8e9662f51e4c925f624",
+    "data_asset": "24f568cb50c0bce0d24c6b8294dfa777",
+    "source_record": "5b12fd0af667c5501b787e8e34beeb15",
+    "collaborative_draft": "2804b9857e2939ea5943c4be875a69b0",
+    "collaborative_draft_record": "8fa4da74a2a08c85525e1bc98ab171fd",
+    "test_set_version": "bfe37e482eb9fffa36a0ae3c85c28148",
+    "processing_task": "3f45f6ec8ea9926972ea11558fb7faf2",
+    "processing_run": "ba6a3e350e872a574a28c43ce593de45",
+    "processing_batch": "9588ff6f2acf66f61ede507e83c8c779",
+    "processing_acceptance": "55aca43fdb3e96c372957c4f0db31993",
+    "assistant_session": "b60778d9ee66bdc0da96e3961ef621ba",
+    "assistant_turn": "ce21a2c8e39bf424c844f3cf1358edfd",
+    "assistant_proposal": "28fc5ab431eef5307f45904ed0bb814a",
+    "assistant_background_document": "a45efdbec7fd0bc4f3f49911caea9292"
+  },
+  "newSessionBudget": {
+    "activeMs": 9421,
+    "lastTurn": {
+      "turnId": "turn_305bc1788afc47a9884afd93144bb517",
+      "elapsedMs": 1661,
+      "toolCalls": 3,
+      "modelSteps": 0,
+      "transportRetries": 0
+    },
+    "toolCalls": 7,
+    "modelSteps": 2,
+    "transportRetries": 0
+  },
+  "activeTurns": 0,
+  "activeJobs": 0
+}

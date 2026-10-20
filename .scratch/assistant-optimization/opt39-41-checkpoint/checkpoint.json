@@ -1,0 +1,99 @@
+{
+  "code": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+  "image": "evalbase-agent-checkpoint:0522efefb277",
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "0522efefb2773c54bb3296a330fd24ecb5514c17"
+  },
+  "updated_services": [
+    "web",
+    "model-worker"
+  ],
+  "unchanged_services": [
+    "postgres",
+    "minio",
+    "worker"
+  ],
+  "business_counts_equal": true,
+  "draft_content_unchanged": true,
+  "database_backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt39-41-checkpoint/owner-before-0522efefb277.dump",
+  "counts": [
+    "app_user|2",
+    "project|3",
+    "data_asset|42",
+    "source_record|21283",
+    "collaborative_draft|47",
+    "collaborative_draft_record|2205",
+    "test_set_version|8",
+    "processing_task|94",
+    "processing_run|121",
+    "processing_batch|883",
+    "processing_acceptance|44",
+    "assistant_session|55",
+    "assistant_turn|306",
+    "assistant_proposal|32",
+    "assistant_background_document|45"
+  ],
+  "frontend_asset": "/assets/index-BQ846aji.js",
+  "history_fingerprints_before": {
+    "app_user": "06fb4c83bb65c5f0afccd99c1ccba075",
+    "project": "b3d25fb34e86e8e9662f51e4c925f624",
+    "data_asset": "24f568cb50c0bce0d24c6b8294dfa777",
+    "source_record": "5b12fd0af667c5501b787e8e34beeb15",
+    "collaborative_draft": "2804b9857e2939ea5943c4be875a69b0",
+    "collaborative_draft_record": "8fa4da74a2a08c85525e1bc98ab171fd",
+    "test_set_version": "bfe37e482eb9fffa36a0ae3c85c28148",
+    "processing_task": "3f45f6ec8ea9926972ea11558fb7faf2",
+    "processing_run": "ba6a3e350e872a574a28c43ce593de45",
+    "processing_batch": "9588ff6f2acf66f61ede507e83c8c779",
+    "processing_acceptance": "55aca43fdb3e96c372957c4f0db31993",
+    "assistant_session": "b60778d9ee66bdc0da96e3961ef621ba",
+    "assistant_turn": "ce21a2c8e39bf424c844f3cf1358edfd",
+    "assistant_proposal": "28fc5ab431eef5307f45904ed0bb814a",
+    "assistant_background_document": "a45efdbec7fd0bc4f3f49911caea9292"
+  },
+  "history_fingerprints_after": {
+    "app_user": "06fb4c83bb65c5f0afccd99c1ccba075",
+    "project": "b3d25fb34e86e8e9662f51e4c925f624",
+    "data_asset": "24f568cb50c0bce0d24c6b8294dfa777",
+    "source_record": "5b12fd0af667c5501b787e8e34beeb15",
+    "collaborative_draft": "2804b9857e2939ea5943c4be875a69b0",
+    "collaborative_draft_record": "8fa4da74a2a08c85525e1bc98ab171fd",
+    "test_set_version": "bfe37e482eb9fffa36a0ae3c85c28148",
+    "processing_task": "3f45f6ec8ea9926972ea11558fb7faf2",
+    "processing_run": "ba6a3e350e872a574a28c43ce593de45",
+    "processing_batch": "9588ff6f2acf66f61ede507e83c8c779",
+    "processing_acceptance": "55aca43fdb3e96c372957c4f0db31993",
+    "assistant_session": "b60778d9ee66bdc0da96e3961ef621ba",
+    "assistant_turn": "ce21a2c8e39bf424c844f3cf1358edfd",
+    "assistant_proposal": "28fc5ab431eef5307f45904ed0bb814a",
+    "assistant_background_document": "a45efdbec7fd0bc4f3f49911caea9292"
+  },
+  "history_and_budgets_equal": true,
+  "services_before": {
+    "web": {
+      "id": "3ca522b9067b0547a18697c8d1e8ea8e468bff8efa70821b6b42b4d9b9ecc1c4",
+      "image": "evalbase-agent-checkpoint:ddb0b64d827a"
+    },
+    "model-worker": {
+      "id": "5251fd33b92d9c8788fa3259ef50a1835da971dce0b2289d87abb9da0cb568b0",
+      "image": "evalbase-agent-checkpoint:ab636038af52"
+    },
+    "postgres": {
+      "id": "7f81ded39560ee9b6f24ea2ff88296557feff1267777103c497820c4ae28e17d",
+      "image": "public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8"
+    },
+    "minio": {
+      "id": "b669067b77c53aa80813f512de94ab8e41ce14132ee702ef84da6e7c92c310b0",
+      "image": "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+    },
+    "worker": {
+      "id": "6ae61d537dcecc40849dbc8fe6245b4241dc16b5443c99918790ff4361cb46aa",
+      "image": "evalbase-agent-checkpoint:94177609b4eb"
+    }
+  }
+}

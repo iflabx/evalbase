@@ -1,3 +1,5 @@
+2026-10-20 最新验收环境：Owner授权后，OPT-39～41已更新同一4217 Web与model-worker到0522efe，备份及原15表内容/预算指纹通过。旧H50条历史审核显示恢复，唯一新3条真实接口流程到待确认、未保存，实际4次模型请求；但3条常规场景前提被误作事实断言而存疑，语义验收未通过；用户手动打开正常页面后Computer Use已完成旧H状态、新3条存疑原因及确认卡片复核。见[联动记录](opt39-41-checkpoint.md)。原400/248条和预算保持，Owner pending、OPT-31仍in-progress，未合并/推送。下方带日期条目保留历史状态。
+
 2026-10-20 最新实施：OPT-41已完成逐项证据、独立分类比较、原预算内初检与修复接受控制，应用e961ea1；69个定向用例及24条固定/6条生成的有界语义验证完成，见[完整记录](opt41-verification.md)。固定门槛达到，但5条依据不足判不符、2条待核对均保留；Owner pending。原400/248条和预算不变，OPT-31仍in-progress、原内容质量未通过，4217未切换，未合并/推送。下方带日期条目为历史记录。
 
 2026-10-20 最新实施：OPT-40已完成生成边界、单交付依据澄清和版本化新题去重，应用提交`85cbc30`，定向验证及两轴审阅见[验证记录](opt40-verification.md)。Owner pending；真实语义小样本合并到OPT-41，OPT-31仍in-progress。原400条、248条历史与预算保留；4217未切换，未合并/推送。下方带日期条目为历史记录。
@@ -144,9 +146,9 @@ Implementation: in-progress
 | [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | completed | Owner pending；[定向验证与审阅](opt36-verification.md)；未部署 |
 | [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | completed | 接入已实现、同一4217已更新；[实施与实测记录](opt37-verification.md)，Owner pending，内容质量与OPT-31未签通过 |
 | [OPT-38](issues/38-background-retrieval-and-planning-recovery.md) | 未命中检索、定义目录、依据选择与普通重试规划恢复 | 当前已实现代码，无未开发票硬依赖 | completed | [实施记录](opt38-verification.md)；4217 Web a152be0，两个普通提示新会话一次提交保存仅规划方案，内部校验自动纠正；数据保留，Owner pending |
-| [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | completed | [实施与定向验证](opt39-verification.md)；ad9a093，Owner pending，4217未切换，旧数据/预算保留 |
-| [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；39已完成 | completed | 应用85cbc30；定向验证通过、Owner pending；语义验证合并到41 |
-| [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40已完成 | completed | [实施与有界语义验证](opt41-verification.md)；应用e961ea1，10次/60.7秒，达到固定门槛且保留未达理想项；Owner pending，4217未切换 |
+| [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | completed | [实施与定向验证](opt39-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
+| [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；39已完成 | completed | [实施与验证](opt40-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
+| [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40已完成 | completed | [有界语义验证](opt41-verification.md)；[4217联动](opt39-41-checkpoint.md)新增3条审核误报保留，Owner pending |
 | [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | not-started | 仅文档；复用AI SDK，有限短提示验证，旧数据/预算保留 |
 
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。

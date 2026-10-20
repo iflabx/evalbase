@@ -76,6 +76,8 @@ Blocked by: none
 
 ## Comments
 
+- 2026-10-20：本票随OPT-39～41更新同一4217 Web/model-worker到0522efe，数据和原预算指纹保持；真实3条链路到待确认，但出现3条事实依据存疑误报；用户打开正常页面后Computer Use复核已完成，未保存。详见[联动记录](../opt39-41-checkpoint.md)。Owner pending，不改签原400条质量。
+
 - 2026-10-20：Implementation completed；应用代码e961ea1，69个不同定向用例通过。真实24条固定审核及6条生成共10次模型请求/60712ms，达到预定门槛；仍有5条依据不足判不符、2条待核对，首次失败与F5错误放行保留，详见[完整验证](../opt41-verification.md)。新会话普通提示已到固定确认，未保存。旧400/248条、原预算和质量未通过结论保持；4217未切换，未合并/推送，Owner pending。
 
 - 2026-10-19：基于已确认的 77 条漏检、36 条未核对和缺失修复诊断创建；Implementation not-started、Owner pending。当前仅写票，未消耗任何模型或验收预算。

@@ -1,0 +1,2186 @@
+{
+  "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+  "document": "物流查询意图规范\n只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+  "prompt": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+  "starts": [
+    {
+      "status": 202,
+      "body": {
+        "turnId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+        "status": "queued",
+        "replayed": false
+      }
+    },
+    {
+      "status": 202,
+      "body": {
+        "turnId": "turn_a3a3747a03da42f09889ef04a68358c8",
+        "status": "queued",
+        "replayed": false
+      }
+    }
+  ],
+  "policy": {
+    "maxDistinctRows": 3,
+    "initialPlanAttempts": 1,
+    "executeAttempts": 1,
+    "retries": 0,
+    "save": false,
+    "oldBudgetUnchanged": true
+  },
+  "plan": {
+    "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+    "task": {
+      "goal": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+      "error": null,
+      "stage": "planning",
+      "title": "物流查询意图测试题",
+      "target": null,
+      "question": null,
+      "recovery": null,
+      "autoCount": 0,
+      "countKind": "new",
+      "nextAction": null,
+      "turnBudget": {
+        "turnId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+        "requests": [
+          {
+            "httpStatus": 200,
+            "timeToHeadersMs": 496
+          },
+          {
+            "httpStatus": 200,
+            "timeToHeadersMs": 3673
+          }
+        ],
+        "startedAt": 1792468736684,
+        "toolCalls": 2,
+        "deadlineAt": 1792468816684,
+        "modelSteps": 2,
+        "retryWaits": [],
+        "transportRetries": 0
+      },
+      "diagnostics": {
+        "turnId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+        "requests": [
+          {
+            "httpStatus": 200,
+            "timeToHeadersMs": 496
+          },
+          {
+            "httpStatus": 200,
+            "timeToHeadersMs": 3673
+          }
+        ],
+        "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+        "toolCalls": 2,
+        "durationMs": 6074,
+        "modelSteps": 2,
+        "retryWaits": [],
+        "codeVersion": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+        "currentStep": {
+          "id": "step_7698d339e4064299abdc207dde437cb8",
+          "action": "generate_candidates"
+        },
+        "diagnosticId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+        "finishReason": "tool-calls",
+        "taskRevision": 2,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v14",
+        "contractVersion": "assistant-diagnostics-v1",
+        "protocolRepairs": 0,
+        "requestAttempts": 2,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "retainedCandidates": null,
+        "retainedOperations": 0,
+        "parameterRepairVersion": "arguments-v3",
+        "requirementsReconciled": false
+      },
+      "supplements": [],
+      "targetCount": 3,
+      "requirements": [
+        "不得编造快递已承诺的送达日期。",
+        "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+        "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+        "每题期望输出固定为物流查询。"
+      ],
+      "executionPlan": {
+        "mode": "plan",
+        "steps": [
+          {
+            "id": "step_7698d339e4064299abdc207dde437cb8",
+            "input": {
+              "name": "物流查询意图测试题",
+              "scenarios": [
+                "用户询问已发货订单现在到哪里了",
+                "用户询问已发货订单的物流更新情况",
+                "用户询问已发货订单预计什么时候能送到"
+              ],
+              "outputCount": 3,
+              "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+              "classifications": [
+                {
+                  "basis": "background",
+                  "field": "expectedOutput",
+                  "quotas": [
+                    {
+                      "count": 3,
+                      "value": "物流查询"
+                    }
+                  ],
+                  "definitions": [
+                    {
+                      "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                      "value": "物流查询"
+                    }
+                  ],
+                  "allowedValues": [
+                    "物流查询"
+                  ]
+                }
+              ]
+            },
+            "title": "生成「物流查询意图测试题」",
+            "action": "generate_candidates",
+            "status": "pending",
+            "revision": 2,
+            "countKind": "new",
+            "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+            "boundaryVersion": 1
+          },
+          {
+            "id": "step_21b480868c7042d2a135b8c4eeb56a64",
+            "title": "核对本类生成结果",
+            "action": "read_processing",
+            "status": "pending",
+            "revision": 2,
+            "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+          },
+          {
+            "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+            "input": {
+              "target": {
+                "kind": "draft"
+              },
+              "allTask": true,
+              "allValid": true
+            },
+            "title": "确认采用本类结果",
+            "action": "request_processing_apply",
+            "status": "pending",
+            "revision": 2,
+            "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+          }
+        ],
+        "target": null,
+        "current": 0,
+        "needsReview": false,
+        "contractVersion": 1
+      },
+      "autoEventLimit": null,
+      "classifications": [
+        {
+          "field": "expectedOutput",
+          "basis": "background",
+          "definitions": [
+            {
+              "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+              "value": "物流查询"
+            }
+          ],
+          "allowedValues": [
+            "物流查询"
+          ],
+          "quotas": [
+            {
+              "value": "物流查询",
+              "count": 3
+            }
+          ]
+        }
+      ],
+      "executionBudget": {
+        "activeMs": 6071,
+        "lastTurn": {
+          "turnId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+          "elapsedMs": 6071,
+          "toolCalls": 2,
+          "modelSteps": 2,
+          "transportRetries": 0
+        },
+        "toolCalls": 2,
+        "modelSteps": 2,
+        "transportRetries": 0
+      },
+      "executionPaused": false,
+      "transportRecovery": null,
+      "backgroundEvidence": [
+        {
+          "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+          "textHash": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+          "documentId": "background_465458b576524e1db5177ec39de18734",
+          "fragmentIndex": 1,
+          "extractorVersion": "background-text-v1"
+        }
+      ],
+      "overallTargetCount": 3,
+      "requirementProblem": null,
+      "deliveries": [
+        {
+          "id": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+          "name": "物流查询意图测试题",
+          "count": 3,
+          "countKind": "new",
+          "status": "planned",
+          "generatedCount": null,
+          "savedCount": 0,
+          "confirmed": false
+        }
+      ],
+      "requirementSummary": [
+        "交付「物流查询意图测试题」：新增 3 条",
+        "整体交付：3 条（当前测试集单独核对）",
+        "新增候选：3 条",
+        "期望输出：允许 物流查询",
+        "期望输出：物流查询 3 条；合计 3 条",
+        "不得编造快递已承诺的送达日期。",
+        "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+        "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+        "每题期望输出固定为物流查询。"
+      ],
+      "canContinueExecution": true,
+      "requirementProblemKind": "diagnostic",
+      "canRetryTurn": false
+    },
+    "title": "物流查询意图测试题",
+    "turns": [
+      {
+        "id": "turn_6668fc5e801548b4a9b410027b2e06d6",
+        "event": "user",
+        "userText": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+        "assistantText": "方案已保存，尚未执行。\n目标：物流查询意图测试题，3 条。\n当前要求：\n- 交付「物流查询意图测试题」：新增 3 条\n- 整体交付：3 条（当前测试集单独核对）\n- 新增候选：3 条\n- 期望输出：允许 物流查询\n- 期望输出：物流查询 3 条；合计 3 条\n- 不得编造快递已承诺的送达日期。\n- 只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。\n- 每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。\n- 每题期望输出固定为物流查询。\n执行步骤：\n1. 生成「物流查询意图测试题」\n2. 核对本类生成结果\n3. 确认采用本类结果\n确认方案后可发送“执行方案”；采用和发布仍需你确认。",
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 496
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 3673
+            }
+          ],
+          "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+          "toolCalls": 2,
+          "durationMs": 6074,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "codeVersion": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+          "currentStep": {
+            "id": "step_7698d339e4064299abdc207dde437cb8",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v14",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 2,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v3",
+          "requirementsReconciled": false
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_6668fc5e801548b4a9b410027b2e06d6:bef745e19c0c7be3535ccb96c100d3382b376f70722baad1c5fe1e7b72b4b390",
+            "name": "read_background",
+            "input": {
+              "limit": 3,
+              "query": "物流查询",
+              "documentId": "background_465458b576524e1db5177ec39de18734",
+              "replaceEvidence": true,
+              "useForProcessing": false
+            },
+            "result": {
+              "id": "background_465458b576524e1db5177ec39de18734",
+              "units": 2,
+              "format": "md",
+              "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+              "fileName": "联动验收-物流意图规范.md",
+              "fileSize": 262,
+              "nextFrom": null,
+              "fragments": [
+                {
+                  "text": "物流查询意图规范\n只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                  "index": 1,
+                  "endLine": 2,
+                  "startLine": 1
+                }
+              ],
+              "characters": 88,
+              "matchCount": 1,
+              "definitions": [],
+              "fragmentCount": 1,
+              "extractorVersion": "background-text-v1",
+              "usedForProcessing": false,
+              "definitionsTruncated": false
+            },
+            "status": "succeeded",
+            "binding": {
+              "revision": 2
+            }
+          },
+          {
+            "key": "assistant:turn_6668fc5e801548b4a9b410027b2e06d6:cb6af91139701236bae05a86ee51f533edd3f3828003fb0745641df2a4c6c4ab",
+            "name": "plan_task",
+            "input": {
+              "title": "物流查询意图测试题",
+              "deliveries": [
+                {
+                  "name": "物流查询意图测试题",
+                  "count": 3,
+                  "scenarios": [
+                    "用户询问已发货订单现在到哪里了",
+                    "用户询问已发货订单的物流更新情况",
+                    "用户询问已发货订单预计什么时候能送到"
+                  ],
+                  "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。",
+                  "classifications": [
+                    {
+                      "basis": "background",
+                      "field": "expectedOutput",
+                      "quotas": [
+                        {
+                          "count": 3,
+                          "value": "物流查询"
+                        }
+                      ],
+                      "definitions": [
+                        {
+                          "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                          "value": "物流查询",
+                          "reference": "o:5cfdbafc4f81d951#1"
+                        }
+                      ],
+                      "allowedValues": [
+                        "物流查询"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "nextAction": "none",
+              "requirements": [
+                "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                "每题期望输出固定为物流查询。",
+                "不得编造快递已承诺的送达日期。"
+              ],
+              "executionMode": "plan"
+            },
+            "result": {
+              "task": {
+                "stage": "planning",
+                "title": "物流查询意图测试题",
+                "target": null,
+                "question": null,
+                "autoCount": 0,
+                "countKind": "new",
+                "deliveries": [
+                  {
+                    "id": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+                    "name": "物流查询意图测试题",
+                    "count": 3,
+                    "countKind": "new",
+                    "scenarios": [
+                      "用户询问已发货订单现在到哪里了",
+                      "用户询问已发货订单的物流更新情况",
+                      "用户询问已发货订单预计什么时候能送到"
+                    ],
+                    "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                    "boundaryVersion": 1,
+                    "classifications": [
+                      {
+                        "basis": "background",
+                        "field": "expectedOutput",
+                        "quotas": [
+                          {
+                            "count": 3,
+                            "value": "物流查询"
+                          }
+                        ],
+                        "definitions": [
+                          {
+                            "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                            "value": "物流查询"
+                          }
+                        ],
+                        "allowedValues": [
+                          "物流查询"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "nextAction": null,
+                "targetCount": 3,
+                "requirements": [
+                  "不得编造快递已承诺的送达日期。",
+                  "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                  "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                  "每题期望输出固定为物流查询。"
+                ],
+                "executionPlan": {
+                  "mode": "plan",
+                  "steps": [
+                    {
+                      "id": "step_7698d339e4064299abdc207dde437cb8",
+                      "action": "generate_candidates",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+                      "boundaryVersion": 1
+                    },
+                    {
+                      "id": "step_21b480868c7042d2a135b8c4eeb56a64",
+                      "action": "read_processing",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+                    },
+                    {
+                      "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+                      "action": "request_processing_apply",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+                    }
+                  ],
+                  "target": null,
+                  "current": 0,
+                  "needsReview": false,
+                  "contractVersion": 1
+                },
+                "autoEventLimit": null,
+                "classifications": [
+                  {
+                    "basis": "background",
+                    "field": "expectedOutput",
+                    "quotas": [
+                      {
+                        "count": 3,
+                        "value": "物流查询"
+                      }
+                    ],
+                    "definitions": [
+                      {
+                        "value": "物流查询",
+                        "reference": "definition:d9e59ff5bf12e64a9caf231fb79f99f7f1bf7d29b27087b7735e3f03fa57e225"
+                      }
+                    ],
+                    "allowedValues": [
+                      "物流查询"
+                    ]
+                  }
+                ],
+                "executionPaused": false,
+                "originalRequest": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+                "transportRecovery": null,
+                "backgroundEvidence": [
+                  {
+                    "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+                    "textHash": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+                    "documentId": "background_465458b576524e1db5177ec39de18734",
+                    "fragmentIndex": 1,
+                    "extractorVersion": "background-text-v1"
+                  }
+                ],
+                "candidateSelection": null,
+                "overallTargetCount": 3,
+                "requirementProblem": null,
+                "requirementSummary": [
+                  "交付「物流查询意图测试题」：新增 3 条",
+                  "整体交付：3 条（当前测试集单独核对）",
+                  "新增候选：3 条",
+                  "期望输出：允许 物流查询",
+                  "期望输出：物流查询 3 条；合计 3 条",
+                  "不得编造快递已承诺的送达日期。",
+                  "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                  "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                  "每题期望输出固定为物流查询。"
+                ],
+                "canContinueExecution": true,
+                "historicalCorrections": [],
+                "requirementProblemKind": "diagnostic"
+              }
+            },
+            "status": "succeeded",
+            "binding": {
+              "revision": 2
+            }
+          }
+        ],
+        "createdAt": "2026-10-20T03:58:56.656Z"
+      }
+    ],
+    "proposals": [],
+    "context": {
+      "backgroundDocuments": [
+        {
+          "id": "o:5cfdbafc4f81d951",
+          "fileName": "联动验收-物流意图规范.md",
+          "format": "md",
+          "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+          "fileSize": 262,
+          "extractorVersion": "background-text-v1",
+          "units": 2,
+          "characters": 88,
+          "fragmentCount": 1
+        }
+      ],
+      "project": "模型与选取验收项目",
+      "files": [],
+      "versions": [],
+      "drafts": [],
+      "confirmedOperations": [],
+      "pendingOperations": []
+    },
+    "backgroundDocuments": [
+      {
+        "id": "background_465458b576524e1db5177ec39de18734",
+        "fileName": "联动验收-物流意图规范.md",
+        "format": "md",
+        "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+        "fileSize": 262,
+        "extractorVersion": "background-text-v1",
+        "units": 2,
+        "characters": 88,
+        "fragmentCount": 1
+      }
+    ]
+  },
+  "final": {
+    "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+    "task": {
+      "goal": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+      "error": null,
+      "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+      "stage": "awaiting_confirmation",
+      "title": "物流查询意图测试题",
+      "review": {
+        "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+        "total": 3,
+        "labels": [
+          {
+            "count": 3,
+            "label": "物流查询"
+          }
+        ],
+        "content": {
+          "checked": 3,
+          "pending": 0,
+          "conforms": 0,
+          "uncertain": 3,
+          "nonconforms": 0,
+          "autoRepaired": 0
+        },
+        "complete": true,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "effectiveness": {
+          "modified": 0,
+          "unchanged": 0,
+          "unprocessed": 0,
+          "ineffectiveRewrite": 0
+        },
+        "expectedCount": 3,
+        "outsideLabels": 0,
+        "candidateCount": 3,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "semanticReview": "required",
+        "classifications": [
+          {
+            "field": "expectedOutput",
+            "values": [
+              {
+                "count": 3,
+                "value": "物流查询"
+              }
+            ],
+            "missing": 0,
+            "satisfied": true,
+            "outsideValues": 0,
+            "additionalValues": 0,
+            "quotaDifferences": []
+          }
+        ],
+        "countUnverified": false,
+        "additionalLabels": 0,
+        "questionCollisions": 0,
+        "compatibilityProblem": null,
+        "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+        "protectedFieldChanges": 0
+      },
+      "runIds": [
+        "processing_495ffecfdeb74ba9b1a971b3c2f0761a"
+      ],
+      "target": null,
+      "question": null,
+      "recovery": null,
+      "autoCount": 1,
+      "countKind": "new",
+      "nextAction": null,
+      "targetName": "物流查询意图测试题",
+      "turnBudget": {
+        "turnId": "turn_305bc1788afc47a9884afd93144bb517",
+        "requests": [],
+        "startedAt": 1792468774624,
+        "toolCalls": 3,
+        "deadlineAt": 1792468854624,
+        "modelSteps": 0,
+        "retryWaits": [],
+        "transportRetries": 0
+      },
+      "diagnostics": {
+        "turnId": "turn_305bc1788afc47a9884afd93144bb517",
+        "requests": [],
+        "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+        "toolCalls": 3,
+        "durationMs": 1664,
+        "modelSteps": 0,
+        "retryWaits": [],
+        "codeVersion": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+        "currentStep": {
+          "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+          "action": "request_processing_apply"
+        },
+        "diagnosticId": "turn_305bc1788afc47a9884afd93144bb517",
+        "finishReason": "not_returned",
+        "taskRevision": 3,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v14",
+        "contractVersion": "assistant-diagnostics-v1",
+        "protocolRepairs": 0,
+        "requestAttempts": 0,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "retainedCandidates": 3,
+        "retainedOperations": 0,
+        "parameterRepairVersion": "arguments-v3",
+        "requirementsReconciled": false
+      },
+      "supplements": [
+        "执行方案"
+      ],
+      "targetCount": 3,
+      "requirements": [
+        "不得编造快递已承诺的送达日期。",
+        "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+        "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+        "每题期望输出固定为物流查询。"
+      ],
+      "allowedFields": [
+        "question",
+        "expectedOutput",
+        "metadata"
+      ],
+      "checkedStatus": "succeeded",
+      "executionPlan": {
+        "mode": "execute",
+        "steps": [
+          {
+            "id": "step_7698d339e4064299abdc207dde437cb8",
+            "input": {
+              "name": "物流查询意图测试题",
+              "scenarios": [
+                "用户询问已发货订单现在到哪里了",
+                "用户询问已发货订单的物流更新情况",
+                "用户询问已发货订单预计什么时候能送到"
+              ],
+              "outputCount": 3,
+              "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+              "classifications": [
+                {
+                  "basis": "background",
+                  "field": "expectedOutput",
+                  "quotas": [
+                    {
+                      "count": 3,
+                      "value": "物流查询"
+                    }
+                  ],
+                  "definitions": [
+                    {
+                      "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                      "value": "物流查询"
+                    }
+                  ],
+                  "allowedValues": [
+                    "物流查询"
+                  ]
+                }
+              ]
+            },
+            "title": "生成「物流查询意图测试题」",
+            "action": "generate_candidates",
+            "status": "executed",
+            "receipt": {
+              "key": "assistant:turn_a3a3747a03da42f09889ef04a68358c8:c60e4859e747ce8bc65a06be329fb0566702ce1e643b077bd2d95b442d5ec43a",
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "draftId": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4"
+            },
+            "revision": 3,
+            "countKind": "new",
+            "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+            "boundaryVersion": 1
+          },
+          {
+            "id": "step_21b480868c7042d2a135b8c4eeb56a64",
+            "title": "核对本类生成结果",
+            "action": "read_processing",
+            "status": "executed",
+            "receipt": {
+              "key": "assistant:turn_305bc1788afc47a9884afd93144bb517:4f91605fe9c549cb2a39317da79c1c390d644e4976ee5e48a4218653a33a9af8",
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a"
+            },
+            "revision": 3,
+            "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+          },
+          {
+            "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+            "input": {
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "target": {
+                "id": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+                "kind": "draft"
+              },
+              "allTask": true,
+              "allValid": true
+            },
+            "title": "确认采用本类结果",
+            "action": "request_processing_apply",
+            "status": "waiting",
+            "receipt": {
+              "key": "assistant:turn_305bc1788afc47a9884afd93144bb517:df2462f38e4a40b1e8e77777b3c0074c2464476c01e4a5c3c71a1ee0e8ed1750",
+              "proposalId": "proposal_5e974e0498b44c6ba4d52372746d035a"
+            },
+            "revision": 3,
+            "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+          }
+        ],
+        "target": null,
+        "current": 2,
+        "needsReview": false,
+        "contractVersion": 1
+      },
+      "targetDraftId": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+      "autoEventLimit": 4,
+      "candidateScope": null,
+      "createdDraftId": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+      "classifications": [
+        {
+          "field": "expectedOutput",
+          "basis": "background",
+          "definitions": [
+            {
+              "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+              "value": "物流查询"
+            }
+          ],
+          "allowedValues": [
+            "物流查询"
+          ],
+          "quotas": [
+            {
+              "value": "物流查询",
+              "count": 3
+            }
+          ]
+        }
+      ],
+      "executionBudget": {
+        "activeMs": 9421,
+        "lastTurn": {
+          "turnId": "turn_305bc1788afc47a9884afd93144bb517",
+          "elapsedMs": 1661,
+          "toolCalls": 3,
+          "modelSteps": 0,
+          "transportRetries": 0
+        },
+        "toolCalls": 7,
+        "modelSteps": 2,
+        "transportRetries": 0
+      },
+      "executionPaused": false,
+      "processingScope": null,
+      "selectionPreview": null,
+      "transportRecovery": null,
+      "backgroundEvidence": [
+        {
+          "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+          "textHash": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+          "documentId": "background_465458b576524e1db5177ec39de18734",
+          "fragmentIndex": 1,
+          "extractorVersion": "background-text-v1"
+        }
+      ],
+      "overallTargetCount": 3,
+      "requirementProblem": null,
+      "deliveries": [
+        {
+          "id": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+          "name": "物流查询意图测试题",
+          "count": 3,
+          "countKind": "new",
+          "status": "awaiting_confirmation",
+          "generatedCount": 3,
+          "savedCount": 0,
+          "confirmed": false,
+          "run": {
+            "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+            "status": "succeeded",
+            "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a"
+          },
+          "draft": {
+            "id": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+            "count": 0,
+            "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/test-sets/drafts/collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4"
+          }
+        }
+      ],
+      "requirementSummary": [
+        "交付「物流查询意图测试题」：新增 3 条",
+        "整体交付：3 条（当前测试集单独核对）",
+        "新增候选：3 条",
+        "允许修改：问题、期望输出、Metadata",
+        "期望输出：允许 物流查询",
+        "期望输出：物流查询 3 条；合计 3 条",
+        "不得编造快递已承诺的送达日期。",
+        "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+        "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+        "每题期望输出固定为物流查询。"
+      ],
+      "canContinueExecution": true,
+      "requirementProblemKind": "diagnostic",
+      "canRetryTurn": false
+    },
+    "title": "物流查询意图测试题",
+    "turns": [
+      {
+        "id": "turn_6668fc5e801548b4a9b410027b2e06d6",
+        "event": "user",
+        "userText": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+        "assistantText": "方案已保存，尚未执行。\n目标：物流查询意图测试题，3 条。\n当前要求：\n- 交付「物流查询意图测试题」：新增 3 条\n- 整体交付：3 条（当前测试集单独核对）\n- 新增候选：3 条\n- 期望输出：允许 物流查询\n- 期望输出：物流查询 3 条；合计 3 条\n- 不得编造快递已承诺的送达日期。\n- 只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。\n- 每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。\n- 每题期望输出固定为物流查询。\n执行步骤：\n1. 生成「物流查询意图测试题」\n2. 核对本类生成结果\n3. 确认采用本类结果\n确认方案后可发送“执行方案”；采用和发布仍需你确认。",
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+          "requests": [
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 496
+            },
+            {
+              "httpStatus": 200,
+              "timeToHeadersMs": 3673
+            }
+          ],
+          "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+          "toolCalls": 2,
+          "durationMs": 6074,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "codeVersion": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+          "currentStep": {
+            "id": "step_7698d339e4064299abdc207dde437cb8",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_6668fc5e801548b4a9b410027b2e06d6",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v14",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 2,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v3",
+          "requirementsReconciled": false
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_6668fc5e801548b4a9b410027b2e06d6:bef745e19c0c7be3535ccb96c100d3382b376f70722baad1c5fe1e7b72b4b390",
+            "name": "read_background",
+            "input": {
+              "limit": 3,
+              "query": "物流查询",
+              "documentId": "background_465458b576524e1db5177ec39de18734",
+              "replaceEvidence": true,
+              "useForProcessing": false
+            },
+            "result": {
+              "id": "background_465458b576524e1db5177ec39de18734",
+              "units": 2,
+              "format": "md",
+              "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+              "fileName": "联动验收-物流意图规范.md",
+              "fileSize": 262,
+              "nextFrom": null,
+              "fragments": [
+                {
+                  "text": "物流查询意图规范\n只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                  "index": 1,
+                  "endLine": 2,
+                  "startLine": 1
+                }
+              ],
+              "characters": 88,
+              "matchCount": 1,
+              "definitions": [],
+              "fragmentCount": 1,
+              "extractorVersion": "background-text-v1",
+              "usedForProcessing": false,
+              "definitionsTruncated": false
+            },
+            "status": "succeeded",
+            "binding": {
+              "revision": 2
+            }
+          },
+          {
+            "key": "assistant:turn_6668fc5e801548b4a9b410027b2e06d6:cb6af91139701236bae05a86ee51f533edd3f3828003fb0745641df2a4c6c4ab",
+            "name": "plan_task",
+            "input": {
+              "title": "物流查询意图测试题",
+              "deliveries": [
+                {
+                  "name": "物流查询意图测试题",
+                  "count": 3,
+                  "scenarios": [
+                    "用户询问已发货订单现在到哪里了",
+                    "用户询问已发货订单的物流更新情况",
+                    "用户询问已发货订单预计什么时候能送到"
+                  ],
+                  "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。",
+                  "classifications": [
+                    {
+                      "basis": "background",
+                      "field": "expectedOutput",
+                      "quotas": [
+                        {
+                          "count": 3,
+                          "value": "物流查询"
+                        }
+                      ],
+                      "definitions": [
+                        {
+                          "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                          "value": "物流查询",
+                          "reference": "o:5cfdbafc4f81d951#1"
+                        }
+                      ],
+                      "allowedValues": [
+                        "物流查询"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "nextAction": "none",
+              "requirements": [
+                "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                "每题期望输出固定为物流查询。",
+                "不得编造快递已承诺的送达日期。"
+              ],
+              "executionMode": "plan"
+            },
+            "result": {
+              "task": {
+                "stage": "planning",
+                "title": "物流查询意图测试题",
+                "target": null,
+                "question": null,
+                "autoCount": 0,
+                "countKind": "new",
+                "deliveries": [
+                  {
+                    "id": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+                    "name": "物流查询意图测试题",
+                    "count": 3,
+                    "countKind": "new",
+                    "scenarios": [
+                      "用户询问已发货订单现在到哪里了",
+                      "用户询问已发货订单的物流更新情况",
+                      "用户询问已发货订单预计什么时候能送到"
+                    ],
+                    "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                    "boundaryVersion": 1,
+                    "classifications": [
+                      {
+                        "basis": "background",
+                        "field": "expectedOutput",
+                        "quotas": [
+                          {
+                            "count": 3,
+                            "value": "物流查询"
+                          }
+                        ],
+                        "definitions": [
+                          {
+                            "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                            "value": "物流查询"
+                          }
+                        ],
+                        "allowedValues": [
+                          "物流查询"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "nextAction": null,
+                "targetCount": 3,
+                "requirements": [
+                  "不得编造快递已承诺的送达日期。",
+                  "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                  "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                  "每题期望输出固定为物流查询。"
+                ],
+                "executionPlan": {
+                  "mode": "plan",
+                  "steps": [
+                    {
+                      "id": "step_7698d339e4064299abdc207dde437cb8",
+                      "action": "generate_candidates",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+                      "boundaryVersion": 1
+                    },
+                    {
+                      "id": "step_21b480868c7042d2a135b8c4eeb56a64",
+                      "action": "read_processing",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+                    },
+                    {
+                      "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+                      "action": "request_processing_apply",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+                    }
+                  ],
+                  "target": null,
+                  "current": 0,
+                  "needsReview": false,
+                  "contractVersion": 1
+                },
+                "autoEventLimit": null,
+                "classifications": [
+                  {
+                    "basis": "background",
+                    "field": "expectedOutput",
+                    "quotas": [
+                      {
+                        "count": 3,
+                        "value": "物流查询"
+                      }
+                    ],
+                    "definitions": [
+                      {
+                        "value": "物流查询",
+                        "reference": "definition:d9e59ff5bf12e64a9caf231fb79f99f7f1bf7d29b27087b7735e3f03fa57e225"
+                      }
+                    ],
+                    "allowedValues": [
+                      "物流查询"
+                    ]
+                  }
+                ],
+                "executionPaused": false,
+                "originalRequest": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+                "transportRecovery": null,
+                "backgroundEvidence": [
+                  {
+                    "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+                    "textHash": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+                    "documentId": "background_465458b576524e1db5177ec39de18734",
+                    "fragmentIndex": 1,
+                    "extractorVersion": "background-text-v1"
+                  }
+                ],
+                "candidateSelection": null,
+                "overallTargetCount": 3,
+                "requirementProblem": null,
+                "requirementSummary": [
+                  "交付「物流查询意图测试题」：新增 3 条",
+                  "整体交付：3 条（当前测试集单独核对）",
+                  "新增候选：3 条",
+                  "期望输出：允许 物流查询",
+                  "期望输出：物流查询 3 条；合计 3 条",
+                  "不得编造快递已承诺的送达日期。",
+                  "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                  "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                  "每题期望输出固定为物流查询。"
+                ],
+                "canContinueExecution": true,
+                "historicalCorrections": [],
+                "requirementProblemKind": "diagnostic"
+              }
+            },
+            "status": "succeeded",
+            "binding": {
+              "revision": 2
+            }
+          }
+        ],
+        "createdAt": "2026-10-20T03:58:56.656Z"
+      },
+      {
+        "id": "turn_a3a3747a03da42f09889ef04a68358c8",
+        "event": "user",
+        "userText": "执行方案",
+        "assistantText": "处理任务已提交，完成后将继续核对候选。",
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_a3a3747a03da42f09889ef04a68358c8",
+          "requests": [],
+          "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+          "toolCalls": 2,
+          "durationMs": 1692,
+          "modelSteps": 0,
+          "retryWaits": [],
+          "codeVersion": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+          "currentStep": {
+            "id": "step_7698d339e4064299abdc207dde437cb8",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_a3a3747a03da42f09889ef04a68358c8",
+          "finishReason": "not_returned",
+          "taskRevision": 3,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v14",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 0,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "parameterRepairVersion": "arguments-v3",
+          "requirementsReconciled": false
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_a3a3747a03da42f09889ef04a68358c8:32f2b109972c3e40318b9ce74f2113b83f3a06e7f912b8186f65188257b53466",
+            "name": "plan_task",
+            "input": {
+              "executionMode": "execute"
+            },
+            "result": {
+              "task": {
+                "error": null,
+                "stage": "inspecting",
+                "title": "物流查询意图测试题",
+                "review": null,
+                "target": null,
+                "question": null,
+                "recovery": null,
+                "autoCount": 0,
+                "countKind": "new",
+                "deliveries": [
+                  {
+                    "id": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+                    "name": "物流查询意图测试题",
+                    "count": 3,
+                    "countKind": "new",
+                    "scenarios": [
+                      "用户询问已发货订单现在到哪里了",
+                      "用户询问已发货订单的物流更新情况",
+                      "用户询问已发货订单预计什么时候能送到"
+                    ],
+                    "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                    "boundaryVersion": 1,
+                    "classifications": [
+                      {
+                        "basis": "background",
+                        "field": "expectedOutput",
+                        "quotas": [
+                          {
+                            "count": 3,
+                            "value": "物流查询"
+                          }
+                        ],
+                        "definitions": [
+                          {
+                            "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                            "value": "物流查询"
+                          }
+                        ],
+                        "allowedValues": [
+                          "物流查询"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "nextAction": "generate_candidates",
+                "targetCount": 3,
+                "requirements": [
+                  "不得编造快递已承诺的送达日期。",
+                  "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                  "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                  "每题期望输出固定为物流查询。"
+                ],
+                "checkedStatus": null,
+                "executionPlan": {
+                  "mode": "execute",
+                  "steps": [
+                    {
+                      "id": "step_7698d339e4064299abdc207dde437cb8",
+                      "action": "generate_candidates",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac",
+                      "boundaryVersion": 1
+                    },
+                    {
+                      "id": "step_21b480868c7042d2a135b8c4eeb56a64",
+                      "action": "read_processing",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+                    },
+                    {
+                      "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+                      "action": "request_processing_apply",
+                      "status": "pending",
+                      "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+                    }
+                  ],
+                  "target": null,
+                  "current": 0,
+                  "needsReview": false,
+                  "contractVersion": 1
+                },
+                "autoEventLimit": 4,
+                "classifications": [
+                  {
+                    "basis": "background",
+                    "field": "expectedOutput",
+                    "quotas": [
+                      {
+                        "count": 3,
+                        "value": "物流查询"
+                      }
+                    ],
+                    "definitions": [
+                      {
+                        "value": "物流查询",
+                        "reference": "definition:d9e59ff5bf12e64a9caf231fb79f99f7f1bf7d29b27087b7735e3f03fa57e225"
+                      }
+                    ],
+                    "allowedValues": [
+                      "物流查询"
+                    ]
+                  }
+                ],
+                "executionPaused": false,
+                "originalRequest": "按附件做3条物流查询意图测试题，像用户平时说话，每题独立。先给方案，执行后停在待确认，不保存。",
+                "transportRecovery": null,
+                "backgroundEvidence": [
+                  {
+                    "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+                    "textHash": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+                    "documentId": "background_465458b576524e1db5177ec39de18734",
+                    "fragmentIndex": 1,
+                    "extractorVersion": "background-text-v1"
+                  }
+                ],
+                "candidateSelection": null,
+                "overallTargetCount": 3,
+                "requirementProblem": null,
+                "requirementSummary": [
+                  "交付「物流查询意图测试题」：新增 3 条",
+                  "整体交付：3 条（当前测试集单独核对）",
+                  "新增候选：3 条",
+                  "期望输出：允许 物流查询",
+                  "期望输出：物流查询 3 条；合计 3 条",
+                  "不得编造快递已承诺的送达日期。",
+                  "只覆盖已发货订单的物流进度、当前位置或预计送达时间，不包含修改地址或催发货。",
+                  "每题使用用户平时说话的自然完整表达，且3题彼此独立、内容不同。",
+                  "每题期望输出固定为物流查询。"
+                ],
+                "canContinueExecution": true,
+                "historicalCorrections": [
+                  "执行方案"
+                ],
+                "requirementProblemKind": "diagnostic"
+              }
+            },
+            "status": "succeeded",
+            "binding": {
+              "revision": 3
+            }
+          },
+          {
+            "key": "assistant:turn_a3a3747a03da42f09889ef04a68358c8:c60e4859e747ce8bc65a06be329fb0566702ce1e643b077bd2d95b442d5ec43a",
+            "name": "generate_candidates",
+            "input": {
+              "name": "物流查询意图测试题",
+              "scenarios": [
+                "用户询问已发货订单现在到哪里了",
+                "用户询问已发货订单的物流更新情况",
+                "用户询问已发货订单预计什么时候能送到"
+              ],
+              "outputCount": 3,
+              "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+              "classifications": [
+                {
+                  "basis": "background",
+                  "field": "expectedOutput",
+                  "quotas": [
+                    {
+                      "count": 3,
+                      "value": "物流查询"
+                    }
+                  ],
+                  "definitions": [
+                    {
+                      "text": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。每题自然完整、独立且彼此不同，期望输出固定为物流查询。不得编造快递已承诺的送达日期。",
+                      "value": "物流查询"
+                    }
+                  ],
+                  "allowedValues": [
+                    "物流查询"
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "status": "queued",
+              "draftId": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+              "replayed": false,
+              "inputCount": 0,
+              "outputCount": 3
+            },
+            "status": "succeeded",
+            "binding": {
+              "stepId": "step_7698d339e4064299abdc207dde437cb8",
+              "revision": 3,
+              "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+            }
+          }
+        ],
+        "createdAt": "2026-10-20T03:59:26.205Z"
+      },
+      {
+        "id": "turn_305bc1788afc47a9884afd93144bb517",
+        "event": "processing_completed",
+        "userText": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+        "assistantText": "操作已准备好，请核对下方确认卡片。",
+        "status": "succeeded",
+        "errorCode": null,
+        "diagnostics": {
+          "turnId": "turn_305bc1788afc47a9884afd93144bb517",
+          "requests": [],
+          "sessionId": "conversation_8e56e68b1aa143688c231cbb241b907e",
+          "toolCalls": 3,
+          "durationMs": 1664,
+          "modelSteps": 0,
+          "retryWaits": [],
+          "codeVersion": "0522efefb2773c54bb3296a330fd24ecb5514c17",
+          "currentStep": {
+            "id": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+            "action": "request_processing_apply"
+          },
+          "diagnosticId": "turn_305bc1788afc47a9884afd93144bb517",
+          "finishReason": "not_returned",
+          "taskRevision": 3,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v14",
+          "contractVersion": "assistant-diagnostics-v1",
+          "protocolRepairs": 0,
+          "requestAttempts": 0,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "retainedCandidates": 3,
+          "retainedOperations": 0,
+          "parameterRepairVersion": "arguments-v3",
+          "requirementsReconciled": false
+        },
+        "tools": [
+          {
+            "key": "assistant:turn_305bc1788afc47a9884afd93144bb517:4f91605fe9c549cb2a39317da79c1c390d644e4976ee5e48a4218653a33a9af8",
+            "name": "read_processing",
+            "input": {
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a"
+            },
+            "result": {
+              "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "total": 3,
+              "issues": [],
+              "review": {
+                "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                "total": 3,
+                "labels": [
+                  {
+                    "count": 3,
+                    "label": "物流查询"
+                  }
+                ],
+                "content": {
+                  "checked": 3,
+                  "pending": 0,
+                  "conforms": 0,
+                  "uncertain": 3,
+                  "nonconforms": 0,
+                  "autoRepaired": 0
+                },
+                "complete": true,
+                "countKind": "new",
+                "duplicates": 0,
+                "labelKinds": 1,
+                "formatIssues": [],
+                "missingCount": 0,
+                "effectiveness": {
+                  "modified": 0,
+                  "unchanged": 0,
+                  "unprocessed": 0,
+                  "ineffectiveRewrite": 0
+                },
+                "expectedCount": 3,
+                "outsideLabels": 0,
+                "candidateCount": 3,
+                "countSatisfied": true,
+                "emptyQuestions": 0,
+                "semanticReview": "required",
+                "classifications": [
+                  {
+                    "field": "expectedOutput",
+                    "values": [
+                      {
+                        "count": 3,
+                        "value": "物流查询"
+                      }
+                    ],
+                    "missing": 0,
+                    "satisfied": true,
+                    "outsideValues": 0,
+                    "additionalValues": 0,
+                    "quotaDifferences": []
+                  }
+                ],
+                "countUnverified": false,
+                "labelsTruncated": false,
+                "additionalLabels": 0,
+                "formatIssueCount": 0,
+                "questionCollisions": 0,
+                "compatibilityProblem": null,
+                "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+                "formatIssuesTruncated": false,
+                "protectedFieldChanges": 0
+              },
+              "status": "succeeded",
+              "partial": false,
+              "records": [
+                {
+                  "id": "0:0",
+                  "metadata": [],
+                  "question": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+                  "resultRef": {
+                    "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                    "resultId": "0:0"
+                  },
+                  "expectedOutput": "物流查询"
+                },
+                {
+                  "id": "0:1",
+                  "metadata": [],
+                  "question": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+                  "resultRef": {
+                    "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                    "resultId": "0:1"
+                  },
+                  "expectedOutput": "物流查询"
+                },
+                {
+                  "id": "0:2",
+                  "metadata": [],
+                  "question": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+                  "resultRef": {
+                    "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                    "resultId": "0:2"
+                  },
+                  "expectedOutput": "物流查询"
+                }
+              ],
+              "recovery": {
+                "reason": null,
+                "canRetry": false,
+                "canContinue": false,
+                "generationBudget": {
+                  "used": 2,
+                  "limit": 3,
+                  "blocked": false,
+                  "deadline": 1792468828405,
+                  "exhausted": false,
+                  "remaining": 1,
+                  "rootRunId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                  "targetCount": 3
+                }
+              },
+              "taskRuns": [
+                {
+                  "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                  "total": 3,
+                  "status": "succeeded"
+                }
+              ],
+              "taskTotal": 3,
+              "diagnostics": [
+                {
+                  "batch": 0,
+                  "calls": [
+                    {
+                      "code": "ok",
+                      "attempt": 1,
+                      "invalid": 0,
+                      "accepted": 3,
+                      "generated": 3,
+                      "validated": 3,
+                      "duplicates": 0,
+                      "durationMs": 936,
+                      "finishReason": "stop"
+                    },
+                    {
+                      "code": "ok",
+                      "attempt": 2,
+                      "invalid": 0,
+                      "purpose": "content_initial",
+                      "accepted": 0,
+                      "generated": 3,
+                      "validated": 3,
+                      "duplicates": 0,
+                      "durationMs": 5086,
+                      "finishReason": "stop"
+                    }
+                  ],
+                  "missing": 0,
+                  "accepted": 3,
+                  "attempts": 2
+                }
+              ],
+              "missingCount": 0
+            },
+            "status": "succeeded",
+            "binding": {
+              "stepId": "step_21b480868c7042d2a135b8c4eeb56a64",
+              "revision": 3,
+              "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+            }
+          },
+          {
+            "key": "assistant:turn_305bc1788afc47a9884afd93144bb517:df2462f38e4a40b1e8e77777b3c0074c2464476c01e4a5c3c71a1ee0e8ed1750",
+            "name": "request_processing_apply",
+            "input": {
+              "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "target": {
+                "id": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+                "kind": "draft"
+              },
+              "allTask": true,
+              "allValid": true
+            },
+            "result": {
+              "id": "proposal_5e974e0498b44c6ba4d52372746d035a",
+              "status": "pending",
+              "summary": {
+                "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+                "count": 3,
+                "range": "task",
+                "title": "采用处理结果",
+                "target": "物流查询意图测试题"
+              },
+              "requiresUserConfirmation": true
+            },
+            "status": "succeeded",
+            "binding": {
+              "stepId": "step_4b9dc01a1bf64e4da99a1a4c5c9d99c0",
+              "revision": 3,
+              "deliveryId": "delivery_085e0c85c76b4f8fb69433fc35bde3ac"
+            }
+          }
+        ],
+        "createdAt": "2026-10-20T03:59:34.610Z"
+      }
+    ],
+    "proposals": [
+      {
+        "id": "proposal_5e974e0498b44c6ba4d52372746d035a",
+        "turn_id": "turn_305bc1788afc47a9884afd93144bb517",
+        "action": "processing",
+        "summary": {
+          "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "count": 3,
+          "range": "task",
+          "title": "采用处理结果",
+          "target": "物流查询意图测试题"
+        },
+        "status": "pending",
+        "receipt": null,
+        "expires_at": "2026-10-20T04:19:36.251Z"
+      }
+    ],
+    "context": {
+      "backgroundDocuments": [
+        {
+          "id": "o:5cfdbafc4f81d951",
+          "fileName": "联动验收-物流意图规范.md",
+          "format": "md",
+          "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+          "fileSize": 262,
+          "extractorVersion": "background-text-v1",
+          "units": 2,
+          "characters": 88,
+          "fragmentCount": 1
+        }
+      ],
+      "project": "模型与选取验收项目",
+      "files": [],
+      "versions": [],
+      "drafts": [
+        {
+          "ref": "d:1c78408f221eb04d",
+          "name": "物流查询意图测试题",
+          "revision": 0,
+          "recordCount": 0,
+          "testSetRef": null,
+          "parentVersionRef": null
+        }
+      ],
+      "focusDraft": "d:1c78408f221eb04d",
+      "confirmedOperations": [],
+      "pendingOperations": [
+        {
+          "action": "processing",
+          "url": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "count": 3,
+          "range": "task",
+          "title": "采用处理结果",
+          "target": "物流查询意图测试题"
+        }
+      ]
+    },
+    "backgroundDocuments": [
+      {
+        "id": "background_465458b576524e1db5177ec39de18734",
+        "fileName": "联动验收-物流意图规范.md",
+        "format": "md",
+        "sha256": "d0a6c4d53b2c9a9d75e9bfbc590ba0c930eea2386aa1193cc8a0766041585def",
+        "fileSize": 262,
+        "extractorVersion": "background-text-v1",
+        "units": 2,
+        "characters": 88,
+        "fragmentCount": 1
+      }
+    ]
+  },
+  "candidates": {
+    "run": {
+      "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+      "taskId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+      "parentRunId": null,
+      "continuationKind": null,
+      "jobId": "job_876738284b974f20b58bd762722c47c4",
+      "source": {
+        "id": "conversation_8e56e68b1aa143688c231cbb241b907e",
+        "kind": "background",
+        "recordIds": []
+      },
+      "options": {
+        "operation": "generate",
+        "scenarios": [
+          "用户询问已发货订单现在到哪里了",
+          "用户询问已发货订单的物流更新情况",
+          "用户询问已发货订单预计什么时候能送到"
+        ],
+        "outputCount": 3,
+        "instructions": "生成3条彼此独立、自然完整的用户口语题，均表达用户询问已发货订单的物流进度、当前位置或预计送达时间；不得包含修改地址、催发货或其他意图。每题的期望输出固定为“物流查询”。不得编造快递已承诺的送达日期。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+        "allowedFields": [
+          "question",
+          "expectedOutput",
+          "metadata"
+        ]
+      },
+      "inputCount": 0,
+      "modelRevision": 2,
+      "execution": {
+        "batchSize": 20,
+        "maxAttempts": 3,
+        "recipeVersion": "processing-v10",
+        "batchTimeoutMs": 60000,
+        "maxOutputBytes": 100000000,
+        "maxOutputTokens": 8192,
+        "maxInputBytesPerBatch": 40000
+      },
+      "outputCount": 3,
+      "missingCount": 0,
+      "executionComplete": true,
+      "partial": false,
+      "targetDraftId": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4",
+      "status": "succeeded",
+      "progress": 100,
+      "errorCode": null,
+      "createdAt": "2026-10-20T03:59:27.858Z",
+      "result": {
+        "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+        "counts": {
+          "input": 0,
+          "output": 3,
+          "batches": 1,
+          "warnings": 0
+        },
+        "partial": false
+      },
+      "sourceSummary": {
+        "name": "依据背景文档生成",
+        "kindLabel": "背景文档",
+        "files": [],
+        "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/conversation_8e56e68b1aa143688c231cbb241b907e"
+      },
+      "actorName": "管理员"
+    },
+    "rootOperation": "generate",
+    "adoptionFields": [
+      "question",
+      "expectedOutput",
+      "metadata"
+    ],
+    "issues": [],
+    "records": [
+      {
+        "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:0",
+        "candidateOrigin": {
+          "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "resultId": "0:0"
+        },
+        "original": {
+          "id": "generated:0",
+          "question": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+          "expectedOutput": "物流查询",
+          "metadata": []
+        },
+        "result": {
+          "expectedOutput": "物流查询",
+          "metadata": [],
+          "question": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+          "sourceId": "generated:0"
+        },
+        "contentReview": {
+          "checks": {
+            "category": {
+              "assessedValues": [
+                {
+                  "field": "expectedOutput",
+                  "value": "物流查询"
+                }
+              ],
+              "quote": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+              "reason": "问题明确针对已发货订单询问物流进度，符合物流查询定义，无排除项。",
+              "references": [
+                {
+                  "documentId": "background_465458b576524e1db5177ec39de18734",
+                  "fragmentIndex": 1,
+                  "quote": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。"
+                }
+              ],
+              "verdict": "conforms"
+            },
+            "expectedBehavior": {
+              "outputQuote": "物流查询",
+              "quote": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+              "reason": "期望输出固定为物流查询，符合题目要求。",
+              "verdict": "conforms"
+            },
+            "facts": {
+              "basis": "assertion",
+              "quote": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+              "reason": "新事实断言缺少获准依据，需人工核对",
+              "verdict": "uncertain"
+            },
+            "question": {
+              "quote": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+              "reason": "问题询问已发货订单的当前位置，符合自然口语表达，未包含修改地址或催发货意图。",
+              "verdict": "conforms"
+            }
+          },
+          "contentHash": "7b0dae85603a1cf8e654deac271a6945bf2f4f25b6958bb926e75332dbe01a3b",
+          "reason": "新事实断言缺少获准依据，需人工核对",
+          "sourceId": "review:0:0",
+          "verdict": "uncertain"
+        },
+        "processingOperation": "generate",
+        "unprocessed": false,
+        "resultRef": {
+          "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "resultId": "0:0",
+          "identity": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:0"
+        },
+        "changedFields": [
+          "new"
+        ],
+        "roundChanges": [],
+        "ineffectiveRewrite": false,
+        "issues": [
+          {
+            "code": "content_uncertain"
+          }
+        ],
+        "sourcePresentation": {
+          "label": "依据背景文档生成",
+          "badges": [
+            "依据背景文档生成"
+          ],
+          "steps": [
+            {
+              "label": "联动验收-物流意图规范.md · 第 1–2 行",
+              "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/conversation_8e56e68b1aa143688c231cbb241b907e",
+              "kind": "reference"
+            },
+            {
+              "label": "依据背景文档生成",
+              "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "kind": "processing",
+              "occurredAt": "2026-10-20T03:59:27.858Z"
+            }
+          ],
+          "generated": true
+        },
+        "sourceLabel": "依据背景文档生成"
+      },
+      {
+        "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:1",
+        "candidateOrigin": {
+          "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "resultId": "0:1"
+        },
+        "original": {
+          "id": "generated:1",
+          "question": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+          "expectedOutput": "物流查询",
+          "metadata": []
+        },
+        "result": {
+          "expectedOutput": "物流查询",
+          "metadata": [],
+          "question": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+          "sourceId": "generated:1"
+        },
+        "contentReview": {
+          "checks": {
+            "category": {
+              "assessedValues": [
+                {
+                  "field": "expectedOutput",
+                  "value": "物流查询"
+                }
+              ],
+              "quote": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+              "reason": "问题针对已发货订单询问物流进度，符合物流查询定义，无排除项。",
+              "references": [
+                {
+                  "documentId": "background_465458b576524e1db5177ec39de18734",
+                  "fragmentIndex": 1,
+                  "quote": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。"
+                }
+              ],
+              "verdict": "conforms"
+            },
+            "expectedBehavior": {
+              "outputQuote": "物流查询",
+              "quote": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+              "reason": "期望输出固定为物流查询，符合题目要求。",
+              "verdict": "conforms"
+            },
+            "facts": {
+              "basis": "assertion",
+              "quote": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+              "reason": "新事实断言缺少获准依据，需人工核对",
+              "verdict": "uncertain"
+            },
+            "question": {
+              "quote": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+              "reason": "问题询问已发货订单的物流更新记录，属于物流进度查询，表达自然完整。",
+              "verdict": "conforms"
+            }
+          },
+          "contentHash": "2088855a32fd0832da5dd4b594b8510ba654c9038f399f746b2656874fa3b5bf",
+          "reason": "新事实断言缺少获准依据，需人工核对",
+          "sourceId": "review:0:1",
+          "verdict": "uncertain"
+        },
+        "processingOperation": "generate",
+        "unprocessed": false,
+        "resultRef": {
+          "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "resultId": "0:1",
+          "identity": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:1"
+        },
+        "changedFields": [
+          "new"
+        ],
+        "roundChanges": [],
+        "ineffectiveRewrite": false,
+        "issues": [
+          {
+            "code": "content_uncertain"
+          }
+        ],
+        "sourcePresentation": {
+          "label": "依据背景文档生成",
+          "badges": [
+            "依据背景文档生成"
+          ],
+          "steps": [
+            {
+              "label": "联动验收-物流意图规范.md · 第 1–2 行",
+              "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/conversation_8e56e68b1aa143688c231cbb241b907e",
+              "kind": "reference"
+            },
+            {
+              "label": "依据背景文档生成",
+              "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "kind": "processing",
+              "occurredAt": "2026-10-20T03:59:27.858Z"
+            }
+          ],
+          "generated": true
+        },
+        "sourceLabel": "依据背景文档生成"
+      },
+      {
+        "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:2",
+        "candidateOrigin": {
+          "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "resultId": "0:2"
+        },
+        "original": {
+          "id": "generated:2",
+          "question": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+          "expectedOutput": "物流查询",
+          "metadata": []
+        },
+        "result": {
+          "expectedOutput": "物流查询",
+          "metadata": [],
+          "question": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+          "sourceId": "generated:2"
+        },
+        "contentReview": {
+          "checks": {
+            "category": {
+              "assessedValues": [
+                {
+                  "field": "expectedOutput",
+                  "value": "物流查询"
+                }
+              ],
+              "quote": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+              "reason": "问题针对已发货订单询问预计送达时间，符合物流查询定义，无排除项。",
+              "references": [
+                {
+                  "documentId": "background_465458b576524e1db5177ec39de18734",
+                  "fragmentIndex": 1,
+                  "quote": "只询问已发货订单的物流进度、当前位置或预计送达时间，不修改地址、不催发货。"
+                }
+              ],
+              "verdict": "conforms"
+            },
+            "expectedBehavior": {
+              "outputQuote": "物流查询",
+              "quote": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+              "reason": "期望输出固定为物流查询，符合题目要求。",
+              "verdict": "conforms"
+            },
+            "facts": {
+              "basis": "assertion",
+              "quote": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+              "reason": "新事实断言缺少获准依据，需人工核对",
+              "verdict": "uncertain"
+            },
+            "question": {
+              "quote": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+              "reason": "问题询问已发货包裹的预计送达时间，符合自然口语表达，未包含排除意图。",
+              "verdict": "conforms"
+            }
+          },
+          "contentHash": "f2003df37253aad90490c9216308586bb8a4d67eb8f2afbe33086c47ca023b3c",
+          "reason": "新事实断言缺少获准依据，需人工核对",
+          "sourceId": "review:0:2",
+          "verdict": "uncertain"
+        },
+        "processingOperation": "generate",
+        "unprocessed": false,
+        "resultRef": {
+          "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+          "resultId": "0:2",
+          "identity": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:2"
+        },
+        "changedFields": [
+          "new"
+        ],
+        "roundChanges": [],
+        "ineffectiveRewrite": false,
+        "issues": [
+          {
+            "code": "content_uncertain"
+          }
+        ],
+        "sourcePresentation": {
+          "label": "依据背景文档生成",
+          "badges": [
+            "依据背景文档生成"
+          ],
+          "steps": [
+            {
+              "label": "联动验收-物流意图规范.md · 第 1–2 行",
+              "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/assistant/conversation_8e56e68b1aa143688c231cbb241b907e",
+              "kind": "reference"
+            },
+            {
+              "label": "依据背景文档生成",
+              "href": "/projects/project_4e56ea4e11b349dfad89aba5d7de7e90/processing?run=processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+              "kind": "processing",
+              "occurredAt": "2026-10-20T03:59:27.858Z"
+            }
+          ],
+          "generated": true
+        },
+        "sourceLabel": "依据背景文档生成"
+      }
+    ],
+    "allIds": [
+      "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:0",
+      "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:1",
+      "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:2"
+    ],
+    "total": 3,
+    "duplicateCount": 0,
+    "ineffectiveIds": [],
+    "usableCount": 3,
+    "stats": {
+      "duplicates": 0,
+      "all": 3,
+      "structurallyValid": 3,
+      "changed": 3,
+      "needsReview": 3,
+      "modified": 0,
+      "unchanged": 0,
+      "unprocessed": 0,
+      "ineffectiveRewrite": 0,
+      "contentChecked": 3,
+      "contentPending": 0,
+      "contentProblems": 3,
+      "autoRepaired": 0
+    },
+    "offset": 0,
+    "limit": 10,
+    "adoptedIds": [],
+    "receipts": [],
+    "scope": "task",
+    "taskTotal": 3,
+    "reviewRevision": "7de766b74e83cbf26d841eed75147fa48f0b617eed49c88b5cac9b30aea38233",
+    "savedIds": [],
+    "savedCount": 0,
+    "history": [
+      {
+        "runId": "processing_495ffecfdeb74ba9b1a971b3c2f0761a",
+        "status": "succeeded",
+        "operation": "generate",
+        "round": 1,
+        "count": 3
+      }
+    ],
+    "saveTarget": {
+      "kind": "draft",
+      "id": "collabdraft_130b2782e0ada3ead6c8f8dbbbc6e200dd7591fcbfa07dd74fb99fe3cab31bb4"
+    }
+  },
+  "actualRequests": {
+    "assistant": 2,
+    "generation": 1,
+    "contentReview": 1,
+    "total": 4
+  },
+  "manualReview": [
+    {
+      "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:0",
+      "question": "我上周买的那双鞋显示已经发走了，现在快递大概走到哪一步了？",
+      "expectedOutput": "物流查询",
+      "naturalAndComplete": true,
+      "correctIntent": true,
+      "noPromisedDate": true,
+      "exactDuplicate": false,
+      "manualVerdict": "conforms",
+      "modelVerdict": "uncertain",
+      "issue": "将生成测试题的常规场景前提误作待验证的新事实断言"
+    },
+    {
+      "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:1",
+      "question": "订单状态显示已发货，我想看看最近有没有新的物流更新记录。",
+      "expectedOutput": "物流查询",
+      "naturalAndComplete": true,
+      "correctIntent": true,
+      "noPromisedDate": true,
+      "exactDuplicate": false,
+      "manualVerdict": "conforms",
+      "modelVerdict": "uncertain",
+      "issue": "将生成测试题的常规场景前提误作待验证的新事实断言"
+    },
+    {
+      "id": "processing_495ffecfdeb74ba9b1a971b3c2f0761a:0:2",
+      "question": "这个包裹已经发出来了，按正常速度估计大概几天能送到我手上？",
+      "expectedOutput": "物流查询",
+      "naturalAndComplete": true,
+      "correctIntent": true,
+      "noPromisedDate": true,
+      "exactDuplicate": false,
+      "manualVerdict": "conforms",
+      "modelVerdict": "uncertain",
+      "issue": "将生成测试题的常规场景前提误作待验证的新事实断言"
+    }
+  ],
+  "acceptance": {
+    "runtimeFlow": "passed",
+    "semanticAssessment": "not-passed",
+    "savedCount": 0,
+    "published": false,
+    "browser": "passed-rendering-and-state"
+  },
+  "browserEvidence": [
+    "browser-old-h.png",
+    "browser-new-flow.png",
+    "browser-evidence.png"
+  ]
+}
