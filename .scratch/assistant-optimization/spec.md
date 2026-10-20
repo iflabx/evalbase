@@ -1,3 +1,5 @@
+2026-10-20 最新实施：OPT-39 已完成开发和定向验证，应用提交ad9a093。历史H50条冻结核对、八交付收尾、旧额度和规划新增工作边界通过；独立浏览器检查通过，Standards/Spec复核无剩余发现。详见[验证记录](opt39-verification.md)，Owner pending；4217未切换，OPT-31/40/41/42状态及旧数据/预算保留。下方有日期的状态均为历史记录。
+
 2026-10-19 最新文档：根据已确认的[意图理解调研](../../docs/research/assistant-intent-routing-2026-10-19.md)，新增 [OPT-42 意图入口统一与组合请求执行控制](issues/42-intent-control-and-compound-requests.md)，Implementation not-started。硬前置为OPT-39；与OPT-40/41互不阻塞，原39 → 40 → 41顺序及OPT-31验收依赖保持。详细范围和有限验证只在本票维护。本轮仅写票，未修改应用、4217、验收数据或预算。
 
 2026-10-19 最新文档：根据400条验收后的只读定位，新增 [OPT-39](issues/39-delivery-review-scope-and-continuation.md) 审核归属与续步收尾、[OPT-40](issues/40-generation-boundaries-and-question-dedup.md) 生成边界与同题去重、[OPT-41](issues/41-content-review-evidence-and-budget.md) 核对证据与漏检修复。三票 Implementation not-started，建议39 → 40 → 41；本次仅写票。OPT-31已生成并保存八份共400条，但内容质量未通过，保持in-progress、Owner pending；预算、旧验收数据及已完成部分均保留，边界统一见 [OPT-31衔接](issues/31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。以下有日期的记录保留历史状态。
@@ -138,7 +140,7 @@ Implementation: in-progress
 | [OPT-36](issues/36-execution-receipts-and-recovery.md) | 确定性推进、真实回执、恢复与完成判定 | OPT-35 | completed | Owner pending；[定向验证与审阅](opt36-verification.md)；未部署 |
 | [OPT-37](issues/37-workspace-cutover-and-small-flow-acceptance.md) | 工作区接入、旧任务兼容与小规模闭环 | OPT-36（传递依赖34/35） | completed | 接入已实现、同一4217已更新；[实施与实测记录](opt37-verification.md)，Owner pending，内容质量与OPT-31未签通过 |
 | [OPT-38](issues/38-background-retrieval-and-planning-recovery.md) | 未命中检索、定义目录、依据选择与普通重试规划恢复 | 当前已实现代码，无未开发票硬依赖 | completed | [实施记录](opt38-verification.md)；4217 Web a152be0，两个普通提示新会话一次提交保存仅规划方案，内部校验自动纠正；数据保留，Owner pending |
-| [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | not-started | 仅文档；冻结快照/隔离回归优先，旧计数及审核证据保留 |
+| [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | completed | [实施与定向验证](opt39-verification.md)；ad9a093，Owner pending，4217未切换，旧数据/预算保留 |
 | [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；建议在39之后 | not-started | 仅文档；新配方与旧结果隔离，语义验证合并到41 |
 | [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40 | not-started | 仅文档；固定小样本及请求/时间上限，不重跑400条 |
 | [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | not-started | 仅文档；复用AI SDK，有限短提示验证，旧数据/预算保留 |

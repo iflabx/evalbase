@@ -1,10 +1,10 @@
 # OPT-39 多份交付审核归属、自动续步与完成收尾
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: completed
 Blocked by: none
 
-优先级：P1。基于已实现的 OPT-35–38 及 OPT-31 当前代码修复，无未开发票硬依赖；本票先于 OPT-40/41 的联调。当前仅授权编写文档。产品依据：[PRD §7](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)，技术依据：[架构](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。
+优先级：P1。基于已实现的 OPT-35–38 及 OPT-31 当前代码修复，无未开发票硬依赖；本票先于 OPT-40/41 的联调。Owner于2026-10-20授权本票开发；仅本票范围，不重跑既有验收。产品依据：[PRD §7](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)，技术依据：[架构](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。
 
 ## 原因与可复核证据
 
@@ -61,3 +61,7 @@ Blocked by: none
 ## Comments
 
 - 2026-10-19：基于只读定位建立；当前仅文档，尚未开发、部署或验证，Owner pending。自动续步和审核归属的确定性问题在本票修复；语义判断质量留 OPT-40/41。
+
+- 2026-10-20：Owner授权开发，基线24eeaeb，沿用功能工作区。Implementation in-progress；原H冻结50条证据只读回放通过，现有验收数据和预算保持，最终检查与审阅收尾中。
+
+- 2026-10-20：应用与定向验证已完成，提交ad9a093；冻结H50条只读回放、八交付/额度上限/真实H修订回归及隔离浏览器检查通过。Standards/Spec补修后复核通过；[完整证据与既有套件限制](../opt39-verification.md)。Owner pending，4217未切换，未合并或推送。
