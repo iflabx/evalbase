@@ -37,6 +37,8 @@ import {
 } from "../processing/store.js";
 
 export type BackgroundSnapshot = {
+  /** New runs freeze evidence review; missing preserves the original review contract. */
+  contentReviewPolicy?: "evidence-v1";
   /** Frozen new-question policy; absence preserves legacy processing semantics. */
   questionPolicy?: import("../processing/deduplication.js").QuestionPolicy;
   requirements: string[];

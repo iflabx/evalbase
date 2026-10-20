@@ -383,3 +383,298 @@ describe("OPT-31 retained review contract", () => {
     expect(retainedContentVerdict(rows[0]!, undefined, first)).toBeUndefined();
   });
 });
+
+describe("OPT41 evidence policy", () => {
+  const background: any = {
+    contentReviewPolicy: "evidence-v1",
+    requirements: ["完整自然的问题，核对类别和事实"],
+    documents: [
+      {
+        id: "doc",
+        fileName: "意图规范",
+        sha256: "fixed",
+        extractorVersion: "text-v1",
+        fragments: [
+          { index: 1, text: "查询意图：询问订单状态，不含取消请求。" },
+        ],
+      },
+    ],
+  };
+  const row = {
+    sourceId: "r",
+    question: "我的订单现在是什么状态？",
+    expectedOutput: "查询",
+    metadata: [],
+  };
+  const opts: any = {
+    operation: "generate",
+    instructions: "生成查询意图",
+    outputCount: 1,
+    allowedFields: ["question", "expectedOutput", "metadata"],
+    scenarios: ["不能作为判定依据"],
+  };
+  const initial = () => ({
+    version: 2 as const,
+    policy: "evidence-v1" as const,
+    rulesHash: reviewRulesHash(opts, background),
+    initialAttempted: true as const,
+    items: [],
+  });
+  const reply = () => ({
+    reviews: [
+      {
+        id: "r",
+        checks: Object.fromEntries(
+          ["question", "category", "expectedBehavior", "facts"].map((key) => [
+            key,
+            {
+              verdict: "conforms",
+              reason: "问题明确询问订单状态",
+              quote: row.question,
+              ...(key === "expectedBehavior" ? { outputQuote: "查询" } : {}),
+              ...(key === "category"
+                ? {
+                    references: [
+                      {
+                        documentId: "doc",
+                        fragmentIndex: 1,
+                        quote: "询问订单状态",
+                      },
+                    ],
+                  }
+                : {}),
+              ...(key === "facts" ? { basis: "no_assertion" } : {}),
+            },
+          ]),
+        ),
+      },
+    ],
+  });
+  it("requires located evidence for every check and does not accept four unsupported passes", () => {
+    const result = checkContent(
+      {
+        reviews: [
+          {
+            id: "r",
+            checks: {
+              question: "conforms",
+              category: "conforms",
+              expectedBehavior: "conforms",
+              facts: "conforms",
+            },
+            reason: "全部符合",
+          },
+        ],
+      },
+      [row],
+      opts,
+      background,
+      initial(),
+      false,
+    );
+    expect(
+      contentVerdict(row, result.review, initial().rulesHash).verdict,
+    ).toBe("pending");
+  });
+  it("preserves valid quotes and rejects invented or ungranted evidence without inventing a failure", () => {
+    const value: any = reply();
+    value.reviews[0].checks.category.references[0].analysis =
+      "PRIVATE_REASONING_CANARY";
+    const good = checkContent(value, [row], opts, background, initial(), false);
+    expect(contentVerdict(row, good.review, initial().rulesHash)).toMatchObject(
+      { verdict: "conforms", checks: { category: { quote: row.question } } },
+    );
+    expect(JSON.stringify(good.review)).not.toContain(
+      "PRIVATE_REASONING_CANARY",
+    );
+    value.reviews[0].checks.category.references[0].documentId = "other-session";
+    expect(
+      contentVerdict(
+        row,
+        checkContent(value, [row], opts, background, initial(), false).review,
+        initial().rulesHash,
+      ).verdict,
+    ).toBe("pending");
+    value.reviews[0].checks.category.references[0].documentId = "doc";
+    value.reviews[0].checks.question.quote = "伪造原句";
+    expect(
+      contentVerdict(
+        row,
+        checkContent(value, [row], opts, background, initial(), false).review,
+        initial().rulesHash,
+      ).verdict,
+    ).toBe("pending");
+  });
+  it("distinguishes unsupported new assertions from an explicit hypothetical or no assertion", () => {
+    const value: any = reply();
+    value.reviews[0].checks.facts.basis = "assertion";
+    expect(
+      contentVerdict(
+        row,
+        checkContent(value, [row], opts, background, initial(), false).review,
+        initial().rulesHash,
+      ).verdict,
+    ).toBe("uncertain");
+    value.reviews[0].checks.facts.basis = "hypothetical";
+    expect(
+      contentVerdict(
+        row,
+        checkContent(value, [row], opts, background, initial(), false).review,
+        initial().rulesHash,
+      ).verdict,
+    ).toBe("conforms");
+  });
+  it("does not use generation quotas or scenarios as review evidence and bounds prior question hints", () => {
+    const prompt = contentReviewPrompt(
+      [row],
+      opts,
+      background,
+      true,
+      undefined,
+      Array.from({ length: 200 }, (_, i) => ({
+        ...row,
+        question: "其他问题" + i + "长".repeat(200),
+      })),
+    );
+    const body = JSON.parse(prompt.prompt);
+    expect(body.options?.scenarios).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain("不能作为判定依据");
+    expect(body.questionContext.sampledQuestions.length).toBeLessThanOrEqual(
+      20,
+    );
+    expect(body.questionContext.exhaustive).toBe(false);
+    expect(body.questionContext.totalAuthorizedQuestions).toBe(200);
+    expect(
+      Buffer.byteLength(prompt.system + prompt.prompt),
+    ).toBeLessThanOrEqual(40000);
+  });
+  it("stages a valid replacement and keeps the original until a successful recheck", () => {
+    const value: any = reply();
+    value.reviews[0].checks.question.verdict = "nonconforms";
+    value.reviews[0].replacement = {
+      ...row,
+      question: "请问我的订单处理到哪一步了？",
+    };
+    delete value.reviews[0].replacement.sourceId;
+    const result = checkContent(
+      value,
+      [row],
+      opts,
+      background,
+      initial(),
+      true,
+    );
+    expect(result.records).toEqual([row]);
+    expect(result.review.items[0]).toMatchObject({
+      verdict: "nonconforms",
+      repairStatus: "proposed",
+      proposal: { question: "请问我的订单处理到哪一步了？" },
+    });
+  });
+  it("keeps old frozen hashes and policies readable without a global upgrade", () => {
+    const old = { requirements: [], documents: [] };
+    expect(reviewRulesHash(opts, old)).toBe(
+      sha256(
+        canonicalJson({
+          policy: "content-intent-v2",
+          options: opts,
+          background: old,
+        }),
+      ),
+    );
+    const legacy = { ...background };
+    delete legacy.contentReviewPolicy;
+    expect(reviewRulesHash(opts, background)).not.toBe(
+      reviewRulesHash(opts, legacy),
+    );
+  });
+});
+
+it("OPT41 locates current-round original quotes and rejects duplicate identities or a missing check", () => {
+  const row = {
+    sourceId: "r",
+    question: "订单A17的900元退款什么时候到账？",
+    expectedOutput: "查询",
+    metadata: [],
+  };
+  const original = { ...row, question: "订单A17，退款100元，何时到账" };
+  const opts: any = {
+    operation: "rewrite",
+    instructions: "保留金额",
+    allowedFields: ["question"],
+  };
+  const background: any = {
+    contentReviewPolicy: "evidence-v1",
+    requirements: [],
+    documents: [],
+  };
+  const state: any = {
+    version: 2,
+    policy: "evidence-v1",
+    rulesHash: reviewRulesHash(opts, background),
+    initialAttempted: true,
+    items: [],
+  };
+  const checks: any = Object.fromEntries(
+    ["question", "category", "expectedBehavior", "facts"].map((key) => [
+      key,
+      {
+        verdict: key === "facts" ? "nonconforms" : "conforms",
+        reason: "当前金额与原输入不符",
+        quote: row.question,
+        ...(key === "expectedBehavior" ? { outputQuote: "查询" } : {}),
+        ...(key === "facts"
+          ? { basis: "preservation", originalQuote: "退款100元" }
+          : {}),
+      },
+    ]),
+  );
+  const item = { id: "r", checks };
+  const originals = new Map([["r", original]]);
+  expect(
+    checkContent(
+      { reviews: [item] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+      originals,
+    ).review.items[0]?.verdict,
+  ).toBe("nonconforms");
+  checks.facts.originalQuote = "退款999元";
+  expect(
+    checkContent(
+      { reviews: [item] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+      originals,
+    ).review.items[0]?.verdict,
+  ).toBe("pending");
+  expect(
+    checkContent(
+      { reviews: [item, item] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+      originals,
+    ).review.items,
+  ).toEqual([]);
+  delete checks.facts;
+  expect(
+    checkContent(
+      { reviews: [item] },
+      [row],
+      opts,
+      background,
+      state,
+      false,
+      originals,
+    ).review.items,
+  ).toEqual([]);
+});

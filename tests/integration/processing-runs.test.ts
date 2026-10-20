@@ -2836,6 +2836,29 @@ describe("durable data processing", () => {
             [job.id, result],
           );
         }
+        // Replay a native legacy parent; upgrading a selected child must not invalidate its neighbours.
+        const frozenParent = (
+          await db.query("SELECT input_ref FROM processing_run WHERE id=$1", [
+            parent.id,
+          ])
+        ).rows[0];
+        const oldInput = JSON.parse(
+          (
+            await artifacts.readBytes(frozenParent.input_ref, 100000000)
+          ).toString("utf8"),
+        );
+        delete oldInput.background;
+        const oldBytes = Buffer.from(JSON.stringify(oldInput));
+        const oldRef = await artifacts.storeProcessing(
+          oldBytes,
+          parent.id,
+          "input",
+        );
+        const { sha256 } = await import("../../src/package/contract.js");
+        await db.query(
+          "UPDATE processing_run SET input_ref=$2,input_hash=$3 WHERE id=$1",
+          [parent.id, oldRef.objectRef, sha256(oldBytes)],
+        );
         await finish(parent);
         const scope = {
           projectId,
@@ -3761,6 +3784,38 @@ describe("durable data processing", () => {
       expect(created.statusCode, created.body).toBe(201);
       const run = created.json().run;
       activeRun = run.id;
+      // This regression intentionally replays the pre-OPT41 frozen review contract.
+      const frozen = (
+        await db.query("SELECT input_ref FROM processing_run WHERE id=$1", [
+          run.id,
+        ])
+      ).rows[0];
+      const legacy = JSON.parse(
+        (await artifacts.readBytes(frozen.input_ref, 100000000)).toString(
+          "utf8",
+        ),
+      );
+      if (legacy.background) {
+        delete legacy.background.contentReviewPolicy;
+        delete legacy.background.questionPolicy;
+        if (
+          !legacy.background.documents.length &&
+          !legacy.background.requirements.length &&
+          !legacy.background.questionPolicy
+        )
+          delete legacy.background;
+      }
+      const legacyBytes = Buffer.from(JSON.stringify(legacy));
+      const legacyStored = await artifacts.storeProcessing(
+        legacyBytes,
+        run.id,
+        "input",
+      );
+      const { sha256 } = await import("../../src/package/contract.js");
+      await db.query(
+        "UPDATE processing_run SET input_ref=$2,input_hash=$3 WHERE id=$1",
+        [run.id, legacyStored.objectRef, sha256(legacyBytes)],
+      );
       if (["interrupted", "exhausted"].includes(scenario)) {
         const options = created.json().run.options;
         const { reviewRulesHash } =

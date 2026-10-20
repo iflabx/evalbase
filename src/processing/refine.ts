@@ -366,6 +366,26 @@ export async function createRefinementRun(
           rootOperation: refinement.rootOperation,
         })
       : input.background;
+    if (model?.enabled) {
+      // A partial edit keeps its frozen native review policy, including legacy absence.
+      const inheritedPolicy =
+        scope.taskRound?.kind === "complete" ||
+        (mode === "refine" && !generatesRecords(options.operation));
+      const policy = inheritedPolicy
+        ? input.background?.contentReviewPolicy
+        : "evidence-v1";
+      if (policy)
+        background = {
+          requirements: [],
+          documents: [],
+          ...background,
+          contentReviewPolicy: policy,
+        };
+      else if (background?.contentReviewPolicy) {
+        background = { ...background };
+        delete background.contentReviewPolicy;
+      }
+    }
     if (generatesRecords(options.operation)) {
       const questionPolicy =
         scope.taskRound?.kind === "complete"

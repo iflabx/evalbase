@@ -26,6 +26,7 @@ import {
   contentVerdict,
   reviewRulesHash,
   CONTENT_RECIPE,
+  repairReasons,
 } from "./content-review.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import type { Config } from "../config.js";
@@ -447,6 +448,8 @@ export async function runProcessing(
   if (sha256(bytes) !== run.input_hash)
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
+  const evidenceReview =
+    input.background?.contentReviewPolicy === "evidence-v1";
   const questionPolicy = generatesRecords(run.options.operation)
     ? input.background?.questionPolicy
     : undefined;
@@ -679,6 +682,19 @@ export async function runProcessing(
           attempt < run.execution_config.maxAttempts;
           attempt++
         ) {
+          // New runs keep one existing call for initial review once any product exists.
+          if (evidenceReview && result.records.length) {
+            const shared = generation
+              ? await generationBudget(db, run.id)
+              : null;
+            if (
+              Math.min(
+                run.execution_config.maxAttempts - attempt,
+                shared?.remaining ?? Infinity,
+              ) <= 1
+            )
+              break;
+          }
           const remainingMs = deadline - Date.now();
           if (remainingMs <= 0) break;
           await fence(db, job);
@@ -939,6 +955,14 @@ export async function runProcessing(
           priorResult?.contentReview?.rulesHash === rulesHash
             ? priorResult.contentReview
             : undefined;
+        if (evidenceReview && result.contentReview?.recheckAttempted) {
+          for (const item of result.contentReview.items)
+            if (item.proposal) {
+              delete item.proposal;
+              item.repairStatus = "response_unknown";
+              item.repairReason = repairReasons.response_unknown;
+            }
+        }
         const reviewIndices = result.records.map((row, i) =>
           input.refinement
             ? positions.get(row.sourceId)!
@@ -984,6 +1008,16 @@ export async function runProcessing(
           prior.result_indices = indices;
           priorResult = structuredClone(result);
         };
+        const stopProposals = (
+          status: "no_recheck_budget" | "response_unknown",
+        ) => {
+          for (const item of result.contentReview?.items ?? [])
+            if (item.proposal) {
+              delete item.proposal;
+              item.repairStatus = status;
+              item.repairReason = repairReasons[status];
+            }
+        };
         for (const phase of ["initial", "recheck"] as const) {
           if (phase === "initial" && result.contentReview?.initialAttempted)
             continue;
@@ -995,17 +1029,30 @@ export async function runProcessing(
           const candidates =
             phase === "initial"
               ? qualityRows
-              : qualityRows.filter((row) => {
-                  const item = contentVerdict(
-                    row,
-                    result.contentReview,
-                    rulesHash,
-                  );
-                  return item.repaired && item.verdict === "pending";
-                });
+              : evidenceReview
+                ? qualityRows.flatMap(
+                    (row) =>
+                      result.contentReview?.items.find(
+                        (item) => item.sourceId === row.sourceId,
+                      )?.proposal ?? [],
+                  )
+                : qualityRows.filter((row) => {
+                    const item = contentVerdict(
+                      row,
+                      result.contentReview,
+                      rulesHash,
+                    );
+                    return item.repaired && item.verdict === "pending";
+                  });
           if (!candidates.length) continue;
           result.contentReview ??= {
-            version: 1,
+            version: evidenceReview ? 2 : 1,
+            ...(evidenceReview
+              ? {
+                  policy: "evidence-v1" as const,
+                  pendingCode: "response_unknown" as const,
+                }
+              : {}),
             rulesHash,
             initialAttempted: true,
             items: [],
@@ -1016,19 +1063,21 @@ export async function runProcessing(
           await fence(db, job);
           await processingAccess(db, scope);
           await processingSourceAvailable(db, job.project_id, run.source);
+          const originals = new Map(
+            candidates.flatMap((row) => {
+              const original = modelInputs.find(
+                (input) => input.id === sources.get(row.sourceId),
+              );
+              return original ? [[row.sourceId, original] as const] : [];
+            }),
+          );
           const prompt = contentReviewPrompt(
             candidates,
             run.options,
             input.background,
             phase === "initial",
-            new Map(
-              candidates.flatMap((row) => {
-                const original = modelInputs.find(
-                  (input) => input.id === sources.get(row.sourceId),
-                );
-                return original ? [[row.sourceId, original] as const] : [];
-              }),
-            ),
+            originals,
+            acceptedRows,
           );
           const oversized =
             Buffer.byteLength(prompt.system + prompt.prompt) >
@@ -1037,6 +1086,12 @@ export async function runProcessing(
             ? await reserveModelCall(db, job, run, index, Boolean(generation))
             : null;
           if (!reserved) {
+            if (evidenceReview) {
+              result.contentReview.pendingCode = oversized
+                ? "input_too_large"
+                : "budget_exhausted";
+              stopProposals("no_recheck_budget");
+            }
             result.contentReview.pendingReason = oversized
               ? "本批内容超出核对长度，待人工核对"
               : "本轮核对额度不足，待人工核对";
@@ -1094,50 +1149,132 @@ export async function runProcessing(
               input.background,
               result.contentReview,
               phase === "initial",
+              originals,
             );
-            const seen = new Set(qualityRows.map(recordKey));
-            const replacements = new Map(
-              checked.records.map((row, i) => {
-                const key = recordKey(row),
-                  changed = contentHash(row) !== contentHash(candidates[i]!);
-                // A repair cannot trade quality for a collision or erase an existing row.
-                if (
-                  changed &&
-                  (questionPolicy !== "distinct-v1" ||
-                    key !== recordKey(candidates[i]!)) &&
-                  (seen.has(key) ||
-                    (generatesRecords(run.options.operation) &&
-                      acceptedContent.has(key)))
-                ) {
-                  const item = checked.review.items.find(
+            if (evidenceReview) {
+              const initialReview = result.contentReview;
+              if (phase === "initial") {
+                const seen = new Set(qualityRows.map(recordKey));
+                for (const item of checked.review.items)
+                  if (item.proposal) {
+                    const original = candidates.find(
+                      (row) => row.sourceId === item.sourceId,
+                    )!;
+                    const key = recordKey(item.proposal);
+                    if (
+                      (questionPolicy !== "distinct-v1" ||
+                        key !== recordKey(original)) &&
+                      (seen.has(key) ||
+                        (generatesRecords(run.options.operation) &&
+                          acceptedContent.has(key)))
+                    ) {
+                      delete item.proposal;
+                      item.repairStatus = "validation_rejected";
+                      item.repairReason = repairReasons.validation_rejected;
+                    } else seen.add(key);
+                  }
+                result.contentReview = checked.review;
+              } else {
+                qualityRows = qualityRows.map((row) => {
+                  const prior = initialReview.items.find(
                     (item) => item.sourceId === row.sourceId,
-                  )!;
-                  delete item.repaired;
-                  delete item.initialReason;
-                  Object.assign(item, {
-                    contentHash: contentHash(candidates[i]!),
-                    verdict: "nonconforms",
-                    reason: "局部修复产生重复，保留原候选",
-                  });
-                  row = candidates[i]!;
-                }
-                seen.add(recordKey(row));
-                return [row.sourceId, row] as const;
-              }),
-            );
-            qualityRows = qualityRows.map(
-              (row) => replacements.get(row.sourceId) ?? row,
-            );
-            result.contentReview = checked.review;
-            call.validated = candidates.filter((row) =>
-              checked.review.items.some(
-                (item) => item.sourceId === row.sourceId,
-              ),
-            ).length;
-            call.generated = candidates.length;
-            call.invalid = candidates.length - call.validated;
+                  );
+                  if (!prior?.proposal) return row;
+                  const proposed = prior.proposal;
+                  const review = checked.review.items.find(
+                    (item) =>
+                      item.sourceId === row.sourceId &&
+                      item.contentHash === contentHash(proposed),
+                  );
+                  delete prior.proposal;
+                  if (review?.verdict === "conforms") {
+                    Object.assign(prior, review, {
+                      repaired: true,
+                      initialReason: prior.reason,
+                      repairStatus: "accepted",
+                      repairReason: repairReasons.accepted,
+                    });
+                    return proposed;
+                  }
+                  prior.repairStatus =
+                    review?.verdict === "nonconforms"
+                      ? "recheck_nonconforms"
+                      : review?.verdict === "uncertain"
+                        ? "recheck_uncertain"
+                        : "response_unknown";
+                  prior.repairReason = repairReasons[prior.repairStatus];
+                  if (review)
+                    prior.recheck = {
+                      verdict: review.verdict,
+                      reason: review.reason,
+                      ...(review.checks ? { checks: review.checks } : {}),
+                    };
+                  return row;
+                });
+              }
+              call.validated = candidates.filter((row) =>
+                checked.review.items.some(
+                  (item) =>
+                    item.sourceId === row.sourceId &&
+                    item.contentHash === contentHash(row) &&
+                    item.verdict !== "pending",
+                ),
+              ).length;
+              call.generated = candidates.length;
+              call.invalid = candidates.length - call.validated;
+              if (call.invalid) {
+                call.code = "invalid_fields";
+                result.contentReview.pendingCode = "invalid_response";
+              } else delete result.contentReview.pendingCode;
+            } else {
+              const seen = new Set(qualityRows.map(recordKey));
+              const replacements = new Map(
+                checked.records.map((row, i) => {
+                  const key = recordKey(row),
+                    changed = contentHash(row) !== contentHash(candidates[i]!);
+                  // A repair cannot trade quality for a collision or erase an existing row.
+                  if (
+                    changed &&
+                    (questionPolicy !== "distinct-v1" ||
+                      key !== recordKey(candidates[i]!)) &&
+                    (seen.has(key) ||
+                      (generatesRecords(run.options.operation) &&
+                        acceptedContent.has(key)))
+                  ) {
+                    const item = checked.review.items.find(
+                      (item) => item.sourceId === row.sourceId,
+                    )!;
+                    delete item.repaired;
+                    delete item.initialReason;
+                    Object.assign(item, {
+                      contentHash: contentHash(candidates[i]!),
+                      verdict: "nonconforms",
+                      reason: "局部修复产生重复，保留原候选",
+                    });
+                    row = candidates[i]!;
+                  }
+                  seen.add(recordKey(row));
+                  return [row.sourceId, row] as const;
+                }),
+              );
+              qualityRows = qualityRows.map(
+                (row) => replacements.get(row.sourceId) ?? row,
+              );
+              result.contentReview = checked.review;
+              call.validated = candidates.filter((row) =>
+                checked.review.items.some(
+                  (item) => item.sourceId === row.sourceId,
+                ),
+              ).length;
+              call.generated = candidates.length;
+              call.invalid = candidates.length - call.validated;
+            }
           } catch (error) {
             call.code = modelFailure(error, Date.now() >= deadline);
+            if (evidenceReview) {
+              result.contentReview.pendingCode = "response_unknown";
+              stopProposals("response_unknown");
+            }
             result.contentReview.pendingReason =
               call.code === "timeout"
                 ? "内容核对超时，候选已保留"

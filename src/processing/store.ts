@@ -650,6 +650,13 @@ export async function createProcessingRun(
         ...data.background,
         questionPolicy,
       };
+    if (modelRevision !== null)
+      data.background = {
+        requirements: [],
+        documents: [],
+        ...data.background,
+        contentReviewPolicy: "evidence-v1",
+      };
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     if (options.operation === "generate")

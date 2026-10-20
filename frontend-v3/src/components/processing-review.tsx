@@ -2,7 +2,6 @@ import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +38,18 @@ export type ReviewRow = {
     verdict: "conforms" | "nonconforms" | "uncertain" | "pending";
     reason: string;
     repaired?: boolean;
+    repairReason?: string;
+    checks?: Record<
+      string,
+      {
+        verdict: string;
+        reason: string;
+        quote?: string;
+        outputQuote?: string;
+        originalQuote?: string;
+        references?: { documentId: string; fragmentIndex: number; quote: string }[];
+      }
+    >;
   };
   historicalContentReview?: ReviewRow["contentReview"];
   issues?: { code: string }[];
@@ -594,9 +605,53 @@ export function ProcessingReview({
                 </p>
               )}
               {detail.contentReview && (
-                <p className="rounded-md border bg-muted/30 p-3 text-sm">
-                  {detail.contentReview.reason}。模型核对不代替人工审核。
-                </p>
+                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                  <p>模型核对：{detail.contentReview.reason}。模型核对不代替人工审核。</p>
+                  {detail.contentReview.repairReason && (
+                    <p className="mt-1 text-muted-foreground">
+                      {detail.contentReview.repairReason}
+                    </p>
+                  )}
+                  {detail.contentReview.checks && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        查看逐项依据
+                      </summary>
+                      <dl className="mt-2 space-y-3">
+                        {Object.entries(detail.contentReview.checks).map(([key, check]) => (
+                          <div key={key}>
+                            <dt className="font-medium">
+                              {{
+                                question: "问法",
+                                category: "类别",
+                                expectedBehavior: "期望行为",
+                                facts: "事实依据",
+                              }[key] ?? key}{" "}
+                              ·{" "}
+                              {{
+                                conforms: "符合",
+                                nonconforms: "不符合",
+                                uncertain: "存疑",
+                                pending: "待核对",
+                              }[check.verdict] ?? "待核对"}
+                            </dt>
+                            <dd className="whitespace-pre-wrap break-words text-muted-foreground">
+                              {check.reason}
+                              {check.quote && <p>问题原句：“{check.quote}”</p>}
+                              {check.outputQuote && <p>期望输出：“{check.outputQuote}”</p>}
+                              {check.originalQuote && <p>本轮输入：“{check.originalQuote}”</p>}
+                              {check.references?.map((ref, i) => (
+                                <p key={i}>
+                                  背景片段 {ref.fragmentIndex}：“{ref.quote}”
+                                </p>
+                              ))}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                  )}
+                </div>
               )}
               <Card className="bg-muted/30 text-sm">
                 <CardContent className="p-4">
