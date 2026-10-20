@@ -1,3 +1,5 @@
+import { currentDeliveryId } from "./delivery-plan.js";
+
 export type WorkspaceFacts = {
   projectId: string;
   runs: { id: string; status: string; count: number | null }[];
@@ -17,7 +19,7 @@ export function deliveryProgress(
 ) {
   const plan = task.executionPlan;
   if (plan?.contractVersion !== 1) return;
-  const currentDelivery = plan.steps[plan.current]?.deliveryId;
+  const currentDelivery = currentDeliveryId(plan);
   return plan.steps
     .filter(
       (step: any) => step.action === "generate_candidates" && step.deliveryId,

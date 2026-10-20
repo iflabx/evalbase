@@ -3,6 +3,7 @@ import { opaqueId } from "../server/support.js";
 import { sha256 } from "../package/contract.js";
 import { getProcessingRun } from "../processing/store.js";
 import { processingRecovery } from "../processing/recovery.js";
+import { reconcileExecutionConfirmations } from "./receipts.js";
 import {
   ASSISTANT_SESSION_TURN_LIMIT,
   assistantAccess,
@@ -54,11 +55,34 @@ export async function queueContinuation(
     ).rows[0];
     if (
       !session?.task?.goal ||
-      ((session.task.executionPaused ||
-        session.task.executionPlan?.mode === "plan") &&
-        event !== "confirmed") ||
       (expectedRevision !== undefined &&
-        session.task_revision !== expectedRevision) ||
+        session.task_revision !== expectedRevision)
+    ) {
+      await client.query("COMMIT");
+      return;
+    }
+    if (
+      (
+        await client.query(
+          "SELECT id FROM assistant_turn WHERE session_id=$1 AND status IN('queued','running')",
+          [sessionId],
+        )
+      ).rowCount
+    ) {
+      await client.query("COMMIT");
+      return;
+    }
+    const reconciled = await reconcileExecutionConfirmations(client, session);
+    if (reconciled !== session.task) {
+      await client.query(
+        "UPDATE assistant_session SET task=$2::jsonb,updated_at=now() WHERE id=$1 AND task_revision=$3",
+        [sessionId, JSON.stringify(reconciled), session.task_revision],
+      );
+      session.task = reconciled;
+    }
+    if (
+      session.task.executionPaused ||
+      session.task.executionPlan?.mode === "plan" ||
       ["stopped", "complete", "failed"].includes(session.task.stage)
     ) {
       await client.query("COMMIT");
@@ -107,16 +131,17 @@ export async function queueContinuation(
       ])
     ).rowCount!;
     if (
-      Number(session.task.autoCount ?? 0) >= 12 ||
+      Number(session.task.autoCount ?? 0) >=
+        (session.task.autoEventLimit ?? 12) ||
       turnCount >= ASSISTANT_SESSION_TURN_LIMIT
     ) {
       await client.query(
-        "UPDATE assistant_session SET task=task||jsonb_build_object('stage','failed','error',$2::text) WHERE id=$1",
+        "UPDATE assistant_session SET task=task||jsonb_build_object('stage','waiting_input','executionPaused',true,'nextAction',null,'error',$2::text) WHERE id=$1",
         [
           sessionId,
           turnCount >= ASSISTANT_SESSION_TURN_LIMIT
             ? "assistant_session_limit"
-            : "assistant_task_limit",
+            : "assistant_auto_limit",
         ],
       );
       await client.query("COMMIT");

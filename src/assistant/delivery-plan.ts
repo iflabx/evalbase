@@ -854,3 +854,69 @@ export function generationSteps(goals: DeliveryGoal[]) {
     },
   }));
 }
+
+/** Focus is a view; only durable receipts identify the last completed delivery. */
+export function currentDeliveryId(plan: Record<string, any> | undefined) {
+  return (
+    plan?.steps[plan.current]?.deliveryId ??
+    plan?.steps.findLast((step: any) => step.deliveryId && step.receipt)
+      ?.deliveryId
+  );
+}
+
+export function deliveryIdForRuns(task: Record<string, any>, runIds: string[]) {
+  const ids = new Set(
+    (task.executionPlan?.steps ?? [])
+      .filter(
+        (step: any) => step.deliveryId && runIds.includes(step.receipt?.runId),
+      )
+      .map((step: any) => step.deliveryId),
+  );
+  return ids.size === 1 ? ([...ids][0] as string) : undefined;
+}
+
+/** Project one goal from the existing plan, without changing its authority or receipts. */
+export function taskForDelivery(task: Record<string, any>, id: string) {
+  const plan = task.executionPlan;
+  const goal = deliveryGoals(plan).find((goal) => goal.id === id);
+  if (!goal) return;
+  const steps = plan.steps.filter((step: any) => step.deliveryId === id);
+  const draftId = steps.findLast((step: any) => step.receipt?.draftId)?.receipt
+    .draftId;
+  return {
+    ...task,
+    targetCount: goal.count,
+    countKind: goal.countKind,
+    classifications: goal.classifications,
+    allowedLabels: [],
+    target: draftId ? { kind: "draft", id: draftId } : null,
+    targetDraftId: draftId ?? null,
+    createdDraftId: draftId ?? null,
+    executionPlan: {
+      ...plan,
+      steps,
+      current:
+        steps.findIndex((step: any) => step.status !== "executed") < 0
+          ? steps.length
+          : steps.findIndex((step: any) => step.status !== "executed"),
+    },
+  };
+}
+
+/** Only asynchronous work and user confirmations require continuation events. */
+export function continuationEventCount(
+  plan: Record<string, any> | undefined,
+  unfinishedOnly = false,
+) {
+  return (plan?.steps ?? []).filter(
+    (step: any) =>
+      (!unfinishedOnly || step.status !== "executed") &&
+      ([
+        "submit_processing",
+        "generate_candidates",
+        "refine_candidates",
+        "retry_processing",
+      ].includes(step.action) ||
+        step.action.startsWith("request_")),
+  ).length;
+}

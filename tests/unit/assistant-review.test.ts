@@ -509,3 +509,126 @@ describe("current task result compatibility", () => {
     ).toEqual(["A:2"]);
   });
 });
+
+describe("OPT-39 delivery-owned review contracts", () => {
+  function fixture() {
+    const rules = (value: string) => [
+      {
+        field: "metadata",
+        key: "intent",
+        basis: "user",
+        allowedValues: [value],
+        requiredValues: [value],
+        quotas: [{ value, count: 50 }],
+      },
+    ];
+    const task: any = {
+      requirements: ["完整自然的用户问法"],
+      allowedFields: ["question", "expectedOutput", "metadata"],
+      targetCount: 50,
+      overallTargetCount: 100,
+      countKind: "new",
+      classifications: rules("A"),
+      backgroundEvidence: [
+        { documentId: "doc", fragmentIndex: 0, sha256: "hash" },
+      ],
+      target: { kind: "draft", id: "draft-H" },
+      createdDraftId: "draft-H",
+      targetDraftId: "draft-H",
+      executionPlan: {
+        contractVersion: 1,
+        mode: "execute",
+        current: 6,
+        needsReview: false,
+        steps: ["A", "H"].flatMap((id) => [
+          {
+            action: "generate_candidates",
+            deliveryId: id,
+            status: "executed",
+            countKind: "new",
+            input: {
+              name: id,
+              outputCount: 50,
+              instructions: id,
+              classifications: rules(id),
+            },
+            receipt: {
+              key: "generate-" + id,
+              runId: "run-" + id,
+              draftId: "draft-" + id,
+            },
+          },
+          {
+            action: "read_processing",
+            deliveryId: id,
+            status: "executed",
+            receipt: { key: "read-" + id, runId: "run-" + id },
+          },
+          {
+            action: "request_processing_apply",
+            deliveryId: id,
+            status: "executed",
+            receipt: {
+              key: "save-" + id,
+              proposalId: "proposal-" + id,
+              draftId: "draft-" + id,
+            },
+          },
+        ]),
+      },
+    };
+    const runs = ["A", "H"].map((id) => ({
+      run: {
+        id: "run-" + id,
+        source: { kind: "background", id: "session", recordIds: [] },
+        targetDraftId: "draft-" + id,
+      },
+      backgroundEvidence: task.backgroundEvidence,
+      backgroundGoal: {
+        requirements: requirementSummary({
+          ...task,
+          classifications: rules(id),
+        }),
+        classifications: rules(id),
+      },
+    }));
+    return { task, runs };
+  }
+  it("compares each completed delivery with its own frozen contract, not the focused A contract", () => {
+    const { task, runs } = fixture();
+    const before = structuredClone(task);
+    expect(taskCompatibilityProblem(task, [runs[1]] as any)).toBeNull();
+    expect(taskCompatibilityProblem(task, runs as any)).toBeNull();
+    task.classifications = runs[1].backgroundGoal.classifications;
+    expect(taskCompatibilityProblem(task, runs as any)).toBeNull();
+    expect({ ...task, classifications: before.classifications }).toEqual(
+      before,
+    );
+  });
+  it("invalidates only the changed H definition and preserves the unrelated A result", () => {
+    const { task, runs } = fixture();
+    task.executionPlan.steps[3].input.classifications = [
+      {
+        field: "metadata",
+        key: "intent",
+        basis: "user",
+        allowedValues: ["H changed"],
+        requiredValues: ["H changed"],
+        quotas: [{ value: "H changed", count: 50 }],
+      },
+    ];
+    expect(taskCompatibilityProblem(task, [runs[0]] as any)).toBeNull();
+    expect(taskCompatibilityProblem(task, [runs[1]] as any)).not.toBeNull();
+    expect(runs[1].backgroundGoal.classifications[0].allowedValues).toEqual([
+      "H",
+    ]);
+  });
+  it("does not guess ownership from a matching title or the current task", () => {
+    const { task, runs } = fixture();
+    expect(
+      taskCompatibilityProblem(task, [
+        { ...runs[0], run: { ...runs[0].run, id: "unbound" } },
+      ] as any),
+    ).not.toBeNull();
+  });
+});

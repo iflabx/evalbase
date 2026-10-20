@@ -5,9 +5,11 @@ import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import { advancePlan } from "./plan.js";
+import { executionBudgetExhausted } from "./budget.js";
 import { backgroundCatalog } from "./background.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { deliveryProgress, type WorkspaceFacts } from "./workspace.js";
+import { currentDeliveryId, taskForDelivery } from "./delivery-plan.js";
 import {
   taskCandidateCollection,
   resolveTaskSelection,
@@ -33,6 +35,16 @@ export function taskPresentation(
   workspace?: WorkspaceFacts,
 ) {
   if (!task || !Object.keys(task).length) return task;
+  const focus = currentDeliveryId(task.executionPlan);
+  const delivery = focus && taskForDelivery(task, focus);
+  if (delivery)
+    task = {
+      ...task,
+      targetCount: delivery.targetCount,
+      countKind: delivery.countKind,
+      classifications: delivery.classifications,
+      allowedLabels: [],
+    };
   const presented = { ...task };
   delete presented.selectedCandidates;
   delete presented.backgroundDefinitions;
@@ -67,6 +79,12 @@ export function taskPresentation(
     ...presented,
     ...(workspace ? { deliveries: deliveryProgress(task, workspace) } : {}),
     requirementSummary: requirementSummary(task, processing),
+    canContinueExecution:
+      !["assistant_auto_plan_limit", "assistant_session_limit"].includes(
+        task.error,
+      ) &&
+      (!task.executionBudget ||
+        !executionBudgetExhausted(task.executionBudget)),
     requirementProblem,
     requirementProblemKind,
     ...(task.candidateScope
@@ -123,7 +141,8 @@ export function canResumeAssistantTurn(
     Number(turn.execution_attempt) < 3 &&
     turn.user_text &&
     (!budget || (budget.deadlineAt > Date.now() && budget.modelSteps < 10)) &&
-    task?.stage !== "stopped",
+    task?.stage !== "stopped" &&
+    (!task?.executionBudget || !executionBudgetExhausted(task.executionBudget)),
   );
 }
 export class AssistantError extends Error {
@@ -917,6 +936,7 @@ export async function startTurn(
           requirements: [],
           stage: "inspecting",
           autoCount: 0,
+          autoEventLimit: null,
           observations: session.task?.observations ?? [],
           ...(session.task?.processingScope
             ? { processingScope: session.task.processingScope }

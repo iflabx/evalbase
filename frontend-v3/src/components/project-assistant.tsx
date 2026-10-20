@@ -125,6 +125,7 @@ type Conversation = {
     runId?: string;
     runIds?: string[];
     checkedStatus?: string;
+    canContinueExecution?: boolean;
     candidateScope?: { hash: string; count: number; sourceCount: number; targetCount: number };
     error?: string;
     recovery?: { kind: string; message: string };
@@ -172,6 +173,12 @@ type Conversation = {
       formatIssues?: unknown[];
       complete?: boolean;
       compatibilityProblem?: string | null;
+      historicalContent?: {
+        checked: number;
+        conforms: number;
+        nonconforms: number;
+        uncertain: number;
+      };
       classifications?: {
         field: string;
         key?: string;
@@ -257,6 +264,9 @@ const messages: Record<string, string> = {
   assistant_background_capacity: "选用的背景过长，请缩小当前任务的依据范围。",
   assistant_background_changed: "背景已经变化，请重新核对要求。",
   assistant_background_rule_mismatch: "分类规则与选用的文档定义不一致，请先纠正规则。",
+  assistant_auto_plan_limit:
+    "方案超出本任务已批准的自动续步额度，已暂停。请缩小未完成范围；已有成果和原预算已保留。",
+  assistant_auto_limit: "自动执行已暂停，已有进度已保留。请核对剩余工作；继续仍受原预算约束。",
   assistant_tool_input_invalid: "本步未完成，原有要求和成果已保留。可重试未完成步骤。",
   processing_scope_changed: "资料内容已经变化，请重新确定处理范围。",
   processing_already_adopted: "这些候选已采用到相同草稿，请核对剩余结果。",
@@ -713,8 +723,11 @@ export function ProjectAssistant({
   const currentLabel = pageContext
     ? `所选${pageContext.kind === "draft" ? "草稿" : pageContext.kind === "asset" ? "原始数据" : pageContext.kind === "version" ? "版本" : "测试集"}：${currentName ?? "正在核对…"}${currentCount !== undefined ? ` · ${currentCount} 条记录` : ""}`
     : undefined;
-  const stageLabel =
-    visible?.task?.executionPaused && visible.task.stage !== "stopped"
+  const stageLabel = ["assistant_auto_limit", "assistant_auto_plan_limit"].includes(
+    visible?.task?.error ?? "",
+  )
+    ? "自动执行已暂停"
+    : visible?.task?.executionPaused && visible.task.stage !== "stopped"
       ? "已暂停"
       : (
           {
@@ -924,6 +937,7 @@ export function ProjectAssistant({
         <div className="flex flex-wrap items-center gap-2">
           {(visible?.task?.executionPlan?.mode === "plan" || visible?.task?.executionPaused) &&
             visible.task.stage !== "stopped" &&
+            visible.task.canContinueExecution !== false &&
             (!visible.task.executionPlan?.needsReview || visible.task.executionPaused) &&
             canWrite && (
               <Button
@@ -1871,6 +1885,13 @@ export function ProjectAssistant({
                   {visible.task.review?.compatibilityProblem && (
                     <p role="alert" className="text-sm text-destructive">
                       {visible.task.review.compatibilityProblem}
+                    </p>
+                  )}
+                  {visible.task.review?.historicalContent && (
+                    <p className="text-xs text-muted-foreground">
+                      历史模型核对 {visible.task.review.historicalContent.checked} 条，其中符合{" "}
+                      {visible.task.review.historicalContent.conforms}{" "}
+                      条；当前要求需重新核对。历史结论不代表人工审核通过。
                     </p>
                   )}
                 </section>

@@ -1018,7 +1018,20 @@ export async function readProcessingRun(
   )
     throw new ProcessingError(409, "processing_source_unavailable");
   const { diagnostics, ...recovery } = await processingRecovery(db, run);
+  const deliveryRoot =
+    all && run.parent_run_id
+      ? (
+          await db.query<{ id: string; options: ProcessingRun["options"] }>(
+            "SELECT root.id,root.options FROM processing_task t JOIN processing_run root ON root.id=t.root_run_id AND root.project_id=t.project_id WHERE t.id=$1 AND t.project_id=$2",
+            [
+              (run as ProcessingRun & { task_id?: string }).task_id,
+              scope.projectId,
+            ],
+          )
+        ).rows[0]
+      : { id: run.id, options: run.options };
   return {
+    ...(all ? { deliveryRoot } : {}),
     recovery,
     diagnostics,
     run: summary(run),

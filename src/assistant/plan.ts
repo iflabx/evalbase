@@ -235,6 +235,20 @@ export function planRequirementsKey(task: Record<string, any>, legacy = false) {
   );
 }
 
+/** Per-delivery goals and bound destinations are compared separately from shared constraints. */
+export function deliverySharedRequirementsKey(task: Record<string, any>) {
+  return planRequirementsKey({
+    ...task,
+    executionPlan: undefined,
+    target: null,
+    targetDraftId: null,
+    targetCount: undefined,
+    countKind: undefined,
+    classifications: [],
+    allowedLabels: [],
+  });
+}
+
 /** Changed steps invalidate subsequent receipts; unchanged prefixes keep their facts. */
 export function revisePlan(
   previous: ExecutionPlan | undefined,

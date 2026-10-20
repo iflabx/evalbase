@@ -1780,7 +1780,7 @@ describe("assistant continuous task public contract", () => {
         [proposal.id, healthy, budgetTurn],
       );
       await db.query(
-        'UPDATE assistant_session SET task=task||\'{"stage":"awaiting_confirmation","autoCount":12}\'::jsonb WHERE id=$1',
+        'UPDATE assistant_session SET task=(task-\'autoEventLimit\')||\'{"stage":"awaiting_confirmation","autoCount":12}\'::jsonb WHERE id=$1',
         [healthy],
       );
       app = await buildApp(appConfig(), { disableLegacyTestBootstrap: true });
@@ -1795,7 +1795,7 @@ describe("assistant continuous task public contract", () => {
             ).rows[0].error,
           { timeout: 6000 },
         )
-        .toBe("assistant_task_limit");
+        .toBe("assistant_auto_limit");
       expect(
         (
           await app.inject({
@@ -1805,7 +1805,17 @@ describe("assistant continuous task public contract", () => {
             payload: {},
           })
         ).statusCode,
-      ).toBe(200);
+      ).toBe(409);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${base()}/sessions/${healthy}/turns`,
+            headers: { ...headers, "idempotency-key": randomUUID() },
+            payload: { message: "继续未完成工作，只解释当前进度" },
+          })
+        ).statusCode,
+      ).toBe(202);
       await expect
         .poll(
           async () =>
@@ -1826,7 +1836,7 @@ describe("assistant continuous task public contract", () => {
             [healthy],
           )
         ).rows[0].count,
-      ).toBe(0);
+      ).toBe(12);
     } finally {
       await db.end();
     }

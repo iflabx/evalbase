@@ -14346,10 +14346,12 @@ describe("project assistant public contract", () => {
     "confirmed-failure",
     "restored-run",
     "changed-rules",
+    "eight-deliveries",
   ] as const)(
     "OPT36 executes saved deliveries through background and confirmation without model reconstruction (%s)",
     async (variant) => {
-      const count = variant === "single" ? 1 : 2;
+      const count =
+        variant === "single" ? 1 : variant === "eight-deliveries" ? 8 : 2;
       const previous = sessionId,
         db = createPool(databaseUrl);
       let lost: ReturnType<typeof vi.spyOn> | undefined;
@@ -14379,7 +14381,10 @@ describe("project assistant public contract", () => {
           .at(-1)
           .tools.find((t: any) => t.name === "read_background")
           .result.definitions;
-        const deliveries = ["A.1.a", "A.1.b"].slice(0, count).map((value) => ({
+        const deliveries = Array.from(
+          { length: count },
+          (_, index) => ["A.1.a", "A.1.b"][index % 2],
+        ).map((value) => ({
           name: "OPT36 " + value + " " + randomUUID(),
           count: 5,
           instructions: "按对应定义生成完整自然的用户问题",
@@ -14416,9 +14421,11 @@ describe("project assistant public contract", () => {
         };
         const planned = await opt21End(
           await opt21Submit(
-            count === 2
-              ? "GB A.1.a和A.1.b各一份5条，先给方案，暂不执行。"
-              : "按文档为GB A.1.a建一份5条测试集，先给方案，暂不执行。",
+            count === 8
+              ? "按附件规范建八份测试集，每份5条，先给方案，暂不执行。"
+              : count === 2
+                ? "GB A.1.a和A.1.b各一份5条，先给方案，暂不执行。"
+                : "按文档为GB A.1.a建一份5条测试集，先给方案，暂不执行。",
           ),
         );
         expect(planned.task.executionPlan.mode).toBe("plan");
@@ -14663,6 +14670,7 @@ describe("project assistant public contract", () => {
             expect(
               completed.recovery.generationBudget.used,
             ).toBeLessThanOrEqual(3);
+            await idle();
             const task = (
               await db.query("SELECT task FROM assistant_session WHERE id=$1", [
                 sessionId,
@@ -14767,6 +14775,39 @@ describe("project assistant public contract", () => {
               .mockImplementationOnce(() => {
                 throw new Error("synthetic confirmation context failure");
               });
+          if (variant === "eight-deliveries" && index === count - 1) {
+            const originalCandidateStats = (
+              await app.inject({
+                method: "GET",
+                url: base() + "/sessions/" + sessionId + "/candidates",
+                headers,
+              })
+            ).json().stats;
+            await db.query(
+              "UPDATE assistant_session SET task=jsonb_set(jsonb_set(task,'{autoCount}',task->'autoEventLimit'),'{classifications}',$2::jsonb) WHERE id=$1",
+              [
+                sessionId,
+                JSON.stringify(savedGenerations[0].input.classifications),
+              ],
+            );
+            const viewed = (await read()).json();
+            expect(viewed.task.classifications).toEqual(
+              savedGenerations.at(-1).input.classifications,
+            );
+            const candidates = (
+              await app.inject({
+                method: "GET",
+                url: base() + "/sessions/" + sessionId + "/candidates",
+                headers,
+              })
+            ).json();
+            expect(candidates.stats.contentChecked).toBe(
+              originalCandidateStats.contentChecked,
+            );
+            expect(candidates.stats.contentPending).toBe(
+              originalCandidateStats.contentPending,
+            );
+          }
           for (let repeat = 0; repeat < 2; repeat++) {
             const confirmed = await app.inject({
               method: "POST",
@@ -14813,6 +14854,19 @@ describe("project assistant public contract", () => {
           ),
         ).toBe(true);
         expect(state.task.stage).toBe("complete");
+        if (variant === "eight-deliveries") {
+          const persisted = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task;
+          expect(persisted.autoEventLimit).toBe(18);
+          expect(persisted.autoCount).toBe(18);
+          const turnCount = state.turns.length;
+          await taskModule.collectProcessingEvents(db);
+          await taskModule.collectProcessingEvents(db);
+          expect((await read()).json().turns).toHaveLength(turnCount);
+        }
         expect(
           state.task.deliveries.every(
             (goal: any) =>
@@ -14859,9 +14913,247 @@ describe("project assistant public contract", () => {
         expect((await read()).json().task.executionPlan).toEqual(
           state.task.executionPlan,
         );
+        if (count === 8) {
+          // Reproduce a restored task paused after committed receipts, before terminal settlement.
+          await db.query(
+            "UPDATE assistant_session SET task=jsonb_set(task,'{stage}','\"waiting_input\"'::jsonb) WHERE id=$1",
+            [sessionId],
+          );
+          const lastGoal = state.task.deliveries.at(-1);
+          const beforeA = state.task.executionPlan.steps.filter(
+            (step: any) => step.deliveryId === savedGenerations[0].deliveryId,
+          );
+          requestedTool = {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              deliveries: [
+                {
+                  id: lastGoal.id,
+                  instructions:
+                    "仅使用完整自然的生活场景问题，明确描述当前类别边界",
+                },
+              ],
+            },
+          };
+          const changed = await opt21End(
+            await opt21Submit(
+              "修改最后一份的生成要求为完整自然的生活场景问题，明确描述类别边界；其他交付和共同要求不变，先保留方案，不执行。",
+            ),
+          );
+          expect(
+            changed.task.executionPlan?.mode,
+            JSON.stringify(changed.turns.at(-1)),
+          ).toBe("plan");
+          const afterA = changed.task.executionPlan.steps.filter(
+            (step: any) => step.deliveryId === savedGenerations[0].deliveryId,
+          );
+          expect(
+            afterA.map((step: any) => ({
+              status: step.status,
+              receipt: step.receipt,
+              input: step.input,
+            })),
+          ).toEqual(
+            beforeA.map((step: any) => ({
+              status: step.status,
+              receipt: step.receipt,
+              input: step.input,
+            })),
+          );
+          expect(changed.task.deliveries[0]).toMatchObject({
+            status: "saved",
+            savedCount: 5,
+          });
+          expect(
+            changed.task.executionPlan.steps.find(
+              (step: any) =>
+                step.deliveryId === lastGoal.id &&
+                step.action === "generate_candidates",
+            ).status,
+          ).toBe("pending");
+          const persistedAfter = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task;
+          expect(persistedAfter.autoEventLimit).toBe(18);
+          expect(persistedAfter.autoCount).toBe(18);
+          expect(
+            Number(
+              (
+                await db.query(
+                  "SELECT count(*) n FROM processing_run WHERE id=ANY($1::text[])",
+                  [ids],
+                )
+              ).rows[0].n,
+            ),
+          ).toBe(count);
+        }
       } finally {
         lost?.mockRestore();
         confirmedContext?.mockRestore();
+        requestedTool = undefined;
+        toolSequence = [];
+        sessionId = previous;
+        await db.end();
+      }
+    },
+    90000,
+  );
+
+  it.each(["enlarged", "same-size"])(
+    "OPT39 freezes event allowance once and pauses added work without new processing: %s",
+    async (variant) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        const source = await opt22Draft("OPT39固定续步额度");
+        await opt21Session();
+        const steps = (count: number) =>
+          Array.from({ length: count }, (_, index) => ({
+            title: "清洗第" + (index + 1) + "轮",
+            action: "submit_processing",
+            input: {
+              source: { kind: "draft", id: source },
+              allRecords: true,
+              operation: "clean",
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          }));
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            target: { kind: "draft", id: source },
+            steps: steps(variant === "same-size" ? 6 : 1),
+            requirements: ["只清洗问题，其他字段保留"],
+          },
+        };
+        const initialPlan = await opt21End(
+          await opt21Submit("暂存一轮清洗设置，不启动处理。", {
+            kind: "draft",
+            id: source,
+          }),
+        );
+        expect(
+          initialPlan.task.executionPlan?.steps.length,
+          JSON.stringify(initialPlan.turns.at(-1)),
+        ).toBe(variant === "same-size" ? 6 : 1);
+        expect(
+          (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              sessionId,
+            ])
+          ).rows[0].task.autoEventLimit,
+        ).toBeNull();
+        requestedTool = {
+          name: "plan_task",
+          input: { executionMode: "execute" },
+        };
+        const started = await opt21End(
+          await opt21Submit("按当前已保存方案执行"),
+        );
+        expect(started.task.stage, JSON.stringify(started.turns.at(-1))).toBe(
+          "processing",
+        );
+        let before = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        const limit = variant === "same-size" ? 8 : 3;
+        expect(before.autoEventLimit).toBe(limit);
+        if (variant === "same-size") {
+          before = {
+            ...before,
+            stage: "waiting_input",
+            autoCount: 7,
+            executionPlan: {
+              ...before.executionPlan,
+              current: 4,
+              steps: before.executionPlan.steps.map(
+                (step: any, index: number) => ({
+                  ...step,
+                  status: index < 4 ? "executed" : "pending",
+                }),
+              ),
+            },
+          };
+          await db.query(
+            "UPDATE assistant_session SET task=$2::jsonb WHERE id=$1",
+            [sessionId, JSON.stringify(before)],
+          );
+        }
+        const runCount = Number(
+          (
+            await db.query(
+              "SELECT count(*) n FROM processing_run WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0].n,
+        );
+        requestedTool = {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            requirements: ["只清洗问题，其他字段保留"],
+            steps:
+              variant === "same-size"
+                ? steps(6).map((step) => ({
+                    ...step,
+                    input: {
+                      ...step.input,
+                      instructions: "统一标点，保留原意",
+                    },
+                  }))
+                : steps(5),
+          },
+        };
+        const expanded = await opt21End(
+          await opt21Submit(
+            "将清洗方案增加到五轮，其他要求保持，按新方案执行。",
+          ),
+        );
+        expect(
+          expanded.task,
+          JSON.stringify(
+            expanded.turns
+              .at(-1)
+              ?.tools.filter((tool: any) => tool.status === "failed")
+              .map((tool: any) => tool.error),
+          ),
+        ).toMatchObject({
+          stage: "waiting_input",
+          executionPaused: true,
+          error: "assistant_auto_plan_limit",
+          canContinueExecution: false,
+        });
+        const after = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        expect(after.autoEventLimit).toBe(limit);
+        expect(after.autoCount).toBe(before.autoCount);
+        expect(
+          Number(
+            (
+              await db.query(
+                "SELECT count(*) n FROM processing_run WHERE project_id=$1",
+                [projectId],
+              )
+            ).rows[0].n,
+          ),
+        ).toBe(runCount);
+      } finally {
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/stop",
+          headers,
+          payload: {},
+        });
         requestedTool = undefined;
         toolSequence = [];
         sessionId = previous;

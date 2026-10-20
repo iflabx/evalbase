@@ -13,6 +13,7 @@ import {
   effectiveTaskRuns,
   scopeRunToTask,
   presentTaskCandidates,
+  reviewGoal,
   taskCandidateCollection,
 } from "../../assistant/review.js";
 import { presentProcessingReview } from "../../processing/presentation.js";
@@ -622,16 +623,19 @@ export function registerAssistant({
               );
               runs.push({ ...data, records, total: records.length });
             }
+            const deliveryTask = reviewGoal(task, runs);
             const checked = reviewCandidates(
               runs[0]!,
               {
-                ...task,
+                ...deliveryTask,
                 targetCount: null,
-                classifications: task.classifications?.map((rule: any) => ({
-                  ...rule,
-                  quotas: undefined,
-                  requiredValues: undefined,
-                })),
+                classifications: deliveryTask.classifications?.map(
+                  (rule: any) => ({
+                    ...rule,
+                    quotas: undefined,
+                    requiredValues: undefined,
+                  }),
+                ),
               },
               runs,
               undefined,

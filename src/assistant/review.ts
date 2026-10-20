@@ -13,6 +13,11 @@ import { processingTaskCandidates } from "../processing/tasks.js";
 import { presentProcessingReview } from "../processing/presentation.js";
 import { planRequirementsKey } from "./plan.js";
 import {
+  deliveryGoals,
+  deliveryIdForRuns,
+  taskForDelivery,
+} from "./delivery-plan.js";
+import {
   requirementSummary,
   validateRules,
   normalizedRequirements,
@@ -240,20 +245,31 @@ export async function presentTaskCandidates(
   const primary =
     collection.runs.at(-1) ??
     (await readProcessingRun(db, artifacts, scope, task.runId, { limit: "1" }));
+  task = reviewGoal(task, collection.runs);
+  const problems = new Map(
+    collection.runs.map((run) => [
+      run.run.id,
+      taskCompatibilityProblem(task, [run]),
+    ]),
+  );
   const data = {
     ...primary,
-    records: taskCompatibilityProblem(task, collection.runs)
-      ? collection.records.map((row) => ({
-          ...row,
-          contentReview: row.contentReview
-            ? {
-                ...row.contentReview,
-                verdict: "pending" as const,
-                reason: "要求已变化，旧核对结论已失效",
-              }
-            : undefined,
-        }))
-      : collection.records,
+    records: collection.records.map((row) => {
+      const problem = problems.get(row.resultRef.runId);
+      return problem
+        ? {
+            ...row,
+            historicalContentReview: row.contentReview,
+            contentReview: row.contentReview
+              ? {
+                  ...row.contentReview,
+                  verdict: "pending" as const,
+                  reason: problem,
+                }
+              : undefined,
+          }
+        : row;
+    }),
     allIds: collection.records.map((row) => row.id),
     total: collection.records.length,
     issues: collection.runs.flatMap((run) => run.issues),
@@ -464,6 +480,7 @@ export async function reviewTask(
     throw new AssistantError(409, "assistant_processing_context_changed");
   if (runs.reduce((count, item) => count + item.total, 0) > 10000)
     throw new AssistantError(422, "processing_capacity_exceeded");
+  task = reviewGoal(task, runs);
   const goal = resolveCandidateGoal(task, runs, excludedInputIdentities);
   task = goal;
   let final;
@@ -685,6 +702,7 @@ export async function reviewTask(
       compatibilityProblem,
       ...(compatibilityProblem
         ? {
+            historicalContent: review.content,
             content: {
               ...review.content,
               checked: 0,
@@ -764,7 +782,59 @@ export function effectiveTaskRuns(
 }
 
 /** Partial adoption relaxes totals, never the current source or plan revision. */
+type CompatibilityRun = Pick<
+  Awaited<ReturnType<typeof readProcessingRun>>,
+  "run"
+> &
+  Partial<
+    Pick<
+      Awaited<ReturnType<typeof readProcessingRun>>,
+      "records" | "backgroundEvidence" | "backgroundGoal"
+    >
+  > & {
+    deliveryRoot?: Pick<
+      Awaited<ReturnType<typeof readProcessingRun>>["run"],
+      "id" | "options"
+    >;
+  };
+
 export function taskCompatibilityProblem(
+  task: Record<string, any>,
+  runs: CompatibilityRun[],
+  adoptedDestinationId?: string,
+): string | null {
+  if (!deliveryGoals(task.executionPlan).length)
+    return compatibilityProblem(task, runs, adoptedDestinationId);
+  for (const data of runs) {
+    const id = deliveryIdForRuns(task, [
+      data.run.id,
+      data.deliveryRoot?.id ?? "",
+    ]);
+    const owned = id && taskForDelivery(task, id);
+    if (!owned) return "成果归属待核对，请确认对应交付后继续。";
+    const goal = owned.executionPlan.steps.find(
+      (step: any) => step.action === "generate_candidates",
+    );
+    const root = data.deliveryRoot ?? data.run;
+    if (
+      root.options &&
+      (root.options.instructions !== goal.input.instructions ||
+        canonicalJson(root.options.scenarios ?? []) !==
+          canonicalJson(goal.input.scenarios ?? []))
+    )
+      return "该交付要求已变化，请核对已有成果后继续。";
+    const problem = compatibilityProblem(
+      owned,
+      [data],
+      adoptedDestinationId,
+      true,
+    );
+    if (problem) return problem;
+  }
+  return null;
+}
+
+function compatibilityProblem(
   task: Record<string, any>,
   runs: (Pick<Awaited<ReturnType<typeof readProcessingRun>>, "run"> &
     Partial<
@@ -774,6 +844,7 @@ export function taskCompatibilityProblem(
       >
     >)[],
   adoptedDestinationId?: string,
+  deliveryScoped = false,
 ) {
   const identity = (source: Record<string, any>) =>
     source.kind === "asset"
@@ -865,10 +936,29 @@ export function taskCompatibilityProblem(
           期望输出: "expectedOutput",
           Metadata: "metadata",
         };
-        const slot =
-          Number(task.overallTargetCount != null) +
-          Number(task.targetCount != null);
-        const line = item.backgroundGoal.requirements[slot];
+        const trimDisplay = (summary: string[]) => {
+          if (!deliveryScoped) return summary;
+          let offset = 0;
+          while (
+            /^交付「[\s\S]+」：(新增|最终总数) \d+ 条$/u.test(
+              summary[offset] ?? "",
+            )
+          )
+            offset++;
+          if (
+            /^整体交付：\d+ 条（当前测试集单独核对）$/u.test(
+              summary[offset] ?? "",
+            )
+          )
+            offset++;
+          return summary.slice(offset);
+        };
+        const frozenSummary = trimDisplay(item.backgroundGoal.requirements);
+        const slot = deliveryScoped
+          ? Number(task.targetCount != null)
+          : Number(task.overallTargetCount != null) +
+            Number(task.targetCount != null);
+        const line = frozenSummary[slot];
         const names = line?.slice("允许修改：".length).split("、");
         const fields =
           line === "允许修改：不修改任何字段"
@@ -881,9 +971,10 @@ export function taskCompatibilityProblem(
           fields ? { ...task, allowedFields: fields } : task,
         );
         if (
-          canonicalJson(
-            normalizedRequirements(item.backgroundGoal.requirements),
-          ) !== canonicalJson(normalizedRequirements(currentSummary)) ||
+          canonicalJson(normalizedRequirements(frozenSummary)) !==
+            canonicalJson(
+              normalizedRequirements(trimDisplay(currentSummary)),
+            ) ||
           canonicalJson(item.backgroundGoal.classifications ?? []) !==
             canonicalJson(validateRules(task))
         )
@@ -1066,4 +1157,15 @@ function rowAssetId(row: any, source: Record<string, any>) {
     : source.assetIds?.length === 1
       ? source.assetIds[0]
       : undefined;
+}
+
+export function reviewGoal(
+  task: Record<string, any>,
+  runs: CompatibilityRun[],
+) {
+  const id = deliveryIdForRuns(
+    task,
+    runs.flatMap((data) => [data.run.id, data.deliveryRoot?.id ?? ""]),
+  );
+  return id ? (taskForDelivery(task, id) ?? task) : task;
 }

@@ -40,6 +40,7 @@ export type ReviewRow = {
     reason: string;
     repaired?: boolean;
   };
+  historicalContentReview?: ReviewRow["contentReview"];
   issues?: { code: string }[];
 };
 export type ContentStats = {
@@ -61,7 +62,7 @@ export function ContentReviewSummary({ stats }: { stats?: ContentStats | undefin
   return (
     <div className="space-y-1 text-xs text-muted-foreground" role="status">
       <p>
-        当前范围 {stats.all} 条 · 结构有效 {stats.structurallyValid ?? 0} 条 · 内容已核对{" "}
+        当前范围 {stats.all} 条 · 结构有效 {stats.structurallyValid ?? 0} 条 · 模型按处理时要求核对{" "}
         {stats.contentChecked} 条 · 待核对 {stats.contentPending ?? 0} 条 · 有问题或存疑{" "}
         {stats.contentProblems ?? 0} 条
       </p>
@@ -484,6 +485,17 @@ export function ProcessingReview({
                             : "内容待核对"}
                     </p>
                   )}
+                  {row.historicalContentReview && (
+                    <p className="text-xs text-muted-foreground">
+                      历史模型核对：
+                      {row.historicalContentReview.verdict === "conforms"
+                        ? "未发现问题"
+                        : row.historicalContentReview.verdict === "nonconforms"
+                          ? "不符合要求"
+                          : "存疑或未核对"}
+                      ；当前要求需重新核对。
+                    </p>
+                  )}
                   {row.issues
                     ?.filter((issue) => !issue.code.startsWith("content_"))
                     .map((issue, i) => (
@@ -575,6 +587,12 @@ export function ProcessingReview({
                     : undefined)
                 }
               />
+              {detail.historicalContentReview && (
+                <p className="text-sm text-muted-foreground">
+                  历史模型核对：{detail.historicalContentReview.reason}
+                  。该结论按当时要求得出，不能代替当前核对。
+                </p>
+              )}
               {detail.contentReview && (
                 <p className="rounded-md border bg-muted/30 p-3 text-sm">
                   {detail.contentReview.reason}。模型核对不代替人工审核。

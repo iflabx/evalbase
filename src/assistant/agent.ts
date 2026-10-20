@@ -1,6 +1,7 @@
 import {
   hasNoEffect,
   unresolvedFailure,
+  reconcileExecutionConfirmations,
   processingProposalValidationWithoutEffect,
 } from "./receipts.js";
 import {
@@ -13,6 +14,8 @@ import {
   deliveryGoals,
   reviseDeliveryGoals,
   generationSteps,
+  currentDeliveryId,
+  continuationEventCount,
   assertDeliveryRepair,
   validateRequestedCategories,
 } from "./delivery-plan.js";
@@ -34,6 +37,7 @@ import {
   settleExecutionPlan,
   pendingPlanAction,
   planRequirementsKey,
+  deliverySharedRequirementsKey,
   planSource,
   resolvedStepInput,
   missingStepDependency,
@@ -100,6 +104,7 @@ import {
 } from "../processing/store.js";
 import {
   assistantAccess,
+  ASSISTANT_SESSION_TURN_LIMIT,
   AssistantError,
   dependenciesAvailable,
   saveProposal,
@@ -2183,7 +2188,7 @@ export async function executeAssistantTurn(
           delete input.deliveries;
           delete input.removeRequirements;
           if (businessDeliveries.length) {
-            const activeId = oldPlan?.steps[oldPlan.current]?.deliveryId;
+            const activeId = currentDeliveryId(oldPlan);
             const active =
               businessDeliveries.find((goal: any) => goal.id === activeId) ??
               businessDeliveries[0];
@@ -2725,7 +2730,14 @@ export async function executeAssistantTurn(
           {
             steps,
             executionMode,
-            preserveSavedDeliveries,
+            preserveSavedDeliveries:
+              preserveSavedDeliveries ||
+              Boolean(
+                businessDeliveries &&
+                oldPlan?.contractVersion === 1 &&
+                deliverySharedRequirementsKey(current) ===
+                  deliverySharedRequirementsKey({ ...current, ...fields }),
+              ),
           },
           turn.task_revision,
           input.target === undefined ? current.target : input.target,
@@ -2762,32 +2774,33 @@ export async function executeAssistantTurn(
               { limit: "1" },
               true,
             );
+            const recoveredPlan = {
+              ...plan!,
+              steps: plan!.steps.map((step, index) =>
+                index === plan!.current
+                  ? {
+                      ...step,
+                      status: "waiting" as const,
+                      operation: { key: original.key, input: original.input },
+                      receipt: {
+                        key: original.key,
+                        runId: current.runId,
+                        draftId: original.result.draftId,
+                      },
+                    }
+                  : step,
+              ),
+            };
             if (
               data.run.source.kind === "background" &&
               data.run.source.id === turn.session_id &&
               data.run.targetDraftId === original.result.draftId &&
               !taskCompatibilityProblem(
-                { ...current, ...fields, executionPlan: plan },
+                { ...current, ...fields, executionPlan: recoveredPlan },
                 [{ ...data, records: undefined }],
               )
             ) {
-              plan = {
-                ...plan!,
-                steps: plan!.steps.map((step, index) =>
-                  index === plan!.current
-                    ? {
-                        ...step,
-                        status: "waiting",
-                        operation: { key: original.key, input: original.input },
-                        receipt: {
-                          key: original.key,
-                          runId: current.runId,
-                          draftId: original.result.draftId,
-                        },
-                      }
-                    : step,
-                ),
-              };
+              plan = recoveredPlan;
             }
           }
         }
@@ -2928,12 +2941,32 @@ export async function executeAssistantTurn(
                       !["any", "plan_task"].includes(plannedAction)))
                 ? plannedAction
                 : (input.nextAction ?? null);
+        const autoEventLimit =
+          current.autoEventLimit === null && plan?.mode === "execute"
+            ? Math.min(
+                ASSISTANT_SESSION_TURN_LIMIT - 1,
+                continuationEventCount(plan) + 2,
+              )
+            : current.autoEventLimit;
+        const addedWorkExceedsLimit =
+          plan?.mode === "execute" &&
+          typeof autoEventLimit === "number" &&
+          (continuationEventCount(plan) > autoEventLimit ||
+            (continuationEventCount(plan, true) >
+              continuationEventCount(current.executionPlan, true) &&
+              continuationEventCount(plan, true) +
+                Number(current.autoCount ?? 0) >
+                autoEventLimit));
         const task = await updateTask(
           db,
           turn,
           {
             ...fields,
-            executionPaused,
+            ...(autoEventLimit !== undefined ? { autoEventLimit } : {}),
+            executionPaused: executionPaused || addedWorkExceedsLimit,
+            ...(addedWorkExceedsLimit
+              ? { error: "assistant_auto_plan_limit" }
+              : {}),
             backgroundDefinitions,
             requirementProblem: null,
             ...(current.recovery?.kind === "model_reply"
@@ -2974,13 +3007,13 @@ export async function executeAssistantTurn(
             ...(input.countKind === "new" && !businessDeliveries
               ? { targetDraftId: null }
               : {}),
-            nextAction,
+            nextAction: addedWorkExceedsLimit ? null : nextAction,
             question: input.question ?? null,
             ...(input.target
               ? { targetName: await sourceName(input.target) }
               : {}),
             stage:
-              input.question || executionPaused
+              input.question || executionPaused || addedWorkExceedsLimit
                 ? "waiting_input"
                 : plan?.mode === "plan"
                   ? "planning"
@@ -5106,41 +5139,15 @@ export async function executeAssistantTurn(
         turn.session_id,
       ])
     ).rows[0].task;
-    const plan = final.executionPlan;
-    const confirmations =
-      plan?.steps.filter((step: any) => step.action.startsWith("request_")) ??
-      [];
-    const confirmationIds = confirmations
-      .map((step: any) => step.receipt?.proposalId)
-      .filter(Boolean);
-    const confirmedFacts = confirmationIds.length
-      ? (
-          await db.query(
-            "SELECT status,summary,receipt FROM assistant_proposal WHERE session_id=$1 AND id=ANY($2::text[])",
-            [turn.session_id, confirmationIds],
-          )
-        ).rows
-      : [];
-    const deliveriesConfirmed =
-      confirmations.length > 0 &&
-      confirmationIds.length === confirmations.length &&
-      confirmedFacts.length === confirmations.length &&
-      confirmedFacts.every(
-        (fact) =>
-          fact.status === "succeeded" &&
-          fact.receipt &&
-          fact.summary?.range !== "partial",
-      );
+    const reconciled = await reconcileExecutionConfirmations(db, {
+      id: turn.session_id,
+      project_id: scope.projectId,
+      actor_id: scope.actorId,
+      task_revision: turn.task_revision,
+      task: final,
+    });
     if (
-      deliveriesConfirmed &&
-      plan?.contractVersion === 1 &&
-      plan.mode === "execute" &&
-      !plan.needsReview &&
-      !final.executionPaused &&
-      !final.question &&
-      plan.steps.length &&
-      plan.steps.every((step: any) => step.status === "executed") &&
-      plan.steps.at(-1).action.startsWith("request_") &&
+      reconciled !== final &&
       !unresolvedFailure(
         (
           await db.query(
@@ -5150,12 +5157,9 @@ export async function executeAssistantTurn(
         ).rows[0].tool_results,
       )
     ) {
-      await updateTask(db, turn, {
-        stage: "complete",
-        nextAction: null,
-        error: null,
-        recovery: null,
-      });
+      await updateTask(db, turn, reconciled);
+    }
+    if (reconciled.stage === "complete") {
       plannedAction = undefined;
       yieldToProcessing = true;
     }
