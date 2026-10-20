@@ -47,7 +47,9 @@ execFileSync("git", [
   "frontend-v3",
 ]);
 const mode = process.argv[2];
-assert(["development", "holdout", "serve"].includes(mode));
+assert(
+  ["development", "development-repair", "holdout", "serve"].includes(mode),
+);
 const privateEnv = Object.fromEntries(
   readFileSync(".scratch/agent-data-processing/checkpoint.env", "utf8")
     .split("\n")
@@ -294,13 +296,31 @@ const config = {
 const db = createPool(databaseUrl),
   artifacts = new ArtifactRepository(config.minio);
 const model = (await configuredModel(db, config)).model;
-if (mode === "development" || mode === "holdout") {
-  const split = mode;
+if (["development", "development-repair", "holdout"].includes(mode)) {
+  const retry = mode === "development-repair";
+  const split = retry ? "development" : mode;
   assert(
-    !results.groups.some((group: any) => group.split === split),
+    !results.groups.some(
+      (group: any) => group.split === split && Boolean(group.retry) === retry,
+    ),
     "never rerun a completed subset",
   );
-  const samples = fixtures.samples.filter((row: any) => row.split === split);
+  assert(
+    !retry || !results.groups.some((group: any) => group.split === "holdout"),
+    "no tuning after holdout",
+  );
+  const failedIds = new Set(
+    results.groups
+      .filter((group: any) => group.split === "development")
+      .flatMap((group: any) =>
+        group.rows
+          .filter((row: any) => row.review.verdict === "pending")
+          .map((row: any) => row.id),
+      ),
+  );
+  const samples = fixtures.samples.filter(
+    (row: any) => row.split === split && (!retry || failedIds.has(row.id)),
+  );
   const groups = [
     {
       name: "GB",
@@ -311,7 +331,7 @@ if (mode === "development" || mode === "holdout") {
       rows: samples.filter((row: any) => !row.kind.startsWith("A.1.")),
     },
   ];
-  for (const group of groups) {
+  for (const group of groups.filter((group) => group.rows.length)) {
     const rewrite = group.name === "rewrite";
     const documents =
       group.name === "GB"
@@ -384,6 +404,7 @@ if (mode === "development" || mode === "holdout") {
     const entry: any = {
       name: group.name,
       split,
+      retry,
       ids: group.rows.map((row: any) => row.id),
       code,
       promptHash: sha256(Buffer.from(prompt.system + prompt.prompt)),

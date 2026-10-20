@@ -678,3 +678,63 @@ it("OPT41 locates current-round original quotes and rejects duplicate identities
     ).review.items,
   ).toEqual([]);
 });
+
+it("OPT41 uses unambiguous questionQuote and never treats an answer or label as question evidence", () => {
+  const row = {
+    sourceId: "q",
+    question: "请帮我取消这笔订单。",
+    expectedOutput: "取消",
+    metadata: [],
+  };
+  const background: any = {
+    contentReviewPolicy: "evidence-v1",
+    requirements: [],
+    documents: [],
+  };
+  const options: any = {
+    operation: "generate",
+    instructions: "取消意图",
+    outputCount: 1,
+    allowedFields: ["question", "expectedOutput", "metadata"],
+  };
+  const state: any = {
+    version: 2,
+    policy: "evidence-v1",
+    rulesHash: reviewRulesHash(options, background),
+    initialAttempted: true,
+    items: [],
+  };
+  const checks: any = Object.fromEntries(
+    ["question", "category", "expectedBehavior", "facts"].map((key) => [
+      key,
+      {
+        verdict: "conforms",
+        reason: "明确请求取消订单",
+        questionQuote: row.question,
+        ...(key === "expectedBehavior" ? { outputQuote: "取消" } : {}),
+        ...(key === "facts" ? { basis: "no_assertion" } : {}),
+      },
+    ]),
+  );
+  expect(
+    checkContent(
+      { reviews: [{ id: "q", checks }] },
+      [row],
+      options,
+      background,
+      state,
+      false,
+    ).review.items[0]?.verdict,
+  ).toBe("conforms");
+  checks.category.questionQuote = "不存在的类别标签";
+  expect(
+    checkContent(
+      { reviews: [{ id: "q", checks }] },
+      [row],
+      options,
+      background,
+      state,
+      false,
+    ).review.items[0]?.verdict,
+  ).toBe("pending");
+});
