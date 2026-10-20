@@ -1,10 +1,11 @@
 # OPT-42 意图入口统一与组合请求执行控制
 
-Status: ready-for-agent
-Implementation: not-started
-Blocked by: OPT-39
+Status: ready-for-human
+Implementation: completed
+Validation: partial（真实暂停/继续修后复测未完成；详见验证记录）
+Blocked by: none（OPT-39 已完成定向验证）
 
-优先级：P1。基于当前 AI SDK、plan_task、advanceExecution 及既有持久任务实现，统一普通中文与明确操作的执行边界。当前仅授权编写 Ticket，不代表授权开发、模型调用或部署。产品依据：[PRD §7.1–7.5](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[架构 §9/16/17](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。研究证据及取舍见 [意图理解调研](../../../docs/research/assistant-intent-routing-2026-10-19.md)。
+优先级：P1。基于当前 AI SDK、plan_task、advanceExecution 及既有持久任务实现，统一普通中文与明确操作的执行边界。2026-10-20 用户已授权开发与定向验证。按最新决定，本轮不追加生成内容质量验证，内容由后续人工审核修改；历史质量问题、旧预算及验收数据保留。应用实现 `93de778`，自动定向验证通过；真实流程达到12次请求上限，R42-9仍为partial，不代签整票验收。详细命令、失败及保护证据统一见[OPT-42验证](../opt42-verification.md)。部署、合并与推送仍需独立授权。产品依据：[PRD §7.1–7.5](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[架构 §9/16/17](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。研究证据及取舍见 [意图理解调研](../../../docs/research/assistant-intent-routing-2026-10-19.md)。
 
 ## 目标与证据边界
 
@@ -72,7 +73,7 @@ Blocked by: OPT-39
 
 ## 定向验证与完成口径
 
-本节供后续开发授权执行，本次不运行。
+以下为原定验证合同；本轮实际执行结果及未完成部分以[验证记录](../opt42-verification.md)为准，不能把原计划当作已通过。
 
 1. 先复用现有公共消息、控制及业务入口，以约20个表驱动状态组合覆盖R42-1–8：否定与正向、引用与真实命令、修改与继续、暂停竞态、明确选中、旧任务、参数失败、未知回执和预算边界。验证真实持久状态与调用次数；语义输出可用可控响应，避免为每个异常分支调用真实模型。受影响旧回归复用，仅重跑失效范围。
 2. 一次隔离新会话使用简短非GB规范，按普通提示测试“先规划2条 → 改为1条但不执行 → 询问当前状态 → 改回2条并执行 → 暂停并解释 → 根据实际待办继续”。提前固定输入及预期，不中途改成内部工具参数提示来凑通过。最多新增2条候选，不采用、不发布，不操作原验收会话。
@@ -89,3 +90,5 @@ Blocked by: OPT-39
 ## Comments
 
 - 2026-10-19：依据开源调研及Owner确认方案建立一张开发票，硬依赖OPT-39，与OPT-40/41无反向依赖；Implementation not-started、Owner pending。当前仅写票和更新台账，未修改业务代码、调用模型或改变4217。
+
+- 2026-10-20：完成实现93de778及31项公开接口定向回归，Standards/Spec审阅发现已修复并窄复核。保持AI SDK、既有表/Worker和确认入口，前端仅改明确按钮请求。隔离真实新会话生成2条候选、零采用/发布；12/12请求后停止。修复真实数量变更和无控制回执口头暂停漏口，后者修后真实暂停/继续未复测，R42-9 partial，Owner pending。未更新4217、合并或推送；原数据与预算保留。

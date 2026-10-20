@@ -296,7 +296,7 @@ OPT-25 默认 candidates 的 `scope=task` 复用 processing task 的当前有效
 
 已授权执行方案的采用准备步骤复用原固定步骤执行器，只为 `request_processing_apply` 准备现有确认卡；原工具仍执行权限、修订、固定范围及幂等检查，准备后立即停止等待人工确认。只规划、暂停及待复核方案不准备卡片，其他 request 工具保持原路径。背景生成的服务端绑定输出草稿不作为虚构输入来源；该例外须所有背景运行的目标草稿与当前已创建草稿完全一致，显式步骤来源、范围和背景要求仍独立校验。
 
-用户精确发送既有“按当前已保存方案执行”或“继续执行已保存方案”控制语句时，且已有非空步骤、没有待答业务问题，直接调用原 `plan_task` 执行切换及固定步骤执行器，不再让模型重写同一方案。该路径不推断新参数、来源或步骤，不越过校验与确认；其他自然语言及有待答问题时保留原模型路径。
+OPT-42 将按钮的明确操作沿原 turns 请求传入受限 `operation`（`execute_plan` / `resume`），必须带当前 `expectedTaskRevision`；服务端核对会话权限、修订及实际方案/暂停/待答状态。三个旧客户端固定按钮文案仅作兼容。普通中文由原主模型通过 `plan_task.control` 表达本轮 `query` / `plan` / `execute` / `pause`，要求变更可组合 `requiresUpdate`，先暂停后修改先独立保存控制；纯查询直接读与回答，无须保存业务计划或新要求；结束前仍须提交仅含控制的真实回执，可附简短解释而不追加一次模型汇总。查看角色只允许合法的纯query控制，不获得业务写权限。决定绑定回合与任务修订，保存于原 task JSON 并在既有诊断记录操作摘要，不增加表或公开路由。prepareStep、实际写工具及 advanceExecution 共用该决定；未知决定只读且不能成功结束回合，尚未保存决定的pending状态阻止自动续步；缺控制沿原一次有界纠错，仍无回执则保留失败。更新成功前不执行，参数纠正不得升级决定。查询不撤销原授权、不永久暂停或重写要求；只规划/暂停约束后续自动事件。解释后执行先保存可见说明，采用/发布仍由原固定确认执行。经本轮已验证修改意图的真实交付ID增量可更新数量，不再从旧消息数字或关键词重新授权；明确给出的当前完整要求替换旧语义，省略时保留。分类、字段、配额和文档证据仍由原业务合同校验。旧 requirementsOnly / planningIntent / planningRetry / affirmativeExecution 等自然语言路由退出生效路径；文档与候选处理继续使用原领域合同、固定范围、回执和预算。
 
 
 ## 16. OPT-34–37 业务编排收敛（分票实施）
@@ -325,3 +325,5 @@ OPT-39/40/41已实现并完成各自定向验证；OPT-41有界语义验证见�
 - [OPT-41](../../.scratch/assistant-optimization/issues/41-content-review-evidence-and-budget.md)：在现有 contentReview 可选元数据中保留逐项证据、修复未执行原因及冻结策略版本；优先分配原预算中的初检机会。旧策略证据继续按原版本解释，不通过全局策略常量变更触发历史重检。新快照可选contentReviewPolicy:evidence-v1启用逐项原句与文档证据、待分类标签遮蔽后的独立比较；只有一次授权修复复检符合才接受替换。实现及完整语义结果见[OPT-41记录](../../.scratch/assistant-optimization/opt41-verification.md)。
 
 沿用 ADR 0014、AI SDK、PostgreSQL/MinIO/Worker、任务 JSON 和固定确认。需要的版本字段采用最小兼容增补，不增表、公开路由、第二套调度或审核服务；核对引文存在不等于证明语义推论正确。已有成果和预算不批量迁移，详细保留约束及原验收未通过事实见 [OPT-31](../../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md#本次修复衔接与既有验收保护)。
+
+OPT-42 实现与预算边界见[定向验证记录](../../.scratch/assistant-optimization/opt42-verification.md)；代码完成不代表真实任意自然语言或原内容质量验收通过。
