@@ -151,6 +151,8 @@ Implementation: in-progress
 | [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40已完成 | completed | [有界语义验证](opt41-verification.md)；[4217联动](opt39-41-checkpoint.md)新增3条审核误报保留，Owner pending |
 | [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 代码93de778、31项公开回归通过；[暂停/继续补验](opt42-verification.md)独立2次/9310ms通过，旧预算保留；4217=bdf4e89，Owner pending |
 
+2026-10-20 最新[OPT-39～42单会话联动](opt39-42-single-session-verification.md)未通过：规划/恢复阻断，生成后路径未覆盖；既有定向证据及全部原数据/预算保留，Owner pending。
+
 长任务的历史范围见 [方案执行与长任务恢复](../../docs/assistant-long-task-execution.md)。当前整改按本规格开头的文档职责执行。OPT-05 与整改批次的最终 Owner 验收仍未收口；OPT-10 补修后仍复用同一最终 checkpoint，不改写历史验证记录。
 
 OPT-12 是 OPT-11 后续体验调整，Owner 已单独授权开发；不等待旧 Ticket 的最终人工验收才允许编写或后续获授权修复，也不把本张文档变更记作旧验收通过。本次实施沿用同一分支和 4217 隔离环境，一个 Ticket、一次 Owner checkpoint。
