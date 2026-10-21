@@ -6140,10 +6140,10 @@ export async function executeAssistantTurn(
           return {
             ...fixedState,
             activeTools: reads,
-            toolChoice: "required" as const,
+            toolChoice: { type: "tool" as const, toolName: "plan_task" },
             instructions:
               instructions +
-              "\n本轮尚无经校验操作决定。可先只读查询；结束回复或任何执行前，必须通过plan_task.control记录本轮模式（query/plan/execute/pause）。纯查询不建立计划、不保存业务要求，可在control.explanation直接给出基于当前快照的简短答复；无需再复述一次。先暂停后修改先单独保存pause与requiresUpdate:true。只有真实用户要求变更才requiresUpdate:true；仅暂停不是要求变更。只口头声称暂停、修改或执行均不算成功。",
+              "\n本轮尚无经校验操作决定。先通过plan_task.control记录本轮模式（query/plan/execute/pause）。需要读取附件才能规划时只填写control，读取实际原文后再补全方案，不猜造文档定义。纯查询不建立计划、不保存业务要求，可在control.explanation直接给出基于当前快照的简短答复；无需再复述一次。先暂停后修改先单独保存pause与requiresUpdate:true。只有真实用户要求变更才requiresUpdate:true；仅暂停不是要求变更。只口头声称暂停、修改或执行均不算成功。",
           };
         }
         if (

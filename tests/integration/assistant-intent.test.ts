@@ -25,7 +25,8 @@ const model = createServer(async (request, response) => {
   const body = observed.at(-1);
   if (
     !call &&
-    body.tool_choice === "required" &&
+    (body.tool_choice === "required" ||
+      body.tool_choice?.function?.name === "plan_task") &&
     prose === "当前状态已核对，原有成果保留。"
   )
     call = {
@@ -1045,12 +1046,11 @@ describe("OPT42 per-turn intent public boundary", () => {
         id,
         "按附件创建物流查询和修改地址两个测试集，每个2条。先给方案，不要执行。",
         [
-          ...(variant === "before_read" ? [bad] : []),
+          bad,
           {
             name: "read_background",
             input: { documentId: uploaded.json().document.id },
           },
-          ...(variant === "before_read" ? [] : [bad]),
           variant === "different"
             ? {
                 ...bad,
@@ -1162,11 +1162,11 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     };
     const failed = await send(id, "按附件创建2条物流问题，先给方案，不执行。", [
+      bad,
       {
         name: "read_background",
         input: { documentId: uploaded.json().document.id },
       },
-      bad,
       bad,
       bad,
       bad,
@@ -1596,6 +1596,10 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
       "succeeded",
     );
+    expect(observed[0].tool_choice).toEqual({
+      type: "function",
+      function: { name: "plan_task" },
+    });
     expect(state.turns.at(-1).assistantText).toBe(
       "需要多少条，覆盖哪些客服场景？",
     );
