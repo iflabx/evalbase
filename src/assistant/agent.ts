@@ -6208,6 +6208,23 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1
             ? singlePlanSchema
             : fullPlanSchema;
+        if (decision?.mode === "execute" && goalContract) {
+          tools.plan_task.inputSchema = schema(
+            {
+              ...deliveryPlanProperties,
+              control: {
+                ...turnControlSchema,
+                properties: {
+                  ...turnControlSchema.properties,
+                  mode: { enum: [decision.mode] },
+                },
+              },
+            },
+            [],
+            "plan_task",
+            (hint) => schemaHints.set("plan_task", hint),
+          );
+        }
         if (truncatedPlanning) {
           truncatedPlanning = false;
           truncationRecoveries++;
@@ -6230,9 +6247,9 @@ export async function executeAssistantTurn(
           };
         }
         if (!decision && turn.event === "user") {
-          const reads = [
-            ...new Set<keyof typeof tools>([...activeTools, "plan_task"]),
-          ];
+          const reads = goalContract
+            ? ["plan_task" as const]
+            : [...new Set<keyof typeof tools>([...activeTools, "plan_task"])];
           const writable = await hasProjectCapability(
             db,
             scope.projectId,

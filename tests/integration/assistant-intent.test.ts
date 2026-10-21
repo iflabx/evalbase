@@ -1813,6 +1813,10 @@ describe("OPT42 per-turn intent public boundary", () => {
     );
     expect(state.task.question).toBe("你希望这次一共生成多少条？");
     expect(
+      observed[2].tools.find((t: any) => t.function.name === "plan_task")
+        .function.parameters.properties.control.properties.mode.enum,
+    ).toEqual(["execute"]);
+    expect(
       state.turns
         .at(-1)
         .tools.some(
