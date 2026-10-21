@@ -1,14 +1,14 @@
 # OPT-44 恢复决策、续段与累计预算统一
 
-Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
-Blocked by: OPT-43
+Status: ready-for-human
+Implementation: completed
+Validation: targeted-pass; Owner pending
+Blocked by: none（OPT-43 已完成实现与定向验证）
 
 - 优先级：P1；阶段 B。
 - 前置：[OPT-43](43-requirement-amendments-and-repair-contract.md) 完成并通过要求/修复身份及诊断定向验证；无需等待旧票或阶段 A 的最终人工验收。
 - 依据：[实施规格](../spec.md)、[机制方案 §6–7](../../../docs/assistant-mechanism-consolidation-2026-10-22.md)、[本轮诊断](../mechanism-review-20261022/diagnosis.md)。
-- 本票为开发合同；当前仅创建文档，未实施或发起新模型验证。
+- Owner 已于 2026-10-22 授权开发；恢复机制及定向验证已完成，实施提交 `7502523`，证据见[实施记录](../opt44-verification.md)。本票不部署 4217，页面与真实流程由 OPT-45 集中验收。
 
 ## 目标
 
@@ -74,3 +74,5 @@ Blocked by: OPT-43
 ## Comments
 
 - 2026-10-22：按已确认三阶段方案创建阶段 B 票；依赖阶段 A 的有效要求及尝试身份。Implementation not-started、Validation not-run；当前文档操作未改变运行环境、数据或预算。
+
+- 2026-10-22：完成共享恢复决策、同段/关联续段、累计活跃扣账、修订/权限/背景失效及回执幂等；定向验证与两轴审阅补修见[记录](../opt44-verification.md)。Owner pending；未切换4217、未合并/推送，既有数据和旧预算保持。
