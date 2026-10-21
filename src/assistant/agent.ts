@@ -262,6 +262,12 @@ function inputHint(
     ? `${name}：${problem} 允许字段：${Object.keys(properties).join("、")}。`
     : problem;
 }
+const claimedUpdate = (text: string) =>
+  /(?:已将|已把).{0,40}(?:改为|改成|修改|调整|更新|保存)/u.test(text) ||
+  /(?:已|已经)(?:成功|为你|为您|替你)?(?:记录|记下|保存|更新|修改|调整|记住)[\s\S]{0,24}(?:要求|约束|方案|计划|数量|目标)|(?:要求|约束|方案|计划|数量|目标).{0,12}(?:已|已经)(?:成功)?(?:记录|记下|保存|更新|修改|调整)/u.test(
+    text,
+  );
+
 function schema(
   properties: Record<string, unknown>,
   required: string[],
@@ -484,20 +490,20 @@ export async function executeAssistantTurn(
         });
         if (documentPlanning) {
           const pending = current.planningRecovery;
-          if (
+          const reusable =
             pending &&
-            ((pending.documentsKey &&
-              pending.documentsKey !== planningDocumentsKey) ||
-              pending.evidenceKey !==
-                sha256(canonicalJson(current.backgroundEvidence ?? [])) ||
-              pending.taskRevision !== turn.task_revision - 1)
-          )
-            throw new AssistantError(
-              409,
-              "assistant_plan_revalidation_required",
-            );
-          planningRequestTurnId =
-            pending?.requestTurnId ?? pending?.turnId ?? turn.id;
+            (!pending.documentsKey ||
+              pending.documentsKey === planningDocumentsKey) &&
+            pending.evidenceKey ===
+              sha256(canonicalJson(current.backgroundEvidence ?? [])) &&
+            pending.taskRevision === turn.task_revision - 1;
+          // A new user request replans against the current documents and normal
+          // validators. A stale recovery cursor must not veto that request.
+          if (pending && !reusable)
+            await updateTask(db, turn, { planningRecovery: null });
+          planningRequestTurnId = reusable
+            ? (pending.requestTurnId ?? pending.turnId)
+            : turn.id;
           planningRequestText = [
             current.goal,
             ...(current.supplements ?? []),
@@ -511,7 +517,11 @@ export async function executeAssistantTurn(
           (value.mode === "query" && value.explanation)
         )
           waitingForInput = true;
-        if (value.explanation)
+        if (
+          value.explanation &&
+          value.mode !== "plan" &&
+          !claimedUpdate(value.explanation)
+        )
           await updateTurn(
             "UPDATE assistant_turn SET assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
             [turn.id, value.explanation],
@@ -6004,7 +6014,11 @@ export async function executeAssistantTurn(
         const goalContract =
           (currentTask.executionPlan?.contractVersion === 1 &&
             deliveryGoals(currentTask.executionPlan).length > 0) ||
-          (documentPlanning &&
+          ((documentPlanning ||
+            (Boolean(context.state.backgroundDocuments?.length) &&
+              !currentTask.target &&
+              !currentTask.draftId &&
+              !(context.state as any).pageObject)) &&
             (!currentTask.executionPlan ||
               currentTask.executionPlan.contractVersion === 1));
         tools.plan_task.inputSchema = goalContract
@@ -6017,20 +6031,27 @@ export async function executeAssistantTurn(
           const reads = [
             ...new Set<keyof typeof tools>([...activeTools, "plan_task"]),
           ];
-          if (
-            !(await hasProjectCapability(
-              db,
-              scope.projectId,
-              scope.actorId,
-              "write",
-            ))
-          )
-            tools.plan_task.inputSchema = schema(
-              { control: turnControlSchema },
-              ["control"],
-              "plan_task",
-              (hint) => schemaHints.set("plan_task", hint),
-            );
+          const writable = await hasProjectCapability(
+            db,
+            scope.projectId,
+            scope.actorId,
+            "write",
+          );
+          // The first call must advertise the same control and business contract
+          // that execution validates; format repair cannot invent authorization.
+          tools.plan_task.inputSchema = schema(
+            !writable
+              ? { control: turnControlSchema }
+              : goalContract
+                ? deliveryPlanProperties
+                : !currentTask.executionPlan ||
+                    currentTask.executionPlan.contractVersion === 1
+                  ? singlePlanProperties
+                  : planProperties,
+            ["control"],
+            "plan_task",
+            (hint) => schemaHints.set("plan_task", hint),
+          );
           activeRepairTools = new Set(reads);
           return {
             ...fixedState,
@@ -6264,11 +6285,6 @@ export async function executeAssistantTurn(
     // never execute the text as commands or expose it as a completed reply.
     const textualCall = (text: string) =>
       /<tool_call\b|<function\s*=/i.test(text);
-    const claimedUpdate = (text: string) =>
-      /(?:已将|已把).{0,40}(?:改为|改成|修改|调整|更新|保存)/u.test(text) ||
-      /(?:已|已经)(?:成功|为你|为您|替你)?(?:记录|记下|保存|更新|修改|调整|记住)[\s\S]{0,24}(?:要求|约束|方案|计划|数量|目标)|(?:要求|约束|方案|计划|数量|目标).{0,12}(?:已|已经)(?:成功)?(?:记录|记下|保存|更新|修改|调整)/u.test(
-        text,
-      );
     const hasUpdateReceipt = async (text: string) => {
       const results = (
         await db.query("SELECT tool_results FROM assistant_turn WHERE id=$1", [
@@ -6496,15 +6512,26 @@ export async function executeAssistantTurn(
           });
       }
     }
+    const explanation =
+      decision?.explanation &&
+      claimedUpdate(decision.explanation) &&
+      !(await hasUpdateReceipt(decision.explanation))
+        ? state?.executionPlan?.steps?.length
+          ? "当前已保存方案可在工作区查看；本轮没有新增保存结果。"
+          : "当前还没有完整可执行方案，已有要求和文档保留。"
+        : decision?.explanation;
     await saveDiagnostics();
     await updateTurn(
       "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
       [
         turn.id,
-        (waitingForInput && state?.question) ||
-          (decision?.mode === "query" ? decision.explanation : undefined) ||
+        (decision?.mode === "query" ? explanation : undefined) ||
+          (waitingForInput &&
+            decision?.mode !== "query" &&
+            decision?.mode !== "pause" &&
+            state?.question) ||
           (decision?.mode === "pause"
-            ? (decision.explanation ??
+            ? (explanation ??
               `后续执行已暂停，${Number.isInteger(state?.review?.total) ? `${state.review.total} 条候选与` : ""}已有成果保留；这不会取消已经提交的处理。`)
             : undefined) ||
           (!yieldToProcessing && response.text.slice(0, 8000)) ||

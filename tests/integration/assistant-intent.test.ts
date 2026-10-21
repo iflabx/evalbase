@@ -778,6 +778,30 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     });
     expect(uploaded.statusCode).toBe(201);
+    const recoveryDb = createPool(databaseUrl);
+    try {
+      await recoveryDb.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          id,
+          JSON.stringify({
+            goal: "按附件规划物流测试集",
+            title: "规划恢复",
+            requirements: [],
+            autoCount: 0,
+            stage: "failed",
+            executionPaused: true,
+            planningRecovery: {
+              taskRevision: -2,
+              documentsKey: "older-snapshot",
+              evidenceKey: "older-evidence",
+            },
+          }),
+        ],
+      );
+    } finally {
+      await recoveryDb.end();
+    }
     const first = await send(id, "按附件做2条，先给方案，不生成", [
       {
         name: "read_background",
@@ -801,6 +825,15 @@ describe("OPT42 per-turn intent public boundary", () => {
         },
       },
     ]);
+    expect(
+      first.turns.at(-1).tools.filter((r: any) => r.status === "failed"),
+    ).toEqual([]);
+    const wire = observed[0].tools.find(
+      (tool: any) => tool.function.name === "plan_task",
+    ).function.parameters;
+    expect(wire.required).toContain("control");
+    expect(wire.properties).not.toHaveProperty("targetDraftId");
+    expect(wire.properties).not.toHaveProperty("overallTargetCount");
     expect(first.task.targetCount, JSON.stringify(first.turns.at(-1))).toBe(2);
     const db = createPool(databaseUrl);
     let goal: any;
@@ -832,6 +865,123 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(changed.task.executionPlan.mode).toBe("plan");
     expect(changed.task.executionPaused).toBe(false);
     expect(await effects()).toEqual(before);
+  });
+
+  it("missing control returns to the bounded planner without inventing execution", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const state = await send(id, "继续完善方案，先不执行", [
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          steps: [
+            {
+              title: "创建草稿",
+              action: "create_draft",
+              input: { name: "恢复草稿" },
+            },
+          ],
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan" },
+          executionMode: "plan",
+          steps: [
+            {
+              title: "创建草稿",
+              action: "create_draft",
+              input: { name: "恢复草稿" },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.executionPlan.mode).toBe("plan");
+    expect(state.task.executionPlan.steps[0].input.name).toBe("恢复草稿");
+    expect(observed.length).toBeLessThanOrEqual(3);
+    expect(await effects()).toEqual(before);
+  });
+  it("query answers are not replaced by an old clarification", async () => {
+    const id = await session("plan", true, "是否分别保存两个草稿？");
+    const state = await send(id, "为什么没生成？只解释", [
+      decision("query", { explanation: "尚未执行生成，当前仍在规划阶段。" }),
+    ]);
+    expect(state.turns.at(-1).assistantText).toBe(
+      "尚未执行生成，当前仍在规划阶段。",
+    );
+    expect(state.task.question).toBe("是否分别保存两个草稿？");
+  });
+  it("does not expose continue for an empty saved plan", async () => {
+    const id = await session("plan", true);
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{executionPlan,steps}','[]') WHERE id=$1",
+        [id],
+      );
+    } finally {
+      await db.end();
+    }
+    expect((await read(id)).task.canContinueExecution).toBe(false);
+  });
+  it("query cannot claim a complete saved plan when no steps exist", async () => {
+    const id = await session("plan", true);
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{executionPlan,steps}','[]') WHERE id=$1",
+        [id],
+      );
+    } finally {
+      await db.end();
+    }
+    const state = await send(id, "方案保存了吗？只查询", [
+      decision("query", { explanation: "完整方案已保存。" }),
+    ]);
+    expect(state.turns.at(-1).assistantText).toBe(
+      "当前还没有完整可执行方案，已有要求和文档保留。",
+    );
+  });
+  it("failed execution does not display a claimed saved plan", async () => {
+    const id = await session("plan");
+    const state = await send(id, "修改方案后执行", [
+      {
+        name: "plan_task",
+        input: {
+          control: {
+            mode: "execute",
+            requiresUpdate: true,
+            explanation: "完整方案已保存。",
+          },
+          target: { kind: "draft", id: "missing-draft" },
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).assistantText ?? "").not.toContain(
+      "完整方案已保存",
+    );
+  });
+  it("never publishes an intent explanation as a successful plan receipt", async () => {
+    const id = await session("plan");
+    const state = await send(id, "先规划，不执行", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan", explanation: "完整方案已保存。" },
+          target: { kind: "draft", id: "missing-draft" },
+          executionMode: "plan",
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).assistantText ?? "").not.toContain(
+      "完整方案已保存",
+    );
   });
   it("an oral pause without a control receipt cannot finish or authorize automatic work", async () => {
     const id = await session();

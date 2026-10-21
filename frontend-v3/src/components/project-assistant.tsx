@@ -833,7 +833,9 @@ export function ProjectAssistant({
     } catch (e) {
       setError(errorText(e));
       setPending({ ...submission, status: "failed" });
-      if (e instanceof Error && e.message === "assistant_candidate_selection_changed") {
+      const status = Number((e as { status?: number })?.status);
+      if ((status >= 400 && status < 500 && status !== 408) ||
+          (e instanceof Error && e.message === "assistant_candidate_selection_changed")) {
         const key = scopeKey + (submission.sessionId ?? "new"),
           saved = JSON.parse(readAssistantDraft(key));
         writeAssistantDraft(key, { ...saved, pending: undefined });

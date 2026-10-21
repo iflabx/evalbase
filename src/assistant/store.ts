@@ -80,6 +80,10 @@ export function taskPresentation(
     ...(workspace ? { deliveries: deliveryProgress(task, workspace) } : {}),
     requirementSummary: requirementSummary(task, processing),
     canContinueExecution:
+      Boolean(task.executionPlan?.steps?.length) &&
+      !task.question &&
+      !requirementProblem &&
+      !task.planValidationRequired &&
       !["assistant_auto_plan_limit", "assistant_session_limit"].includes(
         task.error,
       ) &&
