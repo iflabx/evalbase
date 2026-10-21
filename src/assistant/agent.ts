@@ -390,6 +390,8 @@ export async function executeAssistantTurn(
   let summarizing = false;
   let budgetBoundary = false;
   let noProgress = false;
+  let planningClarificationCorrections = 0;
+  let planningClarificationPending = false;
   let lastFailure: { name: string; code: string; hint: string } | undefined;
   const schemaHints = new Map<string, string>();
   let executionBudget: ExecutionBudget | undefined;
@@ -414,10 +416,21 @@ export async function executeAssistantTurn(
     | undefined;
   function recordFailure(name: string, code: string, hint = "") {
     const reason = hint.slice(0, 320);
+    // This pre-write business rejection needs contextual replanning, not JSON
+    // repair. Reserve at most two forced planning attempts within the same
+    // turn's existing deadline/model/tool budgets, even if wording changes.
+    const correctPlanningQuestion =
+      documentPlanning &&
+      decision?.mode === "plan" &&
+      name === "plan_task" &&
+      code === "assistant_plan_clarification_unnecessary";
+    if (correctPlanningQuestion) planningClarificationPending = true;
     if (
-      lastFailure?.name === name &&
-      lastFailure.code === code &&
-      lastFailure.hint === reason
+      correctPlanningQuestion
+        ? planningClarificationCorrections >= 2
+        : lastFailure?.name === name &&
+          lastFailure.code === code &&
+          lastFailure.hint === reason
     ) {
       noProgress = true;
       budgetBoundary = true;
@@ -2592,7 +2605,7 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(
             422,
-            "assistant_tool_input_invalid",
+            "assistant_plan_clarification_unnecessary",
             "当前只制定方案，尚不写入测试集。名称可按内容拟定；多个类别可在方案中分别交付，写明建议即可，无需为命名、保存位置或分组合并再次询问。保存非空可执行方案；只有文档缺失、定义歧义、范围或数量冲突等真正阻断问题才澄清。",
           );
         // A reconciliation may confirm that the request only asks for an explanation.
@@ -6105,6 +6118,22 @@ export async function executeAssistantTurn(
               instructions:
                 instructions +
                 "\n先读取本会话附件中的相关实际原文，再制定方案；不要凭空填写附件定义或引用。query无匹配时从sectionDirectory定位真实章节，不从封面逐页扫描或猜编号。",
+            };
+          }
+          if (
+            planningClarificationPending &&
+            planningClarificationCorrections < 2
+          ) {
+            planningClarificationPending = false;
+            planningClarificationCorrections++;
+            activeRepairTools = new Set(["plan_task"]);
+            return {
+              ...fixedState,
+              activeTools: ["plan_task"],
+              toolChoice: { type: "tool" as const, toolName: "plan_task" },
+              instructions:
+                instructions +
+                "\n纠正不必要的澄清：刚才的问题未保存方案，也未执行任何生成。原用户已经要求先给方案，不能再询问是否开工、名称或保存位置。使用上文原请求和已读文档事实，立即调用plan_task保存executionMode:plan与完整非空deliveries（旧合同沿用steps），保持全部交付、数量及约束，不改变执行授权。名称可自行拟定，不要生成样题或编造文档引用。只有已读事实确实存在缺失、歧义或用户范围/数量冲突，才提出具体业务问题。",
             };
           }
           const planningTools = activeTools.filter((name) =>

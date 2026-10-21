@@ -19,7 +19,8 @@ describe("assistant diagnostic metadata", () => {
     ).toBe("business");
   });
   it.each([
-    ["assistant_no_progress", "budget", "budget_exhausted"],
+    ["assistant_no_progress", "application", "workflow_stalled"],
+    ["assistant_budget_exhausted", "budget", "budget_exhausted"],
     ["assistant_task_not_executed", "application", "workflow_incomplete"],
     ["model_connection_unavailable", "model", "provider_rejected"],
     ["assistant_operation_failed", "application", "internal_error"],

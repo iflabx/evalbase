@@ -82,13 +82,20 @@ export function assistantFailure(
       "原操作的提交结果尚未确认。",
       "正在核对原操作回执；不要重复提交或更换参数。已有输入和成果保留。",
     );
-  if (
-    /assistant_no_progress|assistant_session_limit|assistant_budget/.test(code)
-  )
+  if (code === "assistant_no_progress")
+    return result(
+      "application",
+      "workflow_stalled",
+      toolFailure?.error?.code === "assistant_plan_clarification_unnecessary"
+        ? "助手多次纠正后仍未保存完整方案，本轮已暂停。"
+        : "助手重复尝试后仍未取得新进展，本轮已暂停。",
+      "原要求、文档和已有成果已保留。可继续未完成部分；重复失败时请联系管理员查看诊断，无需填写工具参数。",
+    );
+  if (/assistant_session_limit|assistant_budget/.test(code))
     return result(
       "budget",
       "budget_exhausted",
-      "本轮已暂停：达到执行限额或没有取得新进展。",
+      "本轮已暂停：达到执行限额。",
       "检查当前步骤和要求后继续未完成部分。",
     );
   if (code === "assistant_requirements_not_saved" && !toolFailure)

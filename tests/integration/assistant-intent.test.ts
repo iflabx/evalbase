@@ -1008,4 +1008,198 @@ describe("OPT42 per-turn intent public boundary", () => {
       prose = "当前状态已核对，原有成果保留。";
     }
   });
+  it.each(["same", "different", "before_read"])(
+    "repairs consecutive unnecessary planning questions (%s)",
+    async (variant) => {
+      const before = await effects();
+      const id = (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions",
+          headers,
+          payload: {},
+        })
+      ).json().sessionId;
+      const uploaded = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + id + "/background-documents",
+        headers,
+        payload: {
+          fileName: "物流说明.txt",
+          contentBase64: Buffer.from(
+            "使用完整中文问题，覆盖物流查询与修改收货地址；不包含真实个人信息。",
+          ).toString("base64"),
+        },
+      });
+      expect(uploaded.statusCode).toBe(201);
+      const bad = {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan" },
+          executionMode: "plan",
+          question: "请确认是否按上述方案执行？",
+          nextAction: "none",
+        },
+      };
+      const state = await send(
+        id,
+        "按附件创建物流查询和修改地址两个测试集，每个2条。先给方案，不要执行。",
+        [
+          ...(variant === "before_read" ? [bad] : []),
+          {
+            name: "read_background",
+            input: { documentId: uploaded.json().document.id },
+          },
+          ...(variant === "before_read" ? [] : [bad]),
+          variant === "different"
+            ? {
+                ...bad,
+                input: {
+                  ...bad.input,
+                  question: "请确认是否使用物流查询这个名称？",
+                },
+              }
+            : bad,
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              requirements: ["问题完整且不包含真实个人信息"],
+              deliveries: [
+                {
+                  name: "物流查询",
+                  count: 2,
+                  instructions: "生成物流查询问题",
+                  scenarios: ["运输进度", "预计到达", "当前位置"],
+                  classifications: [],
+                },
+                {
+                  name: "修改地址",
+                  count: 2,
+                  instructions: "生成修改收货地址问题",
+                  scenarios: ["发货前改址", "运输中改址", "地址信息补充"],
+                  classifications: [],
+                },
+              ],
+            },
+          },
+        ],
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(script).toHaveLength(0);
+      expect(observed).toHaveLength(4);
+      if (variant === "before_read")
+        expect(observed[1].tool_choice).toEqual({
+          type: "function",
+          function: { name: "read_background" },
+        });
+      for (const request of observed.slice(2)) {
+        expect(request.tool_choice).toEqual({
+          type: "function",
+          function: { name: "plan_task" },
+        });
+        expect(request.tools.map((t: any) => t.function.name)).toEqual([
+          "plan_task",
+        ]);
+        expect(JSON.stringify(request.messages)).toContain("纠正不必要的澄清");
+        expect(JSON.stringify(request.messages)).toContain("每个2条");
+      }
+      expect(state.task.executionPlan.mode).toBe("plan");
+      const planDb = createPool(databaseUrl);
+      try {
+        const saved = (
+          await planDb.query("SELECT task FROM assistant_session WHERE id=$1", [
+            id,
+          ])
+        ).rows[0].task;
+        expect(
+          deliveryGoals(saved.executionPlan).map((goal) => ({
+            name: goal.name,
+            count: goal.count,
+          })),
+        ).toEqual([
+          { name: "物流查询", count: 2 },
+          { name: "修改地址", count: 2 },
+        ]);
+      } finally {
+        await planDb.end();
+      }
+      expect(state.task.question).toBeFalsy();
+      expect(await effects()).toEqual(before);
+    },
+  );
+
+  it("bounds repeated planning clarification failures and still permits genuine ambiguity", async () => {
+    const before = await effects();
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const uploaded = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/background-documents",
+      headers,
+      payload: {
+        fileName: "说明.txt",
+        contentBase64: Buffer.from("只使用完整中文问题。").toString("base64"),
+      },
+    });
+    expect(uploaded.statusCode).toBe(201);
+    const bad = {
+      name: "plan_task",
+      input: {
+        control: { mode: "plan" },
+        executionMode: "plan",
+        question: "请确认是否按上述方案执行？",
+        nextAction: "none",
+      },
+    };
+    const failed = await send(id, "按附件创建2条物流问题，先给方案，不执行。", [
+      {
+        name: "read_background",
+        input: { documentId: uploaded.json().document.id },
+      },
+      bad,
+      bad,
+      bad,
+      bad,
+    ]);
+    expect(failed.turns.at(-1).status).toBe("failed");
+    expect(failed.turns.at(-1).errorCode).toBe("assistant_no_progress");
+    expect(failed.turns.at(-1).diagnostics.failure).toMatchObject({
+      layer: "application",
+      category: "workflow_stalled",
+    });
+    expect(failed.turns.at(-1).diagnostics.failure.reason).toContain(
+      "仍未保存完整方案",
+    );
+    expect(observed).toHaveLength(4);
+    expect(script).toHaveLength(1);
+    expect(failed.task.executionPlan?.steps?.length ?? 0).toBe(0);
+    expect(await effects()).toEqual(before);
+    const clarified = await send(id, "按附件继续规划", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan" },
+          executionMode: "plan",
+          question: "文档缺失物流业务范围，应该覆盖查询还是修改地址？",
+          nextAction: "none",
+        },
+      },
+    ]);
+    expect(
+      clarified.turns.at(-1).status,
+      JSON.stringify(clarified.turns.at(-1)),
+    ).toBe("succeeded");
+    expect(clarified.task.question).toContain("文档缺失");
+    expect(await effects()).toEqual(before);
+  });
 });

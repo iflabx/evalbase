@@ -5,6 +5,7 @@ import { settleExecutionPlan } from "./plan.js";
 // Unknown failures keep the operation binding until a real receipt is reconciled.
 const validationWithoutEffect = new Set([
   "assistant_tool_input_invalid",
+  "assistant_plan_clarification_unnecessary",
   "processing_scope_invalid",
   "processing_configuration_invalid",
   "processing_capacity_exceeded",
