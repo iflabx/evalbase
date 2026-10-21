@@ -2,7 +2,7 @@
 
 Status: ready-for-human
 Implementation: completed
-Validation: partial（既有固定场景通过；最新单会话联动未通过，Owner pending）
+Validation: partial（定向与最新有界单会话流程通过；Owner人工验收pending，历史失败保留）
 Blocked by: none（OPT-39 已完成定向验证）
 
 优先级：P1。基于当前 AI SDK、plan_task、advanceExecution 及既有持久任务实现，统一普通中文与明确操作的执行边界。2026-10-20 用户已授权开发与定向验证。按最新决定，本轮不追加生成内容质量验证，内容由后续人工审核修改；历史质量问题、旧预算及验收数据保留。应用实现 `93de778`，自动定向验证通过；前轮12次请求截止的暂停/继续缺口已按另行授权，以独立4次/2分钟上限补验通过（实际2次/9310ms）；4217已更新bdf4e89。旧预算和失败保留，Owner人工验收pending。详细命令、失败及保护证据统一见[OPT-42验证](../opt42-verification.md)。部署、合并与推送仍需独立授权。产品依据：[PRD §7.1–7.5](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[架构 §9/16/17](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。研究证据及取舍见 [意图理解调研](../../../docs/research/assistant-intent-routing-2026-10-19.md)。
@@ -100,3 +100,5 @@ Blocked by: none（OPT-39 已完成定向验证）
 - 2026-10-21 三项修复：应用2e427b8完成37项定向验证并更新4217。单新会话Computer Use已完成两份各2条的生成与确认保存，暂停/继续和刷新持久化通过；首次规划仍发生无效开工澄清，普通继续后恢复，不计一次通过。13次请求/38668ms，旧数据预算不变。详见[修复与验收记录](../joint-planning-fix-verification.md)。Owner pending，内容质量不在本轮范围。
 
 - 2026-10-21 连续错误澄清修复：代码0b87133在既有预算内最多安排两次上下文纠正，优先读取附件，保留真实业务澄清及持续失败停止；无进展诊断与预算耗尽分开。56项定向回归、类型检查、局部lint和固定版本构建通过，4217已更新，15表内容指纹及六份旧预算保持。独立新一轮限额40请求/600000ms/4条/1会话已建立，目前0次调用；Computer Use受旧错误页浏览器安全策略阻止，等待Owner手动打开测试页，尚未验收通过。详细证据见[连续澄清修复与验证](../clarification-correction-verification.md)。
+
+- 2026-10-21 浏览器恢复后补验：同修复版本4220隔离环境，一个新会话、两句普通提示完成两份各2条生成及固定确认采用，刷新持久化通过。首次规划1次内部不必要澄清同轮自动纠正，无技术提示或用户重试；实际9次模型请求/27342ms，5轮均成功，生成4条。15张Owner业务表与六份旧预算未变。仅本固定流程通过，Owner pending；详细结果见[连续澄清修复与验证](../clarification-correction-verification.md)。
