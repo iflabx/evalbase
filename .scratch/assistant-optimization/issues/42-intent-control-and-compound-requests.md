@@ -2,7 +2,7 @@
 
 Status: ready-for-human
 Implementation: completed
-Validation: partial（定向与最新有界单会话流程通过；Owner人工验收pending，历史失败保留）
+Validation: partial（最新四项修复定向通过；Computer Use仍未通过完整生成闭环，Owner pending）
 Blocked by: none（OPT-39 已完成定向验证）
 
 优先级：P1。基于当前 AI SDK、plan_task、advanceExecution 及既有持久任务实现，统一普通中文与明确操作的执行边界。2026-10-20 用户已授权开发与定向验证。按最新决定，本轮不追加生成内容质量验证，内容由后续人工审核修改；历史质量问题、旧预算及验收数据保留。应用实现 `93de778`，自动定向验证通过；前轮12次请求截止的暂停/继续缺口已按另行授权，以独立4次/2分钟上限补验通过（实际2次/9310ms）；4217已更新bdf4e89。旧预算和失败保留，Owner人工验收pending。详细命令、失败及保护证据统一见[OPT-42验证](../opt42-verification.md)。部署、合并与推送仍需独立授权。产品依据：[PRD §7.1–7.5](../../../docs/PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[架构 §9/16/17](../../../docs/architecture/data-selection-and-assistant.md)、[ADR 0014](../../../docs/adr/0014-project-agent-and-processing-runtime.md)。研究证据及取舍见 [意图理解调研](../../../docs/research/assistant-intent-routing-2026-10-19.md)。
@@ -104,3 +104,5 @@ Blocked by: none（OPT-39 已完成定向验证）
 - 2026-10-21 浏览器恢复后补验：同修复版本4220隔离环境，一个新会话、两句普通提示完成两份各2条生成及固定确认采用，刷新持久化通过。首次规划1次内部不必要澄清同轮自动纠正，无技术提示或用户重试；实际9次模型请求/27342ms，5轮均成功，生成4条。15张Owner业务表与六份旧预算未变。仅本固定流程通过，Owner pending；详细结果见[连续澄清修复与验证](../clarification-correction-verification.md)。
 
 - 2026-10-21 首批五场景后最小修复：6d82637/fc58a3e/8b6a96a完成控制状态、有限参数恢复、真实回执反馈、缺材料提示与澄清收尾；最新59项受影响回归及静态检查通过。4217固定镜像更新至8b6a96a，15表与8份旧预算指纹不变。侧栏Computer Use按现有能力为5个独立会话上传合成背景TXT；同一新账本41次请求/477259ms，零生成/采用，仍遇重复澄清、交付遗漏、输出截断和模型等待超时，整体未通过。各次代码版本与剩余范围见[修复与有界复测](../batch1-repair-verification.md)，Owner pending，不合并/推送。
+
+- 2026-10-21 四项最小修复：应用b6bc27e已更新4217。主修复96项定向通过，补充受影响回归/类型/lint通过；真实分类夹具、配额映射、执行Schema和已保存方案直执行补修已闭合。侧栏两个新会话沿同一限额账本实测43次/161575ms，第二例用满25次后停止；数量及主题修改正确，完整生成未通过，最终0候选/0保存，失败与恢复缺口保留。10份旧预算与15张Owner表内容指纹保持。详见[四项修复与有界复测](../four-flow-fixes-verification.md)；不代签验收，不合并/推送。

@@ -149,7 +149,7 @@ Implementation: in-progress
 | [OPT-39](issues/39-delivery-review-scope-and-continuation.md) | 多份交付审核归属、自动续步与最终回执收尾 | 当前已实现代码，无未开发票硬依赖 | completed | [实施与定向验证](opt39-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
 | [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；39已完成 | completed | [实施与验证](opt40-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
 | [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40已完成 | completed | [有界语义验证](opt41-verification.md)；[4217联动](opt39-41-checkpoint.md)新增3条审核误报保留，Owner pending |
-| [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 历史证据见[原验证](opt42-verification.md)；最新8b6a96a已更新4217，59项受影响回归通过；[最小修复与五场景复测](batch1-repair-verification.md)仍未通过生成闭环，旧数据/预算保留，Owner pending |
+| [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 最新应用b6bc27e已更新4217；定向修复通过，[四项修复有界复测](four-flow-fixes-verification.md)43次/161575ms、0候选，完整生成仍未通过，旧数据/预算保持，Owner pending |
 
 2026-10-20 最新[OPT-39～42单会话联动](opt39-42-single-session-verification.md)未通过：规划/恢复阻断，生成后路径未覆盖；既有定向证据及全部原数据/预算保留，Owner pending。
 

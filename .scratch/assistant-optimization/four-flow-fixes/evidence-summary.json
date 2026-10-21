@@ -1,0 +1,958 @@
+{
+  "date": "2026-10-21",
+  "applicationCommit": "b6bc27efd40f36dc90073dbff83326c8d4244e4b",
+  "baseline": "0ab3a95a16a0dce333f4afe8203663350954ab94",
+  "result": "partial-not-accepted",
+  "automated": {
+    "initialFocused": {
+      "tests": 96,
+      "passed": 96,
+      "log": "opt42/four-fixes-final-regression.log"
+    },
+    "laterFocused": [
+      {
+        "tests": 4,
+        "passed": 4,
+        "log": "opt42/four-fixes-frozen-control.log"
+      },
+      {
+        "tests": 23,
+        "passed": 23,
+        "log": "opt42/four-fixes-category-clause.log"
+      },
+      {
+        "tests": 7,
+        "passed": 7,
+        "log": "opt42/four-fixes-saved-execute-green.log"
+      }
+    ],
+    "typecheck": "passed",
+    "scopedLint": "passed",
+    "diffCheck": "passed",
+    "note": "Later runs overlap earlier tests; counts are not added as unique tests."
+  },
+  "computerUse": {
+    "origin": "http://127.0.0.1:4224",
+    "model": {
+      "name": "测试 Qwen",
+      "model": "qwen-new",
+      "revision": 2
+    },
+    "codeRevisions": [
+      "b251f97c7f6635b15e9d9fe94e25ca2357b23ffc",
+      "3c63f4100ade12676e11315fdcfa122b9193c367",
+      "b0da4fa9142f0ed12b41ad79f8b0ae1798274ecc",
+      "5ac8090dce0a03f9741ad86051ca02df9b0a6c7a",
+      "b6bc27efd40f36dc90073dbff83326c8d4244e4b"
+    ],
+    "limits": {
+      "sessions": 2,
+      "requests": 50,
+      "activeMs": 600000,
+      "generationCount": 6,
+      "perCaseRequests": 25,
+      "perCaseActiveMs": 300000
+    },
+    "actual": {
+      "sessions": 2,
+      "requests": 43,
+      "activeMs": 161575,
+      "blocked": 3,
+      "modelGenerationRequests": 0,
+      "generatedRecords": 0,
+      "savedRecords": 0,
+      "publishedRecords": 0,
+      "runs": 1,
+      "drafts": 1
+    },
+    "cases": [
+      {
+        "caseId": 1,
+        "sessionId": "conversation_302db068dae6446eb7ad221325514402",
+        "calls": 18,
+        "activeMs": 105176,
+        "stage": "failed",
+        "deliveries": [
+          {
+            "id": "delivery_98399aacb4a948e2bd2ad22fde5d363b",
+            "name": "电商客服测试集",
+            "count": 2,
+            "countKind": "final",
+            "status": "failed",
+            "generatedCount": null,
+            "savedCount": 0,
+            "confirmed": false
+          }
+        ],
+        "prompts": [
+          {
+            "text": "帮我做一份客服测试集。",
+            "status": "failed",
+            "errorCode": "assistant_background_reference_invalid",
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_background_reference_invalid",
+                  "hint": "背景定义引用已失效或与分类不符。请读取当前附件并首次核对对应原文；不能复用其他会话或类别的引用。"
+                }
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "电商客服，先做2条。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "只做查物流2条，开始生成。",
+            "status": "failed",
+            "errorCode": "assistant_no_progress",
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_intent_required",
+                  "hint": "参数纠正不能改变本轮操作授权。"
+                }
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_intent_required",
+                  "hint": "参数纠正不能改变本轮操作授权。"
+                }
+              }
+            ]
+          },
+          {
+            "text": "按最后的要求继续生成。",
+            "status": "failed",
+            "errorCode": "assistant_requirement_conflict",
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "每份交付须有名称、具体要求及至少三个完整且不同的情境。"
+                }
+              }
+            ]
+          }
+        ],
+        "finalTurn": {
+          "id": "turn_5f812e24bffa40748667d7bccbccfdec",
+          "event": "user",
+          "userText": "按最后的要求继续生成。",
+          "assistantText": "按最后要求继续：只生成查物流2条。",
+          "status": "failed",
+          "errorCode": "assistant_requirement_conflict",
+          "diagnostics": {
+            "intent": {
+              "mode": "execute",
+              "source": "model",
+              "pauseFirst": false,
+              "reasonCode": "turn_execute",
+              "updateSaved": false,
+              "requiresUpdate": true
+            },
+            "turnId": "turn_5f812e24bffa40748667d7bccbccfdec",
+            "failure": {
+              "layer": "business",
+              "reason": "当前要求或数据修订发生冲突。",
+              "category": "conflict",
+              "httpStatus": null,
+              "nextAction": "核对当前数据或更正要求后继续。"
+            },
+            "requests": [
+              {
+                "httpStatus": 200,
+                "timeToHeadersMs": 905
+              },
+              {
+                "httpStatus": 200,
+                "timeToHeadersMs": 3079
+              },
+              {
+                "httpStatus": null,
+                "timeToHeadersMs": 60017
+              }
+            ],
+            "errorCode": "assistant_requirement_conflict",
+            "sessionId": "conversation_302db068dae6446eb7ad221325514402",
+            "toolCalls": 2,
+            "durationMs": 64966,
+            "modelSteps": 3,
+            "retryWaits": [],
+            "codeVersion": "unknown",
+            "currentStep": {
+              "id": "step_69f559e6e5a34a52a1428c0a2d865b47",
+              "action": "generate_candidates"
+            },
+            "diagnosticId": "turn_5f812e24bffa40748667d7bccbccfdec",
+            "finishReason": "not_returned",
+            "taskRevision": 5,
+            "toolsVersion": "assistant-tools-v12",
+            "modelRevision": 2,
+            "promptVersion": "assistant-prompt-v15",
+            "contractVersion": "assistant-diagnostics-v1",
+            "protocolRepairs": 0,
+            "requestAttempts": 3,
+            "stepDiagnostics": [
+              {
+                "inputTokens": 7515,
+                "finishReason": "tool-calls",
+                "outputTokens": 29,
+                "argumentBytes": 118
+              },
+              {
+                "inputTokens": 12791,
+                "finishReason": "tool-calls",
+                "outputTokens": 380,
+                "argumentBytes": 1225
+              }
+            ],
+            "parameterRepairs": [],
+            "transportRetries": 0,
+            "retainedCandidates": null,
+            "retainedOperations": 0,
+            "parameterRepairVersion": "arguments-v3",
+            "requirementsReconciled": false
+          },
+          "tools": [
+            {
+              "key": "assistant:turn_5f812e24bffa40748667d7bccbccfdec:5bf64e73eef5bf276fcfd6fdc4a91136092dcf5c2a12e6f1897d4655692123df",
+              "name": "plan_task",
+              "input": {
+                "control": {
+                  "mode": "execute",
+                  "explanation": "按最后要求继续：只生成查物流2条。",
+                  "requiresUpdate": true
+                }
+              },
+              "result": {
+                "task": {
+                  "error": "assistant_no_progress",
+                  "stage": "failed",
+                  "title": "电商客服测试集",
+                  "target": null,
+                  "question": null,
+                  "recovery": {
+                    "kind": "execution",
+                    "message": "助手重复尝试后仍未取得新进展，本轮已暂停。 已执行操作和已有成果保留。原要求、文档和已有成果已保留。可继续未完成部分；重复失败时请联系管理员查看诊断，无需填写工具参数。"
+                  },
+                  "autoCount": 0,
+                  "countKind": "final",
+                  "deliveries": [
+                    {
+                      "id": "delivery_98399aacb4a948e2bd2ad22fde5d363b",
+                      "name": "电商客服测试集",
+                      "count": 2,
+                      "countKind": "final",
+                      "scenarios": [
+                        "用户询问已下单商品的运输位置或预计送达时间",
+                        "用户请求把订单收货地址改成另一个地址",
+                        "用户询问已提交退款申请的处理进度或到账时间"
+                      ],
+                      "instructions": "生成2条相互独立、自然完整的电商客服用户问题，覆盖查物流、改地址、退款进度中的不同场景。问题不依赖上一条记录，不使用真实个人信息。期望输出逐题说明客服应如何回应或办理：查物流应说明需核实订单或物流信息并给出查询方式；改地址应说明需核对订单状态、能否修改及后续办理方式；退款进度应说明需核实退款申请状态、处理进度或到账时间。不得虚构实际物流、订单或退款查询结果，也不得把期望输出写成业务类别标签。每条Metadata的“业务场景”记录对应场景。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                      "boundaryVersion": 1,
+                      "classifications": [
+                        {
+                          "key": "业务场景",
+                          "basis": "background",
+                          "field": "metadata",
+                          "definitions": [
+                            {
+                              "text": "1. 查物流：用户查询订单的运输位置、物流更新或预计送达时间。",
+                              "value": "查物流"
+                            },
+                            {
+                              "text": "2. 改地址：用户请求修改订单的收货地址；客服应核对订单状态，说明能否修改及后续办理方式。",
+                              "value": "改地址"
+                            },
+                            {
+                              "text": "3. 退款进度：用户查询已申请退款的处理进度或到账时间。此场景不等同于修改收货地址。",
+                              "value": "退款进度"
+                            }
+                          ],
+                          "allowedValues": [
+                            "查物流",
+                            "改地址",
+                            "退款进度"
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "nextAction": "plan_task",
+                  "targetCount": 2,
+                  "turnControl": {
+                    "mode": "execute",
+                    "source": "model",
+                    "turnId": "turn_5f812e24bffa40748667d7bccbccfdec",
+                    "explanation": "按最后要求继续：只生成查物流2条。",
+                    "updateSaved": false,
+                    "taskRevision": 5,
+                    "requiresUpdate": true
+                  },
+                  "metadataKeys": [
+                    "业务场景"
+                  ],
+                  "requirements": [
+                    "信息不足时说明应核实哪些信息。",
+                    "实际场景及数量以用户当前要求为准，本次为2条。",
+                    "期望输出逐题说明客服应如何回应或办理，不写成业务类别标签，不虚构实际物流、订单或退款查询结果。",
+                    "每条Metadata用“业务场景”记录对应场景。",
+                    "问题使用自然、完整的普通用户问法，不依赖上一条记录，不使用真实个人信息。"
+                  ],
+                  "allowedFields": [
+                    "question",
+                    "expectedOutput",
+                    "metadata"
+                  ],
+                  "executionPlan": {
+                    "mode": "plan",
+                    "steps": [
+                      {
+                        "id": "step_69f559e6e5a34a52a1428c0a2d865b47",
+                        "action": "generate_candidates",
+                        "status": "pending",
+                        "deliveryId": "delivery_98399aacb4a948e2bd2ad22fde5d363b",
+                        "boundaryVersion": 1
+                      },
+                      {
+                        "id": "step_c8da43f0c4334ebd869c6875e4af3ae7",
+                        "action": "read_processing",
+                        "status": "pending",
+                        "deliveryId": "delivery_98399aacb4a948e2bd2ad22fde5d363b"
+                      },
+                      {
+                        "id": "step_2f1ece6d726241eb81ba8d4ead78cd67",
+                        "action": "request_processing_apply",
+                        "status": "pending",
+                        "deliveryId": "delivery_98399aacb4a948e2bd2ad22fde5d363b"
+                      }
+                    ],
+                    "target": null,
+                    "current": 0,
+                    "needsReview": false,
+                    "contractVersion": 1
+                  },
+                  "autoEventLimit": null,
+                  "classifications": [
+                    {
+                      "key": "业务场景",
+                      "basis": "background",
+                      "field": "metadata",
+                      "definitions": [
+                        {
+                          "value": "查物流",
+                          "reference": "definition:f9fb91cd667455b5a3e0e7973849f64a54b74773115c7b385f9f815ffe533176"
+                        },
+                        {
+                          "value": "改地址",
+                          "reference": "definition:55c524900c637ab60623ce79150696d18940ce352baf9515b59e4fe25ea1c7b7"
+                        },
+                        {
+                          "value": "退款进度",
+                          "reference": "definition:257502c38873557e3b7a66b4797a3d18210fc2e63871fc003a1c993f5ec4b5ea"
+                        }
+                      ],
+                      "allowedValues": [
+                        "查物流",
+                        "改地址",
+                        "退款进度"
+                      ]
+                    }
+                  ],
+                  "executionPaused": false,
+                  "originalRequest": "帮我做一份客服测试集。",
+                  "transportRecovery": null,
+                  "backgroundEvidence": [
+                    {
+                      "sha256": "e9bdd0f341d2844979718e65394b5122e2054dc21eab885fb9bbf61cbdda33fa",
+                      "textHash": "e9bdd0f341d2844979718e65394b5122e2054dc21eab885fb9bbf61cbdda33fa",
+                      "documentId": "background_b797b4866c1b40b68aa20759c1a025bf",
+                      "fragmentIndex": 1,
+                      "extractorVersion": "background-text-v1"
+                    }
+                  ],
+                  "candidateSelection": null,
+                  "overallTargetCount": 2,
+                  "requirementProblem": null,
+                  "requirementSummary": [
+                    "交付「电商客服测试集」：最终总数 2 条",
+                    "整体交付：2 条（当前测试集单独核对）",
+                    "最终总数：2 条",
+                    "允许修改：问题、期望输出、Metadata",
+                    "可修改的 Metadata 字段：业务场景",
+                    "Metadata「业务场景」：允许 查物流、改地址、退款进度",
+                    "信息不足时说明应核实哪些信息。",
+                    "实际场景及数量以用户当前要求为准，本次为2条。",
+                    "期望输出逐题说明客服应如何回应或办理，不写成业务类别标签，不虚构实际物流、订单或退款查询结果。",
+                    "每条Metadata用“业务场景”记录对应场景。",
+                    "问题使用自然、完整的普通用户问法，不依赖上一条记录，不使用真实个人信息。"
+                  ],
+                  "canContinueExecution": false,
+                  "historicalCorrections": [
+                    "电商客服，先做2条。",
+                    "只做查物流2条，开始生成。",
+                    "按最后的要求继续生成。"
+                  ],
+                  "requirementProblemKind": "diagnostic"
+                },
+                "control": {
+                  "mode": "execute",
+                  "source": "model",
+                  "turnId": "turn_5f812e24bffa40748667d7bccbccfdec",
+                  "explanation": "按最后要求继续：只生成查物流2条。",
+                  "updateSaved": false,
+                  "taskRevision": 5,
+                  "requiresUpdate": true
+                },
+                "unchanged": true
+              },
+              "status": "succeeded",
+              "binding": {
+                "revision": 5
+              }
+            },
+            {
+              "key": "assistant:turn_5f812e24bffa40748667d7bccbccfdec:608c0e35ec418056bd27286db36f79e7cdf40d48057db96a5ed1344a6b4b3731",
+              "name": "plan_task",
+              "error": {
+                "code": "assistant_requirement_conflict",
+                "hint": "每份交付须有名称、具体要求及至少三个完整且不同的情境。"
+              },
+              "input": {
+                "control": {
+                  "mode": "execute",
+                  "explanation": "按最后要求继续：只生成查物流2条。",
+                  "requiresUpdate": true
+                },
+                "deliveries": [
+                  {
+                    "id": "delivery_98399aacb4a948e2bd2ad22fde5d363b",
+                    "name": "电商客服测试集",
+                    "count": 2,
+                    "countKind": "final",
+                    "scenarios": [
+                      "用户询问已下单商品现在运输到哪里",
+                      "用户询问订单物流是否更新以及预计什么时候送达"
+                    ],
+                    "instructions": "生成2条相互独立、自然完整的电商客服用户问题，且全部属于查物流：用户查询订单的运输位置、物流更新或预计送达时间。问题不依赖上一条记录，不使用真实个人信息。期望输出逐题说明客服应如何回应或办理：应说明需核实订单或物流信息并给出查询方式；不得虚构实际物流、订单或退款查询结果，也不得把期望输出写成业务类别标签。每条Metadata的“业务场景”记录为查物流。",
+                    "classifications": [
+                      {
+                        "key": "业务场景",
+                        "basis": "background",
+                        "field": "metadata",
+                        "definitions": [
+                          {
+                            "text": "1. 查物流：用户查询订单的运输位置、物流更新或预计送达时间。",
+                            "value": "查物流",
+                            "reference": "definition:f9fb91cd667455b5a3e0e7973849f64a54b74773115c7b385f9f815ffe533176"
+                          }
+                        ],
+                        "allowedValues": [
+                          "查物流"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "effect": "none",
+              "status": "failed",
+              "binding": {
+                "revision": 5
+              }
+            }
+          ],
+          "createdAt": "2026-10-21T11:13:57.842Z"
+        }
+      },
+      {
+        "caseId": 2,
+        "sessionId": "conversation_a053893ed11d4a94b93b56aee247857d",
+        "calls": 25,
+        "activeMs": 56399,
+        "stage": "awaiting_review",
+        "deliveries": [
+          {
+            "id": "delivery_609cee5f64a343cf93d0c9557c126c21",
+            "name": "查物流客服用例",
+            "count": 2,
+            "countKind": "new",
+            "status": "failed",
+            "generatedCount": 0,
+            "savedCount": 0,
+            "confirmed": false,
+            "run": {
+              "id": "processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c",
+              "status": "failed",
+              "url": "/projects/project_e8e107e8851b47ce91ae207c0a1ef78c/processing?run=processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c"
+            },
+            "draft": {
+              "id": "collabdraft_d665dd4ee435f4e27f50e43a78cfdcf3b711366d0e9b50a2b999e393c779589c",
+              "count": 0,
+              "url": "/projects/project_e8e107e8851b47ce91ae207c0a1ef78c/test-sets/drafts/collabdraft_d665dd4ee435f4e27f50e43a78cfdcf3b711366d0e9b50a2b999e393c779589c"
+            }
+          },
+          {
+            "id": "delivery_37f3b38f04ce4f439fafdf1949006594",
+            "name": "退款进度客服用例",
+            "count": 1,
+            "countKind": "new",
+            "status": "pending",
+            "generatedCount": null,
+            "savedCount": 0,
+            "confirmed": false
+          }
+        ],
+        "prompts": [
+          {
+            "text": "查物流和改地址，各做2条，先不要执行。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              },
+              {
+                "name": "read_background",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "每份交付须有名称、具体要求及至少三个完整且不同的情境。"
+                }
+              },
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "查物流改成3条。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "算了，查物流还是2条，改地址只要1条。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "改地址不要了，换成退款进度。",
+            "status": "failed",
+            "errorCode": "assistant_no_progress",
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。"
+                }
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。"
+                }
+              }
+            ]
+          },
+          {
+            "text": "继续按最后的要求保存方案。",
+            "status": "failed",
+            "errorCode": "assistant_no_progress",
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。"
+                }
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。"
+                }
+              }
+            ]
+          },
+          {
+            "text": "把改地址换成退款进度，数量还是1条，查物流保持2条。",
+            "status": "failed",
+            "errorCode": "assistant_no_progress",
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。"
+                }
+              },
+              {
+                "name": "plan_task",
+                "status": "failed",
+                "error": {
+                  "code": "assistant_requirement_conflict",
+                  "hint": "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。"
+                }
+              }
+            ]
+          },
+          {
+            "text": "把改地址换成退款进度，数量还是1条，查物流保持2条。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "按最后这个做。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              }
+            ]
+          },
+          {
+            "text": "查物流2条、退款进度1条，请把这个方案保存好，然后开始生成。",
+            "status": "succeeded",
+            "errorCode": null,
+            "tools": [
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "plan_task",
+                "status": "succeeded"
+              },
+              {
+                "name": "generate_candidates",
+                "status": "succeeded"
+              }
+            ]
+          }
+        ],
+        "finalTurn": {
+          "id": "turn_468fae6b9139417582167d33856b63f6",
+          "event": "processing_completed",
+          "userText": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+          "assistantText": "本任务保留 0 条结果，尚缺 0 条；本任务生成额度已用完，请核对已有候选。",
+          "status": "succeeded",
+          "errorCode": null,
+          "diagnostics": {
+            "intent": {
+              "mode": "execute",
+              "source": "continuation",
+              "pauseFirst": false,
+              "reasonCode": "turn_execute",
+              "updateSaved": true,
+              "requiresUpdate": false
+            },
+            "turnId": "turn_468fae6b9139417582167d33856b63f6",
+            "requests": [],
+            "sessionId": "conversation_a053893ed11d4a94b93b56aee247857d",
+            "toolCalls": 1,
+            "durationMs": 953,
+            "modelSteps": 0,
+            "retryWaits": [],
+            "codeVersion": "unknown",
+            "currentStep": {
+              "id": "step_5c5ffd0c4e874bc0a2fe2b87ba72a93e",
+              "action": "generate_candidates"
+            },
+            "diagnosticId": "turn_468fae6b9139417582167d33856b63f6",
+            "finishReason": "processing_budget_exhausted",
+            "taskRevision": 10,
+            "toolsVersion": "assistant-tools-v12",
+            "modelRevision": 2,
+            "promptVersion": "assistant-prompt-v15",
+            "contractVersion": "assistant-diagnostics-v1",
+            "protocolRepairs": 0,
+            "requestAttempts": 0,
+            "stepDiagnostics": [],
+            "parameterRepairs": [],
+            "transportRetries": 0,
+            "retainedCandidates": 0,
+            "retainedOperations": 0,
+            "parameterRepairVersion": "arguments-v3",
+            "requirementsReconciled": false
+          },
+          "tools": [
+            {
+              "key": "assistant:turn_468fae6b9139417582167d33856b63f6:1827307a406f344247980f45b14d9e133075416864ec1225d3a0bf7390dfc6e2",
+              "name": "read_processing",
+              "input": {
+                "runId": "processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c"
+              },
+              "result": {
+                "url": "/projects/project_e8e107e8851b47ce91ae207c0a1ef78c/processing?run=processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c",
+                "runId": "processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c",
+                "total": 0,
+                "issues": [
+                  {
+                    "code": "processing_output_incomplete",
+                    "batch": 0
+                  },
+                  {
+                    "code": "missing_output",
+                    "batch": 0,
+                    "count": 2
+                  }
+                ],
+                "review": {
+                  "runId": "processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c",
+                  "total": 0,
+                  "labels": [],
+                  "content": {
+                    "checked": 0,
+                    "pending": 0,
+                    "conforms": 0,
+                    "uncertain": 0,
+                    "nonconforms": 0,
+                    "autoRepaired": 0
+                  },
+                  "complete": false,
+                  "countKind": "new",
+                  "duplicates": 0,
+                  "labelKinds": 0,
+                  "formatIssues": [],
+                  "missingCount": 0,
+                  "effectiveness": {
+                    "modified": 0,
+                    "unchanged": 0,
+                    "unprocessed": 0,
+                    "ineffectiveRewrite": 0
+                  },
+                  "expectedCount": 2,
+                  "outsideLabels": 0,
+                  "candidateCount": 0,
+                  "countSatisfied": false,
+                  "emptyQuestions": 0,
+                  "semanticReview": "required",
+                  "classifications": [
+                    {
+                      "key": "业务场景",
+                      "field": "metadata",
+                      "values": [],
+                      "missing": 0,
+                      "satisfied": false,
+                      "outsideValues": 0,
+                      "additionalValues": 0,
+                      "quotaDifferences": [
+                        {
+                          "value": "查物流",
+                          "actual": 0,
+                          "expected": 2
+                        }
+                      ]
+                    }
+                  ],
+                  "countUnverified": false,
+                  "labelsTruncated": false,
+                  "additionalLabels": 0,
+                  "formatIssueCount": 0,
+                  "questionCollisions": 0,
+                  "compatibilityProblem": null,
+                  "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+                  "formatIssuesTruncated": false,
+                  "protectedFieldChanges": 0
+                },
+                "status": "failed",
+                "partial": true,
+                "records": [],
+                "recovery": {
+                  "reason": "budget_exhausted",
+                  "canRetry": false,
+                  "canContinue": false,
+                  "generationBudget": {
+                    "used": 3,
+                    "limit": 3,
+                    "blocked": false,
+                    "deadline": 1792582387172,
+                    "exhausted": true,
+                    "remaining": 0,
+                    "rootRunId": "processing_d6c155ccaacb4e35bc7cc13c8d9e9b9c",
+                    "targetCount": 2
+                  }
+                },
+                "taskRuns": [],
+                "taskTotal": 0,
+                "diagnostics": [
+                  {
+                    "batch": 0,
+                    "calls": [
+                      {
+                        "code": "network_error",
+                        "attempt": 1,
+                        "invalid": 0,
+                        "accepted": 0,
+                        "generated": 0,
+                        "validated": 0,
+                        "duplicates": 0,
+                        "durationMs": 13
+                      },
+                      {
+                        "code": "network_error",
+                        "attempt": 2,
+                        "invalid": 0,
+                        "accepted": 0,
+                        "generated": 0,
+                        "validated": 0,
+                        "duplicates": 0,
+                        "durationMs": 6
+                      },
+                      {
+                        "code": "network_error",
+                        "attempt": 3,
+                        "invalid": 0,
+                        "accepted": 0,
+                        "generated": 0,
+                        "validated": 0,
+                        "duplicates": 0,
+                        "durationMs": 11
+                      }
+                    ],
+                    "missing": 2,
+                    "accepted": 0,
+                    "attempts": 3,
+                    "stopReason": "budget_exhausted"
+                  }
+                ],
+                "missingCount": 0
+              },
+              "status": "succeeded",
+              "binding": {
+                "revision": 10
+              }
+            }
+          ],
+          "createdAt": "2026-10-21T11:32:07.269Z"
+        }
+      }
+    ]
+  },
+  "protection": {
+    "oldBudgetFiles": 10,
+    "ownerTables": 15,
+    "oldBudgetsEqual": true,
+    "ownerTablesEqual": true
+  },
+  "remaining": [
+    "Invalid background-reference copying can still interrupt the vague first request.",
+    "Pending failed category amendment is not resumed by a generic continue message.",
+    "Too-short scenario proposals and a 60s repair timeout blocked case 1.",
+    "Failed zero-candidate generation caused by the test cap is still displayed as awaiting review."
+  ]
+}
