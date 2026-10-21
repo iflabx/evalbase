@@ -343,9 +343,90 @@ export function validateRequestedCategories(
   request: string,
   catalog: Category[],
 ) {
-  for (const clause of request.split(/[。；;，,\n]/u)) {
+  // Ignore separate control/explanation clauses, not the accompanying business amendment.
+  request = request
+    .split(/[。；;\n]|然后/u)
+    .map((sentence) =>
+      sentence
+        .split(/[，,]/u)
+        .filter(
+          (part) =>
+            !/^\s*(?:请|先|再)?\s*(?:(?:不要|不得|禁止|别|不)\s*(?:执行|开工|开始|生成)|解释|举例|例如|引用)/u.test(
+              part,
+            ),
+        )
+        .join("，"),
+    )
+    .join("\n");
+  // These checks reject omissions; they never grant execution or infer new work.
+  for (const category of catalog) {
+    const names = aliases(category);
+    const named = request
+      .split(/[。；;，,\n]/u)
+      .flatMap((clause) => {
+        const alias = names.find((name) => clause.includes(name));
+        if (!alias || /不要|不得|禁止/u.test(clause)) return [];
+        const suffix = clause.slice(clause.indexOf(alias) + alias.length);
+        const count = suffix.match(
+          /^\s*(?:测试集)?\s*(?:改成|改为|调整为|还是|只要|做|生成)?\s*([1-9]\d*)\s*条/u,
+        )?.[1];
+        return count ? [Number(count)] : [];
+      })
+      .at(-1);
+    if (
+      named !== undefined &&
+      !goals.some((goal) =>
+        goal.classifications.some(
+          (rule) =>
+            rule.allowedValues?.some((value) => names.includes(value)) &&
+            rule.quotas?.some(
+              (quota) => names.includes(quota.value) && quota.count === named,
+            ),
+        ),
+      )
+    )
+      fail(
+        "本轮要求「" +
+          category.value +
+          "」" +
+          named +
+          "条，交付及对应配额尚未同步更新。",
+      );
+  }
+  const replacement = request.match(
+    /([^。；;\n]+?)(?:换成|替换为)([^。；;，,\n]+)/u,
+  );
+  if (
+    replacement &&
+    !/不要|不得|禁止|别/u.test(replacement[1].replace(/不要了|取消了/gu, ""))
+  ) {
+    const old = catalog.find((item) =>
+      aliases(item).some((name) => replacement[1].includes(name)),
+    );
+    const next = catalog.find((item) =>
+      aliases(item).some((name) => replacement[2].includes(name)),
+    );
+    const includes = (category: Category) =>
+      goals.some((goal) =>
+        goal.classifications.some((rule) =>
+          rule.allowedValues?.some((value) =>
+            aliases(category).includes(value),
+          ),
+        ),
+      );
+    if (
+      old &&
+      next &&
+      old.value !== next.value &&
+      (includes(old) || !includes(next))
+    )
+      fail(
+        "本轮替换的主题尚未同步到实际交付；更新对应交付的分类、情境和要求后再继续，不只修改标题或文字摘要。",
+      );
+  }
+  for (const clause of request.split(/[。；;\n]/u)) {
     const count = clause.match(
-      /(?:各\s*(?:一份)?|每类)\s*([1-9]\d*)\s*条/u,
+      /(?:各\s*(?:(?:做|生成|建|创建)\s*)?(?:一份)?|每类)\s*([1-9]\d*)\s*条/u,
     )?.[1];
     if (!count || /不要|不得|禁止|举例|例如|解释/u.test(clause)) continue;
     const matches = catalog.flatMap((category) =>

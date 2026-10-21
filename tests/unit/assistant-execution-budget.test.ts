@@ -1,3 +1,4 @@
+import { requestFitsDeadline } from "../../src/assistant/budget.js";
 import { describe, expect, it } from "vitest";
 import {
   checkpointExecutionBudget,
@@ -109,4 +110,11 @@ describe("OPT36 execution budget", () => {
     expect(cumulative).toMatchObject(EXECUTION_BUDGET_LIMITS);
     expect(executionBudgetExhausted(cumulative)).toBe(true);
   });
+});
+
+it("does not start a retry that cannot fit after a slow model request", () => {
+  expect(requestFitsDeadline(80000, 57000, 58000)).toBe(false);
+  expect(requestFitsDeadline(80000, 1000, 58000)).toBe(true);
+  expect(requestFitsDeadline(80000, 0, 76000)).toBe(false);
+  expect(requestFitsDeadline(80000, 57000, 40000)).toBe(true);
 });

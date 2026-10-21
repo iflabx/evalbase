@@ -922,4 +922,113 @@ describe("OPT-35 delivery planning contract", () => {
       validateRequestedCategories(empty, "按普通文档写六条问题", []),
     ).not.toThrow();
   });
+  it.each([
+    "查物流和改地址，各做2条，先别执行。",
+    "查物流和改地址各2条",
+    "查物流和改地址，各2条",
+    "查物流和改地址，各做2条，先不要执行。",
+  ])(
+    "rejects omitted requested categories in ordinary wording: %s",
+    (request) => {
+      const goals: any = [
+        {
+          id: "a",
+          name: "查物流测试集",
+          count: 2,
+          classifications: [
+            {
+              field: "metadata",
+              key: "业务场景",
+              allowedValues: ["查物流"],
+              quotas: [{ value: "查物流", count: 2 }],
+            },
+          ],
+        },
+      ];
+      expect(() =>
+        validateRequestedCategories(goals, request, [
+          { value: "查物流" },
+          { value: "改地址" },
+        ]),
+      ).toThrow();
+    },
+  );
+  it("rejects stale delivery topics and per-topic quantities on an amendment", () => {
+    const goals: any = [
+      {
+        id: "a",
+        name: "查物流测试集",
+        count: 3,
+        classifications: [
+          {
+            field: "metadata",
+            key: "业务场景",
+            allowedValues: ["查物流"],
+            quotas: [{ value: "查物流", count: 3 }],
+          },
+        ],
+      },
+      {
+        id: "b",
+        name: "改地址测试集",
+        count: 2,
+        classifications: [
+          {
+            field: "metadata",
+            key: "业务场景",
+            allowedValues: ["改地址"],
+            quotas: [{ value: "改地址", count: 2 }],
+          },
+        ],
+      },
+    ];
+    const catalog = [
+      { value: "查物流" },
+      { value: "改地址" },
+      { value: "退款进度" },
+    ];
+    expect(() =>
+      validateRequestedCategories(
+        goals,
+        "算了，查物流还是2条，改地址只要1条。",
+        catalog,
+      ),
+    ).toThrow();
+    expect(() =>
+      validateRequestedCategories(
+        goals,
+        "改地址不要了，换成退款进度。",
+        catalog,
+      ),
+    ).toThrow();
+    for (const request of [
+      "把改地址换成退款进度，先不执行",
+      "先解释原因，然后把改地址换成退款进度，先不执行",
+    ])
+      expect(() =>
+        validateRequestedCategories(goals, request, catalog),
+      ).toThrow();
+    expect(() =>
+      validateRequestedCategories(goals, "不要把改地址换成退款进度", catalog),
+    ).not.toThrow();
+    const corrected = structuredClone(goals);
+    corrected[0].count = 2;
+    corrected[0].classifications[0].quotas[0].count = 2;
+    corrected[1].count = 1;
+    corrected[1].classifications[0].quotas[0].count = 1;
+    expect(() =>
+      validateRequestedCategories(
+        corrected,
+        "算了，查物流还是2条，改地址只要1条。",
+        catalog,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateRequestedCategories(
+        goals,
+        "不要改地址，解释退款进度是什么",
+        catalog,
+      ),
+    ).not.toThrow();
+  });
 });

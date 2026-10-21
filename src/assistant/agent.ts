@@ -17,6 +17,7 @@ import {
 } from "./receipts.js";
 import {
   checkpointExecutionBudget,
+  requestFitsDeadline,
   executionBudgetExhausted,
   EXECUTION_BUDGET_LIMITS,
   type ExecutionBudget,
@@ -394,6 +395,10 @@ export async function executeAssistantTurn(
   let summarizing = false;
   let budgetBoundary = false;
   let noProgress = false;
+  let truncatedPlanning = false;
+  let truncationRecoveries = 0;
+  let requestTimeInsufficient = false;
+  const stepDiagnostics: Record<string, unknown>[] = [];
   let planningClarificationCorrections = 0;
   let planningClarificationPending = false;
   let lastFailure: { name: string; code: string; hint: string } | undefined;
@@ -424,8 +429,7 @@ export async function executeAssistantTurn(
     // repair. Reserve at most two forced planning attempts within the same
     // turn's existing deadline/model/tool budgets, even if wording changes.
     const correctPlanningQuestion =
-      documentPlanning &&
-      decision?.mode === "plan" &&
+      ["plan", "execute"].includes(decision?.mode ?? "") &&
       name === "plan_task" &&
       code === "assistant_plan_clarification_unnecessary";
     if (correctPlanningQuestion) planningClarificationPending = true;
@@ -780,6 +784,10 @@ export async function executeAssistantTurn(
       requests,
       protocolRepairs: Number(protocolRepair),
       parameterRepairs,
+      stepDiagnostics,
+      ...(requestTimeInsufficient
+        ? { budgetStopReason: "insufficient_request_time" }
+        : {}),
       ...(parameterRepairStatus ? { parameterRepairStatus } : {}),
       retainedOperations,
       retainedCandidates,
@@ -941,6 +949,7 @@ export async function executeAssistantTurn(
     const index = tools.findLastIndex((item) => item.name === "plan_task");
     const latest = tools[index];
     const task = saved.task;
+    if (latest?.result?.unchanged) return false;
     if (
       latest?.status === "succeeded" &&
       task.question &&
@@ -1355,7 +1364,7 @@ export async function executeAssistantTurn(
             if (
               name !== "plan_task" &&
               !readTools.includes(name) &&
-              !mayExecute(decision)
+              (!mayExecute(decision) || currentTask.planValidationRequired)
             )
               throw new AssistantError(
                 422,
@@ -1771,6 +1780,7 @@ export async function executeAssistantTurn(
             if (
               documentPlanning &&
               name === "plan_task" &&
+              !(completionValue as any).unchanged &&
               (input.executionMode === "plan" || decision?.mode === "plan") &&
               (input.steps?.length ||
                 input.deliveries?.length ||
@@ -2215,6 +2225,22 @@ export async function executeAssistantTurn(
         }
         if (
           !Object.keys(input).length &&
+          ["plan", "execute"].includes(decision?.mode ?? "") &&
+          context.state.backgroundDocuments?.length &&
+          (!current.executionPlan ||
+            current.executionPlan.contractVersion === 1)
+        ) {
+          const task = await updateTask(db, turn, {
+            planValidationRequired: true,
+          });
+          return {
+            unchanged: true,
+            control: decision,
+            task: currentTaskFacts(task),
+          };
+        }
+        if (
+          !Object.keys(input).length &&
           decision?.mode === "execute" &&
           mayExecute(decision) &&
           current.executionPlan?.steps?.length
@@ -2465,10 +2491,12 @@ export async function executeAssistantTurn(
           );
           // Initial explicit category quotas cannot be omitted. Saved rules are
           // protected by scoped updates, without reinterpreting generic headings.
-          if (!deliveryGoals(oldPlan).length)
+          if (!input.question || decision?.requiresUpdate)
             validateRequestedCategories(
               businessDeliveries,
-              planningRequestText,
+              deliveryGoals(oldPlan).length
+                ? turn.user_text
+                : planningRequestText,
               documentDefinitionReferences(
                 documents,
                 current.backgroundEvidence ?? [],
@@ -2580,6 +2608,42 @@ export async function executeAssistantTurn(
             "assistant_tool_input_invalid",
             "不能用question把工具参数错误转交用户。按上一条具体错误修正方案；保留本轮用户的先规划或执行意图，不重复询问开工确认。真实的业务范围或配额冲突仍按原规则澄清。",
           );
+        if (input.question && documents.length) {
+          const reads = await backgroundReadReceipts();
+          const definitions = reads.flatMap((record: any) =>
+            documents.some(
+              (doc: any) =>
+                doc.id === record.input.documentId &&
+                doc.sha256 === record.result.sha256,
+            )
+              ? (record.result.definitions ?? [])
+              : [],
+          );
+          const question = input.question.replace(/[。？?\s]/gu, "");
+          const alreadyKnown = definitions.some((definition: any) => {
+            const text = String(definition.text ?? "")
+              .replace(/^\s*\d+[.、]\s*/u, "")
+              .replace(/[。？?\s]/gu, "");
+            return (
+              (text.length > 4 && text === question) ||
+              (input.question.includes(definition.value) &&
+                /(?:定义|含义)(?:是什么|指什么)[？?。]?$/u.test(input.question))
+            );
+          });
+          const repeated =
+            current.question === input.question &&
+            Boolean(decision?.requiresUpdate) &&
+            /[1-9]\d*\s*条/u.test(turn.user_text) &&
+            ["requirements", "deliveries", "targetCount"].some(
+              (field) => input[field] !== undefined,
+            );
+          if (alreadyKnown || repeated)
+            throw new AssistantError(
+              422,
+              "assistant_plan_clarification_unnecessary",
+              "该问题已有用户回答或已读文档定义。使用本轮要求及真实定义继续保存完整方案；需要原文时自行read_background补读，不能把定义当问题或重复向用户确认。",
+            );
+        }
         if (input.question && !/[\p{L}\p{N}]/u.test(input.question))
           throw new AssistantError(
             422,
@@ -5328,6 +5392,7 @@ export async function executeAssistantTurn(
       if (
         !mayExecute(decision) ||
         current.executionPaused ||
+        current.planValidationRequired ||
         current.executionPlan?.mode !== "execute" ||
         current.executionPlan.needsReview ||
         step?.status !== "pending" ||
@@ -5953,7 +6018,30 @@ export async function executeAssistantTurn(
         repairQueue = result.catch(() => undefined);
         return result;
       },
-      onStepEnd: async ({ content, toolCalls: stepToolCalls }) => {
+      onStepEnd: async ({
+        content,
+        toolCalls: stepToolCalls,
+        finishReason: stepFinish,
+        usage,
+      }) => {
+        const invalidPlan = stepToolCalls.some(
+          (call) =>
+            call.toolName === "plan_task" && "invalid" in call && call.invalid,
+        );
+        stepDiagnostics.push({
+          finishReason: stepFinish,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          argumentBytes: stepToolCalls.reduce(
+            (n, call) =>
+              n + Buffer.byteLength(JSON.stringify(call.input ?? {})),
+            0,
+          ),
+        });
+        if (stepFinish === "length" && invalidPlan) {
+          truncatedPlanning = true;
+          if (truncationRecoveries >= 1) budgetBoundary = true;
+        }
         // Keep failures before business intent, including SDK validation and retry guards.
         // tool-error renders errors as strings; the invalid call retains their typed cause.
         const failures = content.filter((part) => part.type === "tool-error");
@@ -6056,6 +6144,15 @@ export async function executeAssistantTurn(
             executionBudget.modelSteps >= EXECUTION_BUDGET_LIMITS.modelSteps)
         )
           throw new AssistantError(422, "assistant_budget_exhausted");
+        const previousRequestMs = requests.at(-1)?.timeToHeadersMs ?? 0;
+        if (!requestFitsDeadline(turnBudget.deadlineAt, previousRequestMs)) {
+          requestTimeInsufficient = true;
+          throw new AssistantError(
+            422,
+            "assistant_budget_exhausted",
+            "剩余时间不足以安全完成下一次模型请求，已保留当前要求、回执和恢复位置。",
+          );
+        }
         stepMessages = [...responseMessages, ...fixedReceipts];
         const fixedState = fixedReceipts.length
           ? { messages: [...messages, ...stepMessages] }
@@ -6111,6 +6208,27 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1
             ? singlePlanSchema
             : fullPlanSchema;
+        if (truncatedPlanning) {
+          truncatedPlanning = false;
+          truncationRecoveries++;
+          if (!decision)
+            tools.plan_task.inputSchema = schema(
+              { control: turnControlSchema },
+              ["control"],
+              "plan_task",
+            );
+          activeRepairTools = new Set(["plan_task"]);
+          return {
+            ...fixedState,
+            activeTools: ["plan_task"],
+            toolChoice: { type: "tool" as const, toolName: "plan_task" },
+            instructions:
+              instructions +
+              (decision
+                ? "\n上次原生工具参数达到输出上限。只提交必要的本轮变化，已有交付用真实id，仅变化字段；不复制当前事实、历史、工具步骤或长定义，定义用真实reference。共同约束放requirements，情境保持简短且完整。不得漏掉用户交付或改数量。"
+                : "\n上次工具参数达到输出上限。本次只返回control记录原用户模式，不包含方案、要求、问题或解释长文。保存控制后再按当前事实补齐必要业务参数。"),
+          };
+        }
         if (!decision && turn.event === "user") {
           const reads = [
             ...new Set<keyof typeof tools>([...activeTools, "plan_task"]),
@@ -6127,7 +6245,7 @@ export async function executeAssistantTurn(
             !writable
               ? { control: turnControlSchema }
               : goalContract
-                ? deliveryPlanProperties
+                ? { control: turnControlSchema }
                 : !currentTask.executionPlan ||
                     currentTask.executionPlan.contractVersion === 1
                   ? singlePlanProperties
@@ -6143,8 +6261,48 @@ export async function executeAssistantTurn(
             toolChoice: { type: "tool" as const, toolName: "plan_task" },
             instructions:
               instructions +
-              "\n本轮尚无经校验操作决定。先通过plan_task.control记录本轮模式（query/plan/execute/pause）。需要读取附件才能规划时只填写control，读取实际原文后再补全方案，不猜造文档定义。纯查询不建立计划、不保存业务要求，可在control.explanation直接给出基于当前快照的简短答复；无需再复述一次。先暂停后修改先单独保存pause与requiresUpdate:true。只有真实用户要求变更才requiresUpdate:true；仅暂停不是要求变更。只口头声称暂停、修改或执行均不算成功。",
+              "\n本轮尚无经校验操作决定。先通过plan_task.control记录本轮模式（query/plan/execute/pause）。本次只填写control，业务方案和修改在控制保存后提交。需要读取附件才能规划时只填写control，读取实际原文后再补全方案，不猜造文档定义。纯查询不建立计划、不保存业务要求，可在control.explanation直接给出基于当前快照的简短答复；无需再复述一次。先暂停后修改先单独保存pause与requiresUpdate:true。只有真实用户要求变更才requiresUpdate:true；仅暂停不是要求变更。只口头声称暂停、修改或执行均不算成功。",
           };
+        }
+        if (
+          decision?.mode === "execute" &&
+          goalContract &&
+          activeTools.includes("read_background")
+        ) {
+          const reads = await backgroundReadReceipts();
+          if (
+            !currentTask.backgroundEvidence?.length &&
+            !reads.some((record: any) => record.result.fragments?.length)
+          ) {
+            activeRepairTools = new Set(["read_background"]);
+            return {
+              ...fixedState,
+              activeTools: ["read_background"],
+              toolChoice: {
+                type: "tool" as const,
+                toolName: "read_background",
+              },
+              instructions:
+                instructions +
+                "\n先按本轮目标读取实际附件，再补全方案或执行。不要求用户提供附件已有定义。",
+            };
+          }
+          if (
+            planningClarificationPending &&
+            planningClarificationCorrections < 2
+          ) {
+            planningClarificationPending = false;
+            planningClarificationCorrections++;
+            activeRepairTools = new Set(["plan_task"]);
+            return {
+              ...fixedState,
+              activeTools: ["plan_task"],
+              toolChoice: { type: "tool" as const, toolName: "plan_task" },
+              instructions:
+                instructions +
+                "\n刚才的澄清已有用户回答或真实文档定义。按已读依据修正当前交付及本轮要求，保留原执行授权，不再复述该问题。只提交实际变化，省略未改字段。",
+            };
+          }
         }
         if (
           documentPlanning &&
@@ -6742,14 +6900,24 @@ export async function executeAssistantTurn(
     )
       errorCode = "assistant_internal_error";
     if (
-      finishReason === "length" &&
-      failureDiagnostic.layer === "model" &&
-      failureDiagnostic.category === "output_protocol"
+      (finishReason === "length" ||
+        stepDiagnostics.at(-1)?.finishReason === "length") &&
+      ((failureDiagnostic.layer === "model" &&
+        failureDiagnostic.category === "output_protocol") ||
+        errorCode === "assistant_tool_input_invalid")
     )
       failureDiagnostic = {
         ...failureDiagnostic,
+        layer: "model",
         category: "output_truncated",
         reason: "模型输出达到长度上限，回复未完成。",
+      };
+    if (requestTimeInsufficient)
+      failureDiagnostic = {
+        ...failureDiagnostic,
+        reason: "剩余时间不足以完成下一次模型请求，本轮已保存进度并暂停。",
+        nextAction:
+          "原要求、文档和成功操作保留，可继续未完成部分；不会重跑已完成操作。",
       };
     const retainedTask = state?.task;
     const retainedProcessing =

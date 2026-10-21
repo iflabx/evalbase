@@ -64,3 +64,12 @@ export function executionBudgetExhausted(budget: ExecutionBudget) {
     ) as (keyof typeof EXECUTION_BUDGET_LIMITS)[]
   ).some((key) => budget[key] >= EXECUTION_BUDGET_LIMITS[key]);
 }
+
+/** Leave time to finish/checkpoint a slow turn instead of starting a doomed retry. */
+export function requestFitsDeadline(
+  deadlineAt: number,
+  previousRequestMs = 0,
+  now = Date.now(),
+) {
+  return deadlineAt - now >= Math.max(5000, Math.min(30000, previousRequestMs));
+}

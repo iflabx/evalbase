@@ -171,7 +171,25 @@ export function toolResultSummary(
   }
   if (name.startsWith("read_") || name === "query_project")
     summary.readAgain = { tool: name, input: readInput };
-  if (name === "read_background") readInput.useForProcessing = false;
+  if (name === "read_background") {
+    readInput.useForProcessing = false;
+    // Keep usable definitions, not just an envelope that says they once existed.
+    const definitions: Record<string, string>[] = [];
+    for (const definition of value?.definitions ?? []) {
+      const entry = Object.fromEntries(
+        ["value", "text", "reference", "code", "name"]
+          .filter((key) => typeof definition[key] === "string")
+          .map((key) => [key, definition[key]]),
+      );
+      if (Buffer.byteLength(JSON.stringify([...definitions, entry])) > 2200)
+        break;
+      definitions.push(entry);
+    }
+    summary.definitions = definitions;
+    summary.definitionsTruncated =
+      Boolean(value?.definitionsTruncated) ||
+      definitions.length < (value?.definitions?.length ?? 0);
+  }
   if (value?.error)
     summary.error = {
       code: value.error.code,

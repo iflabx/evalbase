@@ -227,4 +227,46 @@ describe("OPT-23 bounded current facts", () => {
       currentTaskFacts({ requirements: ["必须保留的要求".repeat(10000)] }),
     ).toThrow("assistant_context_capacity");
   });
+  it("keeps short background definitions across a large receipt envelope", () => {
+    const definitions = ["查物流", "改地址", "退款进度"].map((value) => ({
+      value,
+      text: value + "的实际业务定义",
+      reference: "definition:" + value,
+      aliases: [value],
+      padding: "导航信息".repeat(300),
+    }));
+    const messages = conversationHistory(
+      [
+        {
+          user_text: "读取附件",
+          tool_results: [
+            {
+              key: "read",
+              name: "read_background",
+              status: "succeeded",
+              input: { documentId: "doc" },
+              result: {
+                fileName: "规范.txt",
+                definitions,
+                fragments: [{ index: 1, text: "短规范正文" }],
+                fragmentCount: 1,
+              },
+            },
+          ],
+        },
+      ],
+      (x) => x,
+    );
+    const value = (messages.find((m) => m.role === "tool")!.content as any)[0]
+      .output.value;
+    expect(value.definitions).toEqual(
+      definitions.map(({ value, text, reference }) => ({
+        value,
+        text,
+        reference,
+      })),
+    );
+    expect(value.readAgain.tool).toBe("read_background");
+    expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThan(3000);
+  });
 });

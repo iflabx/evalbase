@@ -13,7 +13,12 @@ const origin = "http://127.0.0.1:4217";
 const rootUrl = loadConfig().databaseUrl;
 const databaseName = "assistant_intent_" + randomUUID().replaceAll("-", "");
 const databaseUrl = rootUrl.replace(/\/[^/]+$/, "/" + databaseName);
-type Call = { name: string; input: Record<string, unknown> };
+type Call = {
+  name: string;
+  input: Record<string, unknown>;
+  rawInput?: string;
+  finishReason?: string;
+};
 let script: Call[] = [];
 let observed: any[] = [];
 let prose = "当前状态已核对，原有成果保留。";
@@ -43,7 +48,7 @@ const model = createServer(async (request, response) => {
       choices: [
         {
           index: 0,
-          finish_reason: call ? "tool_calls" : "stop",
+          finish_reason: call?.finishReason ?? (call ? "tool_calls" : "stop"),
           message: call
             ? {
                 role: "assistant",
@@ -54,7 +59,7 @@ const model = createServer(async (request, response) => {
                     type: "function",
                     function: {
                       name: call.name,
-                      arguments: JSON.stringify(call.input),
+                      arguments: call.rawInput ?? JSON.stringify(call.input),
                     },
                   },
                 ],
@@ -804,6 +809,7 @@ describe("OPT42 per-turn intent public boundary", () => {
       await recoveryDb.end();
     }
     const first = await send(id, "按附件做2条，先给方案，不生成", [
+      decision("plan"),
       {
         name: "read_background",
         input: { documentId: uploaded.json().document.id },
@@ -848,6 +854,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     }
     const before = await effects();
     const changed = await send(id, "改成1条，先不执行", [
+      decision("plan", { requiresUpdate: true }),
       {
         name: "plan_task",
         input: {
@@ -1046,11 +1053,12 @@ describe("OPT42 per-turn intent public boundary", () => {
         id,
         "按附件创建物流查询和修改地址两个测试集，每个2条。先给方案，不要执行。",
         [
-          bad,
+          decision("plan"),
           {
             name: "read_background",
             input: { documentId: uploaded.json().document.id },
           },
+          bad,
           variant === "different"
             ? {
                 ...bad,
@@ -1090,13 +1098,13 @@ describe("OPT42 per-turn intent public boundary", () => {
         JSON.stringify(state.turns.at(-1)),
       ).toBe("succeeded");
       expect(script).toHaveLength(0);
-      expect(observed).toHaveLength(4);
+      expect(observed).toHaveLength(5);
       if (variant === "before_read")
         expect(observed[1].tool_choice).toEqual({
           type: "function",
           function: { name: "read_background" },
         });
-      for (const request of observed.slice(2)) {
+      for (const request of observed.slice(3)) {
         expect(request.tool_choice).toEqual({
           type: "function",
           function: { name: "plan_task" },
@@ -1162,11 +1170,12 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     };
     const failed = await send(id, "按附件创建2条物流问题，先给方案，不执行。", [
-      bad,
+      decision("plan"),
       {
         name: "read_background",
         input: { documentId: uploaded.json().document.id },
       },
+      bad,
       bad,
       bad,
       bad,
@@ -1180,11 +1189,12 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(failed.turns.at(-1).diagnostics.failure.reason).toContain(
       "仍未保存完整方案",
     );
-    expect(observed).toHaveLength(4);
+    expect(observed).toHaveLength(5);
     expect(script).toHaveLength(1);
     expect(failed.task.executionPlan?.steps?.length ?? 0).toBe(0);
     expect(await effects()).toEqual(before);
     const clarified = await send(id, "按附件继续规划", [
+      decision("plan"),
       {
         name: "plan_task",
         input: {
@@ -1380,6 +1390,7 @@ describe("OPT42 per-turn intent public boundary", () => {
       id,
       "按文档做物流和改地址两个测试集，各2条，先给方案",
       [
+        decision("plan"),
         {
           name: "read_background",
           input: { documentId: uploaded.json().document.id },
@@ -1401,6 +1412,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     ).toBe("succeeded");
     const goals = deliveryGoals(initial.task.executionPlan);
     const changed = await send(id, "查物流改成3条，先不执行", [
+      decision("plan", { requiresUpdate: true }),
       {
         name: "plan_task",
         input: {
@@ -1411,6 +1423,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     ]);
     expect(changed.task.overallTargetCount).toBe(5);
     const revised = await send(id, "查物流还是2条，改地址只要1条", [
+      decision("plan", { requiresUpdate: true }),
       {
         name: "plan_task",
         input: {
@@ -1424,6 +1437,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     ]);
     expect(revised.task.overallTargetCount).toBe(3);
     const replaced = await send(id, "把改地址换成退款进度，先不要执行", [
+      decision("plan", { requiresUpdate: true }),
       {
         name: "plan_task",
         input: {
@@ -1585,6 +1599,11 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(upload.statusCode).toBe(201);
     const before = await effects();
     const state = await send(id, "帮我做一份客服测试集", [
+      decision("plan"),
+      {
+        name: "read_background",
+        input: { documentId: upload.json().document.id },
+      },
       {
         name: "plan_task",
         input: {
@@ -1604,7 +1623,7 @@ describe("OPT42 per-turn intent public boundary", () => {
       "需要多少条，覆盖哪些客服场景？",
     );
     expect(state.task.executionPlan.steps).toHaveLength(0);
-    expect(observed).toHaveLength(1);
+    expect(observed).toHaveLength(3);
     expect(await effects()).toEqual(before);
     const db = createPool(databaseUrl);
     try {
@@ -1646,5 +1665,201 @@ describe("OPT42 per-turn intent public boundary", () => {
       "需要多少条，覆盖哪些客服场景？",
     );
     expect(observed).toHaveLength(0);
+  });
+  async function backgroundSession(
+    text = "问题使用完整中文，不含真实个人信息。",
+  ) {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const upload = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/background-documents",
+      headers,
+      payload: {
+        fileName: "回归规范.txt",
+        contentBase64: Buffer.from(text).toString("base64"),
+      },
+    });
+    expect(upload.statusCode).toBe(201);
+    return { id, documentId: upload.json().document.id };
+  }
+  const simpleDelivery = () => ({
+    name: "客服测试集",
+    count: 2,
+    instructions: "完整用户问题和逐题处理行为",
+    scenarios: ["正常咨询", "信息不足", "进度异常"],
+    classifications: [],
+  });
+  it.each([false, true])(
+    "recovers truncated native planning with a smaller control call, bounded=%s",
+    async (repeated) => {
+      const { id, documentId } = await backgroundSession();
+      const before = await effects();
+      const broken: Call = {
+        name: "plan_task",
+        input: {},
+        rawInput: '{"control":{"mode":"plan"},"deliveries":[',
+        finishReason: "length",
+      };
+      const state = await send(
+        id,
+        "按附件做2条客服用例，先给方案，不执行",
+        repeated
+          ? [broken, broken]
+          : [
+              broken,
+              decision("plan"),
+              { name: "read_background", input: { documentId } },
+              {
+                name: "plan_task",
+                input: {
+                  executionMode: "plan",
+                  deliveries: [simpleDelivery()],
+                },
+              },
+            ],
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe(repeated ? "failed" : "succeeded");
+      expect(
+        observed[1].tools.find((t: any) => t.function.name === "plan_task")
+          .function.parameters.properties,
+      ).toEqual({ control: expect.any(Object) });
+      expect(JSON.stringify(observed[1].messages)).toContain("输出上限");
+      expect(
+        state.turns.at(-1).diagnostics.stepDiagnostics[0].finishReason,
+      ).toBe("length");
+      if (repeated) {
+        expect(observed).toHaveLength(2);
+        expect(state.turns.at(-1).diagnostics.failure.category).toBe(
+          "output_truncated",
+        );
+      } else expect(state.task.targetCount).toBe(2);
+      expect(await effects()).toEqual(before);
+    },
+  );
+  it("corrects a repeated answered question without asking the user again", async () => {
+    const { id, documentId } = await backgroundSession();
+    const before = await effects();
+    await send(id, "帮我做一份客服测试集", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { question: "需要哪种客服场景和多少条？", nextAction: "none" },
+      },
+    ]);
+    const state = await send(id, "查物流，2条，先给方案", [
+      decision("plan", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          requirements: ["查物流场景2条"],
+          question: "需要哪种客服场景和多少条？",
+          nextAction: "none",
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
+          requirements: ["查物流场景2条"],
+          deliveries: [simpleDelivery()],
+          executionMode: "plan",
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.question).toBeFalsy();
+    expect(state.task.targetCount).toBe(2);
+    expect(
+      state.turns
+        .at(-1)
+        .tools.some(
+          (t: any) =>
+            t.error?.code === "assistant_plan_clarification_unnecessary",
+        ),
+    ).toBe(true);
+    expect(await effects()).toEqual(before);
+  });
+  it("execute-mode clarification rereads background instead of asking for an available definition", async () => {
+    const { id, documentId } = await backgroundSession(
+      "1. 查物流：用户查询订单运输位置和预计到达时间。\n2. 改地址：用户请求修改订单收货地址。",
+    );
+    const before = await effects();
+    const state = await send(id, "按附件做客服测试，开始吧", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { question: "查物流的定义是什么？", nextAction: "none" },
+      },
+      {
+        name: "plan_task",
+        input: { question: "你希望这次一共生成多少条？", nextAction: "none" },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.question).toBe("你希望这次一共生成多少条？");
+    expect(
+      state.turns
+        .at(-1)
+        .tools.some(
+          (t: any) =>
+            t.error?.code === "assistant_plan_clarification_unnecessary",
+        ),
+    ).toBe(true);
+    expect(await effects()).toEqual(before);
+  });
+  it("retains the legacy steps schema after a truncated call with control already saved", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const state = await send(id, "继续调整方案，先不执行", [
+      decision("plan"),
+      {
+        name: "plan_task",
+        input: {},
+        rawInput: '{"steps":[',
+        finishReason: "length",
+      },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          requirements: ["保持原意"],
+          steps: [
+            {
+              title: "建立草稿",
+              action: "create_draft",
+              input: { name: "执行边界草稿", purpose: "隔离测试" },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    const schema = observed[2].tools.find(
+      (t: any) => t.function.name === "plan_task",
+    ).function.parameters;
+    expect(
+      schema.properties.steps.items.oneOf.flatMap(
+        (variant: any) => variant.properties.action.enum ?? [],
+      ),
+    ).toContain("generate_candidates");
+    expect(state.task.executionPlan.mode).toBe("plan");
+    expect(await effects()).toEqual(before);
   });
 });
