@@ -83,6 +83,28 @@ describe("OPT39 persisted continuation boundaries", () => {
       turnId = "turn_" + randomUUID();
     const task = {
       goal: "继续已授权工作",
+      turnControl: {
+        turnId,
+        taskRevision: 1,
+        source: "model",
+        mode: "execute",
+        updateSaved: true,
+      },
+      turnBudget: {
+        turnId,
+        startedAt: Date.now(),
+        deadlineAt: Date.now() + 80000,
+        modelSteps: 3,
+        toolCalls: 7,
+        transportRetries: 1,
+        accountingVersion: 2,
+        activeMs: 200,
+      },
+      budgetCheckpoint: {
+        turnId,
+        pendingAction: "create_draft",
+        progressHashes: ["persisted-server-progress"],
+      },
       stage: "processing",
       autoCount: 0,
       executionBudget: {

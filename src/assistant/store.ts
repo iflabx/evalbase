@@ -1,4 +1,5 @@
 import { turnDiagnostics } from "./diagnostics.js";
+import { queueRecovery } from "./tasks.js";
 import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -6,7 +7,7 @@ import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import { advancePlan } from "./plan.js";
-import { executionBudgetExhausted } from "./budget.js";
+import { recoveryDecision, backgroundVersion } from "./recovery.js";
 import { backgroundCatalog } from "./background.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { deliveryProgress, type WorkspaceFacts } from "./workspace.js";
@@ -57,6 +58,9 @@ export function taskPresentation(
   delete presented.parameterRepairStatus;
   delete presented.planningRecovery;
   delete presented.requirementSave;
+  delete presented.recoverySegment;
+  delete presented.recoveryRequests;
+  delete presented.budgetSegments;
   if (presented.executionPlan) {
     presented.executionPlan = {
       ...presented.executionPlan,
@@ -81,16 +85,15 @@ export function taskPresentation(
     ...presented,
     ...(workspace ? { deliveries: deliveryProgress(task, workspace) } : {}),
     requirementSummary: requirementSummary(task, processing),
-    canContinueExecution:
-      Boolean(task.executionPlan?.steps?.length) &&
-      !task.question &&
-      !requirementProblem &&
-      !task.planValidationRequired &&
-      !["assistant_auto_plan_limit", "assistant_session_limit"].includes(
-        task.error,
-      ) &&
-      (!task.executionBudget ||
-        !executionBudgetExhausted(task.executionBudget)),
+    canContinueExecution: recoveryDecision(
+      { ...task, requirementProblem },
+      undefined,
+      {
+        revision: Number(task.turnControl?.taskRevision ?? 0),
+        canWrite: true,
+        dependenciesValid: true,
+      },
+    ).canExecutePlan,
     requirementProblem,
     requirementProblemKind,
     ...(task.candidateScope
@@ -133,23 +136,104 @@ export type Dependency = {
   id: string;
   focus?: true;
 };
-/** Budget capability only; callers still enforce access and source permissions. */
+/** Compatibility projection; server callers load current access and document facts below. */
 export function canResumeAssistantTurn(
   turn: Record<string, any> | undefined,
   task: Record<string, any>,
 ) {
-  const budget = task?.turnBudget?.turnId === turn?.id ? task.turnBudget : null;
   return Boolean(
-    turn &&
-    (["failed", "interrupted"].includes(turn.status) ||
-      (task?.error === "assistant_task_limit" &&
-        turn.status === "succeeded")) &&
-    Number(turn.execution_attempt) < 3 &&
-    turn.user_text &&
-    (!budget || (budget.deadlineAt > Date.now() && budget.modelSteps < 10)) &&
-    task?.stage !== "stopped" &&
-    (!task?.executionBudget || !executionBudgetExhausted(task.executionBudget)),
+    recoveryDecision(task, turn, {
+      revision: Number(turn?.task_revision ?? 0),
+      canWrite: true,
+      dependenciesValid: true,
+      documentsKey: task.planningRecovery?.documentsKey,
+    }).action,
   );
+}
+export async function assistantRecovery(
+  db: Pick<Database, "query">,
+  scope: AssistantScope,
+  session: Record<string, any>,
+  turn: Record<string, any> | undefined,
+  options: {
+    phase?: "offer" | "claim" | "request" | "event" | "commit";
+    token?: string;
+    reservedModelStep?: boolean;
+    event?: string;
+  } = {},
+) {
+  const { phase = "offer", token, reservedModelStep = false, event } = options;
+  const canWrite = await hasProjectCapability(
+    db,
+    scope.projectId,
+    scope.actorId,
+    "write",
+  );
+  let dependenciesValid = true;
+  try {
+    if (turn) await dependenciesAvailable(db, scope, turn.dependencies ?? []);
+  } catch (error) {
+    if (!(error instanceof AssistantError)) throw error;
+    dependenciesValid = false;
+  }
+  const documents = (
+    await db.query(
+      'SELECT id,sha256,extractor_version AS "extractorVersion" FROM assistant_background_document WHERE session_id=$1',
+      [session.id],
+    )
+  ).rows;
+  const state = (
+    await db.query(
+      "SELECT count(*)::int n,count(*) FILTER(WHERE status IN('queued','running') AND id<>$2)::int busy FROM assistant_turn WHERE session_id=$1",
+      [session.id, turn?.id ?? null],
+    )
+  ).rows[0];
+  let eventReady = false;
+  if (event === "budget_yield")
+    eventReady =
+      session.task?.budgetCheckpoint?.turnId === turn?.id &&
+      Boolean(session.task.budgetCheckpoint.pendingAction) &&
+      Boolean(session.task.budgetCheckpoint.progressHashes?.length);
+  if (event === "processing_completed")
+    eventReady = Boolean(
+      (
+        await db.query(
+          "SELECT 1 FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.id=ANY($3::text[]) GROUP BY r.project_id HAVING bool_and(j.status IN('succeeded','failed','cancelled'))",
+          [
+            scope.projectId,
+            scope.actorId,
+            session.task?.runIds ??
+              (session.task?.runId ? [session.task.runId] : []),
+          ],
+        )
+      ).rowCount,
+    );
+  if (event === "confirmed")
+    eventReady = Boolean(
+      (
+        await db.query(
+          "SELECT 1 FROM assistant_proposal WHERE session_id=$1 AND task_revision=$2 AND status='succeeded'",
+          [session.id, session.task_revision],
+        )
+      ).rowCount,
+    );
+  return recoveryDecision(session.task ?? {}, turn, {
+    event,
+    eventReady,
+    revision: Number(session.task_revision),
+    canWrite:
+      ["request", "commit"].includes(phase) && !turn?.requires_write
+        ? true
+        : canWrite,
+    dependenciesValid,
+    documentsKey: backgroundVersion(documents),
+    legacyDocumentsKey: backgroundVersion(documents, true),
+    turnCount: state?.n ?? 0,
+    busy: Number(state?.busy ?? 0) > 0,
+    phase,
+    token,
+    reservedModelStep,
+  });
 }
 export class AssistantError extends Error {
   constructor(
@@ -354,11 +438,18 @@ export async function readSession(
   const current = await sessionRow(db, scope, id);
   if (current.content_revision !== session.content_revision)
     throw new AssistantError(409, "assistant_context_deleted");
-  const latestTurn = turns.at(-1);
-  const canRetryTurn = Boolean(
-    canResumeAssistantTurn(latestTurn, current.task) &&
-    (await hasProjectCapability(db, scope.projectId, scope.actorId, "write")),
-  );
+  const latestId = metadata?.at(-1)?.id;
+  const latestTurn =
+    latestId && latestId !== turns.at(-1)?.id
+      ? (
+          await db.query(
+            "SELECT * FROM assistant_turn WHERE id=$1 AND session_id=$2",
+            [latestId, id],
+          )
+        ).rows[0]
+      : turns.at(-1);
+  const recovery = await assistantRecovery(db, scope, current, latestTurn);
+  const canRetryTurn = Boolean(recovery.action);
   const planSteps =
     current.task?.executionPlan?.contractVersion === 1
       ? current.task.executionPlan.steps
@@ -460,7 +551,14 @@ export async function readSession(
           ),
         }
       : {}),
-    task: presentedTask ? { ...presentedTask, canRetryTurn } : presentedTask,
+    task: presentedTask
+      ? {
+          ...presentedTask,
+          canRetryTurn,
+          canContinueExecution: recovery.canExecutePlan,
+          recoveryDecision: recovery,
+        }
+      : presentedTask,
     title: current.custom_title ?? presentedTask?.title ?? current.title,
     ...(view?.mode === "status"
       ? {}
@@ -777,19 +875,21 @@ export async function startTurn(
       await client.query("COMMIT");
       return { turn: prior, replayed: true };
     }
-    if (taskSelection) {
-      if (selectionError) throw selectionError;
-      if (!prepared || Number(session.task_revision) !== prepared.revision)
-        throw new AssistantError(409, "assistant_candidate_selection_changed");
-      await guardProcessingTask(client, {
-        ...scope,
-        assistantResultsGuard: { states: prepared.states },
-      });
+    const recoveryReceipt = session.task?.recoveryRequests?.[sha256(key)];
+    if (recoveryReceipt) {
+      if (recoveryReceipt.requestHash !== requestHash)
+        throw new AssistantError(409, "idempotency_conflict");
+      const recovered = (
+        await client.query(
+          "SELECT * FROM assistant_turn WHERE session_id=$1 AND id=$2",
+          [sessionId, recoveryReceipt.turnId],
+        )
+      ).rows[0];
+      if (!recovered)
+        throw new AssistantError(409, "assistant_retry_unavailable");
+      await client.query("COMMIT");
+      return { turn: recovered, replayed: true };
     }
-    await client.query(
-      "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
-      [sessionId],
-    );
     if (
       expectedTaskRevision !== undefined &&
       Number(session.task_revision) !== expectedTaskRevision
@@ -804,6 +904,65 @@ export async function startTurn(
       ).rowCount
     )
       throw new AssistantError(409, "assistant_confirmation_running");
+    const plainContinuation =
+      /^\s*(?:请)?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?[。.!！?？]?\s*$/u.test(
+        text.trim(),
+      );
+    if (
+      plainContinuation &&
+      session.task?.planningRecovery &&
+      !candidateSelection &&
+      !operation
+    ) {
+      const latest = (
+        await client.query(
+          "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
+          [sessionId],
+        )
+      ).rows[0];
+      if (
+        Object.keys(session.task.recoveryRequests ?? {}).length >=
+        ASSISTANT_SESSION_TURN_LIMIT
+      )
+        throw new AssistantError(422, "assistant_session_full");
+      const replayed = Boolean(
+        latest?.resuming && ["queued", "running"].includes(latest.status),
+      );
+      let turnId = latest?.id;
+      if (!replayed) {
+        const decision = await assistantRecovery(
+          client,
+          scope,
+          session,
+          latest,
+        );
+        if (/规划|保存方案/u.test(text)) decision.mode = "plan";
+        turnId = (await queueRecovery(client, session, latest, decision))
+          .turnId;
+      }
+      await client.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{recoveryRequests}',coalesce(task->'recoveryRequests','{}'::jsonb)||$2::jsonb) WHERE id=$1",
+        [sessionId, JSON.stringify({ [sha256(key)]: { requestHash, turnId } })],
+      );
+      const recovered = (
+        await client.query("SELECT * FROM assistant_turn WHERE id=$1", [turnId])
+      ).rows[0];
+      await client.query("COMMIT");
+      return { turn: recovered, replayed };
+    }
+    if (taskSelection) {
+      if (selectionError) throw selectionError;
+      if (!prepared || Number(session.task_revision) !== prepared.revision)
+        throw new AssistantError(409, "assistant_candidate_selection_changed");
+      await guardProcessingTask(client, {
+        ...scope,
+        assistantResultsGuard: { states: prepared.states },
+      });
+    }
+    await client.query(
+      "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
+      [sessionId],
+    );
     if (
       candidateSelection &&
       !taskSelection &&
@@ -816,6 +975,24 @@ export async function startTurn(
     if (operation) {
       await assistantAccess(client, scope, true);
       const task = session.task;
+      const latest = (
+        await client.query(
+          "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1",
+          [sessionId],
+        )
+      ).rows[0];
+      const eligibility = await assistantRecovery(
+        client,
+        scope,
+        session,
+        latest,
+      );
+      if (!eligibility.canExecutePlan)
+        throw new AssistantError(
+          409,
+          "assistant_plan_revalidation_required",
+          eligibility.reason,
+        );
       if (
         !task?.executionPlan?.steps?.length ||
         task.question ||
@@ -993,7 +1170,7 @@ export async function turnFence(
   await assistantAccess(db, scope);
   const row = (
     await db.query(
-      "SELECT t.dependencies,t.requires_write,s.task->'turnBudget' AS budget FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1 AND s.project_id=$2 AND s.actor_id=$3 AND t.status='running' AND t.expires_at>now() AND t.task_revision=s.task_revision AND ($4::text IS NULL OR t.execution_token=$4)",
+      "SELECT t.*,s.task,s.task_revision AS session_revision,s.task->'turnBudget' AS budget FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.id=$1 AND s.project_id=$2 AND s.actor_id=$3 AND t.status='running' AND t.expires_at>now() AND t.task_revision=s.task_revision AND ($4::text IS NULL OR t.execution_token=$4)",
       [turnId, scope.projectId, scope.actorId, token ?? null],
     )
   ).rows[0];
@@ -1001,6 +1178,21 @@ export async function turnFence(
   if (row.budget?.turnId === turnId && row.budget.deadlineAt <= Date.now())
     throw new AssistantError(409, "assistant_budget_exhausted");
   if (row.requires_write) await assistantAccess(db, scope, true);
+  if (row.task?.recoverySegment?.turnId === turnId) {
+    const d = await assistantRecovery(
+      db,
+      scope,
+      {
+        id: row.session_id,
+        task: row.task,
+        task_revision: row.session_revision,
+      },
+      row,
+      { phase: "commit", token },
+    );
+    if (!d.action)
+      throw new AssistantError(409, "assistant_retry_unavailable", d.reason);
+  }
   await dependenciesAvailable(db, scope, row.dependencies);
 }
 export async function saveProposal(

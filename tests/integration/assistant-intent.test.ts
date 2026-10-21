@@ -1468,7 +1468,17 @@ describe("OPT42 per-turn intent public boundary", () => {
     ]);
     expect(rejected.turns.at(-1).status).toBe("failed");
     expect(deliveryGoals(rejected.task.executionPlan)[1].name).toBe("改地址");
-    const stopped = await send(id, "继续执行", [decision("execute")]);
+    script = [];
+    observed = [];
+    const rejectedResume = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "继续执行" },
+    });
+    expect(rejectedResume.statusCode).toBe(409);
+    expect(observed).toHaveLength(0);
+    const stopped = await read(id);
     expect(stopped.turns.at(-1).status).toBe("failed");
     expect(deliveryGoals(stopped.task.executionPlan)[1].name).toBe("改地址");
     const replaced = await send(

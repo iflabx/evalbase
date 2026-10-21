@@ -1,6 +1,7 @@
 import { canonicalJson } from "../package/contract.js";
 import type { Database } from "../db/pool.js";
 import { settleExecutionPlan } from "./plan.js";
+import { readTools } from "./intent.js";
 // These failures occur before a domain commit (or roll its transaction back).
 // Unknown failures keep the operation binding until a real receipt is reconciled.
 const validationWithoutEffect = new Set([
@@ -56,6 +57,24 @@ export function unresolvedFailure(records: Record<string, any>[]) {
                 canonicalJson(record.binding ?? null) ===
                   canonicalJson(later.binding ?? null))),
         ),
+  );
+}
+
+/** A saved clarification may finish from its receipt, never by guessing a new answer. */
+export function savedPlanningQuestion(
+  task: Record<string, any>,
+  records: Record<string, any>[],
+  mode: string | undefined,
+) {
+  const latest = records.findLast((item) => item.name === "plan_task");
+  return Boolean(
+    latest?.status === "succeeded" &&
+    !latest.result?.unchanged &&
+    task.question &&
+    latest.result?.task?.question === task.question &&
+    !["query", "pause"].includes(mode ?? "query") &&
+    !unresolvedFailure(records) &&
+    records.every((r) => r.name === "plan_task" || readTools.includes(r.name)),
   );
 }
 

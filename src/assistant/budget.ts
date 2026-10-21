@@ -18,6 +18,7 @@ export type ExecutionBudget = {
   transportRetries: number;
   activeMs: number;
   lastTurn?: TurnCounters & { elapsedMs: number };
+  limits?: Partial<Record<keyof typeof EXECUTION_BUDGET_LIMITS, number>>;
 };
 
 const count = (value = 0) => (Number.isFinite(value) ? Math.max(0, value) : 0);
@@ -53,6 +54,7 @@ export function checkpointExecutionBudget(
       count(prior?.transportRetries),
     activeMs:
       count(previous?.activeMs) + observed.elapsedMs - count(prior?.elapsedMs),
+    ...((previous as any)?.limits ? { limits: (previous as any).limits } : {}),
     lastTurn: observed,
   };
 }
@@ -62,7 +64,7 @@ export function executionBudgetExhausted(budget: ExecutionBudget) {
     Object.keys(
       EXECUTION_BUDGET_LIMITS,
     ) as (keyof typeof EXECUTION_BUDGET_LIMITS)[]
-  ).some((key) => budget[key] >= EXECUTION_BUDGET_LIMITS[key]);
+  ).some((key) => budget[key] >= executionLimits(budget)[key]);
 }
 
 /** Leave time to finish/checkpoint a slow turn instead of starting a doomed retry. */
@@ -77,4 +79,82 @@ export function requestFitsDeadline(
     deadlineAt - now >=
     Math.max(MODEL_RECOVERY_RESERVE_MS, Math.min(30000, previousRequestMs))
   );
+}
+
+export type ActiveBudget = {
+  turnId: string;
+  startedAt: number;
+  deadlineAt: number;
+  modelSteps: number;
+  toolCalls: number;
+  transportRetries: number;
+  accountingVersion?: number;
+  activeMs?: number;
+  attemptStartedAt?: number | null;
+  attemptBaseMs?: number;
+  attemptToken?: string | null;
+  requests?: { timeToHeadersMs: number; httpStatus: number | null }[];
+};
+type ActiveInterval = {
+  accountingVersion: number;
+  activeMs: number;
+  attemptBaseMs: number;
+  attemptStartedAt: number | null;
+  attemptToken: string | null;
+};
+/** A retry opens a new active interval; its original deadline never moves. */
+export function startActiveBudget<T extends ActiveBudget>(
+  budget: T,
+  token: string,
+  now = Date.now(),
+): T & ActiveInterval {
+  return {
+    ...budget,
+    accountingVersion: 2,
+    activeMs: count(budget.activeMs),
+    attemptBaseMs: count(budget.activeMs),
+    attemptStartedAt: now,
+    attemptToken: token,
+  };
+}
+export function settleActiveBudget<T extends ActiveBudget>(
+  budget: T,
+  now = Date.now(),
+  close = false,
+): T & ActiveInterval {
+  const activeMs =
+    budget.attemptStartedAt == null
+      ? count(budget.activeMs)
+      : Math.max(
+          count(budget.activeMs),
+          count(budget.attemptBaseMs) +
+            Math.max(
+              0,
+              Math.min(now, budget.deadlineAt) - budget.attemptStartedAt,
+            ),
+        );
+  return {
+    ...budget,
+    accountingVersion: budget.accountingVersion ?? 2,
+    activeMs,
+    attemptStartedAt: close ? null : (budget.attemptStartedAt ?? null),
+    attemptToken: close ? null : (budget.attemptToken ?? null),
+    attemptBaseMs: close ? activeMs : count(budget.attemptBaseMs),
+  };
+}
+export function executionLimits(budget: ExecutionBudget | undefined | null) {
+  const frozen = budget?.limits;
+  return Object.fromEntries(
+    Object.entries(EXECUTION_BUDGET_LIMITS).map(([key, limit]) => {
+      const value = frozen?.[key as keyof typeof EXECUTION_BUDGET_LIMITS];
+      return [
+        key,
+        value === undefined
+          ? limit
+          : Number.isFinite(value) && value >= 0
+            ? Math.min(value, limit)
+            : 0,
+      ];
+    }),
+  ) as Record<keyof typeof EXECUTION_BUDGET_LIMITS, number>;
 }
