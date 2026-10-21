@@ -1479,6 +1479,21 @@ describe("OPT42 per-turn intent public boundary", () => {
       "本轮仅保存方案，不执行生成。",
     );
     expect(await effects()).toEqual(before);
+    const started = await send(id, "按最后这个做。", [decision("execute")]);
+    expect(
+      started.task.executionPlan.mode,
+      JSON.stringify(started.turns.at(-1)),
+    ).toBe("execute");
+    expect((await effects()).runs).toBe(before.runs + 1);
+    expect(
+      deliveryGoals(started.task.executionPlan).map((g: any) => [
+        g.name,
+        g.count,
+      ]),
+    ).toEqual([
+      ["查物流", 2],
+      ["退款进度", 1],
+    ]);
   });
 
   it("context replanning cannot turn an invalid plan-only call into execution", async () => {

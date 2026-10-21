@@ -2228,7 +2228,11 @@ export async function executeAssistantTurn(
           ["plan", "execute"].includes(decision?.mode ?? "") &&
           context.state.backgroundDocuments?.length &&
           (!current.executionPlan ||
-            current.executionPlan.contractVersion === 1)
+            current.executionPlan.contractVersion === 1) &&
+          (!current.executionPlan?.steps?.length ||
+            decision?.requiresUpdate ||
+            current.planValidationRequired ||
+            current.question)
         ) {
           const task = await updateTask(db, turn, {
             planValidationRequired: true,
