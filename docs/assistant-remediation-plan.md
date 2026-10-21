@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-22 当前方案入口：[机制整理与修改方案](assistant-mechanism-consolidation-2026-10-22.md)。针对首批五项复测暴露的参数纠错、数量修改、预算恢复、提示和诊断衔接，按共同合同整理，允许必要的结构调整。方案待开发；本轮只更新规定与文档，4217应用仍为92492e7。以下带日期记录保留历史，不代表本轮问题已关闭。
+2026-10-22 当前方案入口：[机制整理与修改方案](assistant-mechanism-consolidation-2026-10-22.md)。针对首批五项复测暴露的参数纠错、数量修改、预算恢复、提示和诊断衔接，按共同合同整理，允许必要的结构调整。方案已拆为 OPT-43～45，按 A → B → C 开发，详见[§9](#9-2026-10-22-机制整理)；三票待开发，本轮只创建票与更新文档，4217应用仍为92492e7。以下带日期记录保留历史，不代表本轮问题已关闭。
 
 2026-10-19 最新补修安排：按最新会话只读诊断建立 [OPT-38](../.scratch/assistant-optimization/issues/38-background-retrieval-and-planning-recovery.md)，范围和定向验收集中在该票。先完成未命中检索、依据选择和普通重试恢复，再继续 OPT-31 内容与交付验收；沿用本章架构与预算，不更换框架。本次仅编写文档，OPT-38 not-started，OPT-31 in-progress，4217 与现有验收数据保持。
 
@@ -197,6 +197,6 @@ UI 仍严格对齐 frontend-v1，正式改动位于 frontend-v3，仅接入必�
 
 ## 9. 2026-10-22 机制整理
 
-具体修改合同、职责落点、旧路径退出、预算兼容及三阶段建议统一在[机制方案](assistant-mechanism-consolidation-2026-10-22.md)维护；验证断言在[测试计划 §5.18](test-plan-data-selection-and-assistant.md#518-机制整理验证待实施)。不新建重复的整改规则。
+共同合同、职责落点、旧路径退出及预算兼容统一在[机制方案](assistant-mechanism-consolidation-2026-10-22.md)维护；故障矩阵在[测试计划 §5.18](test-plan-data-selection-and-assistant.md#518-机制整理验证待实施)。开发拆分为 [OPT-43 要求与纠错](../.scratch/assistant-optimization/issues/43-requirement-amendments-and-repair-contract.md) → [OPT-44 恢复与预算](../.scratch/assistant-optimization/issues/44-resume-decision-and-budget-continuity.md) → [OPT-45 事实反馈与五项验收](../.scratch/assistant-optimization/issues/45-state-feedback-and-five-flow-acceptance.md)，三票均未实施，各票维护范围、依赖和通过标准，不另建重复规则。
 
 本次“精简”的工程含义以[AGENTS.md](../AGENTS.md#complete-root-cause-scope)为准：完整根因和受影响调用方决定范围，必要的模块/接口整理属于修复。局部函数通过、自动恢复成功与用户流程完成分别报告。原OPT票及内容质量验收状态保留；此次文档更新不授权代码实施、真实模型复测、部署、合并或推送。

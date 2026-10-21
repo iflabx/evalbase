@@ -1,4 +1,4 @@
-2026-10-22 当前文档：Owner授权[机制整理方案](../../docs/assistant-mechanism-consolidation-2026-10-22.md)及开发规则更新。方案待开发，应用基线92492e7；参数/要求、恢复/预算、反馈/诊断按三个阶段组织，尚未创建新实施票。既有OPT状态、质量未通过事实、验收数据和旧预算保持；本轮无业务代码修改、部署或模型调用。以下记录按日期保留历史。
+2026-10-22 当前文档：已按[机制整理方案](../../docs/assistant-mechanism-consolidation-2026-10-22.md)创建 [OPT-43](issues/43-requirement-amendments-and-repair-contract.md) → [OPT-44](issues/44-resume-decision-and-budget-continuity.md) → [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md)。三票均 Implementation not-started、Validation not-run；修改范围、依赖及验收标准在各票维护，允许解决共同根因所需的结构调整。当前仅开票与同步文档，应用基线仍92492e7；既有票状态、质量未通过事实、验收数据和旧预算保持。以下带日期记录为历史，不代表本批已实施或已验证。
 
 2026-10-20 最新验收环境：Owner授权后，OPT-39～41已更新同一4217 Web与model-worker到0522efe，备份及原15表内容/预算指纹通过。旧H50条历史审核显示恢复，唯一新3条真实接口流程到待确认、未保存，实际4次模型请求；但3条常规场景前提被误作事实断言而存疑，语义验收未通过；用户手动打开正常页面后Computer Use已完成旧H状态、新3条存疑原因及确认卡片复核。见[联动记录](opt39-41-checkpoint.md)。原400/248条和预算保持，Owner pending、OPT-31仍in-progress，未合并/推送。下方带日期条目保留历史状态。
 
@@ -152,6 +152,9 @@ Implementation: in-progress
 | [OPT-40](issues/40-generation-boundaries-and-question-dedup.md) | 类别/场景边界、依据缺口、新题问题碰撞排除 | 当前已实现代码；39已完成 | completed | [实施与验证](opt40-verification.md)；[4217联动记录](opt39-41-checkpoint.md)，Owner pending |
 | [OPT-41](issues/41-content-review-evidence-and-budget.md) | 模型核对证据、漏检、初检预算与修复诊断 | OPT-39、OPT-40已完成 | completed | [有界语义验证](opt41-verification.md)；[4217联动](opt39-41-checkpoint.md)新增3条审核误报保留，Owner pending |
 | [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 最新应用b6bc27e已更新4217；定向修复通过，[四项修复有界复测](four-flow-fixes-verification.md)43次/161575ms、0候选，完整生成仍未通过，旧数据/预算保持，Owner pending |
+| [OPT-43](issues/43-requirement-amendments-and-repair-contract.md) | 要求变更、参数纠错与尝试记录统一（阶段 A） | 当前已实现代码，无未开发票前置 | not-started | 已建票；定向验证待执行，不改签历史验收 |
+| [OPT-44](issues/44-resume-decision-and-budget-continuity.md) | 恢复决策、续段与累计预算统一（阶段 B） | OPT-43 | not-started | 已建票；定向验证待执行，旧预算不重置 |
+| [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md) | 事实反馈、恢复交互与五项流程验收（阶段 C） | OPT-44（传递依赖43） | not-started | 已建票；定向及有界 Computer Use 待执行，保留数据/旧预算 |
 
 2026-10-20 最新[OPT-39～42单会话联动](opt39-42-single-session-verification.md)未通过：规划/恢复阻断，生成后路径未覆盖；既有定向证据及全部原数据/预算保留，Owner pending。
 
