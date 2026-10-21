@@ -1202,4 +1202,364 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(clarified.task.question).toContain("文档缺失");
     expect(await effects()).toEqual(before);
   });
+  it("saved requirements remain saved while a genuine clarification is pending", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const state = await send(id, "查物流的，其他你安排", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan", requiresUpdate: true },
+          requirements: ["覆盖查物流场景", "每条包含问题和期望回复"],
+          question: "请提供背景文档。",
+          nextAction: "none",
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    expect(state.task.requirements).toContain("覆盖查物流场景");
+    expect(state.task.turnControl.updateSaved).toBe(true);
+    expect(state.task.question).toBe("请提供背景文档。");
+    expect(await effects()).toEqual(before);
+  });
+
+  it("identical execute control survives server-required update promotion", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const state = await send(id, "可以，开始吧", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "execute" },
+          target: { kind: "draft", id: "missing-draft" },
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "execute" },
+          target: null,
+          executionMode: "execute",
+        },
+      },
+    ]);
+    expect(
+      successes(state, "plan_task").length,
+      JSON.stringify(state.turns.at(-1)),
+    ).toBeGreaterThan(0);
+    expect(
+      state.turns
+        .at(-1)
+        .tools.find(
+          (r: any) =>
+            r.name === "plan_task" &&
+            r.input?.target === null &&
+            r.input?.executionMode === "execute",
+        )?.status,
+    ).toBe("succeeded");
+    expect((await effects()).drafts).toBe(before.drafts + 1);
+  });
+
+  it("generation without background asks for material before execution", async () => {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const before = await effects();
+    const state = await send(id, "做两个电商客服测试集，各2条，先给方案", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan" },
+          allowedFields: ["question"],
+          metadataKeys: ["业务场景"],
+          targetCount: 2,
+          overallTargetCount: 4,
+          requirements: ["物流和改地址两个独立测试集，各2条"],
+          nextAction: "generate_candidates",
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    expect(state.task.question).toMatch(/背景文档/);
+    expect(state.task.nextAction).toBeNull();
+    expect(state.task.allowedFields).toEqual(["question"]);
+    expect(state.task.metadataKeys).toEqual(["业务场景"]);
+    expect(
+      state.task.executionPaused || state.task.executionPlan.mode === "plan",
+    ).toBeTruthy();
+    expect(await effects()).toEqual(before);
+  });
+
+  it("unsafe plan format repair returns to context without changing authorization", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const corrected = {
+      name: "plan_task",
+      input: {
+        control: { mode: "plan", requiresUpdate: true },
+        target: null,
+        requirements: ["保持原意", "覆盖查物流场景"],
+      },
+    };
+    const state = await send(id, "补充查物流场景，先别执行", [
+      { name: "plan_task", input: { ...corrected.input, target: "当前草稿" } },
+      corrected,
+      corrected,
+      corrected,
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.requirements).toContain("覆盖查物流场景");
+    expect(state.task.turnControl.mode).toBe("plan");
+    expect(
+      state.turns
+        .at(-1)
+        .diagnostics.parameterRepairs.map((r: any) => r.outcome),
+    ).toContain("unsafe");
+    expect(
+      state.turns.at(-1).tools.find((r: any) => r.status === "failed").input
+        .target,
+    ).toBe("当前草稿");
+    expect(observed.length).toBeLessThanOrEqual(5);
+    expect(await effects()).toEqual(before);
+  });
+
+  it("failed execution never displays an uncommitted started claim", async () => {
+    const id = await session("plan");
+    const state = await send(id, "开始执行", [
+      {
+        name: "plan_task",
+        input: {
+          control: {
+            mode: "execute",
+            explanation: "已按方案开始生成两个测试集。",
+          },
+          target: { kind: "draft", id: "missing-draft" },
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).assistantText ?? "").not.toContain("开始生成");
+  });
+
+  it("document delivery amendments derive totals and replace the topic without reviving old requirements", async () => {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const uploaded = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/background-documents",
+      headers,
+      payload: {
+        fileName: "电商客服规范.txt",
+        contentBase64: Buffer.from(
+          "电商客服用例：物流查询、修改收货地址、查询退款进度。问题是完整自然的用户问法，期望输出是逐题客服处理行为，不编造订单信息。",
+        ).toString("base64"),
+      },
+    });
+    expect(uploaded.statusCode).toBe(201);
+    const goal = (name: string) => ({
+      name,
+      count: 2,
+      instructions: "生成" + name + "问题及逐题客服处理行为",
+      scenarios: ["正常咨询", "信息不足", "进度异常"],
+      classifications: [],
+    });
+    const before = await effects();
+    const initial = await send(
+      id,
+      "按文档做物流和改地址两个测试集，各2条，先给方案",
+      [
+        {
+          name: "read_background",
+          input: { documentId: uploaded.json().document.id },
+        },
+        {
+          name: "plan_task",
+          input: {
+            control: { mode: "plan" },
+            executionMode: "plan",
+            requirements: ["自然完整的问题与逐题客服处理行为"],
+            deliveries: [goal("查物流"), goal("改地址")],
+          },
+        },
+      ],
+    );
+    expect(
+      initial.turns.at(-1).status,
+      JSON.stringify(initial.turns.at(-1)),
+    ).toBe("succeeded");
+    const goals = deliveryGoals(initial.task.executionPlan);
+    const changed = await send(id, "查物流改成3条，先不执行", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan", requiresUpdate: true },
+          deliveries: [{ id: goals[0].id, count: 3 }],
+        },
+      },
+    ]);
+    expect(changed.task.overallTargetCount).toBe(5);
+    const revised = await send(id, "查物流还是2条，改地址只要1条", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan", requiresUpdate: true },
+          deliveries: [
+            { id: goals[0].id, count: 2 },
+            { id: goals[1].id, count: 1 },
+          ],
+        },
+      },
+    ]);
+    expect(revised.task.overallTargetCount).toBe(3);
+    const replaced = await send(id, "把改地址换成退款进度，先不要执行", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan", requiresUpdate: true },
+          deliveries: [{ ...goal("退款进度"), id: goals[1].id, count: 1 }],
+        },
+      },
+    ]);
+    expect(
+      replaced.turns.at(-1).status,
+      JSON.stringify(replaced.turns.at(-1)),
+    ).toBe("succeeded");
+    expect(
+      deliveryGoals(replaced.task.executionPlan).map((g: any) => [
+        g.name,
+        g.count,
+      ]),
+    ).toEqual([
+      ["查物流", 2],
+      ["退款进度", 1],
+    ]);
+    expect(replaced.task.overallTargetCount).toBe(3);
+    expect(replaced.task.requirements).not.toContain(
+      "本轮仅保存方案，不执行生成。",
+    );
+    expect(await effects()).toEqual(before);
+  });
+
+  it("context replanning cannot turn an invalid plan-only call into execution", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const fixed = {
+      name: "plan_task",
+      input: {
+        control: { mode: "plan" },
+        target: null,
+        requirements: ["保持原意"],
+      },
+    };
+    const state = await send(id, "补全方案，先别执行", [
+      { name: "plan_task", input: { ...fixed.input, target: "当前草稿" } },
+      fixed,
+      fixed,
+      {
+        name: "plan_task",
+        input: { control: { mode: "execute" }, executionMode: "execute" },
+      },
+    ]);
+    expect(
+      state.turns
+        .at(-1)
+        .tools.some((r: any) => r.error?.code === "assistant_intent_required"),
+    ).toBe(true);
+    expect(successes(state, "create_draft")).toHaveLength(0);
+    expect(await effects()).toEqual(before);
+  });
+  it.each(["normal", "query"])(
+    "final %s reply cannot claim processing without a receipt",
+    async (variant) => {
+      const id = await session("plan");
+      const db = createPool(databaseUrl);
+      try {
+        await db.query(
+          "UPDATE assistant_session SET task=jsonb_set(task,'{executionPlan,steps}','[]') WHERE id=$1",
+          [id],
+        );
+      } finally {
+        await db.end();
+      }
+      const before = await effects();
+      const previousProse = prose;
+      try {
+        prose = "已开始生成两个测试集。";
+        const state = await send(
+          id,
+          variant === "query" ? "查看当前状态" : "开始吧",
+          [
+            decision(
+              variant === "query" ? "query" : "execute",
+              variant === "query" ? { explanation: prose } : {},
+            ),
+          ],
+        );
+        expect(state.turns.at(-1).assistantText ?? "").not.toContain(
+          "已开始生成",
+        );
+        expect(state.turns.at(-1).assistantText).toContain("尚未提交");
+        expect(await effects()).toEqual(before);
+      } finally {
+        prose = previousProse;
+      }
+    },
+  );
+
+  it("retry preserves the control recorded before an invalid SDK plan is repaired", async () => {
+    const id = await session("plan");
+    const before = await effects();
+    const fixed = {
+      name: "plan_task",
+      input: {
+        control: { mode: "plan" },
+        target: null,
+        requirements: ["保持原意"],
+      },
+    };
+    const failed = await send(id, "补全方案，先别执行", [
+      { name: "plan_task", input: { ...fixed.input, target: "当前草稿" } },
+      fixed,
+      fixed,
+      {
+        name: "plan_task",
+        input: { control: { mode: "execute" }, executionMode: "execute" },
+      },
+    ]);
+    expect(failed.task.turnControl.mode).toBe("plan");
+    expect(failed.turns.at(-1).status).toBe("failed");
+    script = [
+      {
+        name: "plan_task",
+        input: { control: { mode: "execute" }, executionMode: "execute" },
+      },
+    ];
+    observed = [];
+    const retry = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/retry",
+      headers,
+      payload: {},
+    });
+    expect(retry.statusCode, retry.body).toBe(200);
+    await expect
+      .poll(async () => (await read(id)).turns.at(-1).status, {
+        timeout: 15000,
+      })
+      .toMatch(/succeeded|failed/);
+    expect((await read(id)).task.turnControl.mode).toBe("plan");
+    expect(await effects()).toEqual(before);
+  });
 });

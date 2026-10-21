@@ -38,6 +38,31 @@ describe("OPT36 receipt failure resolution", () => {
     ])
       expect(hasNoEffect({ ...lookup, error: { code } })).toBe(false);
   });
+  it("releases a corrected plan reference without releasing unknown business writes", () => {
+    const blocked = {
+      ...failure,
+      name: "plan_task",
+      effect: undefined,
+      error: { code: "assistant_context_unavailable" },
+    };
+    expect(hasNoEffect(blocked)).toBe(true);
+    expect(
+      unresolvedFailure([blocked, { ...success, name: "plan_task" }]),
+    ).toBeUndefined();
+    for (const name of [
+      "create_draft",
+      "generate_candidates",
+      "submit_processing",
+      "request_publish",
+    ])
+      expect(hasNoEffect({ ...blocked, name })).toBe(false);
+    expect(
+      unresolvedFailure([
+        blocked,
+        { ...success, name: "plan_task", binding: { ...binding, revision: 2 } },
+      ]),
+    ).toBe(blocked);
+  });
   it("resolves a corrected attempt only within its original step and revision without erasing history", () => {
     const records = [failure, success];
     expect(unresolvedFailure(records)).toBeUndefined();

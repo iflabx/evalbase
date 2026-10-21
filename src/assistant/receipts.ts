@@ -30,6 +30,9 @@ export function hasNoEffect(record: Record<string, any>) {
     record.effect === "none" ||
     (record.status === "failed" &&
       (validationWithoutEffect.has(record.error?.code) ||
+        // A plan reference check can save control state, but performs no domain command.
+        (record.name === "plan_task" &&
+          record.error?.code === "assistant_context_unavailable") ||
         // Candidate lookup 404s precede the shared refinement transaction commit;
         // its post-commit dependency checks use a different error code.
         (record.name === "refine_candidates" &&
