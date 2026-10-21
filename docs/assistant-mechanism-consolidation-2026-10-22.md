@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 状态：已拆为 OPT-43～45，均待开发；本次授权限创建 tickets 与相关文档更新。
+- 状态：OPT-43 阶段 A 已实现并通过定向验证，Owner pending；OPT-44/45 待开发。当前4217未切换，实施与证据见[记录](../.scratch/assistant-optimization/opt43-verification.md)。
 - 诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -111,7 +111,7 @@ agent.ts 保留 SDK 接线与业务工具适配。提取真正被多个入口共
 
 ## 8. 实施顺序与退出条件
 
-已按 Owner 确认的三个阶段建立下列开发票，Implementation 均为 not-started、Validation 均为 not-run。顺序为 OPT-43 → OPT-44 → OPT-45；本次写票不代表代码实施或验收通过。
+已按 Owner 确认的三个阶段建立下列开发票，顺序为 OPT-43 → OPT-44 → OPT-45。阶段 A 已完成实现与定向验证；阶段 B/C 尚未实施，整体五项真实流程未签通过。各票状态与证据在票据及实施规格维护。
 
 | 阶段 / Ticket | 修改范围 | 依赖与交付条件 |
 | --- | --- | --- |

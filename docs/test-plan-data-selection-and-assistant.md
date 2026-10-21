@@ -246,7 +246,7 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 
 ### 5.18 机制整理验证（待实施）
 
-方案与参数定义见[机制整理方案](assistant-mechanism-consolidation-2026-10-22.md)。本节为验收目标，2026-10-22仅更新文档，以下用例未执行。复用既有HTTP/Worker/SDK与前端测试入口；使用隔离夹具，保留历史会话、成果、预算及失败结论。
+方案与参数定义见[机制整理方案](assistant-mechanism-consolidation-2026-10-22.md)。本节为分阶段验收目标。2026-10-22，OPT-43的SDK/HTTP/持久化断言已完成定向验证，映射与实际证据见[实施记录](../.scratch/assistant-optimization/opt43-verification.md)；恢复/预算、页面与五项真实流程尚未完成，不能将以下矩阵整体标为通过。复用既有HTTP/Worker/SDK与前端测试入口；使用隔离夹具，保留历史会话、成果、预算及失败结论。
 
 阶段责任：[OPT-43](../.scratch/assistant-optimization/issues/43-requirement-amendments-and-repair-contract.md) 实施要求/纠错及诊断，主要覆盖 MC-02–05、MC-10–11；[OPT-44](../.scratch/assistant-optimization/issues/44-resume-decision-and-budget-continuity.md) 实施恢复/预算，主要覆盖 MC-06–09、MC-11；[OPT-45](../.scratch/assistant-optimization/issues/45-state-feedback-and-five-flow-acceptance.md) 实施反馈/页面，主要覆盖 MC-01、MC-10、MC-12，并核对全矩阵接入与五项真实闭环。重叠编号表示不同层断言，共用有效证据，不因此重复执行真实样本。
 

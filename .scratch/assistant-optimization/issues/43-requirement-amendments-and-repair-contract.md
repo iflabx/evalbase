@@ -1,14 +1,14 @@
 # OPT-43 要求变更、参数纠错与尝试记录统一
 
-Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
+Status: ready-for-human
+Implementation: completed
+Validation: targeted-pass; Owner pending
 Blocked by: none（基于当前已实现代码；不等待旧票人工验收）
 
 - 优先级：P1；阶段 A。
 - 依据：[实施规格](../spec.md)、[机制方案 §3–5、§7](../../../docs/assistant-mechanism-consolidation-2026-10-22.md)、[PRD §7.11](../../../docs/PRD-data-selection-and-assistant.md)。
 - 证据：[本轮诊断](../mechanism-review-20261022/diagnosis.md)、[首批五项复测](../mechanism-review-20261022/first-five-retest-20261021.md)。诊断基线为应用 92492e7；开发时重新记录实际基线。
-- 本票为开发合同；当前只创建文档，尚未授权执行代码或模型验证。
+- Owner 已于 2026-10-22 授权开发；实现提交 `56f4aca`，定向验证和剩余边界见[实施记录](../opt43-verification.md)。真实模型与页面闭环仍按 OPT-45 处理。
 
 ## 目标
 
@@ -76,3 +76,5 @@ Blocked by: none（基于当前已实现代码；不等待旧票人工验收）
 ## Comments
 
 - 2026-10-22：按已确认三阶段方案创建阶段 A 票；允许必要结构调整，范围以完整根因及直接消费者为准。当前 Implementation not-started、Validation not-run，数据、预算和运行环境未改。
+
+- 2026-10-22：完成阶段 A，实现提交 `56f4acaddbc981c6a3d28ccc6bdae57396d56059`；统一局部修改、实际 validator 失败分流、共享纠错额度及尝试记录。162 个不同定向用例与类型/服务端编译/lint通过；一次双轴审阅的三项 Spec 发现及兼容回归已修复并定向复核。Owner pending，4217未切换；数据与旧预算保留，详见[验证记录](../opt43-verification.md)。
