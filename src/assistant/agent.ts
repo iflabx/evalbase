@@ -943,6 +943,31 @@ export async function executeAssistantTurn(
     const task = saved.task;
     if (
       latest?.status === "succeeded" &&
+      task.question &&
+      latest.result?.task?.question === task.question &&
+      !["query", "pause"].includes(decision?.mode ?? "query") &&
+      !unresolvedFailure(tools) &&
+      tools.every(
+        (record) =>
+          record.name === "plan_task" || readTools.includes(record.name),
+      )
+    ) {
+      // A real business question is a completed clarification, not a missing plan receipt.
+      await updateTask(db, turn, {
+        stage: "waiting_input",
+        error: null,
+        recovery: null,
+        nextAction: null,
+      });
+      await saveDiagnostics();
+      await updateTurn(
+        "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
+        [turn.id, task.question],
+      );
+      return true;
+    }
+    if (
+      latest?.status === "succeeded" &&
       !unresolvedFailure(tools) &&
       tools.every((item) => item.name === "plan_task") &&
       !plannedAction &&
@@ -6356,6 +6381,7 @@ export async function executeAssistantTurn(
     messages.push(...fixedReceipts.splice(0));
     if (await yieldPendingStep()) return;
     if (await finishExhaustedProcessing()) return;
+    if (await finishSavedPlanningTurn()) return;
     // A provider may emit its tool template as text. Request native calls once;
     // never execute the text as commands or expose it as a completed reply.
     const textualCall = (text: string) =>
@@ -6432,6 +6458,7 @@ export async function executeAssistantTurn(
             abortSignal,
           });
           response = generated;
+          if (await finishSavedPlanningTurn()) return;
           finishReason = generated.finishReason;
           stepMessages = generated.responseMessages;
           if (budgetBoundary) break;

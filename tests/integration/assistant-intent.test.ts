@@ -1562,4 +1562,85 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect((await read(id)).task.turnControl.mode).toBe("plan");
     expect(await effects()).toEqual(before);
   });
+  it("a genuine document clarification ends successfully without a complete generation plan", async () => {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const upload = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/background-documents",
+      headers,
+      payload: {
+        fileName: "客服说明.txt",
+        contentBase64: Buffer.from(
+          "客服测试包含查物流和修改地址。问题应为完整用户问法。",
+        ).toString("base64"),
+      },
+    });
+    expect(upload.statusCode).toBe(201);
+    const before = await effects();
+    const state = await send(id, "帮我做一份客服测试集", [
+      {
+        name: "plan_task",
+        input: {
+          control: { mode: "plan" },
+          question: "需要多少条，覆盖哪些客服场景？",
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.turns.at(-1).assistantText).toBe(
+      "需要多少条，覆盖哪些客服场景？",
+    );
+    expect(state.task.executionPlan.steps).toHaveLength(0);
+    expect(observed).toHaveLength(1);
+    expect(await effects()).toEqual(before);
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_turn SET status='failed',error_code='assistant_requirements_not_saved' WHERE id=$1",
+        [state.turns.at(-1).id],
+      );
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          id,
+          JSON.stringify({
+            stage: "failed",
+            error: "assistant_requirements_not_saved",
+          }),
+        ],
+      );
+    } finally {
+      await db.end();
+    }
+    script = [];
+    observed = [];
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + id + "/retry",
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    await expect
+      .poll(async () => (await read(id)).turns.at(-1).status, {
+        timeout: 15000,
+      })
+      .toBe("succeeded");
+    expect((await read(id)).turns.at(-1).assistantText).toBe(
+      "需要多少条，覆盖哪些客服场景？",
+    );
+    expect(observed).toHaveLength(0);
+  });
 });
