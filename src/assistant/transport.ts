@@ -1,4 +1,12 @@
 import { setTimeout as wait } from "node:timers/promises";
+import { MODEL_RECOVERY_RESERVE_MS } from "./budget.js";
+
+export function requestTimeoutMs(deadlineAt: number, now = Date.now()) {
+  return Math.max(
+    1,
+    Math.min(50000, deadlineAt - now - MODEL_RECOVERY_RESERVE_MS),
+  );
+}
 
 /** One per logical turn; never retry the agent or a business operation. */
 export function assistantTransport(
@@ -23,6 +31,8 @@ export function assistantTransport(
     const signal = AbortSignal.any([
       options.signal,
       ...(init?.signal ? [init.signal] : []),
+      // A single slow request must leave time to persist the turn's recovery state.
+      AbortSignal.timeout(requestTimeoutMs(options.deadlineAt)),
     ]);
     for (;;) {
       signal.throwIfAborted();
@@ -46,6 +56,7 @@ export function assistantTransport(
         }
       } catch (error) {
         options.onFailure?.(error);
+        if (signal.aborted) options.onFailure?.(signal.reason);
         signal.throwIfAborted();
         failure = error;
         let cause = error,

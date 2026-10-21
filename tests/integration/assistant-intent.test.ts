@@ -1451,14 +1451,30 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     ]);
     expect(revised.task.overallTargetCount).toBe(3);
-    const replaced = await send(id, "改地址不要了，换成退款进度。", [
+    const replacement = {
+      name: "plan_task",
+      input: {
+        control: { mode: "plan", requiresUpdate: true },
+        deliveries: [{ ...goal("退款进度", 1), id: goals[1].id, count: 1 }],
+      },
+    };
+    const rejected = await send(id, "改地址不要了，换成退款进度。", [
       decision("plan", { requiresUpdate: true }),
       {
-        name: "plan_task",
+        ...replacement,
         input: {
-          control: { mode: "plan", requiresUpdate: true },
-          deliveries: [{ ...goal("退款进度", 1), id: goals[1].id, count: 1 }],
+          ...replacement.input,
+          deliveries: [{ ...goal("退款进度", 2), id: goals[1].id }],
         },
+      },
+    ]);
+    expect(rejected.turns.at(-1).status).toBe("failed");
+    expect(deliveryGoals(rejected.task.executionPlan)[1].name).toBe("改地址");
+    const replaced = await send(id, "继续执行", [
+      decision("execute"),
+      {
+        ...replacement,
+        input: { ...replacement.input, control: { mode: "execute" } },
       },
     ]);
     expect(
@@ -1696,6 +1712,66 @@ describe("OPT42 per-turn intent public boundary", () => {
     );
     expect(observed).toHaveLength(0);
   });
+  it("accepts a cited definition while asking for the missing count", async () => {
+    const { id, documentId } = await backgroundSession(
+      "1. 查物流：用户查询订单运输位置。\n2. 改地址：用户请求修改收货地址。",
+    );
+    const readState = await send(id, "先读客服规范", [
+      decision("plan"),
+      {
+        name: "read_background",
+        input: { documentId, useForProcessing: false },
+      },
+      {
+        name: "plan_task",
+        input: { question: "这次需要多少条？", nextAction: "none" },
+      },
+    ]);
+    const citation = readState.turns
+      .at(-1)
+      .tools.find((tool: any) => tool.name === "read_background")
+      .result.definitions.find((item: any) => item.value === "查物流");
+    const state = await send(id, "先列查物流方案，数量还要确认", [
+      decision("plan", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          question: "这次需要多少条？",
+          nextAction: "none",
+          deliveries: [
+            {
+              name: "查物流客服测试集",
+              count: 1,
+              instructions: "按已读定义生成自然完整的问题",
+              scenarios: ["查订单位置", "查物流更新", "查预计到达"],
+              classifications: [
+                {
+                  field: "metadata",
+                  key: "业务场景",
+                  basis: "background",
+                  allowedValues: ["查物流"],
+                  definitions: [
+                    {
+                      value: "查物流",
+                      text: citation.text,
+                      reference: citation.reference,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.turns.at(-1).errorCode).toBeNull();
+    expect(state.task.backgroundEvidence ?? []).toEqual([]);
+    expect(state.task.executionPlan?.steps ?? []).toEqual([]);
+  });
+
   async function backgroundSession(
     text = "问题使用完整中文，不含真实个人信息。",
   ) {

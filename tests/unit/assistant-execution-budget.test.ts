@@ -116,5 +116,6 @@ it("does not start a retry that cannot fit after a slow model request", () => {
   expect(requestFitsDeadline(80000, 57000, 58000)).toBe(false);
   expect(requestFitsDeadline(80000, 1000, 58000)).toBe(true);
   expect(requestFitsDeadline(80000, 0, 76000)).toBe(false);
+  expect(requestFitsDeadline(80000, 0, 71000)).toBe(false);
   expect(requestFitsDeadline(80000, 57000, 40000)).toBe(true);
 });

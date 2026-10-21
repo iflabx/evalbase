@@ -456,6 +456,7 @@ export async function executeAssistantTurn(
   let documentPlanning = false;
   let planningRequestTurnId = turn.id;
   let planningRequestText = turn.event === "user" ? turn.user_text : "";
+  let amendmentRequestText = turn.user_text;
   let planningDocumentsKey: string | undefined;
   async function acceptControl(value: unknown, current: Record<string, any>) {
     if (value !== undefined) {
@@ -465,6 +466,22 @@ export async function executeAssistantTurn(
           "assistant_intent_required",
           "本轮操作方式不完整，请结合用户要求重新判断；不要执行旧计划。",
         );
+      // A failed amendment has not changed the saved plan. "Continue execution"
+      // must first resume and save that amendment, even if intent chose execute.
+      if (
+        current.planningRecovery?.amendment &&
+        current.planningRecovery.planKey === planRequirementsKey(current) &&
+        (!current.planningRecovery.documentsKey ||
+          current.planningRecovery.documentsKey === planningDocumentsKey) &&
+        current.planningRecovery.evidenceKey ===
+          sha256(canonicalJson(current.backgroundEvidence ?? [])) &&
+        current.planningRecovery.taskRevision === turn.task_revision - 1 &&
+        value.mode === "execute" &&
+        /^\s*(?:请)?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?[。.!！?？]?\s*$/u.test(
+          turn.user_text,
+        )
+      )
+        Object.assign(value, { mode: "plan", requiresUpdate: true });
       const priorControl = decision;
       if (
         priorControl &&
@@ -517,8 +534,15 @@ export async function executeAssistantTurn(
         });
         if (documentPlanning) {
           const pending = current.planningRecovery;
+          const continuation =
+            /^\s*(?:请)?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?[。.!！?？]?\s*$/u.test(
+              turn.user_text,
+            );
           const reusable =
             pending &&
+            (!pending.amendment ||
+              (continuation &&
+                pending.planKey === planRequirementsKey(current))) &&
             (!pending.documentsKey ||
               pending.documentsKey === planningDocumentsKey) &&
             pending.evidenceKey ===
@@ -531,6 +555,15 @@ export async function executeAssistantTurn(
           planningRequestTurnId = reusable
             ? (pending.requestTurnId ?? pending.turnId)
             : turn.id;
+          if (reusable && pending.amendment) {
+            const original = (
+              await db.query(
+                "SELECT user_text FROM assistant_turn WHERE id=$1 AND session_id=$2 AND event='user'",
+                [planningRequestTurnId, turn.session_id],
+              )
+            ).rows[0];
+            if (original?.user_text) amendmentRequestText = original.user_text;
+          }
           planningRequestText = [
             current.goal,
             ...(current.supplements ?? []),
@@ -2291,11 +2324,11 @@ export async function executeAssistantTurn(
           };
         // Exploration stays read-only. Bind only actual, unchanged read receipts
         // when the user-authorized plan is saved; do not select an entire document.
+        const savedBackgroundEvidence = current.backgroundEvidence;
         let selectedPlanningEvidence: Record<string, any>[] = [];
         if (
           (documentPlanning || input.deliveries?.length) &&
-          !current.backgroundEvidence?.length &&
-          !input.question
+          !current.backgroundEvidence?.length
         ) {
           const reads = await backgroundReadReceipts();
           const readEvidence = reads.flatMap((record: any) => {
@@ -2394,7 +2427,7 @@ export async function executeAssistantTurn(
               ]),
             ).values(),
           ];
-          if (selectedPlanningEvidence.length > 12)
+          if (!input.question && selectedPlanningEvidence.length > 12)
             throw new AssistantError(
               422,
               "assistant_background_capacity",
@@ -2480,7 +2513,7 @@ export async function executeAssistantTurn(
             assertDeliveryRepair(
               context.decode(originalCall.input),
               input,
-              planningRequestText,
+              amendmentRequestText,
               originalCall.error?.code ===
                 "assistant_background_rule_mismatch" &&
                 originalCall.error?.hint === UNSUPPORTED_FIXED_OUTPUT_HINT,
@@ -2489,7 +2522,7 @@ export async function executeAssistantTurn(
             deliveryGoals(oldPlan),
             input.deliveries,
             deliveryGoals(oldPlan).length && turn.event === "user"
-              ? turn.user_text
+              ? amendmentRequestText
               : planningRequestText,
             turn.event === "user" && Boolean(decision?.requiresUpdate),
           );
@@ -2499,7 +2532,7 @@ export async function executeAssistantTurn(
             validateRequestedCategories(
               businessDeliveries,
               deliveryGoals(oldPlan).length
-                ? turn.user_text
+                ? amendmentRequestText
                 : planningRequestText,
               documentDefinitionReferences(
                 documents,
@@ -2519,7 +2552,9 @@ export async function executeAssistantTurn(
             ...reviseDeliveryRequirements(
               current,
               input,
-              turn.event === "user" ? turn.user_text : planningRequestText,
+              turn.event === "user"
+                ? amendmentRequestText
+                : planningRequestText,
               turn.event === "user" && Boolean(decision?.requiresUpdate),
             ),
           };
@@ -2546,6 +2581,24 @@ export async function executeAssistantTurn(
                 (documentPlanning ? "plan" : (oldPlan?.mode ?? "plan")),
             };
           }
+        }
+        if (
+          input.question &&
+          (selectedPlanningEvidence.length || businessDeliveries)
+        ) {
+          // Validate citations against read receipts, but do not turn browsing
+          // into a selected generation basis or a provisional executable plan.
+          current.backgroundEvidence = savedBackgroundEvidence;
+          businessDeliveries = undefined;
+          input = {
+            ...(input.goal ? { goal: input.goal } : {}),
+            ...(input.requirements ? { requirements: input.requirements } : {}),
+            question: input.question,
+            nextAction: "none",
+            ...(!oldPlan?.steps?.length
+              ? { steps: [], executionMode: "plan" }
+              : {}),
+          };
         }
         const explicitCount =
           turn.event === "user" &&
@@ -3036,7 +3089,7 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(422, "assistant_plan_only");
         const { steps, executionMode, ...fields } = input;
-        if (selectedPlanningEvidence?.length)
+        if (!input.question && selectedPlanningEvidence?.length)
           fields.backgroundEvidence = selectedPlanningEvidence;
         const executionPaused =
           decision?.mode === "pause" ||
@@ -5121,7 +5174,10 @@ export async function executeAssistantTurn(
         count: { type: "integer", minimum: 1, maximum: 10000 },
         countKind: { enum: ["new", "final"] },
         instructions: generationProperties.instructions,
-        scenarios: generationProperties.scenarios,
+        scenarios: {
+          ...(generationProperties.scenarios as object),
+          minItems: 3,
+        },
         classifications: planProperties.classifications,
         remove: { type: "boolean" },
         question: {
@@ -6895,15 +6951,21 @@ export async function executeAssistantTurn(
     }
     let cause = e;
     let modelTransportFailure = false;
+    let modelTimedOut = false;
     for (let i = 0; i < 5 && cause && typeof cause === "object"; i++) {
       modelTransportFailure ||= modelTransportErrors.has(cause);
+      modelTimedOut ||= ["AbortError", "TimeoutError"].includes(
+        String((cause as { name?: string }).name ?? ""),
+      );
       cause = (cause as { cause?: unknown }).cause;
     }
+    if (modelTransportFailure && modelTimedOut && !abortSignal.aborted)
+      errorCode = "assistant_model_failed";
     failureDiagnostic = assistantFailure(
       e,
       errorCode,
       failure,
-      modelTransportFailure,
+      modelTransportFailure && !abortSignal.aborted,
     );
     if (
       documentPlanning &&
@@ -6949,10 +7011,16 @@ export async function executeAssistantTurn(
     await updateTask(db, turn, {
       transportRecovery: null,
       ...(documentPlanning &&
-      !state?.task?.executionPlan?.steps?.length &&
-      !state.task.runId
+      !state.task.runId &&
+      (!state.task.executionPlan?.steps?.length ||
+        (turn.event === "user" &&
+          decision?.requiresUpdate &&
+          !decision.updateSaved))
         ? {
             planningRecovery: {
+              ...(state.task.executionPlan?.steps?.length
+                ? { amendment: true, planKey: planRequirementsKey(state.task) }
+                : {}),
               turnId: turn.id,
               requestTurnId: planningRequestTurnId,
               taskRevision: turn.task_revision,

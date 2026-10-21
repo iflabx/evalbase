@@ -116,4 +116,17 @@ describe("assistant diagnostic metadata", () => {
       expect(JSON.stringify(result)).not.toContain("private-document");
     },
   );
+  it("reports the final model timeout even after an earlier plan rejection", () => {
+    const timeout = Object.assign(new Error("private-timeout"), {
+      name: "TimeoutError",
+    });
+    const result = assistantFailure(
+      timeout,
+      "assistant_requirement_conflict",
+      { effect: "none", error: { code: "assistant_requirement_conflict" } },
+      true,
+    );
+    expect(result).toMatchObject({ layer: "model", category: "timeout" });
+    expect(JSON.stringify(result)).not.toContain("private-timeout");
+  });
 });

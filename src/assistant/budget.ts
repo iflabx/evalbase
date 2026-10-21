@@ -66,10 +66,15 @@ export function executionBudgetExhausted(budget: ExecutionBudget) {
 }
 
 /** Leave time to finish/checkpoint a slow turn instead of starting a doomed retry. */
+export const MODEL_RECOVERY_RESERVE_MS = 10000;
+
 export function requestFitsDeadline(
   deadlineAt: number,
   previousRequestMs = 0,
   now = Date.now(),
 ) {
-  return deadlineAt - now >= Math.max(5000, Math.min(30000, previousRequestMs));
+  return (
+    deadlineAt - now >=
+    Math.max(MODEL_RECOVERY_RESERVE_MS, Math.min(30000, previousRequestMs))
+  );
 }

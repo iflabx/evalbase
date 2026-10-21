@@ -43,6 +43,18 @@ export function assistantFailure(
       "模型回复超过接口容量上限。",
       "核对保留成果后减少本轮输出范围再试。",
     );
+  if (
+    modelTransport &&
+    chain.some((item) =>
+      ["AbortError", "TimeoutError"].includes(item.name ?? ""),
+    )
+  )
+    return result(
+      "model",
+      "timeout",
+      "等待模型回复超时。",
+      "原要求和已完成操作已保留，可继续未完成步骤。",
+    );
   if (code === "assistant_intent_required")
     return result(
       "business",
