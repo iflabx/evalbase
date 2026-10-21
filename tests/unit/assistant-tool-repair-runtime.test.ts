@@ -45,7 +45,11 @@ const plan = () => ({
   })),
 });
 
-function setup(original: unknown, signal?: AbortSignal) {
+function setup(
+  original: unknown,
+  signal?: AbortSignal,
+  contextual: Partial<Parameters<typeof argumentRepair>[0]> = {},
+) {
   vi.mocked(generateText).mockReset();
   const validate = new Ajv({ strict: false }).compile(schema);
   const check = vi.fn(async () => true);
@@ -58,6 +62,7 @@ function setup(original: unknown, signal?: AbortSignal) {
     reserve,
     observed,
     started,
+    ...contextual,
   } as any);
   const inputSchema = jsonSchema(schema as any, {
     validate: async (value) =>
@@ -116,7 +121,7 @@ describe("parameter repair execution boundary", () => {
         controller.abort(new DOMException("deadline", "TimeoutError"));
         throw controller.signal.reason;
       });
-      if (keyword === "required") {
+      if (["required", "additionalProperties"].includes(keyword)) {
         expect(await fixture.repair(fixture.request as any)).toBeNull();
         expect(generateText).not.toHaveBeenCalled();
         expect(fixture.reserve).not.toHaveBeenCalled();
@@ -223,5 +228,96 @@ describe("parameter repair execution boundary", () => {
       expect(String(request.prompt)).not.toContain("第1类");
       expect(String(request.prompt)).not.toContain("第8类");
     }
+  });
+  it("OPT43 contextual correction changes one invalid delivery and preserves the other seven", async () => {
+    const deliverySchema = {
+      type: "object",
+      properties: {
+        deliveries: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              count: { type: "integer" },
+              scenarios: {
+                type: "array",
+                minItems: 3,
+                items: { type: "string" },
+              },
+            },
+            required: ["id", "count"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["deliveries"],
+      additionalProperties: false,
+    };
+    const original = {
+      deliveries: Array.from({ length: 8 }, (_, i) => ({
+        id: "delivery-" + i,
+        count: 50,
+        scenarios: ["场景一", "场景二", "场景三"],
+      })),
+    };
+    original.deliveries[3].scenarios = ["场景一", "场景二"];
+    const context = vi.fn(async () => ({
+      savedScenarios: ["场景一", "场景二", "场景三"],
+    }));
+    const fixture = setup(original, undefined, {
+      context,
+      accept: async () => true,
+    });
+    const validate = new Ajv({ strict: false }).compile(deliverySchema);
+    fixture.request.inputSchema = async () => deliverySchema as any;
+    fixture.request.tools.plan_task = tool({
+      inputSchema: jsonSchema(deliverySchema as any, {
+        validate: async (value) =>
+          validate(value)
+            ? { success: true, value }
+            : { success: false, error: new Error("invalid") },
+      }),
+    });
+    vi.mocked(generateText).mockResolvedValue({
+      toolCalls: [
+        {
+          toolName: "plan_task",
+          input: { deliveries: [{ id: "delivery-3", count: 50 }] },
+        },
+      ],
+    } as any);
+    const fixed = await fixture.repair(fixture.request as any);
+    expect(JSON.parse(fixed!.input)).toEqual({
+      deliveries: original.deliveries.map((g, i) =>
+        i === 3 ? { id: "delivery-3", count: 50 } : g,
+      ),
+    });
+    expect(generateText).toHaveBeenCalledTimes(1);
+    const prompt = JSON.parse(
+      String(vi.mocked(generateText).mock.calls[0][0].prompt),
+    );
+    expect(prompt.repairClass).toBe("context");
+    expect(prompt.original.deliveries).toHaveLength(1);
+    expect(prompt.original.deliveries[0].id).toBe("delivery-3");
+    expect(fixture.reserve).toHaveBeenCalledWith("plan_task", "context");
+    expect(fixture.started).toHaveBeenCalledWith(
+      "plan_task",
+      expect.objectContaining({ scope: "delivery", deliveryIndex: 3 }),
+    );
+  });
+  it("OPT43 gives unparsable input one compact correction and never executes it", async () => {
+    const fixture = setup(plan(), undefined, {
+      context: async () => ({ request: "保存八类各50条方案，不执行" }),
+      accept: async () => true,
+    });
+    fixture.request.toolCall.input = '{"steps":';
+    vi.mocked(generateText).mockResolvedValue({
+      toolCalls: [{ toolName: "plan_task", input: plan() }],
+    } as any);
+    const fixed = await fixture.repair(fixture.request as any);
+    expect(JSON.parse(fixed!.input)).toEqual(plan());
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(fixture.reserve).toHaveBeenCalledWith("plan_task", "truncated");
   });
 });

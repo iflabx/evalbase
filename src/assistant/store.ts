@@ -1,3 +1,4 @@
+import { turnDiagnostics } from "./diagnostics.js";
 import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -55,6 +56,7 @@ export function taskPresentation(
   delete presented.parameterRepairLimits;
   delete presented.parameterRepairStatus;
   delete presented.planningRecovery;
+  delete presented.requirementSave;
   if (presented.executionPlan) {
     presented.executionPlan = {
       ...presented.executionPlan,
@@ -470,9 +472,7 @@ export async function readSession(
             assistantText: t.assistant_text,
             status: t.status,
             errorCode: t.error_code,
-            diagnostics: current.task?.observations?.find(
-              (observation: { turnId: string }) => observation.turnId === t.id,
-            ),
+            diagnostics: turnDiagnostics(current.task?.observations, t.id),
             tools: t.tool_results,
             createdAt: t.created_at,
           })),
@@ -1196,7 +1196,28 @@ export async function recoverAssistantReceipt(
 ) {
   let result: unknown;
   let references: Dependency[] = [];
-  if (item.name === "create_draft") {
+  if (item.name === "plan_task") {
+    // Query control is available to viewers; recovery cannot grant write access.
+    await assistantAccess(db, scope);
+    const row = (
+      await db.query(
+        "SELECT task FROM assistant_session WHERE project_id=$1 AND actor_id=$2 AND task->'requirementSave'->>'key'=$3 AND task->'requirementSave'->>'taskRevision'=task_revision::text",
+        [scope.projectId, scope.actorId, item.key],
+      )
+    ).rows[0];
+    if (row)
+      result = {
+        recovered: true,
+        control: row.task.turnControl,
+        task: {
+          executionPlan: row.task.executionPlan,
+          requirements: row.task.requirements,
+          targetCount: row.task.targetCount,
+          overallTargetCount: row.task.overallTargetCount,
+          summary: requirementSummary(row.task),
+        },
+      };
+  } else if (item.name === "create_draft") {
     await assistantAccess(db, scope, true);
     const row = (
       await db.query(

@@ -1,4 +1,5 @@
 import { opaqueId } from "../server/support.js";
+import { canonicalJson } from "../package/contract.js";
 import {
   RequirementError,
   explicitRequirementCount,
@@ -39,8 +40,12 @@ export type DeliveryChange = Partial<
   question?: string | null;
 };
 
-function fail(hint: string): never {
-  throw new RequirementError("assistant_requirement_conflict", hint);
+function fail(hint: string, clarification = false): never {
+  throw new RequirementError(
+    "assistant_requirement_conflict",
+    hint,
+    clarification,
+  );
 }
 const field = (rule: any) =>
   rule?.field === "expectedOutput"
@@ -148,8 +153,9 @@ function ruleChanges(
   prior: DeliveryGoal,
   changes: DeliveryChange["classifications"],
   request: string,
-  resizing: boolean,
+  newCount: number,
 ) {
+  const resizing = newCount !== prior.count;
   if (changes === undefined) return undefined;
   if (!changes.length) {
     if (
@@ -222,6 +228,18 @@ function ruleChanges(
       fail(
         "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。",
       );
+    // A copied, unchanged single-category quota is a derived count, not a second user choice.
+    if (
+      resizing &&
+      !valuesChanged &&
+      !basisChanged &&
+      original.quotas?.length === 1 &&
+      original.allowedValues?.length === 1 &&
+      merged.quotas?.length === 1 &&
+      merged.quotas[0].value === original.quotas[0].value &&
+      merged.quotas[0].count === original.quotas[0].count
+    )
+      return { ...merged, quotas: [{ ...merged.quotas[0], count: newCount }] };
     return merged;
   });
 }
@@ -295,7 +313,8 @@ function fitCount(goal: DeliveryGoal, count: number, suppliedRules: boolean) {
       if (!suppliedRules && rule.quotas?.length) {
         if (rule.allowedValues?.length !== 1 || rule.quotas.length !== 1)
           fail(
-            `「${goal.name}」包含多个类别配额，请同时说明新数量的类别分配；其他约束保持。`,
+            `「${goal.name}」的新目标为${count}条，原方案有多个类别配额。请说明新的类别分配：各类别分别保留多少条；其他约束保持。`,
+            true,
           );
         return { ...rule, quotas: [{ ...rule.quotas[0], count }] };
       }
@@ -583,150 +602,167 @@ export function reviseDeliveryGoals(
     );
   const goals = current.map((goal) => structuredClone(goal));
   const seen = new Set<string>();
-  for (const change of changes ?? []) {
-    if (!change || typeof change !== "object")
-      fail("每项交付必须是完整的业务目标。");
-    const prior = change.id
-      ? current.find((goal) => goal.id === change.id)
-      : undefined;
-    if (change.id && !prior)
-      fail("交付引用已失效，请使用当前方案中的真实交付引用。");
-    if (change.id && seen.has(change.id))
-      fail("同一交付不能在一次修改中重复提交。");
-    if (change.id) seen.add(change.id);
-    if (change.remove) {
+  for (const [changeIndex, change] of (changes ?? []).entries()) {
+    try {
+      if (!change || typeof change !== "object")
+        fail("每项交付必须是完整的业务目标。");
+      const prior = change.id
+        ? current.find((goal) => goal.id === change.id)
+        : undefined;
+      if (change.id && !prior)
+        fail("交付引用已失效，请使用当前方案中的真实交付引用。");
+      if (change.id && seen.has(change.id))
+        fail("同一交付不能在一次修改中重复提交。");
+      if (change.id) seen.add(change.id);
+      if (change.remove) {
+        if (
+          !prior ||
+          !userText
+            .split(/[。；;，,\n]/u)
+            .some(
+              (clause) =>
+                clause.includes(prior.name) &&
+                /(?:取消|撤销|删除|去掉|不再需要)/u.test(clause) &&
+                !/(?:不要|不得|别|禁止).{0,8}(?:取消|撤销|删除|去掉)/u.test(
+                  clause,
+                ),
+            )
+        )
+          fail("本轮没有明确取消这项交付；原交付及其约束保持。");
+        goals.splice(
+          goals.findIndex((goal) => goal.id === prior.id),
+          1,
+        );
+        continue;
+      }
+      if (current.length && !change.id)
+        fail(
+          "更新交付必须使用当前方案中的真实引用，不能按名称覆盖或另建重复交付。",
+        );
+      const candidate = {
+        ...prior,
+        ...change,
+        id: prior?.id ?? opaqueId("delivery"),
+        question:
+          change.question === null
+            ? undefined
+            : (change.question ?? prior?.question),
+        boundaryVersion: prior ? prior.boundaryVersion : 1,
+        countKind: change.countKind ?? prior?.countKind ?? "new",
+      } as DeliveryGoal;
       if (
-        !prior ||
+        candidate.question !== undefined &&
+        (typeof candidate.question !== "string" ||
+          !candidate.question.trim() ||
+          candidate.question.length > 500)
+      )
+        fail("请说明这份交付缺少的具体业务依据；已明确的交付不要设置问题。");
+      if (
+        prior?.question &&
+        change.question === null &&
+        change.instructions === undefined &&
+        change.classifications === undefined
+      )
+        fail(
+          "补充依据后请同步保存该交付修正后的判定要求或分类定义，不能只清除待补充提示。",
+        );
+      if (!positive(candidate.count)) fail("每份交付数量须为1至10000的整数。");
+      if (
+        !amendCounts &&
+        prior &&
+        candidate.countKind !== prior.countKind &&
+        scalarCount?.countKind !== candidate.countKind &&
         !userText
           .split(/[。；;，,\n]/u)
           .some(
             (clause) =>
-              clause.includes(prior.name) &&
-              /(?:取消|撤销|删除|去掉|不再需要)/u.test(clause) &&
-              !/(?:不要|不得|别|禁止).{0,8}(?:取消|撤销|删除|去掉)/u.test(
+              /改为|改成|改按|调整为/u.test(clause) &&
+              (candidate.countKind === "final"
+                ? /最终总数/u.test(clause)
+                : /新增(?:数量|候选|记录)/u.test(clause)) &&
+              !/(?:不要|不得|别|禁止).{0,8}(?:改为|改成|改按|调整为)/u.test(
                 clause,
               ),
           )
       )
-        fail("本轮没有明确取消这项交付；原交付及其约束保持。");
-      goals.splice(
-        goals.findIndex((goal) => goal.id === prior.id),
-        1,
-      );
-      continue;
-    }
-    if (current.length && !change.id)
-      fail(
-        "更新交付必须使用当前方案中的真实引用，不能按名称覆盖或另建重复交付。",
-      );
-    const candidate = {
-      ...prior,
-      ...change,
-      id: prior?.id ?? opaqueId("delivery"),
-      question:
-        change.question === null
-          ? undefined
-          : (change.question ?? prior?.question),
-      boundaryVersion: prior ? prior.boundaryVersion : 1,
-      countKind: change.countKind ?? prior?.countKind ?? "new",
-    } as DeliveryGoal;
-    if (
-      candidate.question !== undefined &&
-      (typeof candidate.question !== "string" ||
-        !candidate.question.trim() ||
-        candidate.question.length > 500)
-    )
-      fail("请说明这份交付缺少的具体业务依据；已明确的交付不要设置问题。");
-    if (
-      prior?.question &&
-      change.question === null &&
-      change.instructions === undefined &&
-      change.classifications === undefined
-    )
-      fail(
-        "补充依据后请同步保存该交付修正后的判定要求或分类定义，不能只清除待补充提示。",
-      );
-    if (!positive(candidate.count)) fail("每份交付数量须为1至10000的整数。");
-    if (
-      !amendCounts &&
-      prior &&
-      candidate.countKind !== prior.countKind &&
-      scalarCount?.countKind !== candidate.countKind &&
-      !userText
-        .split(/[。；;，,\n]/u)
-        .some(
-          (clause) =>
-            /改为|改成|改按|调整为/u.test(clause) &&
-            (candidate.countKind === "final"
-              ? /最终总数/u.test(clause)
-              : /新增(?:数量|候选|记录)/u.test(clause)) &&
-            !/(?:不要|不得|别|禁止).{0,8}(?:改为|改成|改按|调整为)/u.test(
-              clause,
-            ),
-        )
-    )
-      fail("本轮未改变新增或最终数量的含义，原数量约定保持。");
-    if (
-      !amendCounts &&
-      prior &&
-      candidate.count !== prior.count &&
-      scalarCount?.targetCount !== candidate.count &&
-      !changedCount(userText) &&
-      !namedCount(userText, prior.name, candidate.count)
-    )
-      fail("本轮没有明确改变这项交付的数量，不能在参数修正时缩减或改写目标。");
-    if (
-      !candidate.name?.trim() ||
-      !candidate.instructions?.trim() ||
-      !Array.isArray(candidate.scenarios) ||
-      candidate.scenarios.length < 3 ||
-      candidate.scenarios.some(
-        (scene) => typeof scene !== "string" || scene.trim().length < 2,
+        fail("本轮未改变新增或最终数量的含义，原数量约定保持。");
+      if (
+        !amendCounts &&
+        prior &&
+        candidate.count !== prior.count &&
+        scalarCount?.targetCount !== candidate.count &&
+        !changedCount(userText) &&
+        !namedCount(userText, prior.name, candidate.count)
       )
-    )
-      fail("每份交付须有名称、具体要求及至少三个完整且不同的情境。");
-    if (
-      new Set(candidate.scenarios.map((scene) => scene.trim())).size !==
-      candidate.scenarios.length
-    )
-      fail("同一交付的情境不能重复。");
-    if (!Array.isArray(candidate.classifications))
-      fail("交付须明确分类约定；普通文档可以填写空分类。");
-    const resizing = Boolean(prior && candidate.count !== prior.count);
-    const patches = prior
-      ? ruleChanges(prior, change.classifications, userText, resizing)
-      : change.classifications;
-    const resized = prior
-      ? fitCount(
-          {
-            ...candidate,
-            count: prior.count,
-            classifications: prior.classifications,
-          },
-          candidate.count,
-          patches !== undefined,
+        fail(
+          "本轮没有明确改变这项交付的数量，不能在参数修正时缩减或改写目标。",
+        );
+      if (
+        !candidate.name?.trim() ||
+        !candidate.instructions?.trim() ||
+        !Array.isArray(candidate.scenarios) ||
+        candidate.scenarios.length < 3 ||
+        candidate.scenarios.some(
+          (scene) => typeof scene !== "string" || scene.trim().length < 2,
         )
-      : candidate;
-    candidate.classifications = reviseRequirements(
-      {
-        targetCount: candidate.count,
-        classifications: resized.classifications as VerifiedRule[],
-      },
-      {
-        targetCount: candidate.count,
-        ...(patches !== undefined
-          ? {
-              classifications: patches as (VerifiedRule & {
-                clear?: boolean;
-              })[],
-            }
-          : {}),
-      },
-    ).classifications;
-    candidate.name = candidate.name.trim();
-    if (prior)
-      goals[goals.findIndex((goal) => goal.id === prior.id)] = candidate;
-    else goals.push(candidate);
+      )
+        fail("每份交付须有名称、具体要求及至少三个完整且不同的情境。");
+      if (
+        new Set(candidate.scenarios.map((scene) => scene.trim())).size !==
+        candidate.scenarios.length
+      )
+        fail("同一交付的情境不能重复。");
+      if (!Array.isArray(candidate.classifications))
+        fail("交付须明确分类约定；普通文档可以填写空分类。");
+      const patches = prior
+        ? ruleChanges(prior, change.classifications, userText, candidate.count)
+        : change.classifications;
+      const quotasChanged = patches?.some((patch) => {
+        const original = prior?.classifications.find(
+          (rule) => field(rule) === field(patch),
+        );
+        return (
+          !original ||
+          canonicalJson(patch.quotas ?? original.quotas) !==
+            canonicalJson(original.quotas)
+        );
+      });
+      const resized = prior
+        ? fitCount(
+            {
+              ...candidate,
+              count: prior.count,
+              classifications: prior.classifications,
+            },
+            candidate.count,
+            Boolean(quotasChanged),
+          )
+        : candidate;
+      candidate.classifications = reviseRequirements(
+        {
+          targetCount: candidate.count,
+          classifications: resized.classifications as VerifiedRule[],
+        },
+        {
+          targetCount: candidate.count,
+          ...(patches !== undefined
+            ? {
+                classifications: patches as (VerifiedRule & {
+                  clear?: boolean;
+                })[],
+              }
+            : {}),
+        },
+      ).classifications;
+      candidate.name = candidate.name.trim();
+      if (prior)
+        goals[goals.findIndex((goal) => goal.id === prior.id)] = candidate;
+      else goals.push(candidate);
+    } catch (error) {
+      if (error instanceof RequirementError)
+        Object.assign(error, { deliveryIndex: changeIndex });
+      throw error;
+    }
   }
   const count: { each?: number; overall?: number } | undefined =
     !amendCounts && current.length
@@ -809,6 +845,27 @@ export function assertDeliveryRepair(
     if (matches.length !== 1 || matches[0].remove)
       fail("修正参数时不能删除、合并或遗漏原交付。");
     const repaired = matches[0];
+    if (
+      (!original.id || repaired.instructions !== undefined) &&
+      typeof original.instructions === "string" &&
+      original.instructions.trim() &&
+      (typeof repaired.instructions !== "string" ||
+        repaired.instructions.trim() !== original.instructions.trim())
+    )
+      fail("参数纠错不能改写原交付的具体要求；业务变更应由用户另行提出。 ");
+    for (const scene of Array.isArray(original.scenarios)
+      ? original.scenarios
+      : [])
+      if (
+        (!original.id || repaired.scenarios !== undefined) &&
+        typeof scene === "string" &&
+        scene.trim().length >= 2 &&
+        !repaired.scenarios?.some(
+          (value: unknown) =>
+            typeof value === "string" && value.trim() === scene.trim(),
+        )
+      )
+        fail("参数纠错须保留原交付已有的完整情境，仅补齐缺失或无效情境。");
     const requested = requestedRepairCount(
       original,
       originalInput.deliveries,

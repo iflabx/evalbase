@@ -1305,7 +1305,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(await effects()).toEqual(before);
   });
 
-  it("unsafe plan format repair returns to context without changing authorization", async () => {
+  it("contextual repair validates an invalid object field without changing authorization", async () => {
     const id = await session("plan");
     const before = await effects();
     const corrected = {
@@ -1319,8 +1319,6 @@ describe("OPT42 per-turn intent public boundary", () => {
     const state = await send(id, "补充查物流场景，先别执行", [
       { name: "plan_task", input: { ...corrected.input, target: "当前草稿" } },
       corrected,
-      corrected,
-      corrected,
     ]);
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
       "succeeded",
@@ -1331,11 +1329,11 @@ describe("OPT42 per-turn intent public boundary", () => {
       state.turns
         .at(-1)
         .diagnostics.parameterRepairs.map((r: any) => r.outcome),
-    ).toContain("unsafe");
+    ).toContain("repaired");
     expect(
-      state.turns.at(-1).tools.find((r: any) => r.status === "failed").input
-        .target,
-    ).toBe("当前草稿");
+      successes(state, "plan_task").some((r: any) => r.input.target === null),
+    ).toBe(true);
+    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
     expect(observed.length).toBeLessThanOrEqual(5);
     expect(await effects()).toEqual(before);
   });
@@ -1470,13 +1468,23 @@ describe("OPT42 per-turn intent public boundary", () => {
     ]);
     expect(rejected.turns.at(-1).status).toBe("failed");
     expect(deliveryGoals(rejected.task.executionPlan)[1].name).toBe("改地址");
-    const replaced = await send(id, "继续执行", [
-      decision("execute"),
-      {
-        ...replacement,
-        input: { ...replacement.input, control: { mode: "execute" } },
-      },
-    ]);
+    const stopped = await send(id, "继续执行", [decision("execute")]);
+    expect(stopped.turns.at(-1).status).toBe("failed");
+    expect(deliveryGoals(stopped.task.executionPlan)[1].name).toBe("改地址");
+    const replaced = await send(
+      id,
+      "把改地址换成退款进度，仍要1条，先保存方案",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          ...replacement,
+          input: {
+            ...replacement.input,
+            control: { mode: "plan", requiresUpdate: true },
+          },
+        },
+      ],
+    );
     expect(
       replaced.turns.at(-1).status,
       JSON.stringify(replaced.turns.at(-1)),
@@ -1532,11 +1540,11 @@ describe("OPT42 per-turn intent public boundary", () => {
         input: { control: { mode: "execute" }, executionMode: "execute" },
       },
     ]);
+    expect(state.turns.at(-1).status).toBe("failed");
+    expect(state.task.turnControl.mode).toBe("plan");
     expect(
-      state.turns
-        .at(-1)
-        .tools.some((r: any) => r.error?.code === "assistant_intent_required"),
-    ).toBe(true);
+      state.turns.at(-1).diagnostics.repairRequestsUsed,
+    ).toBeLessThanOrEqual(2);
     expect(successes(state, "create_draft")).toHaveLength(0);
     expect(await effects()).toEqual(before);
   });

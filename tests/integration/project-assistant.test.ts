@@ -24099,4 +24099,824 @@ describe("project assistant public contract", () => {
       await db.end();
     }
   });
+
+  const opt43Control = () => ({
+    name: "plan_task",
+    input: { control: { mode: "plan", requiresUpdate: true } },
+  });
+  async function opt43Plan(
+    deliveries?: Record<string, any>[],
+    message = "物流和地址各2条，先存方案，不执行",
+  ) {
+    await opt21Session();
+    const upload = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + sessionId + "/background-documents",
+      headers,
+      payload: {
+        fileName: "客服背景.txt",
+        contentBase64: Buffer.from(
+          "电商客服测试覆盖物流查询和地址修改。问题语义完整，期望输出说明正常应答行为。",
+        ).toString("base64"),
+      },
+    });
+    expect(upload.statusCode, upload.body).toBe(201);
+    deliveries ??= ["物流", "地址"].map((name) => ({
+      name,
+      count: 2,
+      instructions: "设计完整的" + name + "用户问题",
+      scenarios: [
+        name + "有明确背景",
+        name + "有时间限制",
+        name + "有异常情况",
+      ],
+      classifications: [],
+    }));
+    toolSequence = [
+      opt43Control(),
+      {
+        name: "read_background",
+        input: { documentId: upload.json().document.id },
+      },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries,
+          requirements: ["问题自然完整", "保留最近30天时间条件"],
+          allowedFields: ["question"],
+          metadataKeys: ["intent"],
+        },
+      },
+    ];
+    const state = await opt21End(await opt21Submit(message));
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    return state;
+  }
+  it("OPT43 corrects one invalid patch and saves 2+2 to 3+2 to 2+1 without generating", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const control = opt43Control();
+      let state = await opt43Plan();
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      const original = state.task.executionPlan.steps.filter(
+        (s: any) => s.action === "generate_candidates",
+      );
+      toolSequence = [
+        control,
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [{ id: original[0].deliveryId, count: 3 }],
+          },
+        },
+      ];
+      state = await opt21End(
+        await opt21Submit("物流改成3条，地址不变，先不执行"),
+      );
+      expect(state.task.overallTargetCount).toBe(5);
+      const start = calls.length;
+      parameterRepairReply = ({ original }) => ({
+        deliveries: original.deliveries.map((g: any) => ({
+          id: g.id,
+          count: g.count,
+        })),
+      });
+      toolSequence = [
+        control,
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [
+              {
+                id: original[0].deliveryId,
+                count: 2,
+                scenarios: ["一个业务场景", "另一个业务场景"],
+              },
+              { id: original[1].deliveryId, count: 1 },
+            ],
+          },
+        },
+      ];
+      state = await opt21End(
+        await opt21Submit("最后物流2条、地址1条，先保存方案，不执行"),
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      const actual = state.task.executionPlan.steps.filter(
+        (s: any) => s.action === "generate_candidates",
+      );
+      expect(actual.map((s: any) => s.input.outputCount)).toEqual([2, 1]);
+      expect(actual.map((s: any) => s.input.scenarios)).toEqual(
+        original.map((s: any) => s.input.scenarios),
+      );
+      expect(state.task.overallTargetCount).toBe(3);
+      expect([...state.task.requirements].sort()).toEqual(
+        ["问题自然完整", "保留最近30天时间条件"].sort(),
+      );
+      const corrections = calls
+        .slice(start)
+        .filter((c) =>
+          String(c.messages.at(-1)?.content).includes(
+            '"operation":"repair_tool_arguments"',
+          ),
+        );
+      expect(corrections).toHaveLength(1);
+      const prompt = JSON.parse(corrections[0].messages.at(-1).content);
+      expect(prompt.original.deliveries).toHaveLength(1);
+      expect(prompt.repairClass).toBe("context");
+      const raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.turnControl).toMatchObject({
+        requiresUpdate: true,
+        updateSaved: true,
+      });
+      expect(raw.requirementSave).toMatchObject({
+        turnId: state.turns.at(-1).id,
+        taskRevision: raw.turnControl.taskRevision,
+      });
+      expect(raw.planValidationRequired).toBeNull();
+      expect(raw.planningRecovery).toBeNull();
+      expect((await read()).json().task.executionPlan).toEqual(
+        state.task.executionPlan,
+      );
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM processing_run WHERE source->>'id'=$1",
+            [sessionId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      parameterRepairReply = undefined;
+      await db.end();
+    }
+  });
+
+  it("OPT43 retains an exhausted amendment and its original failure across same-turn retry", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const saved = await opt43Plan(),
+        baseline = saved.task.executionPlan;
+      const goal = baseline.steps.find(
+        (s: any) => s.action === "generate_candidates",
+      );
+      const invalid = {
+        executionMode: "plan",
+        deliveries: [
+          { id: goal.deliveryId, count: 3, scenarios: ["场景一", "场景二"] },
+        ],
+      };
+      const start = calls.length;
+      parameterRepairReply = ({ original }) => original;
+      toolSequence = [opt43Control(), { name: "plan_task", input: invalid }];
+      const turnId = await opt21Submit("物流改成3条，其他保持，先保存方案");
+      let state = await opt21End(turnId);
+      expect(state.turns.at(-1).status).toBe("failed");
+      expect(state.task.executionPlan).toEqual(baseline);
+      let raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.planValidationRequired).toBe(true);
+      expect(raw.turnControl.updateSaved).toBe(false);
+      expect(raw.planningRecovery).toMatchObject({
+        amendment: true,
+        requestTurnId: turnId,
+      });
+      expect(raw.parameterRepairLimits.plan_task.used).toBe(2);
+      expect(
+        calls
+          .slice(start)
+          .filter((c) =>
+            String(c.messages.at(-1)?.content).includes(
+              '"operation":"repair_tool_arguments"',
+            ),
+          ),
+      ).toHaveLength(2);
+      const first = state.turns.at(-1).diagnostics;
+      expect(first.firstFailure.issues).toContainEqual({
+        path: "/deliveries/0/scenarios",
+        keyword: "minItems",
+      });
+      const attemptsBefore = calls.length;
+      const retry = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + sessionId + "/retry",
+        headers,
+        payload: {},
+      });
+      expect(retry.statusCode, retry.body).toBe(200);
+      state = await opt21End(turnId);
+      expect(state.turns.at(-1).status).toBe("failed");
+      expect(calls.length).toBe(attemptsBefore);
+      const diagnostic = state.turns.at(-1).diagnostics;
+      expect(diagnostic.executionAttempt).toBe(2);
+      expect(diagnostic.attempts).toHaveLength(2);
+      expect(diagnostic.attempts[0].firstFailure).toEqual(first.firstFailure);
+      expect(diagnostic.attemptRequestAttempts).toBe(0);
+      expect(diagnostic.attempts[1].attemptRequestAttempts).toBe(0);
+      expect(diagnostic.attempts[0].attemptRequestAttempts).toBe(
+        first.attemptRequestAttempts,
+      );
+      raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.parameterRepairLimits.plan_task.used).toBe(2);
+      expect(state.task.executionPlan).toEqual(baseline);
+    } finally {
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      parameterRepairReply = undefined;
+      await db.end();
+    }
+  });
+  it("OPT43 recovers a committed requirement save after losing its response, without saving twice", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const saved = await opt43Plan(),
+        goal = saved.task.executionPlan.steps.find(
+          (s: any) => s.action === "generate_candidates",
+        );
+      const real = taskModule.updateTask;
+      let writes = 0;
+      spy = vi
+        .spyOn(taskModule, "updateTask")
+        .mockImplementation(async (...args) => {
+          const result = await real(...args);
+          if (args[2].requirementSave) {
+            writes++;
+            if (writes === 1)
+              throw new Error("synthetic response lost after commit");
+          }
+          return result;
+        });
+      toolSequence = [
+        opt43Control(),
+        {
+          name: "plan_task",
+          input: {
+            deliveries: [{ id: goal.deliveryId, count: 3 }],
+            executionMode: "plan",
+          },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit("物流改为3条，地址不变，保存方案"),
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(writes).toBe(1);
+      expect(state.task.overallTargetCount).toBe(5);
+      expect(
+        state.turns
+          .at(-1)
+          .tools.some(
+            (t: any) => t.name === "plan_task" && t.result?.recovered,
+          ),
+      ).toBe(true);
+      const raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.turnControl.updateSaved).toBe(true);
+      expect(raw.requirementSave.taskRevision).toBe(
+        raw.turnControl.taskRevision,
+      );
+    } finally {
+      spy?.mockRestore();
+      sessionId = previous;
+      requestedTool = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+  it("OPT43 stops a late correction from overwriting the stopped revision", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    try {
+      const saved = await opt43Plan(),
+        baseline = saved.task.executionPlan;
+      const goal = baseline.steps.find(
+        (s: any) => s.action === "generate_candidates",
+      );
+      parameterRepairReply = async ({ original }) => {
+        entered();
+        await gate;
+        return {
+          deliveries: original.deliveries.map((g: any) => ({
+            id: g.id,
+            count: g.count,
+          })),
+        };
+      };
+      toolSequence = [
+        opt43Control(),
+        {
+          name: "plan_task",
+          input: {
+            deliveries: [
+              {
+                id: goal.deliveryId,
+                count: 3,
+                scenarios: ["场景一", "场景二"],
+              },
+            ],
+            executionMode: "plan",
+          },
+        },
+      ];
+      const turnId = await opt21Submit("物流改为3条，先不要生成");
+      await started;
+      const stopped = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + sessionId + "/stop",
+        headers,
+        payload: {},
+      });
+      expect(stopped.statusCode, stopped.body).toBe(200);
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const state = await opt21End(turnId);
+      expect(state.turns.at(-1).status).toBe("interrupted");
+      expect(state.task.executionPlan).toEqual(baseline);
+      const raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.turnControl.updateSaved).toBe(false);
+      expect(raw.requirementSave.turnId).not.toBe(turnId);
+    } finally {
+      release();
+      sessionId = previous;
+      parameterRepairReply = undefined;
+      toolSequence = [];
+      await db.end();
+    }
+  });
+  it.each([false, true])(
+    "OPT43 asks only for ambiguous multi-category allocation and preserves the valid plan, copied=%s",
+    async (copyRules) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        const delivery = {
+          name: "客服分类",
+          count: 4,
+          instructions: "完整自然客服问法",
+          scenarios: ["用户有物流问题", "用户有地址问题", "用户说明异常情况"],
+          classifications: [
+            {
+              field: "metadata",
+              key: "intent",
+              basis: "user",
+              allowedValues: ["物流", "地址"],
+              quotas: [
+                { value: "物流", count: 2 },
+                { value: "地址", count: 2 },
+              ],
+            },
+          ],
+        };
+        const saved = await opt43Plan(
+          [delivery],
+          "用我指定的物流和地址标签各2条，建立一份4条客服方案，先不执行",
+        );
+        const original = saved.task.executionPlan.steps.find(
+          (s: any) => s.action === "generate_candidates",
+        );
+        const start = calls.length;
+        toolSequence = [
+          opt43Control(),
+          {
+            name: "plan_task",
+            input: {
+              deliveries: [
+                {
+                  id: original.deliveryId,
+                  count: 3,
+                  ...(copyRules
+                    ? { classifications: delivery.classifications }
+                    : {}),
+                },
+              ],
+              executionMode: "plan",
+            },
+          },
+        ];
+        const state = await opt21End(
+          await opt21Submit("这份改成3条，其他要求保留，先别生成"),
+        );
+        expect(
+          state.turns.at(-1).status,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBe("succeeded");
+        expect(state.task.question).toContain("各类别");
+        expect(state.task.question).toContain("3条");
+        expect(state.task.executionPlan).toEqual(saved.task.executionPlan);
+        expect(state.task.overallTargetCount).toBe(4);
+        expect(
+          calls
+            .slice(start)
+            .filter((c) =>
+              String(c.messages.at(-1)?.content).includes(
+                '"operation":"repair_tool_arguments"',
+              ),
+            ),
+        ).toHaveLength(0);
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM processing_run WHERE source->>'id'=$1",
+              [sessionId],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+      } finally {
+        sessionId = previous;
+        toolSequence = [];
+        await db.end();
+      }
+    },
+  );
+
+  it("OPT43 focuses a business quota correction on one delivery and preserves its sibling", async () => {
+    const previous = sessionId;
+    try {
+      const deliveries = ["物流", "地址"].map((name) => ({
+        name,
+        count: 2,
+        instructions: "完整自然的客服问法",
+        scenarios: [name + "具体背景", name + "时间限制", name + "异常情况"],
+        classifications: [
+          {
+            field: "metadata",
+            key: "intent",
+            basis: "user",
+            allowedValues: [name],
+            quotas: [{ value: name, count: 2 }],
+          },
+        ],
+      }));
+      const saved = await opt43Plan(
+        deliveries,
+        "按我指定的物流和地址标签各2条，分别一份，先存方案",
+      );
+      const goals = saved.task.executionPlan.steps.filter(
+        (s: any) => s.action === "generate_candidates",
+      );
+      const invalid = {
+        id: goals[0].deliveryId,
+        name: "物流",
+        count: 3,
+        classifications: [
+          {
+            field: "metadata",
+            key: "intent",
+            basis: "user",
+            allowedValues: ["物流"],
+            quotas: [{ value: "物流", count: 4 }],
+          },
+        ],
+      };
+      parameterRepairReply = ({ original }) => ({
+        deliveries: original.deliveries.map((g: any) => ({
+          ...g,
+          classifications: g.classifications.map((r: any) => ({
+            ...r,
+            quotas: [{ value: "物流", count: 3 }],
+          })),
+        })),
+      });
+      const start = calls.length;
+      toolSequence = [
+        opt43Control(),
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [invalid, { id: goals[1].deliveryId, count: 2 }],
+          },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit("物流改成3条，地址不变，先不执行"),
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      const actual = state.task.executionPlan.steps.filter(
+        (s: any) => s.action === "generate_candidates",
+      );
+      expect(actual[0].input.outputCount).toBe(3);
+      expect(actual[0].input.classifications[0].quotas).toEqual([
+        { value: "物流", count: 3 },
+      ]);
+      expect(actual[1].input).toEqual(goals[1].input);
+      expect(actual[1].deliveryId).toBe(goals[1].deliveryId);
+      expect(actual[1].status).toBe(goals[1].status);
+      const corrections = calls
+        .slice(start)
+        .filter((c) =>
+          String(c.messages.at(-1)?.content).includes(
+            '"operation":"repair_tool_arguments"',
+          ),
+        );
+      expect(corrections).toHaveLength(1);
+      expect(
+        JSON.parse(corrections[0].messages.at(-1).content).original.deliveries,
+      ).toHaveLength(1);
+      expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+      expect(state.turns.at(-1).diagnostics.parameterRepairs).toContainEqual({
+        name: "plan_task",
+        outcome: "repaired",
+      });
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      parameterRepairReply = undefined;
+    }
+  });
+
+  it.each(["protected-fields", "unknown-reference"])(
+    "OPT43 rejects %s without changing requirements or sources",
+    async (kind) => {
+      const previous = sessionId,
+        db = createPool(databaseUrl);
+      try {
+        const saved = await opt43Plan(),
+          goal = saved.task.executionPlan.steps.find(
+            (s: any) => s.action === "generate_candidates",
+          );
+        const input =
+          kind === "protected-fields"
+            ? {
+                executionMode: "plan",
+                deliveries: [{ id: goal.deliveryId, count: 3 }],
+                allowedFields: ["question", "metadata"],
+                metadataKeys: null,
+              }
+            : {
+                executionMode: "plan",
+                deliveries: [
+                  { id: "unavailable-delivery-reference", count: 3 },
+                ],
+              };
+        const start = calls.length;
+        toolSequence = [
+          opt43Control(),
+          ...Array.from({ length: 3 }, () => ({ name: "plan_task", input })),
+        ];
+        const state = await opt21End(
+          await opt21Submit("物流改成3条，其他保持，只保存方案"),
+        );
+        expect(state.turns.at(-1).status).toBe("failed");
+        expect(state.task.executionPlan).toEqual(saved.task.executionPlan);
+        const raw = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            sessionId,
+          ])
+        ).rows[0].task;
+        expect(raw.allowedFields).toEqual(["question"]);
+        expect(raw.metadataKeys).toEqual(["intent"]);
+        expect(raw.turnControl.updateSaved).toBe(false);
+        expect(raw.planValidationRequired).toBe(true);
+        expect(raw.requirementSave.turnId).not.toBe(state.turns.at(-1).id);
+        expect(calls.length - start).toBeLessThanOrEqual(4);
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM processing_run WHERE source->>'id'=$1",
+              [sessionId],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+      } finally {
+        sessionId = previous;
+        toolSequence = [];
+        await db.end();
+      }
+    },
+  );
+  it("OPT43 refuses to repair a new incomplete delivery by shrinking the requested count", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      await opt21Session();
+      const upload = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + sessionId + "/background-documents",
+        headers,
+        payload: {
+          fileName: "客服规则.txt",
+          contentBase64: Buffer.from(
+            "完整自然的物流用户问题，不编造订单事实。",
+          ).toString("base64"),
+        },
+      });
+      expect(upload.statusCode).toBe(201);
+      const delivery = {
+        name: "物流",
+        count: 2,
+        instructions: "完整的物流用户问题",
+        scenarios: ["业务背景", "异常情况"],
+        classifications: [],
+      };
+      parameterRepairReply = ({ original }) => ({
+        ...original,
+        deliveries: [
+          {
+            ...original.deliveries[0],
+            count: 1,
+            scenarios: ["业务背景", "异常情况", "用户带时间限制"],
+          },
+        ],
+      });
+      const start = calls.length;
+      toolSequence = [
+        opt43Control(),
+        {
+          name: "read_background",
+          input: { documentId: upload.json().document.id },
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [delivery],
+            requirements: ["不编造订单事实"],
+          },
+        },
+      ];
+      const state = await opt21End(
+        await opt21Submit("按附件做一份2条物流问题，先存方案"),
+      );
+      expect(state.turns.at(-1).status).toBe("failed");
+      const raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.executionPlan).toBeUndefined();
+      expect(raw.requirementSave).toBeUndefined();
+      expect(raw.turnControl.updateSaved).toBe(false);
+      expect(
+        calls
+          .slice(start)
+          .filter((c) =>
+            String(c.messages.at(-1)?.content).includes(
+              '"operation":"repair_tool_arguments"',
+            ),
+          ),
+      ).toHaveLength(2);
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      parameterRepairReply = undefined;
+      await db.end();
+    }
+  });
+  it("OPT43 never treats a verbal acknowledgement as a saved requirement amendment", async () => {
+    const previous = sessionId,
+      db = createPool(databaseUrl);
+    try {
+      const saved = await opt43Plan();
+      finalReply = "最新数量要求已保存为3条。";
+      toolSequence = [opt43Control()];
+      const state = await opt21End(
+        await opt21Submit("物流改成3条，其他不变，先保存，不生成"),
+      );
+      expect(state.turns.at(-1).status).toBe("failed");
+      expect(state.turns.at(-1).assistantText).not.toContain(
+        "最新数量要求已保存为3条",
+      );
+      const raw = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          sessionId,
+        ])
+      ).rows[0].task;
+      expect(raw.turnControl.updateSaved).toBe(false);
+      expect(raw.requirementSave.turnId).not.toBe(state.turns.at(-1).id);
+      expect(state.task.executionPlan).toEqual(saved.task.executionPlan);
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+      finalReply = undefined;
+      await db.end();
+    }
+  });
+  it.each(["instructions", "scenarios", "append-only"])(
+    "OPT43 contextual repair cannot weaken valid delivery %s",
+    async (field) => {
+      const previous = sessionId;
+      try {
+        await opt21Session();
+        const upload = await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + sessionId + "/background-documents",
+          headers,
+          payload: {
+            fileName: "物流规则.txt",
+            contentBase64: Buffer.from(
+              "只生成完整自然的物流问题，不编造订单号。覆盖待揽收、运输中、物流延误情境。",
+            ).toString("base64"),
+          },
+        });
+        expect(upload.statusCode).toBe(201);
+        const proposed = {
+          name: "物流专题",
+          count: 2,
+          instructions: "只问物流，不得编造订单号",
+          scenarios: ["用户查询待揽收订单", "用户查询运输中订单"],
+          classifications: [],
+        };
+        parameterRepairReply = ({ original }) => ({
+          deliveries: original.deliveries.map((g: any) => ({
+            ...g,
+            instructions:
+              field === "instructions" ? "任意客服问题" : g.instructions,
+            scenarios:
+              field === "scenarios"
+                ? ["退款申请被拒", "退款金额不足", "退款到账延迟"]
+                : [...g.scenarios, "用户查询物流延误订单"],
+          })),
+        });
+        toolSequence = [
+          opt43Control(),
+          {
+            name: "read_background",
+            input: { documentId: upload.json().document.id },
+          },
+          {
+            name: "plan_task",
+            input: { executionMode: "plan", deliveries: [proposed] },
+          },
+        ];
+        const state = await opt21End(
+          await opt21Submit(
+            "按附件做一份2条物流专题，只问物流不编造订单号，先给方案，不执行",
+          ),
+        );
+        expect(
+          state.turns.at(-1).status,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBe(field === "append-only" ? "succeeded" : "failed");
+        if (field === "append-only") {
+          const goal = state.task.executionPlan.steps.find(
+            (s: any) => s.action === "generate_candidates",
+          );
+          expect(goal.input.instructions).toContain(proposed.instructions);
+          expect(goal.input.scenarios).toEqual([
+            ...proposed.scenarios,
+            "用户查询物流延误订单",
+          ]);
+          expect(goal.input.outputCount).toBe(2);
+        } else {
+          expect(state.task.executionPlan).toBeFalsy();
+          expect(state.task.turnControl.updateSaved).toBe(false);
+        }
+        expect(
+          state.turns.at(-1).diagnostics.repairRequestsUsed,
+        ).toBeLessThanOrEqual(2);
+      } finally {
+        sessionId = previous;
+        toolSequence = [];
+        parameterRepairReply = undefined;
+      }
+    },
+  );
 });

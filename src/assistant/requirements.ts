@@ -24,6 +24,7 @@ export class RequirementError extends Error {
   constructor(
     public code: string,
     public hint: string,
+    public clarification = false,
   ) {
     super(code);
   }

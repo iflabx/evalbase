@@ -245,3 +245,67 @@ export function assistantFailure(
     "保留输入并联系管理员检查诊断编号；恢复前先核对已执行操作。",
   );
 }
+
+type Observation = {
+  turnId: string;
+  executionAttempt?: number;
+  [key: string]: any;
+};
+
+/** Snapshots may update within an attempt; a new execution never erases its predecessor. */
+export function appendObservation(
+  records: Observation[] | undefined,
+  observation: Observation,
+): Observation[] {
+  const previous = records?.find(
+    (item) =>
+      item.turnId === observation.turnId &&
+      item.executionAttempt === observation.executionAttempt,
+  );
+  const firstFailure =
+    previous?.firstFailure ??
+    previous?.failure ??
+    (previous?.errorCode ? { code: previous.errorCode } : undefined) ??
+    observation.firstFailure;
+  const next = [
+    ...(records ?? []).filter(
+      (item) =>
+        item.turnId !== observation.turnId ||
+        item.executionAttempt !== observation.executionAttempt,
+    ),
+    { ...observation, ...(firstFailure ? { firstFailure } : {}) },
+  ];
+  if (next.length <= 100) return next;
+  const root =
+    next.find((item) => item.firstFailure || item.failure || item.errorCode) ??
+    next[0]!;
+  return [root, ...next.filter((item) => item !== root).slice(-99)];
+}
+
+/** Latest display facts and bounded attempt history, without inventing missing legacy diagnostics. */
+export function turnDiagnostics(
+  records: Observation[] | undefined,
+  turnId: string,
+) {
+  const attempts = (records ?? []).filter((item) => item.turnId === turnId);
+  const latest = attempts.at(-1);
+  if (!latest) return undefined;
+  return {
+    ...latest,
+    attempts: attempts.map((item) => ({
+      executionAttempt: item.executionAttempt ?? null,
+      finishReason: item.finishReason,
+      errorCode: item.errorCode,
+      firstFailure: item.firstFailure,
+      failure: item.failure,
+      modelSteps: item.modelSteps,
+      toolCalls: item.toolCalls,
+      requestAttempts: item.requestAttempts,
+      attemptModelSteps: item.attemptModelSteps,
+      attemptToolCalls: item.attemptToolCalls,
+      attemptRequestAttempts: item.attemptRequestAttempts,
+      parameterRepairs: item.parameterRepairs,
+      parameterRepairStatus: item.parameterRepairStatus,
+    })),
+  };
+}
