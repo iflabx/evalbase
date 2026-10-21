@@ -45,6 +45,14 @@ describe("OPT-35 delivery planning contract", () => {
       "改地址不要了，换成退款进度。",
       true,
     );
+    expect(
+      reviseDeliveryGoals(
+        goals,
+        [replacement],
+        "把改地址换成退款进度，数量还是1条，查物流保持2条。",
+        true,
+      ),
+    ).toEqual(updated);
     expect(updated[0]).toEqual(goals[0]);
     expect(updated[1].classifications[0].allowedValues).toEqual(["退款进度"]);
     expect(updated[1].count).toBe(1);

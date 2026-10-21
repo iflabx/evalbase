@@ -140,11 +140,7 @@ function requestsSingleCategoryReplacement(
       /^\s*(?:(?:不要了|取消了)\s*[，,]?\s*)?(?:换成|替换为)\s*/u,
     )?.[0];
     if (!action) return false;
-    const target = tail.slice(action.length);
-    return (
-      target.startsWith(nextValue) &&
-      /^[，,\s]*$/u.test(target.slice(nextValue.length))
-    );
+    return tail.slice(action.length).split(/[，,]/u)[0].trim() === nextValue;
   });
 }
 
