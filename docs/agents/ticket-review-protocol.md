@@ -13,6 +13,8 @@ Pin the baseline and review target. Before commit, include the intended working-
 
 Validate affected normal behavior, applicable critical failure/boundary paths and relevant static/build/document checks. Fix P0/P1 before completion. Do not repeat tooling-enforced checks manually or infer coverage from an unrelated green suite. Record detailed evidence once; Ticket/ledger entries link to it.
 
+For shared validation, planning, recovery or state projection, apply [Complete root-cause scope](../../AGENTS.md#complete-root-cause-scope): check that real callers use the same decision, replaced branches are removed or explicitly versioned, and regression evidence covers correction through continuation/completion. Judge scope by the affected contract; structural changes are acceptable when they remove an observed conflict. Include this in the same review, without a separate gate.
+
 ## Targeted Recheck
 
 After an authorized repair, recheck the named finding, its regression and directly adjacent behavior. Reuse evidence for unchanged surfaces. Expand only when the repair changes another public contract or reveals a concrete additional risk. Report unresolved findings and material limits; do not restart the whole audit for a new commit SHA alone.
@@ -39,7 +41,7 @@ Do not reopen historical Tickets or enumerate unrelated concurrency orders. Expl
 ## Closure sequence
 
 1. Record baseline, target code identity, changed files and applicable matrix items in the existing review evidence.
-2. Report findings with severity, file/line evidence and the smallest remedy. Preserve the Standards/Spec distinction while identifying blockers clearly.
+2. Report findings with severity, file/line evidence and the smallest complete root-cause remedy. Preserve the Standards/Spec distinction while identifying blockers clearly.
 3. Apply authorized repairs and run only invalidated checks. Map prior evidence to unchanged items rather than rerunning them.
 4. Record the final code identity, resolved and residual findings, material untested claims and conclusion. Link this record from lifecycle documents as needed.
 

@@ -19,6 +19,18 @@ At the start of a task, inspect the working directory, branch, `HEAD` and releva
 
 Follow [development workflow](docs/agents/development-workflow.md) for branches, integration, push and deployment. Reuse the authorized feature/batch branch; a new Ticket within it does not require another branch. Implementation must not run directly on `main`. Merge, push, tag, Release and production deployment each need authorization covering that action; existing explicit authorization remains valid within its scope and must not be requested again.
 
+## Complete root-cause scope
+
+“精简流程、不要过度开发” means the smallest complete design that satisfies the approved behavior and resolves the root cause across affected callers. File count and diff length are not completion criteria.
+
+- Choose the repair scope from the failed contract and its actual consumers. When failures recur across inputs or recovery paths, trace input, validation, persistence, execution, recovery and presentation before choosing another patch. Record only the affected paths in the existing Ticket or design.
+- Necessary structural changes are allowed within authorized behavior: consolidate conflicting decisions, adjust internal interfaces, extract shared logic with real callers, and remove replaced branches. State the responsibility conflict, compatibility boundary and verification path; routine restructuring needs no separate approval. Product scope, data use, permissions and budget changes still follow their existing authorization constraints.
+- Reuse existing infrastructure and the authoritative state. New abstractions must reduce an observed duplication or contract conflict. Keep unrelated cleanup and speculative capabilities out of scope.
+- Verify the mechanism through affected public flows and shared callers: normal completion, correction, continuation and relevant failure/budget boundaries. A green helper test alone does not establish user-flow completion. Preserve first failures and distinguish automatic recovery, normal user clarification and technical intervention.
+- Use this rule in place of older generic “fewest files”, “shortest diff” or localized-only guidance. Explicit product AC, permission checks, fixed confirmations, immutable data and frozen budgets remain binding. This rule adds no mandatory new Ticket, review pass, broad suite or permission checkpoint.
+
+For assistant planning, correction or recovery work, read the affected sections of the [mechanism consolidation plan](docs/assistant-mechanism-consolidation-2026-10-22.md); its proposed changes require implementation evidence before being reported as deployed.
+
 ## Proportional changes
 
 - **Documentation only:** change the relevant rules/records, inspect the diff, check changed Markdown and run `npm run docs:check` once after the final document edits. No application build, browser checkpoint, TDD or full code review is required.

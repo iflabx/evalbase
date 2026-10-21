@@ -1,5 +1,7 @@
 # 项目助手整改方案
 
+2026-10-22 当前方案入口：[机制整理与修改方案](assistant-mechanism-consolidation-2026-10-22.md)。针对首批五项复测暴露的参数纠错、数量修改、预算恢复、提示和诊断衔接，按共同合同整理，允许必要的结构调整。方案待开发；本轮只更新规定与文档，4217应用仍为92492e7。以下带日期记录保留历史，不代表本轮问题已关闭。
+
 2026-10-19 最新补修安排：按最新会话只读诊断建立 [OPT-38](../.scratch/assistant-optimization/issues/38-background-retrieval-and-planning-recovery.md)，范围和定向验收集中在该票。先完成未命中检索、依据选择和普通重试恢复，再继续 OPT-31 内容与交付验收；沿用本章架构与预算，不更换框架。本次仅编写文档，OPT-38 not-started，OPT-31 in-progress，4217 与现有验收数据保持。
 
 2026-10-19 最新实施：保留 AI SDK、收敛业务编排的 [§8](#8-2026-10-18-业务编排收敛整改) 已拆为 OPT-34–37。后续 Owner 单独授权的 OPT-34 已完成，详细实施、定向验证及限制见 [记录](../.scratch/assistant-optimization/opt34-verification.md)；后续单独授权的 OPT-35 亦已完成，见 [记录](../.scratch/assistant-optimization/opt35-verification.md)；后续单独授权的 OPT-36 亦已完成，见 [记录](../.scratch/assistant-optimization/opt36-verification.md)；OPT-37 已实现工作区接入、旧任务兼容及必要接入补修，并按后续授权更新同一 4217，详见 [记录](../.scratch/assistant-optimization/opt37-verification.md)。OPT-37 真实闭环仍在收尾，Owner pending。§1–7 和下方旧记录保留历史范围；OPT-31 仍为 in-progress，内容质量与原八类验收未被本次代签。
@@ -192,3 +194,9 @@ OPT-37 已接入各交付目标的真实运行、草稿和采用回执，区分�
 UI 仍严格对齐 frontend-v1，正式改动位于 frontend-v3，仅接入必要状态与操作，不重做视觉或新增工作台。没有新主业务阶段或确认顺序变化，因此本次不改冻结原型和主流程图。
 
 方案创建时仅获文档授权；后续 Owner 已单独授权 OPT-34–37 开发及 OPT-37 更新 4217。本轮仅更新受影响服务，固定代码、模型配置和数据保留证据集中见 [OPT-37 记录](../.scratch/assistant-optimization/opt37-verification.md)，不包含合并或推送。不增加 400 条生成、5/10 人压测、两小时稳定试验或验收服务器重启。一次小流程通过不等于任意文档、任意模型零失败。
+
+## 9. 2026-10-22 机制整理
+
+具体修改合同、职责落点、旧路径退出、预算兼容及三阶段建议统一在[机制方案](assistant-mechanism-consolidation-2026-10-22.md)维护；验证断言在[测试计划 §5.18](test-plan-data-selection-and-assistant.md#518-机制整理验证待实施)。不新建重复的整改规则。
+
+本次“精简”的工程含义以[AGENTS.md](../AGENTS.md#complete-root-cause-scope)为准：完整根因和受影响调用方决定范围，必要的模块/接口整理属于修复。局部函数通过、自动恢复成功与用户流程完成分别报告。原OPT票及内容质量验收状态保留；此次文档更新不授权代码实施、真实模型复测、部署、合并或推送。
