@@ -1,0 +1,29 @@
+{
+  "oldBudgets": {
+    ".scratch/assistant-optimization/opt42/semantic-budget.json": "2a70fa3bf42cb1e641557ea62c543d72fba16a61178fac3e8f96c0eb88ca1297",
+    ".scratch/assistant-optimization/opt42-pause-resume/semantic-budget.json": "6307e34deb8e1b8763c85b247ecd87cfc6476f61a252b4b21d1c9df2ec856fed",
+    ".scratch/assistant-optimization/opt41/semantic-budget.json": "20e7cdfa5a869d7f6de12f09bc5d8b754cb0b381e83cf9c9afa7c990a0d9599c",
+    ".scratch/assistant-optimization/opt31-resume/owner-snapshot.json": "440f3aeeec47cdc8121c28de4d408fd265dc2a23e1ceb811888dacc1770f0196",
+    ".scratch/assistant-optimization/opt39-42-single-session/semantic-budget.json": "f4fe460b41824bcd4a5be87cc16bc0e468692e829963eb0aacd073eb778e0def",
+    ".scratch/assistant-optimization/joint-planning-fix/semantic-budget.json": "c810805ada66f2f7824c4b8817ebcb050175b4069ad738fb63b722d755e554d0",
+    ".scratch/assistant-optimization/clarification-correction/semantic-budget.json": "e6243b50f27c92edc0b2e61dc82b403fd5bfbe6c14cccf34e24103261cdb2e74",
+    ".scratch/assistant-optimization/batch1-side-browser/semantic-budget.json": "0d220f653d194620eece99869237441d4d88cd479d99d0e202fd00badfeae0cb"
+  },
+  "ownerTables": {
+    "app_user": "06fb4c83bb65c5f0afccd99c1ccba075",
+    "project": "b3d25fb34e86e8e9662f51e4c925f624",
+    "data_asset": "24f568cb50c0bce0d24c6b8294dfa777",
+    "source_record": "5b12fd0af667c5501b787e8e34beeb15",
+    "collaborative_draft": "5de7530a7a9683f037a0632c08b57e51",
+    "collaborative_draft_record": "8fa4da74a2a08c85525e1bc98ab171fd",
+    "test_set_version": "bfe37e482eb9fffa36a0ae3c85c28148",
+    "processing_task": "25a7d0cd8c2fe7705ecf7109e385897d",
+    "processing_run": "e493c7a74ee18295f3d379fb271c02bb",
+    "processing_batch": "2a7beb271f11c15122b9e55920c40922",
+    "processing_acceptance": "55aca43fdb3e96c372957c4f0db31993",
+    "assistant_session": "7d0990d818e3f5a397eea286bc301f16",
+    "assistant_turn": "fd948b76d33e9daec7e80e0a12424611",
+    "assistant_proposal": "1e2feb1be5dde66177cf40ae473b6658",
+    "assistant_background_document": "31d2206be549754e7918d5cc389f5a16"
+  }
+}

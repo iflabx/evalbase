@@ -118,3 +118,7 @@
 - 原始证据：batch1-side-browser/semantic-budget.json、semantic-results.json、ui-prompts.json、protection-before.json、protection-after.json。截图和临时测试限额驱动单独保留，不提交私有凭据或数据库。
 - 第1例UI重试复用原turn，因此最终turn快照包含重试后的诊断；首次失败另有截图及UI事件记录，不能仅用最终turn覆盖首次失败事实。
 - 未执行后续测试、未修改业务代码、未重新生成旧成果。
+
+## 后续材料前提澄清
+
+2026-10-21：代码审查确认现有从零生成必须有背景文档。上述4个生成场景没有上传文档且均未进入生成，不能据此称“生成失败4/5”或归因于内容模型。原始事实保留；已另按用户授权完成最小修复，并为新的5个独立会话上传合成TXT，在固定新预算内复测，仍有工作流失败。详见[修复与有界复测](batch1-repair-verification.md)。
