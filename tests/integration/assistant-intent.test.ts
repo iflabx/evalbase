@@ -1366,6 +1366,11 @@ describe("OPT42 per-turn intent public boundary", () => {
         payload: {},
       })
     ).json().sessionId;
+    const definitions: Record<string, string> = {
+      查物流: "1. 查物流：用户查询订单的运输位置、物流更新或预计送达时间。",
+      改地址: "2. 改地址：用户请求修改订单的收货地址。",
+      退款进度: "3. 退款进度：用户查询已申请退款的处理进度或到账时间。",
+    };
     const uploaded = await app.inject({
       method: "POST",
       url: base() + "/sessions/" + id + "/background-documents",
@@ -1373,17 +1378,27 @@ describe("OPT42 per-turn intent public boundary", () => {
       payload: {
         fileName: "电商客服规范.txt",
         contentBase64: Buffer.from(
-          "电商客服用例：物流查询、修改收货地址、查询退款进度。问题是完整自然的用户问法，期望输出是逐题客服处理行为，不编造订单信息。",
+          Object.values(definitions).join("\n") +
+            "\n问题是完整自然的用户问法，期望输出是逐题客服处理行为，不编造订单信息。",
         ).toString("base64"),
       },
     });
     expect(uploaded.statusCode).toBe(201);
-    const goal = (name: string) => ({
+    const goal = (name: string, count = 2) => ({
       name,
-      count: 2,
+      count,
       instructions: "生成" + name + "问题及逐题客服处理行为",
       scenarios: ["正常咨询", "信息不足", "进度异常"],
-      classifications: [],
+      classifications: [
+        {
+          field: "metadata",
+          key: "业务场景",
+          basis: "background",
+          allowedValues: [name],
+          definitions: [{ value: name, text: definitions[name] }],
+          quotas: [{ value: name, count }],
+        },
+      ],
     });
     const before = await effects();
     const initial = await send(
@@ -1436,13 +1451,13 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     ]);
     expect(revised.task.overallTargetCount).toBe(3);
-    const replaced = await send(id, "把改地址换成退款进度，先不要执行", [
+    const replaced = await send(id, "改地址不要了，换成退款进度。", [
       decision("plan", { requiresUpdate: true }),
       {
         name: "plan_task",
         input: {
           control: { mode: "plan", requiresUpdate: true },
-          deliveries: [{ ...goal("退款进度"), id: goals[1].id, count: 1 }],
+          deliveries: [{ ...goal("退款进度", 1), id: goals[1].id, count: 1 }],
         },
       },
     ]);

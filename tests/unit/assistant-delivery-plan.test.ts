@@ -31,6 +31,66 @@ const single = (name = "GB A.1.a", count = 5) => ({
 });
 
 describe("OPT-35 delivery planning contract", () => {
+  it("allows an explicit single-category replacement without changing sibling rules or quotas", () => {
+    const goals = reviseDeliveryGoals(
+      [],
+      [single("查物流", 2), single("改地址", 1)],
+      "创建两份客服测试集",
+    );
+    const replacement = { ...single("退款进度", 1), id: goals[1].id };
+    replacement.classifications[0].quotas = [{ count: 1, value: "退款进度" }];
+    const updated = reviseDeliveryGoals(
+      goals,
+      [replacement],
+      "改地址不要了，换成退款进度。",
+      true,
+    );
+    expect(updated[0]).toEqual(goals[0]);
+    expect(updated[1].classifications[0].allowedValues).toEqual(["退款进度"]);
+    expect(updated[1].count).toBe(1);
+    const unbounded = structuredClone(goals);
+    delete (unbounded[1].classifications[0] as any).quotas;
+    const widened = {
+      ...replacement,
+      count: 2,
+      classifications: [
+        { ...replacement.classifications[0], quotas: undefined },
+      ],
+    };
+    expect(() =>
+      reviseDeliveryGoals(
+        unbounded,
+        [widened],
+        "改地址不要了，换成退款进度。",
+        true,
+      ),
+    ).toThrow();
+
+    for (const text of [
+      "不要把改地址换成退款进度",
+      "解释把改地址换成退款进度是什么意思",
+      "把查物流换成退款进度",
+    ]) {
+      expect(() =>
+        reviseDeliveryGoals(goals, [replacement], text, true),
+      ).toThrow();
+    }
+    expect(() =>
+      reviseDeliveryGoals(
+        goals,
+        [
+          {
+            ...replacement,
+            count: 2,
+            classifications: single("退款进度", 2).classifications,
+          },
+        ],
+        "改地址不要了，换成退款进度。",
+        true,
+      ),
+    ).toThrow();
+  });
+
   it("keeps two independent deliveries, computed total and stable IDs in generation steps", () => {
     const goals = reviseDeliveryGoals(
       [],

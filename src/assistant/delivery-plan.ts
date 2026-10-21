@@ -103,6 +103,51 @@ function requestsRuleChange(request: string, rule: Rule) {
   });
 }
 
+// A named replacement can change one frozen category without requiring internal field names.
+// Keep the field, quota and every sibling rule; broader changes use the existing explicit rule editor.
+function requestsSingleCategoryReplacement(
+  request: string,
+  before: Rule,
+  after: Rule,
+) {
+  const oldValue =
+    before.allowedValues?.length === 1 ? before.allowedValues[0] : undefined;
+  const nextValue =
+    after.allowedValues?.length === 1 ? after.allowedValues[0] : undefined;
+  if (
+    !oldValue ||
+    !nextValue ||
+    oldValue === nextValue ||
+    before.basis !== after.basis
+  )
+    return false;
+  if (
+    before.quotas?.length !== 1 ||
+    before.quotas[0].value !== oldValue ||
+    after.quotas?.length !== 1
+  )
+    return false;
+  if (
+    before.quotas[0].count !== after.quotas[0].count ||
+    after.quotas[0].value !== nextValue
+  )
+    return false;
+  return request.split(/[。；;\n]|然后/u).some((sentence) => {
+    const clause = sentence.replace(/^\s*(?:请|先|再)?\s*(?:把|将)?\s*/u, "");
+    if (!clause.startsWith(oldValue)) return false;
+    const tail = clause.slice(oldValue.length);
+    const action = tail.match(
+      /^\s*(?:(?:不要了|取消了)\s*[，,]?\s*)?(?:换成|替换为)\s*/u,
+    )?.[0];
+    if (!action) return false;
+    const target = tail.slice(action.length);
+    return (
+      target.startsWith(nextValue) &&
+      /^[，,\s]*$/u.test(target.slice(nextValue.length))
+    );
+  });
+}
+
 function ruleChanges(
   prior: DeliveryGoal,
   changes: DeliveryChange["classifications"],
@@ -172,6 +217,7 @@ function ruleChanges(
     const basisChanged = original.basis !== merged.basis;
     if (
       !permitted &&
+      !requestsSingleCategoryReplacement(request, original, merged) &&
       (basisChanged ||
         valuesChanged ||
         definitionsChanged ||
