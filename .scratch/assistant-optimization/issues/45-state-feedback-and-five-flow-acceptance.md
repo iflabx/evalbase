@@ -1,14 +1,14 @@
 # OPT-45 事实反馈、恢复交互与五项流程验收
 
-Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
-Blocked by: OPT-44（传递依赖 OPT-43）
+Status: needs-triage
+Implementation: completed
+Validation: targeted-pass; CU-partial (3/5); Owner pending
+Blocked by: 五项真实验收未全通过（CU-4 / CU-5）；OPT-43 / OPT-44 实现与定向验证已完成
 
 - 优先级：P1；阶段 C。
 - 前置：[OPT-44](44-resume-decision-and-budget-continuity.md) 及 [OPT-43](43-requirement-amendments-and-repair-contract.md) 的共享合同已接入并通过定向验证。
 - 依据：[实施规格](../spec.md)、[机制方案 §7–9](../../../docs/assistant-mechanism-consolidation-2026-10-22.md)、[测试矩阵 §5.18](../../../docs/test-plan-data-selection-and-assistant.md#518-机制整理验证待实施)。
-- 当前仅创建开发票；下列真实模型验证是待执行计划，本次不调用模型、不部署。
+- 当前状态：开发和4217更新已完成；五项真实验收3项达到终点、2项失败，票据不关闭。证据与未通过原因集中在[OPT-45验证记录](../opt45-verification.md)。
 
 ## 目标
 
@@ -87,3 +87,5 @@ Blocked by: OPT-44（传递依赖 OPT-43）
 ## Comments
 
 - 2026-10-22：按已确认三阶段方案创建阶段 C 票，集中普通提示五项闭环并明确有界额度；当前 Implementation not-started、Validation not-run。仅文档计划，没有运行、部署或数据改动。
+
+- 2026-10-22：代码 `1b929c4`，共享事实反馈、权威恢复UI、受控修订/动作校验及隔离请求计量已完成；保持 frontend-v1 控件、token与密度，无新增面板或导航。9项浏览器定向回归及编译检查通过。4217 同版五会话共47次模型请求/116296ms活跃/6条生成并采用；CU-1业务补充后成功、CU-2/3自动纠正后成功，CU-4规划纠错未恢复、CU-5主题替换被分类保护拒绝。R45-6未通过，Status needs-triage，不签整体完成；全部旧数据和10份旧预算通过保护核对。详见[统一证据](../opt45-verification.md)，不重复开预算或重跑完成项。
