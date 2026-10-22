@@ -20,6 +20,7 @@ type Call = {
   input: Record<string, unknown>;
   rawInput?: string;
   finishReason?: string;
+  text?: string;
 };
 let script: Call[] = [];
 let observed: any[] = [];
@@ -57,23 +58,25 @@ const model = createServer(async (request, response) => {
       choices: [
         {
           index: 0,
-          finish_reason: call?.finishReason ?? (call ? "tool_calls" : "stop"),
-          message: call
-            ? {
-                role: "assistant",
-                content: null,
-                tool_calls: [
-                  {
-                    id: randomUUID(),
-                    type: "function",
-                    function: {
-                      name: call.name,
-                      arguments: call.rawInput ?? JSON.stringify(call.input),
+          finish_reason:
+            call?.finishReason ?? (call && !call.text ? "tool_calls" : "stop"),
+          message:
+            call && !call.text
+              ? {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: randomUUID(),
+                      type: "function",
+                      function: {
+                        name: call.name,
+                        arguments: call.rawInput ?? JSON.stringify(call.input),
+                      },
                     },
-                  },
-                ],
-              }
-            : { role: "assistant", content: prose },
+                  ],
+                }
+              : { role: "assistant", content: call?.text ?? prose },
         },
       ],
       usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
@@ -2371,6 +2374,41 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
     expect((await read(id)).task.feedback.requirementsSaved).toBe(true);
     expect(await effects()).toEqual(before);
+  });
+  it("OPT46 handles oral-only amendment then truncation in the same original repair allowance", async () => {
+    const { id, goal } = await savedRefundPlan();
+    const state = await send(
+      id,
+      "名称改成退款服务测试，分类、数量和其他要求保持，先保存方案，不执行",
+      [
+        decision("plan", { requiresUpdate: true }),
+        { name: "", input: {}, text: "已将名称改为退款服务测试。" },
+        {
+          name: "plan_task",
+          input: {},
+          finishReason: "length",
+          rawInput: '{"deliveries":[{"id":"' + goal.id + '","name":"broken',
+        },
+        {
+          name: "plan_task",
+          input: { deliveries: [{ id: goal.id, name: "退款服务测试" }] },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(observed).toHaveLength(4);
+    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(2);
+    expect(observed[3].tools.map((tool: any) => tool.function.name)).toEqual([
+      "plan_task",
+    ]);
+    expect(JSON.stringify(observed[3].messages)).not.toContain("broken");
+    expect(deliveryGoals(state.task.executionPlan)[0]).toMatchObject({
+      ...goal,
+      name: "退款服务测试",
+    });
+    expect((await read(id)).task.feedback.requirementsSaved).toBe(true);
   });
   it("OPT46 preserves exhausted amendment limits and explains the same refusal for text and retry", async () => {
     const { id, state: initial, goal } = await savedRefundPlan();
