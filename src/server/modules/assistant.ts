@@ -1,3 +1,4 @@
+import { recoveryReason } from "../../assistant/feedback.js";
 import type { registerDrafts } from "./drafts.js";
 import { createSharedDraft } from "../../drafts/create.js";
 import {
@@ -171,7 +172,16 @@ export function registerAssistant({
       return await action();
     } catch (e) {
       if (e instanceof Error && "status" in e && "code" in e)
-        return reply.code(Number(e.status)).send({ error: { code: e.code } });
+        return reply.code(Number(e.status)).send({
+          error: {
+            code: e.code,
+            ...(e instanceof AssistantError &&
+            e.code === "assistant_retry_unavailable" &&
+            recoveryReason(e.hint)
+              ? { reason: e.hint, recoveryMessage: recoveryReason(e.hint) }
+              : {}),
+          },
+        });
       throw e;
     }
   }

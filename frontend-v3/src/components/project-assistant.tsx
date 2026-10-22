@@ -326,8 +326,18 @@ const messages: Record<string, string> = {
   processing_retry_unavailable: "本轮无法重试。已有结果保留，请查看处理任务中的恢复操作。",
   processing_not_found: "当前任务不可访问，或来源已被删除。",
 };
-const errorText = (error: unknown) =>
-  messages[error instanceof Error ? error.message : ""] ?? "操作未完成，请重试。输入已保留。";
+const errorText = (error: unknown) => {
+  if (
+    error instanceof Error &&
+    error.message === "assistant_retry_unavailable" &&
+    "recoveryMessage" in error &&
+    typeof error.recoveryMessage === "string"
+  )
+    return error.recoveryMessage;
+  return (
+    messages[error instanceof Error ? error.message : ""] ?? "操作未完成，请重试。输入已保留。"
+  );
+};
 const post = <T,>(path: string, body: unknown, key?: string) =>
   request<T>(path, {
     method: "POST",

@@ -688,6 +688,16 @@ function requestedQuota(value: string, request: string) {
   })[0];
 }
 
+/** Adding rows/scenes does not authorize a new independent delivery. */
+export function deliveryAdditionClause(clause: string) {
+  return (
+    !/不要|不得|别|禁止/u.test(clause) &&
+    /(?:新增|增加|添加|新建|再建|再做|另做|多做|加|多)\s*(?:(?:[一两三四五六七八九十\d]+\s*(?:份|个))[^，。；;\n]{0,40}(?:测试集|集合)|(?:独立的?)?(?:测试集|集合))/u.test(
+      clause,
+    )
+  );
+}
+
 /** Omission preserves goals and fields; IDs, not names or array positions, identify updates. */
 export function reviseDeliveryGoals(
   current: DeliveryGoal[],
@@ -741,7 +751,17 @@ export function reviseDeliveryGoals(
         );
         continue;
       }
-      if (current.length && !change.id)
+      const explicitAddition =
+        !current.some((goal) => goal.name === change.name) &&
+        userText
+          .split(/[。；;，,\n]/u)
+          .some(
+            (clause) =>
+              typeof change.name === "string" &&
+              clause.includes(change.name) &&
+              deliveryAdditionClause(clause),
+          );
+      if (current.length && !change.id && !explicitAddition)
         fail(
           "更新交付必须使用当前方案中的真实引用，不能按名称覆盖或另建重复交付。",
         );
@@ -955,8 +975,22 @@ export function reviseDeliveryGoals(
       targetCount: goal.count,
       classifications: goal.classifications as VerifiedRule[],
     });
-  if (!current.length || changes?.length || count)
-    validateRequestedShape(goals, userText);
+  if (!current.length || changes?.length || count) {
+    const added = current.length
+      ? goals.filter((goal) => !current.some((prior) => prior.id === goal.id))
+      : [];
+    if (added.length) {
+      const clauses = userText.split(/[。；;，,\n]/u);
+      validateRequestedShape(
+        added,
+        clauses.filter(deliveryAdditionClause).join("，"),
+      );
+      validateRequestedShape(
+        goals,
+        clauses.filter((clause) => !deliveryAdditionClause(clause)).join("，"),
+      );
+    } else validateRequestedShape(goals, userText);
+  }
   return goals;
 }
 

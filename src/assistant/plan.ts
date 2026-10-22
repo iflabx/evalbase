@@ -196,6 +196,22 @@ export function sourceWithinTask(
   );
 }
 
+/** Verification and recovery must agree on both requirements and current documents. */
+export function planVerificationCurrent(
+  task: Record<string, any>,
+  revision: number,
+  documentsKey: string | undefined,
+) {
+  const check = task.requirementCheck;
+  return Boolean(
+    check?.key &&
+    check.taskRevision === revision &&
+    check.requirementsKey === planRequirementsKey(task) &&
+    documentsKey &&
+    check.documentsKey === documentsKey,
+  );
+}
+
 export function planRequirementsKey(task: Record<string, any>, legacy = false) {
   return sha256(
     canonicalJson({

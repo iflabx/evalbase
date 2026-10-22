@@ -1,3 +1,8 @@
+import {
+  classifyToolFailure,
+  repairRequestAvailable,
+  type RepairLimits,
+} from "./tool-repair.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import {
   checkpointExecutionBudget,
@@ -301,12 +306,20 @@ export function recoveryDecision(
     ? sha256(canonicalJson({ requestTurnId: amendmentId }))
     : undefined;
   const repairs = Object.values(task.parameterRepairLimits ?? {}) as any[];
+  const status = task.parameterRepairStatus;
+  const kind =
+    status && (status.amendmentId === amendmentId || status.turnId === turn.id)
+      ? classifyToolFailure(status.issues ?? [])
+      : "context";
   if (
     pending &&
-    repairs.reduce(
-      (n, v) => n + (!identity || v.identity === identity ? (v.used ?? 0) : 0),
-      0,
-    ) >= 2
+    (identity
+      ? !repairRequestAvailable(
+          (task.parameterRepairLimits as RepairLimits) ?? {},
+          identity,
+          kind,
+        )
+      : repairs.reduce((n, v) => n + (v.used ?? 0), 0) >= 2)
   )
     return stop("repair_limit");
   const control = task.turnControl;

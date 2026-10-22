@@ -1,3 +1,4 @@
+import { planVerificationCurrent } from "./plan.js";
 // Model clarification is useful input, never an execution or save receipt.
 export const claimedExecution = (text: string) =>
   /(?:已经|正在|已)(?!有)[^。；;，,\n]{0,40}(?:开始|提交|生成|清洗|改写|扩充|创建|执行)(?!的)/u.test(
@@ -15,6 +16,7 @@ export function assistantFeedback(
   facts: {
     revision: number;
     hasBackground: boolean;
+    documentsKey?: string;
     summaryFailed?: boolean;
     recoveryReason?: string;
   },
@@ -30,6 +32,10 @@ export function assistantFeedback(
     task.requirementSave?.key &&
     task.requirementSave.taskRevision === facts.revision,
   );
+  const verified = Boolean(
+    !pending &&
+    planVerificationCurrent(task, facts.revision, facts.documentsKey),
+  );
   const planReady = Boolean(
     !pending &&
     !task.question &&
@@ -40,6 +46,7 @@ export function assistantFeedback(
     kind,
     message,
     requirementsSaved: saved,
+    requirementsVerified: verified,
     planReady: kind === "plan" ? planReady : false,
     summaryFailed: Boolean(saved && facts.summaryFailed),
     ...(action ? { action } : {}),
@@ -67,6 +74,8 @@ export function assistantFeedback(
       "请上传本次生成依据的背景文档，或选择已有原始资料进行处理。",
       "background",
     );
+  if (pending && facts.recoveryReason === "repair_limit")
+    return result("amendment", recoveryReason("repair_limit")!);
   if (pending)
     return result(
       "amendment",
@@ -91,6 +100,11 @@ export function assistantFeedback(
     return result(
       "blocked",
       `${saved ? "方案已保存；" : ""}${recoveryReason(facts.recoveryReason)}`,
+    );
+  if (verified && task.executionPlan?.mode === "plan" && planReady)
+    return result(
+      "plan",
+      "当前方案已核对，符合本次要求；方案内容未变，尚未执行。",
     );
   if (saved && task.executionPlan?.mode === "plan" && planReady)
     return result(
@@ -129,7 +143,7 @@ export function recoveryReason(reason: string | undefined): string | undefined {
       task_budget_exhausted: "本次任务已达到执行限额，已有成果保留。",
       insufficient_task_time: "剩余执行额度不足，已有进度保留。",
       no_progress: "连续尝试未取得新进展，任务已暂停；已有成果保留。",
-      repair_limit: "自动修正已达到上限，已有要求和成果保留。",
+      repair_limit: "自动修正次数已用完，原方案保留，本次修改尚未保存。",
       attempt_limit: "本轮恢复次数已达上限，已有成果保留。",
       event_limit: "自动续步已达到上限，已有成果保留。",
       session_limit: "本会话已达到执行上限，已有成果保留。",

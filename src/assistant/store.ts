@@ -9,7 +9,11 @@ import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject, opaqueId } from "../server/support.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
-import { advancePlan } from "./plan.js";
+import {
+  advancePlan,
+  planRequirementsKey,
+  planVerificationCurrent,
+} from "./plan.js";
 import { recoveryDecision, backgroundVersion } from "./recovery.js";
 import { backgroundCatalog } from "./background.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
@@ -61,6 +65,7 @@ export function taskPresentation(
   delete presented.parameterRepairStatus;
   delete presented.planningRecovery;
   delete presented.requirementSave;
+  delete presented.requirementCheck;
   delete presented.recoverySegment;
   delete presented.recoveryRequests;
   delete presented.budgetSegments;
@@ -571,6 +576,7 @@ export async function readSession(
             {
               revision: Number(current.task_revision),
               hasBackground: backgroundDocuments.length > 0,
+              documentsKey: backgroundVersion(backgroundDocuments),
               recoveryReason: recovery.reason,
               summaryFailed:
                 latestTurn?.status === "failed" &&
@@ -1180,7 +1186,7 @@ export async function startTurn(
   }
 }
 export async function turnFence(
-  db: Database,
+  db: Pick<Database, "query">,
   scope: AssistantScope,
   turnId: string,
   token?: string,
@@ -1411,13 +1417,37 @@ export async function recoverAssistantReceipt(
     await assistantAccess(db, scope);
     const row = (
       await db.query(
-        "SELECT task FROM assistant_session WHERE project_id=$1 AND actor_id=$2 AND task->'requirementSave'->>'key'=$3 AND task->'requirementSave'->>'taskRevision'=task_revision::text",
+        "SELECT id,task,task_revision FROM assistant_session WHERE project_id=$1 AND actor_id=$2 AND ((task->'requirementSave'->>'key'=$3 AND task->'requirementSave'->>'taskRevision'=task_revision::text) OR (task->'requirementCheck'->>'key'=$3 AND task->'requirementCheck'->>'taskRevision'=task_revision::text))",
         [scope.projectId, scope.actorId, item.key],
       )
     ).rows[0];
-    if (row)
+    let verification =
+      row?.task.requirementCheck?.key === item.key &&
+      row.task.requirementCheck.requirementsKey ===
+        planRequirementsKey(row.task)
+        ? row.task.requirementCheck.verification
+        : undefined;
+    if (verification) {
+      const documents = (
+        await db.query(
+          'SELECT id,sha256,extractor_version AS "extractorVersion" FROM assistant_background_document WHERE session_id=$1',
+          [row.id],
+        )
+      ).rows;
+      // The task revision alone does not prove the selected documents are unchanged.
+      if (
+        !planVerificationCurrent(
+          row.task,
+          Number(row.task_revision),
+          backgroundVersion(documents),
+        )
+      )
+        verification = undefined;
+    }
+    if (row && (row.task.requirementSave?.key === item.key || verification))
       result = {
         recovered: true,
+        ...(verification ? { verification } : {}),
         control: row.task.turnControl,
         task: {
           executionPlan: row.task.executionPlan,

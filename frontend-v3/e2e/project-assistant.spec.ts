@@ -1430,3 +1430,39 @@ test("OPT45 concrete business conflict stays visible with an older saved plan", 
   await expect(page.getByText(problem, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "按方案执行", exact: true })).toHaveCount(0);
 });
+
+test("OPT46 ordinary continue displays the server repair limit and retains the user's message", async ({
+  page,
+}) => {
+  const message = "自动修正次数已用完，原方案保留，本次修改尚未保存。";
+  let submissions = 0;
+  await fixture(page, {
+    task: { goal: "退款测试集", stage: "failed" },
+    intercept: async (route) => {
+      if (
+        route.request().method() !== "POST" ||
+        !new URL(route.request().url()).pathname.endsWith("/turns")
+      )
+        return false;
+      submissions++;
+      await route.fulfill({
+        status: 409,
+        json: {
+          error: {
+            code: "assistant_retry_unavailable",
+            reason: "repair_limit",
+            recoveryMessage: message,
+          },
+        },
+      });
+      return true;
+    },
+  });
+  await page.goto(url + "/one");
+  await page.getByLabel("向项目助手发送消息").fill("继续保存方案，先不要执行");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByText(message, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("继续保存方案，先不要执行");
+  expect(submissions).toBe(1);
+  await expect(page.getByText("操作未完成，请重试。输入已保留。", { exact: true })).toHaveCount(0);
+});

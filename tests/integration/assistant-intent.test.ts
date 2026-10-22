@@ -1,3 +1,5 @@
+import Ajv from "ajv";
+import { recoverAssistantReceipt } from "../../src/assistant/store.js";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -2223,6 +2225,540 @@ describe("OPT42 per-turn intent public boundary", () => {
     instructions: "完整用户问题和逐题处理行为",
     scenarios: ["正常咨询", "信息不足", "进度异常"],
     classifications: [],
+  });
+  async function savedRefundPlan() {
+    const { id, documentId } = await backgroundSession(
+      "退款进度：查询退款办理到哪一步。\n退款到账时间：查询退款预计何时到账。",
+    );
+    const state = await send(
+      id,
+      "按附件做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不生成",
+      [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [
+              {
+                ...simpleDelivery(),
+                name: "退款测试",
+                count: 4,
+                classifications: [
+                  {
+                    field: "metadata",
+                    key: "业务类型",
+                    basis: "background",
+                    allowedValues: ["退款进度", "退款到账时间"],
+                    definitions: [
+                      {
+                        value: "退款进度",
+                        text: "退款进度：查询退款办理到哪一步。",
+                      },
+                      {
+                        value: "退款到账时间",
+                        text: "退款到账时间：查询退款预计何时到账。",
+                      },
+                    ],
+                    quotas: [
+                      { value: "退款进度", count: 2 },
+                      { value: "退款到账时间", count: 2 },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    return {
+      id,
+      documentId,
+      state,
+      goal: deliveryGoals(state.task.executionPlan)[0],
+    };
+  }
+  it.each([
+    "类别名请用退款进度和退款到账时间，不要用分类一、分类二。",
+    "名称就用退款测试。",
+    "数量就用4条。",
+  ])(
+    "OPT46 verifies an already-satisfied fact with a real receipt: %s",
+    async (request) => {
+      const { id, state: initial, goal } = await savedRefundPlan();
+      const before = await effects();
+      const state = await send(id, request, [
+        decision("plan", { requiresUpdate: true }),
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(observed).toHaveLength(1);
+      expect(state.task.feedback.requirementsVerified).toBe(true);
+      expect(state.task.feedback.requirementsSaved).toBe(false);
+      expect(state.task.turnControl.updateSaved).toBe(true);
+      expect(state.task.executionPlan).toEqual(initial.task.executionPlan);
+      expect(deliveryGoals(state.task.executionPlan)).toEqual([goal]);
+      expect(
+        successes(state, "plan_task").at(-1).result.verification,
+      ).toMatchObject({ status: "satisfied" });
+      expect((await read(id)).task.feedback.requirementsVerified).toBe(true);
+      expect(await effects()).toEqual(before);
+    },
+  );
+  it("OPT46 contracts a truncated amendment to one guarded patch without replaying malformed history", async () => {
+    const { id, goal } = await savedRefundPlan();
+    const before = await effects();
+    const state = await send(
+      id,
+      "名称改成退款服务测试，分类、数量和其他要求保持。先保存，不执行",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {},
+          finishReason: "length",
+          rawInput:
+            '{"deliveries":[{"id":"' +
+            goal.id +
+            '","name":"broken-output-marker-' +
+            "x".repeat(5000),
+        },
+        {
+          name: "plan_task",
+          input: { deliveries: [{ id: goal.id, name: "退款服务测试" }] },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(observed).toHaveLength(3);
+    const request = observed[2];
+    expect(request.tools.map((item: any) => item.function.name)).toEqual([
+      "plan_task",
+    ]);
+    const schema = request.tools[0].function.parameters;
+    expect(schema.properties.deliveries.items.required).toContain("id");
+    expect(schema.properties.deliveries.items).not.toHaveProperty("else");
+    expect(schema.properties.deliveries.items.properties).not.toHaveProperty(
+      "scenarios",
+    );
+    expect(schema.properties).not.toHaveProperty("steps");
+    expect(JSON.stringify(request.messages)).not.toContain(
+      "broken-output-marker",
+    );
+    expect(JSON.stringify(request.messages).length).toBeLessThan(
+      JSON.stringify(observed[1].messages).length,
+    );
+    expect(deliveryGoals(state.task.executionPlan)[0]).toMatchObject({
+      ...goal,
+      name: "退款服务测试",
+    });
+    expect(
+      state.turns
+        .at(-1)
+        .diagnostics.stepDiagnostics.some(
+          (step: any) => step.finishReason === "length",
+        ),
+    ).toBe(true);
+    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+    expect((await read(id)).task.feedback.requirementsSaved).toBe(true);
+    expect(await effects()).toEqual(before);
+  });
+  it("OPT46 preserves exhausted amendment limits and explains the same refusal for text and retry", async () => {
+    const { id, state: initial, goal } = await savedRefundPlan();
+    const broken: Call = {
+      name: "plan_task",
+      input: {},
+      rawInput: '{"deliveries":[{"id":"' + goal.id + '","name":"',
+      finishReason: "length",
+    };
+    const failed = await send(
+      id,
+      "名称改成退款服务测试，其余不变，先保存方案",
+      [decision("plan", { requiresUpdate: true }), broken, broken],
+    );
+    expect(failed.turns.at(-1).status).toBe("failed");
+    expect(
+      failed.task.recoveryDecision.reason,
+      JSON.stringify(failed.turns.at(-1).diagnostics),
+    ).toBe("repair_limit");
+    expect(failed.task.executionPlan).toEqual(initial.task.executionPlan);
+    const requests = observed.length;
+    const budget = failed.task.executionBudget;
+    const again = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "继续保存方案，先不要执行" },
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toMatchObject({
+      code: "assistant_retry_unavailable",
+      reason: "repair_limit",
+      recoveryMessage: "自动修正次数已用完，原方案保留，本次修改尚未保存。",
+    });
+    const retry = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/retry",
+      headers,
+      payload: {},
+    });
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error).toEqual(again.json().error);
+    const final = await read(id);
+    expect(final.task.feedback.message).toBe(
+      again.json().error.recoveryMessage,
+    );
+    expect(final.task.executionBudget).toEqual(budget);
+    expect(final.turns).toHaveLength(failed.turns.length);
+    expect(observed).toHaveLength(requests);
+  });
+  it("OPT46 reconciles a committed verification receipt without repeating the amendment", async () => {
+    const { id, state: initial } = await savedRefundPlan();
+    const checked = await send(
+      id,
+      "类别名请用退款进度和退款到账时间，不要用分类一、分类二。",
+      [decision("plan", { requiresUpdate: true })],
+    );
+    const receipt = successes(checked, "plan_task").at(-1);
+    const db = createPool(databaseUrl);
+    try {
+      const actorId = (
+        await db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          id,
+        ])
+      ).rows[0].actor_id;
+      const recovered = await recoverAssistantReceipt(
+        db,
+        { projectId, actorId },
+        receipt,
+      );
+      expect(recovered?.result).toMatchObject({
+        verification: { status: "satisfied" },
+        control: { updateSaved: true },
+      });
+      expect((await read(id)).task.executionPlan).toEqual(
+        initial.task.executionPlan,
+      );
+      expect(observed).toHaveLength(1);
+    } finally {
+      await db.end();
+    }
+  });
+  it.each([
+    "类别名请用退款进度和退款到账时间，不要用退款进度。",
+    "类别名请用退款进度和退款到账时间，并把问题翻译成英文。",
+    "类别名请用退款审核和退款到账时间。",
+  ])(
+    "OPT46 does not verify a contradictory, unknown or changed requirement: %s",
+    async (request) => {
+      const { id, state: initial } = await savedRefundPlan();
+      const old = prose;
+      prose = "已核对本次要求。";
+      try {
+        const state = await send(id, request, [
+          decision("plan", { requiresUpdate: true }),
+        ]);
+        expect(state.task.feedback.requirementsVerified).toBe(false);
+        expect(state.task.executionPlan).toEqual(initial.task.executionPlan);
+        expect(
+          successes(state, "plan_task").some(
+            (item: any) => item.result?.verification,
+          ),
+        ).toBe(false);
+      } finally {
+        prose = old;
+      }
+    },
+  );
+  it("OPT46 ordinary continue saves the pending amendment using its remaining original allowance", async () => {
+    const { id, goal } = await savedRefundPlan();
+    const before = await effects();
+    const old = prose;
+    let failed: any;
+    prose = "我会修改名称。";
+    try {
+      failed = await send(id, "名称改成退款服务测试，其余不变，先保存方案", [
+        decision("plan", { requiresUpdate: true }),
+      ]);
+    } finally {
+      prose = old;
+    }
+    expect(failed.turns.at(-1).status).toBe("failed");
+    expect(
+      failed.task.recoveryDecision.action,
+      JSON.stringify(failed.task.recoveryDecision),
+    ).not.toBeNull();
+    expect(failed.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+    const state = await send(id, "继续保存方案，先不要执行", [
+      {
+        name: "plan_task",
+        input: { deliveries: [{ id: goal.id, name: "退款服务测试" }] },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.feedback.requirementsSaved).toBe(true);
+    expect(deliveryGoals(state.task.executionPlan)[0]).toMatchObject({
+      ...goal,
+      name: "退款服务测试",
+    });
+    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(2);
+    expect(state.turns.at(-1).diagnostics.attempts[0].errorCode).toBeTruthy();
+    expect(state.task.executionPlan.mode).toBe("plan");
+    expect(await effects()).toEqual(before);
+  });
+  it("OPT46 rejects verification and receipt recovery after a background version changes", async () => {
+    const { id, documentId, state: initial } = await savedRefundPlan();
+    const checked = await send(
+      id,
+      "类别名请用退款进度和退款到账时间，不要用分类一、分类二。",
+      [decision("plan", { requiresUpdate: true })],
+    );
+    const receipt = successes(checked, "plan_task").at(-1);
+    const db = createPool(databaseUrl);
+    try {
+      const actorId = (
+        await db.query("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          id,
+        ])
+      ).rows[0].actor_id;
+      // Isolated fixture: emulate another committed document version before this request.
+      await db.query(
+        "UPDATE assistant_background_document SET sha256=$2 WHERE id=$1",
+        [documentId, "changed-version"],
+      );
+      expect(
+        await recoverAssistantReceipt(db, { projectId, actorId }, receipt),
+      ).toBeUndefined();
+    } finally {
+      await db.end();
+    }
+    const state = await send(
+      id,
+      "类别名请用退款进度和退款到账时间，不要用分类一、分类二。",
+      [decision("plan", { requiresUpdate: true })],
+    );
+    expect(state.task.feedback.requirementsVerified).toBe(false);
+    expect(state.task.executionPlan).toEqual(initial.task.executionPlan);
+    expect(
+      successes(state, "plan_task").some(
+        (item: any) => item.result?.verification,
+      ),
+    ).toBe(false);
+  });
+  it.each([false, true])(
+    "OPT46 amendment can read a newly attached category before saving the compact patch, truncated=%s",
+    async (truncated) => {
+      const { id, goal } = await savedRefundPlan();
+      const upload = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + id + "/background-documents",
+        headers,
+        payload: {
+          fileName: "售后规范.txt",
+          contentBase64:
+            Buffer.from("售后投诉：反馈售后处理中的服务问题。").toString(
+              "base64",
+            ),
+        },
+      });
+      expect(upload.statusCode).toBe(201);
+      const documentId = upload.json().document.id;
+      const state = await send(
+        id,
+        "将业务类型分类改为新附件中的售后投诉，仍为4条，先保存方案，不执行",
+        [
+          decision("plan", { requiresUpdate: true }),
+          { name: "read_background", input: { documentId } },
+          ...(truncated
+            ? [
+                {
+                  name: "plan_task",
+                  input: {},
+                  finishReason: "length",
+                  rawInput: '{"deliveries":[{',
+                },
+              ]
+            : []),
+          {
+            name: "plan_task",
+            input: {
+              deliveries: [
+                {
+                  id: goal.id,
+                  classifications: [
+                    {
+                      field: "metadata",
+                      key: "业务类型",
+                      basis: "background",
+                      allowedValues: ["售后投诉"],
+                      definitions: [
+                        {
+                          value: "售后投诉",
+                          text: "售后投诉：反馈售后处理中的服务问题。",
+                        },
+                      ],
+                      quotas: [{ value: "售后投诉", count: 4 }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      );
+      expect(observed[1].tool_choice?.function?.name).not.toBe("plan_task");
+      expect(JSON.stringify(observed[1].messages)).toContain("售后规范.txt");
+      expect(JSON.stringify(observed[truncated ? 3 : 2].messages)).toContain(
+        "售后投诉：反馈售后处理中的服务问题。",
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(
+        deliveryGoals(state.task.executionPlan)[0].classifications[0]
+          .allowedValues,
+      ).toEqual(["售后投诉"]);
+    },
+  );
+  it("OPT46 advertised amendment schema preserves valid mixed additions without a fabricated id", async () => {
+    const { id, goal } = await savedRefundPlan();
+    const input = {
+      deliveries: [
+        { id: goal.id, name: "退款服务测试" },
+        { ...simpleDelivery(), name: "售后测试" },
+      ],
+    };
+    const state = await send(
+      id,
+      "把原来名称改成退款服务测试，再增加一份售后测试集2条，其余保持，先保存方案",
+      [
+        decision("plan", { requiresUpdate: true }),
+        { name: "plan_task", input },
+      ],
+    );
+    const parameters = observed[1].tools.find(
+      (item: any) => item.function.name === "plan_task",
+    ).function.parameters;
+    const ajv = new Ajv.default({ strict: false });
+    const validate = ajv.compile(parameters);
+    expect(validate(input), JSON.stringify(validate.errors)).toBe(true);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    const goals = deliveryGoals(state.task.executionPlan);
+    expect(goals).toHaveLength(2);
+    expect(goals[0]).toMatchObject({ ...goal, name: "退款服务测试" });
+    expect(goals[1]).toMatchObject({ name: "售后测试", count: 2 });
+    expect(goals[1].id).not.toBe(goal.id);
+  });
+  it.each([
+    "给退款测试增加2条，先保存方案",
+    "给退款测试增加3个场景，先保存方案",
+  ])(
+    "OPT46 adding records or scenes cannot authorize another independent delivery: %s",
+    async (request) => {
+      const { id, state: initial } = await savedRefundPlan();
+      const old = prose;
+      prose = "本轮尚未保存。";
+      try {
+        const state = await send(id, request, [
+          decision("plan", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              deliveries: [{ ...simpleDelivery(), name: "退款", count: 2 }],
+            },
+          },
+        ]);
+        expect(state.task.executionPlan).toEqual(initial.task.executionPlan);
+        expect(state.task.feedback.requirementsSaved).toBe(false);
+        expect(
+          state.turns
+            .at(-1)
+            .tools.some(
+              (item: any) =>
+                item.name === "plan_task" && item.status === "failed",
+            ),
+        ).toBe(true);
+      } finally {
+        prose = old;
+      }
+    },
+  );
+  it("OPT46 truncated patch excludes unrelated delivery definitions after the target is known", async () => {
+    const { id, goal } = await savedRefundPlan();
+    const initial = await send(id, "另外增加一份物流测试集2条，先保存方案", [
+      decision("plan", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          deliveries: [
+            {
+              ...simpleDelivery(),
+              name: "物流测试",
+              instructions: "无关交付详情-marker-" + "物流场景".repeat(400),
+            },
+          ],
+        },
+      },
+    ]);
+    expect(
+      initial.turns.at(-1).status,
+      JSON.stringify(initial.turns.at(-1)),
+    ).toBe("succeeded");
+    const other = deliveryGoals(initial.task.executionPlan)[1];
+    const state = await send(
+      id,
+      "只把退款测试的名称改成退款服务测试，其他交付不变，先保存方案",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {},
+          finishReason: "length",
+          rawInput: '{"deliveries":[{"name":"broken',
+        },
+        {
+          name: "plan_task",
+          input: { deliveries: [{ id: goal.id, name: "退款服务测试" }] },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    const content = JSON.stringify(observed[2].messages);
+    expect(content).not.toContain(other.id);
+    expect(content).not.toContain("无关交付详情-marker");
+    expect(deliveryGoals(state.task.executionPlan)[1]).toEqual(other);
+  });
+  it("OPT46 deleting a referenced attachment invalidates the displayed verification receipt", async () => {
+    const { id, documentId } = await savedRefundPlan();
+    const checked = await send(id, "数量就用4条。", [
+      decision("plan", { requiresUpdate: true }),
+    ]);
+    expect(checked.task.feedback.requirementsVerified).toBe(true);
+    const removed = await app.inject({
+      method: "DELETE",
+      url: base() + "/sessions/" + id + "/background-documents/" + documentId,
+      headers,
+    });
+    expect(removed.statusCode).toBe(200);
+    const state = await read(id);
+    expect(state.task.feedback.requirementsVerified).toBe(false);
+    expect(state.task.feedback.message).not.toContain("符合本次要求");
   });
   it.each([false, true])(
     "recovers truncated native planning with a smaller control call, bounded=%s",
