@@ -272,3 +272,26 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 ### 2026-10-22 OPT-45后续定向复测
 
 针对CU-4规划恢复和CU-5主题变更，代码6057b27通过59项受影响单元及13项SDK/HTTP/持久化定向断言；4217上两个独立新会话分别生成并采用2＋1、2＋2，共24次请求，低于36次/360000ms新上限。旧数据、旧预算及首次错误保持；CU-1/2/3沿旧证据，不重跑。详见[唯一后续证据](../.scratch/assistant-optimization/opt45-followup-verification.md)。
+
+<a id="repair-long-task-tests"></a>
+
+### 5.19 第7、10项及长对话预算续接（待开发）
+
+2026-10-22仅创建OPT-46～50；全部Validation not-run。既有第7/10项失败、第6/8/9项已完成证据和旧预算保留，不由新计划改签。共同合同见[机制方案§10](assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)，以下为场景索引，具体可观察断言只在各票维护。
+
+| 测试范围 | 责任票 / 验收编号 | 方法及关键终点 |
+| --- | --- | --- |
+| 已有方案重复要求、真实局部修改 | [OPT-46](../.scratch/assistant-optimization/issues/46-compact-plan-amendment-and-recovery.md) R46-1～2 | 公开消息→实际Schema→核对/保存回执→刷新；仅规划零生成 |
+| 已有control后截断、普通继续、纠错到限 | OPT-46 R46-3～6 | 固定故障重放与实际请求收缩断言，检查修复次数及原回执；无余额不发模型请求 |
+| 泛指资料、多候选、同名、末段总结失败 | [OPT-47](../.scratch/assistant-optimization/issues/47-source-discovery-and-processing-preflight.md) R47-1～2 | 真实权限过滤的少量发现与持久澄清，不继续扫全部kind |
+| 清洗连续配置/范围错误与默认字段保护 | OPT-47 R47-3～7 | 发现→选择→明确全部→完整预检→有限纠正→一次提交；未知写先查回执 |
+| 同会话多个目标、切换与恢复 | [OPT-48](../.scratch/assistant-optimization/issues/48-conversation-task-boundaries-and-context.md) R48-1～3 | 原任务身份/消耗保持，新独立目标才分开；单一活动任务、迟到回执不串目标 |
+| 长历史和输入窗口 | OPT-48 R48-4～7 | 至少120条混合turn/3任务合成夹具，经公开分页/消息入口；当前规则不丢、旧历史不删除、旧格式不迁移 |
+| 跨段正常完成、累计消耗与无进展停止 | [OPT-49](../.scratch/assistant-optimization/issues/49-budget-grants-and-task-continuation.md) R49-1～3 | 可控小段预算下跨≥3段实际完成；>12合法事件与重复事件分开，不用真实模型烧长任务额度 |
+| 明确追加授权及层级预算保护 | OPT-49 R49-4～8 | 原账不动、授权幂等、修复用途隔离；处理根预算/外部campaign优先，普通继续不增加额度 |
+| 前端事实、恢复能力及旧数据保留 | [OPT-50](../.scratch/assistant-optimization/issues/50-continuation-ui-and-bounded-acceptance.md) R50-1～4、6 | 消息/按钮/卡片一致，刷新/并发/480px/键盘与frontend-v1对齐 |
+| 普通提示两项真实CU | OPT-50 R50-5 | 仅复测第7/10项，每项一个新会话；提示、材料、终点、请求/时间/产出上限统一以票内计划为准 |
+
+各票实现时补本票公共链路回归，不把必要测试留到OPT-50才发现接口未接入；集中真实CU避免重复成本。受控脚本需验证模型收到的实际合同、持久状态、请求次数和业务副作用，不能只断言提示词字符串或预设下一次必然返回正确参数。
+
+实际验收区分首次通过、自动纠正、正常业务补充、技术干预和失败。额度耗尽正确暂停是保护通过，不能当业务交付完成；真实模型超时与本地未发请求分开。内容质量继续人工审核，不做新质量评审、大批生成、长时压测、重启恢复或重跑旧248/400条。
