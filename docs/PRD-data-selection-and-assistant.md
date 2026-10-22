@@ -249,7 +249,7 @@ Owner授权整理修改方案与相关规定；细化合同统一见[机制整�
 
 ### 7.12 长会话与复杂任务续接（2026-10-22，待开发）
 
-Owner确认把第7/10项修复与长会话、预算续接整理为OPT-46～50。本节为分批开发目标；OPT-46已完成开发和定向验证，Owner pending，真实CU及后续OPT-47～50尚未完成，证据见[OPT-46记录](../.scratch/assistant-optimization/opt46-verification.md)。具体机制和额度统一见[机制方案§10](assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)，实施与验证状态见[台账](../.scratch/assistant-optimization/spec.md)。
+Owner确认把第7/10项修复与长会话、预算续接整理为OPT-46～50，并在2026-10-23按全链路审查补强。具体机制和额度统一见[机制方案§10–11](assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)，当前实施/验证状态仅在[台账](../.scratch/assistant-optimization/spec.md)维护；原定向通过不等于真实CU通过，本节开发目标不代表已上线。
 
 - 同一会话可以顺序推进不同业务目标；同一目标的修改/继续继承原任务与消耗，明确新目标才建立独立任务，不因失败或新聊天轮次重新计数。保留旧成果、预算和可读取历史，同时只执行一个当前任务。
 - 方案新增、增量修改和核对分别处理；核对已满足要求须有真实回执。模糊对象在有限资料发现后明确询问来源，清洗/改写/扩写按操作合同统一校验，技术参数纠错不交给用户。

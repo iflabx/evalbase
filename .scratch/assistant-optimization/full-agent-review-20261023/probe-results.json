@@ -1,0 +1,49 @@
+{
+  "networkCalls": 0,
+  "businessWrites": 0,
+  "oldBudgetWrites": 0,
+  "results": [
+    {
+      "probe": "pending-plus-blocker",
+      "reason": "task_budget_exhausted",
+      "observed": "本次修改尚未保存，原方案和已有成果保留。请继续完成修改后再执行。",
+      "verdict": "gap-reproduced"
+    },
+    {
+      "probe": "pending-plus-blocker",
+      "reason": "background_changed",
+      "observed": "本次修改尚未保存，原方案和已有成果保留。请继续完成修改后再执行。",
+      "verdict": "gap-reproduced"
+    },
+    {
+      "probe": "pending-plus-blocker",
+      "reason": "revision_changed",
+      "observed": "本次修改尚未保存，原方案和已有成果保留。请继续完成修改后再执行。",
+      "verdict": "gap-reproduced"
+    },
+    {
+      "probe": "pending-plus-blocker",
+      "reason": "permission_denied",
+      "observed": "本次修改尚未保存，原方案和已有成果保留。请继续完成修改后再执行。",
+      "verdict": "gap-reproduced"
+    },
+    {
+      "probe": "ordinary-vs-truncated-amendment-schema",
+      "normalRequiresId": false,
+      "truncatedRequiresId": true,
+      "verdict": "contract-difference-reproduced"
+    },
+    {
+      "probe": "read-only-query-counts-as-progress",
+      "changed": true,
+      "verdict": "gap-reproduced"
+    },
+    {
+      "probe": "second-repair-prompt",
+      "requests": 2,
+      "identicalPrompts": true,
+      "verdict": "gap-reproduced",
+      "limitation": "SDK/provider mocked; actual argumentRepair loop and prompt construction executed"
+    }
+  ]
+}

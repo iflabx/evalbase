@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-22 当前方案入口：[机制整理与修改方案](assistant-mechanism-consolidation-2026-10-22.md)。针对首批五项复测暴露的参数纠错、数量修改、预算恢复、提示和诊断衔接，按共同合同整理，允许必要的结构调整。方案已拆为 OPT-43～45，按 A → B → C 开发，详见[§9](#9-2026-10-22-机制整理)；三票待开发，本轮只创建票与更新文档，4217应用仍为92492e7。以下带日期记录保留历史，不代表本轮问题已关闭。
+2026-10-23 当前整改入口：[全链路机制审查](assistant-full-review-2026-10-23.md)和[机制方案§11](assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。范围覆盖整个助手，已据此更新OPT-46～50：46重新进入in-progress，47～50未开发；此前定向通过与CU-7未通过分别保留，最近部署记录为2c74b8e。本轮仅审查/修改文档，未改业务代码、4217、验收数据或旧预算，未调用真实模型和重跑已完成部分。以下带日期记录为历史状态，当前实施以[台账](../.scratch/assistant-optimization/spec.md)为准。
 
 2026-10-19 最新补修安排：按最新会话只读诊断建立 [OPT-38](../.scratch/assistant-optimization/issues/38-background-retrieval-and-planning-recovery.md)，范围和定向验收集中在该票。先完成未命中检索、依据选择和普通重试恢复，再继续 OPT-31 内容与交付验收；沿用本章架构与预算，不更换框架。本次仅编写文档，OPT-38 not-started，OPT-31 in-progress，4217 与现有验收数据保持。
 
@@ -197,6 +197,16 @@ UI 仍严格对齐 frontend-v1，正式改动位于 frontend-v3，仅接入必�
 
 ## 9. 2026-10-22 机制整理
 
-共同合同、职责落点、旧路径退出及预算兼容统一在[机制方案](assistant-mechanism-consolidation-2026-10-22.md)维护；故障矩阵在[测试计划 §5.18](test-plan-data-selection-and-assistant.md#518-机制整理验证待实施)。开发拆分为 [OPT-43 要求与纠错](../.scratch/assistant-optimization/issues/43-requirement-amendments-and-repair-contract.md) → [OPT-44 恢复与预算](../.scratch/assistant-optimization/issues/44-resume-decision-and-budget-continuity.md) → [OPT-45 事实反馈与五项验收](../.scratch/assistant-optimization/issues/45-state-feedback-and-five-flow-acceptance.md)，三票均未实施，各票维护范围、依赖和通过标准，不另建重复规则。
+共同合同、职责落点、旧路径退出及预算兼容统一在[机制方案](assistant-mechanism-consolidation-2026-10-22.md)维护；故障矩阵在[测试计划 §5.18](test-plan-data-selection-and-assistant.md#518-机制整理验证待实施)。开发拆分为 [OPT-43 要求与纠错](../.scratch/assistant-optimization/issues/43-requirement-amendments-and-repair-contract.md) → [OPT-44 恢复与预算](../.scratch/assistant-optimization/issues/44-resume-decision-and-budget-continuity.md) → [OPT-45 事实反馈与五项验收](../.scratch/assistant-optimization/issues/45-state-feedback-and-five-flow-acceptance.md)；创建该批方案时三票均未实施，后续实际结果见实施台账。各票维护范围、依赖和通过标准，不另建重复规则。
 
 本次“精简”的工程含义以[AGENTS.md](../AGENTS.md#complete-root-cause-scope)为准：完整根因和受影响调用方决定范围，必要的模块/接口整理属于修复。局部函数通过、自动恢复成功与用户流程完成分别报告。原OPT票及内容质量验收状态保留；此次文档更新不授权代码实施、真实模型复测、部署、合并或推送。
+
+## 10. 2026-10-23 全链路复审与后续整改
+
+本次审查发现12项机制/覆盖/文档问题，事实、源码定位与风险等级在[审查报告](assistant-full-review-2026-10-23.md)维护。核心原因是多个入口重复构造目标合同、纠错反馈、进展和恢复事实；现有权限、租约、采用确认及事务回执有保留价值。保留AI SDK及现有业务服务，允许为完整根因调整内部接口、任务身份和持久结构，不局限于局部补丁。
+
+共同合同以[机制方案§11](assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)为唯一规则，分工与顺序见该方案§10.5；具体修改范围和验收标准在OPT-46～50。先46统一规划准备/纠错，47与48分别处理业务提交和任务/上下文，49统一预算/进展/续接，50收口页面与既定CU。部分提交恢复风险和历史权限边界必须随所属票关闭，不能全部留到联动验收才处理。
+
+各票增加连续错误、同一提议跨入口、复合状态和提交切点检查，索引见[测试计划§5.20](test-plan-data-selection-and-assistant.md#full-agent-review-tests)。本次离线探针复现的缺口不计作业务验收通过；未确认的模型延迟、输入溢出和数据库性能原因不写成确定根因。
+
+不扩大内容质量验证、真实样本量或原CU预算，不重开已关闭记录；无新预算授权。OPT-46保留原定向通过证据并重新进入开发，后续新增范围未验证。当前尚未授权这些票的新增代码实施、部署、合并或推送。
