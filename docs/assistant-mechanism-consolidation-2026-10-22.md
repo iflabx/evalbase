@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 状态：OPT-43/44 阶段 A/B 已实现并通过定向验证，Owner pending；OPT-45 待开发。4217未切换；证据见[OPT-43](../.scratch/assistant-optimization/opt43-verification.md)与[OPT-44](../.scratch/assistant-optimization/opt44-verification.md)。
+- 状态：OPT-43/44及OPT-45代码已实现；4217代码6057b27。CU-4/5获准有限复测通过，前3项沿用旧证据，Owner pending。详见[后续验证记录](../.scratch/assistant-optimization/opt45-followup-verification.md)。
 - 诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -134,3 +134,7 @@ agent.ts 保留 SDK 接线与业务工具适配。提取真正被多个入口共
 分别报告首次成功、系统自动纠正后成功、用户正常补充/确认后成功、技术干预后成功及最终失败。一次真实失败随后恢复，首次失败仍保留；缺日志写未验证。自动恢复成功不冒充首次成功，人工补工具参数不算普通提示通过。受控故障下正确保留并停止可通过对应保护断言，但不等于用户交付完成。
 
 完成需同时具备：统一决策实际被各入口调用、替代分支退出、关键边界回归通过、五项各自达到预期业务终点、数据/预算保护证据和准确失败记录。通过这些小样本不推断任意模型/文档零失败。
+
+## 2026-10-22 后续闭合记录
+
+损坏容器的上下文重建、真实修改身份、普通继续以及主题替换的权限/最终分类检查已按6057b27接入；CU-4/5新上限内通过，保留原五项3/5及旧预算。事实与限制见[统一后续证据](../.scratch/assistant-optimization/opt45-followup-verification.md)，不将累计分版本证据冒充同版本五项重跑。

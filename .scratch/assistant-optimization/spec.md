@@ -1,4 +1,4 @@
-2026-10-22 最新实施：[OPT-44](issues/44-resume-decision-and-budget-continuity.md) 阶段 B 已完成，代码 `7502523`；恢复/预算、公开入口与 Worker 定向验证通过，含审阅补修和旧夹具限制，见[实施记录](opt44-verification.md)。Owner pending；OPT-45仍not-started，4217仍92492e7；既有数据、预算和未通过事实保持。下方带日期记录保留历史状态。
+2026-10-22 最新实施：OPT-45后续修复代码6057b27已更新4217；仅另开上限复测CU-4/5，两项流程通过，Owner pending。前3项沿用旧固定版本证据，旧数据/预算/首次错误保持，见[后续统一证据](opt45-followup-verification.md)。以下带日期记录为历史。
 
 2026-10-22 最新实施：[OPT-43](issues/43-requirement-amendments-and-repair-contract.md) 阶段 A 已完成，代码 `56f4aca`；162 个不同定向用例和静态检查通过，审阅与过程失败见[验证记录](opt43-verification.md)。Owner pending；OPT-44/45仍not-started，4217应用仍92492e7，既有验收数据、旧预算与历史未通过事实保持。下方带日期记录保留历史状态。
 
@@ -158,7 +158,7 @@ Implementation: in-progress
 | [OPT-42](issues/42-intent-control-and-compound-requests.md) | 意图入口、组合请求与统一执行守卫 | OPT-39；与40/41无硬依赖 | completed | 最新应用b6bc27e已更新4217；定向修复通过，[四项修复有界复测](four-flow-fixes-verification.md)43次/161575ms、0候选，完整生成仍未通过，旧数据/预算保持，Owner pending |
 | [OPT-43](issues/43-requirement-amendments-and-repair-contract.md) | 要求变更、参数纠错与尝试记录统一（阶段 A） | 当前已实现代码，无未开发票前置 | completed | `56f4aca`；[定向验证与审阅](opt43-verification.md)，Owner pending；4217未切换 |
 | [OPT-44](issues/44-resume-decision-and-budget-continuity.md) | 恢复决策、续段与累计预算统一（阶段 B） | OPT-43 已完成 | completed | `7502523`；[定向验证与审阅](opt44-verification.md)，Owner pending；4217未切换 |
-| [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md) | 事实反馈、恢复交互与五项流程验收（阶段 C） | OPT-44（传递依赖43） | not-started | 已建票；定向及有界 Computer Use 待执行，保留数据/旧预算 |
+| [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md) | 事实反馈、恢复交互与五项流程验收（阶段 C） | OPT-44（传递依赖43） | completed | 定向通过；CU-4/5后续通过，前三项旧证据保持，Owner pending |
 
 2026-10-20 最新[OPT-39～42单会话联动](opt39-42-single-session-verification.md)未通过：规划/恢复阻断，生成后路径未覆盖；既有定向证据及全部原数据/预算保留，Owner pending。
 
@@ -244,3 +244,7 @@ OPT-12 是 OPT-11 后续体验调整，Owner 已单独授权开发；不等待�
 ### 2026-10-22 OPT-45 实施及真实五项验收
 
 代码 `1b929c4` 已更新4217，共享反馈及权威恢复页面接入、定向检查完成；真实五会话3项达到终点、2项未通过，阶段C与整个机制整理不签完成。预算、旧数据保护、首次失败、自动纠正及后续阻塞集中于[OPT-45证据](opt45-verification.md)；旧OPT-31结论保持。
+
+### 2026-10-22 OPT-45 CU-4/CU-5后续修复
+
+代码6057b27及4217同步完成；两项独立新会话生成并采用3＋4条，24次实际请求，旧预算不变。详见[统一证据](opt45-followup-verification.md)；原失败及前三项证据保持，不声明同版五项重跑。
