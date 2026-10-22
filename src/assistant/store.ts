@@ -1,3 +1,4 @@
+import { planningContinuation } from "./intent.js";
 import { turnDiagnostics } from "./diagnostics.js";
 import { assistantFeedback } from "./feedback.js";
 import { unresolvedFailure } from "./receipts.js";
@@ -922,10 +923,7 @@ export async function startTurn(
       ).rowCount
     )
       throw new AssistantError(409, "assistant_confirmation_running");
-    const plainContinuation =
-      /^\s*(?:请)?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?[。.!！?？]?\s*$/u.test(
-        text.trim(),
-      );
+    const plainContinuation = Boolean(planningContinuation(text.trim()));
     if (
       plainContinuation &&
       session.task?.planningRecovery &&
@@ -954,7 +952,7 @@ export async function startTurn(
           session,
           latest,
         );
-        if (/规划|保存方案/u.test(text)) decision.mode = "plan";
+        if (planningContinuation(text) === "plan") decision.mode = "plan";
         turnId = (await queueRecovery(client, session, latest, decision))
           .turnId;
       }

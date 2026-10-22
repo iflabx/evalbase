@@ -9,6 +9,8 @@ import {
   restoredDecision,
   mayExecute,
   continuationAllowed,
+  planningContinuation,
+  requestsBusinessAmendment,
   intentTools,
   legacyExecute,
   readTools,
@@ -588,9 +590,7 @@ export async function executeAssistantTurn(
           sha256(canonicalJson(current.backgroundEvidence ?? [])) &&
         current.planningRecovery.taskRevision === turn.task_revision - 1 &&
         value.mode === "execute" &&
-        /^\s*(?:请)?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?[。.!！?？]?\s*$/u.test(
-          turn.user_text,
-        )
+        Boolean(planningContinuation(turn.user_text))
       )
         Object.assign(value, { mode: "plan", requiresUpdate: true });
       const priorControl = decision;
@@ -645,15 +645,11 @@ export async function executeAssistantTurn(
         });
         if (documentPlanning) {
           const pending = current.planningRecovery;
-          const continuation =
-            /^\s*(?:请)?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?[。.!！?？]?\s*$/u.test(
-              turn.user_text,
-            );
           const reusable =
             pending &&
+            !requestsBusinessAmendment(turn.user_text) &&
             (!pending.amendment ||
-              (continuation &&
-                pending.planKey === planRequirementsKey(current))) &&
+              pending.planKey === planRequirementsKey(current)) &&
             (!pending.documentsKey ||
               pending.documentsKey === planningDocumentsKey) &&
             pending.evidenceKey ===
@@ -2708,6 +2704,12 @@ export async function executeAssistantTurn(
               : planningRequestText,
             (turn.event === "user" || Boolean(turn.recoveryOrigin)) &&
               Boolean(decision?.requiresUpdate),
+            documentDefinitionReferences(
+              documents,
+              current.backgroundEvidence ?? [],
+              scope,
+              turn.session_id,
+            ).map((definition) => definition.value),
           );
           // Initial explicit category quotas cannot be omitted. Saved rules are
           // protected by scoped updates, without reinterpreting generic headings.
@@ -6320,6 +6322,12 @@ export async function executeAssistantTurn(
             decoded.deliveries,
             amendmentRequestText,
             Boolean(decision?.requiresUpdate),
+            documentDefinitionReferences(
+              documents,
+              current.backgroundEvidence ?? [],
+              scope,
+              turn.session_id,
+            ).map((definition) => definition.value),
           );
           for (const goal of proposed) {
             const resolved = resolveBackgroundDefinitions(
@@ -6350,7 +6358,11 @@ export async function executeAssistantTurn(
         return true;
       },
       started: startParameterRepair,
-      observed: observeParameterRepair,
+      observed: (name, outcome) =>
+        observeParameterRepair(
+          name,
+          outcome === "repaired" ? "validated" : outcome,
+        ),
     });
     const agent = new ToolLoopAgent({
       model: model.model,
@@ -6487,6 +6499,7 @@ export async function executeAssistantTurn(
       },
       onStepEnd: async ({
         content,
+        toolResults: stepToolResults,
         toolCalls: stepToolCalls,
         finishReason: stepFinish,
         usage,
@@ -6589,10 +6602,31 @@ export async function executeAssistantTurn(
             ],
           );
         }
-        if (activeRepair && !nestedRepairRequest)
+        const repairName =
+          activeRepair?.name ??
+          (parameterRepairStatus?.outcome === "validated"
+            ? parameterRepairStatus.name
+            : undefined);
+        if (repairName && !nestedRepairRequest)
           await observeParameterRepair(
-            activeRepair.name,
-            failures.length ? "invalid" : "repaired",
+            repairName,
+            failures.length ||
+              stepToolResults.some(
+                (result) =>
+                  isPlainObject(result.output) && Boolean(result.output.error),
+              ) ||
+              (repairName === "plan_task" &&
+                (!decision?.updateSaved ||
+                  !stepToolResults.some(
+                    (result) =>
+                      result.toolName === "plan_task" &&
+                      isPlainObject(result.output) &&
+                      !result.output.unchanged &&
+                      !result.output.requiresClarification &&
+                      !result.output.error,
+                  )))
+              ? "invalid"
+              : "repaired",
           );
         await saveBudget();
         await advanceExecution(messages);

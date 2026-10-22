@@ -372,7 +372,7 @@ describe("OPT44 persisted recovery public flow", () => {
       method: "POST",
       url: base() + "/sessions/" + f.id + "/turns",
       headers: { ...headers, "idempotency-key": randomUUID() },
-      payload: { message: "继续规划" },
+      payload: { message: "继续规划，先不要生成" },
     });
     expect([200, 202], sent.body).toContain(sent.statusCode);
     const queued = await f.raw();
@@ -407,6 +407,38 @@ describe("OPT44 persisted recovery public flow", () => {
     ).toBe(0);
     expect(calls.length - count).toBeLessThanOrEqual(3);
   });
+
+  it.each([
+    "继续规划，先不要生成",
+    "继续规划\n先不要生成",
+    "继续规划，暂时不要生成",
+  ])(
+    "OPT45 planning-only continuation rejects an exhausted amendment before any model call: %s",
+    async (message) => {
+      const f = await fixture();
+      const { sha256, canonicalJson } =
+        await import("../../src/package/contract.js");
+      const identity = sha256(canonicalJson({ requestTurnId: f.parent.id }));
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(task,'{parameterRepairLimits}',$2::jsonb) WHERE id=$1",
+        [
+          f.id,
+          JSON.stringify({ plan_task: { identity, version: 2, used: 2 } }),
+        ],
+      );
+      const before = calls.length;
+      const sent = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + f.id + "/turns",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message },
+      });
+      expect(sent.statusCode).toBe(409);
+      expect(calls.length).toBe(before);
+      expect((await f.raw()).task.parameterRepairLimits.plan_task.used).toBe(2);
+    },
+  );
+
   it("double recovery claims create one segment and preserve consumed repair and transport limits", async () => {
     const f = await fixture();
     f.task.parameterRepairLimits = {

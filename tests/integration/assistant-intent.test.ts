@@ -1357,6 +1357,125 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.turns.at(-1).assistantText ?? "").not.toContain("开始生成");
   });
 
+  it("OPT45 nested JSON reconstruction cannot silently save only the first requested delivery", async () => {
+    const { id, documentId } = await backgroundSession(
+      "客服测试集覆盖物流查询和修改收货地址，问题完整，期望输出写处理行为。",
+    );
+    const before = await effects();
+    const onlyFirst = {
+      name: "plan_task",
+      input: {
+        executionMode: "plan",
+        deliveries: [{ ...simpleDelivery(), name: "物流查询" }],
+      },
+    };
+    const done = await send(id, "物流查询和修改收货地址各2条，先给方案", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries:
+            JSON.stringify(onlyFirst.input.deliveries) + ',"requirements":[]',
+        },
+      },
+      onlyFirst,
+      onlyFirst,
+    ]);
+    expect(done.turns.at(-1).status).toBe("failed");
+    expect(done.task.deliveries ?? []).toHaveLength(0);
+    expect(await effects()).toEqual(before);
+  });
+
+  it("OPT45 nested broken JSON is reconstructed against the full request and saved without generation", async () => {
+    const { id, documentId } = await backgroundSession(
+      "客服用例分物流查询和修改收货地址两份，问题自然完整，期望输出写处理行为。",
+    );
+    const before = await effects();
+    const deliveries = [
+      { ...simpleDelivery(), name: "物流查询" },
+      { ...simpleDelivery(), name: "修改收货地址" },
+    ];
+    const good = {
+      name: "plan_task",
+      input: { executionMode: "plan", deliveries },
+    };
+    const done = await send(id, "物流查询和修改收货地址各2条，先给方案", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: JSON.stringify([deliveries[0]]) + ',"requirements":[]',
+        },
+      },
+      good,
+    ]);
+    expect(done.turns.at(-1).status, JSON.stringify(done.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(done.task.deliveries.map((d: any) => d.count)).toEqual([2, 2]);
+    expect(done.task.turnControl.updateSaved).toBe(true);
+    expect(done.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+    expect(await effects()).toEqual(before);
+  });
+  it("OPT45 a genuine count amendment after an unsaved exhausted plan has its own repair identity", async () => {
+    const { id, documentId } = await backgroundSession(
+      "客服用例分物流查询和修改收货地址两份，问题自然完整，期望输出写处理行为。",
+    );
+    const deliveries = [
+      { ...simpleDelivery(), name: "物流查询" },
+      { ...simpleDelivery(), name: "修改收货地址" },
+    ];
+    const bad = {
+      name: "plan_task",
+      input: {
+        executionMode: "plan",
+        deliveries: deliveries.map((d) => ({
+          ...d,
+          scenarios: d.scenarios.slice(0, 2),
+        })),
+      },
+    };
+    const failed = await send(id, "物流查询和修改收货地址各2条，先给方案", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      bad,
+      bad,
+      bad,
+    ]);
+    expect(failed.turns.at(-1).status).toBe("failed");
+    expect(failed.turns.at(-1).diagnostics.repairRequestsUsed).toBe(2);
+    const newDeliveries = deliveries.map((d, i) => ({
+      ...d,
+      count: i === 0 ? 3 : 2,
+    }));
+    const done = await send(id, "物流改成3条，地址不变", [
+      decision("plan", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: newDeliveries.map((d, i) =>
+            i === 1 ? { ...d, scenarios: d.scenarios.slice(0, 2) } : d,
+          ),
+        },
+      },
+      { name: "plan_task", input: { deliveries: [newDeliveries[1]] } },
+    ]);
+    expect(done.turns.at(-1).status, JSON.stringify(done.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(done.task.deliveries.map((d: any) => d.count)).toEqual([3, 2]);
+    expect(done.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+    expect(done.turns.at(-1).diagnostics.amendmentId).toBe(
+      done.turns.at(-1).id,
+    );
+    expect(done.turns.at(-2).diagnostics.repairRequestsUsed).toBe(2);
+  });
+
   it("document delivery amendments derive totals and replace the topic without reviving old requirements", async () => {
     const id = (
       await app.inject({
@@ -1469,6 +1588,11 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     ]);
     expect(rejected.turns.at(-1).status).toBe("failed");
+    expect(
+      rejected.turns
+        .at(-1)
+        .diagnostics.parameterRepairs.map((r: any) => r.outcome),
+    ).not.toContain("repaired");
     expect(deliveryGoals(rejected.task.executionPlan)[1].name).toBe("改地址");
     script = [];
     observed = [];
@@ -1483,20 +1607,16 @@ describe("OPT42 per-turn intent public boundary", () => {
     const stopped = await read(id);
     expect(stopped.turns.at(-1).status).toBe("failed");
     expect(deliveryGoals(stopped.task.executionPlan)[1].name).toBe("改地址");
-    const replaced = await send(
-      id,
-      "把改地址换成退款进度，仍要1条，先保存方案",
-      [
-        decision("plan", { requiresUpdate: true }),
-        {
-          ...replacement,
-          input: {
-            ...replacement.input,
-            control: { mode: "plan", requiresUpdate: true },
-          },
+    const replaced = await send(id, "第二个改成退款，数量不变", [
+      decision("plan", { requiresUpdate: true }),
+      {
+        ...replacement,
+        input: {
+          ...replacement.input,
+          control: { mode: "plan", requiresUpdate: true },
         },
-      ],
-    );
+      },
+    ]);
     expect(
       replaced.turns.at(-1).status,
       JSON.stringify(replaced.turns.at(-1)),

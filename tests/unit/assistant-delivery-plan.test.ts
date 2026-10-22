@@ -31,6 +31,109 @@ const single = (name = "GB A.1.a", count = 5) => ({
 });
 
 describe("OPT-35 delivery planning contract", () => {
+  it("OPT45 rejects lost deliveries or changed counts after malformed-container reconstruction without a category catalog", () => {
+    const goals = [
+      { ...single("物流查询", 2), classifications: [] },
+      { ...single("修改收货地址", 2), classifications: [] },
+    ];
+    expect(() =>
+      reviseDeliveryGoals(
+        [],
+        goals.slice(0, 1),
+        "物流查询和修改收货地址各2条，先给方案",
+      ),
+    ).toThrow();
+    expect(() =>
+      reviseDeliveryGoals(
+        [],
+        goals.map((g) => ({ ...g, count: 1 })),
+        "物流查询和修改收货地址各2条，先给方案",
+      ),
+    ).toThrow();
+    expect(
+      reviseDeliveryGoals([], goals, "物流查询和修改收货地址各2条，先给方案"),
+    ).toHaveLength(2);
+  });
+  it("OPT45 binds an ordinary ordinal replacement to one stable delivery and a known topic", () => {
+    const current = reviseDeliveryGoals(
+      [],
+      [single("查物流", 2), single("改地址", 2)],
+      "创建两份客服测试集",
+    );
+    const patch = { ...single("退款进度", 2), id: current[1].id };
+    const multi = structuredClone(current);
+    multi[1].classifications.push({
+      ...single("中文", 2).classifications[0],
+      key: "language",
+    });
+    const wrongField = {
+      id: multi[1].id,
+      classifications: [
+        { ...single("退款进度", 2).classifications[0], key: "language" },
+      ],
+    };
+    expect(() =>
+      reviseDeliveryGoals(
+        multi,
+        [wrongField],
+        "第二个改成退款，数量不变",
+        true,
+        ["退款进度"],
+      ),
+    ).toThrow();
+    expect(() =>
+      reviseDeliveryGoals(
+        current,
+        [{ id: current[1].id, name: "退款进度" }],
+        "第二个改成退款，数量不变",
+        true,
+        ["退款进度"],
+      ),
+    ).toThrow();
+    const exact = { ...single("退款", 2), id: current[1].id };
+    expect(
+      reviseDeliveryGoals(current, [exact], "第二个改成退款，数量不变", true, [
+        "退款",
+        "退款进度",
+      ])[1].name,
+    ).toBe("退款");
+    for (const text of [
+      "第二个改成退款，数量不变",
+      "改地址改成退款进度，数量不变",
+    ]) {
+      const next = reviseDeliveryGoals(current, [patch], text, true, [
+        "查物流",
+        "改地址",
+        "退款进度",
+      ]);
+      expect(next[0]).toEqual(current[0]);
+      expect(next[1]).toMatchObject({
+        id: current[1].id,
+        count: 2,
+        name: "退款进度",
+      });
+    }
+    for (const text of [
+      "第一个改成退款，数量不变",
+      "不要把第二个改成退款",
+      "解释第二个改成退款是什么意思",
+      "第二个改成其他的，数量不变",
+    ]) {
+      expect(() =>
+        reviseDeliveryGoals(current, [patch], text, true, [
+          "查物流",
+          "改地址",
+          "退款进度",
+        ]),
+      ).toThrow();
+    }
+    expect(() =>
+      reviseDeliveryGoals(current, [patch], "第二个改成退款，数量不变", true, [
+        "退款进度",
+        "退款申请",
+      ]),
+    ).toThrow();
+  });
   it("allows an explicit single-category replacement without changing sibling rules or quotas", () => {
     const goals = reviseDeliveryGoals(
       [],

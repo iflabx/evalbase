@@ -114,6 +114,9 @@ function requestsSingleCategoryReplacement(
   request: string,
   before: Rule,
   after: Rule,
+  prior: DeliveryGoal,
+  goals: DeliveryGoal[],
+  knownValues: string[],
 ) {
   const oldValue =
     before.allowedValues?.length === 1 ? before.allowedValues[0] : undefined;
@@ -137,16 +140,89 @@ function requestsSingleCategoryReplacement(
     after.quotas[0].value !== nextValue
   )
     return false;
-  return request.split(/[。；;\n]|然后/u).some((sentence) => {
+  return (
+    requestedTopicValue(
+      request,
+      before,
+      prior,
+      goals,
+      knownValues.length ? knownValues : [nextValue],
+    ) === nextValue
+  );
+}
+
+function requestedTopicValue(
+  request: string,
+  before: Rule,
+  prior: DeliveryGoal,
+  goals: DeliveryGoal[],
+  knownValues: string[],
+) {
+  const oldValue =
+    before.allowedValues?.length === 1 ? before.allowedValues[0] : undefined;
+  if (!oldValue) return undefined;
+  const rank = goals.findIndex((goal) => goal.id === prior.id) + 1;
+  const chinese = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][
+    rank - 1
+  ];
+  const names = [oldValue, prior.name].filter(
+    (name) =>
+      goals.filter(
+        (goal) =>
+          goal.name === name ||
+          goal.classifications.some((rule) =>
+            rule.allowedValues?.includes(name),
+          ),
+      ).length === 1,
+  );
+  const ordinalTargets =
+    prior.classifications.length === 1 && names.includes(oldValue)
+      ? [
+          "第" + rank + "个",
+          "第" + rank + "份",
+          "第" + chinese + "个",
+          "第" + chinese + "份",
+        ]
+      : [];
+  const targets = [
+    ...names.filter(
+      (name) => name === oldValue || prior.classifications.length === 1,
+    ),
+    ...ordinalTargets,
+  ];
+  for (const sentence of request.split(/[。；;\n]|然后/u)) {
     const clause = sentence.replace(/^\s*(?:请|先|再)?\s*(?:把|将)?\s*/u, "");
-    if (!clause.startsWith(oldValue)) return false;
-    const tail = clause.slice(oldValue.length);
-    const action = tail.match(
-      /^\s*(?:(?:不要了|取消了)\s*[，,]?\s*)?(?:换成|替换为)\s*/u,
-    )?.[0];
-    if (!action) return false;
-    return tail.slice(action.length).split(/[，,]/u)[0].trim() === nextValue;
-  });
+    const match = clause.match(/^(.+?)(?:改成|改为|换成|替换为)\s*([^，,]+)/u);
+    if (!match) continue;
+    const target = match[1]
+      .replace(/(?:不要了|取消了)\s*[，,]?\s*$/u, "")
+      .trim();
+    const topic = match[2].trim().replace(/^[“"「]|[”"」]$/gu, "");
+    if (/^[1-9]\d*\s*条/u.test(topic)) continue;
+    const allOrdinals = [
+      "第" + rank + "个",
+      "第" + rank + "份",
+      "第" + chinese + "个",
+      "第" + chinese + "份",
+    ];
+    if (prior.classifications.length > 1 && allOrdinals.includes(target))
+      fail(
+        "这份测试集包含多个分类方向，请说明要替换的业务主题；其他要求保持。",
+        true,
+      );
+    if (!targets.includes(target)) continue;
+    if (topic.length < 2) fail("请说明要替换成哪个业务主题。", true);
+    const values = [...new Set(knownValues)];
+    const exact = values.filter((value) => value === topic);
+    const matches = exact.length
+      ? exact
+      : values.filter((value) => value.includes(topic));
+    if (!matches.length) continue;
+    if (matches.length !== 1)
+      fail("新主题在当前依据中不能唯一确定，请说明具体业务主题。", true);
+    return matches[0];
+  }
+  return undefined;
 }
 
 function ruleChanges(
@@ -154,6 +230,8 @@ function ruleChanges(
   changes: DeliveryChange["classifications"],
   request: string,
   newCount: number,
+  goals: DeliveryGoal[],
+  knownValues: string[],
 ) {
   const resizing = newCount !== prior.count;
   if (changes === undefined) return undefined;
@@ -219,7 +297,14 @@ function ruleChanges(
     const basisChanged = original.basis !== merged.basis;
     if (
       !permitted &&
-      !requestsSingleCategoryReplacement(request, original, merged) &&
+      !requestsSingleCategoryReplacement(
+        request,
+        original,
+        merged,
+        prior,
+        goals,
+        knownValues,
+      ) &&
       (basisChanged ||
         valuesChanged ||
         definitionsChanged ||
@@ -330,6 +415,26 @@ const numeric = (value: string) =>
 
 /** Only explicit collection/count clauses; internal category quotas never create collections. */
 function validateRequestedShape(goals: DeliveryGoal[], request: string) {
+  const namedEach = request.match(
+    /([^，,。；;\n]+(?:和|与|及|、)[^，,。；;\n]+?)各\s*(?:做|生成|创建)?\s*([1-9]\d*)\s*条/u,
+  );
+  // An explicit single collection may contain several categories; do not split it.
+  if (namedEach && !/(?<!各)(?:一|1)(?:份|个)|同一|合并/u.test(request)) {
+    const names = namedEach[1]
+      .split(/和|与|及|、/u)
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (goals.length !== names.length)
+      fail(
+        "本轮要求的多份交付不完整；请保留每个主题及其数量，不能只保存首份。",
+      );
+    const later = request.slice((namedEach.index ?? 0) + namedEach[0].length);
+    if (
+      !/(?:改成|改为|调整为|只要)\s*[1-9]\d*\s*条/u.test(later) &&
+      goals.some((goal) => goal.count !== Number(namedEach[2]))
+    )
+      fail("每份交付数量与本轮要求不一致；请保留全部主题和数量。");
+  }
   const number = "([1-9]\\d*|两|[一二三四五六七八九十])";
   const eachOne = request.match(/各\s*(?:建|创建)?\s*一份\s*([1-9]\d*)\s*条/u);
   const compact = request.match(
@@ -589,6 +694,7 @@ export function reviseDeliveryGoals(
   changes: DeliveryChange[] | undefined,
   userText: string,
   amendCounts = false,
+  knownValues: string[] = [],
 ): DeliveryGoal[] {
   if (changes && (!Array.isArray(changes) || !changes.length))
     fail("交付目标不能为空；省略表示保持，取消已有交付须明确指定该项。");
@@ -715,7 +821,14 @@ export function reviseDeliveryGoals(
       if (!Array.isArray(candidate.classifications))
         fail("交付须明确分类约定；普通文档可以填写空分类。");
       const patches = prior
-        ? ruleChanges(prior, change.classifications, userText, candidate.count)
+        ? ruleChanges(
+            prior,
+            change.classifications,
+            userText,
+            candidate.count,
+            current,
+            knownValues,
+          )
         : change.classifications;
       const quotasChanged = patches?.some((patch) => {
         const original = prior?.classifications.find(
@@ -806,6 +919,36 @@ export function reviseDeliveryGoals(
     goals.reduce((sum, goal) => sum + goal.count, 0) > 10000
   )
     fail("需保留1至10份交付，整体数量不超过10000条。");
+  if (current.length && changes?.length) {
+    const values = [
+      ...knownValues,
+      ...goals.flatMap((goal) =>
+        goal.classifications.flatMap((rule) => rule.allowedValues ?? []),
+      ),
+    ];
+    for (const prior of current)
+      for (const original of prior.classifications) {
+        const expected = requestedTopicValue(
+          userText,
+          original,
+          prior,
+          current,
+          values,
+        );
+        if (!expected || original.allowedValues?.includes(expected)) continue;
+        const next = goals.find((goal) => goal.id === prior.id);
+        const rule = next?.classifications.find(
+          (rule) => field(rule) === field(original),
+        );
+        if (
+          rule?.allowedValues?.length !== 1 ||
+          rule.allowedValues[0] !== expected
+        )
+          fail(
+            "主题修改尚未同步到该测试集的分类和生成要求；原方案保持，不能只修改名称。",
+          );
+      }
+  }
   // This validator checks field/quota structure only; document authority is checked by OPT-34.
   for (const goal of goals)
     validateRules({

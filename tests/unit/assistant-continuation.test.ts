@@ -240,3 +240,38 @@ it("compares shared constraints independently from each delivery and its bound d
       deliverySharedRequirementsKey(original),
     );
 });
+
+import {
+  planningContinuation,
+  requestsBusinessAmendment,
+} from "../../src/assistant/intent.js";
+it("OPT45 recognizes planning-only continuation without treating a new amendment as recovery", () => {
+  for (const text of [
+    "继续规划",
+    "继续规划，先不要生成",
+    "继续规划\n先不要生成",
+    "继续规划，暂时不要生成",
+    "请继续，先不执行",
+    "继续按最后要求保存方案",
+  ])
+    expect(planningContinuation(text)).toBe("plan");
+  expect(planningContinuation("继续执行")).toBe("continue");
+  for (const text of [
+    "物流改成3条，地址不变",
+    "继续规划，物流改成3条",
+    "不要继续",
+    "解释继续规划是什么意思",
+  ])
+    expect(planningContinuation(text)).toBeNull();
+});
+
+it("OPT45 control-only cancellations do not get a new correction identity", () => {
+  for (const text of [
+    "继续规划，取消自动生成",
+    "继续规划，取消后续生成",
+    "继续规划\n先不要生成",
+    "继续规划，暂时不要生成",
+  ])
+    expect(requestsBusinessAmendment(text)).toBe(false);
+  expect(requestsBusinessAmendment("物流改成3条，地址不变")).toBe(true);
+});

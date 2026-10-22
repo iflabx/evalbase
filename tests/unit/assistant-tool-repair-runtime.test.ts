@@ -92,6 +92,26 @@ function setup(
 }
 
 describe("parameter repair execution boundary", () => {
+  it("OPT45 reconstructs an invalid nested container using context, not impossible lossless equality", async () => {
+    const valid = plan();
+    const fixture = setup(
+      { ...valid, steps: JSON.stringify(valid.steps) + ',"requirements":[]' },
+      undefined,
+      {
+        context: async () => ({ request: "八类各50条，先存方案" }),
+        accept: async (_name, _original, fixed: any) =>
+          fixed.steps.length === 8,
+      },
+    );
+    vi.mocked(generateText).mockResolvedValue({
+      toolCalls: [{ toolName: "plan_task", input: valid }],
+    } as any);
+    const result = await fixture.repair(fixture.request as any);
+    expect(result).not.toBeNull();
+    expect(JSON.parse(result!.input)).toEqual(valid);
+    expect(fixture.reserve).toHaveBeenCalledWith("plan_task", "context");
+    expect(generateText).toHaveBeenCalledTimes(1);
+  });
   it("returns malformed input to the contextual planner without guessing its business fields", async () => {
     const fixture = setup(plan());
     fixture.request.toolCall.input = '{"steps":';

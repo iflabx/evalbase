@@ -109,9 +109,32 @@ export function repairScope(
   const repairValidator = new Ajv({ strict: false, allErrors: true });
   const validate = repairValidator.compile(schema);
   validate(value);
-  const issues = actualIssues?.length
+  const rawIssues = actualIssues?.length
     ? actualIssues
     : toolValidationIssues(validate.errors);
+  const issues = rawIssues.map((issue) => {
+    if (issue.keyword !== "type") return issue;
+    let item: any = value,
+      definition = schema;
+    for (const token of issue.path.split("/").slice(1)) {
+      definition = inputContract(item, definition);
+      definition = Array.isArray(item)
+        ? (definition.items ?? {})
+        : (definition.properties?.[token] ?? {});
+      item = item?.[token];
+    }
+    const types = Array.isArray(definition.type)
+      ? definition.type
+      : [definition.type];
+    // A damaged container needs grounded reconstruction, not equality with the broken string.
+    return types.some(
+      (type: string) => type === "object" || type === "array",
+    ) &&
+      !isPlainObject(item) &&
+      !Array.isArray(item)
+      ? { ...issue, keyword: "container" }
+      : issue;
+  });
   for (const collection of ["deliveries", "steps"] as const) {
     if (
       !isPlainObject(value) ||

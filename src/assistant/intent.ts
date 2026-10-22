@@ -117,3 +117,47 @@ export function continuationAllowed(task: Record<string, any>) {
     !(control?.requiresUpdate && !control.updateSaved)
   );
 }
+
+/** A continuation preserves the current request; extra business clauses create a new amendment. */
+export function planningContinuation(text: string): "plan" | "continue" | null {
+  const parts = text
+    .trim()
+    .split(/[，,；;。!！?？\n]/u)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (
+    !parts.length ||
+    !/^请?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?$/u.test(
+      parts[0],
+    )
+  )
+    return null;
+  if (
+    parts
+      .slice(1)
+      .some(
+        (s) =>
+          !/^(?:先|暂时|暂且)?(?:不要|别|不)(?:开始)?(?:生成|执行)$/u.test(s),
+      )
+  )
+    return null;
+  return /规划|保存方案/u.test(parts[0]) || parts.length > 1
+    ? "plan"
+    : "continue";
+}
+
+/** Only an affirmative business amendment may receive a new bounded correction identity. */
+export function requestsBusinessAmendment(text: string) {
+  return text
+    .split(/[，,；;。\n]/u)
+    .some(
+      (clause) =>
+        !/(?:解释|举例|例如|比如|不要|不得|禁止|不能|别)/u.test(clause) &&
+        /(?:改成|改为|调整为|换成|替换为|新增|增加|删掉|取消|去掉|只要)/u.test(
+          clause,
+        ) &&
+        !/(?:改成|改为|调整为|换成|替换为|取消|去掉).{0,12}(?:继续|暂停|停止|执行|生成|规划|保存方案)/u.test(
+          clause,
+        ),
+    );
+}
