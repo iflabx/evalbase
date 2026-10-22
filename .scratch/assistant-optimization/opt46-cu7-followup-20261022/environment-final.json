@@ -1,0 +1,12 @@
+{
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "2c74b8e23d2b80770fd039f244da38d34f03f3b2"
+  },
+  "guardRemoved": true,
+  "code": "2c74b8e23d2b80770fd039f244da38d34f03f3b2"
+}

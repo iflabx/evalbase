@@ -1,0 +1,32 @@
+{
+  "prompts": [
+    "按新版做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不要生成。",
+    "类别名就用退款进度和退款到账时间。",
+    "退款进度先改3条，另一类不变，还是只保存方案。"
+  ],
+  "allowedRecovery": "继续保存方案，先不要执行。",
+  "materials": [
+    {
+      "name": "客服规范-旧版.txt",
+      "text": "客服规范（旧版，已被新版替代）\n分类一：查询退款办理到哪一步。\n分类二：查询退款预计何时到账。\n每条用例应为完整、自然的用户问题。\n",
+      "sha256": "7b1a7e0943e597fdc4d20a8db1a28665c4924543dab3141be278195e54816371"
+    },
+    {
+      "name": "客服规范-新版.txt",
+      "text": "客服规范（新版，优先于旧版）\n退款进度：查询退款办理到哪一步，或退款当前所处环节。\n退款到账时间：查询退款预计何时到账，或不同支付方式的到账时间。\n类别名称采用上述真实名称；每条用例为语义完整、自然的用户问题。\n",
+      "sha256": "0f2080a39452a2a34a9126c2428e9f0a1cb43686688f9576e21c89589fd6b338"
+    }
+  ],
+  "expected": "初始2+2→相同要求真实核对→最终3+2；刷新验证，零生成/零采用",
+  "code": "2c74b8e23d2b80770fd039f244da38d34f03f3b2",
+  "limits": {
+    "maxRequests": 24,
+    "maxActiveMs": 240000,
+    "maxGenerated": 0,
+    "maxSessions": 1,
+    "maxOrdinaryContinue": 1
+  },
+  "predecessor": "opt46-cu7-20261022 (closed, unchanged)",
+  "projectId": "project_a36bf9b824254d75b3f675efc46f5b20",
+  "sessionId": "conversation_e0fe74b4663d4c6c89bf941e45390f64"
+}

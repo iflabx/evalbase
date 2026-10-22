@@ -1,0 +1,31 @@
+{
+  "code": "2c74b8e23d2b80770fd039f244da38d34f03f3b2",
+  "projectId": "project_a36bf9b824254d75b3f675efc46f5b20",
+  "sessionId": "conversation_e0fe74b4663d4c6c89bf941e45390f64",
+  "initialPlan": "passed_after_one_automatic_repair",
+  "sameCategoryVerification": "passed",
+  "quantityAmendment": "failed",
+  "firstFailureRetained": true,
+  "finalPlanUnchanged": true,
+  "finalCount": 4,
+  "quotaCounts": [
+    2,
+    2
+  ],
+  "requestAttempts": 9,
+  "activeMs": 55822,
+  "externalRequestMs": 54181,
+  "ordinaryContinueAttempts": 1,
+  "ordinaryContinueExtraModelRequests": 0,
+  "generated": 0,
+  "adopted": 0,
+  "counts": {
+    "assistant_session": 1,
+    "collaborative_draft": 0,
+    "test_set": 0,
+    "processing_task": 0,
+    "processing_run": 0,
+    "processing_acceptance": 0
+  },
+  "closed": true
+}
