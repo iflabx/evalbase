@@ -1201,4 +1201,71 @@ describe("OPT44 persisted recovery public flow", () => {
       ]),
     );
   });
+  it("OPT45 recovery rejects a stale displayed revision or action before queueing", async () => {
+    const f = await fixture(),
+      row = await f.raw(),
+      n = calls.length;
+    const send = (
+      expectedTaskRevision: number,
+      expectedRecoveryAction: string,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + f.id + "/retry",
+        headers,
+        payload: { expectedTaskRevision, expectedRecoveryAction },
+      });
+    expect(
+      (await send(row.task_revision - 1, "continue_plan")).statusCode,
+    ).toBe(409);
+    expect((await send(row.task_revision, "retry_turn")).statusCode).toBe(409);
+    expect(calls.length).toBe(n);
+    expect((await send(row.task_revision, "continue_plan")).statusCode).toBe(
+      200,
+    );
+  });
+  it("OPT45 preserves the actual saved plan when only its reply summary fails", async () => {
+    const f = await fixture(50000),
+      row = await f.raw();
+    row.task.planningRecovery = null;
+    row.task.planValidationRequired = false;
+    row.task.turnControl.requiresUpdate = false;
+    row.task.turnControl.updateSaved = true;
+    await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+      f.id,
+      JSON.stringify(row.task),
+    ]);
+    const state = await read(f.id);
+    expect(state.task.feedback).toMatchObject({
+      kind: "plan",
+      requirementsSaved: true,
+      summaryFailed: true,
+      planReady: true,
+    });
+    expect(state.task.feedback.message).toContain("总结未完成");
+    expect(state.task.executionPlan.steps.length).toBeGreaterThan(0);
+  });
+  it("OPT45 read exposes a validated business conflict rather than claiming a ready saved plan", async () => {
+    const f = await fixture(50000),
+      row = await f.raw();
+    Object.assign(row.task, {
+      planValidationRequired: false,
+      planningRecovery: null,
+      question: null,
+      targetCount: 3,
+      executionPlan: { mode: "plan", current: 0, steps: [] },
+      classifications: [
+        { field: "expectedOutput", quotas: [{ value: "物流", count: 4 }] },
+      ],
+    });
+    row.task.turnControl = { requiresUpdate: false, updateSaved: true };
+    await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+      f.id,
+      JSON.stringify(row.task),
+    ]);
+    const state = await read(f.id);
+    expect(state.task.feedback.kind).toBe("input");
+    expect(state.task.feedback.message).toContain("配额合计4条");
+    expect(state.task.feedback.planReady).toBe(false);
+  });
 });

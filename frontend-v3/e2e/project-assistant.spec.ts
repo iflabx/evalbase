@@ -105,7 +105,21 @@ async function fixture(
       const status = {
         sessionId: id,
         title,
-        task: state.task,
+        task: state.task.recoveryDecision
+          ? state.task
+          : {
+              ...state.task,
+              recoveryDecision: {
+                action: state.task.canRetryTurn ? "retry_turn" : null,
+                reason: "legacy_fixture",
+                revision: state.revision,
+                validUntil: state.task.canRetryTurn ? Date.now() + 60000 : null,
+                canExecutePlan:
+                  state.task.canContinueExecution !== false &&
+                  Boolean(state.task.executionPlan?.steps.length) &&
+                  !state.task.executionPlan?.needsReview,
+              },
+            },
         taskRevision: state.revision,
         messageRevision: `${state.revision}:${state.messages.length}:${state.messages.at(-1)?.status}`,
         active: state.active,
@@ -138,6 +152,13 @@ async function fixture(
         ...state.task,
         stage: path.endsWith("/stop") ? "stopped" : "waiting_input",
         canRetryTurn: false,
+        recoveryDecision: {
+          action: null,
+          reason: "not_recoverable",
+          revision: state.revision,
+          validUntil: null,
+          canExecutePlan: false,
+        },
       };
       state.active = false;
       state.messages = state.messages.map((t) => ({ ...t, status: "succeeded" }));
@@ -1021,7 +1042,7 @@ test("OPT-27 keeps a paused plan visible and resumes with the current revision",
       executionPaused: true,
       executionPlan: {
         mode: "execute",
-        needsReview: true,
+        needsReview: false,
         current: 1,
         steps: [
           { title: "建立首份草稿", action: "create_draft", status: "executed" },
@@ -1192,4 +1213,220 @@ test("OPT29 document generation reuses result review and clear source labels", a
   await page.screenshot({ path: info.outputPath("document-generation.png"), fullPage: true });
   await page.setViewportSize({ width: 420, height: 900 });
   await overflow(page);
+});
+
+for (const [action, label] of [
+  ["retry_turn", "重试本轮"],
+  ["continue_plan", "继续规划"],
+  ["continue_execution", "继续执行未完成步骤"],
+] as const) {
+  test("OPT45 server recovery action " + action, async ({ page }) => {
+    const state = await fixture(page, {
+      task: {
+        goal: "客服测试集",
+        stage: "failed",
+        recoveryDecision: {
+          action,
+          reason: "segment_expired",
+          revision: 7,
+          validUntil: Date.now() + 60000,
+          canExecutePlan: false,
+        },
+        feedback: { kind: "failed", message: "已有要求和成果已保留。", planReady: false },
+      },
+      messages: [{ ...turn("failed"), status: "failed", errorCode: "assistant_model_failed" }],
+    });
+    await page.goto(url + "/one");
+    await page.getByRole("button", { name: label, exact: true }).click();
+    expect(state.posts.some((p) => p.path.endsWith("/retry"))).toBe(true);
+    await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+  });
+}
+test("OPT45 rejected recovery refreshes capability while retaining typed input", async ({
+  page,
+}) => {
+  let rejected = false;
+  const state = await fixture(page, {
+    task: {
+      goal: "客服测试集",
+      stage: "failed",
+      recoveryDecision: {
+        action: "continue_plan",
+        reason: "segment_expired",
+        revision: 7,
+        validUntil: Date.now() + 60000,
+        canExecutePlan: false,
+      },
+    },
+    intercept: async (route, s) => {
+      if (!new URL(route.request().url()).pathname.endsWith("/retry")) return false;
+      rejected = true;
+      s.revision = 8;
+      s.task = {
+        ...s.task,
+        recoveryDecision: {
+          action: null,
+          reason: "background_changed",
+          revision: 8,
+          validUntil: null,
+          canExecutePlan: false,
+        },
+        feedback: {
+          kind: "blocked",
+          message: "背景文档已变化，请核对依据后继续。",
+          planReady: false,
+        },
+      };
+      await route.fulfill({
+        status: 409,
+        json: { error: { code: "assistant_retry_unavailable" } },
+      });
+      return true;
+    },
+  });
+  await page.goto(url + "/one");
+  await page.getByLabel("向项目助手发送消息").fill("补充说明请保留");
+  await page.getByRole("button", { name: "继续规划", exact: true }).click();
+  await expect.poll(() => rejected).toBe(true);
+  await expect(page.getByRole("button", { name: "继续规划", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("补充说明请保留");
+  await expect(page.getByText("背景文档已变化，请核对依据后继续。", { exact: true })).toBeVisible();
+  expect(state.revision).toBe(8);
+});
+test("OPT45 expired recovery refreshes once and has no live stale button", async ({ page }) => {
+  const state = await fixture(page, {
+    task: {
+      goal: "客服测试集",
+      stage: "failed",
+      recoveryDecision: {
+        action: "retry_turn",
+        reason: "same_segment",
+        revision: 7,
+        validUntil: Date.now() + 1500,
+        canExecutePlan: false,
+      },
+    },
+  });
+  await page.goto(url + "/one");
+  await expect(page.getByRole("button", { name: "重试本轮", exact: true })).toBeVisible();
+  state.task = {
+    ...state.task,
+    recoveryDecision: {
+      action: null,
+      reason: "insufficient_task_time",
+      revision: 7,
+      validUntil: null,
+      canExecutePlan: false,
+    },
+  };
+  await expect(page.getByRole("button", { name: "重试本轮", exact: true })).toHaveCount(0, {
+    timeout: 6000,
+  });
+  expect(state.posts).toHaveLength(0);
+});
+test("OPT45 missing background guidance is readable and opens existing upload by keyboard", async ({
+  page,
+}) => {
+  const question = "请上传背景文档，或使用已有原始资料进行扩充。";
+  await fixture(page, {
+    task: {
+      goal: "客服测试集",
+      stage: "waiting_input",
+      feedback: { kind: "input", message: question, action: "background", planReady: false },
+      recoveryDecision: {
+        action: null,
+        reason: "business_input_required",
+        revision: 7,
+        validUntil: null,
+        canExecutePlan: false,
+      },
+    },
+  });
+  await page.setViewportSize({ width: 480, height: 900 });
+  await page.goto(url + "/one");
+  await expect(page.getByText(question, { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "上传背景文档", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "添加文档", exact: true })).toBeVisible();
+  await overflow(page);
+});
+
+test("OPT45 a late pre-stop read cannot roll the visible task back", async ({ page }) => {
+  let holdNext = false,
+    release: (() => void) | undefined,
+    entered: (() => void) | undefined;
+  const enteredPromise = new Promise<void>((resolve) => (entered = resolve));
+  const state = await fixture(page, {
+    task: {
+      goal: "暂停前任务",
+      stage: "failed",
+      recoveryDecision: {
+        action: "retry_turn",
+        reason: "same_segment",
+        revision: 7,
+        validUntil: Date.now() + 60000,
+        canExecutePlan: false,
+      },
+    },
+    intercept: async (route, s) => {
+      if (!holdNext || !route.request().url().includes("view=status")) return false;
+      holdNext = false;
+      const snapshot = structuredClone({
+        sessionId: "one",
+        task: s.task,
+        taskRevision: s.revision,
+        title: "整理资料",
+        active: false,
+        backgroundDocuments: [],
+        proposals: [],
+        messageRevision: "old",
+        latestTurn: { id: "t0", status: "succeeded" },
+      });
+      entered?.();
+      await new Promise<void>((resolve) => (release = resolve));
+      await route.fulfill({ json: snapshot }).catch(() => {});
+      return true;
+    },
+  });
+  await page.goto(url + "/one");
+  await page.getByLabel("向项目助手发送消息").fill("尚未发送的补充");
+  holdNext = true;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await enteredPromise;
+  await page.getByRole("button", { name: "停止任务", exact: true }).click();
+  await expect(page.getByRole("status").first()).toHaveText("已停止");
+  release?.();
+  await expect(page.getByRole("button", { name: "重试本轮", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("向项目助手发送消息")).toHaveValue("尚未发送的补充");
+  expect(state.task.stage).toBe("stopped");
+});
+
+test("OPT45 concrete business conflict stays visible with an older saved plan", async ({
+  page,
+}) => {
+  const problem = "期望输出：当前目标3条，配额合计4条，请确认数量。";
+  await fixture(page, {
+    task: {
+      goal: "客服",
+      stage: "failed",
+      requirementProblem: problem,
+      requirementProblemKind: "business",
+      feedback: { kind: "input", message: problem, planReady: false },
+      recoveryDecision: {
+        action: null,
+        reason: "business_input_required",
+        revision: 7,
+        validUntil: null,
+        canExecutePlan: false,
+      },
+      executionPlan: {
+        mode: "plan",
+        current: 0,
+        steps: [{ title: "原方案", action: "query_project", status: "pending" }],
+      },
+    },
+  });
+  await page.goto(url + "/one");
+  await expect(page.getByText(problem, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "按方案执行", exact: true })).toHaveCount(0);
 });

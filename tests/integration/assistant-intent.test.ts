@@ -579,6 +579,8 @@ describe("OPT42 per-turn intent public boundary", () => {
     try {
       const state = await send(id, "改为1条，先不执行");
       expect(state.task.targetCount).toBe(2);
+      expect(state.task.feedback.requirementsSaved).toBe(false);
+      expect(state.task.feedback.planReady).toBe(false);
       expect(
         state.turns.at(-1).status,
         JSON.stringify(state.turns.at(-1)),
@@ -1989,5 +1991,31 @@ describe("OPT42 per-turn intent public boundary", () => {
     ).toContain("generate_candidates");
     expect(state.task.executionPlan.mode).toBe("plan");
     expect(await effects()).toEqual(before);
+  });
+  it("OPT45 saved upload guidance survives the final reply and shared session feedback", async () => {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: base() + "/sessions",
+        headers,
+        payload: {},
+      })
+    ).json().sessionId;
+    const question = "请上传背景文档，或使用已有原始资料进行扩充。";
+    const state = await send(id, "帮我做一份客服测试集", [
+      decision("plan"),
+      { name: "plan_task", input: { control: { mode: "plan" }, question } },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.turns.at(-1).assistantText).toBe(question);
+    expect(state.task.feedback).toMatchObject({
+      kind: "input",
+      message: question,
+      action: "background",
+      planReady: false,
+    });
+    expect(state.task.executionPlan?.steps ?? []).toHaveLength(0);
   });
 });

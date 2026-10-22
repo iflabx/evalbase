@@ -389,6 +389,7 @@ export async function controlAssistantTask(
   id: string,
   action: "stop" | "retry" | "delete",
   attempt = 0,
+  expected?: { revision: number; action: string },
 ): Promise<{ runId: string | undefined }> {
   const client = await db.connect();
   try {
@@ -423,6 +424,8 @@ export async function controlAssistantTask(
         : [];
     const job = jobs.find((item) => item.run_id === observed.task?.runId);
     const session = await sessionRow(client, scope, id, true);
+    if (expected && Number(session.task_revision) !== expected.revision)
+      throw new AssistantError(409, "assistant_plan_revalidation_required");
     if (
       session.task?.runId !== observed.task?.runId ||
       JSON.stringify(session.task?.runIds ?? []) !==
@@ -472,6 +475,12 @@ export async function controlAssistantTask(
         )
       ).rows[0];
       const decision = await assistantRecovery(client, scope, session, turn);
+      if (expected && decision.action !== expected.action)
+        throw new AssistantError(
+          409,
+          "assistant_retry_unavailable",
+          decision.reason,
+        );
       const resumeReply =
         session.task?.recovery?.kind === "model_reply" &&
         Boolean(decision.action);
@@ -530,7 +539,7 @@ export async function controlAssistantTask(
           error.code === "40P01")) &&
       attempt < 2
     ) {
-      return controlAssistantTask(db, scope, id, action, attempt + 1);
+      return controlAssistantTask(db, scope, id, action, attempt + 1, expected);
     }
     throw error;
   } finally {

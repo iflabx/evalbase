@@ -1,4 +1,6 @@
 import { turnDiagnostics } from "./diagnostics.js";
+import { assistantFeedback } from "./feedback.js";
+import { unresolvedFailure } from "./receipts.js";
 import { queueRecovery } from "./tasks.js";
 import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
@@ -557,6 +559,22 @@ export async function readSession(
           canRetryTurn,
           canContinueExecution: recovery.canExecutePlan,
           recoveryDecision: recovery,
+          feedback: assistantFeedback(
+            {
+              ...current.task,
+              requirementProblem: presentedTask.requirementProblem,
+              requirementProblemKind: presentedTask.requirementProblemKind,
+            },
+            {
+              revision: Number(current.task_revision),
+              hasBackground: backgroundDocuments.length > 0,
+              recoveryReason: recovery.reason,
+              summaryFailed:
+                latestTurn?.status === "failed" &&
+                current.task?.requirementSave?.turnId === latestTurn.id &&
+                !unresolvedFailure(latestTurn.tool_results ?? []),
+            },
+          ),
         }
       : presentedTask,
     title: current.custom_title ?? presentedTask?.title ?? current.title,

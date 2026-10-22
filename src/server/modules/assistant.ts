@@ -807,7 +807,21 @@ export function registerAssistant({
       async (request, reply) => {
         if (!write(request, reply)) return;
         return respond(reply, async () => {
-          if (!isPlainObject(request.body) || Object.keys(request.body).length)
+          if (
+            !isPlainObject(request.body) ||
+            Object.keys(request.body).some(
+              (k) =>
+                !["expectedTaskRevision", "expectedRecoveryAction"].includes(k),
+            ) ||
+            ((request.body.expectedTaskRevision !== undefined ||
+              request.body.expectedRecoveryAction !== undefined) &&
+              (action !== "retry" ||
+                !Number.isSafeInteger(request.body.expectedTaskRevision) ||
+                Number(request.body.expectedTaskRevision) < 0 ||
+                !["retry_turn", "continue_plan", "continue_execution"].includes(
+                  String(request.body.expectedRecoveryAction),
+                )))
+          )
             throw new AssistantError(422, "assistant_request_invalid");
           const currentScope = scope(request);
           await controlAssistantTask(
@@ -815,6 +829,13 @@ export function registerAssistant({
             currentScope,
             request.params.sessionId,
             action,
+            0,
+            request.body.expectedTaskRevision !== undefined
+              ? {
+                  revision: Number(request.body.expectedTaskRevision),
+                  action: String(request.body.expectedRecoveryAction),
+                }
+              : undefined,
           );
           void dispatch().catch((error) => app.log.error(error));
           return { accepted: true };

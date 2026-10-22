@@ -534,7 +534,15 @@ export async function runProcessing(
   );
   let model: Awaited<ReturnType<typeof configuredModel>> | undefined;
   if (run.model_revision !== null)
-    model = await configuredModel(db, config, run.model_revision);
+    model = await configuredModel(
+      db,
+      config,
+      run.model_revision,
+      false,
+      undefined,
+      undefined,
+      { projectId: job.project_id, runId: run.id },
+    );
   let output = 0,
     failed = 0,
     warningCount = 0;

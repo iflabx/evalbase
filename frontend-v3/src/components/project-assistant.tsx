@@ -131,6 +131,21 @@ type Conversation = {
     error?: string;
     recovery?: { kind: string; message: string };
     canRetryTurn?: boolean;
+    recoveryDecision?: {
+      action: "retry_turn" | "continue_plan" | "continue_execution" | null;
+      reason: string;
+      revision: number;
+      validUntil: number | null;
+      canExecutePlan: boolean;
+    };
+    feedback?: {
+      kind: string;
+      message: string;
+      action?: "background";
+      requirementsSaved: boolean;
+      planReady: boolean;
+      summaryFailed?: boolean;
+    };
     transportRecovery?: { turnId: string; retry: number; delayMs: number } | null;
     target?: { kind: string; id?: string };
     targetName?: string;
@@ -337,6 +352,7 @@ export function ProjectAssistant({
     select: (state) =>
       state.location.pathname.replace(/\/$/, "") === `/projects/${projectId}/assistant`,
   });
+  const [recoveryNow, setRecoveryNow] = useState(Date.now);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [sessionSearch, setSessionSearch] = useState(""),
@@ -547,13 +563,18 @@ export function ProjectAssistant({
     canWrite,
     queryClient,
   ]);
-  const conversation = useQuery({
+  const conversation = useQuery<Conversation>({
     queryKey: ["assistant-conversation", projectId, sessionId, actorId, canWrite],
     queryFn: ({ signal }) =>
       request<Conversation>(`${base}/sessions/${encodeURIComponent(sessionId!)}?view=status`, {
         signal,
       }),
     enabled: Boolean(sessionId),
+    structuralSharing: (previous, incoming) => {
+      const old = previous as Conversation | undefined,
+        next = incoming as Conversation;
+      return old && Number(old.taskRevision) > Number(next.taskRevision) ? old : next;
+    },
     retry: false,
     refetchInterval: (q) =>
       foreground &&
@@ -566,6 +587,15 @@ export function ProjectAssistant({
         ? 1500
         : false,
   });
+  const refreshConversation = useCallback(
+    async (id = sessionId) => {
+      if (!id) return;
+      const queryKey = ["assistant-conversation", projectId, id, actorId, canWrite];
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      await queryClient.invalidateQueries({ queryKey, exact: true });
+    },
+    [sessionId, projectId, actorId, canWrite, queryClient],
+  );
   const history = useInfiniteQuery({
     queryKey: ["assistant-messages", projectId, sessionId, actorId, canWrite],
     initialPageParam: undefined as string | undefined,
@@ -610,6 +640,32 @@ export function ProjectAssistant({
             ).values(),
           ],
         };
+  const recovery = visible?.task?.recoveryDecision;
+  const recoveryExpired = Boolean(
+    recovery?.validUntil !== null &&
+    recovery?.validUntil !== undefined &&
+    recovery.validUntil <= recoveryNow,
+  );
+  const recoveryAction =
+    recovery?.revision === visible?.taskRevision && !recoveryExpired ? recovery?.action : null;
+  const recoveryLabel = recoveryAction
+    ? {
+        retry_turn: "重试本轮",
+        continue_plan: "继续规划",
+        continue_execution: "继续执行未完成步骤",
+      }[recoveryAction]
+    : undefined;
+  useEffect(() => {
+    if (!recovery?.action || !recovery.validUntil || !sessionId) return;
+    const timer = setTimeout(
+      () => {
+        setRecoveryNow(Date.now());
+        void refreshConversation();
+      },
+      Math.max(0, recovery.validUntil - Date.now()) + 5,
+    );
+    return () => clearTimeout(timer);
+  }, [recovery?.action, recovery?.validUntil, sessionId, refreshConversation]);
   useEffect(() => {
     if (pending?.status !== "accepted" || conversation.isFetching) return;
     const status = conversation.data;
@@ -726,27 +782,36 @@ export function ProjectAssistant({
   const currentLabel = pageContext
     ? `所选${pageContext.kind === "draft" ? "草稿" : pageContext.kind === "asset" ? "原始数据" : pageContext.kind === "version" ? "版本" : "测试集"}：${currentName ?? "正在核对…"}${currentCount !== undefined ? ` · ${currentCount} 条记录` : ""}`
     : undefined;
-  const stageLabel = ["assistant_auto_limit", "assistant_auto_plan_limit"].includes(
-    visible?.task?.error ?? "",
-  )
-    ? "自动执行已暂停"
-    : visible?.task?.executionPaused && visible.task.stage !== "stopped"
-      ? "已暂停"
-      : (
-          {
-            inspecting: "检查资料与要求",
-            planning: "方案待执行",
-            processing: "处理中",
-            checking: "核对结果",
-            yielding: "准备继续",
-            awaiting_review: "候选待审核",
-            awaiting_confirmation: "等待确认",
-            waiting_input: "等待补充",
-            failed: "任务未完成",
-            stopped: "已停止",
-            complete: visible?.task?.overallTargetCount ? "当前目标已完成" : "已完成",
-          } as Record<string, string>
-        )[visible?.task?.stage ?? ""];
+  const factStage = (
+    {
+      plan: "方案待执行",
+      amendment: "修改待保存",
+      input: "等待补充",
+      blocked: "需要核对",
+      failed: "任务未完成",
+    } as Record<string, string>
+  )[visible?.task?.feedback?.kind ?? ""];
+  const stageLabel =
+    factStage ||
+    (["assistant_auto_limit", "assistant_auto_plan_limit"].includes(visible?.task?.error ?? "")
+      ? "自动执行已暂停"
+      : visible?.task?.executionPaused && visible.task.stage !== "stopped"
+        ? "已暂停"
+        : (
+            {
+              inspecting: "检查资料与要求",
+              planning: "方案待执行",
+              processing: "处理中",
+              checking: "核对结果",
+              yielding: "准备继续",
+              awaiting_review: "候选待审核",
+              awaiting_confirmation: "等待确认",
+              waiting_input: "等待补充",
+              failed: "任务未完成",
+              stopped: "已停止",
+              complete: visible?.task?.overallTargetCount ? "当前目标已完成" : "已完成",
+            } as Record<string, string>
+          )[visible?.task?.stage ?? ""]);
   const validLink = (url: string | undefined) =>
     url?.startsWith(`/projects/${projectId}/`) ? url : undefined;
   async function createSession(preserveInput = false) {
@@ -834,8 +899,10 @@ export function ProjectAssistant({
       setError(errorText(e));
       setPending({ ...submission, status: "failed" });
       const status = Number((e as { status?: number })?.status);
-      if ((status >= 400 && status < 500 && status !== 408) ||
-          (e instanceof Error && e.message === "assistant_candidate_selection_changed")) {
+      if (
+        (status >= 400 && status < 500 && status !== 408) ||
+        (e instanceof Error && e.message === "assistant_candidate_selection_changed")
+      ) {
         const key = scopeKey + (submission.sessionId ?? "new"),
           saved = JSON.parse(readAssistantDraft(key));
         writeAssistantDraft(key, { ...saved, pending: undefined });
@@ -843,7 +910,7 @@ export function ProjectAssistant({
           queryKey: ["assistant-candidates", base, submission.sessionId],
         });
       }
-      if (submission.expectedTaskRevision !== undefined) await conversation.refetch();
+      await refreshConversation(submission.sessionId);
     } finally {
       setBusy(false);
     }
@@ -871,11 +938,21 @@ export function ProjectAssistant({
     setBusy(true);
     setError("");
     try {
-      await post(`${base}/sessions/${sessionId}/${action}`, {});
+      await queryClient.cancelQueries({
+        queryKey: ["assistant-conversation", projectId, sessionId, actorId, canWrite],
+        exact: true,
+      });
+      await post(
+        `${base}/sessions/${sessionId}/${action}`,
+        action === "retry" && recoveryAction
+          ? { expectedTaskRevision: recovery!.revision, expectedRecoveryAction: recoveryAction }
+          : {},
+      );
       await queryClient.invalidateQueries({ queryKey: ["assistant-processing-run", projectId] });
-      await conversation.refetch();
+      await refreshConversation();
     } catch (error) {
       setError(errorText(error));
+      await refreshConversation();
       if (action === "retry")
         await queryClient.invalidateQueries({ queryKey: ["assistant-processing-run", projectId] });
     } finally {
@@ -943,7 +1020,7 @@ export function ProjectAssistant({
         <div className="flex flex-wrap items-center gap-2">
           {(visible?.task?.executionPlan?.mode === "plan" || visible?.task?.executionPaused) &&
             visible.task.stage !== "stopped" &&
-            visible.task.canContinueExecution !== false &&
+            visible.task.recoveryDecision?.canExecutePlan === true &&
             (!visible.task.executionPlan?.needsReview || visible.task.executionPaused) &&
             canWrite && (
               <Button
@@ -965,18 +1042,16 @@ export function ProjectAssistant({
                 {visible.task.executionPaused ? "继续执行" : "按方案执行"}
               </Button>
             )}
-          {canWrite &&
-            (visible?.task?.canRetryTurn || canRetryProcessing) &&
-            !visible?.task?.requirementProblem && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy || running}
-                onClick={() => void control("retry")}
-              >
-                重试未完成步骤
-              </Button>
-            )}
+          {canWrite && (recoveryAction || canRetryProcessing) && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || running}
+              onClick={() => void control("retry")}
+            >
+              {recoveryLabel ?? "重试处理任务"}
+            </Button>
+          )}
           {canWrite &&
             visible?.task?.goal &&
             !["complete", "stopped"].includes(visible.task.stage) && (
@@ -1484,6 +1559,24 @@ export function ProjectAssistant({
               {visible?.task?.targetName && visible.task.targetName !== currentName && (
                 <p className="text-xs text-muted-foreground">任务对象：{visible.task.targetName}</p>
               )}
+              {visible?.task?.feedback?.message && (
+                <div
+                  role="status"
+                  className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                >
+                  <span className="break-words">{visible.task.feedback.message}</span>
+                  {visible.task.feedback.action === "background" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => openWork("sources")}
+                    >
+                      上传背景文档
+                    </Button>
+                  )}
+                </div>
+              )}
               {error && (
                 <p role="alert" className="text-sm text-destructive">
                   {error}
@@ -1670,7 +1763,11 @@ export function ProjectAssistant({
                   {workTab === "sources" && Boolean(visible.task.executionPlan?.steps.length) && (
                     <div className="space-y-2">
                       {visible.task.executionPlan?.mode === "plan" && (
-                        <p className="text-xs text-muted-foreground">已保存方案（尚未执行）</p>
+                        <p className="text-xs text-muted-foreground">
+                          {visible.task.feedback?.kind === "amendment"
+                            ? "原方案（本次修改尚未生效）"
+                            : "已保存方案（尚未执行）"}
+                        </p>
                       )}
                       <ol
                         aria-label={
@@ -1744,12 +1841,14 @@ export function ProjectAssistant({
                     )}
                   {visible.task.requirementProblem && (
                     <div className="space-y-2 text-sm">
-                      <p role="alert" className="break-words text-destructive">
-                        {visible.task.requirementProblemKind === "business"
-                          ? visible.task.requirementProblem
-                          : "本次要求尚未应用，可重试未完成步骤"}
-                        。原有要求与已完成结果已保留。
-                      </p>
+                      {!visible.task.feedback && (
+                        <p role="alert" className="break-words text-destructive">
+                          {visible.task.requirementProblemKind === "business"
+                            ? visible.task.requirementProblem
+                            : "本次要求尚未应用，可重试未完成步骤"}
+                          。原有要求与已完成结果已保留。
+                        </p>
+                      )}
                       {visible.task.requirementProblemKind !== "business" && (
                         <details className="text-xs text-muted-foreground">
                           <summary className="cursor-pointer">技术详情</summary>
@@ -1878,12 +1977,12 @@ export function ProjectAssistant({
                         ))}
                       </div>
                     )}
-                  {visible.task.error && (
+                  {!visible.task.feedback && visible.task.error && (
                     <p role="alert" className="text-sm text-destructive">
                       {messages[visible.task.error] ?? "任务未完成，已有输入与候选仍保留。"}
                     </p>
                   )}
-                  {visible.task.recovery && (
+                  {!visible.task.feedback && visible.task.recovery && (
                     <p
                       role="status"
                       className="rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6"

@@ -1,4 +1,9 @@
 import {
+  assistantFeedback,
+  claimedExecution,
+  claimedUpdate,
+} from "./feedback.js";
+import {
   turnControlSchema,
   validControl,
   restoredDecision,
@@ -135,6 +140,7 @@ import {
   readProcessingRun,
 } from "../processing/store.js";
 import {
+  taskPresentation,
   assistantAccess,
   ASSISTANT_SESSION_TURN_LIMIT,
   AssistantError,
@@ -283,16 +289,6 @@ function inputHint(
     ? `${name}：${problem} 允许字段：${Object.keys(properties).join("、")}。`
     : problem;
 }
-const claimedExecution = (text: string) =>
-  /(?:已|已经|正在)[^。；;，,\n]{0,40}(?:开始|提交|生成|清洗|改写|扩充|创建|执行)(?!的)/u.test(
-    text,
-  );
-const claimedUpdate = (text: string) =>
-  /(?:已将|已把).{0,40}(?:改为|改成|修改|调整|更新|保存)/u.test(text) ||
-  /(?:已|已经)(?:成功|为你|为您|替你)?(?:记录|记下|保存|更新|修改|调整|记住)[\s\S]{0,24}(?:要求|约束|方案|计划|数量|目标)|(?:要求|约束|方案|计划|数量|目标).{0,12}(?:已|已经)(?:成功)?(?:记录|记下|保存|更新|修改|调整)/u.test(
-    text,
-  );
-
 function schema(
   properties: Record<string, unknown>,
   required: string[],
@@ -5967,6 +5963,11 @@ export async function executeAssistantTurn(
             );
           },
         }),
+      {
+        projectId: scope.projectId,
+        sessionId: turn.session_id,
+        turnId: turn.id,
+      },
     );
     modelRevision = model.revision;
     context = await assistantContext(
@@ -7376,25 +7377,57 @@ export async function executeAssistantTurn(
       }
       return "本轮尚未提交新的处理任务，已有要求和成果已保留。";
     };
-    const reply = await executionFeedback(
-      (decision?.mode === "query" ? explanation : undefined) ||
-        (waitingForInput &&
-          decision?.mode !== "query" &&
-          decision?.mode !== "pause" &&
-          state?.question) ||
-        (decision?.mode === "pause"
-          ? (explanation ??
-            `后续执行已暂停，${Number.isInteger(state?.review?.total) ? `${state.review.total} 条候选与` : ""}已有成果保留；这不会取消已经提交的处理。`)
-          : undefined) ||
-        (!yieldToProcessing && response.text.slice(0, 8000)) ||
-        (pending
-          ? "操作已准备好，请核对下方确认卡片。"
-          : state?.stage === "processing"
-            ? "处理任务已提交，完成后将继续核对候选。"
-            : yieldToProcessing
-              ? "已核对本段真实回执，任务进度与保留成果见下方。"
-              : "已核对处理结果，请查看下方候选和异常。"),
+    const displayTask = taskPresentation(state);
+    const projected = assistantFeedback(
+      {
+        ...state,
+        requirementProblem: displayTask?.requirementProblem,
+        requirementProblemKind: displayTask?.requirementProblemKind,
+      },
+      {
+        revision: turn.task_revision,
+        hasBackground: Boolean(
+          (
+            await db.query(
+              "SELECT 1 FROM assistant_background_document WHERE session_id=$1 LIMIT 1",
+              [turn.session_id],
+            )
+          ).rowCount,
+        ),
+      },
     );
+    const trusted =
+      decision?.mode !== "query" &&
+      [
+        "input",
+        "amendment",
+        "processing",
+        "awaiting_confirmation",
+        "complete",
+        "plan",
+      ].includes(projected.kind) &&
+      projected.message;
+    const reply =
+      trusted ||
+      (await executionFeedback(
+        (decision?.mode === "query" ? explanation : undefined) ||
+          (waitingForInput &&
+            decision?.mode !== "query" &&
+            decision?.mode !== "pause" &&
+            state?.question) ||
+          (decision?.mode === "pause"
+            ? (explanation ??
+              `后续执行已暂停，${Number.isInteger(state?.review?.total) ? `${state.review.total} 条候选与` : ""}已有成果保留；这不会取消已经提交的处理。`)
+            : undefined) ||
+          (!yieldToProcessing && response.text.slice(0, 8000)) ||
+          (pending
+            ? "操作已准备好，请核对下方确认卡片。"
+            : state?.stage === "processing"
+              ? "处理任务已提交，完成后将继续核对候选。"
+              : yieldToProcessing
+                ? "已核对本段真实回执，任务进度与保留成果见下方。"
+                : "已核对处理结果，请查看下方候选和异常。"),
+      ));
     await saveDiagnostics();
     await updateTurn(
       "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",

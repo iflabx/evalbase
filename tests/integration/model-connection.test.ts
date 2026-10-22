@@ -319,4 +319,70 @@ describe("administrator model connection", () => {
       testOk: null,
     });
   });
+  it("OPT45 model request identity stays internal and reaches each actual fetch", async () => {
+    const { configuredModel } = await import("../../src/model/connection.js");
+    const { generateText } = await import("ai");
+    const { vi } = await import("vitest");
+    const current = (
+      await app.inject({
+        method: "GET",
+        url: "/api/settings/model-connection",
+        headers,
+      })
+    ).json();
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/settings/model-connection",
+      headers,
+      payload: {
+        revision: current.connection?.revision ?? 0,
+        name: "scope verification",
+        endpoint,
+        model: "synthetic-model",
+        enabled: true,
+        apiKey: "synthetic-secret-token",
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    const db = createPool(databaseUrl);
+    const realFetch = globalThis.fetch,
+      observed: Record<string, unknown>[] = [];
+    const scope = {
+      projectId: "isolated-project",
+      sessionId: "one",
+      turnId: "actual-turn",
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      observed.push((init as any)?.[Symbol.for("evalbase.modelRequestScope")]);
+      expect(JSON.stringify(init?.headers)).not.toContain("isolated-project");
+      expect(String(init?.body)).not.toContain("actual-turn");
+      return realFetch(input, init);
+    });
+    try {
+      const m = await configuredModel(
+        db,
+        { ...loadConfig(), databaseUrl, modelEncryptionKey },
+        undefined,
+        false,
+        undefined,
+        undefined,
+        scope,
+      );
+      await generateText({ model: m.model, prompt: "OK", maxRetries: 0 });
+      const ordinary = await configuredModel(db, {
+        ...loadConfig(),
+        databaseUrl,
+        modelEncryptionKey,
+      });
+      await generateText({
+        model: ordinary.model,
+        prompt: "OK",
+        maxRetries: 0,
+      });
+      expect(observed).toEqual([scope, undefined]);
+    } finally {
+      vi.restoreAllMocks();
+      await db.end();
+    }
+  });
 });

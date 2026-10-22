@@ -235,6 +235,12 @@ export async function configuredModel(
     error?: unknown,
   ) => void,
   decorateFetch?: (request: typeof fetch) => typeof fetch,
+  requestScope?: {
+    projectId: string;
+    sessionId?: string;
+    turnId?: string;
+    runId?: string;
+  },
 ) {
   const connection = await readConnection(db, revision);
   if (!connection || (!allowDisabled && !connection.enabled))
@@ -262,11 +268,21 @@ export async function configuredModel(
         }
       }
     : modelFetch;
+  // Internal identity for request accounting; Symbols never become provider headers/body.
+  const scopedFetch: typeof fetch = requestScope
+    ? (input, init) =>
+        observedFetch(input, {
+          ...init,
+          [Symbol.for("evalbase.modelRequestScope")]: Object.freeze({
+            ...requestScope,
+          }),
+        })
+    : observedFetch;
   const provider = createOpenAICompatible({
     name: "evalbase",
     baseURL: connection.endpoint,
     apiKey: decrypt(connection, config),
-    fetch: decorateFetch ? decorateFetch(observedFetch) : observedFetch,
+    fetch: decorateFetch ? decorateFetch(scopedFetch) : scopedFetch,
   });
   return {
     revision: connection.revision,
