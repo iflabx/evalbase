@@ -263,3 +263,9 @@ OPT-12 是 OPT-11 后续体验调整，Owner 已单独授权开发；不等待�
 ### 2026-10-22 第6～10项修复与独立复测
 
 固定应用6c2cd08已更新4217；受控回归、分类/修复/完成条件及时间预留实现见[本轮证据](batch2-repair-verification.md)。五个独立新会话的真实结果为2项首次通过、1项普通继续后完成、2项失败，不能签全部通过。50次实际请求、仅新增并采用2条；旧验收数据和14份旧预算保持，临时测试护栏已卸载。
+
+## 2026-10-23 全工具参数审查补充
+
+Owner授权仅文档补审。已完成15工具/90顶层字段及399条含复用路径的[参数核对](../../docs/assistant-tool-parameter-review-2026-10-23.md)，新增7组问题、1项旧格式风险归入OPT-46～50；[共同合同](../../docs/assistant-mechanism-consolidation-2026-10-22.md#tool-parameter-contracts)、[测试索引](../../docs/test-plan-data-selection-and-assistant.md#tool-parameter-tests)同步。
+
+OPT-46继续in-progress/partial-pass；47～50维持not-started。新增14条验收标准未实施/运行；14条离线观察不是业务验收通过。未修改业务代码、更新4217、调用模型、运行CU、改旧预算或重跑已完成部分；原未提交semantic-results.json排除在本轮写入及提交之外。

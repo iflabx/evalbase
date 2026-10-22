@@ -38,6 +38,13 @@ Blocked by: OPT-46（共享准备结果与逐次纠错合同）
 - 检查submit_processing、generate_candidates及继续处理直接调用链；仅依据错误码的hasNoEffect不能覆盖已提交要求/目标草稿。保留已有targetCommitted查询及同键草稿幂等，补齐被无副作用错误码跳过的部分提交；复用现有操作键、draft_creation_receipt与processing回执，明确无提交、部分提交、已提交、结果未知。
 - 目标草稿成功、处理运行尚未受理时保存部分结果，恢复沿同一业务命令查询目标回执并继续；运行已受理但响应丢失先对账。不能删除已有目标掩盖部分提交，也不能释放原身份后重新创建。预检与最终事务复检均保留，不建设通用补偿平台。
 
+### 2026-10-23 全工具参数补审增补
+
+11. 本票统一接入read_records、preview_selection、submit_processing、select_candidates、refine_candidates及request_processing_apply的选择/条件/范围准备，覆盖TP01～04；明确缺省/显式false/互斥模式及唯一seed。复用现有选择算法和固定范围，不重做抽样系统。
+12. 将create_draft的新建/继承/复用条件、query_project按kind的字段、采用target按kind的字段一起在既有工具适配处预检（TP05）；生成/处理语义及容量错误按真实operation投影（TP06/07）。旧回执/固定确认保持，正确恢复不靠忽略参数或新建空草稿。
+
+共同合同见[§11.6](../../../docs/assistant-mechanism-consolidation-2026-10-22.md#tool-parameter-contracts)，逐字段审查不等于开发完成；依赖及原预算不变。
+
 ## 结构与退出路径
 
 主要落点为agent.ts查询/处理工具、plan.ts输入绑定、processing相关validator及共享修复控制器。允许收敛为有实际调用者的发现器和处理提议编译器，保持原业务服务负责权限/容量/提交事务最终校验；不因“预检过”跳过事务复检。移除先错一个字段再撞下一错误、只支持plan_task的修复分支。计划持久化与执行使用相同合同版本，历史已冻结处理配方不变。
@@ -56,6 +63,12 @@ Blocked by: OPT-46（共享准备结果与逐次纠错合同）
 | R47-8 | 正常工具、已存计划、补参数和恢复共用处理准备；清洗数量/Metadata键/范围同时错误一次返回可证问题，第二次纠正得到最新错误；无授权不扩大范围 |
 | R47-9 | 在目标草稿提交后、处理受理前注入配置失效/背景变化/容量失败；恢复查原子回执，最多一个目标和一个运行，准确保留部分提交；运行提交后响应丢失不重做 |
 | R47-10 | 发现结果分页、排序或计数变化不被作为新的业务完成回执；同任务/修订/权限下重复查询仍受两次逻辑读取限制，真实新名称/用户翻页能按原规则进入新的有界发现 |
+| R47-11 | 同源同条件经读取、预览、提交和候选选取：缺conditions、random缺mode、Metadata缺key、equals缺value及count/percent边界得到相同准备规则/准确问题；可信缺省可补，未知单位不猜；坏配置无提交。 |
+| R47-12 | selection＋顶层conditions、recordIds＋allRecords、resultIds＋allValid、任务勾选＋allResults/where、显式allSelected:false成对验证；冲突不能静默丢字段或改范围，修复后固定ID集、处理条数和确认卡严格匹配用户授权。 |
+| R47-13 | selection模式和groups模式分别验证只有顶层seed、只有内层seed、二者冲突、缺省seed、显式重新抽取；真实选择器使用与持久seed/config/hash一致，重读/恢复保持原ID集；至少一次通过真实选择算法而非桩函数。 |
+| R47-14 | 同一equals/contains条件在读取、选取、精修得到同一集合：多Metadata键、大小写、首尾空白、空值与无匹配；不能缺key时变成任意键搜索。条件不满足给具体范围问题，不虚报已处理。 |
+| R47-15 | 新建/版本草稿的成对ID、name/purpose互斥和同名复用组合，在任何复用或副作用前校验；target三种kind及query_project五kind不静默吞掉不适用字段；原合法复用/确认/权限仍可用。 |
+| R47-16 | 空白query/instructions、trim后重复Metadata键/场景、最终8000边界经全部处理入口返回准确tool/operation/fieldPath；纯selection_invalid可有限纠正，generate不得被提示删除合法outputCount；一次列出可证问题，首次失败和两次总额保留。 |
 
 ## 验证、依赖与保护
 
@@ -70,3 +83,5 @@ Blocked by: OPT-46（共享准备结果与逐次纠错合同）
 - 2026-10-22：仅创建开发票，Implementation not-started、Validation not-run；待后续开发授权。
 
 - 2026-10-23：按全链路审查增补复合提交/部分回执和R47-8～10，明确依赖OPT-46；Implementation not-started、Validation not-run。部分提交是代码识别的风险，尚未在真实验收库制造或观察重复草稿。
+
+- 2026-10-23：补齐15工具参数传递审查，增加R47-11、R47-12、R47-13、R47-14、R47-15、R47-16；仅文档/离线源码探针，未实现新增范围、运行应用回归/CU、部署或消费预算。

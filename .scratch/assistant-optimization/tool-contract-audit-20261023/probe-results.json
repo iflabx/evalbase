@@ -1,0 +1,224 @@
+{
+  "baseline": "a4102b78545eaf11d1e8b782b127330c662ab43d",
+  "businessBaseline": "2c74b8e23d2b80770fd039f244da38d34f03f3b2",
+  "method": "read-only AST extraction, isolated pure-function VMs, declared Ajv schemas; no app execution, DB, network, model or budget writes",
+  "toolCount": 15,
+  "topLevelFields": 90,
+  "evidence": [
+    {
+      "path": "src/assistant/requirements.ts",
+      "sha256": "1a2d70c1a93f371dd09c87858e023c60945a313ba396e827088ed88eca17b230",
+      "symbols": [
+        "normalizedRequirements"
+      ]
+    },
+    {
+      "path": "src/assistant/plan.ts",
+      "sha256": "aba22cd81865f3ffb3d865e20ab47ef852e20ded6d4f15c28aa6470c4b4fbf46",
+      "symbols": [
+        "planSource",
+        "sourceWithinTask",
+        "resolvedStepInput",
+        "selectionParameters",
+        "bindTaskInput"
+      ]
+    },
+    {
+      "path": "src/selection/index.ts",
+      "sha256": "bf61d237d7ee3dad8a5540b22baeb877933e4f260091fc89f8b642d1819adade",
+      "symbols": [
+        "SELECTION_ALGORITHM",
+        "sourceIdentity",
+        "invalid",
+        "object",
+        "conditionsFrom",
+        "selectRecords"
+      ]
+    },
+    {
+      "path": "src/processing/protocol.ts",
+      "sha256": "0e2af06784d4c7c6a6ebd138338f5138ce113a6f7480cadced22467651930b3b",
+      "symbols": [
+        "processingOptions"
+      ]
+    },
+    {
+      "path": "src/assistant/candidates.ts",
+      "sha256": "1fb40df11fa17ccf178c681ea8baba90ce1b8a22e454750a7165e7e059b9b3e2",
+      "symbols": [
+        "selectCandidateRun"
+      ]
+    }
+  ],
+  "probeCount": 14,
+  "results": [
+    {
+      "id": "P01-plan-selection-canonical-comparison",
+      "observed": {
+        "raw": {
+          "method": "random",
+          "value": 5
+        },
+        "prepared": {
+          "method": "random",
+          "value": 5,
+          "conditions": [],
+          "mode": "count"
+        },
+        "fixedValid": true,
+        "rawPlanDiffers": true
+      }
+    },
+    {
+      "id": "P02-selection-schema-vs-domain",
+      "observed": {
+        "schemaAccepts": true,
+        "readSelection": {
+          "method": "all"
+        },
+        "domainError": "selection_invalid",
+        "errorHasCode": false
+      }
+    },
+    {
+      "id": "P03-random-mode-entry-difference",
+      "observed": {
+        "read": {
+          "method": "random",
+          "value": 5,
+          "conditions": []
+        },
+        "submit": {
+          "method": "random",
+          "value": 5,
+          "conditions": [],
+          "mode": "count"
+        }
+      }
+    },
+    {
+      "id": "P04-condition-required-metadata",
+      "observed": {
+        "condition": {
+          "field": "metadata",
+          "operator": "filled"
+        },
+        "schemaAccepts": true,
+        "domainError": "selection_invalid"
+      }
+    },
+    {
+      "id": "P04-condition-required-question",
+      "observed": {
+        "condition": {
+          "field": "question",
+          "operator": "equals"
+        },
+        "schemaAccepts": true,
+        "domainError": "selection_invalid"
+      }
+    },
+    {
+      "id": "P05-explicit-scope-vs-ui-binding",
+      "observed": {
+        "input": {
+          "allResults": true
+        },
+        "prepared": {
+          "allResults": true,
+          "allSelected": true
+        },
+        "exclusiveScopeCount": 2
+      }
+    },
+    {
+      "id": "P06-explicit-false-overwritten",
+      "observed": {
+        "suppliedAllSelected": false,
+        "preparedAllSelected": true,
+        "allValid": true
+      }
+    },
+    {
+      "id": "P07-seed-not-forwarded",
+      "observed": {
+        "engineConfig": {
+          "method": "random",
+          "mode": "count",
+          "value": 1,
+          "conditions": []
+        },
+        "persistedSeed": "fixed-top",
+        "note": "selection adapter instrumented; not a random-sampling outcome test"
+      }
+    },
+    {
+      "id": "P08-two-seed-identities",
+      "observed": {
+        "engineSeed": "nested",
+        "persistedSeed": "fixed-top"
+      }
+    },
+    {
+      "id": "P09-inherited-requirement-capacity",
+      "observed": {
+        "planAccepts": true,
+        "compiledLength": 9008,
+        "toolMax": 8000,
+        "toolAccepts": false
+      }
+    },
+    {
+      "id": "P10-option-semantic-blank",
+      "observed": {
+        "schemaAccepts": true,
+        "domainError": "processing_configuration_invalid",
+        "input": {
+          "operation": "rewrite",
+          "instructions": " ",
+          "allowedFields": [
+            "question"
+          ]
+        }
+      }
+    },
+    {
+      "id": "P10-option-semantic-keys",
+      "observed": {
+        "schemaAccepts": true,
+        "domainError": "processing_configuration_invalid",
+        "input": {
+          "operation": "rewrite",
+          "instructions": "修改",
+          "allowedFields": [
+            "metadata"
+          ],
+          "metadataKeys": [
+            "Risk",
+            " risk "
+          ]
+        }
+      }
+    },
+    {
+      "id": "P11-scenarios-contracts",
+      "observed": {
+        "directAcceptsOne": true,
+        "deliveryAcceptsOne": false
+      }
+    },
+    {
+      "id": "N01-metadata-value-is-not-a-reference",
+      "observed": {
+        "actualShape": [
+          {
+            "key": "customerId",
+            "value": "asset_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "codecMatchesValueKey": false,
+        "conclusion": "Not confirmed: metadata uses key/value entries; no customerId property is traversed."
+      }
+    }
+  ]
+}

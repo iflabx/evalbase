@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-23",
+  "baseline": "a4102b78545eaf11d1e8b782b127330c662ab43d",
+  "businessBaseline": "2c74b8e23d2b80770fd039f244da38d34f03f3b2",
+  "scope": "documentation and offline static parameter audit only",
+  "toolCount": 15,
+  "topLevelFields": 90,
+  "expandedFieldPaths": 399,
+  "confirmedIssueGroups": [
+    "TP01",
+    "TP02",
+    "TP03",
+    "TP04",
+    "TP05",
+    "TP06",
+    "TP07"
+  ],
+  "unconfirmedCompatibilityRisk": [
+    "TP08"
+  ],
+  "newAcceptanceCriteria": 14,
+  "offlineProbeObservations": 14,
+  "offlineAssertionsPassed": true,
+  "applicationRegressionRun": false,
+  "computerUseRun": false,
+  "modelCalls": 0,
+  "budgetWrites": 0,
+  "acceptanceDataWrites": 0,
+  "businessFilesChanged": 0,
+  "checks": {
+    "sourceHashesMatched": 21,
+    "markdownLinks": 420,
+    "serverExistingHistoricalTargets": 5,
+    "newAnchorsChecked": 10,
+    "tableErrors": 0,
+    "fenceErrors": 0,
+    "replacementCharacters": 0,
+    "jsonFilesParsed": 2,
+    "docsCheck": "passed: 38 Ticket lifecycle rows, commit references, Gate state, and stale-status phrases",
+    "diffCheck": "passed"
+  },
+  "preservedUnrelatedFile": {
+    "path": ".scratch/assistant-optimization/batch1-repair/semantic-results.json",
+    "sha256": "c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c"
+  },
+  "notes": [
+    "Old targeted results and failed CU conclusions are retained.",
+    "TP08 constructed legacy fixture is not evidence that current normal planning fails.",
+    "Probe run first failed on a script newline escape before any tests ran; corrected audit script rerun passed.",
+    "No deployment, merge, push, or new acceptance campaign."
+  ]
+}
