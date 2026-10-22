@@ -438,6 +438,9 @@ export async function assistantContext(
           : testSets
     ).rows.find((r) => r.id === page.id);
   const state = encode({
+    catalogScope: "referenced_objects_only",
+    discovery:
+      "files/drafts/versions只列当前已引用对象，空数组不表示项目没有资料。按名称定位请调用query_project查询当前项目；多项同名才澄清。",
     backgroundDocuments: await backgroundCatalog(db, scope, sessionId),
     project: project.rows[0]?.name,
     files: assets.rows.map((a) => ({

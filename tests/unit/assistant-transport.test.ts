@@ -2,6 +2,55 @@ import { describe, it, expect, vi } from "vitest";
 import { assistantTransport } from "../../src/assistant/transport.js";
 
 describe("assistant transport budget", () => {
+  it("recovers one local attempt timeout within the original deadline", async () => {
+    const call = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(
+        new DOMException("attempt timed out", "TimeoutError"),
+      )
+      .mockResolvedValueOnce(new Response("ok"));
+    const retry = vi.fn();
+    const controller = new AbortController();
+    const deadlineAt = Date.now() + 80000;
+    const attempts: boolean[] = [];
+    const transport = assistantTransport(call, {
+      signal: controller.signal,
+      deadlineAt,
+      beforeRequest: async (attempt) => {
+        attempts.push(Boolean(attempt?.timeoutRetry));
+      },
+      onRetry: retry,
+    });
+    expect(
+      await (
+        await transport("http://model.test", {
+          method: "POST",
+          body: "unchanged",
+        })
+      ).text(),
+    ).toBe("ok");
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(attempts).toEqual([false, true]);
+    expect(call.mock.calls[0][1]?.signal).not.toBe(
+      call.mock.calls[1][1]?.signal,
+    );
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(call.mock.calls.every((c) => c[1]?.body === "unchanged")).toBe(true);
+  });
+  it("does not repeat local timeouts or retry with an insufficient window", async () => {
+    for (const remaining of [80000, 19000]) {
+      const call = vi
+        .fn<typeof fetch>()
+        .mockRejectedValue(new DOMException("slow", "TimeoutError"));
+      const transport = assistantTransport(call, {
+        signal: new AbortController().signal,
+        deadlineAt: Date.now() + remaining,
+        beforeRequest: async () => {},
+      });
+      await expect(transport("http://model.test")).rejects.toThrow("slow");
+      expect(call).toHaveBeenCalledTimes(remaining === 80000 ? 2 : 1);
+    }
+  });
   it("shares two retries across separate requests and never changes their payload", async () => {
     vi.useFakeTimers();
     try {
@@ -51,14 +100,12 @@ describe("assistant transport budget", () => {
     },
   );
   it("does not sleep beyond the remaining deadline for Retry-After", async () => {
-    const call = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response("busy", {
-          status: 429,
-          headers: { "retry-after": "120" },
-        }),
-      );
+    const call = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("busy", {
+        status: 429,
+        headers: { "retry-after": "120" },
+      }),
+    );
     const retry = vi.fn();
     const fetchModel = assistantTransport(call, {
       signal: AbortSignal.timeout(80000),

@@ -1,6 +1,7 @@
 import { setTimeout as wait } from "node:timers/promises";
-import { MODEL_RECOVERY_RESERVE_MS } from "./budget.js";
+import { MODEL_RECOVERY_RESERVE_MS, requestFitsDeadline } from "./budget.js";
 
+export const TIMEOUT_RETRY_REQUEST_MS = 20000;
 export function requestTimeoutMs(deadlineAt: number, now = Date.now()) {
   return Math.max(
     1,
@@ -15,7 +16,7 @@ export function assistantTransport(
     signal: AbortSignal;
     deadlineAt: number;
     initialRetries?: number;
-    beforeRequest: () => Promise<void>;
+    beforeRequest: (attempt?: { timeoutRetry: boolean }) => Promise<void>;
     onRetry?: (value: {
       used: number;
       delayMs: number;
@@ -28,17 +29,22 @@ export function assistantTransport(
   let used = options.initialRetries ?? 0;
   return async (input, init) => {
     let retried = false;
-    const signal = AbortSignal.any([
+    let timeoutRetried = false;
+    const parent = AbortSignal.any([
       options.signal,
       ...(init?.signal ? [init.signal] : []),
-      // A single slow request must leave time to persist the turn's recovery state.
-      AbortSignal.timeout(requestTimeoutMs(options.deadlineAt)),
     ]);
     for (;;) {
+      parent.throwIfAborted();
+      // An attempt has its own deadline; retrying never renews the parent turn.
+      const signal = AbortSignal.any([
+        parent,
+        AbortSignal.timeout(requestTimeoutMs(options.deadlineAt)),
+      ]);
       signal.throwIfAborted();
       if (Date.now() >= options.deadlineAt)
         throw new DOMException("Model deadline", "TimeoutError");
-      await options.beforeRequest();
+      await options.beforeRequest({ timeoutRetry: timeoutRetried });
       signal.throwIfAborted();
       let response: Response | undefined,
         complete: Response | undefined,
@@ -57,11 +63,13 @@ export function assistantTransport(
       } catch (error) {
         options.onFailure?.(error);
         if (signal.aborted) options.onFailure?.(signal.reason);
-        signal.throwIfAborted();
+        parent.throwIfAborted();
         failure = error;
         let cause = error,
           transient = false;
+        let timedOut = signal.reason?.name === "TimeoutError";
         for (let i = 0; i < 5 && cause && typeof cause === "object"; i++) {
+          timedOut ||= (cause as { name?: string }).name === "TimeoutError";
           transient ||= [
             "ECONNRESET",
             "ECONNREFUSED",
@@ -73,6 +81,15 @@ export function assistantTransport(
           ].includes(String((cause as { code?: string }).code));
           cause = (cause as { cause?: unknown }).cause;
         }
+        if (timedOut) {
+          if (
+            timeoutRetried ||
+            !requestFitsDeadline(options.deadlineAt, TIMEOUT_RETRY_REQUEST_MS)
+          )
+            throw error;
+          timeoutRetried = true;
+          transient = true;
+        } else signal.throwIfAborted();
         if (!transient) throw error;
       }
       if (complete) {
@@ -102,7 +119,7 @@ export function assistantTransport(
         delayMs,
         httpStatus: response?.status ?? null,
       });
-      await wait(delayMs, undefined, { signal });
+      await wait(delayMs, undefined, { signal: parent });
     }
   };
 }

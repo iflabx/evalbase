@@ -5,6 +5,7 @@ import {
 } from "./feedback.js";
 import {
   turnControlSchema,
+  turnNeedsWork,
   validControl,
   restoredDecision,
   mayExecute,
@@ -115,7 +116,7 @@ import {
   appendObservation,
   type AssistantFailure,
 } from "./diagnostics.js";
-import { assistantTransport } from "./transport.js";
+import { assistantTransport, TIMEOUT_RETRY_REQUEST_MS } from "./transport.js";
 import {
   argumentRepair,
   chargeRepairRequest,
@@ -681,10 +682,7 @@ export async function executeAssistantTurn(
             .join("\n");
         }
         await markPendingAmendment(current);
-        if (
-          (value.mode === "pause" && !value.requiresUpdate) ||
-          (value.mode === "query" && value.explanation)
-        )
+        if (value.mode === "pause" && !value.requiresUpdate)
           waitingForInput = true;
         if (
           value.explanation &&
@@ -704,6 +702,127 @@ export async function executeAssistantTurn(
         "assistant_intent_required",
         "先按本轮用户要求保存plan_task.control；纯查询可直接只读回答，不执行旧方案。",
       );
+  }
+  async function assertPlanRepair(
+    original: any,
+    fixed: any,
+    current?: any,
+    documents?: any[],
+    failure?: { code?: string; hint?: string },
+  ) {
+    if (!original) return;
+    current ??= (
+      await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+        turn.session_id,
+      ])
+    ).rows[0].task;
+    documents ??= (
+      await db.query(
+        'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
+        [turn.session_id],
+      )
+    ).rows;
+    failure ??= (
+      await db.query("SELECT tool_results FROM assistant_turn WHERE id=$1", [
+        turn.id,
+      ])
+    ).rows[0].tool_results.find(
+      (r: any) => r.name === "plan_task" && r.status === "failed",
+    )?.error;
+    const base = context.decode(structuredClone(original));
+    const next = context.decode(structuredClone(fixed));
+    if (Array.isArray(next.deliveries))
+      next.deliveries = next.deliveries.map((d: any) =>
+        resolveBackgroundDefinitions(
+          current,
+          d,
+          documents!,
+          scope,
+          turn.session_id,
+        ),
+      );
+    const unacceptedCorrection = [
+      "assistant_background_reference_invalid",
+      "assistant_background_rule_mismatch",
+      "assistant_tool_input_invalid",
+      "assistant_plan_count_conflict",
+    ].includes(failure?.code ?? "");
+    if (unacceptedCorrection) {
+      base.requirements = current.requirements ?? [];
+      next.requirements ??= current.requirements ?? [];
+      if (Array.isArray(base.deliveries))
+        base.deliveries = base.deliveries.map((delivery: any) => {
+          const saved = deliveryGoals(current.executionPlan).find(
+            (g) => g.id === delivery.id,
+          );
+          if (saved) return { ...saved };
+          // Rejected model prose is a proposal. Preserve accepted user constraints,
+          // counts and verified rules, while letting the cited error be corrected.
+          return {
+            ...delivery,
+            instructions: "",
+            scenarios: [],
+            classifications: delivery.classifications?.map((rule: any) => {
+              const verified = (value: string) => {
+                try {
+                  const candidate = resolveBackgroundDefinitions(
+                    current,
+                    {
+                      classifications: [
+                        {
+                          ...rule,
+                          allowedValues: [value],
+                          requiredValues: [],
+                          quotas: [],
+                          definitions: rule.definitions?.filter(
+                            (d: any) => d.value === value,
+                          ),
+                        },
+                      ],
+                    },
+                    documents!,
+                    scope,
+                    turn.session_id,
+                  );
+                  validateBackgroundRules(
+                    { ...current, allowedLabels: [], ...candidate },
+                    documents!,
+                  );
+                  return true;
+                } catch {
+                  return false;
+                }
+              };
+              const values = new Set<string>([
+                ...(rule.allowedValues ?? []),
+                ...(rule.requiredValues ?? []),
+                ...(rule.quotas ?? []).map((q: any) => q.value),
+              ]);
+              const valid = new Set([...values].filter(verified));
+              return {
+                ...rule,
+                allowedValues: rule.allowedValues?.filter((v: string) =>
+                  valid.has(v),
+                ),
+                requiredValues: rule.requiredValues?.filter((v: string) =>
+                  valid.has(v),
+                ),
+                quotas: rule.quotas?.filter((q: any) => valid.has(q.value)),
+                definitions: rule.definitions?.filter((d: any) =>
+                  valid.has(d.value),
+                ),
+              };
+            }),
+          };
+        });
+    }
+    assertDeliveryRepair(
+      base,
+      next,
+      amendmentRequestText,
+      failure?.code === "assistant_background_rule_mismatch" &&
+        failure?.hint === UNSUPPORTED_FIXED_OUTPUT_HINT,
+    );
   }
   async function backgroundReadReceipts() {
     const rows = (
@@ -1007,7 +1126,10 @@ export async function executeAssistantTurn(
   async function saveBudget() {
     await updateTask(db, turn, checkpointBudget());
   }
-  async function requestPreflight(reservedModelStep = false) {
+  async function requestPreflight(
+    reservedModelStep = false,
+    requestEstimateMs?: number,
+  ) {
     await turnFence(db, scope, turn.id, turn.execution_token);
     const s = (
       await db.query("SELECT * FROM assistant_session WHERE id=$1", [
@@ -1021,6 +1143,7 @@ export async function executeAssistantTurn(
       phase: "request",
       token: turn.execution_token,
       reservedModelStep,
+      requestEstimateMs,
     });
     if (!d.action) {
       requestTimeInsufficient =
@@ -2688,13 +2811,12 @@ export async function executeAssistantTurn(
               Array.isArray(context.decode(prior.input ?? {}).deliveries),
           );
           if (originalCall)
-            assertDeliveryRepair(
+            await assertPlanRepair(
               context.decode(originalCall.input),
               input,
-              amendmentRequestText,
-              originalCall.error?.code ===
-                "assistant_background_rule_mismatch" &&
-                originalCall.error?.hint === UNSUPPORTED_FIXED_OUTPUT_HINT,
+              current,
+              documents,
+              originalCall.error,
             );
           businessDeliveries = reviseDeliveryGoals(
             deliveryGoals(oldPlan),
@@ -5905,9 +6027,12 @@ export async function executeAssistantTurn(
           signal: abortSignal,
           deadlineAt: turnBudget.deadlineAt,
           initialRetries: transportRetriesBefore + turnBudget.transportRetries,
-          beforeRequest: () =>
+          beforeRequest: (attempt) =>
             controlModelRequest(async () => {
-              await requestPreflight(true);
+              await requestPreflight(
+                true,
+                attempt?.timeoutRetry ? TIMEOUT_RETRY_REQUEST_MS : undefined,
+              );
               if (activeRepair) {
                 if (nestedRepairRequest && modelSteps >= 10)
                   throw new AssistantError(422, "assistant_budget_exhausted");
@@ -6315,7 +6440,9 @@ export async function executeAssistantTurn(
         )
           return false;
         if (original !== undefined)
-          assertDeliveryRepair(original, fixed, amendmentRequestText);
+          await assertPlanRepair(original, fixed, current, documents, {
+            code: "assistant_tool_input_invalid",
+          });
         if (decoded.deliveries !== undefined) {
           const proposed = reviseDeliveryGoals(
             deliveryGoals(current.executionPlan),
@@ -6465,10 +6592,12 @@ export async function executeAssistantTurn(
             }
             const corrected = await repair(input);
             if (corrected && input.toolCall.toolName === "plan_task")
-              assertDeliveryRepair(
+              await assertPlanRepair(
                 planningRepairInputs.get(input.toolCall.toolCallId),
                 JSON.parse(corrected.input),
-                planningRequestText,
+                undefined,
+                undefined,
+                { code: "assistant_tool_input_invalid" },
               );
             if (!corrected) {
               // Repair callbacks persist this state while the awaited request runs.
@@ -6742,6 +6871,51 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1
             ? singlePlanSchema
             : fullPlanSchema;
+        if (
+          decision?.mode === "query" &&
+          turnNeedsWork(
+            decision,
+            currentTask,
+            (
+              await db.query(
+                "SELECT tool_results FROM assistant_turn WHERE id=$1",
+                [turn.id],
+              )
+            ).rows[0].tool_results,
+            context.state,
+          )
+        )
+          return {
+            ...fixedState,
+            activeTools: ["query_project"],
+            toolChoice: { type: "tool" as const, toolName: "query_project" },
+            instructions:
+              instructions +
+              "\n本轮没有已核对的资料对象，引用列表为空不表示项目没有资料。请先query_project按用户给出的名称查询files、drafts或testSets；没有名称可列出当前项目供选择。不要只返回query控制或声称项目没有资料。查询只读取当前用户有权访问的元信息，不授予数据修改权限。",
+          };
+        if (
+          !goalContract &&
+          turnNeedsWork(
+            decision,
+            currentTask,
+            (
+              await db.query(
+                "SELECT tool_results FROM assistant_turn WHERE id=$1",
+                [turn.id],
+              )
+            ).rows[0].tool_results,
+            context.state,
+          )
+        ) {
+          return {
+            ...fixedState,
+            activeTools,
+            toolChoice: "required" as const,
+            instructions:
+              instructions +
+              "\n本轮控制意图已记录，但没有业务步骤或完成回执。继续完成原请求，不能只声称开始或再次只提交control。需要定位来源先query_project；已有pageObject时read_records可省略来源。明确的处理请求用plan_task保存executionMode及下一业务动作（例如submit_processing），来源和字段沿当前快照；随后提交真实处理。只有具体业务信息缺失才保存question并等待。仅规划时保存有效要求或方案，不执行。旧暂停须在有效业务方案校验后解除。",
+          };
+        }
         if (decision?.mode === "execute" && goalContract) {
           tools.plan_task.inputSchema = schema(
             {
@@ -7313,6 +7487,20 @@ export async function executeAssistantTurn(
       ])
     ).rows[0]?.task;
     if (
+      turnNeedsWork(
+        decision,
+        state ?? {},
+        (
+          await db.query(
+            "SELECT tool_results FROM assistant_turn WHERE id=$1",
+            [turn.id],
+          )
+        ).rows[0].tool_results,
+        context.state,
+      )
+    )
+      throw new AssistantError(422, "assistant_task_not_executed");
+    if (
       !waitingForInput &&
       (!response.text.trim() ||
         response.finishReason === "tool-calls" ||
@@ -7444,7 +7632,21 @@ export async function executeAssistantTurn(
     const reply =
       trusted ||
       (await executionFeedback(
-        (decision?.mode === "query" ? explanation : undefined) ||
+        (decision?.mode === "query"
+          ? explanation !== decision.explanation
+            ? explanation
+            : (
+                  await db.query(
+                    "SELECT tool_results FROM assistant_turn WHERE id=$1",
+                    [turn.id],
+                  )
+                ).rows[0].tool_results.some(
+                  (r: any) =>
+                    r.status === "succeeded" && readTools.includes(r.name),
+                )
+              ? response.text.trim() || explanation
+              : explanation
+          : undefined) ||
           (waitingForInput &&
             decision?.mode !== "query" &&
             decision?.mode !== "pause" &&
@@ -7597,9 +7799,20 @@ export async function executeAssistantTurn(
       },
     }).catch(() => undefined);
     await saveDiagnostics(errorCode).catch(() => undefined);
+    const failureReply = [
+      turnNeedsWork(decision, state?.task ?? {}, state?.tool_results ?? []) &&
+      decision?.mode === "execute"
+        ? "本轮尚未提交新的处理任务。"
+        : "",
+      failureDiagnostic.reason,
+      "已有要求和成果已保留。",
+      failureDiagnostic.nextAction,
+    ]
+      .filter(Boolean)
+      .join(" ");
     await updateTurn(
-      "UPDATE assistant_turn SET status='failed',error_code=$2 WHERE id=$1 AND status='running'",
-      [turn.id, errorCode],
+      "UPDATE assistant_turn SET status='failed',error_code=$2,assistant_text=$3 WHERE id=$1 AND status='running'",
+      [turn.id, errorCode, failureReply],
     );
   } finally {
     if (budgetLoaded)

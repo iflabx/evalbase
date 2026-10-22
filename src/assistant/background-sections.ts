@@ -5,6 +5,8 @@ export const normalizedExcerpt = (text: string) =>
 
 export type BackgroundSection = {
   code?: string;
+  listOrdinal?: true;
+  categoryName?: string;
   name: string;
   text: string;
   fragments: number[];
@@ -33,6 +35,7 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
   }
   const entries: {
     code?: string;
+    listOrdinal?: true;
     name: string;
     start: number;
     end: number;
@@ -59,6 +62,7 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
     level: number,
     code?: string,
     ancestor?: number,
+    listOrdinal?: true,
   ) => {
     while (stack.length && entries[stack.at(-1)!].level >= level) {
       const entry = entries[stack.pop()!];
@@ -67,6 +71,7 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
     entries.push({
       name: name.trim().replace(/^(?:[-*+]\s+|\d+[.)、]\s+)/u, ""),
       code,
+      ...(listOrdinal ? { listOrdinal } : {}),
       start: offset,
       end: body.length,
       level,
@@ -129,7 +134,7 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
     } else if (top && chinese(top[1]) > 0) {
       parent = undefined;
       const code = String(chinese(top[1]));
-      add(top[2], 1, code);
+      add(top[2], 1, code, undefined, true);
       chineseParent = { code, start: offset };
     } else if (sub && chineseParent && chinese(sub[1]) > 0) {
       add(
@@ -137,6 +142,7 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
         2,
         chineseParent.code + "." + chinese(sub[1]),
         chineseParent.start,
+        true,
       );
     } else if (/^#{1,6}\s/u.test(line)) {
       parent = undefined;
@@ -163,29 +169,66 @@ export function backgroundSections(fragments: BackgroundFragment[]) {
     }
     offset += original.length + 1;
   }
-  const sections: BackgroundSection[] = entries.map((entry) => ({
-    ...(entry.code ? { code: entry.code } : {}),
-    name: entry.name.replace(/[;；。]+$/u, ""),
-    start: entry.start,
-    end: entry.end,
-    text: body.slice(entry.start, entry.end).trim(),
-    fragments: ranges
-      .filter(
-        (range) =>
-          (range.end > entry.start && range.start < entry.end) ||
-          (entry.parent !== undefined &&
-            range.start <= entry.parent &&
-            range.end > entry.parent),
-      )
-      .map((range) => range.index),
-  }));
+  const sections: BackgroundSection[] = entries.map((entry) => {
+    // A heading locates evidence; its ordinal or field label is not the business value.
+    const line = body
+      .slice(entry.start, entry.end)
+      .split("\n")[0]
+      .normalize("NFKC")
+      .trim()
+      .replace(
+        /^(?:#{1,6}\s*|[一二三四五六七八九十]{1,3}[、.]\s*|\([一二三四五六七八九十]{1,3}\)\s*)/gu,
+        "",
+      );
+    const labelled = line.match(
+      /^(?:业务分类|类别|分类[一二三四五六七八九十\d]*|意图|category|intent)\s*:\s*([^。;；:\n]{1,80})/iu,
+    );
+    const numberedName =
+      entry.code && entry.name.match(/^([^:：]{1,80})[:：]\s*\S/u)?.[1];
+    const categoryName =
+      labelled?.[1]?.trim() ??
+      numberedName?.trim() ??
+      (entry.listOrdinal ? entry.name : undefined);
+    return {
+      ...(entry.code ? { code: entry.code } : {}),
+      ...(entry.listOrdinal ? { listOrdinal: true as const } : {}),
+      ...(categoryName ? { categoryName } : {}),
+      name: entry.name.replace(/[;；。]+$/u, ""),
+      start: entry.start,
+      end: entry.end,
+      text: body.slice(entry.start, entry.end).trim(),
+      fragments: ranges
+        .filter(
+          (range) =>
+            (range.end > entry.start && range.start < entry.end) ||
+            (entry.parent !== undefined &&
+              range.start <= entry.parent &&
+              range.end > entry.parent),
+        )
+        .map((range) => range.index),
+    };
+  });
   return { sections, malformedTable };
 }
 
-export function sectionAliases(section: BackgroundSection) {
+export function isCategorySection(section: BackgroundSection) {
+  return !/^(?:背景|业务|测试|文档|资料)?(?:说明|概述|分类|类别|要求|规则|信息|内容|定义|目录|总则)$/u.test(
+    section.categoryName ?? section.name,
+  );
+}
+
+export function sectionAliases(section: BackgroundSection, legacy = false) {
+  if (section.categoryName && !legacy)
+    return [
+      section.categoryName,
+      ...(section.code && !section.listOrdinal
+        ? [section.code, section.code + " " + section.categoryName]
+        : []),
+    ];
   // Keep a literal list-marked alias for already-saved definitions.
   const originalName = section.text.split(/[:：\n]/u)[0].trim();
   return [
+    ...(section.categoryName ? [section.categoryName] : []),
     section.name,
     ...(originalName !== section.name &&
     originalName.replace(/^(?:[-*+]\s+|\d+[.)、]\s+)/u, "") === section.name
@@ -195,10 +238,18 @@ export function sectionAliases(section: BackgroundSection) {
   ];
 }
 
-export function matchingSections(sections: BackgroundSection[], value: string) {
+export function matchingSections(
+  sections: BackgroundSection[],
+  value: string,
+  legacy = false,
+) {
   const query = normalizedExcerpt(value);
-  return sections.filter((section) =>
-    sectionAliases(section).some((alias) => normalizedExcerpt(alias) === query),
+  return sections.filter(
+    (section) =>
+      (legacy || isCategorySection(section)) &&
+      sectionAliases(section, legacy).some(
+        (alias) => normalizedExcerpt(alias) === query,
+      ),
   );
 }
 
@@ -208,9 +259,19 @@ export function matchesSectionDefinition(
   selected: number[],
   value: string,
   quote: string,
+  legacy = false,
 ): boolean | undefined {
   const index = backgroundSections(fragments);
-  const matches = matchingSections(index.sections, value);
+  const matches = matchingSections(index.sections, value, legacy);
+  if (
+    !legacy &&
+    index.sections.some(
+      (s) =>
+        !isCategorySection(s) &&
+        normalizedExcerpt(s.name) === normalizedExcerpt(value),
+    )
+  )
+    return false;
   if (index.malformedTable) return false;
   if (!matches.length) return undefined;
   if (matches.length !== 1) return false;

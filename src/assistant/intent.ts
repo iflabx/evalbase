@@ -89,6 +89,55 @@ export function mayExecute(decision: TurnDecision | undefined) {
     (!decision.requiresUpdate || decision.updateSaved)
   );
 }
+
+/** A control receipt records authorization, never completion of the requested work. */
+export function turnNeedsWork(
+  decision: TurnDecision | undefined,
+  task: Record<string, any>,
+  receipts: Record<string, any>[],
+  known: Record<string, any> = {},
+) {
+  if (!decision || decision.mode === "pause") return false;
+  const completed = receipts.filter((r) => r.status === "succeeded");
+  if (decision.mode === "query")
+    return !(
+      completed.some((r) => readTools.includes(r.name)) ||
+      known.pageObject ||
+      known.files?.length ||
+      known.drafts?.length ||
+      known.versions?.length ||
+      known.backgroundDocuments?.length ||
+      task.question ||
+      task.error ||
+      task.runId ||
+      task.executionPlan?.steps?.length
+    );
+  if (task.question || task.executionPlan?.steps?.length) return false;
+  if (
+    completed.some(
+      (r) =>
+        r.name === "read_processing" &&
+        r.result?.run?.id === task.runId &&
+        [
+          "queued",
+          "running",
+          "retry_wait",
+          "succeeded",
+          "failed",
+          "cancelled",
+        ].includes(r.result?.run?.status),
+    )
+  )
+    return false;
+  if (completed.some((r) => !["plan_task", ...readTools].includes(r.name)))
+    return false;
+  if (
+    decision.mode === "plan" &&
+    completed.some((r) => r.name === "plan_task" && !r.result?.unchanged)
+  )
+    return false;
+  return true;
+}
 export function intentTools(
   tools: string[],
   decision: TurnDecision | undefined,

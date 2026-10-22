@@ -162,6 +162,7 @@ export async function assistantRecovery(
     phase?: "offer" | "claim" | "request" | "event" | "commit";
     token?: string;
     reservedModelStep?: boolean;
+    requestEstimateMs?: number;
     event?: string;
   } = {},
 ) {
@@ -236,6 +237,7 @@ export async function assistantRecovery(
     phase,
     token,
     reservedModelStep,
+    requestEstimateMs: options.requestEstimateMs,
   });
 }
 export class AssistantError extends Error {

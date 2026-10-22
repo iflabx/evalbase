@@ -13,6 +13,7 @@ import {
   executionLimits,
 } from "../../src/assistant/budget.js";
 const now = 100000;
+import { TIMEOUT_RETRY_REQUEST_MS } from "../../src/assistant/transport.js";
 function fixture(remaining = 20000) {
   const turn: any = {
     id: "turn-a",
@@ -75,6 +76,35 @@ function fixture(remaining = 20000) {
   return { turn, task, facts };
 }
 describe("OPT44 recovery decision", () => {
+  it("uses the same next-attempt estimate after a 50 second timeout and backoff", () => {
+    const f = fixture(29500);
+    f.turn.status = "running";
+    f.turn.execution_token = "token";
+    f.turn.expires_at = new Date(now + 60000).toISOString();
+    f.task.turnBudget.requests = [{ httpStatus: null, timeToHeadersMs: 50000 }];
+    const facts = {
+      ...f.facts,
+      phase: "request",
+      token: "token",
+      reservedModelStep: true,
+    };
+    expect(recoveryDecision(f.task, f.turn, facts).reason).toBe(
+      "insufficient_request_time",
+    );
+    expect(
+      recoveryDecision(f.task, f.turn, {
+        ...facts,
+        requestEstimateMs: TIMEOUT_RETRY_REQUEST_MS,
+      }).reason,
+    ).toBe("request_allowed");
+    expect(
+      recoveryDecision(f.task, f.turn, {
+        ...facts,
+        canWrite: false,
+        requestEstimateMs: TIMEOUT_RETRY_REQUEST_MS,
+      }).action,
+    ).toBeNull();
+  });
   it.each([5000, 9999, 10000, 10001])(
     "shares request reserve at %s ms",
     (remaining) => {

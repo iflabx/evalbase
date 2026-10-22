@@ -20,6 +20,7 @@ import {
   matchesSectionDefinition,
   normalizedExcerpt,
   sectionAliases,
+  isCategorySection,
 } from "./background-sections.js";
 import {
   requirementSummary,
@@ -78,16 +79,26 @@ export function documentDefinitionReferences(
     return index.sections
       .filter(
         (section) =>
+          isCategorySection(section) &&
           section.fragments.every((part) => selected.includes(part)) &&
-          matchingSections(index.sections, section.code ?? section.name)
-            .length === 1,
+          matchingSections(
+            index.sections,
+            section.listOrdinal
+              ? (section.categoryName ?? section.name)
+              : (section.categoryName ?? section.code ?? section.name),
+          ).length === 1,
       )
       .map((section) => {
         const text = section.text.slice(0, 240);
         return {
-          value: section.code ?? section.name,
-          ...(section.code ? { code: section.code } : {}),
-          name: section.name,
+          value:
+            section.categoryName && (!section.code || section.listOrdinal)
+              ? section.categoryName
+              : (section.code ?? section.name),
+          ...(section.code && !section.listOrdinal
+            ? { code: section.code }
+            : {}),
+          name: section.categoryName ?? section.name,
           text,
           aliases: sectionAliases(section),
           fragmentIndices: section.fragments,
@@ -202,6 +213,48 @@ export function resolveBackgroundDefinitions(
   scope: AssistantScope,
   sessionId: string,
 ) {
+  // The authority of a literal document quote is server-verifiable. Correct a
+  // mistaken model origin without deleting a valid Metadata rule or changing its value.
+  if (patch.classifications && current.backgroundEvidence?.length) {
+    patch = {
+      ...patch,
+      classifications: patch.classifications.map((rule: any) => {
+        if (rule.field !== "metadata" || rule.basis !== "user") return rule;
+        const requests = [current.goal, ...(current.supplements ?? [])].filter(
+          (s): s is string => typeof s === "string",
+        );
+        const values = [
+          ...new Set<string>([
+            ...(rule.allowedValues ?? []),
+            ...(rule.requiredValues ?? []),
+            ...(rule.quotas ?? []).map((q: any) => q.value),
+          ]),
+        ];
+        if (
+          !values.length ||
+          values.some((value) => requests.some((s) => s.includes(value)))
+        )
+          return rule;
+        const grounded = {
+          ...rule,
+          basis: "background",
+          definitions: rule.definitions?.map((d: any) => ({
+            ...d,
+            basis: "background",
+          })),
+        };
+        try {
+          validateBackgroundRules(
+            { ...current, allowedLabels: [], classifications: [grounded] },
+            documents,
+          );
+          return grounded;
+        } catch {
+          return rule;
+        }
+      }),
+    };
+  }
   if (
     !patch.classifications?.some((rule: any) =>
       rule.definitions?.some((definition: any) => definition.reference),
@@ -246,6 +299,11 @@ export function resolveBackgroundDefinitions(
                 .map((ref: any) => ref.fragmentIndex),
               definition.value,
               text,
+              Boolean(
+                current.backgroundDefinitions?.some(
+                  (d: any) => d.value === definition.value,
+                ),
+              ),
             )
           )
             throw new AssistantError(
@@ -958,7 +1016,9 @@ export function validateBackgroundRules(
         throw new AssistantError(
           422,
           "assistant_background_rule_mismatch",
-          "该固定标签未由用户明确指定。逐题期望行为应保存为自然语言要求，不设单一固定枚举；请保留实际要求并清除误设的字段分类规则，不向用户索要工具参数。",
+          rule.field === "metadata"
+            ? "Metadata分类未在用户原话中定义；若来自附件，请保留分类并按原文使用background依据及真实引文，不要删除分类或改动期望输出。"
+            : "该固定标签未由用户明确指定。逐题期望行为应保存为自然语言要求，不设单一固定枚举；请保留实际要求并清除误设的字段分类规则，不向用户索要工具参数。",
         );
     }
   }
@@ -976,6 +1036,9 @@ export function validateBackgroundRules(
             .map((ref: any) => ref.fragmentIndex),
           value,
           quote,
+          Boolean(
+            task.backgroundDefinitions?.some((d: any) => d.value === value),
+          ),
         ),
       )
       .filter((result) => result !== undefined);

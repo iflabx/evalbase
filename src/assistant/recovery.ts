@@ -33,6 +33,7 @@ export type RecoveryFacts = {
   phase?: "offer" | "claim" | "request" | "event" | "commit";
   token?: string;
   reservedModelStep?: boolean;
+  requestEstimateMs?: number;
   event?: string;
   eventReady?: boolean;
 };
@@ -233,7 +234,9 @@ export function recoveryDecision(
     if (
       !requestFitsDeadline(
         budget.deadlineAt,
-        budget.requests?.at(-1)?.timeToHeadersMs ?? 0,
+        facts.requestEstimateMs ??
+          budget.requests?.at(-1)?.timeToHeadersMs ??
+          0,
         now,
       )
     )
