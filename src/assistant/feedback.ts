@@ -53,6 +53,12 @@ export function assistantFeedback(
   });
   if (task.stage === "stopped")
     return result("stopped", "任务已停止，已有成果保留。");
+  if (
+    ["initial_plan_repair_limit", "initial_plan_no_progress"].includes(
+      facts.recoveryReason ?? "",
+    )
+  )
+    return result("failed", recoveryReason(facts.recoveryReason)!);
   if (task.requirementProblem && task.requirementProblemKind === "business")
     return result("input", task.requirementProblem);
   if (task.question)
@@ -144,6 +150,10 @@ export function recoveryReason(reason: string | undefined): string | undefined {
       insufficient_task_time: "剩余执行额度不足，已有进度保留。",
       no_progress: "连续尝试未取得新进展，任务已暂停；已有成果保留。",
       repair_limit: "自动修正次数已用完，原方案保留，本次修改尚未保存。",
+      initial_plan_no_progress:
+        "连续修正未取得进展。首次方案尚未保存，要求和附件已保留。",
+      initial_plan_repair_limit:
+        "自动修正次数已用完。首次方案尚未保存，要求和附件已保留。",
       attempt_limit: "本轮恢复次数已达上限，已有成果保留。",
       event_limit: "自动续步已达到上限，已有成果保留。",
       session_limit: "本会话已达到执行上限，已有成果保留。",

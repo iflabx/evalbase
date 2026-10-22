@@ -80,7 +80,8 @@ import {
 import {
   readBackground,
   validateBackgroundRules,
-  UNSUPPORTED_FIXED_OUTPUT_HINT,
+  validateBackgroundRuleEvidence,
+  outputPlacementIssue,
   backgroundDefinitionReferences,
   documentDefinitionReferences,
   resolveBackgroundDefinitions,
@@ -764,6 +765,24 @@ export async function executeAssistantTurn(
       "assistant_tool_input_invalid",
       "assistant_plan_count_conflict",
     ].includes(failure?.code ?? "");
+    const relocateOutput =
+      unacceptedCorrection &&
+      (Array.isArray(base.deliveries) ? base.deliveries : []).some(
+        (delivery: any) =>
+          delivery &&
+          typeof delivery === "object" &&
+          !deliveryGoals(current.executionPlan).some(
+            (saved) => delivery.id && saved.id === delivery.id,
+          ) &&
+          outputPlacementIssue(
+            {
+              ...current,
+              classifications: delivery.classifications,
+              allowedLabels: [],
+            },
+            documents!,
+          )?.reason === "unsupported_fixed_output",
+      );
     if (unacceptedCorrection) {
       base.requirements = current.requirements ?? [];
       next.requirements ??= current.requirements ?? [];
@@ -801,13 +820,21 @@ export async function executeAssistantTurn(
                     scope,
                     turn.session_id,
                   );
-                  validateBackgroundRules(
+                  validateBackgroundRuleEvidence(
                     { ...current, allowedLabels: [], ...candidate },
                     documents!,
                   );
                   return true;
-                } catch {
-                  return false;
+                } catch (error) {
+                  if (
+                    error instanceof AssistantError &&
+                    [
+                      "assistant_background_reference_invalid",
+                      "assistant_background_rule_mismatch",
+                    ].includes(error.code)
+                  )
+                    return false;
+                  throw error;
                 }
               };
               const values = new Set<string>([
@@ -833,13 +860,7 @@ export async function executeAssistantTurn(
           };
         });
     }
-    assertDeliveryRepair(
-      base,
-      next,
-      amendmentRequestText,
-      failure?.code === "assistant_background_rule_mismatch" &&
-        failure?.hint === UNSUPPORTED_FIXED_OUTPUT_HINT,
-    );
+    assertDeliveryRepair(base, next, amendmentRequestText, relocateOutput);
   }
   async function backgroundReadReceipts() {
     const rows = (

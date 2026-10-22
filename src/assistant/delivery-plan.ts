@@ -295,6 +295,18 @@ function ruleChanges(
         ),
     );
     const basisChanged = original.basis !== merged.basis;
+    const namedQuotaChange =
+      original.quotas?.length === merged.quotas?.length &&
+      original.quotas?.every((quota) => {
+        const next = merged.quotas?.find((item) => item.value === quota.value);
+        if (!next) return false;
+        if (next.count === quota.count) return true;
+        return (
+          requestedDeliveryQuota(prior, goals, quota.value, request) ===
+          next.count
+        );
+      });
+
     if (
       !permitted &&
       !requestsSingleCategoryReplacement(
@@ -308,7 +320,9 @@ function ruleChanges(
       (basisChanged ||
         valuesChanged ||
         definitionsChanged ||
-        (quotasChanged && !(resizing && original.allowedValues?.length === 1)))
+        (quotasChanged &&
+          !namedQuotaChange &&
+          !(resizing && original.allowedValues?.length === 1)))
     )
       fail(
         "本轮未更改对应分类约束，不能删除类别、定义或缩减配额；省略的规则保持。",
@@ -654,6 +668,25 @@ function requestedRepairCount(
   request: string,
 ) {
   if (/解释|举例|例如|比如|引用/u.test(request)) return undefined;
+  const quotaRule = original.classifications?.find(
+    (rule: Rule) =>
+      rule.quotas?.length &&
+      rule.quotas.reduce((sum, quota) => sum + quota.count, 0) ===
+        original.count &&
+      rule.quotas.some(
+        (quota) =>
+          requestedDeliveryQuota(original, originals, quota.value, request) !==
+          undefined,
+      ),
+  );
+  if (quotaRule)
+    return quotaRule.quotas.reduce(
+      (sum: number, quota: { value: string; count: number }) =>
+        sum +
+        (requestedDeliveryQuota(original, originals, quota.value, request) ??
+          quota.count),
+      0,
+    );
   const scalar = explicitRequirementCount(request);
   if (originals.length === 1 && scalar) return scalar.targetCount;
   const each =
@@ -677,14 +710,50 @@ function requestedRepairCount(
   })[0];
 }
 
+function requestedDeliveryQuota(
+  original: any,
+  goals: any[],
+  value: string,
+  request: string,
+) {
+  const matching = goals.filter((goal) =>
+    goal.classifications?.some((rule: Rule) =>
+      [
+        ...(rule.allowedValues ?? []),
+        ...(rule.requiredValues ?? []),
+        ...(rule.quotas ?? []).map((q) => q.value),
+      ].includes(value),
+    ),
+  );
+  if (matching.length === 1) return requestedQuota(value, request);
+  const scoped = request
+    .split(/[。；;，,\n]/u)
+    .filter((clause) => {
+      const named = goals.filter(
+        (goal) => goal.name && clause.includes(goal.name),
+      );
+      return named.length === 1 && named[0].id === original.id;
+    })
+    .join("，");
+  return requestedQuota(value, scoped);
+}
+
 function requestedQuota(value: string, request: string) {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   return request.split(/[。；;，,\n]/u).flatMap((clause) => {
-    const match =
+    if (/不要|不得|禁止|别|解释|举例|例如|比如|引用/u.test(clause)) return [];
+    const specific = clause.match(
+      new RegExp(
+        escaped +
+          "(?:类)?\\s*(?:先)?(?:改(?:为|成)?|调整为|设为)\\s*([1-9]\\d*)\\s*条",
+        "u",
+      ),
+    );
+    const each =
       clause.includes(value) &&
       clause.match(/(?:各\s*(?:一份)?|每类)\s*([1-9]\d*)\s*条/u);
-    return match && !/不要|不得|禁止|解释|举例/u.test(clause)
-      ? [Number(match[1])]
-      : [];
+    const match = specific || each;
+    return match ? [Number(match[1])] : [];
   })[0];
 }
 

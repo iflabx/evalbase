@@ -300,7 +300,11 @@ export function recoveryDecision(
       turn.error_code ?? task.error,
     )
   )
-    return stop("no_progress");
+    return stop(
+      pending && !task.executionPlan?.steps?.length
+        ? "initial_plan_no_progress"
+        : "no_progress",
+    );
   const amendmentId = pending?.requestTurnId ?? chain?.amendmentId;
   const identity = amendmentId
     ? sha256(canonicalJson({ requestTurnId: amendmentId }))
@@ -321,7 +325,11 @@ export function recoveryDecision(
         )
       : repairs.reduce((n, v) => n + (v.used ?? 0), 0) >= 2)
   )
-    return stop("repair_limit");
+    return stop(
+      task.executionPlan?.steps?.length
+        ? "repair_limit"
+        : "initial_plan_repair_limit",
+    );
   const control = task.turnControl;
   const originalMode = chain?.mode ?? control?.mode;
   if (

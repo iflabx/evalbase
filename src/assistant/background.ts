@@ -935,14 +935,72 @@ function fixedOutputRequested(
 export const UNSUPPORTED_FIXED_OUTPUT_HINT =
   "固定期望输出须由用户明确指定，或来自已读取附件的明确输出约定。若用户要求逐题具体行为，请将类别约束改放 Metadata，完整保留类别、定义和配额，并移除 expectedOutput 枚举；不要删除分类或让用户提供工具参数。";
 
-/** This checks cited vocabulary, not whether each candidate is semantically classified correctly. */
+/** Output placement is independent of whether category definitions are grounded. */
+export function outputPlacementIssue(
+  task: Record<string, any>,
+  documents: DefinitionDocument[],
+): { reason: "unsupported_fixed_output" } | undefined {
+  const userRequests = [task.goal, ...(task.supplements ?? [])].filter(
+    (text): text is string => typeof text === "string",
+  );
+  const excerpts = documents.flatMap((doc) =>
+    doc.fragments
+      .filter((fragment) =>
+        task.backgroundEvidence?.some(
+          (ref: any) =>
+            ref.documentId === doc.id && ref.fragmentIndex === fragment.index,
+        ),
+      )
+      .map((fragment) => fragment.text),
+  );
+  // This predicate also inspects rejected proposals; it must not run structural
+  // or quota validation. The final validator still checks the complete contract.
+  const rules = [
+    ...(Array.isArray(task.classifications) ? task.classifications : []),
+    ...(Array.isArray(task.allowedLabels) && task.allowedLabels.length
+      ? [{ field: "expectedOutput", allowedValues: task.allowedLabels }]
+      : []),
+  ];
+  for (const rule of rules) {
+    if (rule?.field !== "expectedOutput") continue;
+    const values = [
+      ...new Set(
+        [
+          ...(Array.isArray(rule.allowedValues) ? rule.allowedValues : []),
+          ...(Array.isArray(rule.requiredValues) ? rule.requiredValues : []),
+          ...(Array.isArray(rule.quotas)
+            ? rule.quotas.map((quota: any) => quota?.value)
+            : []),
+        ].filter((value): value is string => typeof value === "string"),
+      ),
+    ];
+    if (
+      userRequests.length &&
+      values.length &&
+      !fixedOutputRequested(userRequests, excerpts, values)
+    )
+      return { reason: "unsupported_fixed_output" };
+  }
+}
+
 export function validateBackgroundRules(
   task: Record<string, any>,
   documents: DefinitionDocument[],
 ) {
-  const userRequests = [task.goal, ...(task.supplements ?? [])].filter(
-    (text): text is string => typeof text === "string",
-  );
+  if (outputPlacementIssue(task, documents))
+    throw new AssistantError(
+      422,
+      "assistant_background_rule_mismatch",
+      UNSUPPORTED_FIXED_OUTPUT_HINT,
+    );
+  validateBackgroundRuleEvidence(task, documents);
+}
+
+/** Checks category authority and citations independently of output placement. */
+export function validateBackgroundRuleEvidence(
+  task: Record<string, any>,
+  documents: DefinitionDocument[],
+) {
   if (
     task.backgroundEvidence?.some((ref: any) => {
       const doc = documents.find((entry) => entry.id === ref.documentId),
@@ -973,25 +1031,6 @@ export function validateBackgroundRules(
   );
   const rules = validateRules(task);
   for (const rule of rules) {
-    if (
-      rule.field === "expectedOutput" &&
-      userRequests.length &&
-      (rule.allowedValues?.length ||
-        rule.requiredValues?.length ||
-        rule.quotas?.length) &&
-      !fixedOutputRequested(userRequests, excerpts, [
-        ...new Set([
-          ...(rule.allowedValues ?? []),
-          ...(rule.requiredValues ?? []),
-          ...(rule.quotas ?? []).map((quota) => quota.value),
-        ]),
-      ])
-    )
-      throw new AssistantError(
-        422,
-        "assistant_background_rule_mismatch",
-        UNSUPPORTED_FIXED_OUTPUT_HINT,
-      );
     if (rule.basis !== "user") continue;
     for (const value of new Set([
       ...(rule.allowedValues ?? []),
@@ -1007,11 +1046,7 @@ export function validateBackgroundRules(
           request
             .split(/[。；;，,\n]/u)
             .findLast((part: string) => part.includes(value)) ?? "",
-        ) ||
-        (rule.field === "expectedOutput" &&
-          !/(?:固定(?:值|标签|输出)?|枚举|标签|只能|取值|原样填写)/u.test(
-            request,
-          ))
+        )
       )
         throw new AssistantError(
           422,

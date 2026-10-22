@@ -2994,4 +2994,166 @@ describe("OPT42 per-turn intent public boundary", () => {
     });
     expect(state.task.executionPlan?.steps ?? []).toHaveLength(0);
   });
+  it.each([
+    "valid",
+    "sdk-container",
+    "drop-category",
+    "change-quota",
+    "invalid-definition",
+  ])(
+    "OPT46 initial output relocation preserves the real document contract (%s)",
+    async (variant) => {
+      const { id, documentId } = await backgroundSession(
+        "退款进度：查询退款办理到哪一步。\n退款到账时间：查询退款预计何时到账。",
+      );
+      const original: any = {
+        ...simpleDelivery(),
+        name: "退款测试",
+        count: 4,
+        classifications: [
+          {
+            field: "expectedOutput",
+            basis: "background",
+            allowedValues: ["退款进度", "退款到账时间"],
+            requiredValues: ["退款进度", "退款到账时间"],
+            definitions: [
+              { value: "退款进度", text: "退款进度：查询退款办理到哪一步。" },
+              {
+                value: "退款到账时间",
+                text: "退款到账时间：查询退款预计何时到账。",
+              },
+            ],
+            quotas: [
+              { value: "退款进度", count: 2 },
+              { value: "退款到账时间", count: 2 },
+            ],
+          },
+        ],
+      };
+      const fixed = structuredClone(original);
+      const rule = fixed.classifications[0];
+      rule.field = "metadata";
+      rule.key = "业务类型";
+      if (variant === "drop-category") {
+        rule.allowedValues.pop();
+        rule.requiredValues.pop();
+        rule.quotas.pop();
+        rule.definitions.pop();
+      }
+      if (variant === "change-quota") rule.quotas[0].count = 1;
+      if (variant === "invalid-definition")
+        rule.definitions[0].text = "退款到账时间：查询退款预计何时到账。";
+      const succeeds = variant === "valid" || variant === "sdk-container";
+      const before = await effects();
+      const state = await send(
+        id,
+        "按新版做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不要生成。",
+        [
+          decision("plan"),
+          {
+            name: "read_background",
+            input: { documentId, useForProcessing: false },
+          },
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              deliveries: variant === "sdk-container" ? original : [original],
+            },
+          },
+          {
+            name: "plan_task",
+            input: { executionMode: "plan", deliveries: [fixed] },
+          },
+          ...(succeeds
+            ? []
+            : [
+                {
+                  name: "plan_task",
+                  input: { executionMode: "plan", deliveries: [fixed] },
+                },
+              ]),
+        ],
+      );
+      const firstFailure = state.turns
+        .at(-1)
+        .tools.find((t: any) => t.status === "failed");
+      if (variant !== "sdk-container") {
+        expect(firstFailure.error.code).toBe(
+          "assistant_background_rule_mismatch",
+        );
+        expect(firstFailure.error.hint).toContain("固定期望输出");
+      }
+      expect(await effects()).toEqual(before);
+      if (!succeeds) {
+        expect(state.turns.at(-1).status).toBe("failed");
+        expect(state.task.executionPlan).toBeUndefined();
+        expect(state.task.feedback.message).toContain("首次方案尚未保存");
+        const calls = observed.length;
+        const retry = await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + id + "/turns",
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: { message: "继续保存方案，先不要执行。" },
+        });
+        expect(retry.statusCode).toBe(409);
+        expect(retry.json().error.recoveryMessage).toContain(
+          "首次方案尚未保存",
+        );
+        expect(observed).toHaveLength(calls);
+        return;
+      }
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      const goal = deliveryGoals(state.task.executionPlan)[0];
+      expect(goal.count).toBe(4);
+      expect(goal.classifications[0]).toMatchObject(rule);
+      expect(state.task.feedback.requirementsSaved).toBe(true);
+      expect((await read(id)).task.executionPlan).toEqual(
+        state.task.executionPlan,
+      );
+      const verified = await send(id, "类别名就用退款进度和退款到账时间。", [
+        decision("plan", { requiresUpdate: true }),
+      ]);
+      expect(verified.turns.at(-1).status).toBe("succeeded");
+      expect(verified.task.feedback.requirementsVerified).toBe(true);
+      expect(deliveryGoals(verified.task.executionPlan)).toEqual(
+        deliveryGoals(state.task.executionPlan),
+      );
+      const amendedRules = structuredClone(goal.classifications);
+      amendedRules[0].quotas![0].count = 3;
+      const amended = await send(
+        id,
+        "退款进度先改3条，另一类不变，还是只保存方案。",
+        [
+          decision("plan", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              deliveries: [
+                { id: goal.id, count: 5, classifications: amendedRules },
+              ],
+            },
+          },
+        ],
+      );
+      expect(
+        amended.turns.at(-1).status,
+        JSON.stringify(amended.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(amended.task.executionPlan)[0]).toMatchObject({
+        ...goal,
+        count: 5,
+        classifications: amendedRules,
+      });
+      expect(amended.task.feedback.requirementsSaved).toBe(true);
+      expect((await read(id)).task.executionPlan).toEqual(
+        amended.task.executionPlan,
+      );
+      expect(await effects()).toEqual(before);
+    },
+  );
 });

@@ -31,6 +31,99 @@ const single = (name = "GB A.1.a", count = 5) => ({
 });
 
 describe("OPT-35 delivery planning contract", () => {
+  it("OPT46 changes only the explicitly named category quota through update and repair", () => {
+    const goal = single("退款测试", 4);
+    goal.classifications[0] = {
+      ...goal.classifications[0],
+      allowedValues: ["退款进度", "退款到账时间"],
+      requiredValues: ["退款进度", "退款到账时间"],
+      definitions: [
+        { value: "退款进度", reference: "definition:progress" },
+        { value: "退款到账时间", reference: "definition:arrival" },
+      ],
+      quotas: [
+        { value: "退款进度", count: 2 },
+        { value: "退款到账时间", count: 2 },
+      ],
+    };
+    const current = reviseDeliveryGoals([], [goal], "创建一份4条的测试集");
+    const changed = structuredClone(current[0]);
+    changed.count = 5;
+    changed.classifications[0].quotas![0].count = 3;
+    const request = "退款进度先改3条，另一类不变，还是只保存方案。";
+    expect(reviseDeliveryGoals(current, [changed], request, true)[0]).toEqual(
+      changed,
+    );
+    expect(() =>
+      assertDeliveryRepair(
+        { deliveries: current },
+        { deliveries: [changed] },
+        request,
+      ),
+    ).not.toThrow();
+    for (const text of [
+      "不要把退款进度改3条",
+      "例如退款进度改3条",
+      "分类保持不变",
+    ])
+      expect(() =>
+        reviseDeliveryGoals(current, [changed], text, true),
+      ).toThrow();
+    const other = structuredClone(changed);
+    other.count = 6;
+    other.classifications[0].quotas![1].count = 3;
+    expect(() =>
+      reviseDeliveryGoals(current, [other], request, true),
+    ).toThrow();
+    const ambiguous = [
+      ...current,
+      { ...structuredClone(current[0]), id: "another", name: "另一份退款测试" },
+    ];
+    expect(() =>
+      reviseDeliveryGoals(ambiguous, [changed], request, true),
+    ).toThrow();
+    const keptFirst = "另一份退款测试的退款进度先改3条，退款测试保持不变。";
+    expect(() =>
+      reviseDeliveryGoals(ambiguous, [changed], keptFirst, true),
+    ).toThrow();
+    expect(() =>
+      assertDeliveryRepair(
+        { deliveries: ambiguous },
+        { deliveries: [changed, ambiguous[1]] },
+        keptFirst,
+      ),
+    ).toThrow();
+    const named = structuredClone(ambiguous);
+    named[0].name = "甲测试集";
+    named[1].name = "乙测试集";
+    const bothChanged = structuredClone(named);
+    for (const item of bothChanged) {
+      item.count = 5;
+      item.classifications[0].quotas![0].count = 3;
+    }
+    const explicit =
+      "甲测试集的退款进度先改3条，乙测试集保持不变，还是只保存方案。";
+    expect(() =>
+      reviseDeliveryGoals(named, bothChanged, explicit, true),
+    ).toThrow();
+    expect(() =>
+      assertDeliveryRepair(
+        { deliveries: named },
+        { deliveries: bothChanged },
+        explicit,
+      ),
+    ).toThrow();
+    expect(
+      reviseDeliveryGoals(named, [bothChanged[0]], explicit, true)[1],
+    ).toEqual(named[1]);
+    expect(() =>
+      assertDeliveryRepair(
+        { deliveries: named },
+        { deliveries: [bothChanged[0], named[1]] },
+        explicit,
+      ),
+    ).not.toThrow();
+  });
   it("OPT45 rejects lost deliveries or changed counts after malformed-container reconstruction without a category catalog", () => {
     const goals = [
       { ...single("物流查询", 2), classifications: [] },

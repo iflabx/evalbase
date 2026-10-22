@@ -4,6 +4,8 @@ import { canonicalJson, sha256 } from "../../src/package/contract.js";
 import { extractBackground } from "../../src/assistant/extract-background.js";
 import {
   validateBackgroundRules,
+  validateBackgroundRuleEvidence,
+  outputPlacementIssue,
   backgroundDefinitionReferences,
   resolveBackgroundDefinitions,
   documentDefinitionReferences,
@@ -51,6 +53,55 @@ describe("OPT-23 verified definition references", () => {
         definitions: [{ value, reference }],
       },
     ],
+  });
+
+  it("keeps verified categories available while rejecting only their output placement", () => {
+    const initial = structuredClone(task);
+    initial.goal = "按文档类别做测试集，先保存方案";
+    initial.classifications[0].field = "expectedOutput";
+    delete initial.classifications[0].key;
+    expect(outputPlacementIssue(initial, documents)).toEqual({
+      reason: "unsupported_fixed_output",
+    });
+    expect(() => validateBackgroundRules(initial, documents)).toThrow();
+    expect(() =>
+      validateBackgroundRuleEvidence(initial, documents),
+    ).not.toThrow();
+    const invalid = structuredClone(initial);
+    invalid.classifications[0].definitions[0].text = "表示乙类问题。";
+    expect(() => validateBackgroundRuleEvidence(invalid, documents)).toThrow();
+    const stale = structuredClone(initial);
+    stale.backgroundEvidence[0].sha256 = "stale";
+    expect(() => validateBackgroundRuleEvidence(stale, documents)).toThrow();
+    initial.goal = "期望输出填写固定分类标签 A.1.a";
+    expect(outputPlacementIssue(initial, documents)).toBeUndefined();
+    expect(() => validateBackgroundRules(initial, documents)).not.toThrow();
+  });
+  it("does not validate rejected quota structure while identifying output placement", () => {
+    const initial = structuredClone(task);
+    initial.goal = "按文档类别做测试集，先保存方案";
+    initial.classifications[0].field = "expectedOutput";
+    delete initial.classifications[0].key;
+    initial.classifications[0].requiredValues = ["A.2.a"];
+    expect(() => outputPlacementIssue(initial, documents)).not.toThrow();
+    expect(outputPlacementIssue(initial, documents)).toEqual({
+      reason: "unsupported_fixed_output",
+    });
+    expect(() => validateBackgroundRules(initial, documents)).toThrow();
+  });
+  it("preserves user-defined category evidence independently of an incorrect output field", () => {
+    const initial = {
+      goal: "退款进度和退款到账时间各2条",
+      classifications: [
+        {
+          field: "expectedOutput",
+          basis: "user",
+          allowedValues: ["退款进度", "退款到账时间"],
+        },
+      ],
+    };
+    expect(() => validateBackgroundRuleEvidence(initial, [])).not.toThrow();
+    expect(() => validateBackgroundRules(initial, [])).toThrow();
   });
   it("resolves the verified original text without changing frozen classification rules", () => {
     const backgroundDefinitions = backgroundDefinitionReferences(
