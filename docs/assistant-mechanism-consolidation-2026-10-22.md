@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 当前状态：本轮仅新增§10与OPT-46～50开发票，尚未开发/验证。4217应用仍6c2cd08，第7/10项复测未通过；事实见[复测记录](../.scratch/assistant-optimization/batch2-repair-verification.md)。OPT-43～45及CU-4/5的历史结果见[后续记录](../.scratch/assistant-optimization/opt45-followup-verification.md)，Owner状态保留。
+- 当前状态：OPT-46已完成开发与定向验证，Owner pending，见[唯一实施证据](../.scratch/assistant-optimization/opt46-verification.md)；OPT-47～50未实施。4217仍6c2cd08，第7/10项真实复测失败事实保留，不以受控回归代签。OPT-43～45及CU-4/5历史结果见[后续记录](../.scratch/assistant-optimization/opt45-followup-verification.md)。
 - 诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -147,7 +147,7 @@ agent.ts 保留 SDK 接线与业务工具适配。提取真正被多个入口共
 
 <a id="repair-long-tasks"></a>
 
-## 10. 第7、10项修复与长任务续接（OPT-46～50，待开发）
+## 10. 第7、10项修复与长任务续接（OPT-46～50，分批实施）
 
 2026-10-22 Owner要求把剩余修复与长对话、复杂任务的预算续接一起开票。本节是新批次的共同合同；当前只完成设计，未修改代码、部署或运行新验收。代码基线6c2cd08，已有第6/8/9项结果和第7/10项失败均保留，见[故障诊断](../.scratch/assistant-optimization/batch2-repair-20261022/root-cause-review-20261022.md)。
 
@@ -215,6 +215,8 @@ agent.ts 保留 SDK 接线与业务工具适配。提取真正被多个入口共
 | [OPT-48](../.scratch/assistant-optimization/issues/48-conversation-task-boundaries-and-context.md) | 会话/任务边界、历史分页与有界上下文 | OPT-46 |
 | [OPT-49](../.scratch/assistant-optimization/issues/49-budget-grants-and-task-continuation.md) | 累计账本、进展续段、明确追加授权与恢复一致性 | OPT-47、OPT-48，传递依赖46 |
 | [OPT-50](../.scratch/assistant-optimization/issues/50-continuation-ui-and-bounded-acceptance.md) | 页面接入、固定版本联动与两项有界CU | OPT-49，传递依赖46～48 |
+
+OPT-46已完成增量准备/核对、真实截断收缩和原额度内恢复，实施、兼容及全部限制见[记录](../.scratch/assistant-optimization/opt46-verification.md)；其他票未实施。
 
 推荐46→47→48→49→50；不用等每张旧票Owner签字再开始已授权后续开发。各票须通过自身定向公共流程验证，OPT-50集中进行真实模型验收。后续开发授权才执行，不因本次写票发送模型请求或新增预算。
 

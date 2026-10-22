@@ -1,8 +1,9 @@
 # OPT-46 方案增量修改、截断纠正与真实核对回执
 
-Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
+Status: ready-for-human
+Implementation: completed
+Validation: targeted-pass
+Owner: pending
 Blocked by: none（复用已实现OPT-43/44；不等待旧票人工验收）
 
 
@@ -50,3 +51,7 @@ OPT-48依赖本票增量投影；OPT-49使用其修改身份/修复计数；OPT-
 ## Comments
 
 - 2026-10-22：按Owner要求创建；当前仅文档，未开发、未部署、未调用模型或变更预算。
+
+- 2026-10-22：Owner已授权OPT-46实现；沿用当前分支，基线debe663。公共消息/SDK/持久化回归逐项red→green，未调用真实模型、未更新4217、未消费旧验收预算。最终证据将集中在opt46-verification.md。
+
+- 2026-10-22：OPT-46开发完成，实现625c44a、组合故障回归68d399b。86个不同闭环定向用例通过（含19项新增公共回归）；较宽检查的一项旧单测失败在debe663基线同样复现，未改写为通过。双轴审阅发现已关闭；完整实施、失败、兼容与保护证据见[唯一记录](../opt46-verification.md)。未更新4217、未合并或推送；真实CU留OPT-50，旧预算/验收数据保留，Owner pending。
