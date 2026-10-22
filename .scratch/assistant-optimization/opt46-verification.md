@@ -71,3 +71,7 @@ Standards与Spec最终定向复核均关闭命名发现，无剩余P0/P1；不�
 开工与收尾对所选6份历史预算文件做SHA-256比较：全部一致，checkedFiles=6、changed为空。具体路径/哈希和结果保留在opt46-verification/old-budget-fingerprints-before.json、old-budget-fingerprints-after.json与protection-result.json；该结论仅针对这6份文件，不冒称已扫描全部历史资源。旧248/400条、已完成CU和旧预算均未重跑/重置。
 
 OPT-47～50尚未实施。OPT-48可复用本票准备接口，OPT-49后续处理明确预算追加，OPT-50再统一页面与有界真实模型CU。Owner人工验收pending，OPT-31原内容质量结论保持。
+
+## 7. 后续独立授权：更新4217与CU-7
+
+Owner随后单独授权提前更新4217并复测CU-7。实际环境9108569、首次规划失败、5次请求/14813ms、两次自动纠正失败及一次普通继续409，未到达本票的已保存方案核对/修改真实终点，旧数据/预算保留。见[本轮唯一记录](opt46-cu7-verification.md)。以上未部署/未真实CU描述仅指最初开发交付时；受控自动回归结论不代签真实验收，CU-7未通过。

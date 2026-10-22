@@ -1,0 +1,9 @@
+[
+  {
+    "correlation_id": "req-aj",
+    "object_id": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+    "stage": "http:response",
+    "status_code": 409,
+    "error_code": "assistant_retry_unavailable"
+  }
+]

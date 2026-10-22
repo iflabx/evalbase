@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 当前状态：OPT-46已完成开发与定向验证，Owner pending，见[唯一实施证据](../.scratch/assistant-optimization/opt46-verification.md)；OPT-47～50未实施。4217仍6c2cd08，第7/10项真实复测失败事实保留，不以受控回归代签。OPT-43～45及CU-4/5历史结果见[后续记录](../.scratch/assistant-optimization/opt45-followup-verification.md)。
+- 当前状态：OPT-46已完成开发与定向验证，4217按随后单独授权更新到9108569；一个新会话的CU-7首次规划失败，真实验收未通过，见[独立复测记录](../.scratch/assistant-optimization/opt46-cu7-verification.md)。OPT-47～50未实施，第10项未重跑；旧数据、预算及历史失败保留。原开发证据见[记录](../.scratch/assistant-optimization/opt46-verification.md)，Owner pending。
 - 诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 

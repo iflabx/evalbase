@@ -277,7 +277,7 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 
 ### 5.19 第7、10项及长对话预算续接（分批验证）
 
-2026-10-22 OPT-46已完成开发与受控定向验证；86个不同闭环用例通过，含19项新增公共入口回归、31项领域单测、32项恢复围栏、2项完整输入兼容与2项浏览器回归。较宽检查中的旧单测失败、过程错误与全部限制见[唯一证据](../.scratch/assistant-optimization/opt46-verification.md)。OPT-47～50仍Validation not-run，未进行真实模型CU。既有第7/10项失败、第6/8/9项已完成证据和旧预算保留，不由新计划改签。共同合同见[机制方案§10](assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)，以下为场景索引，具体可观察断言只在各票维护。
+2026-10-22 OPT-46已完成开发与受控定向验证；86个不同闭环用例通过，含19项新增公共入口回归、31项领域单测、32项恢复围栏、2项完整输入兼容与2项浏览器回归。较宽检查中的旧单测失败、过程错误与全部限制见[唯一证据](../.scratch/assistant-optimization/opt46-verification.md)。OPT-47～50仍Validation not-run；Owner后续单独授权提前执行CU-7，首次规划失败，未到达相同要求核对/3＋2修改，见[独立记录](../.scratch/assistant-optimization/opt46-cu7-verification.md)。其余已完成项未重跑。既有第7/10项失败、第6/8/9项已完成证据和旧预算保留，不由新计划改签。共同合同见[机制方案§10](assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)，以下为场景索引，具体可观察断言只在各票维护。
 
 | 测试范围 | 责任票 / 验收编号 | 方法及关键终点 |
 | --- | --- | --- |

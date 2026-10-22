@@ -349,4 +349,4 @@ OPT-42 实现与预算边界见[定向验证记录](../../.scratch/assistant-opt
 - 新版本支持独立留痕的有限追加授权，原预算/消耗保留；旧Worker配方和外层验收额度仍是硬约束。§16～18原累计默认数值不调高；新版本的授权追加与100turn历史窗口语义按上述新合同解释，旧冻结策略原义保留。
 - 本批不更换框架、放宽固定确认或调整内容质量门槛。阶段接口经当前公共入口验证；精简流程允许完整根因所需的结构调整，不等于保留冲突路径只加提示词。
 
-2026-10-22 OPT-46：已在现有AI SDK接线中实现plan-request准备器与服务端完整合并校验；planVerificationCurrent统一核对回执的反馈、恢复及收尾有效性。没有新表、框架或第二份计划；明确新增独立交付与增加记录/场景分开保护。实现、调用方、旧合同兼容及定向结果见[唯一记录](../../.scratch/assistant-optimization/opt46-verification.md)，未部署4217；OPT-47～50未实施。
+2026-10-22 OPT-46：已在现有AI SDK接线中实现plan-request准备器与服务端完整合并校验；planVerificationCurrent统一核对回执的反馈、恢复及收尾有效性。没有新表、框架或第二份计划；明确新增独立交付与增加记录/场景分开保护。实现、调用方、旧合同兼容及定向结果见[唯一记录](../../.scratch/assistant-optimization/opt46-verification.md)，后续单独授权的4217更新及CU-7首次规划失败见[记录](../../.scratch/assistant-optimization/opt46-cu7-verification.md)；OPT-47～50未实施。

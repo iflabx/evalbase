@@ -1,0 +1,121 @@
+{
+  "campaign": "opt46-cu7-20261022",
+  "code": "91085699a023f14ed54cd34ee7356be4fce3c4d8",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "projectId": "project_00b45054bb814b13a2a00a2444115583",
+  "sessions": {
+    "7": "conversation_e6cf8111e7ad49988ed884a6e0fe0272"
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 7,
+      "sessionId": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+      "code": "91085699a023f14ed54cd34ee7356be4fce3c4d8",
+      "startedAt": "2026-10-22T11:42:17.427Z",
+      "durationMs": 2764,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "625cb86c9b02ab75fc9fe2328b515866014c439ba3ba8c6d98d3b7e2894d39dd",
+      "activeBefore": {
+        "caseMs": 122,
+        "totalMs": 122
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 2,
+      "caseId": 7,
+      "sessionId": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+      "code": "91085699a023f14ed54cd34ee7356be4fce3c4d8",
+      "startedAt": "2026-10-22T11:42:20.342Z",
+      "durationMs": 3283,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "4bd8dd8b864d0bf94c196d7ccf4d09021337fe5adf00726ff1cdd4a8fc596246",
+      "activeBefore": {
+        "caseMs": 3037,
+        "totalMs": 3037
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 3,
+      "caseId": 7,
+      "sessionId": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+      "code": "91085699a023f14ed54cd34ee7356be4fce3c4d8",
+      "startedAt": "2026-10-22T11:42:23.712Z",
+      "durationMs": 2647,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "02dd2423d69664f430db9bad8f9bea9a6870fd38ea654db5cdf81d00554ba13f",
+      "activeBefore": {
+        "caseMs": 6407,
+        "totalMs": 6407
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 4,
+      "caseId": 7,
+      "sessionId": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+      "code": "91085699a023f14ed54cd34ee7356be4fce3c4d8",
+      "startedAt": "2026-10-22T11:42:26.475Z",
+      "durationMs": 2861,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "82e5b8c49c04cf725f50f79c8c5ad9ec8cae62d7a836c11df78baf8fc69937b8",
+      "activeBefore": {
+        "caseMs": 9170,
+        "totalMs": 9170
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 5,
+      "caseId": 7,
+      "sessionId": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+      "code": "91085699a023f14ed54cd34ee7356be4fce3c4d8",
+      "startedAt": "2026-10-22T11:42:29.433Z",
+      "durationMs": 2616,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "0bc0fe3fbc05583227611cac005d3f4d2764f5508c4491a20f581c7f17ae7a1b",
+      "activeBefore": {
+        "caseMs": 12128,
+        "totalMs": 12128
+      },
+      "httpStatus": 200
+    }
+  ],
+  "blocked": [],
+  "closed": true,
+  "closedCases": [
+    7
+  ],
+  "limits": {
+    "maxRequests": 24,
+    "maxActiveMs": 240000,
+    "maxGenerated": 0,
+    "maxSessions": 1,
+    "maxOrdinaryContinue": 1
+  },
+  "createdAt": "2026-10-22T11:35:04.587Z",
+  "startedAt": "2026-10-22T11:39:59.239822+00:00",
+  "closedAt": "2026-10-22T11:45:17.703310+00:00",
+  "result": "failed_initial_plan",
+  "stopReason": "initial plan failed after two automatic corrections; one ordinary continue refused at repair_limit",
+  "actualActiveMs": 14813,
+  "externalRequestMs": 14171,
+  "ordinaryContinueAttempts": 1
+}

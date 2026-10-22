@@ -1,0 +1,23 @@
+{
+  "result": "failed_initial_plan",
+  "actualExternalAttempts": 5,
+  "activeMs": 14813,
+  "externalRequestMs": 14171,
+  "newRows": {
+    "assistant_session": 1,
+    "collaborative_draft": 0,
+    "test_set_version": 0,
+    "processing_task": 0,
+    "processing_run": 0,
+    "processing_acceptance": 0
+  },
+  "requestErrors": [
+    {
+      "correlation_id": "req-aj",
+      "object_id": "conversation_e6cf8111e7ad49988ed884a6e0fe0272",
+      "stage": "http:response",
+      "status_code": 409,
+      "error_code": "assistant_retry_unavailable"
+    }
+  ]
+}
