@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 当前状态（2026-10-23）：已完成[全链路机制审查](assistant-full-review-2026-10-23.md)，据此补强OPT-46～50。OPT-46重新进入in-progress，原定向通过证据保留；最近4217记录为2c74b8e，CU-7初始规划/相同要求核对成功，3＋2修改仍失败，见[复测证据](../.scratch/assistant-optimization/opt46-cu7-repair-verification.md)。OPT-47～50未实施，Owner pending。本轮仅修改文档，未改业务代码/环境、未调用模型、未变更验收数据或预算。
+- 当前状态（2026-10-23）：更新后的OPT-46已开发及定向验证完成，177项不同用例通过；[本轮实施/兼容/限制](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)。OPT-47～50未实施，Owner pending。本轮未部署或运行真实模型/CU，4217最近记录仍2c74b8e；CU-7历史失败、现有数据及旧预算保留。
 - 2026-10-22最初诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -216,7 +216,7 @@ agent.ts 保留 SDK 接线与业务工具适配。提取真正被多个入口共
 | [OPT-49](../.scratch/assistant-optimization/issues/49-budget-grants-and-task-continuation.md) | 累计账本、进展续段、明确追加授权与恢复一致性 | OPT-47、OPT-48，传递依赖46 |
 | [OPT-50](../.scratch/assistant-optimization/issues/50-continuation-ui-and-bounded-acceptance.md) | 页面接入、固定版本联动与两项有界CU | OPT-49，传递依赖46～48 |
 
-OPT-46已有增量准备/核对、截断收缩及恢复的[原定向证据](../.scratch/assistant-optimization/opt46-verification.md)，后续CU-7仍失败；2026-10-23按§11增补后重新进入in-progress，原通过和失败记录分别保留。OPT-47～50仍not-started，本次新增验收项均未执行。
+OPT-46当前增补已开发及定向验证完成，见[2026-10-23实施](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)；以下为补强前快照。OPT-46已有增量准备/核对、截断收缩及恢复的[原定向证据](../.scratch/assistant-optimization/opt46-verification.md)，后续CU-7仍失败；2026-10-23按§11增补后重新进入in-progress，原通过和失败记录分别保留。OPT-47～50仍not-started，本次新增验收项均未执行。
 
 推荐46→47→48→49→50；47与48在46共享合同稳定后可分别实施，49依赖二者，50负责页面和验收收口。不用等每张旧票Owner签字再开始已授权后续开发。各票须通过自身定向公共流程验证，OPT-50集中进行真实模型验收。后续开发授权才执行，不因本次写票发送模型请求或新增预算。
 
@@ -281,3 +281,7 @@ OPT-46负责共享结果与方案规则，OPT-47实现处理规则及所有处�
 7. **核对与确认**：读取工具可以记录证据/核对，但不能因读取历史结果切换当前任务或虚增进展；来源与角色权限同时控制页面、工具结果及模型投影。采用/发布仍保存固定确认参数，客户端不能提交另一组写入字段；确认前复检原修订/范围，未知回执先对账。前端只消费统一中文原因和恢复能力，技术字段留诊断，继续沿frontend-v1。
 
 责任分工：OPT-46提供统一准备/错误协议及规划字段，OPT-47接入选择、处理、草稿复用与采用准备，OPT-48接当前事实/引用/容量投影，OPT-49接规范化冻结身份与恢复，OPT-50核对全工具覆盖和页面。依赖顺序不变；实际字段清单是审查快照，实施时更新相关Schema/调用方及公共回归，不另维护第二份手写运行时合同。
+
+### 11.7 OPT-46共同准备交付（2026-10-23）
+
+plan-preparation 提供无副作用 PreparationResult；正式规划、SDK/业务纠错、补保存及恢复复用真实引用解码、可信对象绑定、授权变化合并、派生与完整验证。结构化问题保留tool/operation/path/keyword/code/message，后续OPT-47接入处理规则，不另建参数引擎。现有任务与旧预算不迁移；明确缺省、false及未来引用由实际工具合同判断。完整调用方、旧分支退出、兼容和177项定向证据统一见[本轮实施记录](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)。完整上下文容量仍由OPT-48承担。

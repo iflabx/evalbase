@@ -1,6 +1,6 @@
 # 项目助手整改方案
 
-2026-10-23 当前整改入口：[全链路机制审查](assistant-full-review-2026-10-23.md)和[机制方案§11](assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。范围覆盖整个助手，已据此更新OPT-46～50：46重新进入in-progress，47～50未开发；此前定向通过与CU-7未通过分别保留，最近部署记录为2c74b8e。本轮仅审查/修改文档，未改业务代码、4217、验收数据或旧预算，未调用真实模型和重跑已完成部分。以下带日期记录为历史状态，当前实施以[台账](../.scratch/assistant-optimization/spec.md)为准。
+2026-10-23 当前整改入口：[全链路机制审查](assistant-full-review-2026-10-23.md)和[机制方案§11](assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。更新后的OPT-46已完成开发及177项定向验证，证据见[本轮记录](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)；47～50仍未开发，依赖不变。Owner pending，最近部署仍2c74b8e；本轮未部署、运行真实模型/CU、重跑旧生成或改旧预算。以下带日期记录为历史快照，当前实施以[台账](../.scratch/assistant-optimization/spec.md)为准。
 
 2026-10-19 最新补修安排：按最新会话只读诊断建立 [OPT-38](../.scratch/assistant-optimization/issues/38-background-retrieval-and-planning-recovery.md)，范围和定向验收集中在该票。先完成未命中检索、依据选择和普通重试恢复，再继续 OPT-31 内容与交付验收；沿用本章架构与预算，不更换框架。本次仅编写文档，OPT-38 not-started，OPT-31 in-progress，4217 与现有验收数据保持。
 

@@ -2229,7 +2229,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     scenarios: ["正常咨询", "信息不足", "进度异常"],
     classifications: [],
   });
-  async function savedRefundPlan() {
+  async function savedRefundPlan(options: Record<string, unknown> = {}) {
     const { id, documentId } = await backgroundSession(
       "退款进度：查询退款办理到哪一步。\n退款到账时间：查询退款预计何时到账。",
     );
@@ -2243,6 +2243,7 @@ describe("OPT42 per-turn intent public boundary", () => {
           name: "plan_task",
           input: {
             executionMode: "plan",
+            ...options,
             deliveries: [
               {
                 ...simpleDelivery(),
@@ -3153,6 +3154,368 @@ describe("OPT42 per-turn intent public boundary", () => {
       expect((await read(id)).task.executionPlan).toEqual(
         amended.task.executionPlan,
       );
+      expect(await effects()).toEqual(before);
+    },
+  );
+  it.each(["direct", "sdk-container"])(
+    "OPT46 completion binds the trusted delivery and derives 3+2 after %s input",
+    async (variant) => {
+      const { id, goal } = await savedRefundPlan();
+      const before = await effects();
+      const rules = structuredClone(goal.classifications);
+      rules[0].quotas![0].count = 3;
+      const patch = { classifications: rules };
+      const state = await send(
+        id,
+        "退款进度先改3条，另一类不变，还是只保存方案。",
+        [
+          decision("plan", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              deliveries: variant === "sdk-container" ? patch : [patch],
+            },
+          },
+        ],
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(state.task.executionPlan)[0]).toMatchObject({
+        ...goal,
+        count: 5,
+        classifications: rules,
+      });
+      expect(state.task.overallTargetCount).toBe(5);
+      expect(state.task.feedback.requirementsSaved).toBe(true);
+      expect((await read(id)).task.executionPlan).toEqual(
+        state.task.executionPlan,
+      );
+      const schema = observed.find((c) =>
+        c.tools?.some(
+          (t: any) =>
+            t.function.name === "plan_task" &&
+            t.function.parameters.properties?.deliveries,
+        ),
+      );
+      expect(schema).toBeDefined();
+      const item = schema.tools.find(
+        (t: any) => t.function.name === "plan_task",
+      ).function.parameters.properties.deliveries.items;
+      expect(item.required).toContain("id");
+      expect(observed.length).toBeLessThanOrEqual(2);
+      expect(await effects()).toEqual(before);
+    },
+  );
+  it.each([1, 2])(
+    "OPT46 completion saves explicitly requested %s scenes without inventing extra scenes",
+    async (count) => {
+      const { id, documentId } = await backgroundSession();
+      const delivery = {
+        ...simpleDelivery(),
+        scenarios: simpleDelivery().scenarios.slice(0, count),
+      };
+      const state = await send(
+        id,
+        "按附件做2条，明确只用" + count + "个场景，先保存方案不生成。",
+        [
+          decision("plan"),
+          { name: "read_background", input: { documentId } },
+          {
+            name: "plan_task",
+            input: { executionMode: "plan", deliveries: [delivery] },
+          },
+        ],
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(state.task.executionPlan)[0].scenarios).toEqual(
+        delivery.scenarios,
+      );
+    },
+  );
+  it.each([
+    { allowedFields: ["question", "metadata"] },
+    { metadataKeys: ["业务类型", "secret"] },
+    { metadataKeys: null },
+  ])("OPT46 completion protects top-level-only changes: %j", async (patch) => {
+    const { id, state: initial } = await savedRefundPlan({
+      allowedFields: ["question"],
+      metadataKeys: ["业务类型"],
+      requirements: ["使用完整中文", "不含真实个人信息"],
+    });
+    const before = await effects();
+    const call = {
+      name: "plan_task",
+      input: { executionMode: "plan", ...patch },
+    };
+    const state = await send(id, "补充自然问法，其他保持，只保存方案。", [
+      decision("plan", { requiresUpdate: true }),
+      call,
+      call,
+      call,
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "failed",
+    );
+    expect(
+      state.turns
+        .at(-1)
+        .tools.some(
+          (t: any) => t.error?.code === "assistant_requirement_conflict",
+        ),
+    ).toBe(true);
+    expect(state.task.allowedFields).toEqual(initial.task.allowedFields);
+    expect(state.task.metadataKeys).toEqual(initial.task.metadataKeys);
+    expect(state.task.requirements).toEqual(initial.task.requirements);
+    expect(state.task.executionPlan).toEqual(initial.task.executionPlan);
+    expect(await effects()).toEqual(before);
+  });
+  it.each(["direct", "sdk-scalar"])(
+    "OPT46 completion applies explicit top-level-only removal through %s",
+    async (variant) => {
+      const { id, goal } = await savedRefundPlan({
+        requirements: ["使用完整中文", "不含真实个人信息"],
+      });
+      const before = await effects();
+      const state = await send(
+        id,
+        "删除使用完整中文这项要求，其他保持，只保存方案。",
+        [
+          decision("plan", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              executionMode: "plan",
+              removeRequirements:
+                variant === "direct" ? ["使用完整中文"] : "使用完整中文",
+            },
+          },
+        ],
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.requirements).toEqual(["不含真实个人信息"]);
+      expect(deliveryGoals(state.task.executionPlan)).toEqual([goal]);
+      expect((await read(id)).task.requirements).toEqual(["不含真实个人信息"]);
+      expect(await effects()).toEqual(before);
+    },
+  );
+
+  it("OPT46 completion sends the latest candidate and new problem on the second SDK correction", async () => {
+    const { id, goal } = await savedRefundPlan();
+    const before = await effects();
+    const rules = structuredClone(goal.classifications);
+    rules[0].quotas![0].count = 3;
+    const wrongRules = structuredClone(rules);
+    wrongRules[0].quotas![0].count = 4;
+    const state = await send(id, "退款进度改3条，另一类2条不变，只保存方案。", [
+      decision("plan", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: { deliveries: { id: "unknown", classifications: rules } },
+      },
+      {
+        name: "plan_task",
+        input: { deliveries: [{ id: goal.id, classifications: wrongRules }] },
+      },
+      {
+        name: "plan_task",
+        input: { deliveries: [{ id: goal.id, classifications: rules }] },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    const repairs = observed.flatMap((request) =>
+      request.messages.flatMap((message: any) => {
+        if (message.role !== "user" || typeof message.content !== "string")
+          return [];
+        try {
+          const payload = JSON.parse(message.content);
+          return payload.operation === "repair_tool_arguments" ? [payload] : [];
+        } catch {
+          return [];
+        }
+      }),
+    );
+    expect(repairs).toHaveLength(2);
+    expect(repairs[0].context.deliveries).toEqual([
+      expect.objectContaining({ name: goal.name, count: goal.count }),
+    ]);
+    expect(repairs[0].context.deliveries[0].id).not.toBe("unknown");
+    expect(JSON.stringify(repairs[1].original)).toContain(goal.id);
+    expect(JSON.stringify(repairs[1].original)).not.toContain('"unknown"');
+    expect(
+      repairs[1].original.deliveries[0].classifications[0].quotas[0].count,
+    ).toBe(4);
+    expect(repairs[1].error).not.toEqual(repairs[0].error);
+    expect(deliveryGoals(state.task.executionPlan)[0]).toMatchObject({
+      ...goal,
+      count: 5,
+      classifications: rules,
+    });
+    expect(state.task.overallTargetCount).toBe(5);
+    expect((await read(id)).task.executionPlan).toEqual(
+      state.task.executionPlan,
+    );
+    expect(observed).toHaveLength(4);
+    expect(await effects()).toEqual(before);
+  });
+
+  it("OPT46 completion retains full long requirements when the existing context guard stops the turn", async () => {
+    const requirements = Array.from(
+      { length: 20 },
+      (_, i) => String(i).padStart(2, "0") + "a".repeat(998),
+    );
+    const { id, documentId } = await backgroundSession();
+    const before = await effects();
+    const state = await send(id, "按附件做2条，只保存方案。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          requirements,
+          deliveries: [simpleDelivery()],
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "failed",
+    );
+    expect(state.turns.at(-1).errorCode).toBe("assistant_context_capacity");
+    const proposal = state.turns
+      .at(-1)
+      .tools.find((t: any) => t.name === "plan_task" && t.input.requirements);
+    expect(proposal.input.requirements).toEqual(requirements);
+    expect(await effects()).toEqual(before);
+    // Full current-fact projection is OPT-48. Never report this guarded turn as success.
+  });
+  it("OPT46 completion rejects derived instruction overflow through the ordinary legacy planning entry", async () => {
+    const id = await session("plan");
+    const db = createPool(databaseUrl);
+    try {
+      const task = (await read(id)).task;
+      task.executionPlan.steps[0].action = "submit_processing";
+      task.executionPlan.steps[0].input = { operation: "clean" };
+      await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+        id,
+        task,
+      ]);
+    } finally {
+      await db.end();
+    }
+    const initial = await read(id);
+    const before = await effects();
+    const requirements = Array.from(
+      { length: 20 },
+      (_, i) => String(i).padStart(2, "0") + "a".repeat(998),
+    );
+    const call = {
+      name: "plan_task",
+      input: { executionMode: "plan", requirements },
+    };
+    const state = await send(id, "保存完整要求，先不执行。", [
+      decision("plan", { requiresUpdate: true }),
+      call,
+      call,
+      call,
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "failed",
+    );
+    const failure = state.turns
+      .at(-1)
+      .tools.find((t: any) =>
+        t.error?.issues?.some(
+          (i: any) => i.path === "/requirements" && i.keyword === "capacity",
+        ),
+      );
+    expect(failure, JSON.stringify(state.turns.at(-1))).toBeDefined();
+    expect(failure.input.requirements).toEqual(requirements);
+    expect(state.task.requirements).toEqual(initial.task.requirements);
+    expect(state.task.executionPlan).toEqual(initial.task.executionPlan);
+    expect(await effects()).toEqual(before);
+  });
+
+  it.each(["direct", "sdk-container", "business-complete"])(
+    "OPT46 completion clarifies ambiguous same-name deliveries once through %s and resumes the chosen one",
+    async (variant) => {
+      const { id, documentId } = await backgroundSession();
+      const initial = await send(id, "先保存两份测试集方案，不生成。", [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [simpleDelivery(), simpleDelivery()],
+          },
+        },
+      ]);
+      expect(
+        initial.turns.at(-1).status,
+        JSON.stringify(initial.turns.at(-1)),
+      ).toBe("succeeded");
+      const goals = deliveryGoals(initial.task.executionPlan);
+      expect(goals).toHaveLength(2);
+      expect(goals[0].name).toBe(goals[1].name);
+      const before = await effects();
+      const patch =
+        variant === "business-complete"
+          ? { ...simpleDelivery(), count: 3 }
+          : { count: 3 };
+      const state = await send(id, "这份改成3条，其余不变，只保存方案。", [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: { deliveries: variant === "direct" ? [patch] : patch },
+        },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(state.task.executionPlan)).toEqual(goals);
+      expect(state.task.overallTargetCount).toBe(4);
+      expect(state.task.question).toContain("请说明");
+      expect(state.task.question).toContain("第1份");
+      expect(state.task.question).toContain("第2份");
+      expect(
+        state.turns
+          .at(-1)
+          .tools.filter(
+            (t: any) =>
+              t.status === "succeeded" &&
+              (t.input.question || t.result?.requiresClarification),
+          ),
+      ).toHaveLength(1);
+      expect(state.task.feedback.requirementsSaved).toBe(false);
+      expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(0);
+      expect(observed).toHaveLength(2);
+      const resumed = await send(id, "第二份改3条，其他不变，只保存方案。", [
+        decision("plan", { requiresUpdate: true }),
+        { name: "plan_task", input: { deliveries: [{ count: 3 }] } },
+      ]);
+      expect(
+        resumed.turns.at(-1).status,
+        JSON.stringify(resumed.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(resumed.task.executionPlan)).toEqual([
+        goals[0],
+        { ...goals[1], count: 3 },
+      ]);
+      expect(resumed.task.overallTargetCount).toBe(5);
+      expect(resumed.task.question).toBeFalsy();
+      expect(resumed.task.feedback.requirementsSaved).toBe(true);
       expect(await effects()).toEqual(before);
     },
   );

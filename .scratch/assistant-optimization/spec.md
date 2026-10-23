@@ -1,4 +1,4 @@
-2026-10-23 当前状态：全链路机制审查完成，见[报告](../../docs/assistant-full-review-2026-10-23.md)和[共同合同§11](../../docs/assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。OPT-46重新进入in-progress/partial-pass，47～50仍not-started/not-run；47新增硬依赖46，48依赖46，49依赖47/48，50依赖49。原定向通过和CU-7末步3＋2失败保留；最近4217记录为2c74b8e，本轮未更新环境或业务代码，未调用模型、重跑已完成项、修改验收数据/旧预算。下列带日期条目均为历史快照，不能替代本段和当前台账。
+2026-10-23 当前状态：更新后的[OPT-46](issues/46-compact-plan-amendment-and-recovery.md)开发及定向验证完成，Implementation completed / Validation targeted-pass，Owner pending；177项不同用例通过，详见[本轮证据](opt46-completion-verification-20261023.md)。47～50保持not-started/not-run，依赖不变。本轮未更新4217、未调用真实模型/CU、未合并推送，最近部署仍2c74b8e；历史CU-7失败、验收数据及旧预算保留。下列带日期条目为历史快照。
 
 2026-10-22 最新4217：首次分类纠正已修复并部署2c74b8e。新CU-7会话完成三条普通提示：首次2＋2自动纠正后保存成功、相同类别核对成功；3＋2增量因缺少交付标识仍失败，整项未通过。新额度9次/55822ms后已关闭，零生成；18表旧行及20份旧预算保留。见[本轮唯一记录](opt46-cu7-repair-verification.md)。未合并推送，OPT-47～50未开发；以下带日期记录保持历史原义。
 
@@ -165,7 +165,7 @@ Implementation: in-progress
 | [OPT-43](issues/43-requirement-amendments-and-repair-contract.md) | 要求变更、参数纠错与尝试记录统一（阶段 A） | 当前已实现代码，无未开发票前置 | completed | `56f4aca`；[定向验证与审阅](opt43-verification.md)，Owner pending；4217未切换 |
 | [OPT-44](issues/44-resume-decision-and-budget-continuity.md) | 恢复决策、续段与累计预算统一（阶段 B） | OPT-43 已完成 | completed | `7502523`；[定向验证与审阅](opt44-verification.md)，Owner pending；4217未切换 |
 | [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md) | 事实反馈、恢复交互与五项流程验收（阶段 C） | OPT-44（传递依赖43） | completed | 定向通过；CU-4/5后续通过，前三项旧证据保持，Owner pending |
-| [OPT-46](issues/46-compact-plan-amendment-and-recovery.md) | 可信目标、统一准备、逐次纠错与当前反馈 | 现有实现；无未开发票依赖 | in-progress | partial-pass、Owner pending；原定向证据保留，CU-7数量修改仍失败，[记录](opt46-cu7-repair-verification.md)；本次增补未验证 |
+| [OPT-46](issues/46-compact-plan-amendment-and-recovery.md) | 可信目标、统一准备、逐次纠错与当前反馈 | 现有实现；无未开发票依赖 | completed | targeted-pass、Owner pending；177项定向通过，[本轮记录](opt46-completion-verification-20261023.md)。CU-7历史未通过；本轮未部署或运行CU |
 | [OPT-47](issues/47-source-discovery-and-processing-preflight.md) | 资料发现、处理准备及部分提交对账 | OPT-46共享准备/纠错合同 | not-started | 增补范围；Validation not-run；旧数据/预算保留 |
 | [OPT-48](issues/48-conversation-task-boundaries-and-context.md) | 长会话任务边界与有界上下文 | OPT-46 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
 | [OPT-49](issues/49-budget-grants-and-task-continuation.md) | 复杂任务预算分层与可续接执行 | OPT-47、OPT-48 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |

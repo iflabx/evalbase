@@ -59,6 +59,25 @@ export function assistantFeedback(
     )
   )
     return result("failed", recoveryReason(facts.recoveryReason)!);
+  const blocker = recoveryReason(facts.recoveryReason);
+  if (
+    blocker &&
+    !["initial_plan_repair_limit", "initial_plan_no_progress"].includes(
+      facts.recoveryReason ?? "",
+    )
+  )
+    return result(
+      pending && facts.recoveryReason === "repair_limit"
+        ? "amendment"
+        : "blocked",
+      (facts.recoveryReason === "repair_limit"
+        ? ""
+        : pending
+          ? "本次修改尚未保存；"
+          : saved
+            ? "方案已保存；"
+            : "") + blocker,
+    );
   if (task.requirementProblem && task.requirementProblemKind === "business")
     return result("input", task.requirementProblem);
   if (task.question)
@@ -80,8 +99,6 @@ export function assistantFeedback(
       "请上传本次生成依据的背景文档，或选择已有原始资料进行处理。",
       "background",
     );
-  if (pending && facts.recoveryReason === "repair_limit")
-    return result("amendment", recoveryReason("repair_limit")!);
   if (pending)
     return result(
       "amendment",

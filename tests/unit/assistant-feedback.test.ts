@@ -143,3 +143,27 @@ describe("OPT45 review regressions", () => {
     },
   );
 });
+
+describe("OPT46 completion pending blockers", () => {
+  it.each([
+    "task_budget_exhausted",
+    "permission_denied",
+    "revision_changed",
+    "background_changed",
+    "context_changed",
+    "repair_limit",
+  ])("retains pending facts and the actual blocker %s", (reason) => {
+    const f = assistantFeedback(
+      {
+        planValidationRequired: true,
+        question: "请选择分类",
+        requirementSave: { key: "old", taskRevision: 2 },
+      },
+      { ...ctx, recoveryReason: reason },
+    );
+    expect(f.kind).toBe(reason === "repair_limit" ? "amendment" : "blocked");
+    expect(f.message).not.toContain("继续完成修改后再执行");
+    expect(f.message).not.toBe("请选择分类");
+    expect(f.requirementsSaved).toBe(false);
+  });
+});

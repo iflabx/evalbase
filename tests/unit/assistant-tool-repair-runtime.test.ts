@@ -341,3 +341,73 @@ describe("parameter repair execution boundary", () => {
     expect(fixture.reserve).toHaveBeenCalledWith("plan_task", "truncated");
   });
 });
+
+it("OPT46 completion second correction consumes the latest candidate and field problem", async () => {
+  const original = plan() as any;
+  delete original.steps[3].input.outputCount;
+  const context = vi.fn(async (_n, _d, p) => ({ latest: p }));
+  const f = setup(original, undefined, {
+    context,
+    accept: async (_n, _o, fixed: any) => {
+      if (fixed.steps[3].input.name === "first-fixed")
+        throw Object.assign(new Error("definition changed"), {
+          issues: [
+            {
+              path: "/steps/3/input/name",
+              keyword: "reference",
+              code: "new-definition-error",
+            },
+          ],
+        });
+      return true;
+    },
+  });
+  vi.mocked(generateText)
+    .mockResolvedValueOnce({
+      toolCalls: [
+        {
+          toolName: "plan_task",
+          input: {
+            steps: [
+              {
+                action: "generate_candidates",
+                input: { name: "first-fixed", outputCount: 50 },
+              },
+            ],
+          },
+        },
+      ],
+    } as any)
+    .mockResolvedValueOnce({
+      toolCalls: [
+        {
+          toolName: "plan_task",
+          input: {
+            steps: [
+              {
+                action: "generate_candidates",
+                input: { name: "verified", outputCount: 50 },
+              },
+            ],
+          },
+        },
+      ],
+    } as any);
+  const result = await f.repair(f.request as any);
+  expect(result).not.toBeNull();
+  expect(JSON.parse(result!.input).steps[3].input.name).toBe("verified");
+  const second = JSON.parse(
+    String(vi.mocked(generateText).mock.calls[1][0].prompt),
+  );
+  expect(second.original.steps[0].input.name).toBe("first-fixed");
+  expect(second.error).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        keyword: "reference",
+        code: "new-definition-error",
+      }),
+    ]),
+  );
+  expect(context).toHaveBeenCalledTimes(2);
+  expect(f.reserve).toHaveBeenCalledTimes(2);
+});

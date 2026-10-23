@@ -1,0 +1,842 @@
+{
+  "version": 1,
+  "date": "2026-10-23",
+  "baseline": "3b44b0eabec2d45f765f045ed727488144c445c2",
+  "branch": "codex/assistant-optimization",
+  "uniquePassed": 177,
+  "counting": "127 units + 50 public cases; supplemental rechecks are not added",
+  "checks": {
+    "units-ready": {
+      "passed": 127,
+      "failed": 0,
+      "outOfScope": 0,
+      "success": true,
+      "rawResultSha256": "8b42ade8ea78c7207241bbb9c5bb3198642766f047f0bd67d7795df8319776ef",
+      "cases": [
+        {
+          "name": "OPT43 amendment mechanism routes missing business information and minItems to contextual correction",
+          "status": "passed"
+        },
+        {
+          "name": "OPT43 amendment mechanism shares corrections across tools and kinds, persisting the same amendment limit",
+          "status": "passed"
+        },
+        {
+          "name": "OPT43 amendment mechanism derives single-category quotas even when a count patch copies unchanged rules",
+          "status": "passed"
+        },
+        {
+          "name": "OPT43 amendment mechanism retains the original failure and every attempt while projecting the latest",
+          "status": "passed"
+        },
+        {
+          "name": "OPT43 amendment mechanism preserves valid new-delivery instructions and scenes while allowing missing scenes to be appended",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope closes at the event ceiling from scoped committed receipts without a new event or model",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope retains incomplete state for partial confirmation evidence",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope retains incomplete state for unknown confirmation evidence",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope retains incomplete state for wrong-draft confirmation evidence",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope retains incomplete state for short-save confirmation evidence",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope retains incomplete state for old-revision confirmation evidence",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope retains pause and stop while reconciling no new business effect",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope keeps terminal focus on the last receipted delivery without guessing an unbound goal",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope presents terminal goal rules from the last committed delivery without changing the task",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope counts eight processing completions and eight confirmations, excluding synchronous reads",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-39 receipt settlement and continuation scope does not offer a retry when cumulative model or active-time budget is exhausted",
+          "status": "passed"
+        },
+        {
+          "name": "compares shared constraints independently from each delivery and its bound destination",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 recognizes planning-only continuation without treating a new amendment as recovery",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 control-only cancellations do not get a new correction identity",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract OPT46 changes only the explicitly named category quota through update and repair",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract OPT45 rejects lost deliveries or changed counts after malformed-container reconstruction without a category catalog",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract OPT45 binds an ordinary ordinal replacement to one stable delivery and a known topic",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract allows an explicit single-category replacement without changing sibling rules or quotas",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract keeps two independent deliveries, computed total and stable IDs in generation steps",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract keeps internal intent quotas inside one six-row collection",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract preserves omitted goals and fields, uses IDs for updates, and only removes an explicitly cancelled named goal",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract updates clear per-delivery and overall counts without losing class definitions",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract does not mistake a negated or explanatory count for a user update",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract preserves omitted rule properties and requires user intent to revoke a saved constraint",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract refuses invalid counts, empty contracts, duplicate scenarios and quota conflicts",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract allows correcting an unknown field but rejects weakening an unsuccessful delivery proposal",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract OPT37 relocates intact rejected enums for explicit prose without weakening Metadata or category constraints",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract permits only server-rejected output enum relocation and its standalone label directive",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract OPT38 relocates a rejected enum directive without retaining contradictory output requirements",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract OPT38 preserves exact business literals during field-location repair",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract keeps semantic requirements and field protection during parameter repair",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract authorizes changes only for the named Metadata key and honors explicit preservation",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract does not silently change definitions or references of an existing category",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract repairs an incorrect model quantity to the explicit user goal without weakening valid goals",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract requires explicitly requested catalog categories and exact quotas but permits ordinary documents",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract rejects omitted requested categories in ordinary wording: 查物流和改地址，各做2条，先别执行。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract rejects omitted requested categories in ordinary wording: 查物流和改地址各2条",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract rejects omitted requested categories in ordinary wording: 查物流和改地址，各2条",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract rejects omitted requested categories in ordinary wording: 查物流和改地址，各做2条，先不要执行。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT-35 delivery planning contract rejects stale delivery topics and per-topic quantities on an amendment",
+          "status": "passed"
+        },
+        {
+          "name": "OPT35 existing planning seams includes the second delivery and stable identity in the requirements fingerprint",
+          "status": "passed"
+        },
+        {
+          "name": "OPT35 existing planning seams keeps unchanged receipt facts but never assigns them to another delivery",
+          "status": "passed"
+        },
+        {
+          "name": "OPT35 existing planning seams updates count meaning while keeping an unchanged executed receipt",
+          "status": "passed"
+        },
+        {
+          "name": "OPT35 existing planning seams compiles review and adoption under their own delivery identity",
+          "status": "passed"
+        },
+        {
+          "name": "OPT35 existing planning seams preserves omitted semantics and rejects unrequested removal or broader fields",
+          "status": "passed"
+        },
+        {
+          "name": "OPT35 existing planning seams derives each collection summary from the persisted generation contract",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback keeps the exact saved background question, including existing-material alternatives",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback never treats an oral saved claim as a receipt",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback keeps a current saved plan visible when its summary fails",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback does not mistake an older revision receipt for this amendment",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback uses real processing facts ahead of an old recovery notice",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback uses real awaiting_confirmation facts ahead of an old recovery notice",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback uses real complete facts ahead of an old recovery notice",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 persistent feedback does not present a zero-result failed run as completed generation",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not trust model clarification 已生成2条，请确认采用",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not trust model clarification 方案已保存，请执行",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not trust model clarification submit_processing 需要 allSelected 参数",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not trust model clarification 请提供 documentIds 和 outputCount 后再继续",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not trust model clarification 请使用 generate_candidates 工具",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions shows the concrete validated business choice ahead of a saved plan",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions keeps saved receipt and stopping reason task_budget_exhausted",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions keeps saved receipt and stopping reason no_progress",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not invent the save destination for publish confirmation",
+          "status": "passed"
+        },
+        {
+          "name": "OPT45 review regressions does not invent the save destination for processing confirmation",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pending blockers retains pending facts and the actual blocker task_budget_exhausted",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pending blockers retains pending facts and the actual blocker permission_denied",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pending blockers retains pending facts and the actual blocker revision_changed",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pending blockers retains pending facts and the actual blocker background_changed",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pending blockers retains pending facts and the actual blocker context_changed",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pending blockers retains pending facts and the actual blocker repair_limit",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract only binds a unique trusted target and derives the whole count",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract does not select a first ambiguous delivery or repair an unknown ID by guessing",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract requires real update IDs in ordinary as well as truncated model contracts",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract preserves explicit false, unknown fields and future references for the actual validator",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract returns all known blank, duplicate and capacity field problems without truncating values",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract keeps a full valid requirements list when the delivery has its own bounded instructions",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion pure preparation contract retains saved one-scene contracts on later quantity-only changes",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion does not turn a negated single-scene request into a limit",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion never drops an out-of-range ordinal from the requested targets",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries binds a verified single-class criterion without relabeling contexts or changing other contracts",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries checks explicit document delivery quantities without inventing unspecified counts",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries keeps approved parameters when enabling a plan with unchanged step titles",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries binds an omitted original draft id without mutating approved parameters or overriding explicit targets",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries binds a preview and its draft as a pair and carries a confirmed new draft forward",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries binds current dependencies to the matching prior receipts and leaves future holes open",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries preserves committed processing facts when the selected background basis changes",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries finishes a full background read only after every page in the declared range",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries treats an unknown future processing reference as missing, never as a fixed empty ID",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries restores an asset-page source while still rejecting another real asset",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries does not use another source's receipt to complete a legacy full read",
+          "status": "passed"
+        },
+        {
+          "name": "restored execution plan boundaries keeps committed adoption history without treating a changed destination as completed",
+          "status": "passed"
+        },
+        {
+          "name": "OPT29 preserves per-delivery generation receipts and waits for completed results",
+          "status": "passed"
+        },
+        {
+          "name": "OPT31 preserves only unchanged saved delivery history during resume: saved",
+          "status": "passed"
+        },
+        {
+          "name": "OPT31 preserves only unchanged saved delivery history during resume: changed",
+          "status": "passed"
+        },
+        {
+          "name": "OPT31 preserves only unchanged saved delivery history during resume: unconfirmed",
+          "status": "passed"
+        },
+        {
+          "name": "OPT31 preserves only unchanged saved delivery history during resume: shared",
+          "status": "passed"
+        },
+        {
+          "name": "OPT40 waits only for a delivery with missing evidence while an independent delivery advances",
+          "status": "passed"
+        },
+        {
+          "name": "OPT40 separates frozen classification criteria from contextual scenarios: '鼓励行为'",
+          "status": "passed"
+        },
+        {
+          "name": "OPT40 separates frozen classification criteria from contextual scenarios: '虚假且有害'",
+          "status": "passed"
+        },
+        {
+          "name": "OPT40 separates frozen classification criteria from contextual scenarios: '兜底'",
+          "status": "passed"
+        },
+        {
+          "name": "OPT40 separates frozen classification criteria from contextual scenarios: '退款申请'",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary OPT45 reconstructs an invalid nested container using context, not impossible lossless equality",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary returns malformed input to the contextual planner without guessing its business fields",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary records the field path for required without recording values",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary records the field path for additionalProperties without recording values",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary accepts lossless normalization without a model request and preserves all eight deliveries",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary rechecks access before returning a locally normalized call",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary records a repair timeout before throwing and exposes only safe validation metadata",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary sends only the invalid step to the repair model and rejects semantic changes",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary OPT43 contextual correction changes one invalid delivery and preserves the other seven",
+          "status": "passed"
+        },
+        {
+          "name": "parameter repair execution boundary OPT43 gives unparsable input one compact correction and never executes it",
+          "status": "passed"
+        },
+        {
+          "name": "OPT46 completion second correction consumes the latest candidate and field problem",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard decodes exactly one canonical extra JSON string layer without changing business text",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard accepts only lossless wrappers, numeric types and the known spelling alias",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"targetCount\":\"50\"}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"source\":{\"id\":\"original\"}}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"allowedFields\":\"question\"}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"instructions\":[\"保留原意\"]}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"targetCount\":\"50\"}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"targetCount\":\"50\",\"unsupportedRequirement\":\"只修改前两条\"}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard rejects changes or discarded information: {\"targetCount\":\"9007199254740993\"}",
+          "status": "passed"
+        },
+        {
+          "name": "argument repair meaning guard resolves the action branch even when every variant shares the same scope enum",
+          "status": "passed"
+        }
+      ]
+    },
+    "public-closed": {
+      "passed": 50,
+      "failed": 0,
+      "outOfScope": 95,
+      "success": true,
+      "rawResultSha256": "5c4d909215013b9ec7066eeb0965fc775e9ca5b5293fa4d43ed2a89bcbeb6f0c",
+      "cases": [
+        {
+          "name": "OPT42 per-turn intent public boundary a failed amendment cannot be bypassed by a later background event",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary generation without background asks for material before execution",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary failed execution never displays an uncommitted started claim",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 verifies an already-satisfied fact with a real receipt: 类别名请用退款进度和退款到账时间，不要用分类一、分类二。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 verifies an already-satisfied fact with a real receipt: 名称就用退款测试。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 verifies an already-satisfied fact with a real receipt: 数量就用4条。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 contracts a truncated amendment to one guarded patch without replaying malformed history",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 handles oral-only amendment then truncation in the same original repair allowance",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 preserves exhausted amendment limits and explains the same refusal for text and retry",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 reconciles a committed verification receipt without repeating the amendment",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 does not verify a contradictory, unknown or changed requirement: 类别名请用退款进度和退款到账时间，不要用退款进度。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 does not verify a contradictory, unknown or changed requirement: 类别名请用退款进度和退款到账时间，并把问题翻译成英文。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 does not verify a contradictory, unknown or changed requirement: 类别名请用退款审核和退款到账时间。",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 ordinary continue saves the pending amendment using its remaining original allowance",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 rejects verification and receipt recovery after a background version changes",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 amendment can read a newly attached category before saving the compact patch, truncated=false",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 amendment can read a newly attached category before saving the compact patch, truncated=true",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 advertised amendment schema preserves valid mixed additions without a fabricated id",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 adding records or scenes cannot authorize another independent delivery: 给退款测试增加2条，先保存方案",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 adding records or scenes cannot authorize another independent delivery: 给退款测试增加3个场景，先保存方案",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 truncated patch excludes unrelated delivery definitions after the target is known",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 deleting a referenced attachment invalidates the displayed verification receipt",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary execute-mode clarification rereads background instead of asking for an available definition",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 initial output relocation preserves the real document contract (valid)",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 initial output relocation preserves the real document contract (sdk-container)",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 initial output relocation preserves the real document contract (drop-category)",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 initial output relocation preserves the real document contract (change-quota)",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 initial output relocation preserves the real document contract (invalid-definition)",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion binds the trusted delivery and derives 3+2 after direct input",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion binds the trusted delivery and derives 3+2 after sdk-container input",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion saves explicitly requested 1 scenes without inventing extra scenes",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion saves explicitly requested 2 scenes without inventing extra scenes",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion protects top-level-only changes: {\"allowedFields\":[\"question\",\"metadata\"]}",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion protects top-level-only changes: {\"metadataKeys\":[\"业务类型\",\"secret\"]}",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion protects top-level-only changes: {\"metadataKeys\":null}",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion applies explicit top-level-only removal through direct",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion applies explicit top-level-only removal through sdk-scalar",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion sends the latest candidate and new problem on the second SDK correction",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion retains full long requirements when the existing context guard stops the turn",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion rejects derived instruction overflow through the ordinary legacy planning entry",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion clarifies ambiguous same-name deliveries once through direct and resumes the chosen one",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion clarifies ambiguous same-name deliveries once through sdk-container and resumes the chosen one",
+          "status": "passed"
+        },
+        {
+          "name": "OPT42 per-turn intent public boundary OPT46 completion clarifies ambiguous same-name deliveries once through business-complete and resumes the chosen one",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow double recovery claims create one segment and preserve consumed repair and transport limits",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow invalidates recovery for stopped without touching saved results",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow invalidates recovery for background without touching saved results",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow late correction cannot save after stop invalidates the segment",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow late correction cannot save after background invalidates the segment",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow revoking write permission invalidates the queued recovery without a model request",
+          "status": "passed"
+        },
+        {
+          "name": "OPT44 persisted recovery public flow invalid background revokes both read and structured execution capabilities",
+          "status": "passed"
+        }
+      ]
+    },
+    "target-ready": {
+      "passed": 3,
+      "failed": 0,
+      "outOfScope": 110,
+      "success": true,
+      "rawResultSha256": "f22b9598d5369d72e7ab7377f21a07b69041f115b6c39c0ef9c1845734658b43"
+    },
+    "revision-closure": {
+      "passed": 12,
+      "failed": 0,
+      "outOfScope": 106,
+      "success": true,
+      "rawResultSha256": "30abee502888eaf442cf720ef8f4b5ce55c695a60e569355b15dbf9ce093430c"
+    },
+    "capacity-exact": {
+      "passed": 9,
+      "failed": 0,
+      "outOfScope": 109,
+      "success": true,
+      "rawResultSha256": "69a728fd3913fa7b0bc98024e11f9d7f498df3902a8d6f466f956a16b29a6272"
+    },
+    "review-red": {
+      "passed": 0,
+      "failed": 5,
+      "outOfScope": 102,
+      "success": false,
+      "rawResultSha256": "5bbd92cb8d5ec508c68360070e6e51010a1e0e089d0ed4b955b834528e35c33a"
+    },
+    "review-green": {
+      "passed": 5,
+      "failed": 0,
+      "outOfScope": 102,
+      "success": true,
+      "rawResultSha256": "149309bed4e84700c46221818f7bb48bd0d0478ead1ed1f3bca6ae192f2e3d4f"
+    },
+    "ambiguous-public": {
+      "passed": 0,
+      "failed": 1,
+      "outOfScope": 110,
+      "success": false,
+      "rawResultSha256": "9f24c054321a27f1c5c7363b8b0ee5236d815bb727fe39eb24db961d2a0ada2d"
+    },
+    "ambiguous-green": {
+      "passed": 2,
+      "failed": 0,
+      "outOfScope": 110,
+      "success": true,
+      "rawResultSha256": "c057e35928385cb802ae886271c68b9dcef9e41eb192f3ce626f058c21172150"
+    },
+    "ordinal-red": {
+      "passed": 0,
+      "failed": 1,
+      "outOfScope": 8,
+      "success": false,
+      "rawResultSha256": "6d7bf3230e6d0bfd9197d552b1d22bbc47306fad91a807752f735503062275d7"
+    }
+  },
+  "static": {
+    "types-pass.log": {
+      "exitCode": 0
+    },
+    "lint-commit.log": {
+      "exitCode": 0
+    },
+    "agent-lint-pass.log": {
+      "exitCode": 0
+    },
+    "format-commit.log": {
+      "exitCode": 0
+    },
+    "docs-commit.log": {
+      "exitCode": 0
+    }
+  },
+  "codeHashes": {
+    "src/assistant/agent.ts": "f682ec1d6aeb472037ef82506b2f2b1ef10b6b2d1e1d7e92798bee8bfb7b0b71",
+    "src/assistant/delivery-plan.ts": "7623ccb938197fdfb3ee7f891837df44916fe5c894bd103359f83ada7b7027ef",
+    "src/assistant/feedback.ts": "18465a1aab4431dc9df0494ecbaff5cf407ae76c5f75e5546a8fe011fb91a1c9",
+    "src/assistant/plan-request.ts": "c0e749513e6cf5efe131fc8e66d3e85fc160ee946b00287003a55388ee945b77",
+    "src/assistant/plan-preparation.ts": "084e1c3d01769a5bb2e099ac4601a89e60315705aa13212267a920cf99364509",
+    "src/assistant/requirements.ts": "bc05455698114601c9c73b4eba8435659f8be4becbb4f38235334d22432d49b1",
+    "src/assistant/tool-repair.ts": "ed7eee6b26ab9122a78eb812623b2b6bde0e4c321b2dd8ed2233654c0609ef17",
+    "tests/integration/assistant-intent.test.ts": "6d7d6a287d320e7b40b776fd2da00e22a5e5165a5c8151a174217a768d1fc2b7",
+    "tests/unit/assistant-feedback.test.ts": "6e4c2d8c435c797389a00ca59b42d9f7457ab0c73b3afdc228c9c4e3ea2759fd",
+    "tests/unit/assistant-plan-preparation.test.ts": "a8a3842aa3e95973bbb9fc84f5a21a0620da59a621432597feb323a2b2d06f47",
+    "tests/unit/assistant-tool-repair-runtime.test.ts": "46d0992cbeb8bc781c359d53f4cc48c2b1ec01419226041cbed555b7cf73eeb4"
+  },
+  "review": {
+    "axes": [
+      "Standards",
+      "Spec"
+    ],
+    "confirmedP1": 1,
+    "closedP1": 1,
+    "confirmedP2": 1,
+    "closedP2": 1,
+    "remainingP0P1P2": 0
+  },
+  "protectedDirtyFileSha256": "c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c",
+  "scope": {
+    "realModel": false,
+    "computerUse": false,
+    "deployment": false,
+    "oldBudgetMutation": false,
+    "mergePush": false
+  },
+  "knownBoundary": "Large full current facts can still hit existing assistant_context_capacity; input retained and turn explicitly failed, full projection belongs to OPT-48."
+}

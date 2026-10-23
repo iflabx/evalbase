@@ -685,3 +685,23 @@ export function requirementSummary(
       : []),
   ];
 }
+
+export function requestedSceneCount(request: string) {
+  const matches = [
+    ...request.matchAll(
+      /(?:只|仅)(?:使用|用|保留|要)?\s*([1-9]\d?|一|二|两)\s*(?:个|种)?(?:场景|情境)/gu,
+    ),
+  ];
+  const positive = matches.filter(
+    (m) =>
+      !/(?:不|别|不要|不能|禁止|并非|不是).{0,2}$/u.test(
+        request.slice(Math.max(0, (m.index ?? 0) - 8), m.index),
+      ),
+  );
+  const counts = [
+    ...new Set(
+      positive.map((m) => ({ 一: 1, 二: 2, 两: 2 })[m[1]] ?? Number(m[1])),
+    ),
+  ];
+  return counts.length === 1 && counts[0] <= 20 ? counts[0] : undefined;
+}

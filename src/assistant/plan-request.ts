@@ -1,3 +1,5 @@
+import { amendmentTargets } from "./plan-preparation.js";
+import { requestedSceneCount } from "./requirements.js";
 import { canonicalJson } from "../package/contract.js";
 import {
   deliveryGoals,
@@ -75,29 +77,19 @@ export function preparePlanAmendment(
     requested.add("instructions");
   if (/取消|撤销|删除/u.test(text)) requested.add("remove");
   const adding = changes.some(deliveryAdditionClause);
-  const named = goals.filter((goal) => request.includes(goal.name));
-  const focused = named.length
-    ? named
-    : goals.length === 1 || /全部|所有|每份|各份/u.test(text)
-      ? goals
-      : [];
+  const focused = amendmentTargets(task, request);
   const fields = properties.deliveries.items.properties;
   const patchFields = Object.fromEntries(
     Object.entries(fields).filter(
       ([name]) =>
-        name === "id" ||
-        adding ||
-        !truncated ||
-        !requested.size ||
-        requested.has(name),
+        name === "id" || adding || !requested.size || requested.has(name),
     ),
   );
   const top = Object.fromEntries(
     Object.entries(properties).filter(
       ([name]) =>
         !["control", "deliveries"].includes(name) &&
-        (!truncated ||
-          !requested.size ||
+        (!requested.size ||
           ["executionMode", "question", "nextAction"].includes(name) ||
           (/要求|约束|字段/iu.test(text) &&
             [
@@ -153,8 +145,23 @@ export function preparePlanAmendment(
         items: {
           type: "object",
           additionalProperties: false,
-          properties: patchFields,
-          ...(adding || !truncated
+          properties: {
+            ...patchFields,
+            ...(patchFields.scenarios
+              ? {
+                  scenarios: {
+                    ...patchFields.scenarios,
+                    minItems:
+                      requestedSceneCount(request) ??
+                      Math.min(3, ...focused.map((g) => g.scenarios.length)),
+                    ...(requestedSceneCount(request)
+                      ? { maxItems: requestedSceneCount(request) }
+                      : {}),
+                  },
+                }
+              : {}),
+          },
+          ...(adding
             ? {
                 if: properties.deliveries.items.if,
                 else: properties.deliveries.items.else,

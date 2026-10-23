@@ -1,3 +1,4 @@
+import { requestedSceneCount } from "./requirements.js";
 import { opaqueId } from "../server/support.js";
 import { canonicalJson } from "../package/contract.js";
 import {
@@ -896,12 +897,16 @@ export function reviseDeliveryGoals(
         !candidate.name?.trim() ||
         !candidate.instructions?.trim() ||
         !Array.isArray(candidate.scenarios) ||
-        candidate.scenarios.length < 3 ||
+        candidate.scenarios.length <
+          (requestedSceneCount(userText) ??
+            (prior ? Math.min(3, prior.scenarios.length) : 3)) ||
         candidate.scenarios.some(
           (scene) => typeof scene !== "string" || scene.trim().length < 2,
         )
       )
-        fail("每份交付须有名称、具体要求及至少三个完整且不同的情境。");
+        fail(
+          "每份交付须有名称、具体要求及完整且不同的情境；默认至少三个，用户明确的场景数量优先。",
+        );
       if (
         new Set(candidate.scenarios.map((scene) => scene.trim())).size !==
         candidate.scenarios.length

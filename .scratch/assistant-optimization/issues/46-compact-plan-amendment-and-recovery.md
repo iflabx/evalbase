@@ -1,8 +1,8 @@
 # OPT-46 方案增量修改、截断纠正与真实核对回执
 
 Status: ready-for-agent
-Implementation: in-progress
-Validation: partial-pass
+Implementation: completed
+Validation: targeted-pass
 Owner: pending
 Blocked by: none（复用已实现OPT-43/44；不等待旧票人工验收）
 
@@ -11,7 +11,9 @@ Blocked by: none（复用已实现OPT-43/44；不等待旧票人工验收）
 - 依据：[共同合同§10](../../../docs/assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)、[PRD §7.12](../../../docs/PRD-data-selection-and-assistant.md#long-task-product)、[实际诊断§1–2](../batch2-repair-20261022/root-cause-review-20261022.md)。
 - 诊断基线6c2cd08；现有方案类别已正确，但再次要求相同类别后两次4096 token截断，随后普通继续被repair_limit拒绝。首次完整方案仅879输出token，证据不支持先扩大输出限额。
 
-2026-10-23 全链路复审：CU-7最后一步仍失败，本票重新进入开发。原定向通过证据保留，仅证明其原测试范围；增补范围尚未实施/验证，Owner pending。审查证据见[全链路审查 F01–F03、F10–F11](../../../docs/assistant-full-review-2026-10-23.md)，共同合同见[方案§11](../../../docs/assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。
+2026-10-23 当前实施：本票增补开发及定向验证完成；177项不同用例通过。实施、共享调用方、审阅修复及已知容量边界见[本轮证据](../opt46-completion-verification-20261023.md)。Owner pending，4217未更新，真实CU仍保留未通过记录。
+
+2026-10-23 全链路复审（实施前快照）：CU-7最后一步仍失败，本票重新进入开发。原定向通过证据保留，仅证明其原测试范围；增补范围尚未实施/验证，Owner pending。审查证据见[全链路审查 F01–F03、F10–F11](../../../docs/assistant-full-review-2026-10-23.md)，共同合同见[方案§11](../../../docs/assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。
 
 ## 目标
 
@@ -86,3 +88,7 @@ OPT-47硬依赖本票结构化准备结果和逐次纠错合同；OPT-48依赖�
 - 2026-10-23：全链路复审重新打开本票，Implementation in-progress、Validation partial-pass；原定向通过/历次CU未通过分别保留。增加R46-7～11，当前仅更新文档，未修复业务代码、重跑CU或改旧预算。
 
 - 2026-10-23：补齐15工具参数传递审查，增加R46-12、R46-13；仅文档/离线源码探针，未实现新增范围、运行应用回归/CU、部署或消费预算。
+
+- 2026-10-23：Owner授权按更新后的票继续实施，R46-1～13定向验证完成；共享准备、最新错误纠正及真实阻塞反馈接入，双轴审阅P1已定向关闭。见[本轮唯一汇总](../opt46-completion-verification-20261023.md)。Implementation completed、Validation targeted-pass；本轮未部署/调用真实模型/运行CU，Owner pending，旧数据及旧预算保留。
+
+- 2026-10-23 收尾：补齐三入口同名歧义→一次业务澄清→序号选择续接，保留原目标和原纠错额度；越界序号拒绝部分绑定。最终177项不同用例通过（127单测、50公共流程），双轴审阅P1及P2均关闭。

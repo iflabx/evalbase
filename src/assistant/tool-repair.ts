@@ -1,3 +1,4 @@
+import type { PreparationResult } from "./plan-preparation.js";
 import {
   generateText,
   asSchema,
@@ -401,6 +402,7 @@ export function argumentRepair(options: {
     details: RepairDetails,
     proposal: unknown,
   ) => Promise<unknown | undefined>;
+  prepare?: (name: string, proposal: unknown) => Promise<PreparationResult>;
   accept?: (
     name: string,
     original: unknown,
@@ -426,11 +428,22 @@ export function argumentRepair(options: {
     } catch {
       parsed = false;
     }
-    const normalized = parsed
-      ? repairInputMeaning(original, schema)
-      : undefined;
-    const local = parsed ? await fullSchema.validate?.(normalized) : undefined;
-    if (local?.success && sameRepairMeaning(original, local.value, schema)) {
+    let normalized = parsed ? repairInputMeaning(original, schema) : undefined;
+    let preparationIssues: RepairDetails["issues"] | undefined;
+    if (parsed && options.prepare) {
+      const prepared = await options.prepare(name, normalized);
+      if (prepared.ok) normalized = prepared.input;
+      else preparationIssues = prepared.issues;
+    }
+    const local =
+      parsed && !preparationIssues
+        ? await fullSchema.validate?.(normalized)
+        : undefined;
+    if (
+      local?.success &&
+      ((options.prepare && name === "plan_task") ||
+        sameRepairMeaning(original, local.value, schema))
+    ) {
       if (abortSignal?.aborted) {
         await options.observed(name, "interrupted");
         abortSignal.throwIfAborted();
@@ -443,10 +456,11 @@ export function argumentRepair(options: {
       return { ...toolCall, input: JSON.stringify(local.value) };
     }
     const actualIssues =
-      local && !local.success
+      preparationIssues ??
+      (local && !local.success
         ? (local.error as { issues?: RepairDetails["issues"] })?.issues
-        : undefined;
-    const focus = parsed
+        : undefined);
+    let focus = parsed
       ? repairScope(normalized, schema, actualIssues)
       : {
           value: {},
@@ -465,7 +479,7 @@ export function argumentRepair(options: {
       await options.observed(name, "context_required");
       return null;
     }
-    const context =
+    let context =
       kind === "format"
         ? undefined
         : await options.context?.(name, focus.details, focus.value);
@@ -474,7 +488,7 @@ export function argumentRepair(options: {
       await options.observed(name, "context_required");
       return null;
     }
-    const repairSchema = JSON.parse(
+    let repairSchema = JSON.parse(
       JSON.stringify(
         kind === "format"
           ? repairInputSchema(focus.value, focus.schema)
@@ -485,18 +499,66 @@ export function argumentRepair(options: {
             : value,
       ),
     );
+    let latest = normalized;
+    let latestIssues = focus.details.issues;
+    let accepted: unknown;
     const validMerge = async (value: unknown) => {
-      const merged = focus.merge(value);
-      if (!(await fullSchema.validate?.(merged))?.success) return false;
-      if (kind === "format") return sameRepairMeaning(original, merged, schema);
-      try {
-        return Boolean(await options.accept?.(name, original, merged));
-      } catch {
+      let merged = focus.merge(value);
+      latest = merged;
+      if (options.prepare) {
+        const prepared = await options.prepare(name, merged);
+        if (!prepared.ok) {
+          latestIssues = prepared.issues;
+          return false;
+        }
+        merged = prepared.input;
+        latest = merged;
+      }
+      const checked = await fullSchema.validate?.(merged);
+      if (!checked?.success) {
+        latestIssues = (checked?.error as { issues?: RepairDetails["issues"] })
+          ?.issues ?? [{ path: "/", keyword: "schema" }];
         return false;
       }
+      if (kind === "format" && !sameRepairMeaning(original, merged, schema)) {
+        latestIssues = focus.details.issues.map((issue) => ({
+          ...issue,
+          keyword: "meaning",
+        }));
+        return false;
+      }
+      try {
+        if (
+          kind !== "format" &&
+          !(await options.accept?.(name, original, merged))
+        ) {
+          latestIssues = [{ path: "/", keyword: "authorization" }];
+          return false;
+        }
+      } catch (error) {
+        latestIssues = (error as { issues?: RepairDetails["issues"] })
+          ?.issues ?? [{ path: "/", keyword: "business" }];
+        return false;
+      }
+      accepted = merged;
+      return true;
     };
     const seen = new Set<string>();
     for (let attempt = 0; attempt < (kind === "truncated" ? 1 : 2); attempt++) {
+      if (attempt > 0 && latest !== undefined) {
+        focus = repairScope(latest, schema, latestIssues);
+        context =
+          kind === "format"
+            ? undefined
+            : await options.context?.(name, focus.details, focus.value);
+        repairSchema = JSON.parse(
+          JSON.stringify(
+            kind === "format"
+              ? repairInputSchema(focus.value, focus.schema)
+              : focus.schema,
+          ),
+        );
+      }
       if (!(await options.reserve(name, kind))) break;
       let reply: Awaited<ReturnType<typeof generateText>>;
       try {
@@ -565,7 +627,7 @@ export function argumentRepair(options: {
         (await validMerge(call.input))
       ) {
         await options.observed(name, "repaired");
-        return { ...toolCall, input: JSON.stringify(focus.merge(call.input)) };
+        return { ...toolCall, input: JSON.stringify(accepted) };
       }
       await options.observed(name, call?.invalid ? "invalid" : "unsafe");
       const fingerprint = canonicalJson(

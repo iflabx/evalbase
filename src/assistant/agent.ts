@@ -1,3 +1,9 @@
+import {
+  bindPlanProposal,
+  requiredPlanTarget,
+  preparePlanProposal,
+  type PreparationIssue,
+} from "./plan-preparation.js";
 import { satisfiedPlanRequest, preparePlanAmendment } from "./plan-request.js";
 import {
   assistantFeedback,
@@ -44,7 +50,6 @@ import {
   assertDeliveryRepair,
   validateRequestedCategories,
 } from "./delivery-plan.js";
-import { reviseDeliveryRequirements } from "./requirements.js";
 import { createRefinementGroups } from "../processing/refine.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
 import { selectRecords, type SelectionRecord } from "../selection/index.js";
@@ -721,6 +726,132 @@ export async function executeAssistantTurn(
         "先按本轮用户要求保存plan_task.control；纯查询可直接只读回答，不执行旧方案。",
       );
   }
+  async function prepareProposal(
+    value: unknown,
+    current?: Record<string, any>,
+    documents?: any[],
+  ) {
+    if (!isPlainObject(value))
+      return {
+        ok: false as const,
+        issues: [
+          {
+            tool: "plan_task",
+            operation: "prepare",
+            path: "/",
+            keyword: "type",
+            code: "assistant_tool_input_invalid",
+            message: "方案参数须为对象。",
+          },
+        ],
+      };
+    current ??= (
+      await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+        turn.session_id,
+      ])
+    ).rows[0].task;
+    documents ??= (
+      await db.query(
+        'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
+        [turn.session_id],
+      )
+    ).rows;
+    if (!current!.backgroundEvidence?.length)
+      current = {
+        ...current,
+        backgroundEvidence: evidenceFromReads(
+          await backgroundReadReceipts(),
+          documents!,
+        ),
+      };
+    let bound: Record<string, any>;
+    try {
+      bound = bindPlanProposal(
+        context.decode(value),
+        current!,
+        amendmentRequestText,
+        Number(turn.task_revision),
+      );
+    } catch (e) {
+      if (!(e instanceof AssistantError)) throw e;
+      return {
+        ok: false as const,
+        issues: [
+          {
+            tool: "plan_task",
+            operation: "prepare",
+            path: "/",
+            keyword: "reference",
+            code: e.code,
+            message: e.hint ?? e.message,
+          },
+        ],
+      };
+    }
+    const validate = fixedInputValidators.get("plan_task")!;
+    const currentBase = bound.baseRevision === Number(turn.task_revision);
+    if (!validate(bound)) {
+      const needed = requiredPlanTarget(bound, current!, amendmentRequestText);
+      if (
+        needed &&
+        currentBase &&
+        validate.errors?.every(
+          (e) =>
+            ["required", "if"].includes(e.keyword) &&
+            /^\/deliveries\/\d+/.test(e.instancePath),
+        )
+      )
+        return needed;
+      return {
+        ok: false as const,
+        issues: toolValidationIssues(validate.errors).map((i) => ({
+          ...i,
+          tool: "plan_task",
+          operation: "prepare",
+          code: "assistant_tool_input_invalid",
+          message: inputHint(
+            validate.errors,
+            "plan_task",
+            toolInputs.get("plan_task")!.properties,
+          ),
+        })),
+      };
+    }
+    return preparePlanProposal(bound, {
+      task: current!,
+      request: amendmentRequestText,
+      revision: Number(turn.task_revision),
+      canUpdate:
+        (turn.event === "user" || Boolean(turn.recoveryOrigin)) &&
+        Boolean(decision?.requiresUpdate),
+      resolve: (input) =>
+        resolveBackgroundDefinitions(
+          current!,
+          input,
+          documents!,
+          scope,
+          turn.session_id,
+        ),
+      validate: (goal) => validateBackgroundRules(goal, documents!),
+      knownValues: documentDefinitionReferences(
+        documents!,
+        current!.backgroundEvidence ?? [],
+        scope,
+        turn.session_id,
+      ).map((d) => d.value),
+    });
+  }
+  function preparationError(issues: PreparationIssue[]): never {
+    const first = issues[0];
+    throw Object.assign(
+      new AssistantError(
+        first.code === "assistant_plan_revalidation_required" ? 409 : 422,
+        first.code,
+        issues.map((i) => i.message).join("；"),
+      ),
+      { issues },
+    );
+  }
   async function assertPlanRepair(
     original: any,
     fixed: any,
@@ -729,6 +860,14 @@ export async function executeAssistantTurn(
     failure?: { code?: string; hint?: string },
   ) {
     if (!original) return;
+    if (
+      typeof fixed?.question === "string" &&
+      (!fixed.executionMode || fixed.executionMode === "plan") &&
+      Object.keys(fixed).every((k) =>
+        ["question", "baseRevision", "executionMode"].includes(k),
+      )
+    )
+      return;
     current ??= (
       await db.query("SELECT task FROM assistant_session WHERE id=$1", [
         turn.session_id,
@@ -748,17 +887,9 @@ export async function executeAssistantTurn(
       (r: any) => r.name === "plan_task" && r.status === "failed",
     )?.error;
     const base = context.decode(structuredClone(original));
-    const next = context.decode(structuredClone(fixed));
-    if (Array.isArray(next.deliveries))
-      next.deliveries = next.deliveries.map((d: any) =>
-        resolveBackgroundDefinitions(
-          current,
-          d,
-          documents!,
-          scope,
-          turn.session_id,
-        ),
-      );
+    const prepared = await prepareProposal(fixed, current, documents);
+    if (!prepared.ok) preparationError(prepared.issues);
+    const next = prepared.input;
     const unacceptedCorrection = [
       "assistant_background_reference_invalid",
       "assistant_background_rule_mismatch",
@@ -1570,6 +1701,13 @@ export async function executeAssistantTurn(
           let referenceError: unknown;
           try {
             input = context.decode(input);
+            if (name === "plan_task")
+              input = bindPlanProposal(
+                input,
+                currentTask,
+                amendmentRequestText,
+                Number(turn.task_revision),
+              );
             if (
               name === "submit_processing" &&
               (turn.candidate_selection ?? currentTask.selectedCandidates)
@@ -2301,6 +2439,10 @@ export async function executeAssistantTurn(
                   requirementProblemKind: "business",
                 });
             }
+            if (e instanceof Error && "issues" in e)
+              Object.assign(error, {
+                issues: (e as Error & { issues: PreparationIssue[] }).issues,
+              });
             const noEffect =
               !actionStarted || hasNoEffect({ name, status: "failed", error });
             if (
@@ -2906,6 +3048,18 @@ export async function executeAssistantTurn(
           if (selectedPlanningEvidence.length)
             current.backgroundEvidence = selectedPlanningEvidence;
         }
+        const prepared = await prepareProposal(input, current, documents);
+        if (!prepared.ok) {
+          if ("question" in prepared && prepared.question)
+            throw new RequirementError(
+              "assistant_plan_target_required",
+              prepared.question,
+              true,
+            );
+          preparationError(prepared.issues);
+        }
+        input = { ...prepared.input };
+        delete input.baseRevision;
         const oldPlan = current.executionPlan;
         const preserveSavedDeliveries =
           oldPlan?.contractVersion === 1 &&
@@ -2949,21 +3103,6 @@ export async function executeAssistantTurn(
               "assistant_tool_input_invalid",
               "当前规划只提交交付目标或本轮要求变化；真实对象、当前及整体数量、分类和执行步骤由服务端绑定。",
             );
-          // Compare canonical verified definitions, so an equivalent server
-          // reference is not mistaken for a semantic change.
-          if (input.deliveries)
-            input = {
-              ...input,
-              deliveries: input.deliveries.map((delivery: any) =>
-                resolveBackgroundDefinitions(
-                  current,
-                  delivery,
-                  documents,
-                  scope,
-                  turn.session_id,
-                ),
-              ),
-            };
           const priorCalls = (
             await db.query(
               "SELECT tool_results FROM assistant_turn WHERE id=$1",
@@ -2987,21 +3126,7 @@ export async function executeAssistantTurn(
               documents,
               originalCall.error,
             );
-          businessDeliveries = reviseDeliveryGoals(
-            deliveryGoals(oldPlan),
-            input.deliveries,
-            deliveryGoals(oldPlan).length && turn.event === "user"
-              ? amendmentRequestText
-              : planningRequestText,
-            (turn.event === "user" || Boolean(turn.recoveryOrigin)) &&
-              Boolean(decision?.requiresUpdate),
-            documentDefinitionReferences(
-              documents,
-              current.backgroundEvidence ?? [],
-              scope,
-              turn.session_id,
-            ).map((definition) => definition.value),
-          );
+          businessDeliveries = prepared.goals ?? deliveryGoals(oldPlan);
           // Initial explicit category quotas cannot be omitted. Saved rules are
           // protected by scoped updates, without reinterpreting generic headings.
           if (!input.question || decision?.requiresUpdate)
@@ -3023,18 +3148,7 @@ export async function executeAssistantTurn(
               "assistant_tool_input_invalid",
               "方案缺少交付目标，请保留完整集合及各自数量与要求。",
             );
-          input = {
-            ...input,
-            ...reviseDeliveryRequirements(
-              current,
-              input,
-              turn.event === "user"
-                ? amendmentRequestText
-                : planningRequestText,
-              (turn.event === "user" || Boolean(turn.recoveryOrigin)) &&
-                Boolean(decision?.requiresUpdate),
-            ),
-          };
+          input = { ...input, ...prepared.requirements };
           delete input.deliveries;
           delete input.removeRequirements;
           if (businessDeliveries.length) {
@@ -5682,7 +5796,7 @@ export async function executeAssistantTurn(
         instructions: generationProperties.instructions,
         scenarios: {
           ...(generationProperties.scenarios as object),
-          minItems: 3,
+          minItems: 1,
         },
         classifications: planProperties.classifications,
         remove: { type: "boolean" },
@@ -6533,22 +6647,35 @@ export async function executeAssistantTurn(
         nestedRepairRequest = true;
         return true;
       },
-      context: async (name, _details, proposal) => {
+      prepare: async (name, proposal) => {
+        if (name !== "plan_task")
+          return { ok: true, input: proposal as Record<string, any> };
+        const prepared = await prepareProposal(proposal);
+        if (!prepared.ok && "question" in prepared && prepared.question)
+          return {
+            ok: true,
+            input: {
+              question: prepared.question,
+              baseRevision: Number(turn.task_revision),
+            },
+          };
+        return prepared;
+      },
+      context: async (name, _details, _proposal) => {
         if (name !== "plan_task") return undefined;
         const current = (
           await db.query("SELECT task FROM assistant_session WHERE id=$1", [
             turn.session_id,
           ])
         ).rows[0].task;
-        const proposed =
-          isPlainObject(proposal) && Array.isArray(proposal.deliveries)
-            ? context.decode(proposal.deliveries)
-            : [];
-        const goals = deliveryGoals(current.executionPlan).filter(
-          (goal) =>
-            !proposed.length ||
-            proposed.some((item: any) => item.id === goal.id),
+        const amendment = preparePlanAmendment(
+          current,
+          deliveryPlanProperties,
+          amendmentRequestText,
+          Number(turn.task_revision),
         );
+        const goals =
+          amendment?.facts.deliveries ?? deliveryGoals(current.executionPlan);
         const documents = (
           await db.query(
             'SELECT id,sha256,extractor_version AS "extractorVersion" FROM assistant_background_document WHERE session_id=$1',
@@ -6563,21 +6690,14 @@ export async function executeAssistantTurn(
               doc.extractorVersion === record.result.extractorVersion,
           ),
         );
-        const labels = proposed.flatMap((item: any) =>
-          (item.classifications ?? []).flatMap(
-            (rule: any) => rule.allowedValues ?? [],
-          ),
-        );
         return context.encode({
           request: amendmentRequestText,
           control: decision,
           requirements: current.requirements,
           deliveries: goals,
+          availableDeliveries: amendment?.facts.availableDeliveries,
           background: reads.slice(-3).map((record: any) => ({
-            definitions: (record.result.definitions ?? []).filter(
-              (definition: any) =>
-                !labels.length || labels.includes(definition.value),
-            ),
+            definitions: record.result.definitions ?? [],
             fragments: (record.result.fragments ?? []).map((fragment: any) => ({
               index: fragment.index,
               text: clip(fragment.text, 2000),
@@ -6608,7 +6728,9 @@ export async function executeAssistantTurn(
               documents,
             ),
           };
-        const decoded = context.decode(fixed);
+        const prepared = await prepareProposal(fixed, current, documents);
+        if (!prepared.ok) preparationError(prepared.issues);
+        const decoded = prepared.input;
         if (
           (decoded.control &&
             decision &&
@@ -6617,48 +6739,9 @@ export async function executeAssistantTurn(
         )
           return false;
         if (original !== undefined)
-          await assertPlanRepair(original, fixed, current, documents, {
+          await assertPlanRepair(original, decoded, current, documents, {
             code: "assistant_tool_input_invalid",
           });
-        if (decoded.deliveries !== undefined) {
-          const proposed = reviseDeliveryGoals(
-            deliveryGoals(current.executionPlan),
-            decoded.deliveries,
-            amendmentRequestText,
-            Boolean(decision?.requiresUpdate),
-            documentDefinitionReferences(
-              documents,
-              current.backgroundEvidence ?? [],
-              scope,
-              turn.session_id,
-            ).map((definition) => definition.value),
-          );
-          for (const goal of proposed) {
-            const resolved = resolveBackgroundDefinitions(
-              current,
-              goal,
-              documents,
-              scope,
-              turn.session_id,
-            );
-            validateBackgroundRules(
-              {
-                ...current,
-                ...decoded,
-                targetCount: goal.count,
-                classifications: resolved.classifications,
-                allowedLabels: [],
-              },
-              documents,
-            );
-          }
-        }
-        reviseDeliveryRequirements(
-          current,
-          decoded,
-          amendmentRequestText,
-          Boolean(decision?.requiresUpdate),
-        );
         return true;
       },
       started: startParameterRepair,
@@ -7113,10 +7196,6 @@ export async function executeAssistantTurn(
         if (planRepairFocus?.details.scope === "delivery") {
           const focus = planRepairFocus;
           const currentGoals = deliveryGoals(currentTask.executionPlan);
-          const proposed = (focus.value as any).deliveries ?? [];
-          const ids = new Set(
-            proposed.map((item: any) => context.decode(item).id),
-          );
           tools.plan_task.inputSchema = schema(
             focus.schema.properties,
             focus.schema.required,
@@ -7140,7 +7219,13 @@ export async function executeAssistantTurn(
                     request: amendmentRequestText,
                     control: decision,
                     requirements: currentTask.requirements,
-                    deliveries: currentGoals.filter((goal) => ids.has(goal.id)),
+                    deliveries:
+                      preparePlanAmendment(
+                        currentTask,
+                        deliveryPlanProperties,
+                        amendmentRequestText,
+                        Number(turn.task_revision),
+                      )?.facts.deliveries ?? currentGoals,
                     backgroundDefinitions:
                       currentTask.backgroundDefinitions ?? [],
                   }),
