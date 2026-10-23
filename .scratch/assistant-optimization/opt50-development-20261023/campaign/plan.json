@@ -1,0 +1,44 @@
+{
+  "code": "be2b8b1ff7e1edbddce2cfe95617dd10908fd5ba",
+  "model": {
+    "endpoint": "https://agent.bistu.edu.cn:18001/v1",
+    "model": "qwen-new",
+    "enabled": true,
+    "revision": 2
+  },
+  "projectId": "project_3a3ebb3a84bb4c88a31cba295295d7c5",
+  "cases": [
+    {
+      "id": 7,
+      "prompts": [
+        "按新版做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不要生成。",
+        "类别名就用退款进度和退款到账时间。",
+        "退款进度先改3条，另一类不变，还是只保存方案。"
+      ],
+      "endpoint": "2+2→verified→3+2, zero generation/adoption"
+    },
+    {
+      "id": 10,
+      "prompts": [
+        "帮我整理一下这些数据",
+        "选择客服清洗测试.jsonl",
+        "清洗这份文件的全部2条记录，其他不改。"
+      ],
+      "endpoint": "one clean run, two records, one new draft, fixed confirmation, no publish"
+    }
+  ],
+  "limits": {
+    "perCase": {
+      "calls": 24,
+      "activeMs": 240000
+    },
+    "total": {
+      "calls": 48,
+      "activeMs": 480000
+    },
+    "generated": 0,
+    "cleanRuns": 1,
+    "newDrafts": 1
+  },
+  "legacyBudgets": "22 files immutable; no completed historical case reruns"
+}

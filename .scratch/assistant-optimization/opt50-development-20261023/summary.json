@@ -1,0 +1,125 @@
+{
+  "ticket": "OPT-50",
+  "baseline": "eabfc32f0cfa35fb17337d005785efa656f6d540",
+  "codeCommit": "be2b8b1ff7e1edbddce2cfe95617dd10908fd5ba",
+  "implementation": "in-progress (requested code implemented; integrated acceptance not closed)",
+  "validation": "partial-pass",
+  "owner": "pending",
+  "targeted": {
+    "differentCases": 58,
+    "ui": 13,
+    "stateFeedbackWorkspace": 44,
+    "exactRestore": 1,
+    "failed": 0,
+    "reports": [
+      "ui-final.json",
+      "scope-final.json",
+      "restore-green.json"
+    ]
+  },
+  "reviews": {
+    "standards": "initial hydration/idempotency and long-dialog issues fixed; narrow followup clear",
+    "spec": "exact historical task selector and long-dialog fixed; narrow followup clear",
+    "independentTestsRun": false
+  },
+  "static": {
+    "rootTypes": 0,
+    "frontendTypes": 0,
+    "rootChangedLint": 0,
+    "frontendLint": "0 errors; one pre-existing effect dependency warning",
+    "formatDiff": 0,
+    "build": 0,
+    "docs": 0,
+    "documentValidation": "8 Markdown links/fences; 10 JSON files; no changed Mermaid"
+  },
+  "deployed": {
+    "port": 4217,
+    "code": "be2b8b1ff7e1edbddce2cfe95617dd10908fd5ba",
+    "changed": [
+      "web",
+      "model-worker"
+    ],
+    "kept": [
+      "worker",
+      "postgres",
+      "minio"
+    ],
+    "health": "ok",
+    "temporaryGuardRemoved": true
+  },
+  "computerUse": {
+    "projectId": "project_3a3ebb3a84bb4c88a31cba295295d7c5",
+    "model": {
+      "endpoint": "https://agent.bistu.edu.cn:18001/v1",
+      "model": "qwen-new",
+      "enabled": true,
+      "revision": 2
+    },
+    "sessions": {
+      "7": "conversation_9ac6df2de942478298b83e0933498d35",
+      "10": "conversation_1ddb87da7a79440badd72e243164f5b4"
+    },
+    "case7": {
+      "status": "infrastructure-invalidated/not-completed",
+      "outbound": 5,
+      "activeMs": 13140,
+      "initialPlan": "saved2+2",
+      "unchanged": "verified",
+      "amendment": "temporary gate wrongly rejected amend_plan before fetch",
+      "ordinaryContinue": "409 assistant_retry_unavailable",
+      "generated": 0
+    },
+    "case10": {
+      "status": "failed",
+      "outbound": 13,
+      "activeMs": 49878,
+      "initialError": "assistant_tool_input_invalid query_project kind=project with search/offset → assistant_no_progress",
+      "ordinaryContinue": "files/drafts read; assistant_result_incomplete, no source clarification or clean run",
+      "generated": 0
+    },
+    "requests": 18,
+    "activeMs": 63018,
+    "processingRuns": 0,
+    "drafts": 0,
+    "adopted": 0,
+    "published": 0,
+    "closed": true,
+    "budgetReset": false,
+    "historicalAcceptanceReruns": 0
+  },
+  "coverage": {
+    "tools": 15,
+    "topLevelFields": 90,
+    "mode": "source trace + inherited controlled public families; not 90 independent end-to-end tests",
+    "wholeClosure": false,
+    "openGates": [
+      "R50-5",
+      "R50-8/9 overall ordinary-workflow closure"
+    ]
+  },
+  "preservation": {
+    "oldTables": 18,
+    "oldBudgetFiles": 22,
+    "oldRowsUnchanged": true,
+    "oldBudgetHashesUnchanged": true,
+    "rawSyntheticRowsUnchanged": true,
+    "unrelatedDirtySemanticSha256": "c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c"
+  },
+  "limitations": [
+    "CU7 final3+2 not validated; do not blame application/model for a temporary guard error",
+    "CU10 genuine discovery/repair/clarification loop failure remains",
+    "No real new grant, generation, adoption or publication",
+    "No arbitrary language/model stability or content-quality signoff"
+  ],
+  "sourceHashes": {
+    "frontend-v3/src/components/project-assistant.tsx": "16642e76b3b0940da40ac8263b020c628cc48ec3f28651e6dce1cd353e73de55",
+    "frontend-v3/src/components/assistant-budget.tsx": "eae02aac29c92ba3492f8b3dbf34327f1ef374f9c0f6acf3c0078bae7f1349fb",
+    "frontend-v3/src/components/assistant-task-history.tsx": "1b05bc351d2fa99ddf74fe13abf147d88104c7dab22e387503f1bc4d554639c0",
+    "src/assistant/store.ts": "15c3c908c93e172ffb08a81859d4584cf977b15a515bb6c10ab4c3b949f8be34",
+    "src/assistant/task-boundary.ts": "6125f74cce1df9c28ff427ffd894b641d122794932707cf88e10a65b8b3cbe95",
+    "src/server/modules/assistant.ts": "9341bac52b9ee5fbcce66ad7721e7bd1a7d1aa3f4bbfa9bbbaf11cbbdc26a634",
+    "tests/e2e/assistant-continuation.spec.ts": "059a7161053927e272d1a2734e9d31b4af1b3cc17fe29c8d3afeefbff1355e1d",
+    "tests/integration/assistant-budget-continuation.test.ts": "d0073556e27bfb0bd43f4d0d859b68ba1a943eb9205c195644b2a15fb632e4ea",
+    "tests/integration/assistant-task-context.test.ts": "b54cdfc8aafe33e6f5f1e7b9d0b3a414d8eca8a3537133ab0b2f3a66f9bdf2ee"
+  }
+}

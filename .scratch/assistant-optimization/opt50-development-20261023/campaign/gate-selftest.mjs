@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+process.env.OPT50_GUARD_SELF_TEST='1';
+const {reserve,requestCase}=await import('./gate.mjs');
+const base=()=>({projectId:'p',sessions:{7:'s7',10:'s10'},calls:[],closed:false,closedCases:[]});
+const active={caseMs:0,totalMs:0};
+for(const id of [7,10])assert.equal(reserve(base(),id,active,0),60000);
+assert.throws(()=>reserve(base(),6,active,0));
+assert.throws(()=>reserve({...base(),closed:true},7,active,0));
+assert.throws(()=>reserve(base(),7,active,1));
+assert.throws(()=>reserve({...base(),calls:Array.from({length:24},()=>({caseId:7}))},7,active,0));
+assert.throws(()=>reserve({...base(),calls:Array.from({length:48},()=>({caseId:10}))},7,active,0));
+assert.throws(()=>reserve(base(),7,{caseMs:228001,totalMs:0},0));
+assert.throws(()=>reserve(base(),10,{caseMs:0,totalMs:468001},0));
+assert.equal(await requestCase(base(),{projectId:'p',sessionId:'s10'}),10);
+await assert.rejects(()=>requestCase({...base(),closedCases:[7]},{projectId:'p',sessionId:'s7'}));
+console.log('11 guard assertions passed; zero network requests');

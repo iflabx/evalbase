@@ -1,0 +1,350 @@
+[
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow completes more than twelve actual continuation events without duplicate drafts or lost usage",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow ordinary continue sends zero requests at exhaustion; one explicit grant is bounded and double-click safe",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow rejects stale grants without allocating a turn",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow rejects spoof grants without allocating a turn",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow rejects stop grants without allocating a turn",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow rejects legacy grants without allocating a turn",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow rejects outer-zero grants without allocating a turn",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow settles an unknown send once and preserves old receipt, policy and spent values",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow uses the same outbound ledger for SDK generation and transport retry",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow requires a repair-purpose grant to create a linked bounded repair attempt",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow refuses a grant after permission revocation",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow keeps frozen budget evidence after deleting a background source",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow settles a crashed active interval before adding a grant without rewriting its deadline",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-budget-continuation.test.ts",
+    "name": "OPT49 persisted recovery public flow invalidates an old grant on new requirements and retains an actionable planning checkpoint",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback keeps the exact saved background question, including existing-material alternatives",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback never treats an oral saved claim as a receipt",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback keeps a current saved plan visible when its summary fails",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback does not mistake an older revision receipt for this amendment",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback uses real processing facts ahead of an old recovery notice",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback uses real awaiting_confirmation facts ahead of an old recovery notice",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback uses real complete facts ahead of an old recovery notice",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 persistent feedback does not present a zero-result failed run as completed generation",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not trust model clarification 已生成2条，请确认采用",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not trust model clarification 方案已保存，请执行",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not trust model clarification submit_processing 需要 allSelected 参数",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not trust model clarification 请提供 documentIds 和 outputCount 后再继续",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not trust model clarification 请使用 generate_candidates 工具",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions shows the concrete validated business choice ahead of a saved plan",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions keeps saved receipt and stopping reason task_budget_exhausted",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions keeps saved receipt and stopping reason no_progress",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not invent the save destination for publish confirmation",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT45 review regressions does not invent the save destination for processing confirmation",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT46 completion pending blockers retains pending facts and the actual blocker task_budget_exhausted",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT46 completion pending blockers retains pending facts and the actual blocker permission_denied",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT46 completion pending blockers retains pending facts and the actual blocker revision_changed",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT46 completion pending blockers retains pending facts and the actual blocker background_changed",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT46 completion pending blockers retains pending facts and the actual blocker context_changed",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-feedback.test.ts",
+    "name": "OPT46 completion pending blockers retains pending facts and the actual blocker repair_limit",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-workspace.test.ts",
+    "name": "OPT37 workspace delivery facts keeps the first saved delivery visible while the second waits for confirmation",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-workspace.test.ts",
+    "name": "OPT37 workspace delivery facts does not turn a pending card or an executed step into a saved result",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-workspace.test.ts",
+    "name": "OPT37 workspace delivery facts reports partial saves and uses the real draft total for a final-count goal",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-workspace.test.ts",
+    "name": "OPT37 workspace delivery facts shows actual retained results for a failed run without inheriting another delivery's failure",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-workspace.test.ts",
+    "name": "OPT37 workspace delivery facts shows a saved unexecuted plan as planned rather than a user pause",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/unit/assistant-workspace.test.ts",
+    "name": "OPT37 workspace delivery facts does not reinterpret a legacy plan or substitute a latest run from another delivery",
+    "status": "passed",
+    "report": "scope-final.json"
+  },
+  {
+    "file": "tests/integration/assistant-task-context.test.ts",
+    "name": "OPT48 task boundaries and complete request projection OPT50 restores a selected same-title checkpoint by exact identity and fences invalid bindings",
+    "status": "passed",
+    "report": "restore-green.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 bounded grant requires explicit confirmation and posts only the frozen offer",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 repair grant names a new bounded repair attempt, never an ordinary retry",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 stale grant refreshes authority without losing input or silently accepting a new offer",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 grant expiration disables confirmation and refetches current capability",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 rejected message uses current server reason and preserves unsent text",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 historical task is read-only, and its pending confirmation never acts on the current task",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 480px keyboard flow and long history keep completed facts ahead of old errors",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 automatic segment polling advances three checkpoints without another user prompt",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 task switch ignores a late historical running turn and historical action",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 two tabs keep one accepted grant and refresh the rejected stale tab",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 initial status hydration preserves the pending idempotency identity after refresh",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 long grant dialog stays operable by keyboard at 480px",
+    "status": "expected",
+    "report": "ui-final.json"
+  },
+  {
+    "file": "assistant-continuation.spec.ts",
+    "name": "OPT50 historical restore binds the chosen identity even when titles are duplicated",
+    "status": "expected",
+    "report": "ui-final.json"
+  }
+]

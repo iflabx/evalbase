@@ -1,3 +1,5 @@
+2026-10-23 当前状态：[OPT-49](issues/49-budget-grants-and-task-continuation.md)开发及定向交付完成；[OPT-50](issues/50-continuation-ui-and-bounded-acceptance.md)代码be2b8b1、58项定向通过并更新4217，真实CU7测试设施失效/CU10流程失败，整票in-progress/partial-pass，Owner pending。18类旧行及22份预算保持，未重跑完成部分。详细事实和全链路证据只在[OPT-50记录](opt50-verification-20261023.md)维护；以下带日期条目均为历史快照。
+
 2026-10-23补修当前状态：OPT-48代码1026c17修复真实长历史草稿复用回归并适配原8项旧夹具；8项复测、2项新增兼容/任务隔离及2项既有用途保护通过。实际补修复检12项，复用未受影响原证据后去重共170项；详见[本轮记录](opt48-verification-20261023.md#opt48-legacy-followup)。Owner pending，OPT-49/50仍未开发；原数据与预算保留，4217未更新。下方初始160项及失败记录保留历史原义。
 
 2026-10-23 当前状态：[OPT-48](issues/48-conversation-task-boundaries-and-context.md)开发及定向验证完成，代码83e7d3d，160项不同定向用例通过；稳定任务身份、原子切换/恢复、历史权限与最终出站整包投影已接入，Implementation completed / Validation targeted-pass / Owner pending。用例、双轴审阅及限制见[本轮证据](opt48-verification-20261023.md)。OPT-49/50仍not-started，依赖不变。未更新4217、调用真实模型/CU、合并或推送；原验收数据与旧预算保留。以下带日期记录为历史快照。
@@ -174,8 +176,8 @@ Implementation: in-progress
 | [OPT-46](issues/46-compact-plan-amendment-and-recovery.md) | 可信目标、统一准备、逐次纠错与当前反馈 | 现有实现；无未开发票依赖 | completed | targeted-pass、Owner pending；177项定向通过，[本轮记录](opt46-completion-verification-20261023.md)。CU-7历史未通过；本轮未部署或运行CU |
 | [OPT-47](issues/47-source-discovery-and-processing-preflight.md) | 资料发现、处理准备及部分提交对账 | OPT-46共享准备/纠错合同 | completed | targeted-pass、Owner pending；247项定向通过，[本轮记录](opt47-verification-20261023.md)。未部署/CU，旧数据和预算保留 |
 | [OPT-48](issues/48-conversation-task-boundaries-and-context.md) | 长会话任务边界与有界上下文 | OPT-46 | completed | [实施与定向证据](opt48-verification-20261023.md)；Validation targeted-pass；Owner pending；未更新4217/真实模型/CU |
-| [OPT-49](issues/49-budget-grants-and-task-continuation.md) | 复杂任务预算分层与可续接执行 | OPT-47、OPT-48 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
-| [OPT-50](issues/50-continuation-ui-and-bounded-acceptance.md) | 续接交互与第7、10项集中验收 | OPT-49（传递依赖46～48） | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
+| [OPT-49](issues/49-budget-grants-and-task-continuation.md) | 复杂任务预算分层与可续接执行 | OPT-47、OPT-48 | completed | targeted-pass、Owner pending；[原验证](opt49-verification-20261023.md)，4217联动见OPT-50 |
+| [OPT-50](issues/50-continuation-ui-and-bounded-acceptance.md) | 续接交互与第7、10项集中验收 | OPT-49（传递依赖46～48） | in-progress | partial-pass，58项定向通过；真实CU未通过；[唯一记录](opt50-verification-20261023.md)，旧数据/预算保持 |
 
 2026-10-20 最新[OPT-39～42单会话联动](opt39-42-single-session-verification.md)未通过：规划/恢复阻断，生成后路径未覆盖；既有定向证据及全部原数据/预算保留，Owner pending。
 

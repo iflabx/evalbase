@@ -251,3 +251,7 @@ Phase 1A 不公开 ZIP、Standard/Full Package、Offline Validator、Delivery Re
 | 0009      | 确认前不可见的上传边界                                      |
 | 0010      | 结构化 Metadata 项与旧单文本兼容                            |
 | 0011      | 测试集稀疏 Delta、关系表 Checkpoint、阈值和删除依赖切断     |
+
+### 2026-10-23 OPT-50续接页面接入
+
+前端读取现有状态中的taskId、feedback、budget/offer和只读continuation范围，预算确认仅提交服务端offer身份及修订。历史任务按需读取；消息入口可附restoreTaskId精确选择同会话快照，和context/candidates/operation互斥且必须绑定当前修订，复用原归档/恢复权限、锁及幂等事务，不改变历史任务预算。没有新Agent框架或数据表。代码、受控回归与实际CU未通过边界见[验证记录](../../.scratch/assistant-optimization/opt50-verification-20261023.md)。

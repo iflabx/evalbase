@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 当前状态（2026-10-23）：OPT-46～48已完成开发及定向验证；最新[OPT-48实施证据](../.scratch/assistant-optimization/opt48-verification-20261023.md)。OPT-49/50未实施，Owner pending；未部署或运行真实模型/CU，4217最近记录仍2c74b8e，历史数据与旧预算保留。
+- 当前状态（2026-10-23）：OPT-46～49已完成各票开发及定向验证；OPT-50代码be2b8b1和58项定向通过，4217已更新，但两项真实CU未通过，整票in-progress/partial-pass。CU7测试门禁误拦与CU10真实纠错/澄清失败严格分开，旧数据与22份预算保持；详见[唯一验证记录](../.scratch/assistant-optimization/opt50-verification-20261023.md)。
 - 2026-10-22最初诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -216,7 +216,7 @@ agent.ts 保留 SDK 接线与业务工具适配。提取真正被多个入口共
 | [OPT-49](../.scratch/assistant-optimization/issues/49-budget-grants-and-task-continuation.md) | 累计账本、进展续段、明确追加授权与恢复一致性 | OPT-47、OPT-48，传递依赖46 |
 | [OPT-50](../.scratch/assistant-optimization/issues/50-continuation-ui-and-bounded-acceptance.md) | 页面接入、固定版本联动与两项有界CU | OPT-49，传递依赖46～48 |
 
-OPT-46当前增补已开发及定向验证完成，见[2026-10-23实施](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)；以下为补强前快照。OPT-46已有增量准备/核对、截断收缩及恢复的[原定向证据](../.scratch/assistant-optimization/opt46-verification.md)，后续CU-7仍失败；2026-10-23按§11增补后重新进入in-progress，原通过和失败记录分别保留。OPT-47、OPT-48已完成本轮定向交付；OPT-49当前实施与验证见[预算续接证据](../.scratch/assistant-optimization/opt49-verification-20261023.md)，OPT-50尚未实施。此状态更新不改签历史真实验收。
+OPT-46当前增补已开发及定向验证完成，见[2026-10-23实施](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)；以下为补强前快照。OPT-46已有增量准备/核对、截断收缩及恢复的[原定向证据](../.scratch/assistant-optimization/opt46-verification.md)，后续CU-7仍失败；2026-10-23按§11增补后重新进入in-progress，原通过和失败记录分别保留。OPT-47、OPT-48已完成本轮定向交付；OPT-49当前实施与验证见[预算续接证据](../.scratch/assistant-optimization/opt49-verification-20261023.md)，OPT-50后续实施及真实验收状态见本文顶部；不改签历史真实验收。
 
 推荐46→47→48→49→50；47与48在46共享合同稳定后可分别实施，49依赖二者，50负责页面和验收收口。不用等每张旧票Owner签字再开始已授权后续开发。各票须通过自身定向公共流程验证，OPT-50集中进行真实模型验收。后续开发授权才执行，不因本次写票发送模型请求或新增预算。
 
@@ -292,10 +292,14 @@ plan-preparation 提供无副作用 PreparationResult；正式规划、SDK/业�
 
 ### 11.9 OPT-48任务边界与请求投影交付（2026-10-23）
 
-当前任务身份、原子归档/切换/恢复及旧执行围栏已接入消息、状态、控制、队列和出站请求。执行依赖按任务聚合，历史逐页按当前权限脱敏；新格式移除会话100条拒绝条件，旧格式只读不迁移。正常、增量、SDK纠错和恢复共用最终HTTP载荷容量控制，必要合同/待修改意图保持，近期交流只提供指代证据。存储、索引及回滚选择见[ADR补充](adr/0014-project-agent-and-processing-runtime.md#2026-10-23-opt-48-会话内任务身份与上下文补充)，调用方、被替代路径、120条合成历史、9/20条长要求、权限/确认和审阅证据统一见[本轮记录](../.scratch/assistant-optimization/opt48-verification-20261023.md)。本票不提供追加额度、前端任务管理或新的摘要模型；OPT-49/50保持未开发。
+当前任务身份、原子归档/切换/恢复及旧执行围栏已接入消息、状态、控制、队列和出站请求。执行依赖按任务聚合，历史逐页按当前权限脱敏；新格式移除会话100条拒绝条件，旧格式只读不迁移。正常、增量、SDK纠错和恢复共用最终HTTP载荷容量控制，必要合同/待修改意图保持，近期交流只提供指代证据。存储、索引及回滚选择见[ADR补充](adr/0014-project-agent-and-processing-runtime.md#2026-10-23-opt-48-会话内任务身份与上下文补充)，调用方、被替代路径、120条合成历史、9/20条长要求、权限/确认和审阅证据统一见[本轮记录](../.scratch/assistant-optimization/opt48-verification-20261023.md)。本票不提供追加额度、前端任务管理或新的摘要模型；该条为OPT-48交付时状态；当前OPT-49/50状态见本文顶部。
 
 2026-10-23 OPT-48补修：业务草稿复用改为查当前任务的持久成功回执，不从最近六轮模型历史决定可复用对象。原8项旧测试已修复并通过；额外真实回归及当前/legacy、独立任务同名隔离复验见[统一记录](../.scratch/assistant-optimization/opt48-verification-20261023.md#opt48-legacy-followup)。有界模型投影与持久业务事实分离，权限/用途/确认保护保持。
 
 ## 2026-10-23 OPT-49 实施记录
 
 分层账本、共同进展/恢复、实际出站观察及固定单段追加授权的实现合同、直接调用方和新旧格式边界集中见[OPT-49验证](../.scratch/assistant-optimization/opt49-verification-20261023.md)。默认与旧预算保持；纯续接不加额，新要求修订使旧追加授权失效，另授额度后先规划；参数恢复复用实际种子与固定范围。4217、真实模型和CU仍由后续已授权票据更新与验收。
+
+## 2026-10-23 OPT-50 页面实施与有限验收
+
+工作页消费服务端任务身份、反馈、固定预算offer及实际未完成范围；历史按需只读，精确选中恢复沿原会话锁/修订/预算围栏。UI、定向回归、4217及F/TP字段接线统一见[OPT-50记录](../.scratch/assistant-optimization/opt50-verification-20261023.md)。真实CU尚未通过，不能用控制夹具代替业务终点；失败事实及后续机制承接保持，关闭账本不重开。

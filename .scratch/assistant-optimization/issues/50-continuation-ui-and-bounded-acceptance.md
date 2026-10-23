@@ -1,14 +1,14 @@
 # OPT-50 续接交互与第7、10项集中验收
 
 Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
-Blocked by: OPT-49（传递依赖OPT-46、OPT-47、OPT-48）
+Implementation: in-progress
+Validation: partial-pass
+Blocked by: CU-7测试设施失效需后续重验；CU-10查询纠错/来源澄清未闭合（原硬依赖OPT-49已定向交付）
 
 
 - 优先级：P1。本批集中页面接入与固定版本验收，不承担前票遗漏的服务端机制。
 - 依据：[共同合同§10](../../../docs/assistant-mechanism-consolidation-2026-10-22.md#repair-long-tasks)、[测试索引§5.19](../../../docs/test-plan-data-selection-and-assistant.md#repair-long-task-tests)。
-- 当前仅开票；后续授权本票开发、更新4217及以下验证时按本票上限执行，不重复询问同范围许可。当前请求未授权实际运行或扩额。
+- 2026-10-23已获Owner开发、更新4217及本票限额验收授权；执行结果见下文。本轮campaign已关闭，不能重置或自动重跑。
 
 ## 目标
 
@@ -81,3 +81,12 @@ Blocked by: OPT-49（传递依赖OPT-46、OPT-47、OPT-48）
 - 2026-10-23：补R50-7～8及全链路证据映射，依赖、两项CU材料/普通提示、逐项24次/240000ms和总48次/480000ms上限不变。当前未实施，未创建新预算或重跑已有项。
 
 - 2026-10-23：补齐15工具参数传递审查，增加R50-9、R50-10；仅文档/离线源码探针，未实现新增范围、运行应用回归/CU、部署或消费预算。
+
+## 2026-10-23 实施与验收结果
+
+实现提交be2b8b1ff7e1edbddce2cfe95617dd10908fd5ba，页面/身份绑定及58项定向回归通过，同一4217已更新；Standards/Spec发现的三项已补修及窄复核。**整票in-progress、Validation partial-pass、Owner pending**，具体事实只在[唯一验证记录](../opt50-verification-20261023.md)维护。
+
+- CU7初始2+2及真实不变核对通过；修改3+2被本次临时验收门禁误拦，属于测试设施失效，不能作为模型/应用失败证据，也未达到最终终点。
+- CU10首次查询条件参数错误，一次普通继续后仍未形成具体来源澄清/清洗；真实流程失败。R50-5与全链路闭合门槛未通过，不能用控制夹具或保护性停止代签。
+- 两项合计18次实际外发，活跃63018ms；旧18表行和22预算文件保持。campaign关闭，零生成/清洗运行/草稿/采用/发布，未重跑历史完成部分。临时门禁已移除。
+- 工具90字段及F/TP索引已补齐，行为证据按公共流程族复用；仍未闭合的发现/纠错/澄清退回原机制处理，不在本票叠加新工作流。
