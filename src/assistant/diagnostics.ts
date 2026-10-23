@@ -220,7 +220,6 @@ export function assistantFailure(
       "恢复连接后重试未完成步骤。",
     );
   if (
-    code === "assistant_result_incomplete" ||
     chain.some((e) =>
       [
         "AI_JSONParseError",
@@ -237,6 +236,13 @@ export function assistantFailure(
       "output_protocol",
       "模型回复不完整或未符合接口格式。",
       "核对已保留成果后重试未完成步骤。",
+    );
+  if (code === "assistant_result_incomplete")
+    return result(
+      "application",
+      "workflow_incomplete",
+      "本轮尚未形成完整结果。",
+      "原要求和已完成操作已保留，可继续未完成部分；具体原因需结合操作记录核对。",
     );
   return result(
     "application",

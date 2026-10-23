@@ -1,3 +1,4 @@
+import { projectQueryConstraints } from "./query-contract.js";
 import { effectiveOperationInput } from "./operation-input.js";
 import {
   budgetAllowance,
@@ -350,6 +351,7 @@ function schema(
     properties,
     required,
     additionalProperties: false,
+    ...projectQueryConstraints(name),
   } as const;
   const validate = ajv.compile(definition);
   // Some compatible servers cannot constrain uniqueItems during forced tool decoding.
@@ -2131,6 +2133,7 @@ export async function executeAssistantTurn(
       properties,
       required,
       additionalProperties: false,
+      ...projectQueryConstraints(name),
     });
     fixedInputValidators.set(name, validateInput);
     const modelRequired = required.filter(
@@ -2152,6 +2155,7 @@ export async function executeAssistantTurn(
         type: "object",
         properties,
         additionalProperties: false,
+        ...projectQueryConstraints(name),
       }),
     );
     return tool({
@@ -4864,6 +4868,8 @@ export async function executeAssistantTurn(
           );
           await updateTask(db, turn, {
             sourceDiscovery: found.state,
+            error: null,
+            recovery: null,
             ...(found.resolvedSource && !current.executionPlan?.steps?.length
               ? {
                   target: found.resolvedSource,
@@ -6424,6 +6430,7 @@ export async function executeAssistantTurn(
           type: "object",
           properties: toolInputs.get(action)!.properties,
           additionalProperties: false,
+          ...projectQueryConstraints(action),
         },
       },
     })),
@@ -7165,6 +7172,15 @@ export async function executeAssistantTurn(
         amendmentRequestText = original.user_text;
         planningRequestText = original.user_text;
       }
+    }
+    if (
+      planningContinuation(turn.user_text) &&
+      task.recoverySegment?.turnId !== turn.id &&
+      task.parameterRepairStatus?.name === "query_project" &&
+      (task.error || task.processingClarification?.kind === "source") &&
+      task.parameterRepairStatus.amendmentId
+    ) {
+      planningRequestTurnId = task.parameterRepairStatus.amendmentId;
     }
     decision = restoredDecision(task, turn);
     if (!decision && restoring && turn.event === "user") {
@@ -7922,6 +7938,43 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1
             ? singlePlanSchema
             : fullPlanSchema;
+        // A pending correction must not be replaced by generic discovery/work prompts.
+        if (processingRepairFocus) {
+          const { focus } = processingRepairFocus;
+          const name = processingRepairFocus.name as keyof typeof tools;
+          tools[name as keyof typeof tools].inputSchema = schema(
+            focus.schema.properties,
+            focus.schema.required,
+            name,
+            (hint) => schemaHints.set(name, hint),
+          );
+          activeRepairTools = new Set([name]);
+          return {
+            activeTools: [name],
+            toolChoice: { type: "tool" as const, toolName: name },
+            messages: [
+              {
+                role: "user" as const,
+                content: JSON.stringify({
+                  operation: "repair_tool_arguments",
+                  toolName: name,
+                  original: focus.value,
+                  error: focus.details.issues,
+                  context: context.encode({
+                    request: amendmentRequestText,
+                    target: currentTask.target,
+                    scope: currentTask.processingScope,
+                    allowedFields: currentTask.allowedFields ?? ["question"],
+                    metadataKeys: currentTask.metadataKeys,
+                  }),
+                }),
+              },
+            ],
+            instructions:
+              instructions +
+              "\n按全部最新问题修正同一未提交的处理提议，不改变来源、用户数量、字段保护或固定勾选。缺少实际业务选择才用plan_task保存具体问题；不能向用户要求工具参数。",
+          };
+        }
         if (
           decision?.mode === "query" &&
           turnNeedsWork(
@@ -7983,42 +8036,6 @@ export async function executeAssistantTurn(
             "plan_task",
             (hint) => schemaHints.set("plan_task", hint),
           );
-        }
-        if (processingRepairFocus) {
-          const { focus } = processingRepairFocus;
-          const name = processingRepairFocus.name as keyof typeof tools;
-          tools[name as keyof typeof tools].inputSchema = schema(
-            focus.schema.properties,
-            focus.schema.required,
-            name,
-            (hint) => schemaHints.set(name, hint),
-          );
-          activeRepairTools = new Set([name]);
-          return {
-            activeTools: [name],
-            toolChoice: { type: "tool" as const, toolName: name },
-            messages: [
-              {
-                role: "user" as const,
-                content: JSON.stringify({
-                  operation: "repair_tool_arguments",
-                  toolName: name,
-                  original: focus.value,
-                  error: focus.details.issues,
-                  context: context.encode({
-                    request: amendmentRequestText,
-                    target: currentTask.target,
-                    scope: currentTask.processingScope,
-                    allowedFields: currentTask.allowedFields ?? ["question"],
-                    metadataKeys: currentTask.metadataKeys,
-                  }),
-                }),
-              },
-            ],
-            instructions:
-              instructions +
-              "\n按全部最新问题修正同一未提交的处理提议，不改变来源、用户数量、字段保护或固定勾选。缺少实际业务选择才用plan_task保存具体问题；不能向用户要求工具参数。",
-          };
         }
         if (planRepairFocus?.details.scope === "delivery") {
           const focus = planRepairFocus;
@@ -8927,7 +8944,8 @@ export async function executeAssistantTurn(
         stepDiagnostics.at(-1)?.finishReason === "length") &&
       ((failureDiagnostic.layer === "model" &&
         failureDiagnostic.category === "output_protocol") ||
-        errorCode === "assistant_tool_input_invalid")
+        errorCode === "assistant_tool_input_invalid" ||
+        errorCode === "assistant_result_incomplete")
     )
       failureDiagnostic = {
         ...failureDiagnostic,

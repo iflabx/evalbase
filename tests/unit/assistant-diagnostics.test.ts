@@ -60,6 +60,19 @@ describe("assistant diagnostic metadata", () => {
     ).toBe("application");
   });
 
+  it("OPT50 requires protocol evidence before blaming the model for incomplete work", () => {
+    expect(assistantFailure({}, "assistant_result_incomplete")).toMatchObject({
+      layer: "application",
+      category: "workflow_incomplete",
+    });
+    expect(
+      assistantFailure(
+        { name: "AI_JSONParseError" },
+        "assistant_result_incomplete",
+      ),
+    ).toMatchObject({ layer: "model", category: "output_protocol" });
+  });
+
   it("does not recommend replaying an operation with an uncertain effect", () => {
     expect(
       assistantFailure({}, "assistant_scope_invalid", { effect: "unknown" })

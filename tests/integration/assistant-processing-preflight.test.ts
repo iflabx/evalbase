@@ -291,6 +291,7 @@ describe("OPT47 unified processing public boundary", () => {
         ...headers,
         "content-type": "application/octet-stream",
         "x-file-name": encodeURIComponent(name),
+        "x-agentbench-upload-encoding": "percent-utf8",
       },
       payload:
         '{"fixture":' +
@@ -365,6 +366,211 @@ describe("OPT47 unified processing public boundary", () => {
     expect(result.statusCode, result.body).toBe(200);
     return result.json();
   }
+
+  it("OPT50 query correction dispatch carries latest business issues before ordinary discovery", async () => {
+    await file("修复候选A.jsonl");
+    await file("修复候选B.jsonl");
+    const id = await newSession();
+    const before = await effects();
+    const state = await send(id, "帮我整理一下这些数据", [
+      decision("query"),
+      { name: "query_project", input: { kind: "files", search: " " } },
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    const correction = observed[2].messages.find(
+      (m: any) =>
+        typeof m.content === "string" &&
+        m.content.includes('"operation":"repair_tool_arguments"'),
+    );
+    expect(correction, JSON.stringify(observed[2])).toBeDefined();
+    expect(
+      JSON.parse(correction.content).error.some(
+        (i: any) => i.path === "/search",
+      ),
+    ).toBe(true);
+    expect(state.task.question).toContain("请选择");
+    expect(observed).toHaveLength(3);
+    expect(await effects()).toEqual(before);
+  });
+
+  it("OPT50 failed discovery followed by ordinary continue persists a source question and completes authorized cleaning", async () => {
+    const target = await file("继续清洗测试.jsonl");
+    await file("继续其他资料.jsonl");
+    const id = await newSession();
+    const failed = await send(id, "帮我整理一下这些数据", [
+      decision("query"),
+      { name: "query_project", input: { kind: "files", search: " " } },
+      { name: "query_project", input: { kind: "files", search: " " } },
+    ]);
+    expect(failed.turns.at(-1).status).toBe("failed");
+    expect(failed.task.sourceDiscovery).toBeFalsy();
+    const taskId = failed.task.taskId;
+    const budgetBefore = (
+      await dbQuery(
+        "SELECT task->'executionBudget' AS budget FROM assistant_session WHERE id=$1",
+        [id],
+      )
+    ).rows[0].budget;
+    expect(budgetBefore.requestAttempts).toBeGreaterThan(0);
+    const repairBefore = (
+      await dbQuery(
+        "SELECT task->'parameterRepairLimits' AS limits FROM assistant_session WHERE id=$1",
+        [id],
+      )
+    ).rows[0].limits.query_project;
+    const before = await effects();
+    const continued = await send(id, "继续", [
+      decision("execute"),
+      { name: "query_project", input: { kind: "files", search: " " } },
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    expect(
+      continued.turns.at(-1).status,
+      JSON.stringify(continued.turns.at(-1)),
+    ).toBe("succeeded");
+    expect(continued.task.taskId).toBe(taskId);
+    expect(continued.task.question).toContain("请选择");
+    expect(continued.task.stage).toBe("waiting_input");
+    expect(continued.task.sourceDiscovery.items.length).toBeLessThanOrEqual(5);
+    expect(observed).toHaveLength(3);
+    const repairAfter = (
+      await dbQuery(
+        "SELECT task->'parameterRepairLimits' AS limits FROM assistant_session WHERE id=$1",
+        [id],
+      )
+    ).rows[0].limits.query_project;
+    expect(repairBefore.used).toBe(1);
+    expect(repairAfter).toMatchObject({
+      identity: repairBefore.identity,
+      used: 2,
+    });
+    expect(await effects()).toEqual(before);
+    // A further invalid continue cannot reset correction allowance; the discovered choices remain available.
+    const repeated = await send(id, "继续", [
+      decision("execute"),
+      { name: "query_project", input: { kind: "files", search: " " } },
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    expect(repeated.turns.at(-1).status).toBe("failed");
+    const repairRepeated = (
+      await dbQuery(
+        "SELECT task->'parameterRepairLimits' AS limits FROM assistant_session WHERE id=$1",
+        [id],
+      )
+    ).rows[0].limits.query_project;
+    expect(repairRepeated).toEqual(repairAfter);
+    expect(repeated.task.sourceDiscovery.question).toBe(
+      continued.task.question,
+    );
+    expect(repeated.task.taskId).toBe(taskId);
+    expect(observed.length).toBeLessThanOrEqual(2);
+    const clean = await send(id, "清洗继续清洗测试.jsonl的全部2条，其他不改", [
+      decision("execute"),
+      {
+        name: "query_project",
+        input: { kind: "files", search: "继续清洗测试.jsonl" },
+      },
+      {
+        name: "submit_processing",
+        input: { operation: "clean", allRecords: true },
+      },
+    ]);
+    const submitted = successes(clean, "submit_processing").at(-1);
+    expect(submitted, JSON.stringify(clean.turns.at(-1))).toBeDefined();
+    const run = (
+      await dbQuery("SELECT source FROM processing_run WHERE id=$1", [
+        submitted.result.runId,
+      ])
+    ).rows[0];
+    expect(run.source).toMatchObject({ kind: "assets", assetIds: [target] });
+    expect(await effects()).toEqual({ ...before, runs: before.runs + 1 });
+    await dbQuery(
+      "UPDATE assistant_session SET task=task||'{\"executionPaused\":true}'::jsonb WHERE id=$1",
+      [id],
+    );
+    const result = await finishClean(submitted.result.runId);
+    expect(result.records).toHaveLength(2);
+    for (const record of result.records) {
+      expect(record.result.question).toBe(record.result.question.trim());
+      expect(record.result.expectedOutput).toBe("  原标签  ");
+    }
+    const budgetAfter = (
+      await dbQuery(
+        "SELECT task->'executionBudget' AS budget FROM assistant_session WHERE id=$1",
+        [id],
+      )
+    ).rows[0].budget;
+    expect(budgetAfter.requestAttempts).toBeGreaterThan(
+      budgetBefore.requestAttempts,
+    );
+    expect(budgetAfter.limits).toEqual(budgetBefore.limits);
+  });
+
+  it("OPT50 project query schema exposes kind restrictions and repairs the original invalid combination", async () => {
+    const id = await newSession();
+    const state = await send(id, "帮我整理一下这些数据", [
+      decision("query"),
+      {
+        name: "query_project",
+        input: { kind: "project", search: "数据", offset: 0 },
+      },
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    const declared = observed[1].tools.find(
+      (t: any) => t.function.name === "query_project",
+    ).function.parameters;
+    const Ajv = (await import("ajv")).Ajv;
+    const validate = new Ajv({ strict: false }).compile(declared);
+    expect(validate({ kind: "project", search: "数据", offset: 0 })).toBe(
+      false,
+    );
+    const planSchema = observed[0].tools.find(
+      (t: any) => t.function.name === "plan_task",
+    ).function.parameters;
+    const queryStep = planSchema.properties.steps.items.oneOf.find((s: any) =>
+      s.properties.action.enum.includes("query_project"),
+    );
+    const validateStepInput = new Ajv({ strict: false }).compile(
+      queryStep.properties.input,
+    );
+    expect(validateStepInput({ kind: "project", search: "数据" })).toBe(false);
+    expect(validateStepInput({ kind: "files", search: "客服" })).toBe(true);
+    expect(validate({ kind: "project" })).toBe(true);
+    expect(validate({ kind: "files", search: "客服", offset: 0 })).toBe(true);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.question).toContain("请选择");
+    expect(observed.length).toBeLessThanOrEqual(4);
+  });
+
+  it("OPT50 continue after failed named discovery keeps the original requested filename", async () => {
+    const target = await file("续接指定文件.jsonl");
+    const id = await newSession();
+    const failed = await send(id, "帮我整理续接指定文件.jsonl", [
+      decision("query"),
+      { name: "query_project", input: { kind: "files", search: " " } },
+      { name: "query_project", input: { kind: "files", search: " " } },
+    ]);
+    expect(failed.turns.at(-1).status).toBe("failed");
+    const before = await effects();
+    const state = await send(id, "继续", [
+      decision("query"),
+      {
+        name: "query_project",
+        input: { kind: "files", search: "续接指定文件.jsonl" },
+      },
+      { name: "", input: {}, text: "已找到指定文件，可以继续确认处理要求。" },
+    ]);
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    expect(state.task.sourceDiscovery.resolvedSource).toEqual({
+      kind: "assets",
+      assetIds: [target],
+    });
+    expect(await effects()).toEqual(before);
+  });
+
   it("OPT47 bounded discovery persists real ambiguity and never requests a model summary", async () => {
     for (let i = 0; i < 6; i++) await draft("发现候选" + i, 1);
     const id = await newSession();

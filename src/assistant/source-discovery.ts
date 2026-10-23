@@ -1,21 +1,32 @@
+import { planningContinuation } from "./intent.js";
 import type { Database } from "../db/pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { assistantAccess, type AssistantScope } from "./store.js";
 
+/** Resolve a continuation against the current task, even when the first discovery failed. */
+export function sourceDiscoveryRequest(
+  task: Record<string, any>,
+  request: string,
+) {
+  return planningContinuation(request)
+    ? String(task.sourceDiscovery?.requestText ?? task.goal ?? request)
+    : request;
+}
 export function sourceDiscoveryApplies(
   task: Record<string, any>,
   request: string,
   input: Record<string, any>,
 ) {
-  if (
-    input.kind === "project" ||
-    (input.kind === "versions" && /版本|v\d+/iu.test(request))
-  )
-    return false;
+  const work = sourceDiscoveryRequest(task, request);
+  if (input.kind === "versions" && /版本|v\d+/iu.test(request)) return false;
   return (
-    /整理|清洗|改写|扩写|扩充|处理/u.test(request) ||
-    (!!task.sourceDiscovery && /继续|下一页|翻页|换|找|第.+份/u.test(request))
+    /整理|清洗|改写|扩写|扩充|处理/u.test(work) ||
+    (!!task.sourceDiscovery &&
+      (/继续|下一页|翻页|换|找|选择|第.+份/u.test(request) ||
+        task.sourceDiscovery.items?.some((item: any) =>
+          request.includes(item.name),
+        )))
   );
 }
 /** One bounded source catalogue; legacy kind switches cannot open another search allowance. */
@@ -38,6 +49,7 @@ export async function discoverSources(
     "write",
   );
   const old = args.task.sourceDiscovery;
+  const request = sourceDiscoveryRequest(args.task, args.request);
   const generic =
     /^(?:这些数据|这些|数据|资料|文件|原始数据|当前项目|全部|所有)$/u;
   const search =
@@ -45,7 +57,7 @@ export async function discoverSources(
   let query =
     search &&
     !generic.test(search) &&
-    args.request.toLowerCase().includes(search.toLowerCase())
+    request.toLowerCase().includes(search.toLowerCase())
       ? search
       : (old?.query ?? "");
   const pageAsked = /下一页|翻页|换一页/u.test(args.request);
@@ -63,9 +75,7 @@ export async function discoverSources(
         ? Number(choice[1]) - 1
         : "一二三四五".indexOf(choice[1]!)
     ];
-  const named = (old?.items ?? []).filter((i: any) =>
-    args.request.includes(i.name),
-  );
+  const named = (old?.items ?? []).filter((i: any) => request.includes(i.name));
   let preferred =
     args.preferred ??
     (chosen
@@ -79,7 +89,7 @@ export async function discoverSources(
   const explicitName =
     !!search &&
     !generic.test(search) &&
-    args.request.toLowerCase().includes(search.toLowerCase());
+    request.toLowerCase().includes(search.toLowerCase());
   if (
     !explicitName &&
     preferred &&
@@ -215,6 +225,7 @@ export async function discoverSources(
     reads,
     items,
     requestId: args.requestId,
+    requestText: sourceDiscoveryRequest(args.task, args.request),
     ...(selected ? { resolvedSource: selected } : {}),
     ...(question ? { question } : {}),
   };

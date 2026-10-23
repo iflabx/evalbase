@@ -1,3 +1,4 @@
+import { projectQueryFields } from "./query-contract.js";
 import { bindTaskInput, planSource, sourceWithinTask } from "./plan.js";
 import { selectionParameters } from "./plan.js";
 import { explicitRequirementCount } from "./requirements.js";
@@ -244,12 +245,12 @@ export function prepareToolProposal(
       "processing_scope_invalid",
     );
   if (name === "query_project") {
-    const fields =
-      input.kind === "project"
-        ? ["search", "offset", "testSetId"]
-        : ["versions", "drafts"].includes(input.kind)
-          ? []
-          : ["testSetId"];
+    const allowed = projectQueryFields[String(input.kind)];
+    const fields = allowed
+      ? ["search", "offset", "testSetId"].filter(
+          (key) => !allowed.includes(key),
+        )
+      : [];
     for (const key of fields)
       if (defined(key))
         add("/" + key, "当前查询类型不使用此字段，请保留明确的查询范围。");
