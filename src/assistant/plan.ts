@@ -68,7 +68,7 @@ export function groundDocumentGeneration(
 
 /** Multiple independent deliveries always review and request confirmation before the next one. */
 export function completeDocumentDeliveries(
-  steps: Pick<
+  steps: (Pick<
     Step,
     | "title"
     | "action"
@@ -78,7 +78,7 @@ export function completeDocumentDeliveries(
     | "countKind"
     | "question"
     | "boundaryVersion"
-  >[],
+  > & { status?: Step["status"] })[],
   includeSingle = false,
 ) {
   if (
@@ -90,7 +90,8 @@ export function completeDocumentDeliveries(
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     completed.push(step);
-    if (step.action !== "generate_candidates") continue;
+    if (step.action !== "generate_candidates" || step.status === "executed")
+      continue;
     let end = i + 1;
     while (end < steps.length && steps[end].action !== "generate_candidates")
       end++;

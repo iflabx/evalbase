@@ -224,3 +224,21 @@ export function requestsBusinessAmendment(text: string) {
         ),
     );
 }
+
+/** A clarification answer completes an unfinished request; it never supplies execution permission. */
+export function clarifiedRequest(task: Record<string, any>, text: string) {
+  if (
+    !task.goal ||
+    task.goal === text ||
+    task.runId ||
+    task.executionPlan?.steps?.length
+  )
+    return text;
+  if (
+    /(?:改成|改为|调整为|只要|生成|制作|做|各|每类)\s*[零〇一二两三四五六七八九十\d]+\s*条|[一二两三四五六七八九十\d]+\s*(?:个|份)测试集/u.test(
+      text,
+    )
+  )
+    return text;
+  return task.goal + "\n本轮对澄清的回答：" + text;
+}

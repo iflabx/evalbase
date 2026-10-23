@@ -744,3 +744,82 @@ export function processingRepairIssues(
     keep("outputCount", base.outputCount, next.outputCount);
   return issues;
 }
+
+/** Compile the already specified trim/deduplicate/rewrite sequence, within a verified whole-source grant. */
+export function processingWorkflowSteps(facts: {
+  source?: Record<string, any> | null;
+  request: string;
+  wholeSource: boolean;
+}) {
+  if (!facts.source || !facts.wholeSource) return;
+  const parts = facts.request
+    .split(/[，,。；;\n]/u)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const clean = /整理格式|(?:首尾|前后).{0,6}(?:空白|空格)/u;
+  const dedup = /去重|去(?:掉|除)(?:完全)?重复/u;
+  const rewrite = /改写|问法.{0,6}自然|改(?:得)?自然|口语化?/u;
+  const declines = (text: string) =>
+    denied(text) || /不用|取消|不再|停止/u.test(text);
+  const active = (pattern: RegExp) => {
+    const last = parts.findLast((p) => pattern.test(p));
+    return last && !declines(last);
+  };
+  if (
+    ![clean, dedup, rewrite].every(active) ||
+    !/(?:首尾|前后).{0,6}(?:空白|空格)/u.test(facts.request)
+  )
+    return;
+  const ordered = facts.request
+    .split(/\n/u)
+    .findLast((p) => [clean, dedup, rewrite].every((r) => r.test(p)));
+  if (
+    !ordered ||
+    ordered.search(clean) > ordered.search(dedup) ||
+    ordered.search(dedup) > ordered.search(rewrite)
+  )
+    return;
+  if (
+    parts.some(
+      (p) =>
+        /(?:修改|改写|清洗|调整|统一).{0,8}(?:答案|期望输出|metadata|元数据)/iu.test(
+          p,
+        ) && !denied(p),
+    )
+  )
+    return;
+  const detail = parts
+    .filter((p) => ![clean, dedup, rewrite].some((r) => r.test(p)))
+    .join("；");
+  const style = parts.filter((p) => rewrite.test(p) && !denied(p)).join("；");
+  return [
+    {
+      title: "整理首尾空白",
+      action: "submit_processing",
+      input: {
+        source: facts.source,
+        allRecords: true,
+        operation: "clean",
+        allowedFields: ["question"],
+        instructions:
+          "只去掉问题首尾多余空白，保留问题内部内容、期望输出和Metadata。",
+      },
+    },
+    {
+      title: "去除完全重复",
+      action: "select_candidates",
+      input: { deduplicate: true },
+    },
+    {
+      title: "改写自然问法",
+      action: "refine_candidates",
+      input: {
+        allResults: true,
+        allowedFields: ["question"],
+        instructions:
+          style + "；" + detail + "；保持原意，期望输出和Metadata保持原样。",
+      },
+    },
+    { title: "核对结果", action: "read_processing" },
+  ];
+}

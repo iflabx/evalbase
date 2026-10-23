@@ -117,7 +117,8 @@ export async function reconcileExecutionConfirmations(
   let task = session.task;
   const plan = task.executionPlan;
   if (
-    !plan?.steps?.length &&
+    (!plan?.steps?.length ||
+      plan.steps.every((step: any) => step.status === "executed")) &&
     task.runId &&
     !task.executionPaused &&
     !task.question &&

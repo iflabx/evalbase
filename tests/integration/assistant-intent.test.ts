@@ -3736,7 +3736,26 @@ describe("OPT42 per-turn intent public boundary", () => {
     const { id, draft } = await sourceB3();
     let state = await send(
       id,
-      "整份草稿先整理格式，去掉完全重复的，再把问法改自然一点。先看结果，不保存。",
+      "先整理格式，去掉完全重复的，再把问法改自然一点。先看结果，不保存。",
+      [
+        decision("plan"),
+        {
+          name: "plan_task",
+          input: {
+            question: "整理格式具体要做什么？",
+            requirements: [
+              "先整理格式，去掉完全重复的，再把问法改自然一点",
+              "先看结果，不保存",
+            ],
+          },
+        },
+      ],
+      { context: { kind: "draft", id: draft } },
+    );
+    expect(state.task.executionPlan?.steps ?? []).toHaveLength(0);
+    state = await send(
+      id,
+      "去掉首尾多余空白就好，整份草稿都处理。先看结果，不保存。",
       [
         decision("execute"),
         {
@@ -3744,41 +3763,13 @@ describe("OPT42 per-turn intent public boundary", () => {
           input: {
             executionMode: "execute",
             requirements: [
+              "只去首尾空白，再去掉完全重复，最后把问法改自然",
               "只改问题，期望输出和Metadata不变",
               "先看结果，不保存",
-            ],
-            steps: [
-              {
-                title: "整理首尾空白",
-                action: "submit_processing",
-                input: {
-                  source: { kind: "draft", id: draft },
-                  allRecords: true,
-                  operation: "clean",
-                  instructions: "",
-                  allowedFields: ["question"],
-                },
-              },
-              {
-                title: "去除完全重复",
-                action: "select_candidates",
-                input: { deduplicate: true },
-              },
-              {
-                title: "改写自然问法",
-                action: "refine_candidates",
-                input: {
-                  allResults: true,
-                  instructions: "将问题改成自然问法，原意不变",
-                  allowedFields: ["question"],
-                },
-              },
-              { title: "核对结果", action: "read_processing" },
             ],
           },
         },
       ],
-      { context: { kind: "draft", id: draft } },
     );
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
       "succeeded",
@@ -3991,7 +3982,7 @@ describe("OPT42 per-turn intent public boundary", () => {
       id,
       "太像标准模板了，换成日常聊天的说法，意思别变。",
       [
-        decision("execute", { requiresUpdate: true }),
+        decision("plan", { requiresUpdate: true }),
         {
           name: "plan_task",
           input: {},
@@ -4006,7 +3997,7 @@ describe("OPT42 per-turn intent public boundary", () => {
               allowedFields: ["question"],
               allResults: true,
             },
-            executionMode: "execute",
+            executionMode: "plan",
           },
         },
       ],
@@ -4021,9 +4012,17 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
       "succeeded",
     );
+    expect(state.task.runId).toBe(first);
+    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+    state = await send(id, "按当前已保存方案执行", [], {
+      operation: "execute_plan",
+      expectedTaskRevision: state.task.turnControl.taskRevision,
+    });
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
     expect(state.task.runId).not.toBe(first);
     expect(state.task.turnControl.updateSaved).toBe(true);
-    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
     expect(successes(state, "generate_candidates")).toHaveLength(0);
     expect(
       state.task.executionPlan.steps.filter(
@@ -4045,5 +4044,157 @@ describe("OPT42 per-turn intent public boundary", () => {
       .toBe("awaiting_review");
     expect(state.task.review.total).toBe(2);
     expect(state.task.review.protectedFieldChanges).toBe(0);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    const results = (
+      await app.inject({
+        method: "GET",
+        url: base() + "/sessions/" + id + "/candidates",
+        headers,
+      })
+    ).json();
+    const prepared = await send(id, "将勾选成果保存回原草稿", [], {
+      operation: "save_candidates",
+      expectedTaskRevision: state.task.turnControl.taskRevision,
+      candidates: {
+        scope: "task",
+        reviewRevision: results.reviewRevision,
+        resultIds: results.records.map((r: any) => r.id),
+      },
+    });
+    const proposal = prepared.proposals.find(
+      (p: any) => p.status === "pending",
+    );
+    expect(proposal, JSON.stringify(prepared)).toBeTruthy();
+    const confirmed = await app.inject({
+      method: "POST",
+      url: base() + "/proposals/" + proposal.id + "/confirm",
+      headers,
+      payload: {},
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.stage;
+        },
+        { timeout: 15000 },
+      )
+      .toBe("complete");
+  });
+  it("B3 paused progress query reads actual joined job status without restarting work", async () => {
+    const { id, draft, recordIds } = await sourceB3(true);
+    let state = await send(
+      id,
+      "前两条清理首尾空白，其他别动。",
+      [
+        decision("execute"),
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: draft },
+            recordIds,
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      ],
+      { context: { kind: "draft", id: draft } },
+    );
+    const runId = state.task.runId;
+    await finishB3(runId);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return (
+            state.task.stage === "awaiting_review" &&
+            state.turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            )
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await send(id, "先停一下。", [decision("pause")]);
+    const before = await effects();
+    state = await send(id, "现在做到哪了？", [
+      decision("query", {
+        explanation: "当前已生成2条候选，后续步骤已暂停，尚未采用。",
+      }),
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.executionPaused).toBe(true);
+    expect(state.task.runId).toBe(runId);
+    expect(await effects()).toEqual(before);
+  });
+  it("B3 first delivery contract stays complete after a short clarification reply", async () => {
+    const { id, documentId } = await backgroundSession(
+      "查物流：查询物流状态。改地址：修改收件地址。完整用户问题，不含真实个人信息。",
+    );
+    let state = await send(
+      id,
+      "做查物流和改地址两个测试集，各2条，现在开始。",
+      [
+        decision("execute"),
+        {
+          name: "plan_task",
+          input: {
+            question: "是否现在开始？",
+            requirements: ["查物流和改地址两个测试集，各2条"],
+          },
+        },
+      ],
+    );
+    state = await send(id, "是，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          deliveries: [{ ...simpleDelivery(), name: "查物流测试集" }],
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          deliveries: [
+            { ...simpleDelivery(), name: "查物流测试集" },
+            { ...simpleDelivery(), name: "改地址测试集" },
+          ],
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    const generated = state.task.executionPlan.steps.filter(
+      (s: any) => s.action === "generate_candidates",
+    );
+    expect(generated).toHaveLength(2);
+    expect(generated.map((s: any) => s.input.outputCount)).toEqual([2, 2]);
+    expect(
+      state.turns
+        .at(-1)
+        .tools.some(
+          (t: any) => t.error?.code === "assistant_requirement_conflict",
+        ),
+    ).toBe(true);
   });
 });
