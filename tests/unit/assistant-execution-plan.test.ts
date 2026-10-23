@@ -152,7 +152,13 @@ describe("OPT36 fixed execution facts", () => {
       "event",
       7,
     );
-    expect(completed.executionPlan!.current).toBe(1);
+    // Steps 1 and 2 already have real receipts; continuation skips them.
+    expect(completed.executionPlan!.current).toBe(3);
+    expect(
+      completed
+        .executionPlan!.steps.slice(1, 3)
+        .every((step) => step.status === "executed"),
+    ).toBe(true);
     expect(completed.executionPlan!.steps[0].receipt).toEqual(
       executionPlan.steps[0].receipt,
     );

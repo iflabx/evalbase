@@ -1,3 +1,4 @@
+import { taskIdentity } from "./task-boundary.js";
 import {
   checkpointExecutionBudget,
   settleActiveBudget,
@@ -121,8 +122,8 @@ export async function queueContinuation(
     }
     const previous = (
       await client.query(
-        "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1",
-        [sessionId],
+        "SELECT * FROM assistant_turn WHERE session_id=$1 AND coalesce(task_id,'legacy:'||session_id)=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+        [sessionId, taskIdentity(session)],
       )
     ).rows[0];
     if (!previous || ["queued", "running"].includes(previous.status)) {
@@ -470,8 +471,8 @@ export async function controlAssistantTask(
     } else {
       const turn = (
         await client.query(
-          "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
-          [id],
+          "SELECT * FROM assistant_turn WHERE session_id=$1 AND coalesce(task_id,'legacy:'||session_id)=$2 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
+          [id, taskIdentity(session)],
         )
       ).rows[0];
       const decision = await assistantRecovery(client, scope, session, turn);
@@ -506,8 +507,8 @@ export async function controlAssistantTask(
           scope,
           (
             await client.query(
-              "SELECT dependencies FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1",
-              [id],
+              "SELECT dependencies FROM assistant_turn WHERE session_id=$1 AND coalesce(task_id,'legacy:'||session_id)=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+              [id, taskIdentity(session)],
             )
           ).rows[0]?.dependencies ?? [],
         );
@@ -570,7 +571,7 @@ export async function settleAssistantBudget(
     client.release();
   }
 }
-async function closeBudget(
+export async function closeBudget(
   db: Pick<Database, "query">,
   session: Record<string, any>,
   turnId: string,
@@ -598,6 +599,8 @@ export async function queueRecovery(
   event = "recovery",
   operationKey?: string,
 ) {
+  if (origin.task_id && origin.task_id !== taskIdentity(session))
+    throw new AssistantError(409, "assistant_task_changed");
   if (!decision.action)
     throw new AssistantError(
       409,
@@ -684,6 +687,11 @@ export async function queueRecovery(
       ],
     )
   ).rows[0];
+  if (row)
+    await db.query("UPDATE assistant_turn SET task_id=$2 WHERE id=$1", [
+      row.id,
+      taskIdentity(session),
+    ]);
   if (!row)
     return {
       turnId: (

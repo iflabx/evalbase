@@ -1,3 +1,4 @@
+import { projectModelRequest } from "../../src/assistant/request-context.js";
 import { describe, expect, it } from "vitest";
 import {
   conversationHistory,
@@ -224,7 +225,24 @@ describe("OPT-23 bounded current facts", () => {
   });
   it("never silently truncates effective requirements", () => {
     expect(() =>
-      currentTaskFacts({ requirements: ["必须保留的要求".repeat(10000)] }),
+      projectModelRequest(
+        {
+          messages: [
+            {
+              role: "assistant",
+              content:
+                "当前持久事实：" +
+                JSON.stringify(
+                  currentTaskFacts({
+                    requirements: ["必须保留的要求".repeat(10000)],
+                  }),
+                ),
+            },
+          ],
+          max_tokens: 4096,
+        },
+        131072,
+      ),
     ).toThrow("assistant_context_capacity");
   });
   it("keeps short background definitions across a large receipt envelope", () => {

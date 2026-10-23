@@ -1773,6 +1773,15 @@ export async function migrate(
       ALTER TABLE assistant_turn DROP CONSTRAINT IF EXISTS assistant_turn_status_check;
       ALTER TABLE assistant_turn ADD CONSTRAINT assistant_turn_status_check CHECK(status IN('queued','running','succeeded','failed','interrupted'));
       ALTER TABLE assistant_proposal ADD COLUMN IF NOT EXISTS task_revision integer NOT NULL DEFAULT 0;
+      ALTER TABLE assistant_turn ADD COLUMN IF NOT EXISTS task_id text;
+      CREATE INDEX IF NOT EXISTS assistant_turn_task_idx ON assistant_turn(session_id,(coalesce(task_id,'legacy:'||session_id)),created_at DESC,id DESC);
+      CREATE TABLE IF NOT EXISTS assistant_task_checkpoint(
+        session_id text NOT NULL REFERENCES assistant_session(id) ON DELETE CASCADE,
+        id text NOT NULL, task jsonb NOT NULL, revision integer NOT NULL,
+        dependencies jsonb NOT NULL DEFAULT '[]',requires_write boolean NOT NULL DEFAULT false,
+        saved_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(session_id,id));
+      CREATE INDEX IF NOT EXISTS assistant_task_checkpoint_saved_idx ON assistant_task_checkpoint(session_id,saved_at DESC);
+
       CREATE TABLE IF NOT EXISTS assistant_background_document(
         id text PRIMARY KEY,session_id text NOT NULL REFERENCES assistant_session(id) ON DELETE CASCADE,
         project_id text NOT NULL REFERENCES project(id),actor_id text NOT NULL REFERENCES app_user(id),
@@ -1784,6 +1793,7 @@ export async function migrate(
       CREATE OR REPLACE FUNCTION purge_assistant_background_document() RETURNS trigger AS $$
       BEGIN
         UPDATE processing_run SET input_ref=NULL WHERE input_ref IS NOT NULL AND background_document_ids @> ARRAY[OLD.id];
+        DELETE FROM assistant_task_checkpoint WHERE session_id=OLD.session_id;
         UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=OLD.session_id;
         UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',candidate_selection=NULL,
           execution_token=NULL,status='interrupted',error_code='assistant_context_deleted' WHERE session_id=OLD.session_id;
@@ -1794,21 +1804,32 @@ export async function migrate(
       CREATE TRIGGER assistant_background_cleanup AFTER DELETE ON assistant_background_document FOR EACH ROW EXECUTE FUNCTION purge_assistant_background_document();
 
       CREATE OR REPLACE FUNCTION purge_project_assistant_body() RETURNS trigger AS $$
-      DECLARE affected_project text; affected_kind text; affected_sessions text[];
+      DECLARE affected_project text; affected_kind text; affected record;
       BEGIN
         IF TG_TABLE_NAME='test_set_version' THEN SELECT project_id INTO affected_project FROM test_set WHERE id=NEW.test_set_id; ELSE affected_project=NEW.project_id; END IF;
         IF NEW.status IN('tombstoned','permanently_deleted','discarded','terminated') AND OLD.status IS DISTINCT FROM NEW.status THEN
           affected_kind=CASE TG_TABLE_NAME WHEN 'data_asset' THEN 'asset' WHEN 'test_set_version' THEN 'version' WHEN 'test_set' THEN 'testSet' ELSE 'draft' END;
-          SELECT array_agg(DISTINCT t.session_id) INTO affected_sessions FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id
-          WHERE s.project_id=affected_project AND (t.dependencies @> jsonb_build_array(jsonb_build_object('kind',affected_kind,'id',NEW.id))
-            OR (TG_TABLE_NAME='test_set_version' AND EXISTS(SELECT 1 FROM collaborative_draft d WHERE d.published_version_id=NEW.id
-              AND t.dependencies @> jsonb_build_array(jsonb_build_object('kind','draft','id',d.id)))));
-          DELETE FROM assistant_background_document WHERE session_id=ANY(affected_sessions);
-          UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=ANY(affected_sessions);
-          UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',dependencies='[]',candidate_selection=NULL,execution_token=NULL,status='interrupted',error_code='assistant_context_deleted'
-          WHERE session_id=ANY(affected_sessions);
-          UPDATE assistant_proposal SET parameters='{}',summary='{}',receipt=NULL,status='invalid'
-          WHERE project_id=affected_project AND session_id=ANY(affected_sessions);
+          FOR affected IN SELECT DISTINCT s.id AS session_id,coalesce(t.task_id,'legacy:'||s.id) AS task_id,s.task->>'taskContractVersion' AS contract_version
+            FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE s.project_id=affected_project AND
+            (t.dependencies @> jsonb_build_array(jsonb_build_object('kind',affected_kind,'id',NEW.id)) OR
+            (TG_TABLE_NAME='test_set_version' AND EXISTS(SELECT 1 FROM collaborative_draft d WHERE d.published_version_id=NEW.id AND t.dependencies @> jsonb_build_array(jsonb_build_object('kind','draft','id',d.id)))))
+          LOOP
+            IF affected.contract_version IS DISTINCT FROM '2' THEN
+              DELETE FROM assistant_background_document WHERE session_id=affected.session_id;
+              UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=affected.session_id;
+            ELSE
+              UPDATE assistant_task_checkpoint SET task=jsonb_build_object('taskId',id,'taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','requirements','[]'::jsonb,'supplements','[]'::jsonb,'executionBudget',task->'executionBudget','turnBudget',task->'turnBudget') WHERE session_id=affected.session_id AND id=affected.task_id;
+              UPDATE assistant_session SET content_revision=content_revision+1,
+                task_revision=task_revision+CASE WHEN task->>'taskId'=affected.task_id THEN 1 ELSE 0 END,
+                title=CASE WHEN task->>'taskId'=affected.task_id THEN '' ELSE title END,
+                task=CASE WHEN task->>'taskId'=affected.task_id THEN jsonb_build_object('taskId',task->>'taskId','taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','requirements','[]'::jsonb,'supplements','[]'::jsonb,'executionBudget',task->'executionBudget','turnBudget',task->'turnBudget') ELSE task END
+                WHERE id=affected.session_id;
+            END IF;
+            UPDATE assistant_proposal p SET parameters='{}',summary='{}',receipt=NULL,status='invalid' WHERE p.session_id=affected.session_id AND
+              (affected.contract_version IS DISTINCT FROM '2' OR EXISTS(SELECT 1 FROM assistant_turn t WHERE t.id=p.turn_id AND coalesce(t.task_id,'legacy:'||t.session_id)=affected.task_id));
+            UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',dependencies='[]',candidate_selection=NULL,execution_token=NULL,status='interrupted',error_code='assistant_context_deleted'
+              WHERE session_id=affected.session_id AND (affected.contract_version IS DISTINCT FROM '2' OR coalesce(task_id,'legacy:'||session_id)=affected.task_id);
+          END LOOP;
         END IF;
         RETURN NEW;
       END; $$ LANGUAGE plpgsql;
@@ -1958,6 +1979,9 @@ export async function migrate(
           );
       }
     }
+    await client.query(
+      "INSERT INTO schema_migration(id) VALUES('assistant-task-boundaries-v2') ON CONFLICT DO NOTHING",
+    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

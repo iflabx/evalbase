@@ -207,7 +207,8 @@ export function recoveryDecision(
     return stop("requirements_changed");
   const phase = facts.phase ?? "offer";
   if (phase === "event") {
-    if ((facts.turnCount ?? 0) >= 100) return stop("session_limit");
+    if (task.taskContractVersion !== 2 && (facts.turnCount ?? 0) >= 100)
+      return stop("session_limit");
     if ((task.autoCount ?? 0) >= (task.autoEventLimit ?? 12))
       return stop("event_limit");
     if (

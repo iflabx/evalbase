@@ -1,6 +1,6 @@
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId } from "../server/support.js";
-import { normalizedRequirements } from "./requirements.js";
+import { normalizedRequirements, RequirementError } from "./requirements.js";
 
 /** A scene is a context variation; its verified single-class criterion remains mandatory. */
 export function groundDocumentGeneration(
@@ -922,7 +922,14 @@ export function bindTaskInput(
       "\n",
     );
     if (input.operation === "clean") input.instructions = "";
-    else if (requirements) input.instructions = requirements;
+    else if (requirements) {
+      if (requirements.length > 8000)
+        throw new RequirementError(
+          "assistant_context_capacity",
+          "有效要求已完整保留，但本次执行指令超过8000字符容量。请按交付或步骤拆分本轮处理；未提交任务，也未截断约束。",
+        );
+      input.instructions = requirements;
+    }
   }
   if (["submit_processing", "refine_candidates"].includes(name)) {
     input.allowedFields ??= task.allowedFields ?? ["question"];

@@ -6,6 +6,7 @@ export function workerIdleDelayMs(emptyClaims: number): number {
 
 export interface Config {
   modelEncryptionKey: string;
+  assistantContextWindowTokens: number;
   databaseUrl: string;
   runtimeMetricsEnabled: boolean;
   minio: {
@@ -131,8 +132,18 @@ export function loadConfig(env = process.env): Config {
     );
   }
 
+  const contextWindow = Number(env.ASSISTANT_CONTEXT_WINDOW_TOKENS ?? 131072);
+  if (
+    !Number.isSafeInteger(contextWindow) ||
+    contextWindow < 8192 ||
+    contextWindow > 2097152
+  )
+    throw new RangeError("Invalid assistant context window");
   return {
     modelEncryptionKey: env.MODEL_ENCRYPTION_KEY ?? "",
+    assistantContextWindowTokens: Number(
+      env.ASSISTANT_CONTEXT_WINDOW_TOKENS ?? 131072,
+    ),
     runtimeMetricsEnabled: env.RUNTIME_METRICS_ENABLED !== "false",
     databaseUrl:
       env.DATABASE_URL ??

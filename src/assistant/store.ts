@@ -1,3 +1,9 @@
+import {
+  prepareTaskBoundary,
+  taskIdentity,
+  taskDependencies,
+  taskTurnFilter,
+} from "./task-boundary.js";
 import { planningContinuation } from "./intent.js";
 import { turnDiagnostics } from "./diagnostics.js";
 import { assistantFeedback } from "./feedback.js";
@@ -7,7 +13,10 @@ import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject, opaqueId } from "../server/support.js";
-import { processingSourceAvailable } from "../processing/store.js";
+import {
+  processingSourceRows,
+  processingSourceAvailable,
+} from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import {
   advancePlan,
@@ -285,35 +294,53 @@ export async function sessionRow(
   if (!row) throw new AssistantError(404, "assistant_not_found");
   return row;
 }
+/** Batch source checks are shared by execution and bounded history redaction. */
+export async function availableDependencies(
+  db: Pick<Database, "query">,
+  scope: AssistantScope,
+  refs: Dependency[],
+) {
+  const unique = [
+    ...new Map(refs.map((r) => [r.kind + ":" + r.id, r])).values(),
+  ];
+  const writable = await hasProjectCapability(
+    db,
+    scope.projectId,
+    scope.actorId,
+    "write",
+  );
+  const sources = unique
+    .filter((r) => r.kind !== "testSet" && (writable || r.kind !== "draft"))
+    .map((r) =>
+      r.kind === "asset"
+        ? { kind: "assets" as const, assetIds: [r.id], recordIds: [] }
+        : { kind: r.kind as "draft" | "version", id: r.id, recordIds: [] },
+    );
+  const rows = await processingSourceRows(db, scope.projectId, sources);
+  const sets = unique.filter((r) => r.kind === "testSet");
+  const testSets = sets.length
+    ? (
+        await db.query(
+          "SELECT id FROM test_set WHERE project_id=$1 AND id=ANY($2::text[]) AND status='available' AND NOT EXISTS(SELECT 1 FROM deletion_lock WHERE project_id=$1 AND object_id=test_set.id)",
+          [scope.projectId, sets.map((r) => r.id)],
+        )
+      ).rows
+    : [];
+  return new Set([
+    ...rows.assets.map((r) => "asset:" + r.id),
+    ...rows.version.map((r) => "version:" + r.id),
+    ...rows.draft.map((r) => "draft:" + r.id),
+    ...testSets.map((r) => "testSet:" + r.id),
+  ]);
+}
 export async function dependenciesAvailable(
   db: Pick<Database, "query">,
   scope: AssistantScope,
   dependencies: Dependency[],
 ) {
-  for (const ref of dependencies) {
-    try {
-      if (ref.kind === "testSet") {
-        if (
-          !(
-            await db.query(
-              "SELECT id FROM test_set WHERE id=$1 AND project_id=$2 AND status='available'",
-              [ref.id, scope.projectId],
-            )
-          ).rowCount
-        )
-          throw new Error("unavailable");
-      } else
-        await processingSourceAvailable(
-          db,
-          scope.projectId,
-          ref.kind === "asset"
-            ? { kind: "assets", assetIds: [ref.id], recordIds: [] }
-            : { kind: ref.kind, id: ref.id, recordIds: [] },
-        );
-    } catch {
-      throw new AssistantError(409, "assistant_context_unavailable");
-    }
-  }
+  const keys = await availableDependencies(db, scope, dependencies);
+  if (dependencies.some((ref) => !keys.has(ref.kind + ":" + ref.id)))
+    throw new AssistantError(409, "assistant_context_unavailable");
 }
 export async function readSession(
   db: Database,
@@ -327,49 +354,79 @@ export async function readSession(
     "UPDATE assistant_turn SET status='interrupted',error_code='assistant_interrupted' WHERE session_id=$1 AND status='running' AND expires_at<=now() AND execution_token IS NULL",
     [id],
   );
-  const metadata = view
+  const limit = view?.limit ?? 50;
+  const cursor = view?.before
     ? (
         await db.query(
-          "SELECT id,status,requires_write,dependencies,xmin::text AS revision FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT $2",
-          [id, ASSISTANT_SESSION_TURN_LIMIT],
+          "SELECT created_at,id FROM assistant_turn WHERE session_id=$1 AND id=$2",
+          [id, view.before],
         )
-      ).rows
-    : undefined;
-  const end = view?.before
-    ? metadata!.findIndex((turn) => turn.id === view.before)
-    : metadata?.length;
-  if (view?.before && end === -1)
+      ).rows[0]
+    : null;
+  if (view?.before && !cursor)
     throw new AssistantError(422, "assistant_message_page_invalid");
-  const ids = metadata
-    ?.slice(Math.max(0, end! - view!.limit), end)
-    .map((turn) => turn.id);
-  const turns = (
+  const stats = (
     await db.query(
-      view
-        ? "SELECT * FROM assistant_turn WHERE session_id=$1 AND id=ANY($2::text[]) ORDER BY created_at,id"
-        : "SELECT * FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id LIMIT $2",
+      "SELECT count(*)::int AS total,count(*) FILTER(WHERE event='user')::int AS users,count(*) FILTER(WHERE event<>'user')::int AS automatic FROM assistant_turn WHERE session_id=$1",
+      [id],
+    )
+  ).rows[0];
+  const pageRows = (
+    await db.query(
+      "SELECT *,xmin::text AS revision FROM assistant_turn WHERE session_id=$1 AND ($2::timestamptz IS NULL OR (created_at,id)<($2,$3)) ORDER BY created_at DESC,id DESC LIMIT $4",
       [
         id,
-        view
-          ? view.mode === "status"
-            ? metadata!.slice(-1).map((turn) => turn.id)
-            : ids
-          : ASSISTANT_SESSION_TURN_LIMIT,
+        cursor?.created_at ?? null,
+        cursor?.id ?? null,
+        view?.mode === "status" ? 1 : limit + 1,
       ],
     )
   ).rows;
-  const checkedTurns = metadata ?? turns;
-  for (const turn of checkedTurns) {
-    if (turn.requires_write) await assistantAccess(db, scope, true);
-    await dependenciesAvailable(db, scope, turn.dependencies);
-  }
-  await reconcileReceipts(db, scope, turns);
-  const pending = (
-    await db.query(
-      "SELECT id FROM assistant_proposal WHERE session_id=$1 AND (status IN('pending','executing') OR (status='invalid' AND lease_token IS NOT NULL)) AND (lease_until IS NULL OR lease_until<=now())",
-      [id],
-    )
-  ).rows;
+  const more = pageRows.length > limit;
+  const rawTurns = pageRows
+    .slice(0, view?.mode === "status" ? 1 : limit)
+    .reverse();
+  const writable = await hasProjectCapability(
+    db,
+    scope.projectId,
+    scope.actorId,
+    "write",
+  );
+  const currentDeps = await taskDependencies(db, session);
+  const allowed = await availableDependencies(db, scope, [
+    ...rawTurns.flatMap((t) => t.dependencies),
+    ...currentDeps.dependencies,
+  ]);
+  const permitted = (t: Record<string, any>) =>
+    (!t.requires_write || writable) &&
+    t.dependencies.every((r: Dependency) => allowed.has(r.kind + ":" + r.id));
+  const currentSafe =
+    (!currentDeps.requiresWrite || writable) &&
+    currentDeps.dependencies.every((r) => allowed.has(r.kind + ":" + r.id));
+  const turns = rawTurns.map((t) =>
+    permitted(t)
+      ? t
+      : {
+          ...t,
+          user_text: "",
+          assistant_text: "此历史内容当前不可访问。",
+          tool_results: [],
+          dependencies: [],
+          restricted: true,
+        },
+  );
+  const metadata = rawTurns;
+  const ids = turns.filter((t) => !t.restricted).map((t) => t.id);
+  const checkedTurns = turns.filter((t) => !t.restricted);
+  await reconcileReceipts(db, scope, checkedTurns);
+  const pending = currentSafe
+    ? (
+        await db.query(
+          "SELECT id FROM assistant_proposal WHERE session_id=$1 AND task_revision=$2 AND (status IN('pending','executing') OR (status='invalid' AND lease_token IS NOT NULL)) AND (lease_until IS NULL OR lease_until<=now())",
+          [id, session.task_revision],
+        )
+      ).rows
+    : [];
   for (const item of pending) {
     const client = await db.connect();
     try {
@@ -392,17 +449,11 @@ export async function readSession(
   }
   const proposals = (
     await db.query(
-      `SELECT id,turn_id,action,summary,status,receipt,expires_at FROM assistant_proposal WHERE session_id=$1 AND actor_id=$2 ${view ? (view.mode === "status" ? "AND task_revision=$3" : "AND turn_id=ANY($3::text[])") : ""} ORDER BY created_at,id`,
-      view
-        ? [
-            id,
-            scope.actorId,
-            view.mode === "status" ? session.task_revision : ids,
-          ]
-        : [id, scope.actorId],
+      "SELECT id,turn_id,action,summary,status,receipt,expires_at FROM assistant_proposal WHERE session_id=$1 AND actor_id=$2 AND turn_id=ANY($3::text[]) ORDER BY created_at,id",
+      [id, scope.actorId, ids],
     )
   ).rows;
-  const context = !view ? await readContext?.() : undefined;
+  const context = !view && currentSafe ? await readContext?.() : undefined;
   const backgroundDocuments = await backgroundCatalog(db, scope, id);
   await assistantAccess(
     db,
@@ -448,16 +499,14 @@ export async function readSession(
   const current = await sessionRow(db, scope, id);
   if (current.content_revision !== session.content_revision)
     throw new AssistantError(409, "assistant_context_deleted");
-  const latestId = metadata?.at(-1)?.id;
-  const latestTurn =
-    latestId && latestId !== turns.at(-1)?.id
-      ? (
-          await db.query(
-            "SELECT * FROM assistant_turn WHERE id=$1 AND session_id=$2",
-            [latestId, id],
-          )
-        ).rows[0]
-      : turns.at(-1);
+  const latestTurn = (
+    await db.query(
+      "SELECT * FROM assistant_turn WHERE session_id=$1 AND " +
+        taskTurnFilter +
+        " ORDER BY created_at DESC,id DESC LIMIT 1",
+      [id, taskIdentity(current)],
+    )
+  ).rows[0];
   const recovery = await assistantRecovery(db, scope, current, latestTurn);
   const canRetryTurn = Boolean(recovery.action);
   const planSteps =
@@ -513,7 +562,7 @@ export async function readSession(
       }))
     : undefined;
   const presentedTask = taskPresentation(
-    current.task,
+    currentSafe ? current.task : null,
     processing?.id === current.task?.runId &&
       processing?.task_revision === current.task_revision
       ? processing
@@ -586,13 +635,17 @@ export async function readSession(
           ),
         }
       : presentedTask,
-    title: current.custom_title ?? presentedTask?.title ?? current.title,
+    title: currentSafe
+      ? (current.custom_title ?? presentedTask?.title ?? current.title)
+      : "历史内容受限",
     ...(view?.mode === "status"
       ? {}
       : {
           turns: turns.map((t) => ({
             id: t.id,
             event: t.event,
+            taskId: t.task_id ?? "legacy:" + id,
+            restricted: Boolean(t.restricted),
             userText: t.user_text,
             assistantText: t.assistant_text,
             status: t.status,
@@ -604,8 +657,10 @@ export async function readSession(
           ...(view
             ? {
                 pagination: {
-                  total: metadata!.length,
-                  nextBefore: end! > view.limit ? ids![0] : null,
+                  total: stats.total,
+                  userTurns: stats.users,
+                  automaticTurns: stats.automatic,
+                  nextBefore: more ? rawTurns[0]?.id : null,
                 },
               }
             : {}),
@@ -626,8 +681,8 @@ export async function listSessions(
     await db.query(
       `SELECT s.id,s.title,s.custom_title,CASE WHEN $3::boolean THEN jsonb_build_object('title',s.task->'title') ELSE s.task END AS task,s.content_revision,s.created_at,s.updated_at,
     (row_number() OVER(ORDER BY s.created_at,s.id))::int AS ordinal,
-    coalesce((SELECT bool_or(t.requires_write) FROM assistant_turn t WHERE t.session_id=s.id),false) AS requires_write,
-    coalesce((SELECT jsonb_agg(t.dependencies) FROM assistant_turn t WHERE t.session_id=s.id),'[]'::jsonb) AS dependencies
+    coalesce((SELECT bool_or(t.requires_write) FROM assistant_turn t WHERE t.session_id=s.id AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id)),false) AS requires_write,
+    coalesce((SELECT jsonb_agg(t.dependencies) FROM assistant_turn t WHERE t.session_id=s.id AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id)),'[]'::jsonb) AS dependencies
     FROM assistant_session s WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC ${page ? "" : "LIMIT 50"}`,
       [scope.projectId, scope.actorId, Boolean(page)],
     )
@@ -639,23 +694,30 @@ export async function listSessions(
     "write",
   );
   const visible: Record<string, any>[] = [];
-  for (const { requires_write, dependencies, ...session } of sessions) {
-    if (requires_write && !writable) continue;
-    try {
-      await dependenciesAvailable(db, scope, dependencies.flat());
-      visible.push(session);
-    } catch (error) {
-      if (!(error instanceof AssistantError)) throw error;
-    }
-  }
-  await assistantAccess(
+  const allowed = await availableDependencies(
     db,
     scope,
-    visible.length > 0 &&
-      sessions.some(
-        (s) => visible.some((v) => v.id === s.id) && s.requires_write,
-      ),
+    sessions.flatMap((s) => s.dependencies.flat()),
   );
+  const writableVisible = new Set<string>();
+  for (const { requires_write, dependencies, ...session } of sessions) {
+    const safe =
+      (!requires_write || writable) &&
+      dependencies
+        .flat()
+        .every((r: Dependency) => allowed.has(r.kind + ":" + r.id));
+    if (safe) {
+      visible.push(session);
+      if (requires_write) writableVisible.add(session.id);
+    } else
+      visible.push({
+        ...session,
+        task: null,
+        title: "历史内容受限",
+        custom_title: null,
+      });
+  }
+  await assistantAccess(db, scope, writableVisible.size > 0);
   const current = new Map(
     (
       await db.query(
@@ -772,7 +834,6 @@ export async function startTurn(
       focus: true,
     };
     await assistantAccess(db, scope, page.kind === "draft");
-    await dependenciesAvailable(db, scope, [page]);
   }
   const taskSelection =
     isPlainObject(candidateSelection) && candidateSelection.scope === "task";
@@ -848,7 +909,10 @@ export async function startTurn(
             ...(operation ? { operation } : {}),
           }),
         );
-  await readSession(db, scope, sessionId);
+  await readSession(db, scope, sessionId, undefined, {
+    mode: "status",
+    limit: 1,
+  });
   let prepared:
       | {
           selection: TaskCandidateSelection;
@@ -879,6 +943,9 @@ export async function startTurn(
       selectionError = error;
     } // Receipt replay still wins over a changed live collection.
   }
+  const observedRevision = Number(
+    (await sessionRow(db, scope, sessionId)).task_revision,
+  );
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -931,7 +998,54 @@ export async function startTurn(
       ).rowCount
     )
       throw new AssistantError(409, "assistant_confirmation_running");
-    const plainContinuation = Boolean(planningContinuation(text.trim()));
+    if (Number(session.task_revision) !== observedRevision)
+      throw new AssistantError(409, "assistant_task_changed");
+    const boundary = await prepareTaskBoundary(
+      client,
+      scope,
+      session,
+      text.trim(),
+    );
+    if (
+      boundary.switched &&
+      (candidateSelection !== undefined || operation !== undefined)
+    )
+      throw new AssistantError(409, "assistant_task_boundary_required");
+    if (boundary.switched && !/当前|这个来源/u.test(text)) page = undefined;
+    const effectiveText = boundary.request;
+    if (boundary.question) {
+      const task = {
+        ...session.task,
+        boundaryQuestion: session.task.boundaryQuestion ?? {
+          request: effectiveText,
+          taskId: taskIdentity(session),
+          kind: boundary.kind ?? "choice",
+        },
+      };
+      const turn = (
+        await client.query(
+          "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,assistant_text,status,expires_at,task_revision,task_id) VALUES($1,$2,$3,$4,$5,$6,'succeeded',now(),$7,$8) RETURNING *",
+          [
+            opaqueId("turn"),
+            sessionId,
+            key,
+            requestHash,
+            effectiveText,
+            boundary.question,
+            session.task_revision,
+            taskIdentity(session),
+          ],
+        )
+      ).rows[0];
+      await client.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+        sessionId,
+        task,
+      ]);
+      await client.query("COMMIT");
+      return { turn, replayed: false };
+    }
+    const plainContinuation =
+      !boundary.switched && Boolean(planningContinuation(effectiveText.trim()));
     if (
       plainContinuation &&
       session.task?.planningRecovery &&
@@ -960,7 +1074,8 @@ export async function startTurn(
           session,
           latest,
         );
-        if (planningContinuation(text) === "plan") decision.mode = "plan";
+        if (planningContinuation(effectiveText) === "plan")
+          decision.mode = "plan";
         turnId = (await queueRecovery(client, session, latest, decision))
           .turnId;
       }
@@ -1029,30 +1144,21 @@ export async function startTurn(
       )
         throw new AssistantError(409, "assistant_plan_revalidation_required");
     }
-    const turns = (
+    const activeTurns = (
       await client.query(
-        "SELECT status,dependencies,requires_write FROM assistant_turn WHERE session_id=$1 ORDER BY created_at,id",
+        "SELECT id FROM assistant_turn WHERE session_id=$1 AND status IN('queued','running')",
         [sessionId],
       )
     ).rows;
-    if (turns.some((t) => ["queued", "running"].includes(t.status)))
+    if (activeTurns.length)
       throw new AssistantError(409, "assistant_turn_running");
-    if (turns.length >= ASSISTANT_SESSION_TURN_LIMIT)
-      throw new AssistantError(422, "assistant_session_full");
-    for (const t of turns) {
-      if (t.requires_write) await assistantAccess(client, scope, true);
-      await dependenciesAvailable(client, scope, t.dependencies);
-    }
-    const dependencies = [
-      ...new Map(
-        turns
-          .flatMap((t) => t.dependencies)
-          .map((d: Dependency) => [
-            `${d.kind}:${d.id}`,
-            { kind: d.kind, id: d.id },
-          ]),
-      ).values(),
-    ];
+    const inherited = await taskDependencies(client, session);
+    if (inherited.requiresWrite) await assistantAccess(client, scope, true);
+    await dependenciesAvailable(client, scope, inherited.dependencies);
+    const dependencies = inherited.dependencies.map(({ kind, id }) => ({
+      kind,
+      id,
+    })) as Dependency[];
     if (page) {
       await dependenciesAvailable(client, scope, [page]);
       dependencies.push(page);
@@ -1073,14 +1179,19 @@ export async function startTurn(
           sessionId,
           key,
           requestHash,
-          text.trim(),
-          page?.kind === "draft" || turns.some((t) => t.requires_write),
+          effectiveText.trim(),
+          page?.kind === "draft" || inherited.requiresWrite,
           JSON.stringify(dependencies),
           Number(session.task_revision) + 1,
           prepared?.selection ?? candidateSelection ?? null,
         ],
       )
     ).rows[0];
+    await client.query("UPDATE assistant_turn SET task_id=$2 WHERE id=$1", [
+      turn.id,
+      taskIdentity(session),
+    ]);
+    turn.task_id = taskIdentity(session);
     // Preserve a committed confirmation before a new turn invalidates pending
     // proposals and requires the remaining plan to be checked again.
     const priorStep =
@@ -1118,12 +1229,16 @@ export async function startTurn(
     const task: Record<string, any> = continuing
       ? {
           ...session.task,
-          supplements: [...(session.task.supplements ?? []), text.trim()],
+          supplements: [
+            ...(session.task.supplements ?? []),
+            effectiveText.trim(),
+          ],
           autoCount: session.task.autoCount,
         }
       : {
-          goal: text.trim(),
-          title: initialTaskTitle(text.trim()),
+          goal: effectiveText.trim(),
+          originTurnId: turn.id,
+          title: initialTaskTitle(effectiveText.trim()),
           supplements: [],
           requirements: [],
           stage: "inspecting",
@@ -1138,6 +1253,9 @@ export async function startTurn(
             : {}),
           ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
         };
+    task.taskId = taskIdentity(session);
+    task.taskContractVersion = 2;
+    task.boundaryQuestion = null;
     task.turnControl = {
       turnId: turn.id,
       taskRevision: turn.task_revision,
@@ -1609,4 +1727,34 @@ async function reconcileReceipts(
   } finally {
     db.release();
   }
+}
+
+/** Explicit historical reads never update the current task or authorization. */
+export async function readTaskCheckpoint(
+  db: Database,
+  scope: AssistantScope,
+  sessionId: string,
+  taskId: string,
+) {
+  await sessionRow(db, scope, sessionId);
+  const row = (
+    await db.query(
+      "SELECT * FROM assistant_task_checkpoint WHERE session_id=$1 AND id=$2",
+      [sessionId, taskId],
+    )
+  ).rows[0];
+  if (!row) throw new AssistantError(404, "assistant_not_found");
+  await assistantAccess(db, scope, row.requires_write);
+  await dependenciesAvailable(db, scope, row.dependencies);
+  return {
+    active: false,
+    taskId: row.id,
+    taskRevision: row.revision,
+    task: {
+      ...taskPresentation(row.task),
+      canContinueExecution: false,
+      canRetryTurn: false,
+    },
+    savedAt: row.saved_at,
+  };
 }

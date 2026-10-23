@@ -9,6 +9,7 @@ import {
   taskPresentation,
   type AssistantScope,
   type Dependency,
+  availableDependencies,
 } from "./store.js";
 
 /** Current constraints remain complete; record identities stay in server-side state. */
@@ -18,6 +19,7 @@ export function currentTaskFacts(
 ) {
   const facts = taskPresentation(task) ?? {};
   delete facts.selectedCandidates;
+  delete facts.requirementSummary;
   delete facts.backgroundDefinitions;
   delete facts.turnBudget;
   delete facts.executionBudget;
@@ -34,11 +36,11 @@ export function currentTaskFacts(
       }
     : null;
   if (facts.goal !== undefined)
-    facts.originalRequest = String(facts.goal).slice(0, 1000);
+    facts.objective =
+      facts.requirements?.length || task.executionPlan
+        ? task.title
+        : facts.goal;
   delete facts.goal;
-  facts.historicalCorrections = (facts.supplements ?? [])
-    .slice(-6)
-    .map((text: string) => text.slice(0, 1000));
   delete facts.supplements;
   if (task.executionPlan?.contractVersion === 1)
     facts.deliveries = deliveryGoals(task.executionPlan);
@@ -98,12 +100,6 @@ export function currentTaskFacts(
         : {}),
     };
   }
-  if (Buffer.byteLength(JSON.stringify(facts)) > 30000)
-    throw new AssistantError(
-      422,
-      "assistant_context_capacity",
-      "当前生效要求超出上下文容量，要求已保留。请减少本任务同时处理的规则，不能静默略去约束。",
-    );
   return facts;
 }
 
@@ -217,16 +213,10 @@ export function conversationHistory(
   encode: (value: any) => any,
 ): ModelMessage[] {
   return rows.slice(-6).flatMap((row) => {
-    const messages: ModelMessage[] = [
-      { role: "user", content: String(row.user_text ?? "").slice(0, 1000) },
-    ];
-    let bytes = 0,
-      omitted = 0;
+    const messages: ModelMessage[] = [];
+    let bytes = 0;
     for (const record of row.tool_results ?? []) {
-      if (
-        record.name === "plan_task" ||
-        !["succeeded", "failed"].includes(record.status)
-      )
+      if (record.name === "plan_task" || record.status !== "succeeded")
         continue;
       let input = record.input ?? {},
         value =
@@ -239,7 +229,6 @@ export function conversationHistory(
       }
       const size = Buffer.byteLength(JSON.stringify({ input, value }));
       if (bytes + size > 6000) {
-        omitted++;
         continue;
       }
       bytes += size;
@@ -271,12 +260,13 @@ export function conversationHistory(
     messages.push({
       role: "assistant",
       content:
-        String(row.assistant_text ?? "")
-          .split("\n真实操作记录：")[0]
-          .slice(0, 2000) +
-        (omitted
-          ? `\n另有${omitted}项历史结果因容量未展示；以当前事实为准，需要正文时重新读取。`
-          : ""),
+        "近期交流（只作指代证据，历史要求/失败不能替代当前生效合同或授权）：" +
+        JSON.stringify({
+          user: String(row.user_text ?? "措辞已省略").slice(0, 1000),
+          assistant: String(row.assistant_text ?? "")
+            .split("\n真实操作记录：")[0]
+            .slice(0, 2000),
+        }),
     });
     return messages;
   });
@@ -298,11 +288,11 @@ export async function assistantContext(
   const [project, history, proposals, current] = await Promise.all([
     db.query("SELECT name FROM project WHERE id=$1", [scope.projectId]),
     db.query(
-      "SELECT user_text,assistant_text,tool_results,dependencies FROM assistant_turn WHERE session_id=$1 AND status<>'running' ORDER BY created_at DESC,id DESC LIMIT 50",
+      "SELECT t.user_text,t.assistant_text,t.tool_results,t.dependencies,t.requires_write FROM assistant_turn t JOIN assistant_session s ON s.id=t.session_id WHERE t.session_id=$1 AND t.status<>'running' AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id) ORDER BY t.created_at DESC,t.id DESC LIMIT 6",
       [sessionId],
     ),
     db.query(
-      "SELECT action,status,summary,receipt FROM assistant_proposal WHERE session_id=$1 AND actor_id=$2 ORDER BY created_at DESC,id DESC LIMIT 50",
+      "SELECT p.action,p.status,p.summary,p.receipt FROM assistant_proposal p JOIN assistant_turn t ON t.id=p.turn_id JOIN assistant_session s ON s.id=p.session_id WHERE p.session_id=$1 AND p.actor_id=$2 AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id) ORDER BY p.created_at DESC,p.id DESC LIMIT 20",
       [sessionId, scope.actorId],
     ),
     db.query(
@@ -311,6 +301,16 @@ export async function assistantContext(
     ),
   ]);
   const task = current.rows[0]?.task ?? {};
+  const allowed = await availableDependencies(
+    db,
+    scope,
+    history.rows.flatMap((t) => t.dependencies),
+  );
+  history.rows = history.rows.filter(
+    (t) =>
+      (!t.requires_write || canWrite) &&
+      t.dependencies.every((r: Dependency) => allowed.has(r.kind + ":" + r.id)),
+  );
   const confirmedOperations = proposals.rows
     .filter((p) => p.status === "succeeded")
     .map((p) => {
@@ -401,7 +401,34 @@ export async function assistantContext(
   };
   const convert = (value: unknown, decode: boolean, key = ""): any => {
     if (typeof value === "string") {
-      if (!/(^id$|ref$|ids?$|focusDraft$)/i.test(key)) return value;
+      if (
+        !new Set([
+          "id",
+          "ref",
+          "assetIds",
+          "recordIds",
+          "draftId",
+          "runId",
+          "previewId",
+          "testSetId",
+          "versionId",
+          "documentId",
+          "focusDraft",
+          "targetDraftId",
+          "createdDraftId",
+          "parentVersionId",
+          "runIds",
+          "taskId",
+          "deliveryId",
+          "turnId",
+          "draftRef",
+          "versionRef",
+          "assetRef",
+          "testSetRef",
+          "parentVersionRef",
+        ]).has(key)
+      )
+        return value;
       if (decode) {
         if (/^[dfvo]:/.test(value) && !actualByRef.has(value))
           throw new AssistantError(422, "assistant_reference_invalid");
@@ -417,7 +444,7 @@ export async function assistantContext(
       return Object.fromEntries(
         Object.entries(value).map(([k, entry]) => [
           k,
-          convert(entry, decode, k),
+          ["metadata", "raw"].includes(k) ? entry : convert(entry, decode, k),
         ]),
       );
     return value;

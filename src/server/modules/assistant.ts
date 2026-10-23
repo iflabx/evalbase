@@ -49,6 +49,7 @@ import {
   readSession,
   listSessions,
   renameSession,
+  readTaskCheckpoint,
   recoverProposalReceipt,
   clearConfirmedCandidateSelection,
   sessionRow,
@@ -200,6 +201,19 @@ export function registerAssistant({
       );
     },
   );
+  app.get<{ Params: Params & { taskId: string } }>(
+    path + "/sessions/:sessionId/tasks/:taskId",
+    { preHandler: authenticate },
+    async (request, reply) =>
+      respond(reply, () =>
+        readTaskCheckpoint(
+          db,
+          scope(request),
+          request.params.sessionId,
+          request.params.taskId,
+        ),
+      ),
+  );
   app.get<{ Params: Params }>(
     `${path}/sessions/:sessionId/status`,
     { preHandler: authenticate },
@@ -341,8 +355,13 @@ export function registerAssistant({
         await assistantAccess(db, context);
         const session = (
           await db.query(
-            "INSERT INTO assistant_session(id,project_id,actor_id) VALUES($1,$2,$3) RETURNING id",
-            [opaqueId("conversation"), context.projectId, context.actorId],
+            "INSERT INTO assistant_session(id,project_id,actor_id,task) VALUES($1,$2,$3,$4) RETURNING id",
+            [
+              opaqueId("conversation"),
+              context.projectId,
+              context.actorId,
+              { taskContractVersion: 2, taskId: opaqueId("assistanttask") },
+            ],
           )
         ).rows[0];
         return reply.code(201).send({ sessionId: session.id });

@@ -5,6 +5,11 @@ export const turnControlSchema = {
   additionalProperties: false,
   properties: {
     mode: { enum: ["query", "plan", "execute", "pause"] },
+    taskBoundary: {
+      enum: ["continue", "new"],
+      description:
+        "普通表达明确提出独立目标时标new；服务端澄清边界，不由模型建立新预算。修改、改名或继续原目标用continue。",
+    },
     requiresUpdate: {
       type: "boolean",
       description: "本轮先改要求再执行时必须为true；更新成功前禁止执行。",
@@ -26,6 +31,7 @@ export const turnControlSchema = {
 } as const;
 export type TurnControl = {
   mode: "query" | "plan" | "execute" | "pause";
+  taskBoundary?: "continue" | "new";
   requiresUpdate?: boolean;
   pauseFirst?: boolean;
   explanation?: string;
@@ -40,8 +46,16 @@ export function validControl(value: unknown): value is TurnControl {
   return (
     isPlainObject(value) &&
     Object.keys(value).every((key) =>
-      ["mode", "requiresUpdate", "pauseFirst", "explanation"].includes(key),
+      [
+        "mode",
+        "taskBoundary",
+        "requiresUpdate",
+        "pauseFirst",
+        "explanation",
+      ].includes(key),
     ) &&
+    (value.taskBoundary === undefined ||
+      ["continue", "new"].includes(String(value.taskBoundary))) &&
     typeof value.mode === "string" &&
     ["query", "plan", "execute", "pause"].includes(value.mode) &&
     ["requiresUpdate", "pauseFirst"].every(
