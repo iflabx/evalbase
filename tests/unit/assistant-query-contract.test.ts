@@ -8,17 +8,30 @@ import { prepareToolProposal } from "../../src/assistant/processing-preparation.
 import { sourceDiscoveryApplies } from "../../src/assistant/source-discovery.js";
 
 describe("OPT50 query contract and source continuation", () => {
+  const properties = {
+    kind: { enum: Object.keys(projectQueryFields) },
+    search: { type: "string" },
+    offset: { type: "integer" },
+    testSetId: { type: "string" },
+  };
   const validate = new Ajv({ strict: false }).compile({
     type: "object",
-    properties: {
-      kind: { enum: Object.keys(projectQueryFields) },
-      search: { type: "string" },
-      offset: { type: "integer" },
-      testSetId: { type: "string" },
-    },
+    properties,
     required: ["kind"],
     additionalProperties: false,
-    ...projectQueryConstraints("query_project"),
+    ...projectQueryConstraints("query_project", properties),
+  });
+  it("uses provider-compatible object variants without conditional keywords", () => {
+    const constraints = projectQueryConstraints(
+      "query_project",
+      properties,
+    ) as any;
+    expect(constraints.anyOf).toHaveLength(5);
+    expect(JSON.stringify(constraints)).not.toMatch(/"(?:if|then|allOf)":/);
+    for (const variant of constraints.anyOf) {
+      expect(variant.type).toBe("object");
+      expect(variant.additionalProperties).toBe(false);
+    }
   });
   it.each(Object.keys(projectQueryFields))(
     "%s shares kind-specific fields between model schema and preflight",

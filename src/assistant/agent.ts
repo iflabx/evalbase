@@ -351,7 +351,7 @@ function schema(
     properties,
     required,
     additionalProperties: false,
-    ...projectQueryConstraints(name),
+    ...projectQueryConstraints(name, properties),
   } as const;
   const validate = ajv.compile(definition);
   // Some compatible servers cannot constrain uniqueItems during forced tool decoding.
@@ -2133,7 +2133,7 @@ export async function executeAssistantTurn(
       properties,
       required,
       additionalProperties: false,
-      ...projectQueryConstraints(name),
+      ...projectQueryConstraints(name, properties),
     });
     fixedInputValidators.set(name, validateInput);
     const modelRequired = required.filter(
@@ -2155,7 +2155,7 @@ export async function executeAssistantTurn(
         type: "object",
         properties,
         additionalProperties: false,
-        ...projectQueryConstraints(name),
+        ...projectQueryConstraints(name, properties),
       }),
     );
     return tool({
@@ -6430,7 +6430,10 @@ export async function executeAssistantTurn(
           type: "object",
           properties: toolInputs.get(action)!.properties,
           additionalProperties: false,
-          ...projectQueryConstraints(action),
+          ...projectQueryConstraints(
+            action,
+            toolInputs.get(action)!.properties,
+          ),
         },
       },
     })),

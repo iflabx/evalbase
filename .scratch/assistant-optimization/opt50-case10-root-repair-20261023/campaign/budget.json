@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "campaign": "OPT50-case10-root-repair-20261023",
+  "code": "720f1e4a2ed0a5e386953cc95b464b59297b780e",
+  "projectId": "project_a72210e50d1144c08d65ced109cb0489",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "sessions": {
+    "10": "conversation_a96690cd69d642daa089b8fb0a61fcd0"
+  },
+  "closedCases": [
+    10
+  ],
+  "closed": true,
+  "limits": {
+    "requests": 24,
+    "activeMs": 240000,
+    "cleanRows": 2,
+    "cleanRuns": 1,
+    "newDrafts": 1,
+    "generatedRows": 0,
+    "publish": 0
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 10,
+      "sessionId": "conversation_a96690cd69d642daa089b8fb0a61fcd0",
+      "code": "720f1e4a2ed0a5e386953cc95b464b59297b780e",
+      "startedAt": "2026-10-23T09:17:14.011Z",
+      "durationMs": 4317,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "ebaa20db74d384b219b962e818b453ac680aedb242161f8a25bf26e42e83d773",
+      "activeBefore": {
+        "caseMs": 343,
+        "totalMs": 343
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 208,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "5be572c3d531757eb1c1f81d8123bc02a1fcb66f1551ade52afdc65e0cb2c6b7"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 2,
+      "caseId": 10,
+      "sessionId": "conversation_a96690cd69d642daa089b8fb0a61fcd0",
+      "code": "720f1e4a2ed0a5e386953cc95b464b59297b780e",
+      "startedAt": "2026-10-23T09:17:18.594Z",
+      "durationMs": 418,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "d617a571402e6d68a37de9f5e553ca4481a13da21422e72a5f5798b5c830b803",
+      "activeBefore": {
+        "caseMs": 4926,
+        "totalMs": 4926
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "query_project",
+          "bytes": 12,
+          "parsed": true,
+          "type": "array",
+          "hash": "3c977dbf4bcee2c6781b617921fdefd0b0dafbb8f16baabaaab631f85dc78756"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 3,
+      "caseId": 10,
+      "sessionId": "conversation_a96690cd69d642daa089b8fb0a61fcd0",
+      "code": "720f1e4a2ed0a5e386953cc95b464b59297b780e",
+      "startedAt": "2026-10-23T09:17:19.101Z",
+      "durationMs": 299,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "0a1a8415a572c020655582cad5825a20582e864696b3596fd756869c7c69ed3a",
+      "activeBefore": {
+        "caseMs": 5434,
+        "totalMs": 5434
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "query_project",
+          "bytes": 103,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "toolName",
+            "arguments"
+          ],
+          "hash": "7286c2c1cc4635694c365ff43d0593711bde1fe9c43bb26db79ea84336fb1754"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 4,
+      "caseId": 10,
+      "sessionId": "conversation_a96690cd69d642daa089b8fb0a61fcd0",
+      "code": "720f1e4a2ed0a5e386953cc95b464b59297b780e",
+      "startedAt": "2026-10-23T09:17:19.498Z",
+      "durationMs": 234,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "05a4c7b6549c9eeebcad662b7314d88e2df3a2662c2073ad98981c9d00dd043f",
+      "activeBefore": {
+        "caseMs": 5831,
+        "totalMs": 5831
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "query_project",
+          "bytes": 115,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "operation",
+            "toolName",
+            "arguments"
+          ],
+          "hash": "8e1c6d695851e3e4a95163d5c4e17f64e241e491b5e9f70bd5ace557f3962b62"
+        }
+      ],
+      "finishReason": "tool_calls"
+    }
+  ],
+  "blocked": [],
+  "startedAt": "2026-10-23T09:16:53.107Z",
+  "closedAt": "2026-10-23T09:18:56.270Z",
+  "outcome": "failed: root array followed by two tool-call envelopes in contextual correction"
+}

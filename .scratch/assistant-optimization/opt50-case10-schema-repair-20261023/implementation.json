@@ -1,0 +1,22 @@
+{
+  "base": "720f1e4a2ed0a5e386953cc95b464b59297b780e",
+  "cause": "Configured qwen-new compatible endpoint returns nonobject tool arguments for if/then+boolean property query schemas; same prompt flat/anyOf controls return valid object",
+  "fix": "Use equivalent anyOf object variants with the existing field definitions for all four declaration/validation call sites",
+  "diagnostic": {
+    "requests": 3,
+    "elapsedMs": 4675,
+    "closed": true,
+    "report": ".scratch/assistant-optimization/opt50-case10-root-repair-20261023/schema-comparison.json"
+  },
+  "regression": {
+    "passed": 44,
+    "failed": 0,
+    "red": 1,
+    "report": ".scratch/assistant-optimization/opt50-case10-root-repair-20261023/schema-green.json"
+  },
+  "review": {
+    "Standards": 0,
+    "Spec": 0
+  },
+  "acceptance": "pending independently bounded Computer Use case10"
+}

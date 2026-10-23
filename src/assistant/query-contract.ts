@@ -6,18 +6,25 @@ export const projectQueryFields: Record<string, readonly string[]> = {
   versions: ["kind", "search", "offset", "testSetId"],
   drafts: ["kind", "search", "offset", "testSetId"],
 };
-export function projectQueryConstraints(name: string) {
+export function projectQueryConstraints(
+  name: string,
+  properties: Record<string, unknown>,
+) {
   if (name !== "query_project") return {};
+  // The configured compatible provider misdecodes if/then and boolean schemas.
+  // Enumerated object variants express the same restrictions for every caller.
   return {
-    allOf: Object.entries(projectQueryFields).map(([kind, fields]) => ({
-      if: { properties: { kind: { const: kind } }, required: ["kind"] },
-      then: {
-        properties: Object.fromEntries(
-          ["search", "offset", "testSetId"]
-            .filter((field) => !fields.includes(field))
-            .map((field) => [field, false]),
-        ),
-      },
+    anyOf: Object.entries(projectQueryFields).map(([kind, fields]) => ({
+      type: "object",
+      properties: Object.fromEntries(
+        fields.map((field) => [
+          field,
+          field === "kind"
+            ? { type: "string", enum: [kind] }
+            : properties[field],
+        ]),
+      ),
+      additionalProperties: false,
     })),
   };
 }
