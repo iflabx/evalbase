@@ -1,0 +1,9 @@
+{
+  "protectedTables": 18,
+  "oldBudgetFiles": 31,
+  "oldRowsPreserved": true,
+  "oldBudgetFilesUnchanged": true,
+  "backup": "owner-before.dump (private, untracked)",
+  "guardRemoved": true,
+  "checkpointCode": "6b8b7554301c336fe107d6d79ea4435107b708cd"
+}

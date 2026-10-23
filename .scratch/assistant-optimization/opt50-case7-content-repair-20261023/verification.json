@@ -1,0 +1,91 @@
+{
+  "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+  "unit": {
+    "passed": 75,
+    "files": 6,
+    "newTests": 6
+  },
+  "integration": {
+    "passed": 4,
+    "failed": 0,
+    "isolatedDatabase": true
+  },
+  "typecheck": true,
+  "affectedEslint": true,
+  "build": true,
+  "docsCheck": true,
+  "standardsReview": {
+    "initial": 2,
+    "closed": 2
+  },
+  "specReview": {
+    "initial": 3,
+    "closed": 3
+  },
+  "computerUse": {
+    "result": "pass",
+    "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+    "projectId": "project_5aa499dc7ba94d56a418987fb509224b",
+    "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+    "prompts": [
+      "按新版做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不要生成。",
+      "类别名就用退款进度和退款到账时间。",
+      "退款进度先改3条，另一类不变，还是只保存方案。"
+    ],
+    "turns": [
+      {
+        "id": "turn_942870f280c74f2b9917372b14e67c12",
+        "status": "succeeded",
+        "error": null,
+        "automaticCorrections": 0,
+        "toolFailures": []
+      },
+      {
+        "id": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+        "status": "succeeded",
+        "error": null,
+        "automaticCorrections": 0,
+        "toolFailures": []
+      },
+      {
+        "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+        "status": "succeeded",
+        "error": null,
+        "automaticCorrections": 0,
+        "toolFailures": []
+      }
+    ],
+    "initialCount": 4,
+    "unchangedVerified": {
+      "facts": {
+        "field": "classifications",
+        "values": [
+          "退款进度",
+          "退款到账时间"
+        ]
+      },
+      "status": "satisfied"
+    },
+    "finalCount": 5,
+    "quotas": [
+      {
+        "count": 3,
+        "value": "退款进度"
+      },
+      {
+        "count": 2,
+        "value": "退款到账时间"
+      }
+    ],
+    "refreshMatches": true,
+    "oldCountTextAbsent": true,
+    "semanticBusinessNumbersPreserved": true,
+    "requests": 6,
+    "httpActiveMs": 16785,
+    "taskActiveMs": 18280,
+    "manualContinues": 0,
+    "automaticCorrections": 0,
+    "blocked": 0,
+    "generated": 0
+  }
+}

@@ -1,0 +1,799 @@
+{
+  "goal": "按新版做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不要生成。",
+  "error": null,
+  "stage": "planning",
+  "title": "新版客服退款测试集",
+  "review": null,
+  "target": null,
+  "taskId": "assistanttask_b708dab27f0e49939cdf36d86af6ff99",
+  "question": null,
+  "recovery": null,
+  "autoCount": 0,
+  "countKind": "final",
+  "nextAction": null,
+  "turnBudget": {
+    "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "activeMs": 11869,
+    "requests": [
+      {
+        "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:0",
+        "state": "parsed",
+        "bodyMs": 1,
+        "parseMs": 0,
+        "parseOk": true,
+        "totalMs": 750,
+        "httpStatus": 200,
+        "preflightMs": 7,
+        "timeToHeadersMs": 743
+      },
+      {
+        "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:1",
+        "state": "parsed",
+        "bodyMs": 0,
+        "parseMs": 0,
+        "parseOk": true,
+        "totalMs": 10556,
+        "httpStatus": 200,
+        "preflightMs": 8,
+        "timeToHeadersMs": 10549
+      }
+    ],
+    "startedAt": 1792759343982,
+    "toolCalls": 12,
+    "deadlineAt": 1792759423982,
+    "modelSteps": 2,
+    "retryWaits": [],
+    "attemptToken": null,
+    "attemptBaseMs": 11869,
+    "progressStart": "aca13876d6b65911d5fe24127d586a11c2e3d74787878ba61d0eb83247b98f4f",
+    "requestAttempts": 2,
+    "attemptStartedAt": null,
+    "transportRetries": 0,
+    "accountingVersion": 2
+  },
+  "diagnostics": {
+    "intent": {
+      "mode": "plan",
+      "source": "model",
+      "pauseFirst": false,
+      "reasonCode": "turn_plan",
+      "updateSaved": true,
+      "requiresUpdate": true
+    },
+    "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "requests": [
+      {
+        "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:0",
+        "state": "parsed",
+        "bodyMs": 1,
+        "parseMs": 0,
+        "parseOk": true,
+        "totalMs": 750,
+        "httpStatus": 200,
+        "preflightMs": 7,
+        "timeToHeadersMs": 743
+      },
+      {
+        "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:1",
+        "state": "parsed",
+        "bodyMs": 0,
+        "parseMs": 0,
+        "parseOk": true,
+        "totalMs": 10556,
+        "httpStatus": 200,
+        "preflightMs": 8,
+        "timeToHeadersMs": 10549
+      }
+    ],
+    "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+    "toolCalls": 12,
+    "durationMs": 13706,
+    "modelSteps": 2,
+    "retryWaits": [],
+    "amendmentId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+    "currentStep": {
+      "id": "step_9dcca660d20340918f75b961415d1a1c",
+      "action": "generate_candidates"
+    },
+    "diagnosticId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "finishReason": "not_returned",
+    "taskRevision": 5,
+    "toolsVersion": "assistant-tools-v12",
+    "modelRevision": 2,
+    "promptVersion": "assistant-prompt-v15",
+    "contractVersion": "assistant-diagnostics-v2",
+    "protocolRepairs": 0,
+    "requestAttempts": 2,
+    "stepDiagnostics": [
+      {
+        "inputTokens": 6779,
+        "finishReason": "tool-calls",
+        "outputTokens": 51,
+        "argumentBytes": 207
+      },
+      {
+        "inputTokens": 3558,
+        "finishReason": "tool-calls",
+        "outputTokens": 1505,
+        "argumentBytes": 4280
+      }
+    ],
+    "attemptToolCalls": 12,
+    "executionAttempt": 1,
+    "parameterRepairs": [],
+    "planningContract": {
+      "mode": "amendment",
+      "fields": [
+        "id",
+        "count",
+        "instructions",
+        "classifications"
+      ],
+      "version": "plan-request-v1",
+      "schemaBytes": 6625,
+      "contextBytes": 3494
+    },
+    "transportRetries": 0,
+    "attemptModelSteps": 2,
+    "repairRequestsUsed": 0,
+    "retainedCandidates": null,
+    "retainedOperations": 0,
+    "attemptRequestAttempts": 2,
+    "parameterRepairVersion": "arguments-v4",
+    "requirementsReconciled": false
+  },
+  "supplements": [
+    "类别名就用退款进度和退款到账时间。",
+    "退款进度先改3条，另一类不变，还是只保存方案。"
+  ],
+  "targetCount": 5,
+  "turnControl": {
+    "mode": "plan",
+    "source": "model",
+    "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "explanation": "已按你的要求更新方案：退款进度改为3条，退款到账时间保持2条，合计5条；仍只保存方案，不执行生成。",
+    "updateSaved": true,
+    "taskRevision": 5,
+    "requiresUpdate": true
+  },
+  "budgetLedger": {
+    "grants": [
+      {
+        "id": "initial:assistanttask_b708dab27f0e49939cdf36d86af6ff99",
+        "limits": {
+          "activeMs": 1040000,
+          "toolCalls": 156,
+          "modelSteps": 130,
+          "requestAttempts": 156,
+          "transportRetries": 26
+        },
+        "taskId": "assistanttask_b708dab27f0e49939cdf36d86af6ff99",
+        "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+        "purpose": "initial",
+        "issuedAt": 1792759250532,
+        "revision": 3,
+        "expiresAt": null,
+        "startsAtUse": {
+          "activeMs": 0,
+          "toolCalls": 0,
+          "modelSteps": 0,
+          "requestAttempts": 0,
+          "transportRetries": 0
+        }
+      }
+    ],
+    "policy": {
+      "initial": {
+        "activeMs": 1040000,
+        "toolCalls": 156,
+        "modelSteps": 130,
+        "requestAttempts": 156,
+        "transportRetries": 26
+      },
+      "segment": {
+        "activeMs": 80000,
+        "toolCalls": 12,
+        "modelSteps": 10,
+        "requestAttempts": 12,
+        "transportRetries": 2
+      }
+    },
+    "taskId": "assistanttask_b708dab27f0e49939cdf36d86af6ff99",
+    "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+    "version": 1,
+    "activeId": "initial:assistanttask_b708dab27f0e49939cdf36d86af6ff99",
+    "segments": [
+      {
+        "turnId": "turn_942870f280c74f2b9917372b14e67c12",
+        "activeMs": 5466,
+        "requests": [
+          {
+            "id": "turn_942870f280c74f2b9917372b14e67c12:0",
+            "state": "parsed",
+            "bodyMs": 3,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 611,
+            "httpStatus": 200,
+            "preflightMs": 4,
+            "timeToHeadersMs": 603
+          },
+          {
+            "id": "turn_942870f280c74f2b9917372b14e67c12:1",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 511,
+            "httpStatus": 200,
+            "preflightMs": 4,
+            "timeToHeadersMs": 504
+          },
+          {
+            "id": "turn_942870f280c74f2b9917372b14e67c12:2",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 1,
+            "parseOk": true,
+            "totalMs": 3842,
+            "httpStatus": 200,
+            "preflightMs": 10,
+            "timeToHeadersMs": 3836
+          }
+        ],
+        "startedAt": 1792759250555,
+        "toolCalls": 3,
+        "deadlineAt": 1792759330555,
+        "modelSteps": 3,
+        "retryWaits": [],
+        "attemptToken": null,
+        "attemptBaseMs": 5466,
+        "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "requestAttempts": 3,
+        "attemptStartedAt": null,
+        "transportRetries": 0,
+        "accountingVersion": 2
+      },
+      {
+        "turnId": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+        "activeMs": 945,
+        "requests": [
+          {
+            "id": "turn_44ce6759f3ec49cca6cf87fff317ef35:0",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 1,
+            "parseOk": true,
+            "totalMs": 730,
+            "httpStatus": 200,
+            "preflightMs": 16,
+            "timeToHeadersMs": 725
+          }
+        ],
+        "startedAt": 1792759315846,
+        "toolCalls": 1,
+        "deadlineAt": 1792759395846,
+        "modelSteps": 1,
+        "retryWaits": [],
+        "attemptToken": null,
+        "attemptBaseMs": 945,
+        "progressStart": "aca13876d6b65911d5fe24127d586a11c2e3d74787878ba61d0eb83247b98f4f",
+        "requestAttempts": 1,
+        "attemptStartedAt": null,
+        "transportRetries": 0,
+        "accountingVersion": 2
+      },
+      {
+        "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+        "activeMs": 11869,
+        "requests": [
+          {
+            "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:0",
+            "state": "parsed",
+            "bodyMs": 1,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 750,
+            "httpStatus": 200,
+            "preflightMs": 7,
+            "timeToHeadersMs": 743
+          },
+          {
+            "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:1",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 10556,
+            "httpStatus": 200,
+            "preflightMs": 8,
+            "timeToHeadersMs": 10549
+          }
+        ],
+        "startedAt": 1792759343982,
+        "toolCalls": 12,
+        "deadlineAt": 1792759423982,
+        "modelSteps": 2,
+        "retryWaits": [],
+        "attemptToken": null,
+        "attemptBaseMs": 11869,
+        "progressStart": "aca13876d6b65911d5fe24127d586a11c2e3d74787878ba61d0eb83247b98f4f",
+        "requestAttempts": 2,
+        "attemptStartedAt": null,
+        "transportRetries": 0,
+        "accountingVersion": 2
+      }
+    ]
+  },
+  "metadataKeys": [
+    "类别"
+  ],
+  "observations": [
+    {
+      "intent": {
+        "mode": "plan",
+        "source": "model",
+        "pauseFirst": false,
+        "reasonCode": "turn_plan",
+        "updateSaved": true,
+        "requiresUpdate": true
+      },
+      "turnId": "turn_942870f280c74f2b9917372b14e67c12",
+      "requests": [
+        {
+          "id": "turn_942870f280c74f2b9917372b14e67c12:0",
+          "state": "parsed",
+          "bodyMs": 3,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 611,
+          "httpStatus": 200,
+          "preflightMs": 4,
+          "timeToHeadersMs": 603
+        },
+        {
+          "id": "turn_942870f280c74f2b9917372b14e67c12:1",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 511,
+          "httpStatus": 200,
+          "preflightMs": 4,
+          "timeToHeadersMs": 504
+        },
+        {
+          "id": "turn_942870f280c74f2b9917372b14e67c12:2",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 1,
+          "parseOk": true,
+          "totalMs": 3842,
+          "httpStatus": 200,
+          "preflightMs": 10,
+          "timeToHeadersMs": 3836
+        }
+      ],
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "toolCalls": 3,
+      "durationMs": 7230,
+      "modelSteps": 3,
+      "retryWaits": [],
+      "amendmentId": "turn_942870f280c74f2b9917372b14e67c12",
+      "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "currentStep": {
+        "id": "step_37c83ffcbf814c219084f22b8e2cfcdf",
+        "action": "generate_candidates"
+      },
+      "diagnosticId": "turn_942870f280c74f2b9917372b14e67c12",
+      "finishReason": "not_returned",
+      "taskRevision": 3,
+      "toolsVersion": "assistant-tools-v12",
+      "modelRevision": 2,
+      "promptVersion": "assistant-prompt-v15",
+      "contractVersion": "assistant-diagnostics-v2",
+      "protocolRepairs": 0,
+      "requestAttempts": 3,
+      "stepDiagnostics": [
+        {
+          "inputTokens": 4125,
+          "finishReason": "tool-calls",
+          "outputTokens": 44,
+          "argumentBytes": 181
+        },
+        {
+          "inputTokens": 4530,
+          "finishReason": "tool-calls",
+          "outputTokens": 37,
+          "argumentBytes": 99
+        },
+        {
+          "inputTokens": 9665,
+          "finishReason": "tool-calls",
+          "outputTokens": 761,
+          "argumentBytes": 2613
+        }
+      ],
+      "attemptToolCalls": 3,
+      "executionAttempt": 1,
+      "parameterRepairs": [],
+      "transportRetries": 0,
+      "attemptModelSteps": 3,
+      "repairRequestsUsed": 0,
+      "retainedCandidates": null,
+      "retainedOperations": 0,
+      "attemptRequestAttempts": 3,
+      "parameterRepairVersion": "arguments-v4",
+      "requirementsReconciled": false
+    },
+    {
+      "intent": {
+        "mode": "plan",
+        "source": "model",
+        "pauseFirst": false,
+        "reasonCode": "turn_plan",
+        "updateSaved": true,
+        "requiresUpdate": false
+      },
+      "turnId": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+      "requests": [
+        {
+          "id": "turn_44ce6759f3ec49cca6cf87fff317ef35:0",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 1,
+          "parseOk": true,
+          "totalMs": 730,
+          "httpStatus": 200,
+          "preflightMs": 16,
+          "timeToHeadersMs": 725
+        }
+      ],
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "toolCalls": 1,
+      "durationMs": 2488,
+      "modelSteps": 1,
+      "retryWaits": [],
+      "amendmentId": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+      "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "currentStep": {
+        "id": "step_37c83ffcbf814c219084f22b8e2cfcdf",
+        "action": "generate_candidates"
+      },
+      "diagnosticId": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+      "finishReason": "not_returned",
+      "taskRevision": 4,
+      "toolsVersion": "assistant-tools-v12",
+      "modelRevision": 2,
+      "promptVersion": "assistant-prompt-v15",
+      "contractVersion": "assistant-diagnostics-v2",
+      "protocolRepairs": 0,
+      "requestAttempts": 1,
+      "stepDiagnostics": [
+        {
+          "inputTokens": 6421,
+          "finishReason": "tool-calls",
+          "outputTokens": 46,
+          "argumentBytes": 192
+        }
+      ],
+      "attemptToolCalls": 1,
+      "executionAttempt": 1,
+      "parameterRepairs": [],
+      "transportRetries": 0,
+      "attemptModelSteps": 1,
+      "repairRequestsUsed": 0,
+      "retainedCandidates": null,
+      "retainedOperations": 0,
+      "attemptRequestAttempts": 1,
+      "parameterRepairVersion": "arguments-v4",
+      "requirementsReconciled": false
+    },
+    {
+      "intent": {
+        "mode": "plan",
+        "source": "model",
+        "pauseFirst": false,
+        "reasonCode": "turn_plan",
+        "updateSaved": true,
+        "requiresUpdate": true
+      },
+      "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+      "requests": [
+        {
+          "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:0",
+          "state": "parsed",
+          "bodyMs": 1,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 750,
+          "httpStatus": 200,
+          "preflightMs": 7,
+          "timeToHeadersMs": 743
+        },
+        {
+          "id": "turn_a7ed8d6e940948d4b9be721cc8796e9a:1",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 10556,
+          "httpStatus": 200,
+          "preflightMs": 8,
+          "timeToHeadersMs": 10549
+        }
+      ],
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "toolCalls": 12,
+      "durationMs": 13706,
+      "modelSteps": 2,
+      "retryWaits": [],
+      "amendmentId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+      "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "currentStep": {
+        "id": "step_9dcca660d20340918f75b961415d1a1c",
+        "action": "generate_candidates"
+      },
+      "diagnosticId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+      "finishReason": "not_returned",
+      "taskRevision": 5,
+      "toolsVersion": "assistant-tools-v12",
+      "modelRevision": 2,
+      "promptVersion": "assistant-prompt-v15",
+      "contractVersion": "assistant-diagnostics-v2",
+      "protocolRepairs": 0,
+      "requestAttempts": 2,
+      "stepDiagnostics": [
+        {
+          "inputTokens": 6779,
+          "finishReason": "tool-calls",
+          "outputTokens": 51,
+          "argumentBytes": 207
+        },
+        {
+          "inputTokens": 3558,
+          "finishReason": "tool-calls",
+          "outputTokens": 1505,
+          "argumentBytes": 4280
+        }
+      ],
+      "attemptToolCalls": 12,
+      "executionAttempt": 1,
+      "parameterRepairs": [],
+      "planningContract": {
+        "mode": "amendment",
+        "fields": [
+          "id",
+          "count",
+          "instructions",
+          "classifications"
+        ],
+        "version": "plan-request-v1",
+        "schemaBytes": 6625,
+        "contextBytes": 3494
+      },
+      "transportRetries": 0,
+      "attemptModelSteps": 2,
+      "repairRequestsUsed": 0,
+      "retainedCandidates": null,
+      "retainedOperations": 0,
+      "attemptRequestAttempts": 2,
+      "parameterRepairVersion": "arguments-v4",
+      "requirementsReconciled": false
+    }
+  ],
+  "originTurnId": "turn_942870f280c74f2b9917372b14e67c12",
+  "requirements": [
+    "仅依据新版客服规范，旧版与新版冲突时以新版为准。",
+    "期望输出描述客服正确行为，而不是只写分类标签。",
+    "每条问题须符合普通用户问法，语义完整、自成一问。",
+    "退款到账时间不得承诺精确到账时刻。",
+    "退款进度不得询问实际到账日期；退款到账时间不得查询审核进度。",
+    "退款进度，退款到账时间。"
+  ],
+  "allowedFields": [
+    "question",
+    "expectedOutput",
+    "metadata"
+  ],
+  "allowedLabels": [],
+  "executionPlan": {
+    "mode": "plan",
+    "steps": [
+      {
+        "id": "step_9dcca660d20340918f75b961415d1a1c",
+        "input": {
+          "name": "新版客服退款测试集",
+          "scenarios": [
+            "用户询问退款申请或审核目前进行到哪个环节",
+            "用户询问退款是否已经发起",
+            "用户询问已发起的退款何时到达原支付账户",
+            "用户询问退款到账需要几个工作日"
+          ],
+          "outputCount": 5,
+          "instructions": "依据新版客服规范生成普通用户退款咨询问题，退款进度、退款到账时间。退款进度只询问退款申请、审核、退款发起等当前处理环节，不得询问实际到账日期；退款到账时间只询问已发起退款到达原支付账户的时间，不得查询审核进度。问题须语义完整、自成一问。期望输出描述客服正确行为；退款到账时间应说明通常1至3个工作日到账、具体以渠道通知为准，且不能承诺精确到账时刻。Metadata的类别字段只使用“退款进度”或“退款到账时间”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+          "classifications": [
+            {
+              "key": "类别",
+              "basis": "background",
+              "field": "metadata",
+              "quotas": [
+                {
+                  "count": 3,
+                  "value": "退款进度"
+                },
+                {
+                  "count": 2,
+                  "value": "退款到账时间"
+                }
+              ],
+              "definitions": [
+                {
+                  "text": "退款进度：用户询问退款申请、审核、退款发起等当前处理环节，不属于询问实际到账日期。",
+                  "value": "退款进度"
+                },
+                {
+                  "text": "退款到账时间：用户询问已发起退款到达原支付账户的时间，不属于查询审核进度。退款发起后通常1至3个工作日到账，具体以渠道通知为准，不能承诺精确到账时刻。",
+                  "value": "退款到账时间"
+                }
+              ],
+              "allowedValues": [
+                "退款进度",
+                "退款到账时间"
+              ],
+              "requiredValues": [
+                "退款进度",
+                "退款到账时间"
+              ]
+            }
+          ]
+        },
+        "title": "生成「新版客服退款测试集」",
+        "action": "generate_candidates",
+        "status": "pending",
+        "revision": 5,
+        "countKind": "final",
+        "deliveryId": "delivery_2a36e8ef0dea4723aab8cc5af4bcfa15",
+        "boundaryVersion": 1
+      },
+      {
+        "id": "step_901273dd131f414abdb538681203765e",
+        "title": "核对本类生成结果",
+        "action": "read_processing",
+        "status": "pending",
+        "revision": 5,
+        "deliveryId": "delivery_2a36e8ef0dea4723aab8cc5af4bcfa15"
+      },
+      {
+        "id": "step_fa7f7e407b6e47b997e39215c4de6e16",
+        "input": {
+          "target": {
+            "kind": "draft"
+          },
+          "allTask": true,
+          "allValid": true
+        },
+        "title": "确认采用本类结果",
+        "action": "request_processing_apply",
+        "status": "pending",
+        "revision": 5,
+        "deliveryId": "delivery_2a36e8ef0dea4723aab8cc5af4bcfa15"
+      }
+    ],
+    "target": null,
+    "current": 0,
+    "needsReview": false,
+    "contractVersion": 1,
+    "requirementsKey": "9f4c13365e0ca8e08e3ddd10056a5fa5ee03c66efda3677b17fc8fb72fb0afd4"
+  },
+  "autoEventLimit": null,
+  "classifications": [
+    {
+      "key": "类别",
+      "basis": "background",
+      "field": "metadata",
+      "quotas": [
+        {
+          "count": 3,
+          "value": "退款进度"
+        },
+        {
+          "count": 2,
+          "value": "退款到账时间"
+        }
+      ],
+      "definitions": [
+        {
+          "text": "退款进度：用户询问退款申请、审核、退款发起等当前处理环节，不属于询问实际到账日期。",
+          "value": "退款进度"
+        },
+        {
+          "text": "退款到账时间：用户询问已发起退款到达原支付账户的时间，不属于查询审核进度。退款发起后通常1至3个工作日到账，具体以渠道通知为准，不能承诺精确到账时刻。",
+          "value": "退款到账时间"
+        }
+      ],
+      "allowedValues": [
+        "退款进度",
+        "退款到账时间"
+      ],
+      "requiredValues": [
+        "退款进度",
+        "退款到账时间"
+      ]
+    }
+  ],
+  "executionBudget": {
+    "activeMs": 18280,
+    "lastTurn": {
+      "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+      "elapsedMs": 11869,
+      "toolCalls": 12,
+      "modelSteps": 2,
+      "requestAttempts": 2,
+      "transportRetries": 0
+    },
+    "toolCalls": 16,
+    "modelSteps": 6,
+    "requestAttempts": 6,
+    "transportRetries": 0
+  },
+  "executionPaused": false,
+  "requirementSave": {
+    "key": "assistant:turn_a7ed8d6e940948d4b9be721cc8796e9a:384cb842bfe4df77311ab9b08beca4901dd4e6ebfa351c407cbe54f1fa4a08ce",
+    "turnId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "amendmentId": "turn_a7ed8d6e940948d4b9be721cc8796e9a",
+    "taskRevision": 5,
+    "requirementsKey": "9f4c13365e0ca8e08e3ddd10056a5fa5ee03c66efda3677b17fc8fb72fb0afd4"
+  },
+  "boundaryQuestion": null,
+  "planningRecovery": null,
+  "requirementCheck": {
+    "key": "assistant:turn_44ce6759f3ec49cca6cf87fff317ef35:59228c95c8c715ca781c85f65b24960058bdd4a323bd5eedc3a7497745673152",
+    "turnId": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+    "amendmentId": "turn_44ce6759f3ec49cca6cf87fff317ef35",
+    "documentsKey": "56a11aaa8f32adebb926d0ee37524c6deaadc3aa1bc861d438bc02c1a92f71ca",
+    "taskRevision": 4,
+    "verification": {
+      "facts": {
+        "field": "classifications",
+        "values": [
+          "退款进度",
+          "退款到账时间"
+        ]
+      },
+      "status": "satisfied"
+    },
+    "requirementsKey": "a7251553080e9864eacdea8dc09bb5eaa872cc82e95f5e203fd794d82ec18f19"
+  },
+  "transportRecovery": null,
+  "backgroundEvidence": [
+    {
+      "sha256": "3e894078ec7684cd97586dde2ed7186ddd23044b8e86cdf711cf134f70033fe4",
+      "textHash": "3e894078ec7684cd97586dde2ed7186ddd23044b8e86cdf711cf134f70033fe4",
+      "documentId": "background_521c0844bfc340579d272cd831718baa",
+      "fragmentIndex": 1,
+      "extractorVersion": "background-text-v1"
+    }
+  ],
+  "overallTargetCount": 5,
+  "requirementProblem": null,
+  "taskContractVersion": 2,
+  "backgroundDefinitions": [
+    {
+      "key": "类别",
+      "field": "metadata",
+      "value": "退款进度",
+      "reference": "definition:12d1ef0616430b183a6fdd0f790d9ea62c36256055f1d6d8ff5e87ecbdc4545b"
+    },
+    {
+      "key": "类别",
+      "field": "metadata",
+      "value": "退款到账时间",
+      "reference": "definition:008b44dc00820705238bb7e7c68f1089328f8944a113b75cb6c49a03ee8cf048"
+    }
+  ],
+  "parameterRepairLimits": {},
+  "planValidationRequired": null,
+  "planningCheckpointTurnId": null
+}

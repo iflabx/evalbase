@@ -1,0 +1,435 @@
+{
+  "version": 1,
+  "campaign": "OPT50-case7-content-repair-20261023",
+  "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+  "projectId": "project_5aa499dc7ba94d56a418987fb509224b",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "sessions": {
+    "7": "conversation_74e5ab15fc4e40ac8aab559316601c34"
+  },
+  "closedCases": [
+    7
+  ],
+  "closed": true,
+  "limits": {
+    "requests": 24,
+    "activeMs": 240000,
+    "singleCallMs": 60000,
+    "generatedRows": 0,
+    "cleanRuns": 0,
+    "newDrafts": 0,
+    "publish": 0
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 7,
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "startedAt": "2026-10-23T12:40:52.522Z",
+      "durationMs": 559,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "719182a98944bc3c95fcf0f3cba3ad759677af66406ed7ec781a7e6f5d8cde1a",
+      "activeBefore": {
+        "caseMs": 195,
+        "totalMs": 195
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 181,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "c55ccc43d893cada1db8c5dbb5fc641ebf41c5dd159979b68f029525d6e81213"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 2,
+      "caseId": 7,
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "startedAt": "2026-10-23T12:40:53.211Z",
+      "durationMs": 474,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "2c726061358fa490a6dcf45981fbb37856f64c140a194ba496ffad0f2aa36cad",
+      "activeBefore": {
+        "caseMs": 884,
+        "totalMs": 884
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "read_background",
+          "bytes": 99,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "documentId",
+            "query",
+            "useForProcessing",
+            "replaceEvidence"
+          ],
+          "hash": "6c81570d61e53086ccef9a55b2916b69ac34d5cc192e01d7ce83e7d9e2743d9c"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 3,
+      "caseId": 7,
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "startedAt": "2026-10-23T12:40:53.820Z",
+      "durationMs": 3810,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "5937d45fb0f2358ae97302a42529ec4e9b6114b237008dbbd33edcb48cb3f91c",
+      "activeBefore": {
+        "caseMs": 1494,
+        "totalMs": 1494
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 2685,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control",
+            "title",
+            "executionMode",
+            "deliveries",
+            "requirements",
+            "allowedFields",
+            "metadataKeys",
+            "nextAction"
+          ],
+          "hash": "10f81bd11bbe5237cbfeaaa147d1aedf27d33236b95f53f6b250deea2792951f"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 4,
+      "caseId": 7,
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "startedAt": "2026-10-23T12:41:57.521Z",
+      "durationMs": 704,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "a78b0cf08b3f585a800f0501ab497f715c0cbf0345ab010a6b4d9c8f39db1734",
+      "activeBefore": {
+        "caseMs": 5590,
+        "totalMs": 5590
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 192,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "ac4138db9a189770f375259379c33a0a88fab709ddaab526d060609450a151da"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 5,
+      "caseId": 7,
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "startedAt": "2026-10-23T12:42:25.997Z",
+      "durationMs": 716,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "24c1f8a33322496edeb15a11bd0db39343294dda726f147b66cbfdf6a88f2375",
+      "activeBefore": {
+        "caseMs": 6580,
+        "totalMs": 6580
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 207,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "3671e7efc9f72ccdf6d57db2d3e964493f7809dc7a00b772a9f49481e2cf1553"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 6,
+      "caseId": 7,
+      "sessionId": "conversation_74e5ab15fc4e40ac8aab559316601c34",
+      "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+      "startedAt": "2026-10-23T12:42:26.867Z",
+      "durationMs": 10522,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "c584b9220d22f12e430a8e157b8f6a4788072bdc5c71bed84b01fa932e02411d",
+      "activeBefore": {
+        "caseMs": 7450,
+        "totalMs": 7450
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        },
+        {
+          "name": "plan_task",
+          "bytes": 234,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "ce8de6477b2c214e797b05044be4f90b689ef4ad9f8b0f81b927bfd6024c2c76"
+        }
+      ],
+      "finishReason": "tool_calls"
+    }
+  ],
+  "blocked": [],
+  "createdAt": "2026-10-23T12:37:00.665Z",
+  "closedAt": "2026-10-23T12:45:30.265Z",
+  "result": "pass"
+}
