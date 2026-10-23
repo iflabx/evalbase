@@ -441,8 +441,7 @@ export function argumentRepair(options: {
         : undefined;
     if (
       local?.success &&
-      ((options.prepare && name === "plan_task") ||
-        sameRepairMeaning(original, local.value, schema))
+      (options.prepare || sameRepairMeaning(original, local.value, schema))
     ) {
       if (abortSignal?.aborted) {
         await options.observed(name, "interrupted");
@@ -520,7 +519,7 @@ export function argumentRepair(options: {
           ?.issues ?? [{ path: "/", keyword: "schema" }];
         return false;
       }
-      if (kind === "format" && !sameRepairMeaning(original, merged, schema)) {
+      if (kind === "format" && !sameRepairMeaning(normalized, merged, schema)) {
         latestIssues = focus.details.issues.map((issue) => ({
           ...issue,
           keyword: "meaning",

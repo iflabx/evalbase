@@ -27,6 +27,7 @@ export const processingProposalValidationWithoutEffect = new Set([
   "assistant_candidate_review_incomplete",
 ]);
 export function hasNoEffect(record: Record<string, any>) {
+  if (["partial", "committed", "unknown"].includes(record.effect)) return false;
   return (
     record.effect === "none" ||
     (record.status === "failed" &&

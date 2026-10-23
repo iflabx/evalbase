@@ -93,7 +93,11 @@ export function recoveryProgressFacts(
     ...new Set<string>([
       ...inherited,
       ...(turn.tool_results ?? [])
-        .filter((r: any) => r.status === "succeeded" && r.name !== "plan_task")
+        .filter(
+          (r: any) =>
+            r.status === "succeeded" &&
+            !["plan_task", "query_project"].includes(r.name),
+        )
         .map((r: any) =>
           sha256(canonicalJson({ name: r.name, result: r.result })),
         ),

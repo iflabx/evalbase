@@ -149,7 +149,11 @@ type Step = {
   action: string;
   input?: Record<string, any>;
   scope?: "preview" | "all";
-  operation?: { key: string; input: Record<string, any> };
+  operation?: {
+    key: string;
+    input: Record<string, any>;
+    preparation?: Record<string, any>;
+  };
   backgroundRead?: { identity: string; indices: number[] };
   status: "pending" | "waiting" | "executed";
   receipt?: {
@@ -820,6 +824,9 @@ export function selectionParameters(
     selection.value === targetCount
   )
     selection.mode = "count";
+  // Legacy nonrandom selections recorded seed:null; it has no algorithmic meaning.
+  if (selection.method === "all" && selection.seed === null)
+    delete selection.seed;
   return selection;
 }
 
@@ -841,7 +848,7 @@ export function bindTaskInput(
       : { ...supplied };
   if (
     input.selection &&
-    ["submit_processing", "select_candidates"].includes(name)
+    ["read_records", "submit_processing", "select_candidates"].includes(name)
   ) {
     input.selection = selectionParameters(input.selection, task.targetCount);
   }
@@ -883,7 +890,13 @@ export function bindTaskInput(
       input.target = { ...input.target, id: input.target.id ?? draftId };
   }
   if (name === "request_processing_apply") {
-    if (selection?.scope === "task" && input.resultIds === undefined)
+    if (
+      selection?.scope === "task" &&
+      input.resultIds === undefined &&
+      input.allSelected === undefined &&
+      input.allValid === undefined &&
+      input.allTask === undefined
+    )
       input.allSelected = true;
     else if (
       input.allValid === true &&
@@ -896,7 +909,9 @@ export function bindTaskInput(
     name === "refine_candidates" &&
     selection?.scope === "task" &&
     input.resultIds === undefined &&
-    input.where === undefined
+    input.where === undefined &&
+    input.allSelected === undefined &&
+    input.allResults === undefined
   )
     input.allSelected = true;
   if (
@@ -906,8 +921,8 @@ export function bindTaskInput(
     const requirements = normalizedRequirements(task.requirements ?? []).join(
       "\n",
     );
-    if (requirements) input.instructions = requirements;
-    else if (input.operation === "clean") input.instructions = "";
+    if (input.operation === "clean") input.instructions = "";
+    else if (requirements) input.instructions = requirements;
   }
   if (["submit_processing", "refine_candidates"].includes(name)) {
     input.allowedFields ??= task.allowedFields ?? ["question"];

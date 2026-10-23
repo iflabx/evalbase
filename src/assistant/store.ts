@@ -1405,6 +1405,44 @@ export async function recoverProposalReceipt(
   return receipt;
 }
 
+/** Only committed domain receipts establish partial submission, never an error-code guess. */
+export async function recoverAssistantPartialReceipt(
+  db: Pick<Database, "query">,
+  scope: AssistantScope,
+  item: Record<string, any>,
+) {
+  if (item.name !== "generate_candidates") return;
+  await assistantAccess(db, scope, true);
+  const target = (
+    await db.query(
+      "SELECT d.id,d.name FROM draft_creation_receipt r JOIN collaborative_draft d ON d.id=r.draft_id WHERE r.project_id=$1 AND r.actor_id=$2 AND r.operation_key=$3",
+      [scope.projectId, scope.actorId, item.key + ":target"],
+    )
+  ).rows[0];
+  const prepared = (
+    await db.query(
+      "SELECT 1 FROM assistant_session WHERE project_id=$1 AND actor_id=$2 AND task->'generationPreparation'->>'key'=$3",
+      [scope.projectId, scope.actorId, item.key],
+    )
+  ).rowCount;
+  if (!target && !prepared) return;
+  if (target)
+    await processingSourceAvailable(
+      db,
+      scope.projectId,
+      { kind: "draft", id: target.id, recordIds: [] },
+      true,
+    );
+  return {
+    effect: "partial" as const,
+    result: {
+      requirementsSaved: !!prepared,
+      ...(target ? { draftId: target.id, name: target.name } : {}),
+    },
+    references: target ? [{ kind: "draft" as const, id: target.id }] : [],
+  };
+}
+
 export async function recoverAssistantReceipt(
   db: Pick<Database, "query">,
   scope: AssistantScope,

@@ -19,6 +19,7 @@ export type CandidateScope = {
   sourceCount: number;
   seed: string;
   conditions?: SelectionCondition[][];
+  configuration?: unknown;
   groups: {
     label: string;
     requested: number;
@@ -45,8 +46,40 @@ export function selectCandidateCollection(
   );
   const selected = selectCandidateRun(
     { ...data, records, total: records.length },
-    input,
+    {
+      ...input,
+      ...(!input.reselect &&
+      previous &&
+      !input.seed &&
+      !(input.selection as any)?.seed
+        ? { seed: previous.seed }
+        : {}),
+    },
   );
+  if (previous && !input.reselect) {
+    const same = previous.configuration
+      ? canonicalJson(previous.configuration) ===
+        canonicalJson(selected.configuration)
+      : previous.targetCount === selected.targetCount &&
+        canonicalJson(previous.conditions) ===
+          canonicalJson(selected.conditions);
+    if (same) {
+      if (
+        previous.sourceCount !== records.length ||
+        !previous.members?.every((member) => {
+          const run = runs.find((r) => r.run.id === member.runId);
+          if (!run) return false;
+          const wanted = new Set(member.resultIds);
+          const actual = run.records.filter((r) => wanted.has(r.id));
+          return (
+            actual.length === wanted.size && digest(actual) === member.hash
+          );
+        })
+      )
+        throw new AssistantError(409, "assistant_candidate_selection_changed");
+      return previous;
+    }
+  }
   const keys = new Set(selected.originKeys);
   const members = runs.map((run) => {
     const rows = run.records.filter((row) =>
@@ -92,6 +125,7 @@ export function selectCandidateRun(
   data: Run,
   input: {
     seed?: string;
+    reselect?: boolean;
     selection?: unknown;
     groups?: { count: number; conditions: SelectionCondition[] }[];
   },
@@ -100,7 +134,16 @@ export function selectCandidateRun(
     throw new AssistantError(409, "processing_still_running");
   if (Boolean(input.selection) === Boolean(input.groups))
     throw new AssistantError(422, "selection_invalid");
-  const seed = input.seed?.trim() || randomUUID();
+  const inner = (
+    input.selection as { seed?: string } | undefined
+  )?.seed?.trim();
+  if (input.seed?.trim() && inner && input.seed.trim() !== inner)
+    throw new AssistantError(
+      422,
+      "selection_invalid",
+      "内外随机种子不一致，请保留同一随机种子。",
+    );
+  const seed = input.seed?.trim() || inner || randomUUID();
   const rows = data.records.map((row, ordinal) => ({
     ...row.result,
     id: row.id,
@@ -114,7 +157,7 @@ export function selectCandidateRun(
     value: group.count,
     conditions: group.conditions,
     seed: `${seed}:${index}`,
-  })) ?? [input.selection];
+  })) ?? [{ ...(input.selection as Record<string, unknown>), seed }];
   const groups = configurations.map((configuration) => {
     const group = selectRecords(
       rows.filter((row) => !selected.has(row.id)),
@@ -148,6 +191,7 @@ export function selectCandidateRun(
     targetCount,
     sourceCount: data.total,
     seed,
+    configuration: configurations,
     conditions: configurations.map(
       (configuration) =>
         (configuration as { conditions: SelectionCondition[] }).conditions,
