@@ -1,3 +1,5 @@
+2026-10-23补修当前状态：OPT-48代码1026c17修复真实长历史草稿复用回归并适配原8项旧夹具；8项复测、2项新增兼容/任务隔离及2项既有用途保护通过。实际补修复检12项，复用未受影响原证据后去重共170项；详见[本轮记录](opt48-verification-20261023.md#opt48-legacy-followup)。Owner pending，OPT-49/50仍未开发；原数据与预算保留，4217未更新。下方初始160项及失败记录保留历史原义。
+
 2026-10-23 当前状态：[OPT-48](issues/48-conversation-task-boundaries-and-context.md)开发及定向验证完成，代码83e7d3d，160项不同定向用例通过；稳定任务身份、原子切换/恢复、历史权限与最终出站整包投影已接入，Implementation completed / Validation targeted-pass / Owner pending。用例、双轴审阅及限制见[本轮证据](opt48-verification-20261023.md)。OPT-49/50仍not-started，依赖不变。未更新4217、调用真实模型/CU、合并或推送；原验收数据与旧预算保留。以下带日期记录为历史快照。
 
 2026-10-23 当前状态：[OPT-47](issues/47-source-discovery-and-processing-preflight.md)开发及定向验证完成，代码 ca2e4b1；247项不同用例通过，Implementation completed / Validation targeted-pass / Owner pending，见[本轮证据](opt47-verification-20261023.md)。OPT-48～50仍not-started，依赖不变。未部署4217、调用真实模型/CU或合并推送，历史验收数据与旧预算保留。以下带日期记录为历史快照。

@@ -1,0 +1,189 @@
+{
+  "ticket": "OPT-48 follow-up",
+  "baseline": "a796433c9066e793fcb87219f652f8dac2d9a5c1",
+  "codeCommit": "1026c1705258744b9e5aa89d2a39d410526c0de3",
+  "originalDistinctTests": 160,
+  "distinctTests": 170,
+  "repairedLegacyTests": 8,
+  "newRegressions": 2,
+  "directlyRecheckedTests": [
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract uses real SDK tool calls and keeps one active turn and an idempotent created draft",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract requires a bound explicit confirmation, then publishes once and replays the receipt",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract refuses client-supplied tool history and other users' sessions; expiry is recoverable",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract blocks private history after editor-to-viewer downgrade while allowing published record queries in a fresh session",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract keeps unrelated conversations when deleting a draft, and erases sessions that referenced the deleted body",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract does not return captured history when deletion finishes during context assembly",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract reuses a session-created draft even when it is outside the twenty-object summary",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract binds the current page to the authorized turn without trusting client history or shifting session numbers",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection reuses older committed drafts independently of model history and isolates same names across tasks (current)",
+      "status": "passed",
+      "evidence": "receipt-compatibility.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection reuses older committed drafts independently of model history and isolates same names across tasks (legacy)",
+      "status": "passed",
+      "evidence": "receipt-compatibility.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 validates create conditions before an existing-name reuse",
+      "status": "passed",
+      "evidence": "reuse-protection.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 reuse cannot silently ignore a new purpose",
+      "status": "passed",
+      "evidence": "reuse-protection.json"
+    }
+  ],
+  "tests": [
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract uses real SDK tool calls and keeps one active turn and an idempotent created draft",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract requires a bound explicit confirmation, then publishes once and replays the receipt",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract refuses client-supplied tool history and other users' sessions; expiry is recoverable",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract blocks private history after editor-to-viewer downgrade while allowing published record queries in a fresh session",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract keeps unrelated conversations when deleting a draft, and erases sessions that referenced the deleted body",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract does not return captured history when deletion finishes during context assembly",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract reuses a session-created draft even when it is outside the twenty-object summary",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/project-assistant.test.ts",
+      "name": "project assistant public contract binds the current page to the authorized turn without trusting client history or shifting session numbers",
+      "status": "passed",
+      "evidence": "eight-second.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection reuses older committed drafts independently of model history and isolates same names across tasks (current)",
+      "status": "passed",
+      "evidence": "receipt-compatibility.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection reuses older committed drafts independently of model history and isolates same names across tasks (legacy)",
+      "status": "passed",
+      "evidence": "receipt-compatibility.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 validates create conditions before an existing-name reuse",
+      "status": "passed",
+      "evidence": "reuse-protection.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 reuse cannot silently ignore a new purpose",
+      "status": "passed",
+      "evidence": "reuse-protection.json"
+    }
+  ],
+  "firstFailureReports": [
+    "../project-compat.json",
+    "eight-first.json",
+    "older-receipt-red.json"
+  ],
+  "cause": "The fixture omitted mandatory control and discovery and assumed a business tool at index zero. One obsolete whole-session 404 expectation needed permission-preserving redaction assertions. After fixture repair, a genuine draft-reuse regression was reproduced: model-history trimming also limited the business reuse set.",
+  "fix": "Find current-task created drafts via persisted successful receipts, independent of bounded model history; retain project/write/existence/ambiguity/purpose guards. Legacy task identity remains coalesced; independent tasks do not implicitly reuse prior named drafts.",
+  "review": {
+    "standards": "no actionable findings",
+    "spec": "no P0/P1; P2 task-scope wording corrected"
+  },
+  "staticChecks": {
+    "typescript": "types.log exit 0",
+    "eslint": "static.log exit 0",
+    "prettier": "passed",
+    "diffCheck": "passed",
+    "docsCheck": "npm run docs:check: exit 0; Markdown links/fences and JSON parsed"
+  },
+  "safety": {
+    "realModelRequests": 0,
+    "computerUseRuns": 0,
+    "deployed": false,
+    "merged": false,
+    "pushed": false,
+    "ownerAcceptanceDatabaseWrites": false,
+    "oldBudgetReset": false,
+    "semanticResultsSha256": "c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c"
+  },
+  "scope": "Only localized OPT-48 follow-up; no full-suite claim, no deployment, real models, Computer Use or prior acceptance reruns.",
+  "reusedOriginalEvidence": "../summary.json",
+  "reusedUnchangedTests": 158,
+  "resultSelection": "Original 160 tests, replace the two rechecked reuse-protection results; add eight repaired legacy cases and two new current/legacy cases. Deduplicate by file and full name: 170."
+}

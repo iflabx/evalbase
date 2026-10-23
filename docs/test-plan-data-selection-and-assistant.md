@@ -352,4 +352,4 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 
 [OPT-48](../.scratch/assistant-optimization/issues/48-conversation-task-boundaries-and-context.md) R48-1～12的隔离定向验证、实际出站请求捕获和过程失败见[本轮唯一证据](../.scratch/assistant-optimization/opt48-verification-20261023.md)。新公共回归覆盖同会话切换/恢复、耗尽后修改/继续、礼貌及多分句边界、迟到令牌/旧确认、120条混合历史与三个任务、来源删除/降权、旧格式只读、当前页面和指代追问，以及9/20条长要求的正常/SDK纠错/失败恢复。单元测试另验证派生8000字符限制与容量缩减；相邻恢复、处理预检和确认保护按受影响范围复检。
 
-新合同不再把累计turn数量当输入窗口；用户/自动计数分别报告。所有模型HTTP请求由同一实际出站投影保留有效合同、当前请求、工具Schema和输出预留，容量不足准确拒绝。旧大夹具的过时控制输入和旧“整会话404”预期未伪记通过，替代公开覆盖及基线反证在本轮证据中列明。Implementation completed / Validation targeted-pass / Owner pending；本轮未部署4217、运行真实模型/CU或重跑历史验收，原数据与旧预算保持。OPT-49/50仍未开发。
+新合同不再把累计turn数量当输入窗口；用户/自动计数分别报告。所有模型HTTP请求由同一实际出站投影保留有效合同、当前请求、工具Schema和输出预留，容量不足准确拒绝。旧大夹具的初始控制输入和“整会话404”失败保留；随后已修共享夹具并逐项8/8复验，另红灯定位并修复真实的六轮历史导致草稿重复创建问题。当前/legacy及独立任务隔离两项新增、两项用途保护回归通过；具体结果和初始归因更正见[补修记录](../.scratch/assistant-optimization/opt48-verification-20261023.md#opt48-legacy-followup)。Implementation completed / Validation targeted-pass / Owner pending；本轮未部署4217、运行真实模型/CU或重跑历史验收，原数据与旧预算保持。OPT-49/50仍未开发。

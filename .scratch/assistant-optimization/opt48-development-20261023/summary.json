@@ -1000,7 +1000,15 @@
     "failed": 8,
     "evidence": "project-compat.json",
     "baselineEvidence": "baseline-project-compat.json",
-    "note": "Seven selected cases use an outdated model mock without plan_task.control (including cascading missing draft); the first independently reproduced on baseline. One asserts obsolete whole-session 404 rather than authorized redaction. These eight are not counted as passing or as full-suite green."
+    "note": "Seven selected cases use an outdated model mock without plan_task.control (including cascading missing draft); the first independently reproduced on baseline. One asserts obsolete whole-session 404 rather than authorized redaction. These eight are not counted as passing or as full-suite green. This describes the initial run only; the eight failures were subsequently fixed, including a real bounded-history draft-reuse regression. See resolution.",
+    "resolution": {
+      "status": "fixed",
+      "codeCommit": "1026c1705258744b9e5aa89d2a39d410526c0de3",
+      "passed": 8,
+      "failed": 0,
+      "newRegressionTests": 2,
+      "evidence": "legacy-fixture-followup/summary.json"
+    }
   },
   "safety": {
     "realModelRequests": 0,
@@ -1018,5 +1026,6 @@
     "prettier": "changed code/test files formatted",
     "gitDiffCheck": "passed",
     "docsCheck": "npm run docs:check: exit 0"
-  }
+  },
+  "latestCodeCommit": "1026c1705258744b9e5aa89d2a39d410526c0de3"
 }
