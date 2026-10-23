@@ -370,6 +370,37 @@ describe("OPT47 unified processing public boundary", () => {
     return result.json();
   }
 
+  it.each(["query", "plan", "execute"])(
+    "OPT50 generic processing intent %s must discover real sources before asking",
+    async (mode) => {
+      await file("首轮资料甲" + randomUUID() + ".jsonl");
+      await file("首轮资料乙" + randomUUID() + ".jsonl");
+      const id = await newSession(),
+        before = await effects();
+      const state = await send(id, "帮我整理一下这些数据", [
+        decision(mode),
+        { name: "query_project", input: { kind: "files" } },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.question).toContain("请选择要处理的资料");
+      expect(state.task.sourceDiscovery.items.length).toBeGreaterThan(1);
+      expect(state.task.sourceDiscovery.reads).toBeLessThanOrEqual(2);
+      expect(observed).toHaveLength(2);
+      expect(observed[1].tools.map((t: any) => t.function.name)).toEqual([
+        "query_project",
+      ]);
+      expect(observed[1].tool_choice).toEqual({
+        type: "function",
+        function: { name: "query_project" },
+      });
+      expect(state.task.turnControl.mode).toBe(mode);
+      expect(await effects()).toEqual(before);
+    },
+  );
+
   it.each([null, "files", [{ kind: "files" }]])(
     "OPT50 damaged root query %j uses context and persists bounded source clarification",
     async (broken) => {

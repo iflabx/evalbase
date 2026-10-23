@@ -8057,20 +8057,35 @@ export async function executeAssistantTurn(
               "\n按全部最新问题修正同一未提交的处理提议，不改变来源、用户数量、字段保护或固定勾选。缺少实际业务选择才用plan_task保存具体问题；不能向用户要求工具参数。",
           };
         }
+        const needsWork = turnNeedsWork(
+          decision,
+          currentTask,
+          (
+            await db.query(
+              "SELECT tool_results FROM assistant_turn WHERE id=$1",
+              [turn.id],
+            )
+          ).rows[0].tool_results,
+          context.state,
+        );
+        // Planning a processing request needs the same real source catalogue as execution.
+        // This read-only routing does not grant processing authorization.
+        const needsProcessingSource =
+          !goalContract &&
+          !currentTask.target &&
+          !currentTask.draftId &&
+          !currentTask.runId &&
+          !currentTask.processingScope?.source &&
+          !currentTask.sourceDiscovery?.resolvedSource &&
+          !(context.state as any).pageObject &&
+          sourceDiscoveryApplies(currentTask, amendmentRequestText, {
+            kind: "files",
+          });
         if (
-          decision?.mode === "query" &&
-          turnNeedsWork(
-            decision,
-            currentTask,
-            (
-              await db.query(
-                "SELECT tool_results FROM assistant_turn WHERE id=$1",
-                [turn.id],
-              )
-            ).rows[0].tool_results,
-            context.state,
-          )
-        )
+          needsWork &&
+          (decision?.mode === "query" || needsProcessingSource)
+        ) {
+          activeRepairTools = new Set(["query_project"]);
           return {
             ...fixedState,
             activeTools: ["query_project"],
@@ -8079,20 +8094,8 @@ export async function executeAssistantTurn(
               instructions +
               "\n本轮没有已核对的资料对象，引用列表为空不表示项目没有资料。请先query_project按用户给出的名称查询files、drafts或testSets；没有名称可列出当前项目供选择。不要只返回query控制或声称项目没有资料。查询只读取当前用户有权访问的元信息，不授予数据修改权限。",
           };
-        if (
-          !goalContract &&
-          turnNeedsWork(
-            decision,
-            currentTask,
-            (
-              await db.query(
-                "SELECT tool_results FROM assistant_turn WHERE id=$1",
-                [turn.id],
-              )
-            ).rows[0].tool_results,
-            context.state,
-          )
-        ) {
+        }
+        if (!goalContract && needsWork) {
           return {
             ...fixedState,
             activeTools,
