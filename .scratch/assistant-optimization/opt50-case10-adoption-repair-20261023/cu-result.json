@@ -1,0 +1,1255 @@
+{
+  "status": "pass",
+  "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+  "projectId": "project_2f5c0f28a9664a51bbb6f4485958c854",
+  "sessionId": "conversation_5fe0eddc6ce6453fad825ae0182666e2",
+  "draftId": "collabdraft_8a344dfd2d304e7897bf8da23060c93b",
+  "rawUnchanged": true,
+  "rows": [
+    {
+      "question": "我的退款目前处理到哪一步了？",
+      "expected_output": "保留原期望 A",
+      "metadata": [
+        {
+          "key": "分类",
+          "value": "退款进度"
+        },
+        {
+          "key": "渠道",
+          "value": "App"
+        }
+      ],
+      "source": {
+        "assetId": "asset_787feca961c64082816ceda8747cf111",
+        "ordinal": 1
+      }
+    },
+    {
+      "question": "退款发起后大约什么时候到账？",
+      "expected_output": "保留原期望 B",
+      "metadata": [
+        {
+          "key": "分类",
+          "value": "退款到账时间"
+        },
+        {
+          "key": "渠道",
+          "value": "网页"
+        }
+      ],
+      "source": {
+        "assetId": "asset_787feca961c64082816ceda8747cf111",
+        "ordinal": 2
+      }
+    }
+  ],
+  "runs": [
+    {
+      "id": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+      "options": {
+        "operation": "clean",
+        "instructions": "",
+        "allowedFields": [
+          "question"
+        ]
+      },
+      "input_count": 2,
+      "source": {
+        "kind": "assets",
+        "assetIds": [
+          "asset_005dd30ad70345dfa5293965b9a20aba"
+        ],
+        "recordIds": [
+          "asset_005dd30ad70345dfa5293965b9a20aba:1",
+          "asset_005dd30ad70345dfa5293965b9a20aba:2"
+        ]
+      },
+      "job_id": "job_7052d279d3ef4bd28114b01353513c63"
+    }
+  ],
+  "drafts": [
+    {
+      "id": "collabdraft_8a344dfd2d304e7897bf8da23060c93b",
+      "name": "客服清洗复测",
+      "status": "editing",
+      "published_version_id": null
+    }
+  ],
+  "proposals": [
+    {
+      "id": "proposal_78adc78ee8af43b499de778a0a698068",
+      "action": "processing",
+      "status": "succeeded",
+      "parameters": {
+        "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+        "target": {
+          "kind": "newDraft",
+          "name": "客服清洗复测",
+          "purpose": "保存客服清洗测试.jsonl 的全部清洗结果"
+        },
+        "resultIds": [
+          "0:0",
+          "0:1"
+        ],
+        "resultsGuard": {
+          "states": [
+            {
+              "id": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "revision": 1
+            }
+          ],
+          "excludedGroups": []
+        }
+      },
+      "receipt": {
+        "receipt": {
+          "added": 2,
+          "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+          "adopted": 2,
+          "assetId": "asset_787feca961c64082816ceda8747cf111",
+          "draftId": "collabdraft_8a344dfd2d304e7897bf8da23060c93b",
+          "removed": 0,
+          "updated": 0,
+          "fileName": "清洗结果-d097b9d0.jsonl",
+          "revision": 1,
+          "savedRows": [
+            {
+              "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "recordId": "draftrow_b42cef67fbeb416593d225898deb48fd",
+              "resultId": "0:0"
+            },
+            {
+              "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "recordId": "draftrow_fd22aca3fbb349d6aeba08f35db85601",
+              "resultId": "0:1"
+            }
+          ],
+          "acceptanceId": "adoption_63330f42222a45a19de0fc53225d87de",
+          "changedFields": 0,
+          "candidateOrigins": [
+            {
+              "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "resultId": "0:0"
+            },
+            {
+              "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "resultId": "0:1"
+            }
+          ]
+        },
+        "replayed": false
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_ae03684168754c5cbeec6f43adeb0608",
+      "event": "user",
+      "user_text": "帮我整理一下这些数据",
+      "assistant_text": "请选择要处理的资料：第1份「客服其他资料.jsonl」（文件，2条）；第2份「客服清洗测试.jsonl」（文件，2条）。",
+      "status": "succeeded",
+      "error_code": null,
+      "tool_results": [
+        {
+          "key": "assistant:turn_ae03684168754c5cbeec6f43adeb0608:642fa9f61bb6210aba968157c0ef081d6be57582ef7701a6b34e393d80b6514b",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "plan",
+              "explanation": "当前会话还没有看到具体数据文件、草稿或测试集，请先告诉我要整理哪份资料，以及希望整理成什么形式。"
+            }
+          },
+          "result": {
+            "task": {
+              "stage": "waiting_input",
+              "title": "新任务",
+              "taskId": "assistanttask_9b493bd3ab5844739bb311c469a0fa36",
+              "autoCount": 0,
+              "objective": "帮我整理一下这些数据",
+              "nextAction": null,
+              "turnControl": {
+                "mode": "plan",
+                "source": "model",
+                "turnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+                "explanation": "当前会话还没有看到具体数据文件、草稿或测试集，请先告诉我要整理哪份资料，以及希望整理成什么形式。",
+                "updateSaved": true,
+                "taskRevision": 1
+              },
+              "originTurnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "requirements": [],
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": true,
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic"
+            },
+            "control": {
+              "mode": "plan",
+              "source": "model",
+              "turnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "explanation": "当前会话还没有看到具体数据文件、草稿或测试集，请先告诉我要整理哪份资料，以及希望整理成什么形式。",
+              "updateSaved": true,
+              "taskRevision": 1
+            },
+            "unchanged": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 1
+          }
+        },
+        {
+          "key": "assistant:turn_ae03684168754c5cbeec6f43adeb0608:3017db774592ca8f655c473fc18ab08299eff9fb8baf448ab8906e33a18f3151",
+          "name": "query_project",
+          "input": {
+            "kind": "drafts",
+            "offset": 0,
+            "search": "数据"
+          },
+          "result": {
+            "items": [
+              {
+                "id": "asset_457c57527bb74f7286ce7b4e8b0b0498",
+                "kind": "asset",
+                "name": "客服其他资料.jsonl",
+                "count": 2,
+                "revision": null
+              },
+              {
+                "id": "asset_005dd30ad70345dfa5293965b9a20aba",
+                "kind": "asset",
+                "name": "客服清洗测试.jsonl",
+                "count": 2,
+                "revision": null
+              }
+            ],
+            "state": {
+              "items": [
+                {
+                  "id": "asset_457c57527bb74f7286ce7b4e8b0b0498",
+                  "kind": "asset",
+                  "name": "客服其他资料.jsonl",
+                  "count": 2,
+                  "revision": null
+                },
+                {
+                  "id": "asset_005dd30ad70345dfa5293965b9a20aba",
+                  "kind": "asset",
+                  "name": "客服清洗测试.jsonl",
+                  "count": 2,
+                  "revision": null
+                }
+              ],
+              "query": "",
+              "reads": 1,
+              "offset": 0,
+              "version": 1,
+              "question": "请选择要处理的资料：第1份「客服其他资料.jsonl」（文件，2条）；第2份「客服清洗测试.jsonl」（文件，2条）。",
+              "requestId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "signature": "704cd7a618579356d424d768e32717a7b2770cbdbfabefcfa1cca0cbfba37531",
+              "nextOffset": null,
+              "requestText": "帮我整理一下这些数据"
+            },
+            "question": "请选择要处理的资料：第1份「客服其他资料.jsonl」（文件，2条）；第2份「客服清洗测试.jsonl」（文件，2条）。",
+            "nextOffset": null,
+            "logicalReads": 1,
+            "requiresClarification": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "turn_64df447c6de84100a8ad8435acaf429e",
+      "event": "user",
+      "user_text": "客服清洗测试.jsonl",
+      "assistant_text": "已选定资料「客服清洗测试.jsonl」，尚未开始处理。请说明处理方式和记录范围。",
+      "status": "succeeded",
+      "error_code": null,
+      "tool_results": [
+        {
+          "key": "assistant:turn_64df447c6de84100a8ad8435acaf429e:01c003ba6d8a323f6afd0eaa806a735adace4c10879b2c664a609fbaa421de9a",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "plan",
+              "explanation": "已选定「客服清洗测试.jsonl」（2条）。请说明要怎样整理，例如清洗格式、统一字段、改写问题或答案，或按指定规则分类。"
+            }
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "waiting_input",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_005dd30ad70345dfa5293965b9a20aba"
+                ]
+              },
+              "taskId": "assistanttask_9b493bd3ab5844739bb311c469a0fa36",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "帮我整理一下这些数据",
+              "nextAction": null,
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "plan",
+                "source": "model",
+                "turnId": "turn_64df447c6de84100a8ad8435acaf429e",
+                "explanation": "已选定「客服清洗测试.jsonl」（2条）。请说明要怎样整理，例如清洗格式、统一字段、改写问题或答案，或按指定规则分类。",
+                "updateSaved": true,
+                "taskRevision": 2
+              },
+              "originTurnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "requirements": [],
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": true,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_005dd30ad70345dfa5293965b9a20aba",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_64df447c6de84100a8ad8435acaf429e",
+                "signature": "d2ee6d1f884e097a2aa674ccf3acdfdef2eefc6d7d20e08fcc21fa1998c6f62b",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_005dd30ad70345dfa5293965b9a20aba"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "plan",
+              "source": "model",
+              "turnId": "turn_64df447c6de84100a8ad8435acaf429e",
+              "explanation": "已选定「客服清洗测试.jsonl」（2条）。请说明要怎样整理，例如清洗格式、统一字段、改写问题或答案，或按指定规则分类。",
+              "updateSaved": true,
+              "taskRevision": 2
+            },
+            "unchanged": false,
+            "sourceConfirmed": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "turn_6299593ef0a34070820c5bb539ed0f76",
+      "event": "user",
+      "user_text": "清洗这份文件的全部2条记录，其他不改。",
+      "assistant_text": "处理任务已提交，完成后将继续核对候选。",
+      "status": "succeeded",
+      "error_code": null,
+      "tool_results": [
+        {
+          "key": "assistant:turn_6299593ef0a34070820c5bb539ed0f76:7da884ac8ba10bf4e298ecc8a75b6751e73e2c77dc58f2dbe6c934b2cbff588f",
+          "name": "plan_task",
+          "input": {
+            "target": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_005dd30ad70345dfa5293965b9a20aba"
+              ]
+            },
+            "control": {
+              "mode": "execute",
+              "explanation": "已按你的要求明确为清洗「客服清洗测试.jsonl」的全部2条记录，其他字段不改。",
+              "requiresUpdate": true
+            },
+            "nextAction": "submit_processing",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "inspecting",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_005dd30ad70345dfa5293965b9a20aba"
+                ]
+              },
+              "taskId": "assistanttask_9b493bd3ab5844739bb311c469a0fa36",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "帮我整理一下这些数据",
+              "nextAction": "submit_processing",
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_6299593ef0a34070820c5bb539ed0f76",
+                "explanation": "已按你的要求明确为清洗「客服清洗测试.jsonl」的全部2条记录，其他字段不改。",
+                "updateSaved": true,
+                "taskRevision": 3,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "requirements": [],
+              "allowedFields": [
+                "question"
+              ],
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": false,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_005dd30ad70345dfa5293965b9a20aba",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_64df447c6de84100a8ad8435acaf429e",
+                "signature": "d2ee6d1f884e097a2aa674ccf3acdfdef2eefc6d7d20e08fcc21fa1998c6f62b",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_005dd30ad70345dfa5293965b9a20aba"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_6299593ef0a34070820c5bb539ed0f76",
+              "explanation": "已按你的要求明确为清洗「客服清洗测试.jsonl」的全部2条记录，其他字段不改。",
+              "updateSaved": true,
+              "taskRevision": 3,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 3
+          }
+        },
+        {
+          "key": "assistant:turn_6299593ef0a34070820c5bb539ed0f76:validation:450e9437b1e1feea161d9f5bd3d531fee7d8ab86fdc157f35e6272daf64c81ab",
+          "name": "submit_processing",
+          "error": {
+            "code": "processing_configuration_invalid",
+            "hint": "Metadata保持原值时不能指定可修改的子字段。；请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+            "issues": [
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "Metadata保持原值时不能指定可修改的子字段。",
+                "operation": "clean"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys/0",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+                "operation": "clean"
+              }
+            ]
+          },
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_005dd30ad70345dfa5293965b9a20aba"
+              ]
+            },
+            "operation": "clean",
+            "outputCount": 2,
+            "instructions": "",
+            "metadataKeys": [
+              "question"
+            ],
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 3
+          }
+        },
+        {
+          "key": "assistant:turn_6299593ef0a34070820c5bb539ed0f76:8eaca7c75a4e058856e01efcc7da8db133c4746dd3df0423bb4c0c4203864299",
+          "name": "submit_processing",
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_005dd30ad70345dfa5293965b9a20aba"
+              ]
+            },
+            "operation": "clean",
+            "allRecords": true,
+            "instructions": "",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "url": "/projects/project_2f5c0f28a9664a51bbb6f4485958c854/processing?run=processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "status": "queued",
+            "replayed": false,
+            "inputCount": 2
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "turn_cd9762914eb14982a9e29dea0c880116",
+      "event": "processing_completed",
+      "user_text": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+      "assistant_text": "已核对本段真实回执，任务进度与保留成果见下方。",
+      "status": "succeeded",
+      "error_code": null,
+      "tool_results": [
+        {
+          "key": "assistant:turn_6299593ef0a34070820c5bb539ed0f76:7da884ac8ba10bf4e298ecc8a75b6751e73e2c77dc58f2dbe6c934b2cbff588f",
+          "name": "plan_task",
+          "input": {
+            "target": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_005dd30ad70345dfa5293965b9a20aba"
+              ]
+            },
+            "control": {
+              "mode": "execute",
+              "explanation": "已按你的要求明确为清洗「客服清洗测试.jsonl」的全部2条记录，其他字段不改。",
+              "requiresUpdate": true
+            },
+            "nextAction": "submit_processing",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "inspecting",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_005dd30ad70345dfa5293965b9a20aba"
+                ]
+              },
+              "taskId": "assistanttask_9b493bd3ab5844739bb311c469a0fa36",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "帮我整理一下这些数据",
+              "nextAction": "submit_processing",
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_6299593ef0a34070820c5bb539ed0f76",
+                "explanation": "已按你的要求明确为清洗「客服清洗测试.jsonl」的全部2条记录，其他字段不改。",
+                "updateSaved": true,
+                "taskRevision": 3,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "requirements": [],
+              "allowedFields": [
+                "question"
+              ],
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": false,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_005dd30ad70345dfa5293965b9a20aba",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_64df447c6de84100a8ad8435acaf429e",
+                "signature": "d2ee6d1f884e097a2aa674ccf3acdfdef2eefc6d7d20e08fcc21fa1998c6f62b",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_005dd30ad70345dfa5293965b9a20aba"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_6299593ef0a34070820c5bb539ed0f76",
+              "explanation": "已按你的要求明确为清洗「客服清洗测试.jsonl」的全部2条记录，其他字段不改。",
+              "updateSaved": true,
+              "taskRevision": 3,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 3
+          }
+        },
+        {
+          "key": "assistant:turn_6299593ef0a34070820c5bb539ed0f76:validation:450e9437b1e1feea161d9f5bd3d531fee7d8ab86fdc157f35e6272daf64c81ab",
+          "name": "submit_processing",
+          "error": {
+            "code": "processing_configuration_invalid",
+            "hint": "Metadata保持原值时不能指定可修改的子字段。；请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+            "issues": [
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "Metadata保持原值时不能指定可修改的子字段。",
+                "operation": "clean"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys/0",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+                "operation": "clean"
+              }
+            ]
+          },
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_005dd30ad70345dfa5293965b9a20aba"
+              ]
+            },
+            "operation": "clean",
+            "outputCount": 2,
+            "instructions": "",
+            "metadataKeys": [
+              "question"
+            ],
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 3
+          }
+        },
+        {
+          "key": "assistant:turn_6299593ef0a34070820c5bb539ed0f76:8eaca7c75a4e058856e01efcc7da8db133c4746dd3df0423bb4c0c4203864299",
+          "name": "submit_processing",
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_005dd30ad70345dfa5293965b9a20aba"
+              ]
+            },
+            "operation": "clean",
+            "allRecords": true,
+            "instructions": "",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "url": "/projects/project_2f5c0f28a9664a51bbb6f4485958c854/processing?run=processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "status": "queued",
+            "replayed": false,
+            "inputCount": 2
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 3
+          }
+        },
+        {
+          "key": "assistant:turn_cd9762914eb14982a9e29dea0c880116:24f2c23e9a7e776df6d8b6630542d6e75fb86c2cd3ae60376eca2220990791eb",
+          "name": "read_processing",
+          "input": {
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0"
+          },
+          "result": {
+            "url": "/projects/project_2f5c0f28a9664a51bbb6f4485958c854/processing?run=processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "total": 2,
+            "issues": [],
+            "review": {
+              "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "total": 2,
+              "labels": [
+                {
+                  "count": 1,
+                  "label": "保留原期望 A"
+                },
+                {
+                  "count": 1,
+                  "label": "保留原期望 B"
+                }
+              ],
+              "content": {
+                "checked": 0,
+                "pending": 2,
+                "conforms": 0,
+                "uncertain": 0,
+                "nonconforms": 0,
+                "autoRepaired": 0
+              },
+              "complete": true,
+              "countKind": "new",
+              "duplicates": 0,
+              "labelKinds": 2,
+              "formatIssues": [],
+              "missingCount": 0,
+              "effectiveness": {
+                "modified": 2,
+                "unchanged": 0,
+                "unprocessed": 0,
+                "ineffectiveRewrite": 0
+              },
+              "expectedCount": 2,
+              "outsideLabels": 0,
+              "candidateCount": 2,
+              "countSatisfied": true,
+              "emptyQuestions": 0,
+              "semanticReview": "required",
+              "classifications": [],
+              "countUnverified": false,
+              "labelsTruncated": false,
+              "additionalLabels": 0,
+              "formatIssueCount": 0,
+              "questionCollisions": 0,
+              "compatibilityProblem": null,
+              "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+              "formatIssuesTruncated": false,
+              "protectedFieldChanges": 0
+            },
+            "status": "succeeded",
+            "partial": false,
+            "records": [
+              {
+                "id": "0:0",
+                "metadata": [
+                  {
+                    "key": "分类",
+                    "value": "退款进度"
+                  },
+                  {
+                    "key": "渠道",
+                    "value": "App"
+                  }
+                ],
+                "question": "我的退款目前处理到哪一步了？",
+                "resultRef": {
+                  "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+                  "resultId": "0:0"
+                },
+                "expectedOutput": "保留原期望 A"
+              },
+              {
+                "id": "0:1",
+                "metadata": [
+                  {
+                    "key": "分类",
+                    "value": "退款到账时间"
+                  },
+                  {
+                    "key": "渠道",
+                    "value": "网页"
+                  }
+                ],
+                "question": "退款发起后大约什么时候到账？",
+                "resultRef": {
+                  "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+                  "resultId": "0:1"
+                },
+                "expectedOutput": "保留原期望 B"
+              }
+            ],
+            "recovery": {
+              "reason": null,
+              "canRetry": false,
+              "canContinue": false
+            },
+            "taskRuns": [
+              {
+                "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+                "total": 2,
+                "status": "succeeded"
+              }
+            ],
+            "taskTotal": 2,
+            "diagnostics": [],
+            "missingCount": 0
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "turn_c8001f3fa5e44613a060e87010c54d75",
+      "event": "user",
+      "user_text": "保存为新的测试集草稿，叫客服清洗复测。",
+      "assistant_text": "已建立“采用处理结果”确认卡：\n\n- 来源：客服清洗测试.jsonl 的全部清洗结果\n- 数量：2 条\n- 目标：新建测试集草稿“客服清洗复测”\n\n请在确认卡中点击确认后，才会实际保存为新草稿。",
+      "status": "succeeded",
+      "error_code": null,
+      "tool_results": [
+        {
+          "key": "assistant:turn_c8001f3fa5e44613a060e87010c54d75:34c0335f40e477d354d0802ff2376e6f27f687a4e44a9c20177259df3bd7d5dc",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute",
+              "explanation": "已按你的要求把清洗结果保存为新草稿「客服清洗复测」。"
+            }
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "stage": "awaiting_review",
+              "title": "新任务",
+              "review": {
+                "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+                "total": 2,
+                "content": {
+                  "checked": 0,
+                  "pending": 2,
+                  "conforms": 0,
+                  "uncertain": 0,
+                  "nonconforms": 0,
+                  "autoRepaired": 0
+                },
+                "complete": true,
+                "countKind": "new",
+                "readAgain": {
+                  "tool": "read_processing",
+                  "input": {
+                    "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0"
+                  }
+                },
+                "duplicates": 0,
+                "labelKinds": 2,
+                "labelsHash": "3bd6611dd9ab0da5e22fb0496909f1d2456a88c6ce41b4d3fbf41e9362885b2b",
+                "formatIssues": [],
+                "missingCount": 0,
+                "effectiveness": {
+                  "modified": 2,
+                  "unchanged": 0,
+                  "unprocessed": 0,
+                  "ineffectiveRewrite": 0
+                },
+                "expectedCount": 2,
+                "outsideLabels": 0,
+                "candidateCount": 2,
+                "countSatisfied": true,
+                "emptyQuestions": 0,
+                "semanticReview": "required",
+                "classifications": [],
+                "countUnverified": false,
+                "additionalLabels": 0,
+                "questionCollisions": 0,
+                "compatibilityProblem": null,
+                "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+                "protectedFieldChanges": 0
+              },
+              "runIds": [
+                "processing_77cd0c8379db4cf0be9e7dc8d097b9d0"
+              ],
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_005dd30ad70345dfa5293965b9a20aba"
+                ]
+              },
+              "taskId": "assistanttask_9b493bd3ab5844739bb311c469a0fa36",
+              "question": null,
+              "recovery": null,
+              "autoCount": 1,
+              "objective": "帮我整理一下这些数据",
+              "nextAction": null,
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_c8001f3fa5e44613a060e87010c54d75",
+                "explanation": "已按你的要求把清洗结果保存为新草稿「客服清洗复测」。",
+                "updateSaved": true,
+                "taskRevision": 4
+              },
+              "originTurnId": "turn_ae03684168754c5cbeec6f43adeb0608",
+              "requirements": [],
+              "allowedFields": [
+                "question"
+              ],
+              "checkedStatus": "succeeded",
+              "autoEventLimit": null,
+              "candidateScope": null,
+              "classifications": [],
+              "executionPaused": false,
+              "processingScope": {
+                "hash": "bb2081ec7a6cd995d185e666d86dd85755351b4767ee1fb14b18e5b0d4635e1c",
+                "count": 2,
+                "source": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_005dd30ad70345dfa5293965b9a20aba"
+                  ]
+                }
+              },
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_005dd30ad70345dfa5293965b9a20aba",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_64df447c6de84100a8ad8435acaf429e",
+                "signature": "d2ee6d1f884e097a2aa674ccf3acdfdef2eefc6d7d20e08fcc21fa1998c6f62b",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_005dd30ad70345dfa5293965b9a20aba"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_c8001f3fa5e44613a060e87010c54d75",
+              "explanation": "已按你的要求把清洗结果保存为新草稿「客服清洗复测」。",
+              "updateSaved": true,
+              "taskRevision": 4
+            },
+            "unchanged": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 4
+          }
+        },
+        {
+          "key": "assistant:turn_c8001f3fa5e44613a060e87010c54d75:validation:56e09a0f27d79623c12d038c63c255bb5db67cd9431b535b03f0a9cc93de7dc7",
+          "name": "request_processing_apply",
+          "error": {
+            "code": "assistant_candidate_selection_invalid",
+            "hint": "当前没有可用的固定勾选。",
+            "issues": [
+              {
+                "code": "assistant_candidate_selection_invalid",
+                "path": "/allSelected",
+                "tool": "request_processing_apply",
+                "keyword": "business",
+                "message": "当前没有可用的固定勾选。",
+                "operation": "request_processing_apply"
+              }
+            ]
+          },
+          "input": {
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl 的全部清洗结果"
+            },
+            "allTask": true,
+            "allSelected": true
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 4
+          }
+        },
+        {
+          "key": "assistant:turn_c8001f3fa5e44613a060e87010c54d75:fc052ca7be8d29a95b1de35e76cb25ee9a23ab2057ac4dde21b2292ddd81c563",
+          "name": "request_processing_apply",
+          "input": {
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl 的全部清洗结果"
+            },
+            "allTask": true
+          },
+          "result": {
+            "id": "proposal_78adc78ee8af43b499de778a0a698068",
+            "status": "pending",
+            "summary": {
+              "url": "/projects/project_2f5c0f28a9664a51bbb6f4485958c854/processing?run=processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "count": 2,
+              "range": "task",
+              "title": "采用处理结果",
+              "target": "客服清洗复测"
+            },
+            "requiresUserConfirmation": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "turn_a3d570d5f48646d291c88ee27e3c0937",
+      "event": "confirmed",
+      "user_text": "[confirmed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+      "assistant_text": "已确认保存成功：\n\n- 新草稿：客服清洗复测\n- 来源：客服清洗测试.jsonl 的全部清洗结果\n- 已保存：2 条\n- 状态：草稿已建立，尚未发布\n\n你可以继续审核草稿内容，或告诉我是否发布。",
+      "status": "succeeded",
+      "error_code": null,
+      "tool_results": [
+        {
+          "key": "assistant:turn_c8001f3fa5e44613a060e87010c54d75:validation:56e09a0f27d79623c12d038c63c255bb5db67cd9431b535b03f0a9cc93de7dc7",
+          "name": "request_processing_apply",
+          "error": {
+            "code": "assistant_candidate_selection_invalid",
+            "hint": "当前没有可用的固定勾选。",
+            "issues": [
+              {
+                "code": "assistant_candidate_selection_invalid",
+                "path": "/allSelected",
+                "tool": "request_processing_apply",
+                "keyword": "business",
+                "message": "当前没有可用的固定勾选。",
+                "operation": "request_processing_apply"
+              }
+            ]
+          },
+          "input": {
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl 的全部清洗结果"
+            },
+            "allTask": true,
+            "allSelected": true
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 4
+          }
+        },
+        {
+          "key": "assistant:turn_c8001f3fa5e44613a060e87010c54d75:fc052ca7be8d29a95b1de35e76cb25ee9a23ab2057ac4dde21b2292ddd81c563",
+          "name": "request_processing_apply",
+          "input": {
+            "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl 的全部清洗结果"
+            },
+            "allTask": true
+          },
+          "result": {
+            "id": "proposal_78adc78ee8af43b499de778a0a698068",
+            "status": "pending",
+            "summary": {
+              "url": "/projects/project_2f5c0f28a9664a51bbb6f4485958c854/processing?run=processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+              "count": 2,
+              "range": "task",
+              "title": "采用处理结果",
+              "target": "客服清洗复测"
+            },
+            "requiresUserConfirmation": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 4
+          }
+        }
+      ]
+    }
+  ],
+  "uniqueToolErrors": [
+    {
+      "name": "submit_processing",
+      "error": {
+        "code": "processing_configuration_invalid",
+        "hint": "Metadata保持原值时不能指定可修改的子字段。；请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+        "issues": [
+          {
+            "code": "processing_configuration_invalid",
+            "path": "/metadataKeys",
+            "tool": "submit_processing",
+            "keyword": "business",
+            "message": "Metadata保持原值时不能指定可修改的子字段。",
+            "operation": "clean"
+          },
+          {
+            "code": "processing_configuration_invalid",
+            "path": "/metadataKeys/0",
+            "tool": "submit_processing",
+            "keyword": "business",
+            "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+            "operation": "clean"
+          }
+        ]
+      },
+      "input": {
+        "source": {
+          "kind": "assets",
+          "assetIds": [
+            "asset_005dd30ad70345dfa5293965b9a20aba"
+          ]
+        },
+        "operation": "clean",
+        "outputCount": 2,
+        "instructions": "",
+        "metadataKeys": [
+          "question"
+        ],
+        "allowedFields": [
+          "question"
+        ]
+      }
+    },
+    {
+      "name": "request_processing_apply",
+      "error": {
+        "code": "assistant_candidate_selection_invalid",
+        "hint": "当前没有可用的固定勾选。",
+        "issues": [
+          {
+            "code": "assistant_candidate_selection_invalid",
+            "path": "/allSelected",
+            "tool": "request_processing_apply",
+            "keyword": "business",
+            "message": "当前没有可用的固定勾选。",
+            "operation": "request_processing_apply"
+          }
+        ]
+      },
+      "input": {
+        "runId": "processing_77cd0c8379db4cf0be9e7dc8d097b9d0",
+        "target": {
+          "kind": "newDraft",
+          "name": "客服清洗复测",
+          "purpose": "保存客服清洗测试.jsonl 的全部清洗结果"
+        },
+        "allTask": true,
+        "allSelected": true
+      }
+    }
+  ],
+  "requests": 12,
+  "httpActiveMs": 73935,
+  "ordinaryPrompts": [
+    "帮我整理一下这些数据",
+    "客服清洗测试.jsonl",
+    "清洗这份文件的全部2条记录，其他不改。",
+    "保存为新的测试集草稿，叫客服清洗复测。"
+  ],
+  "manualContinues": 0,
+  "generatedRows": 0,
+  "publishedVersions": 0
+}

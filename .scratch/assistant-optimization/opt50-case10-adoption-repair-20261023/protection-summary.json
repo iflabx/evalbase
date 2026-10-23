@@ -1,0 +1,19 @@
+{
+  "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+  "case10": "pass",
+  "protectedTables": 18,
+  "oldBudgetFiles": 29,
+  "oldRowsPreserved": true,
+  "originalSyntheticRows": 4,
+  "originalRowsUnchanged": true,
+  "modelConfigRevision": 2,
+  "model": "qwen-new",
+  "budgetClosed": true,
+  "guardRemoved": true,
+  "tests": {
+    "passed": 107,
+    "failed": 0
+  },
+  "docsCheck": "passed",
+  "legacyDirtySha256": "c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c"
+}

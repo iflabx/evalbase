@@ -1,0 +1,477 @@
+{
+  "version": 1,
+  "campaign": "OPT50-case10-clean-contract-20261023",
+  "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+  "projectId": "project_b70d249133504c3dac6e954452c1d9dd",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "sessions": {
+    "10": "conversation_4207a1ceb31a4477986ffab835b5bdd0"
+  },
+  "closedCases": [
+    10
+  ],
+  "closed": true,
+  "limits": {
+    "requests": 24,
+    "activeMs": 240000,
+    "cleanRows": 2,
+    "cleanRuns": 1,
+    "newDrafts": 1,
+    "generatedRows": 0,
+    "publish": 0
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:57:30.900Z",
+      "durationMs": 10802,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "fc8bcc8b0173f906f9e957213f1b1070cd7e86b5736e5ce2c586bfe554fc67c3",
+      "activeBefore": {
+        "caseMs": 853,
+        "totalMs": 853
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 261,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "ea12063f6a47d90d59882ab419f687eef7fd46dd0d9c8449776453649c869528"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 2,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:57:41.877Z",
+      "durationMs": 2532,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "7a5cf1b5862868f1640426e723b878ba28e20975fc685803e26a27359019de99",
+      "activeBefore": {
+        "caseMs": 11830,
+        "totalMs": 11830
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "query_project",
+          "bytes": 18,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "kind"
+          ],
+          "kind": "project",
+          "hash": "25415f0a4a1537f5eec1e55292f7c366407877ac274a94c2a46fc94e60f7c813"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 3,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:57:55.097Z",
+      "durationMs": 5770,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "fd3b3e2f06479d930faefa27628cc10ffcd6231bb4c49c3a058948d882a80c2c",
+      "activeBefore": {
+        "caseMs": 14948,
+        "totalMs": 14948
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 231,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "58effe14cb50aed9e99a93c1c7d2acdf8a60719c578eebc4bf45d9a42b2c42fe"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 4,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:58:01.040Z",
+      "durationMs": 1652,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "e0e622692802699ddefbcfb31298cc15c605fd15a23a14c2c129d9f5b8ca5a13",
+      "activeBefore": {
+        "caseMs": 20891,
+        "totalMs": 20891
+      },
+      "httpStatus": 200,
+      "toolArguments": [],
+      "finishReason": "stop"
+    },
+    {
+      "index": 5,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:58:24.504Z",
+      "durationMs": 787,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "553cf07e5060692daecb559acebbe120b91c725ad3f1370d768b041cedb06703",
+      "activeBefore": {
+        "caseMs": 23029,
+        "totalMs": 23029
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 292,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control",
+            "target",
+            "allowedFields",
+            "nextAction"
+          ],
+          "hash": "c5d674c1b3a6d64a446d0ae7caa90910dc9c4eb07b0f06abc4a5598a7c54c5ad"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 6,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:58:56.382Z",
+      "durationMs": 888,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "57508552c318eeec26dcdb10c233efdd1cf52e40f7ef29886870b222c5b38a0d",
+      "activeBefore": {
+        "caseMs": 24334,
+        "totalMs": 24334
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 434,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control",
+            "requirements",
+            "allowedFields",
+            "nextAction"
+          ],
+          "hash": "25f40ed996ebb5bba6b58853998c624473e68f78e4a20761439e966f6b5fed78"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 7,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:58:57.424Z",
+      "durationMs": 11760,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "1978362c56503af5a1eafb2812f9bf59615fb2645674a9e7af84bedbb808d307",
+      "activeBefore": {
+        "caseMs": 25375,
+        "totalMs": 25375
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "submit_processing",
+          "bytes": 101,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "operation",
+            "allowedFields",
+            "metadataKeys",
+            "outputCount"
+          ],
+          "hash": "e4048df2d94a5484a42a8023c71ba0cf94697d0b2f83a746cd437d00a077e550"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 8,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:59:09.342Z",
+      "durationMs": 3198,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "fc0f3b0ec27d111ff41c0fb3e57d12e437a32a6db418cb12311e4d5097106c3d",
+      "activeBefore": {
+        "caseMs": 37293,
+        "totalMs": 37293
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "submit_processing",
+          "bytes": 66,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "operation",
+            "allowedFields",
+            "outputCount"
+          ],
+          "hash": "92a00222dcc9156b0f0ae383110039cd2189f5df0e58265876ddcbd25bc2d175"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 9,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:59:41.019Z",
+      "durationMs": 5609,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "f6aa117a12a32f57164a5a9799c40721e6318f17d0088f3fac8e5748056e371b",
+      "activeBefore": {
+        "caseMs": 41535,
+        "totalMs": 41535
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 101,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "4bf9c58cb7156cc33eb5da7b54aadb52653e15e33cfc290a668750898048738e"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 10,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T10:59:46.892Z",
+      "durationMs": 17202,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "4e83a79e2eaea43c218e0b22df51a173b2b56ef04239bbe3fdf5057316c358d7",
+      "activeBefore": {
+        "caseMs": 47408,
+        "totalMs": 47408
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "request_processing_apply",
+          "bytes": 198,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "runId",
+            "allTask",
+            "allSelected",
+            "target"
+          ],
+          "hash": "6909dc2ee03ef00c9aa9608f72fecc71fb162019c2af1054f2646bd06a50f497"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 11,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T11:00:04.264Z",
+      "durationMs": 4301,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "dce5b462b522b27f080906831f33ab744b5aa248713dccea59e3e29e9ece0487",
+      "activeBefore": {
+        "caseMs": 64780,
+        "totalMs": 64780
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "request_processing_apply",
+          "bytes": 188,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "resultIds",
+            "target"
+          ],
+          "hash": "1e0a3bb9924b9a2246520ddb0b3665c09ee2456ee5744443d388de273812c515"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 12,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T11:00:08.764Z",
+      "durationMs": 8990,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "c908d8a15f0ecc011416754946f6601a82a3ec2d76b2fa644580ca1cab378864",
+      "activeBefore": {
+        "caseMs": 69280,
+        "totalMs": 69280
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "read_processing",
+          "bytes": 31,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "runId"
+          ],
+          "hash": "491b63f49edfd37aa90f1eec0c196e9a875177c4ffe08077e3b93afa166a5048"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 13,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T11:00:17.961Z",
+      "durationMs": 829,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "bec70ae29986548700c3d981cab5c8bf9751da537a7aaa38dbe63adad9048afa",
+      "activeBefore": {
+        "caseMs": 78477,
+        "totalMs": 78477
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "request_processing_apply",
+          "bytes": 198,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "runId",
+            "allTask",
+            "allSelected",
+            "target"
+          ],
+          "hash": "6909dc2ee03ef00c9aa9608f72fecc71fb162019c2af1054f2646bd06a50f497"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 14,
+      "caseId": 10,
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "code": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "startedAt": "2026-10-23T11:00:18.903Z",
+      "durationMs": 549,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "f288a2a37c6406afcf7484dcc98f06bf0847cf5ee4ec3a9e0924c3a01512900d",
+      "activeBefore": {
+        "caseMs": 79419,
+        "totalMs": 79419
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "request_processing_apply",
+          "bytes": 205,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "resultIds",
+            "allTask",
+            "target"
+          ],
+          "hash": "7c05722c7654975590a31476b59ed1e96686c9c36e746743f1f43531127dcc0b"
+        }
+      ],
+      "finishReason": "tool_calls"
+    }
+  ],
+  "createdAt": "2026-10-23T10:39:06.742196+00:00",
+  "blocked": [],
+  "setupCorrection": {
+    "reason": "session mapping inverted; request rejected before any model call",
+    "preservedTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da"
+  },
+  "closeReason": "apply result references and scope repair failed; cleaning retained",
+  "closedAt": "2026-10-23T11:02:51.493608+00:00"
+}

@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "campaign": "OPT50-case10-scope-repair-20261023",
+  "code": "a8847bd23c21fdc5a9a907227247ba189df46e31",
+  "projectId": "project_f2e8ecc06476458a86603df9d3d00969",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "sessions": {
+    "10": "conversation_2d04d99f2e9547d3bc65705a5f870324"
+  },
+  "closedCases": [
+    10
+  ],
+  "closed": true,
+  "limits": {
+    "requests": 24,
+    "activeMs": 240000,
+    "cleanRows": 2,
+    "cleanRuns": 1,
+    "newDrafts": 1,
+    "generatedRows": 0,
+    "publish": 0
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 10,
+      "sessionId": "conversation_2d04d99f2e9547d3bc65705a5f870324",
+      "code": "a8847bd23c21fdc5a9a907227247ba189df46e31",
+      "startedAt": "2026-10-23T10:11:57.774Z",
+      "durationMs": 30171,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "a12822ca3af2dacc6fbb76458c0fe6fbf255049c30b7b495e5eade62c076b478",
+      "activeBefore": {
+        "caseMs": 363,
+        "totalMs": 363
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 182,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "fb722041c366456f1709c2b6e6385645d02b7b274c541c63c9ef31de86da50a1"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 2,
+      "caseId": 10,
+      "sessionId": "conversation_2d04d99f2e9547d3bc65705a5f870324",
+      "code": "a8847bd23c21fdc5a9a907227247ba189df46e31",
+      "startedAt": "2026-10-23T10:12:28.100Z",
+      "durationMs": 14531,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "a1e752a446995053562cce89dc85e4fdccba692bc55b87d86c82135a94259b80",
+      "activeBefore": {
+        "caseMs": 30690,
+        "totalMs": 30690
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 186,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "cbf4d4cf084828683a7beab3d9ad4b6a82d2214ab2eb172aa0aef80895a5e1f6"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 3,
+      "caseId": 10,
+      "sessionId": "conversation_2d04d99f2e9547d3bc65705a5f870324",
+      "code": "a8847bd23c21fdc5a9a907227247ba189df46e31",
+      "startedAt": "2026-10-23T10:12:42.726Z",
+      "durationMs": 544,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "7c95c657fa862d600879296e944d0811cff12d680131dbcf8b698af2536e59fa",
+      "activeBefore": {
+        "caseMs": 45316,
+        "totalMs": 45316
+      },
+      "httpStatus": 200,
+      "toolArguments": [],
+      "finishReason": "stop"
+    }
+  ],
+  "createdAt": "2026-10-23T09:50:34.064Z",
+  "closedAt": "2026-10-23T10:18:28.702650+00:00",
+  "closeReason": "First ordinary prompt repeated control instead of source discovery; 3 calls, no processing or draft. Preserve failed evidence."
+}

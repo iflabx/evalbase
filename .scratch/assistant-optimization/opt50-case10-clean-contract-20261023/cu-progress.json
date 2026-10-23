@@ -1,0 +1,3115 @@
+{
+  "task": {
+    "goal": "帮我整理一下这些数据",
+    "error": "processing_scope_invalid",
+    "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+    "stage": "failed",
+    "title": "新任务",
+    "review": {
+      "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+      "total": 2,
+      "labels": [
+        {
+          "count": 1,
+          "label": "保留原期望 A"
+        },
+        {
+          "count": 1,
+          "label": "保留原期望 B"
+        }
+      ],
+      "content": {
+        "checked": 0,
+        "pending": 2,
+        "conforms": 0,
+        "uncertain": 0,
+        "nonconforms": 0,
+        "autoRepaired": 0
+      },
+      "complete": true,
+      "countKind": "new",
+      "duplicates": 0,
+      "formatIssues": [],
+      "missingCount": 0,
+      "effectiveness": {
+        "modified": 2,
+        "unchanged": 0,
+        "unprocessed": 0,
+        "ineffectiveRewrite": 0
+      },
+      "expectedCount": 2,
+      "outsideLabels": 0,
+      "candidateCount": 2,
+      "countSatisfied": true,
+      "emptyQuestions": 0,
+      "semanticReview": "required",
+      "classifications": [],
+      "countUnverified": false,
+      "additionalLabels": 0,
+      "questionCollisions": 0,
+      "compatibilityProblem": null,
+      "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+      "protectedFieldChanges": 0
+    },
+    "runIds": [
+      "processing_0fff4a54bf754a39921523fb2201dfaf"
+    ],
+    "target": {
+      "kind": "assets",
+      "assetIds": [
+        "asset_bd69a742d00a437dac5e99b9c4dc602e"
+      ]
+    },
+    "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+    "question": null,
+    "recovery": {
+      "kind": "execution",
+      "message": "当前操作的参数或范围未通过校验。 已执行操作和已有成果保留。助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。"
+    },
+    "autoCount": 1,
+    "nextAction": null,
+    "targetName": "客服清洗测试.jsonl",
+    "turnBudget": {
+      "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "activeMs": 39014,
+      "requests": [
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:0",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 5653,
+          "httpStatus": 200,
+          "preflightMs": 46,
+          "timeToHeadersMs": 5645
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:1",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 17298,
+          "httpStatus": 200,
+          "preflightMs": 14,
+          "timeToHeadersMs": 17288
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:2",
+          "state": "parsed",
+          "bodyMs": 0,
+          "repair": {
+            "kind": "context",
+            "name": "request_processing_apply",
+            "nested": false,
+            "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+          },
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 4379,
+          "httpStatus": 200,
+          "preflightMs": 9,
+          "repairCharged": true,
+          "timeToHeadersMs": 4365
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:3",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 9025,
+          "httpStatus": 200,
+          "preflightMs": 9,
+          "timeToHeadersMs": 9016
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:4",
+          "state": "parsed",
+          "bodyMs": 1,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 851,
+          "httpStatus": 200,
+          "preflightMs": 8,
+          "timeToHeadersMs": 845
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:5",
+          "state": "parsed",
+          "bodyMs": 0,
+          "repair": {
+            "kind": "context",
+            "name": "request_processing_apply",
+            "nested": false,
+            "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+          },
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 583,
+          "httpStatus": 200,
+          "preflightMs": 7,
+          "repairCharged": true,
+          "timeToHeadersMs": 574
+        }
+      ],
+      "startedAt": 1792753179587,
+      "toolCalls": 6,
+      "deadlineAt": 1792753259587,
+      "modelSteps": 6,
+      "retryWaits": [],
+      "attemptToken": null,
+      "attemptBaseMs": 39014,
+      "progressStart": "f2175e8b4cf4796f43b356260138f1967321e6f1ff90a01af6e91065e1e082d7",
+      "requestAttempts": 6,
+      "attemptStartedAt": null,
+      "transportRetries": 0,
+      "accountingVersion": 2
+    },
+    "diagnostics": {
+      "intent": {
+        "mode": "execute",
+        "source": "model",
+        "pauseFirst": false,
+        "reasonCode": "turn_execute",
+        "updateSaved": true,
+        "requiresUpdate": false
+      },
+      "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "failure": {
+        "layer": "tool",
+        "reason": "当前操作的参数或范围未通过校验。",
+        "category": "parameter_invalid",
+        "httpStatus": null,
+        "nextAction": "助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。"
+      },
+      "requests": [
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:0",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 5653,
+          "httpStatus": 200,
+          "preflightMs": 46,
+          "timeToHeadersMs": 5645
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:1",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 17298,
+          "httpStatus": 200,
+          "preflightMs": 14,
+          "timeToHeadersMs": 17288
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:2",
+          "state": "parsed",
+          "bodyMs": 0,
+          "repair": {
+            "kind": "context",
+            "name": "request_processing_apply",
+            "nested": false,
+            "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+          },
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 4379,
+          "httpStatus": 200,
+          "preflightMs": 9,
+          "repairCharged": true,
+          "timeToHeadersMs": 4365
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:3",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 9025,
+          "httpStatus": 200,
+          "preflightMs": 9,
+          "timeToHeadersMs": 9016
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:4",
+          "state": "parsed",
+          "bodyMs": 1,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 851,
+          "httpStatus": 200,
+          "preflightMs": 8,
+          "timeToHeadersMs": 845
+        },
+        {
+          "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:5",
+          "state": "parsed",
+          "bodyMs": 0,
+          "repair": {
+            "kind": "context",
+            "name": "request_processing_apply",
+            "nested": false,
+            "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+          },
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 583,
+          "httpStatus": 200,
+          "preflightMs": 7,
+          "repairCharged": true,
+          "timeToHeadersMs": 574
+        }
+      ],
+      "errorCode": "processing_scope_invalid",
+      "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "toolCalls": 6,
+      "durationMs": 39956,
+      "modelSteps": 6,
+      "retryWaits": [],
+      "amendmentId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+      "currentStep": null,
+      "diagnosticId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "finishReason": "not_returned",
+      "firstFailure": {
+        "code": "assistant_candidate_selection_invalid",
+        "name": "request_processing_apply",
+        "issues": [
+          {
+            "code": "assistant_candidate_selection_invalid",
+            "path": "/allSelected",
+            "tool": "request_processing_apply",
+            "keyword": "business",
+            "message": "当前没有可用的固定勾选。",
+            "operation": "request_processing_apply"
+          }
+        ]
+      },
+      "taskRevision": 6,
+      "toolsVersion": "assistant-tools-v12",
+      "modelRevision": 2,
+      "promptVersion": "assistant-prompt-v15",
+      "contractVersion": "assistant-diagnostics-v2",
+      "protocolRepairs": 0,
+      "requestAttempts": 6,
+      "stepDiagnostics": [
+        {
+          "inputTokens": 19004,
+          "finishReason": "tool-calls",
+          "outputTokens": 23,
+          "argumentBytes": 101
+        },
+        {
+          "inputTokens": 22094,
+          "finishReason": "tool-calls",
+          "outputTokens": 70,
+          "argumentBytes": 186
+        },
+        {
+          "inputTokens": 3795,
+          "finishReason": "tool-calls",
+          "outputTokens": 79,
+          "argumentBytes": 179
+        },
+        {
+          "inputTokens": 18638,
+          "finishReason": "tool-calls",
+          "outputTokens": 35,
+          "argumentBytes": 30
+        },
+        {
+          "inputTokens": 19372,
+          "finishReason": "tool-calls",
+          "outputTokens": 83,
+          "argumentBytes": 186
+        },
+        {
+          "inputTokens": 4056,
+          "finishReason": "tool-calls",
+          "outputTokens": 84,
+          "argumentBytes": 194
+        }
+      ],
+      "attemptToolCalls": 6,
+      "executionAttempt": 1,
+      "parameterRepairs": [
+        {
+          "name": "request_processing_apply",
+          "outcome": "invalid"
+        },
+        {
+          "name": "request_processing_apply",
+          "outcome": "invalid"
+        }
+      ],
+      "transportRetries": 0,
+      "attemptModelSteps": 6,
+      "repairRequestsUsed": 2,
+      "retainedCandidates": 2,
+      "retainedOperations": 0,
+      "parameterRepairStatus": {
+        "name": "request_processing_apply",
+        "phase": "finished",
+        "scope": "call",
+        "intent": "tool",
+        "issues": [
+          {
+            "code": "assistant_candidate_selection_invalid",
+            "path": "/allSelected",
+            "tool": "request_processing_apply",
+            "keyword": "business",
+            "message": "当前没有可用的固定勾选。",
+            "operation": "request_processing_apply"
+          }
+        ],
+        "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+        "outcome": "invalid",
+        "amendmentId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+        "remainingMs": 40089
+      },
+      "attemptRequestAttempts": 6,
+      "parameterRepairVersion": "arguments-v4",
+      "requirementsReconciled": false
+    },
+    "grantResume": null,
+    "supplements": [
+      "继续",
+      "客服清洗测试.jsonl",
+      "清洗这份文件的全部2条记录，其他不改。",
+      "开始清洗，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+      "保存为新的测试集草稿，叫客服清洗复测。"
+    ],
+    "turnControl": {
+      "mode": "execute",
+      "source": "model",
+      "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "explanation": "已按你的要求保存采用请求，等待确认。",
+      "updateSaved": true,
+      "taskRevision": 6
+    },
+    "budgetLedger": {
+      "grants": [
+        {
+          "id": "initial:assistanttask_55444a4294734b108ee008fda4d61416",
+          "limits": {
+            "activeMs": 1040000,
+            "toolCalls": 156,
+            "modelSteps": 130,
+            "requestAttempts": 156,
+            "transportRetries": 26
+          },
+          "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+          "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+          "purpose": "initial",
+          "issuedAt": 1792752953694,
+          "revision": 1,
+          "expiresAt": null,
+          "startsAtUse": {
+            "activeMs": 0,
+            "toolCalls": 0,
+            "modelSteps": 0,
+            "requestAttempts": 0,
+            "transportRetries": 0
+          }
+        }
+      ],
+      "policy": {
+        "initial": {
+          "activeMs": 1040000,
+          "toolCalls": 156,
+          "modelSteps": 130,
+          "requestAttempts": 156,
+          "transportRetries": 26
+        },
+        "segment": {
+          "activeMs": 80000,
+          "toolCalls": 12,
+          "modelSteps": 10,
+          "requestAttempts": 12,
+          "transportRetries": 2
+        }
+      },
+      "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+      "version": 1,
+      "activeId": "initial:assistanttask_55444a4294734b108ee008fda4d61416",
+      "segments": [
+        {
+          "turnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+          "activeMs": 419,
+          "requests": [
+            {
+              "id": "turn_b8b8fa05fda6435c8b1da8a7210e68da:0",
+              "state": "failed",
+              "totalMs": 4,
+              "httpStatus": null,
+              "preflightMs": 9,
+              "failurePhase": "sent",
+              "timeToHeadersMs": 0
+            }
+          ],
+          "startedAt": 1792752953719,
+          "toolCalls": 0,
+          "deadlineAt": 1792753033719,
+          "modelSteps": 1,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 419,
+          "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "requestAttempts": 1,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        },
+        {
+          "turnId": "turn_990a3e3e74f741579724ee225930fb98",
+          "activeMs": 14046,
+          "requests": [
+            {
+              "id": "turn_990a3e3e74f741579724ee225930fb98:0",
+              "state": "parsed",
+              "bodyMs": 4,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 10853,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "timeToHeadersMs": 10831
+            },
+            {
+              "id": "turn_990a3e3e74f741579724ee225930fb98:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 2563,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 2555
+            }
+          ],
+          "startedAt": 1792753049274,
+          "toolCalls": 2,
+          "deadlineAt": 1792753129274,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 14046,
+          "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "requestAttempts": 2,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        },
+        {
+          "turnId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+          "activeMs": 8139,
+          "requests": [
+            {
+              "id": "turn_cc4894b59c454e92b00ad57b3d3d65f1:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 5796,
+              "httpStatus": 200,
+              "preflightMs": 66,
+              "timeToHeadersMs": 5789
+            },
+            {
+              "id": "turn_cc4894b59c454e92b00ad57b3d3d65f1:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 1683,
+              "httpStatus": 200,
+              "preflightMs": 15,
+              "timeToHeadersMs": 1677
+            }
+          ],
+          "startedAt": 1792753073227,
+          "toolCalls": 1,
+          "deadlineAt": 1792753153227,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 8139,
+          "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "requestAttempts": 2,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        },
+        {
+          "turnId": "turn_e057eebd4c5d453f9591e3675d2c3442",
+          "activeMs": 1339,
+          "requests": [
+            {
+              "id": "turn_e057eebd4c5d453f9591e3675d2c3442:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 824,
+              "httpStatus": 200,
+              "preflightMs": 20,
+              "timeToHeadersMs": 820
+            }
+          ],
+          "startedAt": 1792753102573,
+          "toolCalls": 1,
+          "deadlineAt": 1792753182573,
+          "modelSteps": 1,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 1339,
+          "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "requestAttempts": 1,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        },
+        {
+          "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+          "activeMs": 16739,
+          "requests": [
+            {
+              "id": "turn_955f5ce9d4404685922bb505543cd3c4:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 945,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 938
+            },
+            {
+              "id": "turn_955f5ce9d4404685922bb505543cd3c4:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 11784,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 11780
+            },
+            {
+              "id": "turn_955f5ce9d4404685922bb505543cd3c4:2",
+              "state": "parsed",
+              "bodyMs": 14,
+              "repair": {
+                "kind": "context",
+                "name": "submit_processing",
+                "nested": false,
+                "identity": "a7da56246cd10e26635934cbcaaeb11eecd598589c8629d06a0b41d2986cdbdf"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 3242,
+              "httpStatus": 200,
+              "preflightMs": 10,
+              "repairCharged": true,
+              "timeToHeadersMs": 3223
+            }
+          ],
+          "startedAt": 1792753134531,
+          "toolCalls": 3,
+          "deadlineAt": 1792753214531,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 16739,
+          "progressStart": "a59e6ad007c6be4b9240c7b59da33703adc68e61d762bc2592205622a9432841",
+          "requestAttempts": 3,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        },
+        {
+          "turnId": "turn_55f14324bdc94896a47ab3b7abf2f5bd",
+          "activeMs": 370,
+          "requests": [],
+          "startedAt": 1792753153032,
+          "toolCalls": 1,
+          "deadlineAt": 1792753233027,
+          "modelSteps": 0,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 370,
+          "progressStart": "cdfbf4c176ee646ec9453bab7027035fb7b701be43148ed5700d8971b1dae94f",
+          "requestAttempts": 0,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        },
+        {
+          "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+          "activeMs": 39014,
+          "requests": [
+            {
+              "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 5653,
+              "httpStatus": 200,
+              "preflightMs": 46,
+              "timeToHeadersMs": 5645
+            },
+            {
+              "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 17298,
+              "httpStatus": 200,
+              "preflightMs": 14,
+              "timeToHeadersMs": 17288
+            },
+            {
+              "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "request_processing_apply",
+                "nested": false,
+                "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 4379,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "repairCharged": true,
+              "timeToHeadersMs": 4365
+            },
+            {
+              "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:3",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 9025,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 9016
+            },
+            {
+              "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:4",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 851,
+              "httpStatus": 200,
+              "preflightMs": 8,
+              "timeToHeadersMs": 845
+            },
+            {
+              "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:5",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "request_processing_apply",
+                "nested": false,
+                "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 583,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "repairCharged": true,
+              "timeToHeadersMs": 574
+            }
+          ],
+          "startedAt": 1792753179587,
+          "toolCalls": 6,
+          "deadlineAt": 1792753259587,
+          "modelSteps": 6,
+          "retryWaits": [],
+          "attemptToken": null,
+          "attemptBaseMs": 39014,
+          "progressStart": "f2175e8b4cf4796f43b356260138f1967321e6f1ff90a01af6e91065e1e082d7",
+          "requestAttempts": 6,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        }
+      ]
+    },
+    "observations": [
+      {
+        "intent": {
+          "mode": "unresolved",
+          "source": "none",
+          "reasonCode": "intent_not_recorded"
+        },
+        "turnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+        "failure": {
+          "layer": "application",
+          "reason": "本轮发生内部异常。",
+          "category": "internal_error",
+          "httpStatus": null,
+          "nextAction": "保留输入并联系管理员检查诊断编号；恢复前先核对已执行操作。"
+        },
+        "requests": [
+          {
+            "id": "turn_b8b8fa05fda6435c8b1da8a7210e68da:0",
+            "state": "failed",
+            "totalMs": 4,
+            "httpStatus": null,
+            "preflightMs": 9,
+            "failurePhase": "sent",
+            "timeToHeadersMs": 0
+          }
+        ],
+        "errorCode": "assistant_internal_error",
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 0,
+        "durationMs": 2115,
+        "modelSteps": 1,
+        "retryWaits": [],
+        "amendmentId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+        "finishReason": "not_returned",
+        "taskRevision": 1,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 1,
+        "stepDiagnostics": [],
+        "attemptToolCalls": 0,
+        "executionAttempt": 1,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "attemptModelSteps": 1,
+        "repairRequestsUsed": 0,
+        "retainedCandidates": null,
+        "retainedOperations": 0,
+        "attemptRequestAttempts": 1,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      },
+      {
+        "intent": {
+          "mode": "execute",
+          "source": "model",
+          "pauseFirst": false,
+          "reasonCode": "turn_execute",
+          "updateSaved": true,
+          "requiresUpdate": false
+        },
+        "turnId": "turn_990a3e3e74f741579724ee225930fb98",
+        "requests": [
+          {
+            "id": "turn_990a3e3e74f741579724ee225930fb98:0",
+            "state": "parsed",
+            "bodyMs": 4,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 10853,
+            "httpStatus": 200,
+            "preflightMs": 7,
+            "timeToHeadersMs": 10831
+          },
+          {
+            "id": "turn_990a3e3e74f741579724ee225930fb98:1",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 2563,
+            "httpStatus": 200,
+            "preflightMs": 5,
+            "timeToHeadersMs": 2555
+          }
+        ],
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 2,
+        "durationMs": 15232,
+        "modelSteps": 2,
+        "retryWaits": [],
+        "amendmentId": "turn_990a3e3e74f741579724ee225930fb98",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_990a3e3e74f741579724ee225930fb98",
+        "finishReason": "not_returned",
+        "taskRevision": 2,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 2,
+        "stepDiagnostics": [
+          {
+            "inputTokens": 16159,
+            "finishReason": "tool-calls",
+            "outputTokens": 55,
+            "argumentBytes": 261
+          },
+          {
+            "inputTokens": 4450,
+            "finishReason": "tool-calls",
+            "outputTokens": 6,
+            "argumentBytes": 18
+          }
+        ],
+        "attemptToolCalls": 2,
+        "executionAttempt": 1,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "attemptModelSteps": 2,
+        "repairRequestsUsed": 0,
+        "retainedCandidates": null,
+        "retainedOperations": 0,
+        "attemptRequestAttempts": 2,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      },
+      {
+        "intent": {
+          "mode": "plan",
+          "source": "model",
+          "pauseFirst": false,
+          "reasonCode": "turn_plan",
+          "updateSaved": true,
+          "requiresUpdate": false
+        },
+        "turnId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+        "requests": [
+          {
+            "id": "turn_cc4894b59c454e92b00ad57b3d3d65f1:0",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 5796,
+            "httpStatus": 200,
+            "preflightMs": 66,
+            "timeToHeadersMs": 5789
+          },
+          {
+            "id": "turn_cc4894b59c454e92b00ad57b3d3d65f1:1",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 1683,
+            "httpStatus": 200,
+            "preflightMs": 15,
+            "timeToHeadersMs": 1677
+          }
+        ],
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 1,
+        "durationMs": 9520,
+        "modelSteps": 2,
+        "retryWaits": [],
+        "amendmentId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+        "finishReason": "not_returned",
+        "taskRevision": 3,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 2,
+        "stepDiagnostics": [
+          {
+            "inputTokens": 17004,
+            "finishReason": "tool-calls",
+            "outputTokens": 53,
+            "argumentBytes": 231
+          },
+          {
+            "inputTokens": 17674,
+            "finishReason": "stop",
+            "outputTokens": 62,
+            "argumentBytes": 0
+          }
+        ],
+        "attemptToolCalls": 1,
+        "executionAttempt": 1,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "attemptModelSteps": 2,
+        "repairRequestsUsed": 0,
+        "retainedCandidates": null,
+        "retainedOperations": 0,
+        "attemptRequestAttempts": 2,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      },
+      {
+        "intent": {
+          "mode": "plan",
+          "source": "model",
+          "pauseFirst": false,
+          "reasonCode": "turn_plan",
+          "updateSaved": true,
+          "requiresUpdate": true
+        },
+        "turnId": "turn_e057eebd4c5d453f9591e3675d2c3442",
+        "requests": [
+          {
+            "id": "turn_e057eebd4c5d453f9591e3675d2c3442:0",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 824,
+            "httpStatus": 200,
+            "preflightMs": 20,
+            "timeToHeadersMs": 820
+          }
+        ],
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 1,
+        "durationMs": 2839,
+        "modelSteps": 1,
+        "retryWaits": [],
+        "amendmentId": "turn_e057eebd4c5d453f9591e3675d2c3442",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_e057eebd4c5d453f9591e3675d2c3442",
+        "finishReason": "not_returned",
+        "taskRevision": 4,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 1,
+        "stepDiagnostics": [
+          {
+            "inputTokens": 17020,
+            "finishReason": "tool-calls",
+            "outputTokens": 79,
+            "argumentBytes": 292
+          }
+        ],
+        "attemptToolCalls": 1,
+        "executionAttempt": 1,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "attemptModelSteps": 1,
+        "repairRequestsUsed": 0,
+        "retainedCandidates": null,
+        "retainedOperations": 0,
+        "attemptRequestAttempts": 1,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      },
+      {
+        "intent": {
+          "mode": "execute",
+          "source": "model",
+          "pauseFirst": false,
+          "reasonCode": "turn_execute",
+          "updateSaved": true,
+          "requiresUpdate": true
+        },
+        "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+        "requests": [
+          {
+            "id": "turn_955f5ce9d4404685922bb505543cd3c4:0",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 945,
+            "httpStatus": 200,
+            "preflightMs": 9,
+            "timeToHeadersMs": 938
+          },
+          {
+            "id": "turn_955f5ce9d4404685922bb505543cd3c4:1",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 11784,
+            "httpStatus": 200,
+            "preflightMs": 9,
+            "timeToHeadersMs": 11780
+          },
+          {
+            "id": "turn_955f5ce9d4404685922bb505543cd3c4:2",
+            "state": "parsed",
+            "bodyMs": 14,
+            "repair": {
+              "kind": "context",
+              "name": "submit_processing",
+              "nested": false,
+              "identity": "a7da56246cd10e26635934cbcaaeb11eecd598589c8629d06a0b41d2986cdbdf"
+            },
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 3242,
+            "httpStatus": 200,
+            "preflightMs": 10,
+            "repairCharged": true,
+            "timeToHeadersMs": 3223
+          }
+        ],
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 3,
+        "durationMs": 18188,
+        "modelSteps": 3,
+        "retryWaits": [],
+        "amendmentId": "turn_955f5ce9d4404685922bb505543cd3c4",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_955f5ce9d4404685922bb505543cd3c4",
+        "finishReason": "tool-calls",
+        "firstFailure": {
+          "code": "processing_configuration_invalid",
+          "name": "submit_processing",
+          "issues": [
+            {
+              "code": "processing_configuration_invalid",
+              "path": "/metadataKeys",
+              "tool": "submit_processing",
+              "keyword": "business",
+              "message": "Metadata保持原值时不能指定可修改的子字段。",
+              "operation": "clean"
+            },
+            {
+              "code": "processing_configuration_invalid",
+              "path": "/metadataKeys/0",
+              "tool": "submit_processing",
+              "keyword": "business",
+              "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+              "operation": "clean"
+            }
+          ]
+        },
+        "taskRevision": 5,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 3,
+        "stepDiagnostics": [
+          {
+            "inputTokens": 17148,
+            "finishReason": "tool-calls",
+            "outputTokens": 120,
+            "argumentBytes": 389
+          },
+          {
+            "inputTokens": 19224,
+            "finishReason": "tool-calls",
+            "outputTokens": 42,
+            "argumentBytes": 94
+          },
+          {
+            "inputTokens": 4575,
+            "finishReason": "tool-calls",
+            "outputTokens": 16,
+            "argumentBytes": 66
+          }
+        ],
+        "attemptToolCalls": 3,
+        "executionAttempt": 1,
+        "parameterRepairs": [
+          {
+            "name": "submit_processing",
+            "outcome": "repaired"
+          }
+        ],
+        "transportRetries": 0,
+        "attemptModelSteps": 3,
+        "repairRequestsUsed": 1,
+        "retainedCandidates": null,
+        "retainedOperations": 1,
+        "parameterRepairStatus": {
+          "name": "submit_processing",
+          "phase": "finished",
+          "scope": "call",
+          "intent": "tool",
+          "issues": [
+            {
+              "code": "processing_configuration_invalid",
+              "path": "/metadataKeys",
+              "tool": "submit_processing",
+              "keyword": "business",
+              "message": "Metadata保持原值时不能指定可修改的子字段。",
+              "operation": "clean"
+            },
+            {
+              "code": "processing_configuration_invalid",
+              "path": "/metadataKeys/0",
+              "tool": "submit_processing",
+              "keyword": "business",
+              "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+              "operation": "clean"
+            }
+          ],
+          "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+          "outcome": "repaired",
+          "amendmentId": "turn_955f5ce9d4404685922bb505543cd3c4",
+          "remainingMs": 61849
+        },
+        "attemptRequestAttempts": 3,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      },
+      {
+        "intent": {
+          "mode": "execute",
+          "source": "continuation",
+          "pauseFirst": false,
+          "reasonCode": "turn_execute",
+          "updateSaved": true,
+          "requiresUpdate": true
+        },
+        "turnId": "turn_55f14324bdc94896a47ab3b7abf2f5bd",
+        "requests": [],
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 1,
+        "durationMs": 1727,
+        "modelSteps": 0,
+        "retryWaits": [],
+        "amendmentId": "turn_955f5ce9d4404685922bb505543cd3c4",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_55f14324bdc94896a47ab3b7abf2f5bd",
+        "finishReason": "not_returned",
+        "firstFailure": {
+          "code": "processing_configuration_invalid",
+          "name": "submit_processing",
+          "issues": [
+            {
+              "code": "processing_configuration_invalid",
+              "path": "/metadataKeys",
+              "tool": "submit_processing",
+              "keyword": "business",
+              "message": "Metadata保持原值时不能指定可修改的子字段。",
+              "operation": "clean"
+            },
+            {
+              "code": "processing_configuration_invalid",
+              "path": "/metadataKeys/0",
+              "tool": "submit_processing",
+              "keyword": "business",
+              "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+              "operation": "clean"
+            }
+          ]
+        },
+        "taskRevision": 5,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "recoveryOrigin": {
+          "mode": "execute",
+          "turnId": "turn_55f14324bdc94896a47ab3b7abf2f5bd",
+          "revision": 5,
+          "rootTurnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+          "amendmentId": "turn_955f5ce9d4404685922bb505543cd3c4",
+          "progressKey": "cdfbf4c176ee646ec9453bab7027035fb7b701be43148ed5700d8971b1dae94f",
+          "documentsKey": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "parentTurnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+          "progressFacts": [
+            "3803e7952d2b8b2860f152cb0c325f7e68a5f3ec946895f10ec61e80cee2fedc",
+            "save:assistant:turn_955f5ce9d4404685922bb505543cd3c4:54c40c86fe8072d29ae640a10486e2b9217ce315a4c2ed593338ec1164a13571",
+            "scope:83d8f03cd700dc162f2fc611a9bffb7d99d0387575050dd6f0a59e0e8ff7f067"
+          ],
+          "attemptsBefore": 0,
+          "transportRetriesBefore": 0
+        },
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 0,
+        "stepDiagnostics": [],
+        "attemptToolCalls": 1,
+        "executionAttempt": 1,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "attemptModelSteps": 0,
+        "repairRequestsUsed": 1,
+        "retainedCandidates": 2,
+        "retainedOperations": 1,
+        "attemptRequestAttempts": 0,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      },
+      {
+        "intent": {
+          "mode": "execute",
+          "source": "model",
+          "pauseFirst": false,
+          "reasonCode": "turn_execute",
+          "updateSaved": true,
+          "requiresUpdate": false
+        },
+        "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+        "failure": {
+          "layer": "tool",
+          "reason": "当前操作的参数或范围未通过校验。",
+          "category": "parameter_invalid",
+          "httpStatus": null,
+          "nextAction": "助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。"
+        },
+        "requests": [
+          {
+            "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:0",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 5653,
+            "httpStatus": 200,
+            "preflightMs": 46,
+            "timeToHeadersMs": 5645
+          },
+          {
+            "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:1",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 17298,
+            "httpStatus": 200,
+            "preflightMs": 14,
+            "timeToHeadersMs": 17288
+          },
+          {
+            "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:2",
+            "state": "parsed",
+            "bodyMs": 0,
+            "repair": {
+              "kind": "context",
+              "name": "request_processing_apply",
+              "nested": false,
+              "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+            },
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 4379,
+            "httpStatus": 200,
+            "preflightMs": 9,
+            "repairCharged": true,
+            "timeToHeadersMs": 4365
+          },
+          {
+            "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:3",
+            "state": "parsed",
+            "bodyMs": 0,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 9025,
+            "httpStatus": 200,
+            "preflightMs": 9,
+            "timeToHeadersMs": 9016
+          },
+          {
+            "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:4",
+            "state": "parsed",
+            "bodyMs": 1,
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 851,
+            "httpStatus": 200,
+            "preflightMs": 8,
+            "timeToHeadersMs": 845
+          },
+          {
+            "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa:5",
+            "state": "parsed",
+            "bodyMs": 0,
+            "repair": {
+              "kind": "context",
+              "name": "request_processing_apply",
+              "nested": false,
+              "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+            },
+            "parseMs": 0,
+            "parseOk": true,
+            "totalMs": 583,
+            "httpStatus": 200,
+            "preflightMs": 7,
+            "repairCharged": true,
+            "timeToHeadersMs": 574
+          }
+        ],
+        "errorCode": "processing_scope_invalid",
+        "sessionId": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+        "toolCalls": 6,
+        "durationMs": 39956,
+        "modelSteps": 6,
+        "retryWaits": [],
+        "amendmentId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+        "codeVersion": "c4789dfacfcaf272fceb3276321a82cc7c4abf2f",
+        "currentStep": null,
+        "diagnosticId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+        "finishReason": "not_returned",
+        "firstFailure": {
+          "code": "assistant_candidate_selection_invalid",
+          "name": "request_processing_apply",
+          "issues": [
+            {
+              "code": "assistant_candidate_selection_invalid",
+              "path": "/allSelected",
+              "tool": "request_processing_apply",
+              "keyword": "business",
+              "message": "当前没有可用的固定勾选。",
+              "operation": "request_processing_apply"
+            }
+          ]
+        },
+        "taskRevision": 6,
+        "toolsVersion": "assistant-tools-v12",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v15",
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 6,
+        "stepDiagnostics": [
+          {
+            "inputTokens": 19004,
+            "finishReason": "tool-calls",
+            "outputTokens": 23,
+            "argumentBytes": 101
+          },
+          {
+            "inputTokens": 22094,
+            "finishReason": "tool-calls",
+            "outputTokens": 70,
+            "argumentBytes": 186
+          },
+          {
+            "inputTokens": 3795,
+            "finishReason": "tool-calls",
+            "outputTokens": 79,
+            "argumentBytes": 179
+          },
+          {
+            "inputTokens": 18638,
+            "finishReason": "tool-calls",
+            "outputTokens": 35,
+            "argumentBytes": 30
+          },
+          {
+            "inputTokens": 19372,
+            "finishReason": "tool-calls",
+            "outputTokens": 83,
+            "argumentBytes": 186
+          },
+          {
+            "inputTokens": 4056,
+            "finishReason": "tool-calls",
+            "outputTokens": 84,
+            "argumentBytes": 194
+          }
+        ],
+        "attemptToolCalls": 6,
+        "executionAttempt": 1,
+        "parameterRepairs": [
+          {
+            "name": "request_processing_apply",
+            "outcome": "invalid"
+          },
+          {
+            "name": "request_processing_apply",
+            "outcome": "invalid"
+          }
+        ],
+        "transportRetries": 0,
+        "attemptModelSteps": 6,
+        "repairRequestsUsed": 2,
+        "retainedCandidates": 2,
+        "retainedOperations": 0,
+        "parameterRepairStatus": {
+          "name": "request_processing_apply",
+          "phase": "finished",
+          "scope": "call",
+          "intent": "tool",
+          "issues": [
+            {
+              "code": "assistant_candidate_selection_invalid",
+              "path": "/allSelected",
+              "tool": "request_processing_apply",
+              "keyword": "business",
+              "message": "当前没有可用的固定勾选。",
+              "operation": "request_processing_apply"
+            }
+          ],
+          "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+          "outcome": "invalid",
+          "amendmentId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+          "remainingMs": 40089
+        },
+        "attemptRequestAttempts": 6,
+        "parameterRepairVersion": "arguments-v4",
+        "requirementsReconciled": false
+      }
+    ],
+    "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+    "requirements": [
+      "只去掉问题字段首尾的空格和换行，不改变问题内部内容。",
+      "期望输出和Metadata保持不变。"
+    ],
+    "allowedFields": [
+      "question"
+    ],
+    "allowedLabels": [],
+    "checkedStatus": "succeeded",
+    "executionPlan": null,
+    "autoEventLimit": null,
+    "budgetSegments": [
+      {
+        "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+        "activeMs": 16739,
+        "startedAt": 1792753134531,
+        "toolCalls": 3,
+        "deadlineAt": 1792753214531,
+        "modelSteps": 3,
+        "rootTurnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+        "attemptToken": null,
+        "parentTurnId": null,
+        "attemptBaseMs": 16739,
+        "progressStart": "a59e6ad007c6be4b9240c7b59da33703adc68e61d762bc2592205622a9432841",
+        "requestAttempts": 3,
+        "attemptStartedAt": null,
+        "transportRetries": 0,
+        "accountingVersion": 2
+      }
+    ],
+    "candidateScope": null,
+    "classifications": [],
+    "executionBudget": {
+      "activeMs": 80066,
+      "lastTurn": {
+        "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+        "elapsedMs": 39014,
+        "toolCalls": 6,
+        "modelSteps": 6,
+        "requestAttempts": 6,
+        "transportRetries": 0
+      },
+      "toolCalls": 14,
+      "modelSteps": 15,
+      "requestAttempts": 15,
+      "transportRetries": 0
+    },
+    "executionPaused": false,
+    "processingScope": {
+      "hash": "83d8f03cd700dc162f2fc611a9bffb7d99d0387575050dd6f0a59e0e8ff7f067",
+      "source": {
+        "kind": "assets",
+        "assetIds": [
+          "asset_bd69a742d00a437dac5e99b9c4dc602e"
+        ]
+      },
+      "recordIds": [
+        "asset_bd69a742d00a437dac5e99b9c4dc602e:1",
+        "asset_bd69a742d00a437dac5e99b9c4dc602e:2"
+      ]
+    },
+    "recoverySegment": {
+      "mode": "execute",
+      "turnId": "turn_55f14324bdc94896a47ab3b7abf2f5bd",
+      "revision": 5,
+      "rootTurnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+      "amendmentId": "turn_955f5ce9d4404685922bb505543cd3c4",
+      "progressKey": "cdfbf4c176ee646ec9453bab7027035fb7b701be43148ed5700d8971b1dae94f",
+      "documentsKey": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "parentTurnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+      "progressFacts": [
+        "3803e7952d2b8b2860f152cb0c325f7e68a5f3ec946895f10ec61e80cee2fedc",
+        "save:assistant:turn_955f5ce9d4404685922bb505543cd3c4:54c40c86fe8072d29ae640a10486e2b9217ce315a4c2ed593338ec1164a13571",
+        "scope:83d8f03cd700dc162f2fc611a9bffb7d99d0387575050dd6f0a59e0e8ff7f067"
+      ],
+      "attemptsBefore": 0,
+      "transportRetriesBefore": 0
+    },
+    "requirementSave": {
+      "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:54c40c86fe8072d29ae640a10486e2b9217ce315a4c2ed593338ec1164a13571",
+      "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+      "amendmentId": "turn_955f5ce9d4404685922bb505543cd3c4",
+      "taskRevision": 5,
+      "requirementsKey": "870fd82a3261a1e2d5ee47e2dad49bf53cfdf5f7e855dbe69ddc57acbc94ad90"
+    },
+    "sourceDiscovery": {
+      "items": [
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset",
+          "name": "客服清洗测试.jsonl",
+          "count": 2,
+          "revision": null
+        }
+      ],
+      "query": "",
+      "reads": 1,
+      "offset": 0,
+      "version": 1,
+      "requestId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+      "signature": "db08310e669ba638252dd2701b196d4c2e40646239d867da8947b41e3d131aa0",
+      "nextOffset": null,
+      "requestText": "客服清洗测试.jsonl",
+      "resolvedSource": {
+        "kind": "assets",
+        "assetIds": [
+          "asset_bd69a742d00a437dac5e99b9c4dc602e"
+        ]
+      }
+    },
+    "boundaryQuestion": null,
+    "planningRecovery": null,
+    "transportRecovery": null,
+    "requirementProblem": null,
+    "taskContractVersion": 2,
+    "backgroundDefinitions": [],
+    "parameterRepairLimits": {
+      "submit_processing": {
+        "used": 1,
+        "version": 2,
+        "identity": "a7da56246cd10e26635934cbcaaeb11eecd598589c8629d06a0b41d2986cdbdf"
+      },
+      "request_processing_apply": {
+        "used": 2,
+        "version": 2,
+        "identity": "5a3005c1b8a86445388424308e400c9521828fd44cdaf5b5af6ea2eb96ae6866"
+      }
+    },
+    "parameterRepairStatus": {
+      "name": "request_processing_apply",
+      "phase": "finished",
+      "scope": "call",
+      "intent": "tool",
+      "issues": [
+        {
+          "code": "assistant_candidate_selection_invalid",
+          "path": "/allSelected",
+          "tool": "request_processing_apply",
+          "keyword": "business",
+          "message": "当前没有可用的固定勾选。",
+          "operation": "request_processing_apply"
+        }
+      ],
+      "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "outcome": "invalid",
+      "amendmentId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "remainingMs": 40089
+    },
+    "planValidationRequired": null,
+    "processingClarification": null,
+    "planningCheckpointTurnId": null
+  },
+  "turns": [
+    {
+      "id": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+      "event": "user",
+      "status": "failed",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": false,
+      "user_text": "帮我整理一下这些数据",
+      "created_at": "2026-10-23T10:55:53.685157+00:00",
+      "error_code": "assistant_internal_error",
+      "expires_at": "2026-10-23T10:57:23.707583+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [],
+      "request_hash": "cb9c4091b7be2b657da1dc59202509ba5b7bd69a6c9bdbca440b89b559f734b6",
+      "tool_results": [],
+      "operation_key": "8dc235bd-4806-493b-aaf1-50fea44aa558",
+      "task_revision": 1,
+      "assistant_text": "本轮发生内部异常。 已有要求和成果已保留。 保留输入并联系管理员检查诊断编号；恢复前先核对已执行操作。",
+      "requires_write": false,
+      "execution_token": "execution_94b109bd074b4d99a9b05b32bc7bfddb",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_990a3e3e74f741579724ee225930fb98",
+      "event": "user",
+      "status": "succeeded",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": false,
+      "user_text": "继续",
+      "created_at": "2026-10-23T10:57:29.248325+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-23T10:58:59.26941+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        }
+      ],
+      "request_hash": "1ed4155cd70c5c8a3ce1f90604196d5ec4963fd98f986f5f87ec77c4ca06ba83",
+      "tool_results": [
+        {
+          "key": "assistant:turn_990a3e3e74f741579724ee225930fb98:5a9a7043f92013fbe0f7accc582e1aacb5b9a68ff1c542edeb6cacba0f667a56",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute",
+              "explanation": "上一轮内部异常未产生已保存成果，当前项目快照中没有可定位的“这些数据”。请打开要整理的文件、草稿或版本页面，或直接上传/指定对象名称，我再继续。"
+            }
+          },
+          "result": {
+            "task": {
+              "error": "assistant_internal_error",
+              "stage": "failed",
+              "title": "新任务",
+              "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+              "recovery": {
+                "kind": "execution",
+                "message": "本轮发生内部异常。 已执行操作和已有成果保留。保留输入并联系管理员检查诊断编号；恢复前先核对已执行操作。"
+              },
+              "autoCount": 0,
+              "objective": "帮我整理一下这些数据",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_990a3e3e74f741579724ee225930fb98",
+                "explanation": "上一轮内部异常未产生已保存成果，当前项目快照中没有可定位的“这些数据”。请打开要整理的文件、草稿或版本页面，或直接上传/指定对象名称，我再继续。",
+                "updateSaved": true,
+                "taskRevision": 2
+              },
+              "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+              "requirements": [],
+              "autoEventLimit": null,
+              "classifications": [],
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic"
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_990a3e3e74f741579724ee225930fb98",
+              "explanation": "上一轮内部异常未产生已保存成果，当前项目快照中没有可定位的“这些数据”。请打开要整理的文件、草稿或版本页面，或直接上传/指定对象名称，我再继续。",
+              "updateSaved": true,
+              "taskRevision": 2
+            },
+            "unchanged": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          }
+        },
+        {
+          "key": "assistant:turn_990a3e3e74f741579724ee225930fb98:d245058c3eb4a836dadd86518363c95506924a25210d09cfe3969c6cb5e47ad8",
+          "name": "query_project",
+          "input": {
+            "kind": "project"
+          },
+          "result": {
+            "items": [
+              {
+                "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+                "kind": "asset",
+                "name": "客服其他资料.jsonl",
+                "count": 2,
+                "revision": null
+              },
+              {
+                "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                "kind": "asset",
+                "name": "客服清洗测试.jsonl",
+                "count": 2,
+                "revision": null
+              }
+            ],
+            "state": {
+              "items": [
+                {
+                  "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+                  "kind": "asset",
+                  "name": "客服其他资料.jsonl",
+                  "count": 2,
+                  "revision": null
+                },
+                {
+                  "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                  "kind": "asset",
+                  "name": "客服清洗测试.jsonl",
+                  "count": 2,
+                  "revision": null
+                }
+              ],
+              "query": "",
+              "reads": 1,
+              "offset": 0,
+              "version": 1,
+              "question": "请选择要处理的资料：第1份「客服其他资料.jsonl」（文件，2条）；第2份「客服清洗测试.jsonl」（文件，2条）。",
+              "requestId": "turn_990a3e3e74f741579724ee225930fb98",
+              "signature": "704cd7a618579356d424d768e32717a7b2770cbdbfabefcfa1cca0cbfba37531",
+              "nextOffset": null,
+              "requestText": "帮我整理一下这些数据"
+            },
+            "question": "请选择要处理的资料：第1份「客服其他资料.jsonl」（文件，2条）；第2份「客服清洗测试.jsonl」（文件，2条）。",
+            "nextOffset": null,
+            "logicalReads": 1,
+            "requiresClarification": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          }
+        }
+      ],
+      "operation_key": "a517cd0e-90cb-4bfa-94dd-fde6fba6ed10",
+      "task_revision": 2,
+      "assistant_text": "请选择要处理的资料：第1份「客服其他资料.jsonl」（文件，2条）；第2份「客服清洗测试.jsonl」（文件，2条）。",
+      "requires_write": true,
+      "execution_token": "execution_a5919ef71e7e4408be76e9c2d863580c",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+      "event": "user",
+      "status": "succeeded",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": false,
+      "user_text": "客服清洗测试.jsonl",
+      "created_at": "2026-10-23T10:57:53.201055+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-23T10:59:23.223177+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        }
+      ],
+      "request_hash": "a99ef6d4c4b59864c1cbd2b217e0088bf8fc9f9183a913d84bd4017c4b1f1e51",
+      "tool_results": [
+        {
+          "key": "assistant:turn_cc4894b59c454e92b00ad57b3d3d65f1:bc029725d4fda98c62085041d143464f98b7368c0ea435dc1a8b5a8eef65b84e",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "plan",
+              "explanation": "已选定「客服清洗测试.jsonl」（2条）。请说明“整理”的具体目标，例如：清洗格式、改写问题、补充答案、按某字段分类，或先查看样例。"
+            }
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "waiting_input",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                ]
+              },
+              "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "帮我整理一下这些数据",
+              "nextAction": null,
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "plan",
+                "source": "model",
+                "turnId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+                "explanation": "已选定「客服清洗测试.jsonl」（2条）。请说明“整理”的具体目标，例如：清洗格式、改写问题、补充答案、按某字段分类，或先查看样例。",
+                "updateSaved": true,
+                "taskRevision": 3
+              },
+              "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+              "requirements": [],
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": true,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+                "signature": "db08310e669ba638252dd2701b196d4c2e40646239d867da8947b41e3d131aa0",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "plan",
+              "source": "model",
+              "turnId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+              "explanation": "已选定「客服清洗测试.jsonl」（2条）。请说明“整理”的具体目标，例如：清洗格式、改写问题、补充答案、按某字段分类，或先查看样例。",
+              "updateSaved": true,
+              "taskRevision": 3
+            },
+            "unchanged": false,
+            "sourceConfirmed": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 3
+          }
+        }
+      ],
+      "operation_key": "28a87e17-b483-476a-a04a-af8527c42f0b",
+      "task_revision": 3,
+      "assistant_text": "已选定资料「客服清洗测试.jsonl」，尚未开始处理。请说明处理方式和记录范围。",
+      "requires_write": true,
+      "execution_token": "execution_0305bd71a33444f4b9418e1e625611cd",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_e057eebd4c5d453f9591e3675d2c3442",
+      "event": "user",
+      "status": "succeeded",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": false,
+      "user_text": "清洗这份文件的全部2条记录，其他不改。",
+      "created_at": "2026-10-23T10:58:22.546966+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-23T10:59:52.568828+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        }
+      ],
+      "request_hash": "529537d3be628f49961d8199a6c4acd8771d41dfea179cddb8bfeae2461c3049",
+      "tool_results": [
+        {
+          "key": "assistant:turn_e057eebd4c5d453f9591e3675d2c3442:9483144f09c2f40ebe913c3b2737fdfb2874d7cbd0bab0b9d37e8038c651a6f6",
+          "name": "plan_task",
+          "input": {
+            "target": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_bd69a742d00a437dac5e99b9c4dc602e"
+              ]
+            },
+            "control": {
+              "mode": "plan",
+              "explanation": "已按你的要求保存：清洗「客服清洗测试.jsonl」全部2条记录，其他字段不改。",
+              "requiresUpdate": true
+            },
+            "nextAction": "submit_processing",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "planning",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                ]
+              },
+              "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "新任务",
+              "deliveries": [],
+              "nextAction": null,
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "plan",
+                "source": "model",
+                "turnId": "turn_e057eebd4c5d453f9591e3675d2c3442",
+                "explanation": "已按你的要求保存：清洗「客服清洗测试.jsonl」全部2条记录，其他字段不改。",
+                "updateSaved": true,
+                "taskRevision": 4,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+              "requirements": [],
+              "allowedFields": [
+                "question"
+              ],
+              "executionPlan": {
+                "mode": "plan",
+                "steps": [],
+                "target": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                },
+                "current": 0,
+                "needsReview": false,
+                "contractVersion": 1
+              },
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": false,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+                "signature": "db08310e669ba638252dd2701b196d4c2e40646239d867da8947b41e3d131aa0",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "plan",
+              "source": "model",
+              "turnId": "turn_e057eebd4c5d453f9591e3675d2c3442",
+              "explanation": "已按你的要求保存：清洗「客服清洗测试.jsonl」全部2条记录，其他字段不改。",
+              "updateSaved": true,
+              "taskRevision": 4,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 4
+          }
+        }
+      ],
+      "operation_key": "e2bbd83d-ba4a-49a2-bbfd-c703124cddd8",
+      "task_revision": 4,
+      "assistant_text": "要求已记录，尚未开始新的处理。\n- 允许修改：问题",
+      "requires_write": true,
+      "execution_token": "execution_f6dc87970aa94f47a62789e6be9160a9",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_955f5ce9d4404685922bb505543cd3c4",
+      "event": "user",
+      "status": "succeeded",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": false,
+      "user_text": "开始清洗，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+      "created_at": "2026-10-23T10:58:54.504871+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-23T11:00:24.527128+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        }
+      ],
+      "request_hash": "e67c793d7a42ed9e196b3f324825f97b271871f8b9cefc46f0af49a91a4d5108",
+      "tool_results": [
+        {
+          "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:54c40c86fe8072d29ae640a10486e2b9217ce315a4c2ed593338ec1164a13571",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute",
+              "explanation": "开始清洗「客服清洗测试.jsonl」全部2条记录，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。"
+            },
+            "nextAction": "submit_processing",
+            "requirements": [
+              "只去掉问题字段首尾的空格和换行，不改变问题内部内容。",
+              "期望输出和Metadata保持不变。"
+            ],
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "inspecting",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                ]
+              },
+              "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "新任务",
+              "nextAction": "submit_processing",
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+                "explanation": "开始清洗「客服清洗测试.jsonl」全部2条记录，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+                "updateSaved": true,
+                "taskRevision": 5,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+              "requirements": [
+                "只去掉问题字段首尾的空格和换行，不改变问题内部内容。",
+                "期望输出和Metadata保持不变。"
+              ],
+              "allowedFields": [
+                "question"
+              ],
+              "executionPlan": null,
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": false,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+                "signature": "db08310e669ba638252dd2701b196d4c2e40646239d867da8947b41e3d131aa0",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+              "explanation": "开始清洗「客服清洗测试.jsonl」全部2条记录，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+              "updateSaved": true,
+              "taskRevision": 5,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 5
+          }
+        },
+        {
+          "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:validation:a061ee4be9c7c275b3b797c2c3214d9c02f0fc56e790940fe0864ac9bbb199f8",
+          "name": "submit_processing",
+          "error": {
+            "code": "processing_configuration_invalid",
+            "hint": "Metadata保持原值时不能指定可修改的子字段。；请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+            "issues": [
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "Metadata保持原值时不能指定可修改的子字段。",
+                "operation": "clean"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys/0",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+                "operation": "clean"
+              }
+            ]
+          },
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_bd69a742d00a437dac5e99b9c4dc602e"
+              ]
+            },
+            "operation": "clean",
+            "outputCount": 2,
+            "instructions": "",
+            "metadataKeys": [
+              "question"
+            ],
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 5
+          }
+        },
+        {
+          "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:7575ddd12b2a3cbc3168136ea1ac7f42e9b69237edbfb481b9f02b47023956cf",
+          "name": "submit_processing",
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_bd69a742d00a437dac5e99b9c4dc602e"
+              ]
+            },
+            "operation": "clean",
+            "allRecords": true,
+            "instructions": "",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "url": "/projects/project_b70d249133504c3dac6e954452c1d9dd/processing?run=processing_0fff4a54bf754a39921523fb2201dfaf",
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "status": "queued",
+            "replayed": false,
+            "inputCount": 2
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 5
+          }
+        }
+      ],
+      "operation_key": "f755eed3-1a39-4463-b878-0c8ce2e7a3b5",
+      "task_revision": 5,
+      "assistant_text": "处理任务已提交，完成后将继续核对候选。",
+      "requires_write": true,
+      "execution_token": "execution_2246c37663e7402b886408e19c608524",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_55f14324bdc94896a47ab3b7abf2f5bd",
+      "event": "processing_completed",
+      "status": "succeeded",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": true,
+      "user_text": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+      "created_at": "2026-10-23T10:59:13.018339+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-23T11:00:43.040754+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        }
+      ],
+      "request_hash": "aafeeea0e6050ddf910d5c4317aaec2f9e25d1752781449f6b9c1b168e17e672",
+      "tool_results": [
+        {
+          "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:54c40c86fe8072d29ae640a10486e2b9217ce315a4c2ed593338ec1164a13571",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute",
+              "explanation": "开始清洗「客服清洗测试.jsonl」全部2条记录，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。"
+            },
+            "nextAction": "submit_processing",
+            "requirements": [
+              "只去掉问题字段首尾的空格和换行，不改变问题内部内容。",
+              "期望输出和Metadata保持不变。"
+            ],
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "stage": "inspecting",
+              "title": "新任务",
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                ]
+              },
+              "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+              "question": null,
+              "recovery": null,
+              "autoCount": 0,
+              "objective": "新任务",
+              "nextAction": "submit_processing",
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+                "explanation": "开始清洗「客服清洗测试.jsonl」全部2条记录，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+                "updateSaved": true,
+                "taskRevision": 5,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+              "requirements": [
+                "只去掉问题字段首尾的空格和换行，不改变问题内部内容。",
+                "期望输出和Metadata保持不变。"
+              ],
+              "allowedFields": [
+                "question"
+              ],
+              "executionPlan": null,
+              "autoEventLimit": null,
+              "classifications": [],
+              "executionPaused": false,
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+                "signature": "db08310e669ba638252dd2701b196d4c2e40646239d867da8947b41e3d131aa0",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_955f5ce9d4404685922bb505543cd3c4",
+              "explanation": "开始清洗「客服清洗测试.jsonl」全部2条记录，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+              "updateSaved": true,
+              "taskRevision": 5,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 5
+          }
+        },
+        {
+          "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:validation:a061ee4be9c7c275b3b797c2c3214d9c02f0fc56e790940fe0864ac9bbb199f8",
+          "name": "submit_processing",
+          "error": {
+            "code": "processing_configuration_invalid",
+            "hint": "Metadata保持原值时不能指定可修改的子字段。；请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+            "issues": [
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "Metadata保持原值时不能指定可修改的子字段。",
+                "operation": "clean"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys/0",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "请使用资料中存在或用户明确要求新增的Metadata子字段，顶层字段名不能代替它。",
+                "operation": "clean"
+              }
+            ]
+          },
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_bd69a742d00a437dac5e99b9c4dc602e"
+              ]
+            },
+            "operation": "clean",
+            "outputCount": 2,
+            "instructions": "",
+            "metadataKeys": [
+              "question"
+            ],
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 5
+          }
+        },
+        {
+          "key": "assistant:turn_955f5ce9d4404685922bb505543cd3c4:7575ddd12b2a3cbc3168136ea1ac7f42e9b69237edbfb481b9f02b47023956cf",
+          "name": "submit_processing",
+          "input": {
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_bd69a742d00a437dac5e99b9c4dc602e"
+              ]
+            },
+            "operation": "clean",
+            "allRecords": true,
+            "instructions": "",
+            "allowedFields": [
+              "question"
+            ]
+          },
+          "result": {
+            "url": "/projects/project_b70d249133504c3dac6e954452c1d9dd/processing?run=processing_0fff4a54bf754a39921523fb2201dfaf",
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "status": "queued",
+            "replayed": false,
+            "inputCount": 2
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 5
+          }
+        },
+        {
+          "key": "assistant:turn_55f14324bdc94896a47ab3b7abf2f5bd:4b6b2b64ca6500cbc3c011745144173fe4c6b8f4bdfa92e67fd49aaade67157c",
+          "name": "read_processing",
+          "input": {
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf"
+          },
+          "result": {
+            "url": "/projects/project_b70d249133504c3dac6e954452c1d9dd/processing?run=processing_0fff4a54bf754a39921523fb2201dfaf",
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "total": 2,
+            "issues": [],
+            "review": {
+              "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+              "total": 2,
+              "labels": [
+                {
+                  "count": 1,
+                  "label": "保留原期望 A"
+                },
+                {
+                  "count": 1,
+                  "label": "保留原期望 B"
+                }
+              ],
+              "content": {
+                "checked": 0,
+                "pending": 2,
+                "conforms": 0,
+                "uncertain": 0,
+                "nonconforms": 0,
+                "autoRepaired": 0
+              },
+              "complete": true,
+              "countKind": "new",
+              "duplicates": 0,
+              "labelKinds": 2,
+              "formatIssues": [],
+              "missingCount": 0,
+              "effectiveness": {
+                "modified": 2,
+                "unchanged": 0,
+                "unprocessed": 0,
+                "ineffectiveRewrite": 0
+              },
+              "expectedCount": 2,
+              "outsideLabels": 0,
+              "candidateCount": 2,
+              "countSatisfied": true,
+              "emptyQuestions": 0,
+              "semanticReview": "required",
+              "classifications": [],
+              "countUnverified": false,
+              "labelsTruncated": false,
+              "additionalLabels": 0,
+              "formatIssueCount": 0,
+              "questionCollisions": 0,
+              "compatibilityProblem": null,
+              "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+              "formatIssuesTruncated": false,
+              "protectedFieldChanges": 0
+            },
+            "status": "succeeded",
+            "partial": false,
+            "records": [
+              {
+                "id": "0:0",
+                "metadata": [
+                  {
+                    "key": "分类",
+                    "value": "退款进度"
+                  },
+                  {
+                    "key": "渠道",
+                    "value": "App"
+                  }
+                ],
+                "question": "我的退款目前处理到哪一步了？",
+                "resultRef": {
+                  "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                  "resultId": "0:0"
+                },
+                "expectedOutput": "保留原期望 A"
+              },
+              {
+                "id": "0:1",
+                "metadata": [
+                  {
+                    "key": "分类",
+                    "value": "退款到账时间"
+                  },
+                  {
+                    "key": "渠道",
+                    "value": "网页"
+                  }
+                ],
+                "question": "退款发起后大约什么时候到账？",
+                "resultRef": {
+                  "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                  "resultId": "0:1"
+                },
+                "expectedOutput": "保留原期望 B"
+              }
+            ],
+            "recovery": {
+              "reason": null,
+              "canRetry": false,
+              "canContinue": false
+            },
+            "taskRuns": [
+              {
+                "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                "total": 2,
+                "status": "succeeded"
+              }
+            ],
+            "taskTotal": 2,
+            "diagnostics": [],
+            "missingCount": 0
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 5
+          }
+        }
+      ],
+      "operation_key": "auto:5:fecf877dd0515504653d4dee60dfba71545238c50cfe1d711dfba20f528a10f6",
+      "task_revision": 5,
+      "assistant_text": "已核对本段真实回执，任务进度与保留成果见下方。",
+      "requires_write": true,
+      "execution_token": "execution_27f38058c6014c1193640446201b14e3",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+      "event": "user",
+      "status": "failed",
+      "task_id": "assistanttask_55444a4294734b108ee008fda4d61416",
+      "resuming": false,
+      "user_text": "保存为新的测试集草稿，叫客服清洗复测。",
+      "created_at": "2026-10-23T10:59:39.559367+00:00",
+      "error_code": "processing_scope_invalid",
+      "expires_at": "2026-10-23T11:01:09.581844+00:00",
+      "session_id": "conversation_4207a1ceb31a4477986ffab835b5bdd0",
+      "dependencies": [
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_5bdbfd782dec4f42947373a17f1e6549",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+          "kind": "asset"
+        }
+      ],
+      "request_hash": "a9eefce002d7ff32210f81fda8f503d064560c9a1a58617589dfdd5b5631f2ae",
+      "tool_results": [
+        {
+          "key": "assistant:turn_5dfac103b7a7434e91a68b40c56cb3fa:b39b6764fad867a96b3773bec39abc4224bf9f1f59a4701b5fea4ebb875efce9",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute",
+              "explanation": "已按你的要求保存采用请求，等待确认。"
+            }
+          },
+          "result": {
+            "task": {
+              "error": null,
+              "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+              "stage": "awaiting_review",
+              "title": "新任务",
+              "review": {
+                "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                "total": 2,
+                "content": {
+                  "checked": 0,
+                  "pending": 2,
+                  "conforms": 0,
+                  "uncertain": 0,
+                  "nonconforms": 0,
+                  "autoRepaired": 0
+                },
+                "complete": true,
+                "countKind": "new",
+                "readAgain": {
+                  "tool": "read_processing",
+                  "input": {
+                    "runId": "processing_0fff4a54bf754a39921523fb2201dfaf"
+                  }
+                },
+                "duplicates": 0,
+                "labelKinds": 2,
+                "labelsHash": "3bd6611dd9ab0da5e22fb0496909f1d2456a88c6ce41b4d3fbf41e9362885b2b",
+                "formatIssues": [],
+                "missingCount": 0,
+                "effectiveness": {
+                  "modified": 2,
+                  "unchanged": 0,
+                  "unprocessed": 0,
+                  "ineffectiveRewrite": 0
+                },
+                "expectedCount": 2,
+                "outsideLabels": 0,
+                "candidateCount": 2,
+                "countSatisfied": true,
+                "emptyQuestions": 0,
+                "semanticReview": "required",
+                "classifications": [],
+                "countUnverified": false,
+                "additionalLabels": 0,
+                "questionCollisions": 0,
+                "compatibilityProblem": null,
+                "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+                "protectedFieldChanges": 0
+              },
+              "runIds": [
+                "processing_0fff4a54bf754a39921523fb2201dfaf"
+              ],
+              "target": {
+                "kind": "assets",
+                "assetIds": [
+                  "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                ]
+              },
+              "taskId": "assistanttask_55444a4294734b108ee008fda4d61416",
+              "question": null,
+              "recovery": null,
+              "autoCount": 1,
+              "objective": "新任务",
+              "nextAction": null,
+              "targetName": "客服清洗测试.jsonl",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+                "explanation": "已按你的要求保存采用请求，等待确认。",
+                "updateSaved": true,
+                "taskRevision": 6
+              },
+              "originTurnId": "turn_b8b8fa05fda6435c8b1da8a7210e68da",
+              "requirements": [
+                "只去掉问题字段首尾的空格和换行，不改变问题内部内容。",
+                "期望输出和Metadata保持不变。"
+              ],
+              "allowedFields": [
+                "question"
+              ],
+              "checkedStatus": "succeeded",
+              "executionPlan": null,
+              "autoEventLimit": null,
+              "candidateScope": null,
+              "classifications": [],
+              "executionPaused": false,
+              "processingScope": {
+                "hash": "83d8f03cd700dc162f2fc611a9bffb7d99d0387575050dd6f0a59e0e8ff7f067",
+                "count": 2,
+                "source": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                }
+              },
+              "sourceDiscovery": {
+                "items": [
+                  {
+                    "id": "asset_bd69a742d00a437dac5e99b9c4dc602e",
+                    "kind": "asset",
+                    "name": "客服清洗测试.jsonl",
+                    "count": 2,
+                    "revision": null
+                  }
+                ],
+                "query": "",
+                "reads": 1,
+                "offset": 0,
+                "version": 1,
+                "requestId": "turn_cc4894b59c454e92b00ad57b3d3d65f1",
+                "signature": "db08310e669ba638252dd2701b196d4c2e40646239d867da8947b41e3d131aa0",
+                "nextOffset": null,
+                "requestText": "客服清洗测试.jsonl",
+                "resolvedSource": {
+                  "kind": "assets",
+                  "assetIds": [
+                    "asset_bd69a742d00a437dac5e99b9c4dc602e"
+                  ]
+                }
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic",
+              "processingClarification": null
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_5dfac103b7a7434e91a68b40c56cb3fa",
+              "explanation": "已按你的要求保存采用请求，等待确认。",
+              "updateSaved": true,
+              "taskRevision": 6
+            },
+            "unchanged": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 6
+          }
+        },
+        {
+          "key": "assistant:turn_5dfac103b7a7434e91a68b40c56cb3fa:cf6c57e26f1633eb41cd94ea59e50df3212dc2fb6462a3449648272b3ec97484",
+          "name": "request_processing_apply",
+          "error": {
+            "code": "processing_result_invalid",
+            "hint": "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。"
+          },
+          "input": {
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl全部2条清洗结果"
+            },
+            "resultIds": [
+              "f:280e7d0239e11abb",
+              "f:70c9c0590844c22b"
+            ]
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 6
+          }
+        },
+        {
+          "key": "assistant:turn_5dfac103b7a7434e91a68b40c56cb3fa:4b6b2b64ca6500cbc3c011745144173fe4c6b8f4bdfa92e67fd49aaade67157c",
+          "name": "read_processing",
+          "input": {
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf"
+          },
+          "result": {
+            "url": "/projects/project_b70d249133504c3dac6e954452c1d9dd/processing?run=processing_0fff4a54bf754a39921523fb2201dfaf",
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "total": 2,
+            "issues": [],
+            "review": {
+              "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+              "total": 2,
+              "labels": [
+                {
+                  "count": 1,
+                  "label": "保留原期望 A"
+                },
+                {
+                  "count": 1,
+                  "label": "保留原期望 B"
+                }
+              ],
+              "content": {
+                "checked": 0,
+                "pending": 2,
+                "conforms": 0,
+                "uncertain": 0,
+                "nonconforms": 0,
+                "autoRepaired": 0
+              },
+              "complete": true,
+              "countKind": "new",
+              "duplicates": 0,
+              "labelKinds": 2,
+              "formatIssues": [],
+              "missingCount": 0,
+              "effectiveness": {
+                "modified": 2,
+                "unchanged": 0,
+                "unprocessed": 0,
+                "ineffectiveRewrite": 0
+              },
+              "expectedCount": 2,
+              "outsideLabels": 0,
+              "candidateCount": 2,
+              "countSatisfied": true,
+              "emptyQuestions": 0,
+              "semanticReview": "required",
+              "classifications": [],
+              "countUnverified": false,
+              "labelsTruncated": false,
+              "additionalLabels": 0,
+              "formatIssueCount": 0,
+              "questionCollisions": 0,
+              "compatibilityProblem": null,
+              "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+              "formatIssuesTruncated": false,
+              "protectedFieldChanges": 0
+            },
+            "status": "succeeded",
+            "partial": false,
+            "records": [
+              {
+                "id": "0:0",
+                "metadata": [
+                  {
+                    "key": "分类",
+                    "value": "退款进度"
+                  },
+                  {
+                    "key": "渠道",
+                    "value": "App"
+                  }
+                ],
+                "question": "我的退款目前处理到哪一步了？",
+                "resultRef": {
+                  "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                  "resultId": "0:0"
+                },
+                "expectedOutput": "保留原期望 A"
+              },
+              {
+                "id": "0:1",
+                "metadata": [
+                  {
+                    "key": "分类",
+                    "value": "退款到账时间"
+                  },
+                  {
+                    "key": "渠道",
+                    "value": "网页"
+                  }
+                ],
+                "question": "退款发起后大约什么时候到账？",
+                "resultRef": {
+                  "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                  "resultId": "0:1"
+                },
+                "expectedOutput": "保留原期望 B"
+              }
+            ],
+            "recovery": {
+              "reason": null,
+              "canRetry": false,
+              "canContinue": false
+            },
+            "taskRuns": [
+              {
+                "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+                "total": 2,
+                "status": "succeeded"
+              }
+            ],
+            "taskTotal": 2,
+            "diagnostics": [],
+            "missingCount": 0
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 6
+          }
+        },
+        {
+          "key": "assistant:turn_5dfac103b7a7434e91a68b40c56cb3fa:validation:41ef5c57c86e37db8c132223da4821842adfbbe1353d955b05220ca108028182",
+          "name": "request_processing_apply",
+          "error": {
+            "code": "assistant_candidate_selection_invalid",
+            "hint": "当前没有可用的固定勾选。",
+            "issues": [
+              {
+                "code": "assistant_candidate_selection_invalid",
+                "path": "/allSelected",
+                "tool": "request_processing_apply",
+                "keyword": "business",
+                "message": "当前没有可用的固定勾选。",
+                "operation": "request_processing_apply"
+              }
+            ]
+          },
+          "input": {
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl全部2条清洗结果"
+            },
+            "allTask": true,
+            "allSelected": true
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 6
+          }
+        },
+        {
+          "key": "assistant:turn_5dfac103b7a7434e91a68b40c56cb3fa:validation:7f3eac1adedfe55fa297b41b68a38a5bdae1796a69a039ba99833a9ed2c72139",
+          "name": "request_processing_apply",
+          "error": {
+            "code": "processing_scope_invalid",
+            "hint": "整个任务范围不能混用单批记录或否定全部有效结果。",
+            "issues": [
+              {
+                "code": "processing_scope_invalid",
+                "path": "/allTask",
+                "tool": "request_processing_apply",
+                "keyword": "business",
+                "message": "整个任务范围不能混用单批记录或否定全部有效结果。",
+                "operation": "request_processing_apply"
+              }
+            ]
+          },
+          "input": {
+            "runId": "processing_0fff4a54bf754a39921523fb2201dfaf",
+            "target": {
+              "kind": "newDraft",
+              "name": "客服清洗复测",
+              "purpose": "保存客服清洗测试.jsonl全部2条清洗结果"
+            },
+            "allTask": true,
+            "resultIds": [
+              "f:280e7d0239e11abb",
+              "f:70c9c0590844c22b"
+            ]
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 6
+          }
+        }
+      ],
+      "operation_key": "78c5285a-230c-4b7f-82bf-49b167742482",
+      "task_revision": 6,
+      "assistant_text": "本轮尚未提交新的处理任务。 当前操作的参数或范围未通过校验。 已有要求和成果已保留。 助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。",
+      "requires_write": true,
+      "execution_token": "execution_44df1bf4c309441e8294167d869a602d",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    }
+  ]
+}
