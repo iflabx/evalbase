@@ -1,0 +1,3 @@
+import { defineConfig } from "vitest/config";
+export default defineConfig({test:{include:["tests/unit/assistant-budget-ledger.test.ts",
+    "tests/unit/assistant-candidates.test.ts","tests/unit/assistant-budget.test.ts","tests/unit/assistant-execution-budget.test.ts","tests/unit/assistant-transport.test.ts","tests/unit/assistant-recovery-decision.test.ts","tests/unit/assistant-tool-repair.test.ts","tests/integration/assistant-budget-continuation.test.ts","tests/integration/assistant-recovery.test.ts","tests/integration/assistant-task-context.test.ts","tests/integration/assistant-processing-preflight.test.ts"],setupFiles:["tests/setup.ts"],testTimeout:30000,hookTimeout:30000,fileParallelism:false}});

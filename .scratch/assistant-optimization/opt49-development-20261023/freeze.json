@@ -1,0 +1,27 @@
+{
+  "base": "8e2d7525d23ebb33fdd029d42d8dc04e4e94095c",
+  "files": {
+    "src/assistant/agent.ts": "4b70050e546793f857cd647ee793fb754e6285d07a81bb38de53ceee10ff9c9d",
+    "src/assistant/budget.ts": "73a0aa2d730c46c55331397ebd8a4ca6d23d3ff4c9c93ccf98bc5d2841340766",
+    "src/assistant/budget-ledger.ts": "0ef63c8277c0fe0da141981e9d66cb649c85ba14985c2d0fad42cedaf5d1f33a",
+    "src/assistant/candidates.ts": "a75a97100c7a002e34beae1f5a7f3eff969047aee3f3457942a4224af498d8a3",
+    "src/assistant/context.ts": "89c9ad75296e271f1c6f92dc37b21cfd3e37ed226d0a5d88c11a8bfc9458eceb",
+    "src/assistant/feedback.ts": "1aa6b1b694d5d2e8ee5958f2f9ffcd67212ba9fd1522bf95717cbfbca9f74b91",
+    "src/assistant/operation-input.ts": "0ba358f28c91b6a5cc5bb18f4acb8fb9145ceace8a1805d5d0e381eba9ad2fb5",
+    "src/assistant/recovery.ts": "8fb86aad35c8be68a7ac3efd92fde0d9bda6c5d64895732b10bd5a37ce564612",
+    "src/assistant/store.ts": "68be90f8621b1e3f46443dcd149b7853311a1938a1bf7c1522e15037d8f0e9f4",
+    "src/assistant/tasks.ts": "127b69804115271df13020b82bb6eff9f34e71afece243d12c420c28219aff98",
+    "src/assistant/transport.ts": "ac2874de8189cecc2d46a9928e6f5251aa27b21005b22a21fc1d30ba8f6e531f",
+    "src/db/migrate.ts": "73a7d26ef65ac2b4440febfec36abbbc770eb4cd851708c9e1e589d694e4edf3",
+    "src/server/modules/assistant.ts": "8a75125f38c387bdcd1da18742f95cd27d43cea47005daabeb2d796b7bb9a165",
+    "tests/unit/assistant-budget-ledger.test.ts": "646345062cec239b3016cd8519cffedb7a5b84365f61556eb2babf249e9aa6e3",
+    "tests/unit/assistant-candidates.test.ts": "284f6ac9c9c40a8398b866d36a5123f46a34fe5c9bbe06c46f4a835b2bfcdb5b",
+    "tests/unit/assistant-recovery-decision.test.ts": "64ae540f79f6ab422d0c40a6fb3d795060c8d8044bf62fb865acc279953836ae",
+    "tests/unit/assistant-transport.test.ts": "1e2ea99db6b3e79fbd9b449269bf9a1e4c9d91e608f2a58492624f12ed228000",
+    "tests/integration/assistant-budget-continuation.test.ts": "22ffa9203e068dbfc69c1865ab0095cb7bcfd80de38bc67752f7026e5745b4a2",
+    "tests/integration/assistant-recovery.test.ts": "96fb84e18d9ee88ea974a7b11887f67a994079b123794ce862848b05eb6f424c",
+    "tests/integration/assistant-task-context.test.ts": "692f55d6976ba2380aa910d261846b3dc1e9dec4f3f8baf2ea9167662ba94b68",
+    "tests/integration/assistant-processing-preflight.test.ts": "b115082729947203f8fe8506734e021982bbcb6f84954c38d9d5ea1d646250db"
+  },
+  "sourceHash": "fb60790d134864f052772438439e2c200d00a2481dfda55b634f90b996cd5af2"
+}

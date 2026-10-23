@@ -349,4 +349,6 @@ OPT-42 实现与预算边界见[定向验证记录](../../.scratch/assistant-opt
 - 新版本支持独立留痕的有限追加授权，原预算/消耗保留；旧Worker配方和外层验收额度仍是硬约束。§16～18原累计默认数值不调高；新版本的授权追加与100turn历史窗口语义按上述新合同解释，旧冻结策略原义保留。
 - 本批不更换框架、放宽固定确认或调整内容质量门槛。阶段接口经当前公共入口验证；精简流程允许完整根因所需的结构调整，不等于保留冲突路径只加提示词。
 
-2026-10-22 OPT-46：已在现有AI SDK接线中实现plan-request准备器与服务端完整合并校验；planVerificationCurrent统一核对回执的反馈、恢复及收尾有效性。没有新表、框架或第二份计划；明确新增独立交付与增加记录/场景分开保护。实现、调用方、旧合同兼容及定向结果见[唯一记录](../../.scratch/assistant-optimization/opt46-verification.md)，后续单独授权的4217更新及CU-7首次规划失败见[记录](../../.scratch/assistant-optimization/opt46-cu7-verification.md)；OPT-47～50未实施。
+2026-10-22 OPT-46：已在现有AI SDK接线中实现plan-request准备器与服务端完整合并校验；planVerificationCurrent统一核对回执的反馈、恢复及收尾有效性。没有新表、框架或第二份计划；明确新增独立交付与增加记录/场景分开保护。实现、调用方、旧合同兼容及定向结果见[唯一记录](../../.scratch/assistant-optimization/opt46-verification.md)，后续单独授权的4217更新及CU-7首次规划失败见[记录](../../.scratch/assistant-optimization/opt46-cu7-verification.md)；当时OPT-47～50未实施，当前进度见下方实施记录。
+
+2026-10-23 OPT-49：依赖OPT-46～48的定向交付，已在现有任务JSON、锁和AI SDK出站边界实现分层预算、原用量连续结算、有限追加授权及冻结操作身份；不新增表或第二套调度。新旧合同、直接调用方、兼容退出及170个不同定向案例见[OPT-49实施记录](../../.scratch/assistant-optimization/opt49-verification-20261023.md)，持久与安全边界见[ADR0014](../adr/0014-project-agent-and-processing-runtime.md)。本票未更新4217、调用真实模型或重跑旧验收；Owner验收及OPT-50页面联动仍pending。

@@ -1,0 +1,36 @@
+{
+  "baseline": "8e2d752",
+  "method": "code-review Standards and Spec in parallel, then focused verification of findings",
+  "standards": {
+    "initialFindings": 0,
+    "focusedFindings": 0
+  },
+  "spec": {
+    "initialFindings": [
+      {
+        "priority": 1,
+        "issue": "grant revision binding"
+      },
+      {
+        "priority": 1,
+        "issue": "direct candidate selection reuses frozen seed"
+      },
+      {
+        "priority": 2,
+        "issue": "no unexecutable continue offer when repair budget is exhausted"
+      }
+    ],
+    "resolution": "fixed with regressions",
+    "focusedFindings": 0
+  },
+  "reviewers": [
+    "opt48_standards",
+    "opt48_spec"
+  ],
+  "remoteAcceptanceTouched": false,
+  "accountingFollowup": {
+    "scope": "sentRequestCount only",
+    "findings": 0,
+    "status": "pass"
+  }
+}

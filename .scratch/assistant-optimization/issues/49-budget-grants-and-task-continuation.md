@@ -1,9 +1,10 @@
 # OPT-49 复杂任务预算分层与可续接执行
 
 Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
-Blocked by: OPT-47、OPT-48（传递依赖OPT-46）
+Implementation: completed
+Validation: targeted-pass
+Owner: pending
+Blocked by: none（OPT-46～48已完成定向交付）
 
 
 - 优先级：P1。前置：OPT-48任务身份/检查点引用、OPT-46紧凑修改/核对、OPT-47统一业务预检。
@@ -89,3 +90,9 @@ Blocked by: OPT-47、OPT-48（传递依赖OPT-46）
 - 2026-10-23：增补实际出站计数、耗时阶段、统一进展/组合状态R49-9～11；原默认/追加预设及全部旧限额保持，未建活动授权、未实施或运行验证。
 
 - 2026-10-23：补齐15工具参数传递审查，增加R49-12、R49-13；仅文档/离线源码探针，未实现新增范围、运行应用回归/CU、部署或消费预算。
+
+- 2026-10-23：开始按更新合同实施；当前实现、直接调用方、新旧格式、首次红灯及最终定向证据集中在[OPT-49验证](../opt49-verification-20261023.md)。本票不更新4217、不执行真实CU，不消费或重置旧预算。
+
+- 2026-10-23实施收口：固定源码169项定向回归全过；实际发送计数最后收口另有10项窄验证（新增1例），按身份汇总170例。类型/lint及Standards/Spec独立审阅通过，首次失败及修复证据保留。详见[验证记录](../opt49-verification-20261023.md)。未更新4217、调用真实模型、执行CU、重开旧预算或重跑已完成验收；Owner验收和OPT-50仍pending。
+
+- 实现提交`5033590185a6c967f91db9bfe74335e5fe964bba`；Ticket Closure Review P0/P1 cleared at `5033590185a6c967f91db9bfe74335e5fe964bba`，详细矩阵与限制见[唯一验证记录](../opt49-verification-20261023.md#固定实现与收口)。

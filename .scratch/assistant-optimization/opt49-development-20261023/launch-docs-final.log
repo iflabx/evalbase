@@ -1,0 +1,6 @@
+{"exitCode": 0, "log": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/opt49-development-20261023/docs-final.log", "databaseServer": "evalbase-agent-test", "bucket": "opt49-contract-regressions-20261023"}
+
+> evalbase@0.2.0 docs:check
+> node scripts/check-docs.mjs
+
+docs:check passed: 38 Ticket lifecycle rows, commit references, Gate state, and stale-status phrases

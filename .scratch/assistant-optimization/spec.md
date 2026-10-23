@@ -274,4 +274,8 @@ OPT-12 是 OPT-11 后续体验调整，Owner 已单独授权开发；不等待�
 
 Owner授权仅文档补审。已完成15工具/90顶层字段及399条含复用路径的[参数核对](../../docs/assistant-tool-parameter-review-2026-10-23.md)，新增7组问题、1项旧格式风险归入OPT-46～50；[共同合同](../../docs/assistant-mechanism-consolidation-2026-10-22.md#tool-parameter-contracts)、[测试索引](../../docs/test-plan-data-selection-and-assistant.md#tool-parameter-tests)同步。
 
-OPT-46继续in-progress/partial-pass；47～50维持not-started。新增14条验收标准未实施/运行；14条离线观察不是业务验收通过。未修改业务代码、更新4217、调用模型、运行CU、改旧预算或重跑已完成部分；原未提交semantic-results.json排除在本轮写入及提交之外。
+该次补审时OPT-46为in-progress/partial-pass、47～50为not-started；后续实施状态见各票及文末最新记录。补审新增14条验收标准当时未实施/运行；14条离线观察不是业务验收通过。未修改业务代码、更新4217、调用模型、运行CU、改旧预算或重跑已完成部分；原未提交semantic-results.json排除在本轮写入及提交之外。
+
+## 2026-10-23 OPT-49 分层预算及续接
+
+按更新后的票据实施预算账本、进展续段、固定单段追加授权和真实请求观察；实现边界、调用方、旧合同及最终证据以[OPT-49验证](opt49-verification-20261023.md)为准。原默认、旧账和验收数据保持；未部署4217、执行CU或重跑已完成真实验收。下一票OPT-50承接页面集成与既定小流程。
