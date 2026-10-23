@@ -131,7 +131,7 @@ export function turnNeedsWork(
     completed.some(
       (r) =>
         r.name === "read_processing" &&
-        r.result?.run?.id === task.runId &&
+        (r.result?.runId ?? r.result?.run?.id) === task.runId &&
         [
           "queued",
           "running",
@@ -139,7 +139,7 @@ export function turnNeedsWork(
           "succeeded",
           "failed",
           "cancelled",
-        ].includes(r.result?.run?.status),
+        ].includes(r.result?.status ?? r.result?.run?.status),
     )
   )
     return false;

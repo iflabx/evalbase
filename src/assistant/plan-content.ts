@@ -84,22 +84,39 @@ export function planContentText(
           return "";
         },
       );
+      const outputObject = (suffix: string) =>
+        !suffix.trim() ||
+        /^\s*(?:即可|就行了?|就好|就够了?|便可|就可以了?|吧)[！!？?。]*\s*$/u.test(
+          suffix,
+        ) ||
+        /^\s*(?:(?:自然|完整|新的|新增|独立|可用|不同|意图)(?:的)?[、\s]*)*(?:问题|测试题|题目|测试数据|数据|记录)/u.test(
+          suffix,
+        );
       value = value.replace(
-        /((?:生成|设计|创建|新增|扩写|扩充)(?:共|总共)?)\s*([0-9]+)\s*条/gu,
-        (_m, verb, n) => {
+        /((?:生成|设计|创建|制作|准备|做|出|新增|扩写|扩充)(?:共|总共)?)\s*([0-9]+)\s*条/gu,
+        (_m, verb, n, offset) => {
+          if (!outputObject(value.slice(offset + _m.length))) return _m;
           if (!totals.has(Number(n))) reject();
           return verb;
         },
       );
       value = value.replace(
         /(?:总计|合计|总共|共|最终总数|目标(?:数量|条数)?)(?:为|是|：|:)?\s*([0-9]+)\s*条/gu,
-        (_m, n) => {
+        (_m, n, offset) => {
+          if (!outputObject(value.slice(offset + _m.length))) return _m;
           if (!totals.has(Number(n))) reject();
           return "";
         },
       );
-      // A count whose scope is not known must enter bounded correction, not be erased.
-      if (new RegExp(number + "\\s*条", "u").test(value)) reject();
+      // Reject an unbound output quantity; unrelated business quantities remain literal.
+      if (
+        new RegExp(
+          number +
+            "\\s*条(?:自然|完整|新的|新增)?(?:问题|测试题|题目|测试数据|记录)",
+          "u",
+        ).test(value)
+      )
+        reject();
       return value.replace(
         /\0([0-9]+)\0/gu,
         (_m, i) => protectedSpans[Number(i)]!,

@@ -621,9 +621,18 @@ export function advancePlan(
     step.status === "waiting" &&
     action === "read_processing" &&
     value.runId === step.receipt?.runId &&
-    value.status === "succeeded" &&
-    value.partial === false &&
-    value.missingCount === 0;
+    ((value.status === "succeeded" &&
+      value.partial === false &&
+      value.missingCount === 0) ||
+      (value.executionComplete === true &&
+        value.missingCount === 0 &&
+        value.review?.emptyQuestions === 0 &&
+        value.review?.formatIssueCount === 0 &&
+        value.review?.outsideLabels === 0 &&
+        value.review?.protectedFieldChanges === 0 &&
+        (plan.steps[plan.current + 1]?.action === "read_processing" ||
+          (plan.steps[plan.current + 1]?.action === "select_candidates" &&
+            plan.steps[plan.current + 1]?.input?.deduplicate === true))));
   const confirmation = step.action.startsWith("request_");
   const confirmed =
     confirmation &&

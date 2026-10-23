@@ -67,7 +67,7 @@ describe("batch2 ordinary document contracts", () => {
         {
           name: "read_processing",
           status: "succeeded",
-          result: { run: { id: "run", status: "running" } },
+          result: { runId: "run", status: "running" },
         },
       ]),
     ).toBe(false);

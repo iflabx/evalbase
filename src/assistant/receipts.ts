@@ -40,9 +40,31 @@ export function hasNoEffect(record: Record<string, any>) {
         // its post-commit dependency checks use a different error code.
         (record.name === "refine_candidates" &&
           record.error?.code === "processing_not_found") ||
-        (record.name === "request_processing_apply" &&
+        (["request_processing_apply", "request_publish"].includes(
+          record.name,
+        ) &&
           processingProposalValidationWithoutEffect.has(record.error?.code))))
   );
+}
+/** A correction may supersede a proven no-effect wrong proposal for the same draft/revision. */
+export function resolvedProposalFailures(
+  records: Record<string, any>[],
+  name: string,
+  input: Record<string, any>,
+  binding: Record<string, any>,
+) {
+  return name === "request_processing_apply"
+    ? records
+        .filter(
+          (r) =>
+            r.name === "request_publish" &&
+            r.status === "failed" &&
+            hasNoEffect(r) &&
+            r.input?.draftId === input.target?.id &&
+            canonicalJson(r.binding ?? null) === canonicalJson(binding ?? null),
+        )
+        .map((r) => r.key)
+    : [];
 }
 export function unresolvedFailure(records: Record<string, any>[]) {
   return records.findLast(
@@ -52,7 +74,8 @@ export function unresolvedFailure(records: Record<string, any>[]) {
         .slice(index + 1)
         .some(
           (later) =>
-            later.name === record.name &&
+            (later.name === record.name ||
+              (hasNoEffect(record) && later.resolves?.includes(record.key))) &&
             later.status === "succeeded" &&
             (later.key === record.key ||
               (hasNoEffect(record) &&
@@ -93,6 +116,47 @@ export async function reconcileExecutionConfirmations(
 ) {
   let task = session.task;
   const plan = task.executionPlan;
+  if (
+    !plan?.steps?.length &&
+    task.runId &&
+    !task.executionPaused &&
+    !task.question &&
+    task.checkedStatus === "succeeded"
+  ) {
+    const saved = (
+      await db.query(
+        "SELECT id FROM assistant_proposal WHERE session_id=$1 AND project_id=$2 AND actor_id=$3 AND task_revision=$4 AND action='processing' AND status='succeeded' AND receipt IS NOT NULL AND parameters->>'runId'=$5 AND summary->>'range'='task'",
+        [
+          session.id,
+          session.project_id,
+          session.actor_id,
+          session.task_revision,
+          task.runId,
+        ],
+      )
+    ).rows[0];
+    if (
+      saved &&
+      !task.requirementProblem &&
+      !task.planValidationRequired &&
+      !(task.turnControl?.requiresUpdate && !task.turnControl.updateSaved)
+    ) {
+      const latest = (
+        await db.query(
+          "SELECT tool_results FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1",
+          [session.id],
+        )
+      ).rows[0];
+      if (!unresolvedFailure(latest?.tool_results ?? []))
+        return {
+          ...task,
+          stage: "complete",
+          nextAction: null,
+          error: null,
+          recovery: null,
+        };
+    }
+  }
   if (
     plan?.contractVersion !== 1 ||
     plan.mode !== "execute" ||

@@ -245,7 +245,7 @@ type Submission = {
   turnId?: string;
   status: "submitting" | "accepted" | "failed";
   expectedTaskRevision?: number | undefined;
-  operation?: "execute_plan" | "resume";
+  operation?: "execute_plan" | "resume" | "save_candidates" | "save_candidates_new";
   taskId?: string | undefined;
   restoreTaskId?: string | undefined;
 };
@@ -898,7 +898,11 @@ export function ProjectAssistant({
     await queryClient.invalidateQueries({ queryKey: ["assistant-sessions", projectId] });
     return value.sessionId;
   }
-  async function send(retry?: Submission, textOverride?: string) {
+  async function send(
+    retry?: Submission,
+    textOverride?: string,
+    operation?: Submission["operation"],
+  ) {
     if (sessionId && conversation.isPending) return;
     if (retry?.taskId && retry.taskId !== currentTaskId) {
       setError("当前任务已切换，请核对本次要求后重新发送。输入已保留。");
@@ -934,6 +938,7 @@ export function ProjectAssistant({
             sessionId,
             taskId: currentTaskId,
             expectedTaskRevision: visible?.taskRevision,
+            ...(operation ? { operation } : {}),
             context: restoring ? undefined : pageContext,
             ...(restoring ? { restoreTaskId: restoring } : {}),
             ...(!restoring && picked
@@ -2174,7 +2179,16 @@ export function ProjectAssistant({
                       onSave={
                         running || busy || visible.task.stage === "complete"
                           ? undefined
-                          : (text) => void send(undefined, text)
+                          : (text) =>
+                              void send(
+                                undefined,
+                                text,
+                                text === "将勾选成果保存回原草稿"
+                                  ? "save_candidates"
+                                  : text === "将勾选成果保存为新测试集草稿"
+                                    ? "save_candidates_new"
+                                    : undefined,
+                              )
                       }
                     />
                   )}

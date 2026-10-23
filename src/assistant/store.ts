@@ -848,7 +848,12 @@ export async function startTurn(
     throw new AssistantError(422, "assistant_message_invalid");
   if (
     operation !== undefined &&
-    (!["execute_plan", "resume"].includes(String(operation)) ||
+    (![
+      "execute_plan",
+      "resume",
+      "save_candidates",
+      "save_candidates_new",
+    ].includes(String(operation)) ||
       typeof operation !== "string" ||
       expectedTaskRevision === undefined)
   )
@@ -1191,7 +1196,7 @@ export async function startTurn(
       ).includes((candidateSelection as { runId: string }).runId)
     )
       throw new AssistantError(409, "assistant_candidate_selection_changed");
-    if (operation) {
+    if (operation && !String(operation).startsWith("save_candidates")) {
       await assistantAccess(client, scope, true);
       const task = session.task;
       const latest = (
@@ -1435,6 +1440,15 @@ export async function startTurn(
         taskRevision: turn.task_revision,
         updateSaved: true,
       };
+    if (String(operation).startsWith("save_candidates")) {
+      if (!prepared?.selection || prepared.selection.scope !== "task")
+        throw new AssistantError(422, "assistant_candidate_selection_invalid");
+      await assistantAccess(client, scope, true);
+      task.uiCandidateSave = {
+        turnId: turn.id,
+        newDraft: operation === "save_candidates_new",
+      };
+    }
     if (candidateSelection !== undefined)
       task.selectedCandidates = prepared?.selection ?? candidateSelection;
     await client.query(

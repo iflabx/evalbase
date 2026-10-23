@@ -4,6 +4,7 @@ import { selectRecords, type SelectionCondition } from "../selection/index.js";
 import type { readProcessingRun } from "../processing/store.js";
 import { AssistantError } from "./store.js";
 import { candidateKey } from "../processing/adoption.js";
+import { deduplicate } from "../processing/deduplication.js";
 
 type Run = Awaited<ReturnType<typeof readProcessingRun>>;
 export type CandidateScope = {
@@ -117,6 +118,46 @@ export function selectCandidateCollection(
     excludedOriginKeys,
     hash: sha256(canonicalJson({ members, excludedOriginKeys })),
   };
+}
+
+/** Deterministic exclusion reuses content equality and stable adoption identities. */
+export function deduplicateCandidateCollection(
+  data: Run,
+  runs: Run[],
+  previous?: CandidateScope,
+) {
+  const records = runs.flatMap((r) =>
+    r.records.map((row) => ({ ...row, id: candidateKey(row.candidateOrigin) })),
+  );
+  const result = deduplicate(
+    records.map((row) => ({ id: row.id, ...row.result })),
+  );
+  const kept = new Set(result.keptIds);
+  const filtered = runs.map((r) => ({
+    ...r,
+    records: r.records.filter((row) =>
+      kept.has(candidateKey(row.candidateOrigin)),
+    ),
+  }));
+  const selected = selectCandidateCollection(
+    { ...data, run: { ...data.run, status: "succeeded" } },
+    filtered,
+    { selection: { method: "all", conditions: [] }, reselect: true },
+  );
+  selected.excludedOriginKeys = [
+    ...new Set([
+      ...(previous?.excludedOriginKeys ?? []),
+      ...result.excludedIds,
+    ]),
+  ];
+  selected.sourceCount = records.length;
+  selected.hash = sha256(
+    canonicalJson({
+      members: selected.members,
+      excludedOriginKeys: selected.excludedOriginKeys,
+    }),
+  );
+  return { candidateScope: selected, excluded: result.excludedIds.length };
 }
 
 export function candidateCollectionHashValid(scope: CandidateScope) {

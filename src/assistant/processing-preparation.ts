@@ -311,7 +311,13 @@ export function prepareToolProposal(
         "assistant_candidate_selection_changed",
       );
 
-    if (defined("selection") === defined("groups"))
+    if (
+      [
+        defined("selection"),
+        defined("groups"),
+        input.deduplicate === true,
+      ].filter(Boolean).length !== 1
+    )
       add(
         "/selection",
         "按一个选取规则或分组选取，不能同时提供或全部省略。",

@@ -485,7 +485,11 @@ function validateRequestedShape(goals: DeliveryGoal[], request: string) {
     goals.length !== (typeof count === "number" ? count : numeric(count))
   )
     fail(
-      "方案的测试集份数与本轮明确要求不一致。集合内的分类配额不能拆成独立测试集。",
+      "本轮明确要求的份数为" +
+        (typeof count === "number" ? count : numeric(count!)) +
+        "份测试集，当前方案为" +
+        goals.length +
+        "份。请补齐全部独立交付及各自名称、数量、要求和分类；单份内部的分类配额保持在该份。",
     );
   const per =
     separate?.[2] ??

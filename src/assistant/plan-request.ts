@@ -56,7 +56,13 @@ export function preparePlanAmendment(
   request: string,
   revision: number,
   truncated = false,
-) {
+):
+  | {
+      needsBackground: boolean;
+      properties: Record<string, any>;
+      facts: Record<string, any>;
+    }
+  | undefined {
   const goals = deliveryGoals(task.executionPlan);
   if (task.executionPlan?.contractVersion !== 1 || !goals.length)
     return undefined;
@@ -74,11 +80,39 @@ export function preparePlanAmendment(
   if (/类别|分类|标签|Metadata|元数据/iu.test(text))
     requested.add("classifications");
   if (/场景|情境/u.test(text)) requested.add("scenarios");
-  if (/要求|改写|定义|边界|期望|行为/u.test(text))
+  if (
+    /要求|改写|定义|边界|期望|行为|问法|说法|表达|语气|口语|生硬|模板/u.test(
+      text,
+    )
+  )
     requested.add("instructions");
   if (/取消|撤销|删除/u.test(text)) requested.add("remove");
   const adding = changes.some(deliveryAdditionClause);
   const focused = amendmentTargets(task, request);
+  if (
+    task.runId &&
+    requested.has("instructions") &&
+    !requested.has("count") &&
+    !requested.has("classifications")
+  ) {
+    return {
+      needsBackground: false,
+      properties: {
+        baseRevision: { type: "integer", const: revision },
+        candidateEdit: properties.candidateEdit,
+        executionMode: properties.executionMode,
+      },
+      facts: {
+        operation: "edit_current_candidates",
+        baseRevision: revision,
+        request,
+        requirements: task.requirements ?? [],
+        runId: task.runId,
+        instructions: focused.map((g) => g.instructions),
+        allowedFields: task.allowedFields ?? ["question"],
+      },
+    };
+  }
   const fields = properties.deliveries.items.properties;
   const patchFields = Object.fromEntries(
     Object.entries(fields).filter(
@@ -167,7 +201,14 @@ export function preparePlanAmendment(
                 if: properties.deliveries.items.if,
                 else: properties.deliveries.items.else,
               }
-            : { required: ["id"] }),
+            : {
+                required: [
+                  "id",
+                  ...(requested.has("instructions") && !requested.has("count")
+                    ? ["instructions"]
+                    : []),
+                ],
+              }),
         },
       },
     },
