@@ -9,6 +9,55 @@ export function requestTimeoutMs(deadlineAt: number, now = Date.now()) {
   );
 }
 
+export type RequestTiming = {
+  id?: string;
+  state:
+    | "reserved"
+    | "sent"
+    | "headers"
+    | "body"
+    | "parsed"
+    | "failed"
+    | "not_sent";
+  httpStatus: number | null;
+  timeToHeadersMs: number;
+  preflightMs?: number;
+  bodyMs?: number;
+  parseMs?: number;
+  totalMs?: number;
+  parseOk?: boolean;
+  [key: string]: any;
+};
+async function boundedBody(response: Response, signal: AbortSignal) {
+  const reader = response.body?.getReader();
+  if (!reader) return new ArrayBuffer(0);
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const abort = () => {
+    void reader.cancel(signal.reason).catch(() => undefined);
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    signal.throwIfAborted();
+    for (;;) {
+      const part = await reader.read();
+      signal.throwIfAborted();
+      if (part.done) break;
+      chunks.push(part.value);
+      length += part.value.byteLength;
+    }
+    const all = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      all.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return all.buffer;
+  } finally {
+    signal.removeEventListener("abort", abort);
+    reader.releaseLock();
+  }
+}
 /** One per logical turn; never retry the agent or a business operation. */
 export function assistantTransport(
   request: typeof fetch,
@@ -16,6 +65,9 @@ export function assistantTransport(
     signal: AbortSignal;
     deadlineAt: number;
     initialRetries?: number;
+    retryLimit?: number;
+    onAttempt?: (observation: RequestTiming) => Promise<void>;
+    onObservation?: (observation: RequestTiming) => Promise<void>;
     beforeRequest: (attempt?: { timeoutRetry: boolean }) => Promise<void>;
     onRetry?: (value: {
       used: number;
@@ -44,16 +96,52 @@ export function assistantTransport(
       signal.throwIfAborted();
       if (Date.now() >= options.deadlineAt)
         throw new DOMException("Model deadline", "TimeoutError");
+      const preflightAt = Date.now();
       await options.beforeRequest({ timeoutRetry: timeoutRetried });
       signal.throwIfAborted();
+      const observation: RequestTiming = {
+        state: "reserved",
+        httpStatus: null,
+        timeToHeadersMs: 0,
+        preflightMs: Date.now() - preflightAt,
+      };
+      await options.onAttempt?.(observation);
+      if (signal.aborted) {
+        observation.state = "not_sent";
+        await options.onObservation?.(observation);
+        signal.throwIfAborted();
+      }
+      const requestAt = Date.now();
       let response: Response | undefined,
         complete: Response | undefined,
         failure: unknown;
       try {
-        response = await request(input, { ...init, signal });
+        const pending = request(input, { ...init, signal });
+        void pending.catch(() => undefined);
+        observation.state = "sent";
+        await options.onObservation?.(observation);
+        response = await pending;
+        observation.httpStatus = response.status;
+        observation.timeToHeadersMs = Date.now() - requestAt;
+        observation.state = "headers";
+        await options.onObservation?.(observation);
         if (![429, 500, 502, 503, 504].includes(response.status)) {
           // Buffer the bounded body before the SDK can validate or execute tools.
-          const body = await response.arrayBuffer();
+          const bodyAt = Date.now();
+          const body = await boundedBody(response, signal);
+          observation.bodyMs = Date.now() - bodyAt;
+          observation.state = "body";
+          const parseAt = Date.now();
+          try {
+            JSON.parse(new TextDecoder().decode(body));
+            observation.parseOk = true;
+          } catch {
+            observation.parseOk = false;
+          }
+          observation.parseMs = Date.now() - parseAt;
+          observation.totalMs = Date.now() - requestAt;
+          observation.state = "parsed";
+          await options.onObservation?.(observation);
           complete = new Response(body, {
             status: response.status,
             headers: response.headers,
@@ -61,6 +149,14 @@ export function assistantTransport(
           });
         }
       } catch (error) {
+        observation.failurePhase = observation.state;
+        if (observation.state === "headers")
+          observation.bodyMs =
+            Date.now() - requestAt - observation.timeToHeadersMs;
+        observation.state =
+          observation.state === "reserved" ? "not_sent" : "failed";
+        observation.totalMs = Date.now() - requestAt;
+        await options.onObservation?.(observation);
         options.onFailure?.(error);
         if (signal.aborted) options.onFailure?.(signal.reason);
         parent.throwIfAborted();
@@ -96,6 +192,11 @@ export function assistantTransport(
         if (retried) await options.onRecovered?.();
         return complete;
       }
+      if (response) {
+        observation.totalMs = Date.now() - requestAt;
+        observation.state = "failed";
+        await options.onObservation?.(observation);
+      }
       const header = response?.headers.get("retry-after")?.trim();
       const retryAfter =
         header && /^\d+$/.test(header)
@@ -106,7 +207,10 @@ export function assistantTransport(
             ? Math.max(0, Date.parse(header) - Date.now())
             : undefined;
       const delayMs = retryAfter ?? (used === 0 ? 500 : 1000);
-      if (used >= 2 || delayMs >= options.deadlineAt - Date.now()) {
+      if (
+        used >= (options.retryLimit ?? 2) ||
+        delayMs >= options.deadlineAt - Date.now()
+      ) {
         if (failure) throw failure;
         if (response) return response;
         throw failure;

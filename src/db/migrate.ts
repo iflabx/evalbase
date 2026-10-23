@@ -1793,8 +1793,9 @@ export async function migrate(
       CREATE OR REPLACE FUNCTION purge_assistant_background_document() RETURNS trigger AS $$
       BEGIN
         UPDATE processing_run SET input_ref=NULL WHERE input_ref IS NOT NULL AND background_document_ids @> ARRAY[OLD.id];
-        DELETE FROM assistant_task_checkpoint WHERE session_id=OLD.session_id;
-        UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=OLD.session_id;
+        UPDATE assistant_task_checkpoint SET task=jsonb_build_object('taskId',task->>'taskId','taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','executionBudget',task->'executionBudget','turnBudget',task->'turnBudget','budgetLedger',task->'budgetLedger'),dependencies='[]',requires_write=false WHERE session_id=OLD.session_id AND task->'budgetLedger'->>'version'='1';
+        DELETE FROM assistant_task_checkpoint WHERE session_id=OLD.session_id AND (task->'budgetLedger'->>'version') IS DISTINCT FROM '1';
+        UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task=CASE WHEN task->'budgetLedger'->>'version'='1' THEN jsonb_build_object('taskId',task->>'taskId','taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','executionBudget',task->'executionBudget','turnBudget',task->'turnBudget','budgetLedger',task->'budgetLedger') ELSE '{}' END,title='' WHERE id=OLD.session_id;
         UPDATE assistant_turn SET user_text='',assistant_text='',tool_results='[]',candidate_selection=NULL,
           execution_token=NULL,status='interrupted',error_code='assistant_context_deleted' WHERE session_id=OLD.session_id;
         UPDATE assistant_proposal SET parameters='{}',summary='{}',receipt=NULL,status='invalid' WHERE session_id=OLD.session_id;
@@ -1818,11 +1819,11 @@ export async function migrate(
               DELETE FROM assistant_background_document WHERE session_id=affected.session_id;
               UPDATE assistant_session SET content_revision=content_revision+1,task_revision=task_revision+1,task='{}',title='' WHERE id=affected.session_id;
             ELSE
-              UPDATE assistant_task_checkpoint SET task=jsonb_build_object('taskId',id,'taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','requirements','[]'::jsonb,'supplements','[]'::jsonb,'executionBudget',task->'executionBudget','turnBudget',task->'turnBudget') WHERE session_id=affected.session_id AND id=affected.task_id;
+              UPDATE assistant_task_checkpoint SET task=jsonb_build_object('taskId',id,'taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','requirements','[]'::jsonb,'supplements','[]'::jsonb,'executionBudget',task->'executionBudget','turnBudget',task->'turnBudget','budgetLedger',task->'budgetLedger') WHERE session_id=affected.session_id AND id=affected.task_id;
               UPDATE assistant_session SET content_revision=content_revision+1,
                 task_revision=task_revision+CASE WHEN task->>'taskId'=affected.task_id THEN 1 ELSE 0 END,
                 title=CASE WHEN task->>'taskId'=affected.task_id THEN '' ELSE title END,
-                task=CASE WHEN task->>'taskId'=affected.task_id THEN jsonb_build_object('taskId',task->>'taskId','taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','requirements','[]'::jsonb,'supplements','[]'::jsonb,'executionBudget',task->'executionBudget','turnBudget',task->'turnBudget') ELSE task END
+                task=CASE WHEN task->>'taskId'=affected.task_id THEN jsonb_build_object('taskId',task->>'taskId','taskContractVersion',2,'goal','来源已删除的任务','title','','stage','failed','error','assistant_context_deleted','requirements','[]'::jsonb,'supplements','[]'::jsonb,'executionBudget',task->'executionBudget','turnBudget',task->'turnBudget','budgetLedger',task->'budgetLedger') ELSE task END
                 WHERE id=affected.session_id;
             END IF;
             UPDATE assistant_proposal p SET parameters='{}',summary='{}',receipt=NULL,status='invalid' WHERE p.session_id=affected.session_id AND

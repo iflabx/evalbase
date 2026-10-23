@@ -272,6 +272,8 @@ describe("OPT44 persisted recovery public flow", () => {
         [id],
       )
     ).rows[0];
+    // This fixture deliberately exercises the frozen pre-OPT49 contract. New-ledger flow has its own public regression.
+    delete row.task.budgetLedger;
     const task = row.task,
       now = Date.now(),
       original = structuredClone(task.executionPlan);

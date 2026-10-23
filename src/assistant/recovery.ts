@@ -1,4 +1,13 @@
 import {
+  budgetAllowance,
+  segmentLimits,
+  eventAllowance,
+  grantOffer,
+  repairIdentity,
+  progressFacts as ledgerProgressFacts,
+  progressKey as ledgerProgressKey,
+} from "./budget-ledger.js";
+import {
   classifyToolFailure,
   repairRequestAvailable,
   type RepairLimits,
@@ -25,6 +34,10 @@ export type RecoveryDecision = {
   rootTurnId: string | null;
   mode: "plan" | "execute" | null;
   canExecutePlan: boolean;
+  grantOffers?: {
+    continue: ReturnType<typeof grantOffer>;
+    repair: ReturnType<typeof grantOffer>;
+  };
 };
 export type RecoveryFacts = {
   now?: number;
@@ -85,6 +98,7 @@ export function recoveryProgressFacts(
   task: Record<string, any>,
   turn: Record<string, any>,
 ): string[] {
+  if (task.budgetLedger?.version === 1) return ledgerProgressFacts(task, turn);
   const inherited =
     task.recoverySegment?.turnId === turn.id
       ? (task.recoverySegment.progressFacts ?? [])
@@ -108,6 +122,7 @@ export function recoveryProgress(
   task: Record<string, any>,
   turn: Record<string, any>,
 ) {
+  if (task.budgetLedger?.version === 1) return ledgerProgressKey(task, turn);
   return sha256(
     canonicalJson({
       facts: recoveryProgressFacts(task, turn),
@@ -132,7 +147,9 @@ export function recoveryDecision(
   const budget =
     task.turnBudget?.turnId === turn?.id ? task.turnBudget : undefined;
   const use = liveExecutionBudget(task, now),
-    limits = executionLimits(use);
+    allowance = budgetAllowance({ ...task, executionBudget: use }, now),
+    segment = segmentLimits(task),
+    limits = allowance?.limits ?? executionLimits(use);
   const result: RecoveryDecision = {
     action: null,
     reason: "not_recoverable",
@@ -144,30 +161,59 @@ export function recoveryDecision(
     canExecutePlan: false,
   };
   const stop = (reason: string) => ({
+    ...([
+      "task_budget_exhausted",
+      "insufficient_task_time",
+      "grant_expired",
+      "grant_revision_changed",
+      "repair_limit",
+      "initial_plan_repair_limit",
+      "no_progress",
+      "initial_plan_no_progress",
+    ].includes(reason) &&
+    allowance &&
+    !facts.busy &&
+    !["request", "commit"].includes(facts.phase ?? "") &&
+    !["queued", "running"].includes(turn?.status ?? "") &&
+    facts.canWrite &&
+    facts.dependenciesValid &&
+    (!task.planValidationRequired || Boolean(task.planningRecovery)) &&
+    (!turn || Number(turn?.task_revision) === facts.revision)
+      ? {
+          grantOffers: {
+            continue: grantOffer(
+              { ...task, executionBudget: use },
+              allowance.ledger.actorId,
+              facts.revision,
+              "continue",
+              now,
+            ),
+            repair: grantOffer(
+              { ...task, executionBudget: use },
+              allowance.ledger.actorId,
+              facts.revision,
+              "repair",
+              now,
+            ),
+          },
+        }
+      : {}),
     ...result,
     reason,
     canExecutePlan: false,
   });
   if (!facts.canWrite) return stop("permission_denied");
+  if (task.error === "assistant_context_deleted")
+    return stop("context_changed");
+  if (task.stage === "complete") return { ...result, reason: "complete" };
+  if (
+    allowance &&
+    (task.stage === "stopped" || task.error === "assistant_stopped")
+  )
+    return stop("stopped");
   if (task.executionBudget && !validExecutionBudget(task.executionBudget))
     return stop("budget_evidence_missing");
   if (!facts.dependenciesValid) return stop("context_changed");
-  if (
-    use &&
-    (!validExecutionBudget(use) ||
-      Object.entries(limits).some(([k, v]) =>
-        facts.phase === "commit" ||
-        (k === "modelSteps" &&
-          facts.phase === "request" &&
-          facts.reservedModelStep)
-          ? (use as any)[k] > v
-          : (use as any)[k] >= v,
-      ))
-  )
-    return stop("task_budget_exhausted");
-  const remaining = limits.activeMs - (use?.activeMs ?? 0);
-  if (remaining < (facts.phase === "commit" ? 1 : 10000))
-    return stop("insufficient_task_time");
   result.canExecutePlan = Boolean(
     task.stage !== "stopped" &&
     task.executionPlan?.steps?.length &&
@@ -181,8 +227,8 @@ export function recoveryDecision(
       "assistant_auto_limit",
     ].includes(task.error),
   );
-  if (!turn) return result;
-  if (Number(turn.task_revision) !== facts.revision)
+  if (!turn && !allowance) return result;
+  if (turn && Number(turn.task_revision) !== facts.revision)
     return stop("revision_changed");
   if (task.stage === "stopped" || task.error === "assistant_stopped")
     return stop("stopped");
@@ -205,11 +251,41 @@ export function recoveryDecision(
     return stop("background_changed");
   if (pending?.amendment && pending.planKey !== planRequirementsKey(task))
     return stop("requirements_changed");
+  if (
+    allowance &&
+    allowance.reason &&
+    allowance.reason !== "task_budget_exhausted"
+  )
+    return stop(allowance.reason);
+  if (
+    use &&
+    (!validExecutionBudget(use) ||
+      Object.entries(limits).some(([k, v]) =>
+        facts.phase === "commit" ||
+        (k === "modelSteps" &&
+          facts.phase === "request" &&
+          facts.reservedModelStep)
+          ? (use as any)[k] > v
+          : allowance && k === "transportRetries"
+            ? (use as any)[k] > v
+            : (use as any)[k] >= v,
+      ))
+  )
+    return stop("task_budget_exhausted");
+  const remaining = limits.activeMs - (use?.activeMs ?? 0);
+  if (remaining < (facts.phase === "commit" ? 1 : 10000))
+    return stop("insufficient_task_time");
+  if (!turn) return result;
+  const freshGrant = Boolean(
+    allowance?.active &&
+    allowance.active.id === (task.grantResume ?? task.recoverySegment?.grantId),
+  );
+  const freshRepair = freshGrant && allowance?.active?.purpose === "repair";
   const phase = facts.phase ?? "offer";
   if (phase === "event") {
     if (task.taskContractVersion !== 2 && (facts.turnCount ?? 0) >= 100)
       return stop("session_limit");
-    if ((task.autoCount ?? 0) >= (task.autoEventLimit ?? 12))
+    if ((task.autoCount ?? 0) >= eventAllowance(task))
       return stop("event_limit");
     if (
       !task.goal ||
@@ -245,6 +321,7 @@ export function recoveryDecision(
       !requestFitsDeadline(
         budget.deadlineAt,
         facts.requestEstimateMs ??
+          budget.requests?.at(-1)?.totalMs ??
           budget.requests?.at(-1)?.timeToHeadersMs ??
           0,
         now,
@@ -252,9 +329,13 @@ export function recoveryDecision(
     )
       return stop("insufficient_request_time");
     if (
-      budget.modelSteps > (facts.reservedModelStep ? 10 : 9) ||
-      budget.toolCalls >= 12 ||
-      budget.transportRetries > 2
+      budget.modelSteps >
+        (facts.reservedModelStep
+          ? segment.modelSteps
+          : segment.modelSteps - 1) ||
+      budget.toolCalls >= segment.toolCalls ||
+      budget.transportRetries > segment.transportRetries ||
+      (budget.requestAttempts ?? 0) >= segment.requestAttempts
     )
       return stop("segment_budget_exhausted");
     return {
@@ -297,10 +378,12 @@ export function recoveryDecision(
         Number(turn.execution_attempt ?? 0) -
           (turn.status === "succeeded" ? 1 : 0),
       ) >=
-    3
+      3 &&
+    !freshRepair
   )
     return stop("attempt_limit");
   if (
+    !freshRepair &&
     ["assistant_no_progress", "assistant_tool_repair_exhausted"].includes(
       turn.error_code ?? task.error,
     )
@@ -311,9 +394,7 @@ export function recoveryDecision(
         : "no_progress",
     );
   const amendmentId = pending?.requestTurnId ?? chain?.amendmentId;
-  const identity = amendmentId
-    ? sha256(canonicalJson({ requestTurnId: amendmentId }))
-    : undefined;
+  const identity = amendmentId ? repairIdentity(task, amendmentId) : undefined;
   const repairs = Object.values(task.parameterRepairLimits ?? {}) as any[];
   const status = task.parameterRepairStatus;
   const kind =
@@ -355,15 +436,23 @@ export function recoveryDecision(
     return stop("paused");
   const same =
     Number(turn.execution_attempt) < 3 &&
-    budget.modelSteps < 10 &&
-    budget.toolCalls < 12 &&
-    budget.transportRetries <= 2 &&
+    budget.modelSteps < segment.modelSteps &&
+    budget.toolCalls < segment.toolCalls &&
+    budget.transportRetries <= segment.transportRetries &&
+    (budget.requestAttempts ?? 0) < segment.requestAttempts &&
     requestFitsDeadline(
       budget.deadlineAt,
-      budget.requests?.at(-1)?.timeToHeadersMs ?? 0,
+      budget.requests?.at(-1)?.totalMs ??
+        budget.requests?.at(-1)?.timeToHeadersMs ??
+        0,
       now,
     );
-  if (same && phase !== "event" && turn.status !== "succeeded")
+  if (
+    same &&
+    !task.grantResume &&
+    phase !== "event" &&
+    turn.status !== "succeeded"
+  )
     return {
       ...result,
       action: "retry_turn",
@@ -372,7 +461,12 @@ export function recoveryDecision(
         budget.deadlineAt -
         Math.max(
           10000,
-          Math.min(30000, budget.requests?.at(-1)?.timeToHeadersMs ?? 0),
+          Math.min(
+            30000,
+            budget.requests?.at(-1)?.totalMs ??
+              budget.requests?.at(-1)?.timeToHeadersMs ??
+              0,
+          ),
         ),
     };
   const reason =
@@ -390,20 +484,26 @@ export function recoveryDecision(
       !task.executionPlan.needsReview,
     );
   const progress =
-    (phase === "event" && facts.eventReady) ||
-    (turn.tool_results ?? []).some(
-      (r: any) =>
-        r.status === "succeeded" &&
-        (r.name !== "plan_task" || !r.result?.unchanged),
-    ) ||
-    Boolean(pending?.amendment && task.requirementSave);
+    freshGrant ||
+    (allowance
+      ? ledgerProgressKey(task, turn) !==
+        (chain?.progressKey ??
+          budget.progressStart ??
+          task.budgetCheckpoint?.progressKey)
+      : (phase === "event" && facts.eventReady) ||
+        (turn.tool_results ?? []).some(
+          (r: any) =>
+            r.status === "succeeded" &&
+            (r.name !== "plan_task" || !r.result?.unchanged),
+        ) ||
+        Boolean(pending?.amendment && task.requirementSave));
   if (!position || !progress) return stop("checkpoint_missing");
-  if (chain?.progressKey === recoveryProgress(task, turn))
+  if (!freshGrant && chain?.progressKey === recoveryProgress(task, turn))
     return stop("no_progress");
   if (task.question) return stop("business_input_required");
   if (
-    (task.autoCount ?? 0) >= (task.autoEventLimit ?? 12) ||
-    (facts.turnCount ?? 0) >= 100
+    (task.autoCount ?? 0) >= eventAllowance(task) ||
+    (task.taskContractVersion !== 2 && (facts.turnCount ?? 0) >= 100)
   )
     return stop("event_limit");
   if (
@@ -419,6 +519,6 @@ export function recoveryDecision(
         ? "continue_plan"
         : "continue_execution",
     reason,
-    validUntil: now + Math.min(80000, remaining),
+    validUntil: now + Math.min(segment.activeMs, remaining),
   };
 }

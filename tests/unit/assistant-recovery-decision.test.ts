@@ -1,3 +1,10 @@
+import {
+  createBudgetLedger,
+  progressKey,
+  repairIdentity,
+  grantOffer,
+  applyBudgetGrant,
+} from "../../src/assistant/budget-ledger.js";
 import { describe, expect, it } from "vitest";
 import { sha256, canonicalJson } from "../../src/package/contract.js";
 import { assistantFailure } from "../../src/assistant/diagnostics.js";
@@ -324,4 +331,130 @@ it("only the exact persisted planning question can settle without new business i
   expect(recoveryDecision(f.task, f.turn, f.facts).reason).toBe(
     "business_input_required",
   );
+});
+
+describe("OPT49 shared ledger decisions", () => {
+  function current() {
+    const f = fixture(-1);
+    f.task.taskId = "task";
+    f.task.taskContractVersion = 2;
+    f.task.budgetLedger = createBudgetLedger("task", "actor", 2, now);
+    f.task.turnBudget.progressStart = progressKey(f.task);
+    return f;
+  }
+  it("does not turn read page, ordering or timestamp changes into persistent progress", () => {
+    const f = current();
+    f.task.recoverySegment = {
+      turnId: f.turn.id,
+      revision: 2,
+      documentsKey: "docs",
+      mode: "plan",
+      progressKey: progressKey(f.task, f.turn),
+    };
+    f.turn.tool_results.push({
+      name: "read_processing",
+      status: "succeeded",
+      result: { runId: "same", page: 99, updatedAt: "new" },
+    });
+    expect(recoveryDecision(f.task, f.turn, f.facts).action).toBeNull();
+  });
+  it.each(["offer", "event", "claim", "request", "commit"])(
+    "refuses exhausted work at %s without a hidden grant",
+    (phase) => {
+      const f = current();
+      f.task.executionBudget.modelSteps = 131;
+      f.turn.status =
+        phase === "request" || phase === "commit" ? "running" : "failed";
+      f.facts = { ...f.facts, phase, eventReady: true };
+      expect(recoveryDecision(f.task, f.turn, f.facts)).toMatchObject({
+        action: null,
+        reason: "task_budget_exhausted",
+      });
+      expect(f.task.budgetLedger.grants).toHaveLength(1);
+    },
+  );
+  it("keeps completion visible at the exhausted ceiling", () => {
+    const f = current();
+    f.task.stage = "complete";
+    f.task.executionBudget.activeMs = 1040000;
+    expect(recoveryDecision(f.task, f.turn, f.facts)).toMatchObject({
+      reason: "complete",
+      action: null,
+      canExecutePlan: false,
+    });
+  });
+  it("does not expose grant offers after background changes or permission revocation", () => {
+    const f = current();
+    f.task.executionBudget.modelSteps = 130;
+    f.facts.documentsKey = "changed";
+    expect(
+      recoveryDecision(f.task, f.turn, f.facts).grantOffers,
+    ).toBeUndefined();
+    f.facts.documentsKey = "docs";
+    f.facts.canWrite = false;
+    expect(
+      recoveryDecision(f.task, f.turn, f.facts).grantOffers,
+    ).toBeUndefined();
+  });
+  it("ordinary grants retain repair limits; explicit repair grants link one fresh bounded attempt", () => {
+    const f = current();
+    const identity = repairIdentity(f.task, f.turn.id);
+    f.task.parameterRepairLimits = {
+      plan_task: { version: 2, identity, used: 2, truncated: 1 },
+    };
+    f.task.parameterRepairStatus = { amendmentId: f.turn.id, issues: [] };
+    f.task.requirementSave = { key: "saved" };
+    expect(recoveryDecision(f.task, f.turn, f.facts).reason).toBe(
+      "initial_plan_repair_limit",
+    );
+    f.task.executionBudget.modelSteps = 130;
+    expect(grantOffer(f.task, "actor", 2, "continue", now)).toBeNull();
+    const beforeFailure = { ...f.task, parameterRepairLimits: {} };
+    const ordinary = grantOffer(beforeFailure, "actor", 2, "continue", now)!;
+    const granted = applyBudgetGrant(
+      beforeFailure,
+      ordinary,
+      "actor",
+      2,
+      "ordinary",
+      now,
+    );
+    granted.parameterRepairLimits = structuredClone(
+      f.task.parameterRepairLimits,
+    );
+    expect(recoveryDecision(granted, f.turn, f.facts).action).toBeNull();
+    const repair = grantOffer(f.task, "actor", 2, "repair", now)!;
+    const repaired = applyBudgetGrant(
+      f.task,
+      repair,
+      "actor",
+      2,
+      "repair",
+      now,
+    );
+    expect(recoveryDecision(repaired, f.turn, f.facts).action).toBe(
+      "continue_plan",
+    );
+    expect(repaired.parameterRepairLimits.plan_task.used).toBe(2);
+  });
+});
+
+it("counts the actual HTTP segment ceiling independently of SDK steps", () => {
+  const f = fixture(50000);
+  f.task.taskId = "task";
+  f.task.budgetLedger = createBudgetLedger("task", "actor", 2, now);
+  f.task.turnBudget.requestAttempts = 12;
+  f.task.executionBudget.requestAttempts = 12;
+  f.turn.status = "running";
+  f.turn.execution_token = "token";
+  f.turn.expires_at = new Date(now + 60000).toISOString();
+  expect(
+    recoveryDecision(f.task, f.turn, {
+      ...f.facts,
+      phase: "request",
+      token: "token",
+      reservedModelStep: true,
+    }),
+  ).toMatchObject({ action: null, reason: "segment_budget_exhausted" });
+  expect(f.task.turnBudget.modelSteps).toBe(2);
 });

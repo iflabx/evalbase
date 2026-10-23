@@ -1,3 +1,4 @@
+import { sentRequestCount } from "../../src/assistant/budget.js";
 import { requestFitsDeadline } from "../../src/assistant/budget.js";
 import { describe, expect, it } from "vitest";
 import {
@@ -118,4 +119,27 @@ it("does not start a retry that cannot fit after a slow model request", () => {
   expect(requestFitsDeadline(80000, 0, 76000)).toBe(false);
   expect(requestFitsDeadline(80000, 0, 71000)).toBe(false);
   expect(requestFitsDeadline(80000, 57000, 40000)).toBe(true);
+});
+
+it("distinguishes unsent cancellation from an unknown send without refunding settled requests", () => {
+  const rows: any[] = [{ state: "reserved" }];
+  expect(sentRequestCount(rows)).toBe(0);
+  rows[0].state = "not_sent";
+  expect(sentRequestCount(rows)).toBe(0);
+  rows.push({ state: "sent" });
+  expect(sentRequestCount(rows)).toBe(1);
+  rows[1].state = "unknown";
+  expect(sentRequestCount(rows)).toBe(1);
+  rows.push({ state: "parsed" });
+  expect(sentRequestCount(rows)).toBe(2);
+  const turn = {
+    turnId: "counted",
+    modelSteps: 1,
+    toolCalls: 0,
+    transportRetries: 1,
+    requestAttempts: sentRequestCount(rows),
+  };
+  const once = checkpointExecutionBudget(undefined, turn, 20);
+  expect(once.requestAttempts).toBe(2);
+  expect(checkpointExecutionBudget(once, turn, 20)).toEqual(once);
 });

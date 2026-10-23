@@ -352,7 +352,17 @@ describe("OPT48 task boundaries and complete request projection", () => {
       "新开一个任务，麻烦你接着原任务",
       "新开一个任务，生成内容；请按原任务执行",
     ]) {
-      await send(id, text);
+      const requestsBefore = observed.length;
+      const refused = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + id + "/turns",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: text },
+      });
+      if (refused.statusCode === 202)
+        expect(refused.json().status).toBe("succeeded");
+      else expect(refused.statusCode, refused.body).toBe(409);
+      expect(observed.length).toBe(requestsBefore);
       const now = (
         await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
       ).rows[0].task;
@@ -1136,7 +1146,7 @@ describe("OPT48 task boundaries and complete request projection", () => {
         taskId = created.task.taskId;
       if (format === "legacy") {
         await dbQuery(
-          "UPDATE assistant_session SET task=task-'taskId'-'taskContractVersion' WHERE id=$1",
+          "UPDATE assistant_session SET task=task-'taskId'-'taskContractVersion'-'budgetLedger' WHERE id=$1",
           [id],
         );
         await dbQuery(

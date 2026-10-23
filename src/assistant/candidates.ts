@@ -64,8 +64,19 @@ export function selectCandidateCollection(
         canonicalJson(previous.conditions) ===
           canonicalJson(selected.conditions);
     if (same) {
+      // A task collection already applies its frozen membership. Replaying that exact retained set is not a new selection of a smaller source.
+      const retainedOnly =
+        previous.scope === "task" &&
+        records.length ===
+          (previous.members ?? []).reduce(
+            (n, m) => n + m.resultIds.length,
+            0,
+          ) &&
+        records.every((row) =>
+          previous.originKeys.includes(candidateKey(row.candidateOrigin)),
+        );
       if (
-        previous.sourceCount !== records.length ||
+        (previous.sourceCount !== records.length && !retainedOnly) ||
         !previous.members?.every((member) => {
           const run = runs.find((r) => r.run.id === member.runId);
           if (!run) return false;

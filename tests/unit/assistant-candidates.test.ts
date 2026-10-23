@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   selectCandidateRun,
+  selectCandidateCollection,
   scopeCandidateRun,
   carryCandidateScope,
 } from "../../src/assistant/candidates.js";
@@ -138,4 +139,41 @@ describe("fixed classified candidate selection", () => {
       ),
     ).toThrow("processing_still_running");
   });
+});
+
+it("replays an already filtered frozen collection without changing seed, IDs or original source count", () => {
+  const input = {
+    seed: "fixed",
+    selection: {
+      method: "random",
+      mode: "count",
+      value: 2,
+      conditions: [],
+      seed: "fixed",
+    },
+  };
+  const fixed = selectCandidateCollection(data, [data], input);
+  const rows = data.records.filter((row) =>
+    fixed.members![0].resultIds.includes(row.id),
+  );
+  const retained = {
+    ...data,
+    records: rows,
+    total: rows.length,
+    allIds: rows.map((r) => r.id),
+  };
+  expect(selectCandidateCollection(retained, [retained], input, fixed)).toBe(
+    fixed,
+  );
+  expect(fixed.sourceCount).toBe(6);
+  const changed = {
+    ...retained,
+    records: rows.map((row) => ({
+      ...row,
+      result: { ...row.result, question: "unauthorized change" },
+    })),
+  };
+  expect(() =>
+    selectCandidateCollection(changed, [changed], input, fixed),
+  ).toThrow("assistant_candidate_selection_changed");
 });

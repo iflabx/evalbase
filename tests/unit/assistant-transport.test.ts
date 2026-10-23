@@ -209,3 +209,124 @@ describe("assistant transport budget", () => {
     expect(call).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("OPT49 outbound request observations", () => {
+  it("persists reservation before dispatch and records full body and parse timing", async () => {
+    const events: any[] = [],
+      call = vi.fn<typeof fetch>().mockImplementation(async () => {
+        expect(events.map((e) => e.state)).toEqual(["reserved"]);
+        return new Response('{"ok":true}');
+      });
+    const transport = assistantTransport(call, {
+      signal: new AbortController().signal,
+      deadlineAt: Date.now() + 80000,
+      beforeRequest: async () => {},
+      onAttempt: async (o) => {
+        o.id = "request";
+        events.push(structuredClone(o));
+      },
+      onObservation: async (o) => {
+        events.push(structuredClone(o));
+      },
+    });
+    expect(await (await transport("http://model.test")).json()).toEqual({
+      ok: true,
+    });
+    expect(events.map((e) => e.state)).toEqual([
+      "reserved",
+      "sent",
+      "headers",
+      "parsed",
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      id: "request",
+      parseOk: true,
+      httpStatus: 200,
+    });
+    for (const key of ["preflightMs", "bodyMs", "parseMs", "totalMs"])
+      expect(events.at(-1)[key]).toBeGreaterThanOrEqual(0);
+  });
+  it("charges no dispatch when cancellation arrives during reservation", async () => {
+    const controller = new AbortController(),
+      call = vi.fn<typeof fetch>(),
+      events: any[] = [];
+    const transport = assistantTransport(call, {
+      signal: controller.signal,
+      deadlineAt: Date.now() + 80000,
+      beforeRequest: async () => {},
+      onAttempt: async (o) => {
+        events.push(o.state);
+        controller.abort();
+      },
+      onObservation: async (o) => {
+        events.push(o.state);
+      },
+    });
+    await expect(transport("http://model.test")).rejects.toBeDefined();
+    expect(call).not.toHaveBeenCalled();
+    expect(events).toEqual(["reserved", "not_sent"]);
+  });
+  it("bounds a fast header followed by an indefinitely stalled body", async () => {
+    const events: any[] = [];
+    let cancelled = false;
+    const call = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode("{"));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      ),
+    );
+    const transport = assistantTransport(call, {
+      signal: AbortSignal.timeout(30),
+      deadlineAt: Date.now() + 80000,
+      beforeRequest: async () => {},
+      onAttempt: async () => {},
+      onObservation: async (o) => {
+        events.push(structuredClone(o));
+      },
+    });
+    await expect(transport("http://model.test")).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(cancelled).toBe(true);
+    expect(events.at(-1)).toMatchObject({
+      state: "failed",
+      failurePhase: "headers",
+    });
+    expect(events.at(-1).bodyMs).toBeGreaterThan(0);
+  });
+  it("retains a failed sent attempt and a successful retry as distinct requests", async () => {
+    const ended: any[] = [];
+    let id = 0;
+    const call = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("lost"), { code: "ECONNRESET" }),
+      )
+      .mockResolvedValueOnce(new Response("{}"));
+    const transport = assistantTransport(call, {
+      signal: new AbortController().signal,
+      deadlineAt: Date.now() + 80000,
+      beforeRequest: async () => {},
+      onAttempt: async (o) => {
+        o.id = String(++id);
+      },
+      onObservation: async (o) => {
+        if (["failed", "parsed"].includes(o.state))
+          ended.push(structuredClone(o));
+      },
+    });
+    await transport("http://model.test");
+    expect(ended.map((x) => [x.id, x.state])).toEqual([
+      ["1", "failed"],
+      ["2", "parsed"],
+    ]);
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+});

@@ -458,6 +458,67 @@ describe("OPT47 unified processing public boundary", () => {
         })
       ).statusCode,
     ).toBe(200);
+    await dbQuery("UPDATE assistant_session SET task=task||$2 WHERE id=$1", [
+      id,
+      {
+        stage: "awaiting_review",
+        checkedStatus: "succeeded",
+        executionPaused: false,
+        review: { runId: op.result.runId, total: output.records.length },
+      },
+    ]);
+    const selected = await send(id, "从刚才清洗的结果随机选1条并固定范围", [
+      decision("execute"),
+      {
+        name: "select_candidates",
+        input: {
+          runId: op.result.runId,
+          selection: {
+            method: "random",
+            mode: "count",
+            value: 1,
+            conditions: [],
+          },
+        },
+      },
+    ]);
+    expect(
+      successes(selected, "select_candidates").length,
+      JSON.stringify(selected.turns.at(-1)),
+    ).toBeGreaterThan(0);
+    const fixed = (
+      await dbQuery(
+        "SELECT task->'candidateScope' AS scope FROM assistant_session WHERE id=$1",
+        [id],
+      )
+    ).rows[0].scope;
+    const repeated = await send(id, "沿用刚才固定的1条，不要重新抽取", [
+      decision("execute"),
+      {
+        name: "select_candidates",
+        input: {
+          runId: op.result.runId,
+          selection: {
+            method: "random",
+            mode: "count",
+            value: 1,
+            conditions: [],
+          },
+        },
+      },
+    ]);
+    expect(
+      successes(repeated, "select_candidates").length,
+      JSON.stringify(repeated.turns.at(-1)),
+    ).toBeGreaterThan(0);
+    expect(
+      (
+        await dbQuery(
+          "SELECT task->'candidateScope' AS scope FROM assistant_session WHERE id=$1",
+          [id],
+        )
+      ).rows[0].scope,
+    ).toEqual(fixed);
   });
   it("OPT47 combined clean configuration errors reach one shared correction then genuine range clarification", async () => {
     const assetId = await file("opt47-config.jsonl");

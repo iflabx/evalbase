@@ -59,6 +59,16 @@ export function assistantFeedback(
     )
   )
     return result("failed", recoveryReason(facts.recoveryReason)!);
+  if (
+    task.stage === "complete" &&
+    ![
+      "permission_denied",
+      "context_changed",
+      "background_changed",
+      "revision_changed",
+    ].includes(facts.recoveryReason ?? "")
+  )
+    return result("complete", "当前目标已完成，已保存成果可在工作区查看。");
   const blocker = recoveryReason(facts.recoveryReason);
   if (
     blocker &&
@@ -163,6 +173,12 @@ export function recoveryReason(reason: string | undefined): string | undefined {
       revision_changed: "要求已更新，请以当前方案为准。",
       requirements_changed: "要求已变化，请先核对本次修改。",
       permission_denied: "当前权限已变化，请核对访问权限。",
+      grant_revision_changed:
+        "要求已更新，原追加授权已失效；新要求和已有成果已保留，请核对后决定是否授权有限规划。",
+      grant_expired:
+        "本次追加额度已过期，已有成果保留；请核对当前任务后决定是否另授有限额度。",
+      external_budget_exhausted:
+        "本次验证总额度已用尽，已有成果保留；当前任务不能继续请求。",
       task_budget_exhausted: "本次任务已达到执行限额，已有成果保留。",
       insufficient_task_time: "剩余执行额度不足，已有进度保留。",
       no_progress: "连续尝试未取得新进展，任务已暂停；已有成果保留。",

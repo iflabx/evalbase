@@ -1,6 +1,13 @@
+import { chargeRepairRequest } from "./tool-repair.js";
+import {
+  applyBudgetGrant,
+  BudgetGrantError,
+  progressKey,
+} from "./budget-ledger.js";
 import { taskIdentity } from "./task-boundary.js";
 import {
   checkpointExecutionBudget,
+  sentRequestCount,
   settleActiveBudget,
   type ActiveBudget,
 } from "./budget.js";
@@ -152,7 +159,9 @@ export async function queueContinuation(
             ].includes(decision.reason)
               ? {
                   stage: "waiting_input",
-                  executionPaused: true,
+                  ...(session.task.budgetLedger
+                    ? { budgetPause: decision.reason }
+                    : { executionPaused: true }),
                   nextAction: null,
                   error:
                     decision.reason === "event_limit"
@@ -192,7 +201,7 @@ export async function collectProcessingEvents(db: Database) {
     );
   };
   const sessions = (
-    await db.query(`SELECT s.id,s.task_revision,string_agg(r.id||':'||j.status||':'||j.attempt||':'||j.updated_at::text,',' ORDER BY r.id) AS event_key FROM assistant_session s
+    await db.query(`SELECT s.id,s.task_revision,string_agg(r.id||':'||j.status||':'||j.attempt,',' ORDER BY r.id) AS event_key FROM assistant_session s
     JOIN processing_run r ON r.id IN(SELECT jsonb_array_elements_text(coalesce(s.task->'runIds',jsonb_build_array(s.task->>'runId')))) JOIN job j ON j.id=r.job_id
     WHERE s.task->>'stage'='processing' AND r.input_ref IS NOT NULL GROUP BY s.id,s.task_revision
     HAVING bool_and(j.status IN('succeeded','failed','cancelled')) LIMIT 30`)
@@ -388,9 +397,15 @@ export async function controlAssistantTask(
   db: Database,
   scope: AssistantScope,
   id: string,
-  action: "stop" | "retry" | "delete",
+  action: "stop" | "retry" | "delete" | "grant",
   attempt = 0,
-  expected?: { revision: number; action: string },
+  expected?: {
+    revision: number;
+    action: string;
+    offerId?: string;
+    purpose?: "continue" | "repair";
+    key?: string;
+  },
 ): Promise<{ runId: string | undefined }> {
   const client = await db.connect();
   try {
@@ -475,13 +490,98 @@ export async function controlAssistantTask(
           [id, taskIdentity(session)],
         )
       ).rows[0];
+      if (action === "grant") {
+        if (
+          !expected?.offerId ||
+          !expected.key ||
+          !["continue", "repair"].includes(expected.purpose ?? "")
+        )
+          throw new AssistantError(422, "assistant_request_invalid");
+        const prior = session.task.budgetLedger?.grants?.find(
+          (g: any) =>
+            g.offerId === expected.offerId ||
+            g.keyHash === sha256(JSON.stringify(expected.key)),
+        );
+        if (prior) {
+          if (
+            prior.offerId !== expected.offerId ||
+            prior.purpose !== expected.purpose
+          )
+            throw new AssistantError(409, "idempotency_conflict");
+          await client.query("COMMIT");
+          return { runId: session.task.runId };
+        }
+        if (!turn || ["queued", "running"].includes(turn.status))
+          throw new AssistantError(409, "assistant_turn_running");
+        await closeBudget(client, session, turn.id);
+      }
       const decision = await assistantRecovery(client, scope, session, turn);
-      if (expected && decision.action !== expected.action)
+      if (action !== "grant" && expected && decision.action !== expected.action)
         throw new AssistantError(
           409,
           "assistant_retry_unavailable",
           decision.reason,
         );
+      if (action === "grant") {
+        if (!expected?.key || !expected.purpose)
+          throw new AssistantError(422, "assistant_request_invalid");
+        const offer = decision.grantOffers?.[expected.purpose!];
+        if (!offer || offer.id !== expected.offerId)
+          throw new AssistantError(
+            409,
+            "assistant_retry_unavailable",
+            decision.reason,
+          );
+        if (
+          (
+            await client.query(
+              "SELECT id FROM assistant_turn WHERE session_id=$1 AND status IN('queued','running')",
+              [id],
+            )
+          ).rowCount
+        )
+          throw new AssistantError(409, "assistant_turn_running");
+        try {
+          session.task = applyBudgetGrant(
+            session.task,
+            offer,
+            scope.actorId,
+            session.task_revision,
+            expected.key,
+          );
+        } catch (e) {
+          if (e instanceof BudgetGrantError)
+            throw new AssistantError(
+              409,
+              "assistant_retry_unavailable",
+              e.code,
+            );
+          throw e;
+        }
+        // Close the old segment before allocating the one explicitly authorized segment.
+        await client.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+          id,
+          session.task,
+        ]);
+        await closeBudget(client, session, turn.id);
+        const allowed = await assistantRecovery(client, scope, session, turn);
+        if (!allowed.action)
+          throw new AssistantError(
+            409,
+            "assistant_retry_unavailable",
+            allowed.reason,
+          );
+        await queueRecovery(
+          client,
+          session,
+          turn,
+          allowed,
+          "budget_grant",
+          "grant:" + offer.id,
+        );
+        await client.query("COMMIT");
+        return { runId: session.task.runId };
+      }
       const resumeReply =
         session.task?.recovery?.kind === "model_reply" &&
         Boolean(decision.action);
@@ -579,14 +679,52 @@ export async function closeBudget(
   const b = session.task?.turnBudget as ActiveBudget | undefined;
   if (b?.turnId !== turnId || b.accountingVersion !== 2) return;
   const turnBudget = settleActiveBudget(b, Date.now(), true);
+  if (session.task.budgetLedger?.version === 1) {
+    for (const request of turnBudget.requests ?? [])
+      if (request.state === "reserved") {
+        request.state = "unknown";
+        if (request.repair && !request.repairCharged) {
+          const r = request.repair;
+          chargeRepairRequest(
+            (session.task.parameterRepairLimits ??= {}),
+            r.name,
+            r.identity,
+            r.kind,
+          );
+          request.repairCharged = true;
+          if (r.nested) turnBudget.modelSteps++;
+        }
+      }
+    turnBudget.requestAttempts = sentRequestCount(turnBudget.requests ?? []);
+  }
   const executionBudget = checkpointExecutionBudget(
     session.task.executionBudget,
     turnBudget,
     turnBudget.activeMs,
   );
+  const ledger = session.task.budgetLedger;
+  if (ledger?.version === 1) {
+    const entry = { ...turnBudget, executionToken: undefined };
+    ledger.segments ??= [];
+    const index = ledger.segments.findIndex((s: any) => s.turnId === turnId);
+    if (index < 0) ledger.segments.push(entry);
+    else ledger.segments[index] = entry;
+  }
   await db.query(
     "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
-    [session.id, JSON.stringify({ turnBudget, executionBudget })],
+    [
+      session.id,
+      JSON.stringify({
+        turnBudget,
+        executionBudget,
+        ...(ledger
+          ? {
+              budgetLedger: ledger,
+              parameterRepairLimits: session.task.parameterRepairLimits ?? {},
+            }
+          : {}),
+      }),
+    ],
   );
   session.task = { ...session.task, turnBudget, executionBudget };
 }
@@ -633,6 +771,7 @@ export async function queueRecovery(
     );
     return { turnId: origin.id, action: decision.action };
   }
+  await closeBudget(db, session, origin.id);
   const task = session.task,
     oldBudget = task.turnBudget;
   const prior =
@@ -715,13 +854,15 @@ export async function queueRecovery(
     rootTurnId,
     progressKey: recoveryProgress(task, origin),
     progressFacts: recoveryProgressFacts(task, origin),
-    transportRetriesBefore: faultRecovery
-      ? Number(prior?.transportRetriesBefore ?? 0) +
-        Number(oldBudget.transportRetries ?? 0)
-      : 0,
+    ...(task.grantResume ? { grantId: task.grantResume } : {}),
+    transportRetriesBefore:
+      faultRecovery && !task.budgetLedger
+        ? Number(prior?.transportRetriesBefore ?? 0) +
+          Number(oldBudget.transportRetries ?? 0)
+        : 0,
     amendmentId:
       task.planningRecovery?.requestTurnId ?? prior?.amendmentId ?? origin.id,
-    attemptsBefore,
+    attemptsBefore: task.grantResume ? 0 : attemptsBefore,
     revision: session.task_revision,
     documentsKey: backgroundVersion(documents),
     mode: decision.mode,
@@ -737,6 +878,9 @@ export async function queueRecovery(
     accountingVersion: 2,
     requests: [],
     retryWaits: [],
+    ...(task.budgetLedger
+      ? { requestAttempts: 0, progressStart: progressKey(task, origin) }
+      : {}),
   };
   const control = {
     ...task.turnControl,
@@ -761,6 +905,7 @@ export async function queueRecovery(
       session.id,
       JSON.stringify({
         turnBudget,
+        grantResume: null,
         budgetSegments: history,
         recoverySegment,
         turnControl: control,

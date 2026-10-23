@@ -1,4 +1,9 @@
 import {
+  budgetAllowance,
+  createBudgetLedger,
+  budgetPresentation,
+} from "./budget-ledger.js";
+import {
   prepareTaskBoundary,
   taskIdentity,
   taskDependencies,
@@ -8,7 +13,7 @@ import { planningContinuation } from "./intent.js";
 import { turnDiagnostics } from "./diagnostics.js";
 import { assistantFeedback } from "./feedback.js";
 import { unresolvedFailure } from "./receipts.js";
-import { queueRecovery } from "./tasks.js";
+import { queueRecovery, closeBudget } from "./tasks.js";
 import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -23,7 +28,11 @@ import {
   planRequirementsKey,
   planVerificationCurrent,
 } from "./plan.js";
-import { recoveryDecision, backgroundVersion } from "./recovery.js";
+import {
+  recoveryDecision,
+  backgroundVersion,
+  liveExecutionBudget,
+} from "./recovery.js";
 import { backgroundCatalog } from "./background.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { deliveryProgress, type WorkspaceFacts } from "./workspace.js";
@@ -78,6 +87,12 @@ export function taskPresentation(
   delete presented.recoverySegment;
   delete presented.recoveryRequests;
   delete presented.budgetSegments;
+  delete presented.budgetLedger;
+  delete presented.grantResume;
+  presented.budget = budgetPresentation({
+    ...task,
+    executionBudget: liveExecutionBudget(task),
+  });
   if (presented.executionPlan) {
     presented.executionPlan = {
       ...presented.executionPlan,
@@ -1044,11 +1059,40 @@ export async function startTurn(
       await client.query("COMMIT");
       return { turn, replayed: false };
     }
+    if (!boundary.switched && budgetAllowance(session.task)?.reason) {
+      const latest = (
+        await client.query(
+          "SELECT * FROM assistant_turn WHERE session_id=$1 AND task_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+          [sessionId, taskIdentity(session)],
+        )
+      ).rows[0];
+      const recoveryDecision = await assistantRecovery(
+        client,
+        scope,
+        session,
+        latest,
+      );
+      await client.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [sessionId, JSON.stringify({ recoveryDecision })],
+      );
+      await client.query("COMMIT");
+      throw new AssistantError(
+        409,
+        "assistant_retry_unavailable",
+        recoveryDecision.reason,
+      );
+    }
     const plainContinuation =
       !boundary.switched && Boolean(planningContinuation(effectiveText.trim()));
     if (
       plainContinuation &&
-      session.task?.planningRecovery &&
+      (session.task?.planningRecovery ||
+        session.task?.budgetLedger?.grants?.some(
+          (g: any) =>
+            g.id === session.task.budgetLedger.activeId &&
+            g.purpose !== "initial",
+        )) &&
       !candidateSelection &&
       !operation
     ) {
@@ -1255,12 +1299,83 @@ export async function startTurn(
         };
     task.taskId = taskIdentity(session);
     task.taskContractVersion = 2;
+    if (!continuing)
+      task.budgetLedger = createBudgetLedger(
+        task.taskId,
+        scope.actorId,
+        Number(turn.task_revision),
+      );
     task.boundaryQuestion = null;
     task.turnControl = {
       turnId: turn.id,
       taskRevision: turn.task_revision,
       source: "pending",
     };
+    const activeGrant = task.budgetLedger?.grants?.find(
+      (g: any) => g.id === task.budgetLedger.activeId,
+    );
+    if (
+      continuing &&
+      activeGrant?.purpose !== "initial" &&
+      activeGrant &&
+      activeGrant.revision !== turn.task_revision
+    ) {
+      if (session.task.turnBudget?.turnId)
+        await closeBudget(client, session, session.task.turnBudget.turnId);
+      task.budgetLedger = session.task.budgetLedger;
+      task.executionBudget = session.task.executionBudget;
+      const now = Date.now(),
+        documents = (
+          await client.query(
+            'SELECT id,sha256,extractor_version AS "extractorVersion" FROM assistant_background_document WHERE session_id=$1',
+            [sessionId],
+          )
+        ).rows;
+      task.turnControl = {
+        mode: "plan",
+        source: "ui",
+        turnId: turn.id,
+        taskRevision: turn.task_revision,
+        requiresUpdate: true,
+        updateSaved: false,
+      };
+      task.planningRecovery = {
+        amendment: Boolean(task.executionPlan?.steps?.length),
+        planKey: planRequirementsKey(task),
+        turnId: turn.id,
+        requestTurnId: turn.id,
+        taskRevision: turn.task_revision,
+        baseRevision: turn.task_revision,
+        documentsKey: backgroundVersion(documents),
+        evidenceKey: sha256(canonicalJson(task.backgroundEvidence ?? [])),
+      };
+      task.planValidationRequired = true;
+      task.executionPaused = true;
+      task.stage = "waiting_input";
+      task.budgetPause = "grant_revision_changed";
+      // No work is dispatched. This zero-use checkpoint retains the exact new user request for an explicitly authorized planning attempt.
+      task.turnBudget = {
+        turnId: turn.id,
+        startedAt: now,
+        deadlineAt: now,
+        accountingVersion: 2,
+        activeMs: 0,
+        modelSteps: 0,
+        toolCalls: 0,
+        transportRetries: 0,
+        requestAttempts: 0,
+        requests: [],
+        retryWaits: [],
+      };
+      await client.query(
+        "UPDATE assistant_turn SET status='failed',error_code='assistant_budget_exhausted',assistant_text=$2 WHERE id=$1",
+        [
+          turn.id,
+          "新要求已保留；原追加额度仅适用此前要求。请核对新要求后决定是否授权一段有限规划。",
+        ],
+      );
+      turn.status = "failed";
+    }
     // A new revision invalidates only uncommitted confirmation cards. Restore
     // their pending preparation; committed receipts above remain historical facts.
     if (task.executionPlan)

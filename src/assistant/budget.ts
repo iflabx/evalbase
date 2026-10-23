@@ -10,6 +10,7 @@ type TurnCounters = {
   modelSteps: number;
   toolCalls: number;
   transportRetries: number;
+  requestAttempts?: number;
 };
 
 export type ExecutionBudget = {
@@ -17,6 +18,7 @@ export type ExecutionBudget = {
   toolCalls: number;
   transportRetries: number;
   activeMs: number;
+  requestAttempts?: number;
   lastTurn?: TurnCounters & { elapsedMs: number };
   limits?: Partial<Record<keyof typeof EXECUTION_BUDGET_LIMITS, number>>;
 };
@@ -40,6 +42,14 @@ export function checkpointExecutionBudget(
       count(turn.transportRetries),
     ),
     elapsedMs: Math.max(count(prior?.elapsedMs), count(elapsedMs)),
+    ...(turn.requestAttempts !== undefined
+      ? {
+          requestAttempts: Math.max(
+            count(prior?.requestAttempts),
+            count(turn.requestAttempts),
+          ),
+        }
+      : {}),
   };
   return {
     modelSteps:
@@ -54,6 +64,14 @@ export function checkpointExecutionBudget(
       count(prior?.transportRetries),
     activeMs:
       count(previous?.activeMs) + observed.elapsedMs - count(prior?.elapsedMs),
+    ...(observed.requestAttempts !== undefined
+      ? {
+          requestAttempts:
+            count(previous?.requestAttempts) +
+            observed.requestAttempts -
+            count(prior?.requestAttempts),
+        }
+      : {}),
     ...((previous as any)?.limits ? { limits: (previous as any).limits } : {}),
     lastTurn: observed,
   };
@@ -82,6 +100,7 @@ export function requestFitsDeadline(
 }
 
 export type ActiveBudget = {
+  progressStart?: string;
   turnId: string;
   startedAt: number;
   deadlineAt: number;
@@ -93,7 +112,13 @@ export type ActiveBudget = {
   attemptStartedAt?: number | null;
   attemptBaseMs?: number;
   attemptToken?: string | null;
-  requests?: { timeToHeadersMs: number; httpStatus: number | null }[];
+  requestAttempts?: number;
+  requests?: {
+    timeToHeadersMs: number;
+    httpStatus: number | null;
+    state?: string;
+    [key: string]: any;
+  }[];
 };
 type ActiveInterval = {
   accountingVersion: number;
@@ -157,4 +182,11 @@ export function executionLimits(budget: ExecutionBudget | undefined | null) {
       ];
     }),
   ) as Record<keyof typeof EXECUTION_BUDGET_LIMITS, number>;
+}
+
+/** Reservations are not sends; an unresolved send is charged conservatively. */
+export function sentRequestCount(requests: readonly { state?: string }[]) {
+  return requests.filter(
+    (r) => r.state !== "reserved" && r.state !== "not_sent",
+  ).length;
 }

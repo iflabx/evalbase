@@ -1,3 +1,12 @@
+import { effectiveOperationInput } from "./operation-input.js";
+import {
+  budgetAllowance,
+  segmentLimits,
+  progressKey,
+  progressFacts,
+  repairIdentity,
+} from "./budget-ledger.js";
+import type { RequestTiming } from "./transport.js";
 import { boundedAssistantFetch } from "./request-context.js";
 import { discoverSources, sourceDiscoveryApplies } from "./source-discovery.js";
 import {
@@ -41,12 +50,12 @@ import {
 } from "./receipts.js";
 import {
   checkpointExecutionBudget,
+  sentRequestCount,
   startActiveBudget,
   settleActiveBudget,
   requestFitsDeadline,
   executionBudgetExhausted,
   executionLimits,
-  EXECUTION_BUDGET_LIMITS,
   type ExecutionBudget,
 } from "./budget.js";
 import {
@@ -1475,8 +1484,16 @@ export async function executeAssistantTurn(
   let exhaustedProcessing:
     | { runId: string; total: number; missing: number; shared: boolean }
     | undefined;
+  let budgetTask: Record<string, any> = {};
+  let segment = segmentLimits(budgetTask);
+  const taskLimits = () =>
+    budgetAllowance({ ...budgetTask, executionBudget })?.limits ??
+    executionLimits(executionBudget);
   const startedAt = Date.now();
-  let turnBudget = {
+  let turnBudget: import("./budget.js").ActiveBudget & {
+    requests: any[];
+    retryWaits: any[];
+  } = {
     turnId: turn.id,
     startedAt,
     deadlineAt: startedAt + 80000,
@@ -1507,7 +1524,9 @@ export async function executeAssistantTurn(
   }[] = [];
   let finishReason = "not_returned";
   let modelRevision: number | null = null;
-  const requests: { httpStatus: number | null; timeToHeadersMs: number }[] = [];
+  const requests: any[] = [];
+  const requestCount = () =>
+    budgetTask.budgetLedger ? sentRequestCount(requests) : requests.length;
   const modelTransportErrors = new WeakSet<object>();
   let requestControlError: unknown;
   async function controlModelRequest<T>(action: () => Promise<T>) {
@@ -1670,7 +1689,7 @@ export async function executeAssistantTurn(
       attemptToolCalls: Math.max(0, toolCalls - attemptStart.toolCalls),
       attemptRequestAttempts: Math.max(
         0,
-        requests.length - attemptStart.requests,
+        requestCount() - attemptStart.requests,
       ),
       ...(firstFailure ? { firstFailure } : {}),
       sessionId: turn.session_id,
@@ -1696,7 +1715,7 @@ export async function executeAssistantTurn(
       toolsVersion: "assistant-tools-v12",
       parameterRepairVersion: "arguments-v4",
       modelRevision,
-      requestAttempts: requests.length,
+      requestAttempts: requestCount(),
       transportRetries: turnBudget.transportRetries,
       retryWaits,
       requests,
@@ -1706,7 +1725,7 @@ export async function executeAssistantTurn(
         .filter(
           (limit) =>
             limit.identity ===
-            sha256(canonicalJson({ requestTurnId: planningRequestTurnId })),
+            repairIdentity(budgetTask, planningRequestTurnId),
         )
         .reduce((sum, limit) => sum + limit.used, 0),
       stepDiagnostics,
@@ -1722,11 +1741,21 @@ export async function executeAssistantTurn(
   }
   function checkpointBudget() {
     turnBudget = settleActiveBudget(turnBudget);
-    Object.assign(turnBudget, { modelSteps, toolCalls, requests, retryWaits });
+    Object.assign(turnBudget, {
+      modelSteps,
+      toolCalls,
+      requests,
+      retryWaits,
+      ...(budgetTask.budgetLedger
+        ? {
+            requestAttempts: requestCount(),
+          }
+        : {}),
+    });
     executionBudget = checkpointExecutionBudget(
       executionBudget,
       turnBudget,
-      turnBudget.activeMs,
+      turnBudget.activeMs ?? 0,
     );
     return { turnBudget, executionBudget };
   }
@@ -1818,7 +1847,12 @@ export async function executeAssistantTurn(
       .map((item) =>
         sha256(canonicalJson({ name: item.name, result: item.result })),
       );
-    if (!progress.some((hash) => !previous.includes(hash))) {
+    if (
+      saved.task.budgetLedger
+        ? progressKey(saved.task, { id: turn.id, tool_results: tools }) ===
+          turnBudget.progressStart
+        : !progress.some((hash) => !previous.includes(hash))
+    ) {
       noProgress = true;
       return false;
     }
@@ -1834,6 +1868,18 @@ export async function executeAssistantTurn(
       budgetCheckpoint: {
         turnId: turn.id,
         pendingAction: plannedAction,
+        ...(saved.task.budgetLedger
+          ? {
+              progressKey: progressKey(saved.task, {
+                id: turn.id,
+                tool_results: tools,
+              }),
+              progressFacts: progressFacts(saved.task, {
+                id: turn.id,
+                tool_results: tools,
+              }),
+            }
+          : {}),
         progressHashes: [...new Set([...previous, ...progress])].slice(-144),
       },
     };
@@ -2170,6 +2216,14 @@ export async function executeAssistantTurn(
           } catch (e) {
             referenceError = e;
           }
+          input = effectiveOperationInput(
+            name,
+            input,
+            currentTask.executionPlan?.steps[currentTask.executionPlan.current]
+              ?.operation,
+            Boolean(currentTask.budgetLedger),
+            currentTask.candidateScope,
+          );
           if (!referenceError && preparedTools.has(name)) {
             const prepared = await prepareBusinessProposal(
               name,
@@ -2262,9 +2316,9 @@ export async function executeAssistantTurn(
             };
           const exhaustedTaskTools = Boolean(
             executionBudget &&
-            executionBudget.toolCalls >= EXECUTION_BUDGET_LIMITS.toolCalls,
+            executionBudget.toolCalls >= taskLimits().toolCalls,
           );
-          if (toolCalls >= 12) {
+          if (toolCalls >= segment.toolCalls) {
             summarizing = true;
             budgetBoundary = true;
             return {
@@ -2553,6 +2607,9 @@ export async function executeAssistantTurn(
                   revision: turn.task_revision,
                   input,
                   operation: {
+                    ...(currentTask.budgetLedger
+                      ? { parameterContractVersion: 1 }
+                      : {}),
                     key,
                     input,
                     ...(preparedScopes.get(canonicalJson(input))
@@ -6647,7 +6704,7 @@ export async function executeAssistantTurn(
 
     for (
       let count = 0;
-      count < 12 &&
+      count < segment.toolCalls &&
       !yieldToProcessing &&
       !waitingForInput &&
       !noProgress &&
@@ -6779,7 +6836,11 @@ export async function executeAssistantTurn(
         yieldToProcessing = true;
       if (after.executionPlan?.current === current.executionPlan.current) break;
     }
-    if (toolCalls >= 10 && plannedAction && !yieldToProcessing) {
+    if (
+      toolCalls >= Math.max(1, segment.toolCalls - 2) &&
+      plannedAction &&
+      !yieldToProcessing
+    ) {
       summarizing = true;
       budgetBoundary = true;
     }
@@ -6816,10 +6877,14 @@ export async function executeAssistantTurn(
   try {
     const savedState = (
       await db.query(
-        "SELECT task->'turnBudget' AS budget,task->'executionBudget' AS execution_budget,task->'observations' AS observations,task->'parameterRepairLimits' AS repair_limits FROM assistant_session WHERE id=$1",
+        "SELECT task,task->'turnBudget' AS budget,task->'executionBudget' AS execution_budget,task->'observations' AS observations,task->'parameterRepairLimits' AS repair_limits FROM assistant_session WHERE id=$1",
         [turn.session_id],
       )
     ).rows[0];
+    budgetTask = savedState?.task ?? {};
+    segment = segmentLimits(budgetTask);
+    turnBudget.deadlineAt = startedAt + segment.activeMs;
+    turnBudget.progressStart = progressKey(budgetTask);
     const savedBudget = savedState?.budget;
     executionBudget = savedState?.execution_budget;
     if (executionBudget && !validExecutionBudget(executionBudget))
@@ -6847,7 +6912,11 @@ export async function executeAssistantTurn(
         "assistant_retry_unavailable",
         "budget_evidence_missing",
       );
-    if (executionBudget && executionBudgetExhausted(executionBudget))
+    if (
+      budgetTask.budgetLedger
+        ? budgetAllowance({ ...budgetTask, executionBudget })?.reason
+        : executionBudget && executionBudgetExhausted(executionBudget)
+    )
       throw new AssistantError(422, "assistant_task_limit");
     parameterRepairLimits = savedState?.repair_limits ?? {};
     if (savedBudget?.turnId === turn.id) {
@@ -6879,10 +6948,9 @@ export async function executeAssistantTurn(
     budgetLoaded = true;
     modelSteps = turnBudget.modelSteps;
     toolCalls = turnBudget.toolCalls;
-    attemptStart = { modelSteps, toolCalls, requests: requests.length };
+    attemptStart = { modelSteps, toolCalls, requests: requestCount() };
     const availableActiveMs =
-      executionLimits(executionBudget).activeMs -
-      (executionBudget?.activeMs ?? 0);
+      taskLimits().activeMs - (executionBudget?.activeMs ?? 0);
     if (savedBudget?.turnId !== turn.id)
       turnBudget.deadlineAt = Math.min(
         turnBudget.deadlineAt,
@@ -6900,20 +6968,71 @@ export async function executeAssistantTurn(
       undefined,
       false,
       (observation, error) => {
-        requests.push(observation);
+        if (!budgetTask.budgetLedger) requests.push(observation);
         if (error && typeof error === "object") modelTransportErrors.add(error);
       },
       (request) =>
-        assistantTransport(
-          boundedAssistantFetch(
-            request,
-            config.assistantContextWindowTokens,
-            (error) => {
-              requestControlError = error;
-            },
-          ),
-          {
+        boundedAssistantFetch(
+          assistantTransport(request, {
             signal: abortSignal,
+            retryLimit: segment.transportRetries,
+            ...(budgetTask.budgetLedger
+              ? {
+                  onAttempt: async (observation: RequestTiming) => {
+                    observation.id = turn.id + ":" + requests.length;
+                    if (activeRepair)
+                      observation.repair = {
+                        ...activeRepair,
+                        nested: nestedRepairRequest,
+                      };
+                    requests.push({ ...observation });
+                    await controlModelRequest(saveBudget);
+                  },
+                  onObservation: async (observation: RequestTiming) => {
+                    const index = requests.findIndex(
+                        (r) => r.id === observation.id,
+                      ),
+                      prior = requests[index];
+                    if (index < 0)
+                      throw new AssistantError(
+                        409,
+                        "assistant_retry_unavailable",
+                      );
+                    const charged = prior.repairCharged;
+                    if (
+                      observation.state !== "not_sent" &&
+                      observation.state !== "reserved" &&
+                      observation.repair &&
+                      !charged
+                    ) {
+                      const r = observation.repair;
+                      if (
+                        !chargeRepairRequest(
+                          parameterRepairLimits,
+                          r.name,
+                          r.identity,
+                          r.kind,
+                        )
+                      )
+                        throw new AssistantError(
+                          422,
+                          "assistant_tool_repair_exhausted",
+                        );
+                      if (r.nested) modelSteps++;
+                      observation.repairCharged = true;
+                      await controlModelRequest(() =>
+                        updateTask(db, turn, { parameterRepairLimits }),
+                      );
+                    }
+                    requests[index] = {
+                      ...prior,
+                      ...observation,
+                      repairCharged: observation.repairCharged ?? charged,
+                    };
+                    await controlModelRequest(saveBudget);
+                  },
+                }
+              : {}),
             deadlineAt: turnBudget.deadlineAt,
             initialRetries:
               transportRetriesBefore + turnBudget.transportRetries,
@@ -6923,8 +7042,22 @@ export async function executeAssistantTurn(
                   true,
                   attempt?.timeoutRetry ? TIMEOUT_RETRY_REQUEST_MS : undefined,
                 );
-                if (activeRepair) {
-                  if (nestedRepairRequest && modelSteps >= 10)
+                if (activeRepair && budgetTask.budgetLedger) {
+                  if (
+                    !repairRequestAvailable(
+                      parameterRepairLimits,
+                      activeRepair.identity,
+                      activeRepair.kind,
+                    ) ||
+                    (nestedRepairRequest && modelSteps >= segment.modelSteps)
+                  )
+                    throw new AssistantError(
+                      422,
+                      "assistant_tool_repair_exhausted",
+                    );
+                }
+                if (activeRepair && !budgetTask.budgetLedger) {
+                  if (nestedRepairRequest && modelSteps >= segment.modelSteps)
                     throw new AssistantError(422, "assistant_budget_exhausted");
                   if (
                     !chargeRepairRequest(
@@ -6959,7 +7092,7 @@ export async function executeAssistantTurn(
               if (
                 executionBudget &&
                 executionBudget.transportRetries >=
-                  EXECUTION_BUDGET_LIMITS.transportRetries
+                  taskLimits().transportRetries
               ) {
                 await controlModelRequest(async () => {
                   throw new AssistantError(422, "assistant_task_limit");
@@ -6979,6 +7112,10 @@ export async function executeAssistantTurn(
                 }),
               );
             },
+          }),
+          config.assistantContextWindowTokens,
+          (error) => {
+            requestControlError = error;
           },
         ),
       {
@@ -7227,16 +7364,14 @@ export async function executeAssistantTurn(
       },
       reserve: async (name, kind = "format") => {
         if (
-          modelSteps >= 10 ||
+          modelSteps >= segment.modelSteps ||
           !requestFitsDeadline(
             turnBudget.deadlineAt,
-            requests.at(-1)?.timeToHeadersMs ?? 0,
+            requests.at(-1)?.totalMs ?? requests.at(-1)?.timeToHeadersMs ?? 0,
           )
         )
           return false;
-        const identity = sha256(
-          canonicalJson({ requestTurnId: planningRequestTurnId }),
-        );
+        const identity = repairIdentity(budgetTask, planningRequestTurnId);
         // Legacy same-turn retries retain their consumed allowance; only a real new request gets a new identity.
         const existing = parameterRepairLimits[name];
         if (
@@ -7589,7 +7724,7 @@ export async function executeAssistantTurn(
             continue;
           if (invalid || !Object.hasOwn(tools, failure.toolName))
             toolCalls = Math.min(12, toolCalls + 1);
-          if (toolCalls >= 12) budgetBoundary = true;
+          if (toolCalls >= segment.toolCalls) budgetBoundary = true;
           const key = `assistant:${turn.id}:sdk:${sha256(failure.toolCallId)}`;
           await updateTurn(
             "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(x),'[]') FROM jsonb_array_elements(tool_results) x WHERE x->>'key'<>$2)||$3::jsonb WHERE id=$1 AND status='running'",
@@ -7670,7 +7805,7 @@ export async function executeAssistantTurn(
       },
       stopWhen: [
         () =>
-          modelSteps >= 10 ||
+          modelSteps >= segment.modelSteps ||
           yieldToProcessing ||
           budgetBoundary ||
           waitingForInput ||
@@ -7684,9 +7819,9 @@ export async function executeAssistantTurn(
         await turnFence(db, scope, turn.id, turn.execution_token);
         abortSignal.throwIfAborted();
         if (
-          modelSteps >= 10 ||
+          modelSteps >= segment.modelSteps ||
           (executionBudget &&
-            executionBudget.modelSteps >= EXECUTION_BUDGET_LIMITS.modelSteps)
+            executionBudget.modelSteps >= taskLimits().modelSteps)
         )
           throw new AssistantError(422, "assistant_budget_exhausted");
         await requestPreflight();
@@ -7697,9 +7832,7 @@ export async function executeAssistantTurn(
         if (pendingContextRepair) {
           const pending = pendingContextRepair;
           pendingContextRepair = undefined;
-          const identity = sha256(
-            canonicalJson({ requestTurnId: planningRequestTurnId }),
-          );
+          const identity = repairIdentity(budgetTask, planningRequestTurnId);
           if (
             !repairRequestAvailable(
               parameterRepairLimits,
@@ -7737,7 +7870,11 @@ export async function executeAssistantTurn(
         modelSteps++;
         await saveBudget();
         // Reserve the last bounded step for a reply, rather than another query.
-        if (summarizing || modelSteps >= 10 || toolCalls >= 10) {
+        if (
+          summarizing ||
+          modelSteps >= segment.modelSteps ||
+          toolCalls >= Math.max(1, segment.toolCalls - 2)
+        ) {
           activeRepairTools.clear();
           summarizing = true;
           return {

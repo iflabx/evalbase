@@ -829,26 +829,50 @@ export function registerAssistant({
       });
     },
   );
-  for (const action of ["stop", "retry"] as const)
+  for (const action of ["stop", "retry", "grant"] as const)
     app.post<{ Params: Params; Body: unknown }>(
       `${path}/sessions/:sessionId/${action}`,
       { preHandler: authenticate },
       async (request, reply) => {
         if (!write(request, reply)) return;
         return respond(reply, async () => {
-          if (
-            !isPlainObject(request.body) ||
-            Object.keys(request.body).some(
+          if (!isPlainObject(request.body))
+            throw new AssistantError(422, "assistant_request_invalid");
+          const body = request.body;
+          if (action === "grant") {
+            if (
+              Object.keys(body).some(
+                (k) =>
+                  ![
+                    "expectedTaskRevision",
+                    "offerId",
+                    "purpose",
+                    "accept",
+                  ].includes(k),
+              ) ||
+              body.accept !== true ||
+              !Number.isSafeInteger(body.expectedTaskRevision) ||
+              Number(body.expectedTaskRevision) < 0 ||
+              typeof body.offerId !== "string" ||
+              body.offerId.length > 100 ||
+              !["continue", "repair"].includes(String(body.purpose)) ||
+              typeof request.headers["idempotency-key"] !== "string" ||
+              !String(request.headers["idempotency-key"]).trim() ||
+              String(request.headers["idempotency-key"]).length > 200
+            )
+              throw new AssistantError(422, "assistant_request_invalid");
+          } else if (
+            Object.keys(body).some(
               (k) =>
                 !["expectedTaskRevision", "expectedRecoveryAction"].includes(k),
             ) ||
-            ((request.body.expectedTaskRevision !== undefined ||
-              request.body.expectedRecoveryAction !== undefined) &&
+            ((body.expectedTaskRevision !== undefined ||
+              body.expectedRecoveryAction !== undefined) &&
               (action !== "retry" ||
-                !Number.isSafeInteger(request.body.expectedTaskRevision) ||
-                Number(request.body.expectedTaskRevision) < 0 ||
+                !Number.isSafeInteger(body.expectedTaskRevision) ||
+                Number(body.expectedTaskRevision) < 0 ||
                 !["retry_turn", "continue_plan", "continue_execution"].includes(
-                  String(request.body.expectedRecoveryAction),
+                  String(body.expectedRecoveryAction),
                 )))
           )
             throw new AssistantError(422, "assistant_request_invalid");
@@ -863,6 +887,13 @@ export function registerAssistant({
               ? {
                   revision: Number(request.body.expectedTaskRevision),
                   action: String(request.body.expectedRecoveryAction),
+                  ...(action === "grant"
+                    ? {
+                        offerId: String(body.offerId),
+                        purpose: body.purpose as "continue" | "repair",
+                        key: String(request.headers["idempotency-key"]),
+                      }
+                    : {}),
                 }
               : undefined,
           );
