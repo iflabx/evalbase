@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "campaign": "OPT50-case7-retest-20261023",
+  "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+  "projectId": "project_b0c4a295cc054285bcbb24b84ecb3cf5",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "sessions": {
+    "7": "conversation_6414d351759149da93e617563133b3fe"
+  },
+  "closedCases": [
+    7
+  ],
+  "closed": true,
+  "limits": {
+    "requests": 24,
+    "activeMs": 240000,
+    "singleCallMs": 60000,
+    "generatedRows": 0,
+    "cleanRuns": 0,
+    "newDrafts": 0,
+    "publish": 0
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 7,
+      "sessionId": "conversation_6414d351759149da93e617563133b3fe",
+      "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+      "startedAt": "2026-10-23T11:55:38.360Z",
+      "durationMs": 2680,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "cac6bbd92b2f2fc1e3afa7e2278e1b0eff0981fd6806b9521b64cdc47cd7ff65",
+      "activeBefore": {
+        "caseMs": 260,
+        "totalMs": 260
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 187,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "0dc6aec889f2edbde0662f53e6d8b8c40be78ac8f338f4f94f47a5e72fb31966"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 2,
+      "caseId": 7,
+      "sessionId": "conversation_6414d351759149da93e617563133b3fe",
+      "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+      "startedAt": "2026-10-23T11:55:41.273Z",
+      "durationMs": 3306,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "12b6f44866dca31aa980ce20558cf09b6700b0adfc4825c08a4d57e2a2fb872e",
+      "activeBefore": {
+        "caseMs": 3173,
+        "totalMs": 3173
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "read_background",
+          "bytes": 52,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "documentId",
+            "query"
+          ],
+          "hash": "4800642778373cb2cde5682871f49615354c7bb754ee12df82a18e41d5620977"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 3,
+      "caseId": 7,
+      "sessionId": "conversation_6414d351759149da93e617563133b3fe",
+      "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+      "startedAt": "2026-10-23T11:55:44.689Z",
+      "durationMs": 3767,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "0e1a0c4d7a9a79425f909b936e2cdc8ab0497bac50495a3b71dd992c25c933ec",
+      "activeBefore": {
+        "caseMs": 6589,
+        "totalMs": 6589
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 2844,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control",
+            "title",
+            "executionMode",
+            "deliveries",
+            "requirements"
+          ],
+          "hash": "495a23ccf243530c71bd0ef3901397d5fd9b51e17ab46b35afb88ee7cbf22a4e"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 4,
+      "caseId": 7,
+      "sessionId": "conversation_6414d351759149da93e617563133b3fe",
+      "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+      "startedAt": "2026-10-23T11:56:27.380Z",
+      "durationMs": 674,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "d988615f0c431206a353cb3405ddbe6b54d800542a841dc6b748d7cf3e43847f",
+      "activeBefore": {
+        "caseMs": 10663,
+        "totalMs": 10663
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 165,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "38c3926a66d5914eef9f3cfb20d823086ae42fa845177219a57da510932ec77c"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 5,
+      "caseId": 7,
+      "sessionId": "conversation_6414d351759149da93e617563133b3fe",
+      "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+      "startedAt": "2026-10-23T11:57:02.532Z",
+      "durationMs": 729,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "c0e8638665a67826f59de44bf8eb54a7b9858184fb64b0f78fb782e5198844c8",
+      "activeBefore": {
+        "caseMs": 11768,
+        "totalMs": 11768
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 216,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "control"
+          ],
+          "hash": "55520534c8bf0de8c7dec9ab718ce56a053e77b909bdf7081949f500489dc639"
+        }
+      ],
+      "finishReason": "tool_calls"
+    },
+    {
+      "index": 6,
+      "caseId": 7,
+      "sessionId": "conversation_6414d351759149da93e617563133b3fe",
+      "code": "f8aef0aee8855c034a424ac3cead84018400ae10",
+      "startedAt": "2026-10-23T11:57:03.407Z",
+      "durationMs": 4336,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "c3f27d4152d687570a3f0e93fb1c0caaa7238e034021f3fe91a7a5e673ff088e",
+      "activeBefore": {
+        "caseMs": 12643,
+        "totalMs": 12643
+      },
+      "httpStatus": 200,
+      "toolArguments": [
+        {
+          "name": "plan_task",
+          "bytes": 349,
+          "parsed": true,
+          "type": "object",
+          "keys": [
+            "baseRevision",
+            "deliveries"
+          ],
+          "hash": "d72aeee77d8af144cc8371fb837824138a9f75eb625a76a9e5e9cd58c9080a83"
+        }
+      ],
+      "finishReason": "tool_calls"
+    }
+  ],
+  "blocked": [],
+  "createdAt": "2026-10-23T11:51:39.089Z",
+  "closedAt": "2026-10-23T11:58:41.371124+00:00",
+  "result": "partial-fail-stale-count-instructions"
+}
