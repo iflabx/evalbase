@@ -1,0 +1,4 @@
+{"question":"查询订单物流当前状态。","expectedOutput":"应核实订单后引导查询物流。","metadata":[{"key":"标记","value":"改1"}]}
+{"question":"变更订单收货地址。","expectedOutput":"应核实发货状态和新地址。","metadata":[{"key":"标记","value":"改2"}]}
+{"question":"订单已经发货了吗？","expectedOutput":"应核实订单发货状态。","metadata":[{"key":"标记","value":"保留3"}]}
+{"question":"退款一般多久能到账？","expectedOutput":"应说明正常退款到账时限。","metadata":[{"key":"标记","value":"保留4"}]}

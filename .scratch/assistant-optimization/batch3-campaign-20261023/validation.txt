@@ -1,0 +1,19 @@
+
+> evalbase@0.2.0 docs:check
+> node scripts/check-docs.mjs
+
+docs:check passed: 38 Ticket lifecycle rows, commit references, Gate state, and stale-status phrases
+
+{"protectedTables": 18, "oldBudgetFiles": 32, "oldRowsPreserved": true, "mode": "final"}
+
+ Container evalbase-agent-owner-checkpoint-web-1  Recreate
+ Container evalbase-agent-owner-checkpoint-web-1  Recreated
+ Container evalbase-agent-owner-checkpoint-model-worker-1  Recreate
+ Container evalbase-agent-owner-checkpoint-model-worker-1  Recreated
+ Container evalbase-agent-owner-checkpoint-web-1  Starting
+ Container evalbase-agent-owner-checkpoint-web-1  Started
+ Container evalbase-agent-owner-checkpoint-web-1  Waiting
+ Container evalbase-agent-owner-checkpoint-web-1  Healthy
+ Container evalbase-agent-owner-checkpoint-model-worker-1  Starting
+ Container evalbase-agent-owner-checkpoint-model-worker-1  Started
+{"code": "6b8b7554301c336fe107d6d79ea4435107b708cd", "guard": "removed after closed campaign", "budgetReset": false}

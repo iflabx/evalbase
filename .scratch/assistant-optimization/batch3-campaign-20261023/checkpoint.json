@@ -1,0 +1,99 @@
+{
+  "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+  "image": "evalbase-agent-checkpoint:6b8b7554301c",
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "6b8b7554301c336fe107d6d79ea4435107b708cd"
+  },
+  "updated_services": [
+    "web",
+    "model-worker"
+  ],
+  "unchanged_services": [
+    "postgres",
+    "minio",
+    "worker"
+  ],
+  "business_counts_equal": true,
+  "draft_content_unchanged": true,
+  "database_backup": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/batch3-campaign-20261023/owner-before.dump",
+  "counts": [
+    "app_user|2",
+    "project|20",
+    "data_asset|75",
+    "source_record|21348",
+    "collaborative_draft|63",
+    "collaborative_draft_record|2234",
+    "test_set_version|8",
+    "processing_task|111",
+    "processing_run|138",
+    "processing_batch|900",
+    "processing_acceptance|59",
+    "assistant_session|91",
+    "assistant_turn|432",
+    "assistant_proposal|50",
+    "assistant_background_document|78"
+  ],
+  "frontend_asset": "/assets/index-CiE05fJg.js",
+  "history_fingerprints_before": {
+    "app_user": "e11bf3f686daad32a066dbac4ffae303",
+    "project": "3dfb24203f4fdd081f92b15a54667665",
+    "data_asset": "c8e082826539063859750607413d3d8f",
+    "source_record": "ad1a8fc576f1adbddb2014bbb686f864",
+    "collaborative_draft": "3c25716a2411914c10e9f094f82eb6a7",
+    "collaborative_draft_record": "f908ba9fa603c28a0ebf93ba90b43f37",
+    "test_set_version": "5a40e138e67601d75c11dd4d95dee592",
+    "processing_task": "9f16bdbe6459f7bf730cf41f7376134d",
+    "processing_run": "a1df34d44d3cdd29ea5ca90667336646",
+    "processing_batch": "8a3b64d82e514820d9a517141ac89c8f",
+    "processing_acceptance": "988174297580ee86864fd1020da94721",
+    "assistant_session": "c9eb80825240479cc76eee460fda69e6",
+    "assistant_turn": "681d3808b0fffaf063e0a4c0aab79aa0",
+    "assistant_proposal": "26dcf4f186df53b2dead5395cb2cb1d5",
+    "assistant_background_document": "36b4f0deb4f2d52a2fca0c41fbfcf453"
+  },
+  "history_fingerprints_after": {
+    "app_user": "e11bf3f686daad32a066dbac4ffae303",
+    "project": "3dfb24203f4fdd081f92b15a54667665",
+    "data_asset": "c8e082826539063859750607413d3d8f",
+    "source_record": "ad1a8fc576f1adbddb2014bbb686f864",
+    "collaborative_draft": "3c25716a2411914c10e9f094f82eb6a7",
+    "collaborative_draft_record": "f908ba9fa603c28a0ebf93ba90b43f37",
+    "test_set_version": "5a40e138e67601d75c11dd4d95dee592",
+    "processing_task": "9f16bdbe6459f7bf730cf41f7376134d",
+    "processing_run": "a1df34d44d3cdd29ea5ca90667336646",
+    "processing_batch": "8a3b64d82e514820d9a517141ac89c8f",
+    "processing_acceptance": "988174297580ee86864fd1020da94721",
+    "assistant_session": "c9eb80825240479cc76eee460fda69e6",
+    "assistant_turn": "681d3808b0fffaf063e0a4c0aab79aa0",
+    "assistant_proposal": "26dcf4f186df53b2dead5395cb2cb1d5",
+    "assistant_background_document": "36b4f0deb4f2d52a2fca0c41fbfcf453"
+  },
+  "history_and_budgets_equal": true,
+  "services_before": {
+    "web": {
+      "id": "fd7b9a5d3d4b73dbe79ca970997746521dbc4ac3476999d1ae368489be806730",
+      "image": "evalbase-agent-checkpoint:6b8b7554301c"
+    },
+    "model-worker": {
+      "id": "0263c6a88d9f5c4aea76aff12ee0a5b935704a4a3d3f7c308ddb03c67f2a74cb",
+      "image": "evalbase-agent-checkpoint:6b8b7554301c"
+    },
+    "postgres": {
+      "id": "7f81ded39560ee9b6f24ea2ff88296557feff1267777103c497820c4ae28e17d",
+      "image": "public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8"
+    },
+    "minio": {
+      "id": "b669067b77c53aa80813f512de94ab8e41ce14132ee702ef84da6e7c92c310b0",
+      "image": "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+    },
+    "worker": {
+      "id": "6ae61d537dcecc40849dbc8fe6245b4241dc16b5443c99918790ff4361cb46aa",
+      "image": "evalbase-agent-checkpoint:94177609b4eb"
+    }
+  }
+}

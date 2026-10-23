@@ -1,0 +1,18 @@
+{
+  "count": 4,
+  "updated": [
+    {
+      "id": "draftrow_f29d482e568b4a67997a38e58085ef44",
+      "questionChanged": true,
+      "expectedUnchanged": true,
+      "metadataUnchanged": true
+    },
+    {
+      "id": "draftrow_a212e979bab64f8da05712d15d3f901b",
+      "questionChanged": true,
+      "expectedUnchanged": true,
+      "metadataUnchanged": true
+    }
+  ],
+  "unselectedIdentical": true
+}

@@ -1,0 +1,28 @@
+{
+  "services": {
+    "web": {
+      "environment": {
+        "NODE_OPTIONS": "--import /opt50/gate.mjs"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/batch3-campaign-20261023/campaign",
+          "target": "/opt50"
+        }
+      ]
+    },
+    "model-worker": {
+      "environment": {
+        "NODE_OPTIONS": "--import /opt50/gate.mjs"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/home/bistu/EvalBase/.worktrees/agent-data-processing/.scratch/assistant-optimization/batch3-campaign-20261023/campaign",
+          "target": "/opt50"
+        }
+      ]
+    }
+  }
+}

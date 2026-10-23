@@ -1,0 +1,190 @@
+{
+  "task": {
+    "goal": "先整理格式，去掉完全重复的，再把问法改自然一点。先让我看结果，别保存到草稿。",
+    "stage": "inspecting",
+    "title": "新任务",
+    "target": {
+      "id": "asset_cc1795bbf5e643ccaf8fa7e40dc9a744",
+      "kind": "asset"
+    },
+    "taskId": "assistanttask_fc48041592e94d01912b86e997be2f44",
+    "autoCount": 0,
+    "turnBudget": {
+      "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+      "activeMs": 13902,
+      "requests": [
+        {
+          "id": "turn_7a020d4f17e84b3fad082d26c846ab89:0",
+          "state": "parsed",
+          "bodyMs": 0,
+          "parseMs": 1,
+          "parseOk": true,
+          "totalMs": 13408,
+          "httpStatus": 200,
+          "preflightMs": 64,
+          "timeToHeadersMs": 13402
+        },
+        {
+          "id": "turn_7a020d4f17e84b3fad082d26c846ab89:1",
+          "state": "sent",
+          "httpStatus": null,
+          "preflightMs": 5,
+          "timeToHeadersMs": 0
+        }
+      ],
+      "startedAt": 1792761104988,
+      "toolCalls": 1,
+      "deadlineAt": 1792761184988,
+      "modelSteps": 2,
+      "retryWaits": [],
+      "attemptToken": "execution_eaa131d332834004b157ba06b0ed0b74",
+      "attemptBaseMs": 0,
+      "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "requestAttempts": 2,
+      "attemptStartedAt": 1792761106349,
+      "transportRetries": 0,
+      "accountingVersion": 2
+    },
+    "supplements": [],
+    "turnControl": {
+      "mode": "execute",
+      "source": "model",
+      "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+      "updateSaved": true,
+      "taskRevision": 1
+    },
+    "budgetLedger": {
+      "grants": [
+        {
+          "id": "initial:assistanttask_fc48041592e94d01912b86e997be2f44",
+          "limits": {
+            "activeMs": 1040000,
+            "toolCalls": 156,
+            "modelSteps": 130,
+            "requestAttempts": 156,
+            "transportRetries": 26
+          },
+          "taskId": "assistanttask_fc48041592e94d01912b86e997be2f44",
+          "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+          "purpose": "initial",
+          "issuedAt": 1792761104968,
+          "revision": 1,
+          "expiresAt": null,
+          "startsAtUse": {
+            "activeMs": 0,
+            "toolCalls": 0,
+            "modelSteps": 0,
+            "requestAttempts": 0,
+            "transportRetries": 0
+          }
+        }
+      ],
+      "policy": {
+        "initial": {
+          "activeMs": 1040000,
+          "toolCalls": 156,
+          "modelSteps": 130,
+          "requestAttempts": 156,
+          "transportRetries": 26
+        },
+        "segment": {
+          "activeMs": 80000,
+          "toolCalls": 12,
+          "modelSteps": 10,
+          "requestAttempts": 12,
+          "transportRetries": 2
+        }
+      },
+      "taskId": "assistanttask_fc48041592e94d01912b86e997be2f44",
+      "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+      "version": 1,
+      "activeId": "initial:assistanttask_fc48041592e94d01912b86e997be2f44"
+    },
+    "observations": [],
+    "originTurnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+    "requirements": [],
+    "autoEventLimit": null,
+    "executionBudget": {
+      "activeMs": 13902,
+      "lastTurn": {
+        "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+        "elapsedMs": 13902,
+        "toolCalls": 1,
+        "modelSteps": 2,
+        "requestAttempts": 2,
+        "transportRetries": 0
+      },
+      "toolCalls": 1,
+      "modelSteps": 2,
+      "requestAttempts": 2,
+      "transportRetries": 0
+    },
+    "boundaryQuestion": null,
+    "transportRecovery": null,
+    "taskContractVersion": 2
+  },
+  "turns": [
+    {
+      "id": "turn_7a020d4f17e84b3fad082d26c846ab89",
+      "event": "user",
+      "text": "先整理格式，去掉完全重复的，再把问法改自然一点。先让我看结果，别保存到草稿。",
+      "reply": "",
+      "status": "running",
+      "error": null,
+      "tools": [
+        {
+          "key": "assistant:turn_7a020d4f17e84b3fad082d26c846ab89:40dab1d428aa0f4cbb3181e099b45ac9a35732e43e114cb70ef1d695c49f9330",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute"
+            }
+          },
+          "result": {
+            "task": {
+              "stage": "inspecting",
+              "title": "新任务",
+              "target": {
+                "id": "asset_cc1795bbf5e643ccaf8fa7e40dc9a744",
+                "kind": "asset"
+              },
+              "taskId": "assistanttask_fc48041592e94d01912b86e997be2f44",
+              "autoCount": 0,
+              "objective": "先整理格式，去掉完全重复的，再把问法改自然一点。先让我看结果，别保存到草稿。",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+                "updateSaved": true,
+                "taskRevision": 1
+              },
+              "originTurnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+              "requirements": [],
+              "autoEventLimit": null,
+              "classifications": [],
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic"
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+              "updateSaved": true,
+              "taskRevision": 1
+            },
+            "unchanged": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2054 @@
+[
+  {
+    "caseId": 11,
+    "sessionId": "conversation_6c8e254c31a74ee3a82d084ea0d9d203",
+    "status": "failed",
+    "reason": "initial plan content conflict; automatic correction exhausted; quote/negation execution phases not reached",
+    "httpCalls": 8,
+    "httpDurationMs": 15633,
+    "activeTurnMs": 18730,
+    "generationRequested": 0,
+    "processingRowsRequested": 0,
+    "repairRequests": 2,
+    "turns": [
+      {
+        "id": "turn_2418c264a80c4cefaeeb851b32c6ea94",
+        "event": "user",
+        "userText": "先给我一个2条的方案，不要开始。",
+        "reply": "当前要求或数据修订发生冲突。 已有要求和成果已保留。 核对当前数据或更正要求后继续。",
+        "status": "failed",
+        "error": "assistant_plan_content_conflict",
+        "failedTools": [
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_plan_content_conflict",
+              "hint": "数量文字与当前交付无法一致绑定；请仅修正受影响的数量表达，保留全部内容条件、输入范围及其他交付，不让用户填写参数。",
+              "issues": [
+                {
+                  "code": "assistant_plan_content_conflict",
+                  "path": "/",
+                  "tool": "plan_task",
+                  "keyword": "business",
+                  "message": "数量文字与当前交付无法一致绑定；请仅修正受影响的数量表达，保留全部内容条件、输入范围及其他交付，不让用户填写参数。",
+                  "operation": "prepare"
+                }
+              ]
+            }
+          },
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_tool_input_invalid",
+              "hint": "本轮只给方案：必须用executionMode:plan保存非空可执行steps和语义要求，不能只口头确认或只存标题。不同交付分别列generate_candidates，省略重复的顶层classifications；逐题期望行为写入requirements；附件明确约定的意图标签按真实依据保存，不把类别或标题自行当成固定输出。"
+            }
+          },
+          {
+            "name": "read_background",
+            "error": {
+              "code": "assistant_document_not_found",
+              "hint": "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。"
+            }
+          },
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_plan_content_conflict",
+              "hint": "数量文字与当前交付无法一致绑定；请仅修正受影响的数量表达，保留全部内容条件、输入范围及其他交付，不让用户填写参数。",
+              "issues": [
+                {
+                  "code": "assistant_plan_content_conflict",
+                  "path": "/",
+                  "tool": "plan_task",
+                  "keyword": "business",
+                  "message": "数量文字与当前交付无法一致绑定；请仅修正受影响的数量表达，保留全部内容条件、输入范围及其他交付，不让用户填写参数。",
+                  "operation": "prepare"
+                }
+              ]
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "plan",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_plan",
+            "updateSaved": false,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_2418c264a80c4cefaeeb851b32c6ea94",
+          "failure": {
+            "layer": "business",
+            "reason": "当前要求或数据修订发生冲突。",
+            "category": "conflict",
+            "httpStatus": null,
+            "nextAction": "核对当前数据或更正要求后继续。"
+          },
+          "requests": [
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:0",
+              "state": "parsed",
+              "bodyMs": 4,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 824,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "timeToHeadersMs": 817
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:1",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 517,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 510
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 3059,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 3055
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:3",
+              "state": "parsed",
+              "bodyMs": 1,
+              "repair": {
+                "kind": "context",
+                "name": "plan_task",
+                "nested": false,
+                "identity": "961513fc573bfae08b70f260f3ad5861c949c6304688938d756bb3cc26ebaeec"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 6946,
+              "httpStatus": 200,
+              "preflightMs": 18,
+              "repairCharged": true,
+              "timeToHeadersMs": 6939
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:4",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "plan_task",
+                "nested": false,
+                "identity": "961513fc573bfae08b70f260f3ad5861c949c6304688938d756bb3cc26ebaeec"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 947,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "repairCharged": true,
+              "timeToHeadersMs": 942
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:5",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 447,
+              "httpStatus": 200,
+              "preflightMs": 6,
+              "timeToHeadersMs": 442
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:6",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 477,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "timeToHeadersMs": 470
+            },
+            {
+              "id": "turn_2418c264a80c4cefaeeb851b32c6ea94:7",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 2649,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 2644
+            }
+          ],
+          "errorCode": "assistant_plan_content_conflict",
+          "sessionId": "conversation_6c8e254c31a74ee3a82d084ea0d9d203",
+          "toolCalls": 8,
+          "durationMs": 18730,
+          "modelSteps": 8,
+          "retryWaits": [],
+          "amendmentId": "turn_2418c264a80c4cefaeeb851b32c6ea94",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_2418c264a80c4cefaeeb851b32c6ea94",
+          "finishReason": "not_returned",
+          "firstFailure": {
+            "code": "assistant_plan_content_conflict",
+            "name": "plan_task",
+            "issues": [
+              {
+                "code": "assistant_plan_content_conflict",
+                "path": "/",
+                "tool": "plan_task",
+                "keyword": "business",
+                "message": "数量文字与当前交付无法一致绑定；请仅修正受影响的数量表达，保留全部内容条件、输入范围及其他交付，不让用户填写参数。",
+                "operation": "prepare"
+              }
+            ]
+          },
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 8,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 3968,
+              "finishReason": "tool-calls",
+              "outputTokens": 72,
+              "argumentBytes": 314
+            },
+            {
+              "inputTokens": 4441,
+              "finishReason": "tool-calls",
+              "outputTokens": 46,
+              "argumentBytes": 62
+            },
+            {
+              "inputTokens": 9427,
+              "finishReason": "tool-calls",
+              "outputTokens": 611,
+              "argumentBytes": 1985
+            },
+            {
+              "inputTokens": 6487,
+              "finishReason": "tool-calls",
+              "outputTokens": 87,
+              "argumentBytes": 352
+            },
+            {
+              "inputTokens": 8964,
+              "finishReason": "tool-calls",
+              "outputTokens": 52,
+              "argumentBytes": 66
+            },
+            {
+              "inputTokens": 9254,
+              "finishReason": "tool-calls",
+              "outputTokens": 26,
+              "argumentBytes": 16
+            },
+            {
+              "inputTokens": 9491,
+              "finishReason": "tool-calls",
+              "outputTokens": 26,
+              "argumentBytes": 18
+            },
+            {
+              "inputTokens": 9758,
+              "finishReason": "tool-calls",
+              "outputTokens": 659,
+              "argumentBytes": 2210
+            }
+          ],
+          "attemptToolCalls": 8,
+          "executionAttempt": 1,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "invalid"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "invalid"
+            }
+          ],
+          "transportRetries": 0,
+          "attemptModelSteps": 8,
+          "repairRequestsUsed": 2,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairStatus": {
+            "name": "plan_task",
+            "phase": "finished",
+            "scope": "call",
+            "intent": "document_plan",
+            "issues": [],
+            "turnId": "turn_2418c264a80c4cefaeeb851b32c6ea94",
+            "outcome": "invalid",
+            "amendmentId": "turn_2418c264a80c4cefaeeb851b32c6ea94",
+            "remainingMs": 65202
+          },
+          "attemptRequestAttempts": 8,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      }
+    ]
+  },
+  {
+    "caseId": 12,
+    "sessionId": "conversation_af0f74a9d2724f11b6eead7e1385392d",
+    "status": "failed",
+    "reason": "cleaned 3 rows but duplicate remains; continuation stopped without dedup/rewrite; no draft save",
+    "httpCalls": 12,
+    "httpDurationMs": 81341,
+    "activeTurnMs": 83038,
+    "generationRequested": 0,
+    "processingRowsRequested": 3,
+    "repairRequests": 2,
+    "turns": [
+      {
+        "id": "turn_7a020d4f17e84b3fad082d26c846ab89",
+        "event": "user",
+        "userText": "先整理格式，去掉完全重复的，再把问法改自然一点。先让我看结果，别保存到草稿。",
+        "reply": "请说明要处理整份资料，还是其中指定的记录？",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [
+          {
+            "name": "submit_processing",
+            "error": {
+              "code": "processing_scope_invalid",
+              "hint": "请明确处理全部当前来源、选定记录或已固定范围。；清洗和改写的数量由固定输入确定，不填写新增数量。；Metadata保持原值时不能指定可修改的子字段。",
+              "issues": [
+                {
+                  "code": "processing_scope_invalid",
+                  "path": "/recordIds",
+                  "tool": "submit_processing",
+                  "keyword": "business",
+                  "message": "请明确处理全部当前来源、选定记录或已固定范围。",
+                  "operation": "rewrite"
+                },
+                {
+                  "code": "processing_configuration_invalid",
+                  "path": "/outputCount",
+                  "tool": "submit_processing",
+                  "keyword": "business",
+                  "message": "清洗和改写的数量由固定输入确定，不填写新增数量。",
+                  "operation": "rewrite"
+                },
+                {
+                  "code": "processing_configuration_invalid",
+                  "path": "/metadataKeys",
+                  "tool": "submit_processing",
+                  "keyword": "business",
+                  "message": "Metadata保持原值时不能指定可修改的子字段。",
+                  "operation": "rewrite"
+                }
+              ]
+            }
+          },
+          {
+            "name": "submit_processing",
+            "error": {
+              "code": "processing_scope_invalid",
+              "hint": "请明确处理全部当前来源、选定记录或已固定范围。；清洗和改写的数量由固定输入确定，不填写新增数量。；Metadata保持原值时不能指定可修改的子字段。",
+              "issues": [
+                {
+                  "code": "processing_scope_invalid",
+                  "path": "/recordIds",
+                  "tool": "submit_processing",
+                  "keyword": "business",
+                  "message": "请明确处理全部当前来源、选定记录或已固定范围。",
+                  "operation": "clean"
+                },
+                {
+                  "code": "processing_configuration_invalid",
+                  "path": "/outputCount",
+                  "tool": "submit_processing",
+                  "keyword": "business",
+                  "message": "清洗和改写的数量由固定输入确定，不填写新增数量。",
+                  "operation": "clean"
+                },
+                {
+                  "code": "processing_configuration_invalid",
+                  "path": "/metadataKeys",
+                  "tool": "submit_processing",
+                  "keyword": "business",
+                  "message": "Metadata保持原值时不能指定可修改的子字段。",
+                  "operation": "clean"
+                }
+              ]
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": false
+          },
+          "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+          "requests": [
+            {
+              "id": "turn_7a020d4f17e84b3fad082d26c846ab89:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 1,
+              "parseOk": true,
+              "totalMs": 13408,
+              "httpStatus": 200,
+              "preflightMs": 64,
+              "timeToHeadersMs": 13402
+            },
+            {
+              "id": "turn_7a020d4f17e84b3fad082d26c846ab89:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 16181,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 16175
+            },
+            {
+              "id": "turn_7a020d4f17e84b3fad082d26c846ab89:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 951,
+              "httpStatus": 200,
+              "preflightMs": 10,
+              "timeToHeadersMs": 946
+            },
+            {
+              "id": "turn_7a020d4f17e84b3fad082d26c846ab89:3",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "submit_processing",
+                "nested": false,
+                "identity": "d0b8bee27c45d27362664695fee0e9951d00a9fbc6c11547b1c03eb0ead730dc"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 3608,
+              "httpStatus": 200,
+              "preflightMs": 100,
+              "repairCharged": true,
+              "timeToHeadersMs": 3601
+            },
+            {
+              "id": "turn_7a020d4f17e84b3fad082d26c846ab89:4",
+              "state": "parsed",
+              "bodyMs": 1,
+              "repair": {
+                "kind": "context",
+                "name": "submit_processing",
+                "nested": false,
+                "identity": "d0b8bee27c45d27362664695fee0e9951d00a9fbc6c11547b1c03eb0ead730dc"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 651,
+              "httpStatus": 200,
+              "preflightMs": 12,
+              "repairCharged": true,
+              "timeToHeadersMs": 648
+            }
+          ],
+          "sessionId": "conversation_af0f74a9d2724f11b6eead7e1385392d",
+          "toolCalls": 5,
+          "durationMs": 37191,
+          "modelSteps": 5,
+          "retryWaits": [],
+          "amendmentId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+          "finishReason": "not_returned",
+          "firstFailure": {
+            "code": "processing_scope_invalid",
+            "name": "submit_processing",
+            "issues": [
+              {
+                "code": "processing_scope_invalid",
+                "path": "/recordIds",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "请明确处理全部当前来源、选定记录或已固定范围。",
+                "operation": "rewrite"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/outputCount",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "清洗和改写的数量由固定输入确定，不填写新增数量。",
+                "operation": "rewrite"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "Metadata保持原值时不能指定可修改的子字段。",
+                "operation": "rewrite"
+              }
+            ]
+          },
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 5,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 16205,
+              "finishReason": "tool-calls",
+              "outputTokens": 11,
+              "argumentBytes": 30
+            },
+            {
+              "inputTokens": 18454,
+              "finishReason": "tool-calls",
+              "outputTokens": 54,
+              "argumentBytes": 73
+            },
+            {
+              "inputTokens": 18981,
+              "finishReason": "tool-calls",
+              "outputTokens": 90,
+              "argumentBytes": 342
+            },
+            {
+              "inputTokens": 4782,
+              "finishReason": "tool-calls",
+              "outputTokens": 81,
+              "argumentBytes": 340
+            },
+            {
+              "inputTokens": 4825,
+              "finishReason": "tool-calls",
+              "outputTokens": 76,
+              "argumentBytes": 312
+            }
+          ],
+          "attemptToolCalls": 5,
+          "executionAttempt": 1,
+          "parameterRepairs": [
+            {
+              "name": "submit_processing",
+              "outcome": "invalid"
+            },
+            {
+              "name": "submit_processing",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "attemptModelSteps": 5,
+          "repairRequestsUsed": 2,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "parameterRepairStatus": {
+            "name": "submit_processing",
+            "phase": "finished",
+            "scope": "call",
+            "intent": "tool",
+            "issues": [
+              {
+                "code": "processing_scope_invalid",
+                "path": "/recordIds",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "请明确处理全部当前来源、选定记录或已固定范围。",
+                "operation": "clean"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/outputCount",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "清洗和改写的数量由固定输入确定，不填写新增数量。",
+                "operation": "clean"
+              },
+              {
+                "code": "processing_configuration_invalid",
+                "path": "/metadataKeys",
+                "tool": "submit_processing",
+                "keyword": "business",
+                "message": "Metadata保持原值时不能指定可修改的子字段。",
+                "operation": "clean"
+              }
+            ],
+            "turnId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+            "outcome": "repaired",
+            "amendmentId": "turn_7a020d4f17e84b3fad082d26c846ab89",
+            "remainingMs": 42834
+          },
+          "attemptRequestAttempts": 5,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_b836910bdc3640adb73f9120a37a057a",
+        "event": "user",
+        "userText": "整份文件都处理，先看结果，不保存。",
+        "reply": "处理任务已提交，完成后将继续核对候选。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": false
+          },
+          "turnId": "turn_b836910bdc3640adb73f9120a37a057a",
+          "requests": [
+            {
+              "id": "turn_b836910bdc3640adb73f9120a37a057a:0",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 10710,
+              "httpStatus": 200,
+              "preflightMs": 13,
+              "timeToHeadersMs": 10699
+            },
+            {
+              "id": "turn_b836910bdc3640adb73f9120a37a057a:1",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 12013,
+              "httpStatus": 200,
+              "preflightMs": 11,
+              "timeToHeadersMs": 12001
+            }
+          ],
+          "sessionId": "conversation_af0f74a9d2724f11b6eead7e1385392d",
+          "toolCalls": 2,
+          "durationMs": 24726,
+          "modelSteps": 2,
+          "retryWaits": [],
+          "amendmentId": "turn_b836910bdc3640adb73f9120a37a057a",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_b836910bdc3640adb73f9120a37a057a",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 2,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 16936,
+              "finishReason": "tool-calls",
+              "outputTokens": 42,
+              "argumentBytes": 171
+            },
+            {
+              "inputTokens": 19308,
+              "finishReason": "tool-calls",
+              "outputTokens": 110,
+              "argumentBytes": 127
+            }
+          ],
+          "attemptToolCalls": 2,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 2,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "attemptRequestAttempts": 2,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_95b53669e7204752970c2f7734950d49",
+        "event": "processing_completed",
+        "userText": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+        "reply": "本轮尚未提交新的处理任务。 助手重复尝试后仍未取得新进展，本轮已暂停。 已有要求和成果已保留。 原要求、文档和已有成果已保留。可继续未完成部分；重复失败时请联系管理员查看诊断，无需填写工具参数。",
+        "status": "failed",
+        "error": "assistant_no_progress",
+        "failedTools": [
+          {
+            "name": "request_processing_apply",
+            "error": {
+              "code": "assistant_candidate_review_incomplete",
+              "hint": "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。"
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "continuation",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": false
+          },
+          "turnId": "turn_95b53669e7204752970c2f7734950d49",
+          "failure": {
+            "layer": "application",
+            "reason": "助手重复尝试后仍未取得新进展，本轮已暂停。",
+            "category": "workflow_stalled",
+            "httpStatus": null,
+            "nextAction": "原要求、文档和已有成果已保留。可继续未完成部分；重复失败时请联系管理员查看诊断，无需填写工具参数。"
+          },
+          "requests": [
+            {
+              "id": "turn_95b53669e7204752970c2f7734950d49:0",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 17082,
+              "httpStatus": 200,
+              "preflightMs": 8,
+              "timeToHeadersMs": 17069
+            },
+            {
+              "id": "turn_95b53669e7204752970c2f7734950d49:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 979,
+              "httpStatus": 200,
+              "preflightMs": 11,
+              "timeToHeadersMs": 974
+            },
+            {
+              "id": "turn_95b53669e7204752970c2f7734950d49:2",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 947,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 939
+            }
+          ],
+          "errorCode": "assistant_no_progress",
+          "sessionId": "conversation_af0f74a9d2724f11b6eead7e1385392d",
+          "toolCalls": 5,
+          "durationMs": 21121,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "amendmentId": "turn_b836910bdc3640adb73f9120a37a057a",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_95b53669e7204752970c2f7734950d49",
+          "finishReason": "tool-calls",
+          "firstFailure": {
+            "code": "assistant_candidate_review_incomplete",
+            "name": "request_processing_apply"
+          },
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "recoveryOrigin": {
+            "mode": "execute",
+            "turnId": "turn_95b53669e7204752970c2f7734950d49",
+            "revision": 2,
+            "rootTurnId": "turn_b836910bdc3640adb73f9120a37a057a",
+            "amendmentId": "turn_b836910bdc3640adb73f9120a37a057a",
+            "progressKey": "2902581a1dbe08a0a1ddd974d5b1bc658eba9267d48aacde90e4c8a53f724cef",
+            "documentsKey": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "parentTurnId": "turn_b836910bdc3640adb73f9120a37a057a",
+            "progressFacts": [
+              "438cde62af8e935984238ee87a6ccfa13fa234164908186577e9628466c8e3a7",
+              "scope:0ab8d74a155dfe9aa87cfc9433c1b105bdbf2d0168ab788ca561aa49a5705c20"
+            ],
+            "attemptsBefore": 0,
+            "transportRetriesBefore": 0
+          },
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 20509,
+              "finishReason": "tool-calls",
+              "outputTokens": 72,
+              "argumentBytes": 72
+            },
+            {
+              "inputTokens": 20745,
+              "finishReason": "tool-calls",
+              "outputTokens": 88,
+              "argumentBytes": 102
+            },
+            {
+              "inputTokens": 21914,
+              "finishReason": "tool-calls",
+              "outputTokens": 45,
+              "argumentBytes": 72
+            }
+          ],
+          "attemptToolCalls": 5,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 3,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": 3,
+          "retainedOperations": 0,
+          "attemptRequestAttempts": 3,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      }
+    ]
+  },
+  {
+    "caseId": 13,
+    "sessionId": "conversation_fea641abcf85430a868d7521568c4daa",
+    "status": "failed",
+    "reason": "correct two-row rewrite after one ordinary scope clarification; user save request shows stale error despite successful proposal; normal confirmation adopted 2 into same 4-row draft, remaining 2 unchanged. End-to-end error-free criterion failed.",
+    "httpCalls": 12,
+    "httpDurationMs": 99337,
+    "activeTurnMs": 104401,
+    "generationRequested": 0,
+    "processingRowsRequested": 2,
+    "repairRequests": 0,
+    "turns": [
+      {
+        "id": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+        "event": "user",
+        "userText": "这两条说得太生硬了，改得像真人会问的，其他别动。",
+        "reply": "请指出要修改的是当前草稿中的哪两条，例如按显示顺序说明第几条和第几条。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [],
+        "diagnostic": {
+          "intent": {
+            "mode": "plan",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_plan",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+          "requests": [
+            {
+              "id": "turn_8bd64dbb4fc64d94b4b01f5e06542cac:0",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 13865,
+              "httpStatus": 200,
+              "preflightMs": 41,
+              "timeToHeadersMs": 13859
+            }
+          ],
+          "sessionId": "conversation_fea641abcf85430a868d7521568c4daa",
+          "toolCalls": 1,
+          "durationMs": 16072,
+          "modelSteps": 1,
+          "retryWaits": [],
+          "amendmentId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+          "finishReason": "not_returned",
+          "taskRevision": 1,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 1,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 16213,
+              "finishReason": "tool-calls",
+              "outputTokens": 153,
+              "argumentBytes": 514
+            }
+          ],
+          "attemptToolCalls": 1,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 1,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "attemptRequestAttempts": 1,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_447f6cba4bca42ab9c0025991f90679d",
+        "event": "user",
+        "userText": "第1条和第2条，只改问题，其他都保持原样。",
+        "reply": "处理任务已提交，完成后将继续核对候选。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_447f6cba4bca42ab9c0025991f90679d",
+          "requests": [
+            {
+              "id": "turn_447f6cba4bca42ab9c0025991f90679d:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 1,
+              "parseOk": true,
+              "totalMs": 1708,
+              "httpStatus": 200,
+              "preflightMs": 17,
+              "timeToHeadersMs": 1701
+            },
+            {
+              "id": "turn_447f6cba4bca42ab9c0025991f90679d:1",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 14411,
+              "httpStatus": 200,
+              "preflightMs": 6,
+              "timeToHeadersMs": 14404
+            },
+            {
+              "id": "turn_447f6cba4bca42ab9c0025991f90679d:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 16985,
+              "httpStatus": 200,
+              "preflightMs": 6,
+              "timeToHeadersMs": 16961
+            }
+          ],
+          "sessionId": "conversation_fea641abcf85430a868d7521568c4daa",
+          "toolCalls": 3,
+          "durationMs": 35141,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "amendmentId": "turn_447f6cba4bca42ab9c0025991f90679d",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_447f6cba4bca42ab9c0025991f90679d",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 16396,
+              "finishReason": "tool-calls",
+              "outputTokens": 78,
+              "argumentBytes": 361
+            },
+            {
+              "inputTokens": 17000,
+              "finishReason": "tool-calls",
+              "outputTokens": 79,
+              "argumentBytes": 74
+            },
+            {
+              "inputTokens": 19329,
+              "finishReason": "tool-calls",
+              "outputTokens": 174,
+              "argumentBytes": 334
+            }
+          ],
+          "attemptToolCalls": 3,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 3,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "attemptRequestAttempts": 3,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_aa36ccf209d74fb0849f6cdac37d24d8",
+        "event": "processing_completed",
+        "userText": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+        "reply": "本轮尚未提交新的处理任务。 要求或进度已保留，但本轮没有完成应执行的步骤。 已有要求和成果已保留。 核对当前步骤后重试未完成部分；无需修改工具参数。",
+        "status": "failed",
+        "error": "assistant_task_not_executed",
+        "failedTools": [],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "continuation",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_aa36ccf209d74fb0849f6cdac37d24d8",
+          "failure": {
+            "layer": "application",
+            "reason": "要求或进度已保留，但本轮没有完成应执行的步骤。",
+            "category": "workflow_incomplete",
+            "httpStatus": null,
+            "nextAction": "核对当前步骤后重试未完成部分；无需修改工具参数。"
+          },
+          "requests": [],
+          "errorCode": "assistant_task_not_executed",
+          "sessionId": "conversation_fea641abcf85430a868d7521568c4daa",
+          "toolCalls": 1,
+          "durationMs": 1502,
+          "modelSteps": 0,
+          "retryWaits": [],
+          "amendmentId": "turn_447f6cba4bca42ab9c0025991f90679d",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_aa36ccf209d74fb0849f6cdac37d24d8",
+          "finishReason": "not_returned",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "recoveryOrigin": {
+            "mode": "execute",
+            "turnId": "turn_aa36ccf209d74fb0849f6cdac37d24d8",
+            "revision": 2,
+            "rootTurnId": "turn_447f6cba4bca42ab9c0025991f90679d",
+            "amendmentId": "turn_447f6cba4bca42ab9c0025991f90679d",
+            "progressKey": "15f3ea29ea194040c40faf86bf7a1c2f4913e09bd551f197b9d685229183ad8b",
+            "documentsKey": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "parentTurnId": "turn_447f6cba4bca42ab9c0025991f90679d",
+            "progressFacts": [
+              "3f3312f1372a66d2e9e215867f824e6dd449ce8ae0e6aa554f348a933b1e6d08",
+              "save:assistant:turn_447f6cba4bca42ab9c0025991f90679d:29dfaca98d5cf1a361b178c496fc7e232168777d7cd878ad3993cf1ddd2dd334",
+              "scope:d1d1975d0bd82ed695249891cac539eefe5a84c162f3a7ba07664172ac68e925"
+            ],
+            "attemptsBefore": 0,
+            "transportRetriesBefore": 0
+          },
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 0,
+          "stepDiagnostics": [],
+          "attemptToolCalls": 1,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 0,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": 2,
+          "retainedOperations": 0,
+          "attemptRequestAttempts": 0,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40",
+        "event": "user",
+        "userText": "将勾选成果保存回原草稿",
+        "reply": "当前操作的参数或范围未通过校验。 已有要求和成果已保留。 先核对真实操作回执，再继续未完成部分。",
+        "status": "failed",
+        "error": "assistant_candidate_review_incomplete",
+        "failedTools": [
+          {
+            "name": "request_publish",
+            "error": {
+              "code": "assistant_candidate_review_incomplete",
+              "hint": "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。"
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": false
+          },
+          "turnId": "turn_d67e79d8fa08411aa6a573dfb3cf8e40",
+          "failure": {
+            "layer": "tool",
+            "reason": "当前操作的参数或范围未通过校验。",
+            "category": "parameter_invalid",
+            "httpStatus": null,
+            "nextAction": "先核对真实操作回执，再继续未完成部分。"
+          },
+          "requests": [
+            {
+              "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40:0",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 13464,
+              "httpStatus": 200,
+              "preflightMs": 15,
+              "timeToHeadersMs": 13456
+            },
+            {
+              "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 16738,
+              "httpStatus": 200,
+              "preflightMs": 16,
+              "timeToHeadersMs": 16731
+            },
+            {
+              "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 1,
+              "parseOk": true,
+              "totalMs": 16174,
+              "httpStatus": 200,
+              "preflightMs": 6,
+              "timeToHeadersMs": 16169
+            },
+            {
+              "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40:3",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 1095,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "timeToHeadersMs": 1068
+            },
+            {
+              "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40:4",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 1291,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 1286
+            },
+            {
+              "id": "turn_d67e79d8fa08411aa6a573dfb3cf8e40:5",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 649,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "timeToHeadersMs": 605
+            }
+          ],
+          "errorCode": "assistant_candidate_review_incomplete",
+          "sessionId": "conversation_fea641abcf85430a868d7521568c4daa",
+          "toolCalls": 5,
+          "durationMs": 51686,
+          "modelSteps": 6,
+          "retryWaits": [],
+          "amendmentId": "turn_d67e79d8fa08411aa6a573dfb3cf8e40",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_d67e79d8fa08411aa6a573dfb3cf8e40",
+          "finishReason": "stop",
+          "firstFailure": {
+            "code": "assistant_candidate_review_incomplete",
+            "name": "request_publish"
+          },
+          "taskRevision": 3,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 6,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 18592,
+              "finishReason": "tool-calls",
+              "outputTokens": 28,
+              "argumentBytes": 111
+            },
+            {
+              "inputTokens": 21529,
+              "finishReason": "tool-calls",
+              "outputTokens": 33,
+              "argumentBytes": 32
+            },
+            {
+              "inputTokens": 21753,
+              "finishReason": "tool-calls",
+              "outputTokens": 102,
+              "argumentBytes": 220
+            },
+            {
+              "inputTokens": 22103,
+              "finishReason": "tool-calls",
+              "outputTokens": 54,
+              "argumentBytes": 158
+            },
+            {
+              "inputTokens": 23171,
+              "finishReason": "tool-calls",
+              "outputTokens": 100,
+              "argumentBytes": 101
+            },
+            {
+              "inputTokens": 23398,
+              "finishReason": "stop",
+              "outputTokens": 45,
+              "argumentBytes": 0
+            }
+          ],
+          "attemptToolCalls": 5,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 6,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": 0,
+          "retainedOperations": 0,
+          "attemptRequestAttempts": 6,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      }
+    ]
+  },
+  {
+    "caseId": 14,
+    "sessionId": "conversation_e99dc5eda2674cfdb77d6cdb5d8597c9",
+    "status": "failed",
+    "reason": "generated 2; refinement plan_task invalid twice across two user turns; one ordinary continue re-offered same original run for adoption without rewrite, so old rejected candidates not confirmed/saved",
+    "httpCalls": 11,
+    "httpDurationMs": 49967,
+    "activeTurnMs": 52980,
+    "generationRequested": 2,
+    "processingRowsRequested": 0,
+    "repairRequests": 2,
+    "turns": [
+      {
+        "id": "turn_f33296d749cc4954a29d34c2b150dfb6",
+        "event": "user",
+        "userText": "做2条查物流测试题，直接开始，先给我看候选。",
+        "reply": "处理任务已提交，完成后将继续核对候选。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+          "requests": [
+            {
+              "id": "turn_f33296d749cc4954a29d34c2b150dfb6:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 2634,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 2629
+            },
+            {
+              "id": "turn_f33296d749cc4954a29d34c2b150dfb6:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 1,
+              "parseOk": true,
+              "totalMs": 3409,
+              "httpStatus": 200,
+              "preflightMs": 8,
+              "timeToHeadersMs": 3404
+            },
+            {
+              "id": "turn_f33296d749cc4954a29d34c2b150dfb6:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 1,
+              "parseOk": true,
+              "totalMs": 2705,
+              "httpStatus": 200,
+              "preflightMs": 6,
+              "timeToHeadersMs": 2701
+            }
+          ],
+          "sessionId": "conversation_e99dc5eda2674cfdb77d6cdb5d8597c9",
+          "toolCalls": 4,
+          "durationMs": 10608,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "amendmentId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": {
+            "id": "step_c1b8eb287d3f43ff98c0f87cd18c748a",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+          "finishReason": "tool-calls",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 3979,
+              "finishReason": "tool-calls",
+              "outputTokens": 31,
+              "argumentBytes": 129
+            },
+            {
+              "inputTokens": 4304,
+              "finishReason": "tool-calls",
+              "outputTokens": 41,
+              "argumentBytes": 109
+            },
+            {
+              "inputTokens": 9117,
+              "finishReason": "tool-calls",
+              "outputTokens": 513,
+              "argumentBytes": 1651
+            }
+          ],
+          "attemptToolCalls": 4,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 3,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "attemptRequestAttempts": 3,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_8e822f9fc4cc420ab73817c78c3eb519",
+        "event": "processing_completed",
+        "userText": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+        "reply": "操作已准备好，请核对下方确认卡片。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "continuation",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_8e822f9fc4cc420ab73817c78c3eb519",
+          "requests": [],
+          "sessionId": "conversation_e99dc5eda2674cfdb77d6cdb5d8597c9",
+          "toolCalls": 3,
+          "durationMs": 1889,
+          "modelSteps": 0,
+          "retryWaits": [],
+          "amendmentId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": {
+            "id": "step_a1720d04f4b0428fa4dc1592bcbd63f1",
+            "action": "request_processing_apply"
+          },
+          "diagnosticId": "turn_8e822f9fc4cc420ab73817c78c3eb519",
+          "finishReason": "not_returned",
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "recoveryOrigin": {
+            "mode": "execute",
+            "turnId": "turn_8e822f9fc4cc420ab73817c78c3eb519",
+            "revision": 2,
+            "rootTurnId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+            "amendmentId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+            "progressKey": "d3b34beedc9e6f2a52d2d5e8aa3afcd9ae6beae90791bca4b20fdf2dff896172",
+            "documentsKey": "86f0553142cab756f735a2487e83d0f74d920a377a8c3e0acf02560862afdad1",
+            "parentTurnId": "turn_f33296d749cc4954a29d34c2b150dfb6",
+            "progressFacts": [
+              "1296babb00492c8f96d7bbf31b26988981bdcaf0a00b48a378ec8ca01da07ccc",
+              "5885623ec1a474e941bebfa1741a525511ec149ea148e11582eb7f02432b21cf",
+              "save:assistant:turn_f33296d749cc4954a29d34c2b150dfb6:c34651b5bb7f32891741a2d292f18510a7bd015df62e8767860679fb782f961e"
+            ],
+            "attemptsBefore": 0,
+            "transportRetriesBefore": 0
+          },
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 0,
+          "stepDiagnostics": [],
+          "attemptToolCalls": 3,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 0,
+          "repairRequestsUsed": 0,
+          "retainedCandidates": 2,
+          "retainedOperations": 1,
+          "attemptRequestAttempts": 0,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_1770f0745c3941d2b9402346c1ea0791",
+        "event": "user",
+        "userText": "太像标准模板了，换成日常聊天的说法，意思别变。",
+        "reply": "方案已保存，尚未执行。\n目标：查物流测试题，2 条。\n当前要求：\n- 交付「查物流测试题」：最终总数 2 条\n- 整体交付：2 条（当前测试集单独核对）\n- 最终总数：2 条\n- 允许修改：问题、期望输出、Metadata\n- 可修改的 Metadata 字段：意图\n- Metadata「意图」：允许 查物流\n- Metadata「意图」：须覆盖 查物流\n- Metadata「意图」：查物流 2 条；合计 2 条\n- Metadata的“意图”字段为“查物流”\n- 只生成查物流测试题\n- 期望输出写客服正确处理行为，不虚构已经查到或完成的操作\n- 问题须是完整、自然的普通用户问法\n执行步骤：\n1. 生成「查物流测试题」\n2. 核对本类生成结果\n3. 确认采用本类结果\n确认方案后可发送“执行方案”；采用和发布仍需你确认。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_tool_input_invalid",
+              "hint": "工具参数格式不合法，请核对必填字段和允许取值后纠正。"
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "plan",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_plan",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_1770f0745c3941d2b9402346c1ea0791",
+          "requests": [
+            {
+              "id": "turn_1770f0745c3941d2b9402346c1ea0791:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 942,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 937
+            },
+            {
+              "id": "turn_1770f0745c3941d2b9402346c1ea0791:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 19353,
+              "httpStatus": 200,
+              "preflightMs": 13,
+              "timeToHeadersMs": 19344
+            },
+            {
+              "id": "turn_1770f0745c3941d2b9402346c1ea0791:2",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "truncated",
+                "name": "plan_task",
+                "nested": false,
+                "identity": "c14389fa108dc8fe2bdde13e15336953983b3409e69302309b865508cb9a12cc"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 854,
+              "httpStatus": 200,
+              "preflightMs": 18,
+              "repairCharged": true,
+              "timeToHeadersMs": 849
+            }
+          ],
+          "sessionId": "conversation_e99dc5eda2674cfdb77d6cdb5d8597c9",
+          "toolCalls": 3,
+          "durationMs": 22831,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "amendmentId": "turn_1770f0745c3941d2b9402346c1ea0791",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": {
+            "id": "step_a1720d04f4b0428fa4dc1592bcbd63f1",
+            "action": "request_processing_apply"
+          },
+          "diagnosticId": "turn_1770f0745c3941d2b9402346c1ea0791",
+          "finishReason": "not_returned",
+          "firstFailure": {
+            "code": "assistant_tool_input_invalid",
+            "name": "plan_task",
+            "issues": [
+              {
+                "path": "/",
+                "keyword": "parse"
+              }
+            ]
+          },
+          "taskRevision": 3,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 7922,
+              "finishReason": "tool-calls",
+              "outputTokens": 35,
+              "argumentBytes": 165
+            },
+            {
+              "inputTokens": 2933,
+              "finishReason": "length",
+              "outputTokens": 4096,
+              "argumentBytes": 16580
+            },
+            {
+              "inputTokens": 2669,
+              "finishReason": "tool-calls",
+              "outputTokens": 148,
+              "argumentBytes": 598
+            }
+          ],
+          "attemptToolCalls": 3,
+          "executionAttempt": 1,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "context_required"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "planningContract": {
+            "mode": "repair_amendment",
+            "fields": [
+              "id",
+              "name",
+              "count",
+              "countKind",
+              "instructions",
+              "scenarios",
+              "classifications",
+              "remove",
+              "question"
+            ],
+            "version": "plan-request-v1",
+            "schemaBytes": 7724,
+            "contextBytes": 981
+          },
+          "transportRetries": 0,
+          "attemptModelSteps": 3,
+          "repairRequestsUsed": 1,
+          "retainedCandidates": 2,
+          "retainedOperations": 0,
+          "parameterRepairStatus": {
+            "name": "plan_task",
+            "phase": "finished",
+            "scope": "call",
+            "intent": "tool",
+            "issues": [],
+            "turnId": "turn_1770f0745c3941d2b9402346c1ea0791",
+            "outcome": "repaired",
+            "amendmentId": "turn_1770f0745c3941d2b9402346c1ea0791",
+            "remainingMs": 57199
+          },
+          "attemptRequestAttempts": 3,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      },
+      {
+        "id": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea",
+        "event": "user",
+        "userText": "继续改吧，先让我看改后的两条。",
+        "reply": "操作已准备好，请核对下方确认卡片。",
+        "status": "succeeded",
+        "error": null,
+        "failedTools": [
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_tool_input_invalid",
+              "hint": "工具参数格式不合法，请核对必填字段和允许取值后纠正。"
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea",
+          "requests": [
+            {
+              "id": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 961,
+              "httpStatus": 200,
+              "preflightMs": 8,
+              "timeToHeadersMs": 952
+            },
+            {
+              "id": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 13850,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 13840
+            },
+            {
+              "id": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea:2",
+              "state": "parsed",
+              "bodyMs": 1,
+              "repair": {
+                "kind": "truncated",
+                "name": "plan_task",
+                "nested": false,
+                "identity": "4f22ebc84469631a26c4f0bde34ef5d67d7ecddaf4ae7f83e7693c2b7beaecd5"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 675,
+              "httpStatus": 200,
+              "preflightMs": 26,
+              "repairCharged": true,
+              "timeToHeadersMs": 668
+            }
+          ],
+          "sessionId": "conversation_e99dc5eda2674cfdb77d6cdb5d8597c9",
+          "toolCalls": 4,
+          "durationMs": 17652,
+          "modelSteps": 3,
+          "retryWaits": [],
+          "amendmentId": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": {
+            "id": "step_a1720d04f4b0428fa4dc1592bcbd63f1",
+            "action": "request_processing_apply"
+          },
+          "diagnosticId": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea",
+          "finishReason": "tool-calls",
+          "firstFailure": {
+            "code": "assistant_tool_input_invalid",
+            "name": "plan_task",
+            "issues": [
+              {
+                "path": "/",
+                "keyword": "parse"
+              }
+            ]
+          },
+          "taskRevision": 4,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 3,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 8205,
+              "finishReason": "tool-calls",
+              "outputTokens": 54,
+              "argumentBytes": 234
+            },
+            {
+              "inputTokens": 2949,
+              "finishReason": "length",
+              "outputTokens": 4096,
+              "argumentBytes": 16086
+            },
+            {
+              "inputTokens": 2685,
+              "finishReason": "tool-calls",
+              "outputTokens": 82,
+              "argumentBytes": 283
+            }
+          ],
+          "attemptToolCalls": 4,
+          "executionAttempt": 1,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "context_required"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "planningContract": {
+            "mode": "repair_amendment",
+            "fields": [
+              "id",
+              "name",
+              "count",
+              "countKind",
+              "instructions",
+              "scenarios",
+              "classifications",
+              "remove",
+              "question"
+            ],
+            "version": "plan-request-v1",
+            "schemaBytes": 7724,
+            "contextBytes": 1026
+          },
+          "transportRetries": 0,
+          "attemptModelSteps": 3,
+          "repairRequestsUsed": 1,
+          "retainedCandidates": 2,
+          "retainedOperations": 0,
+          "parameterRepairStatus": {
+            "name": "plan_task",
+            "phase": "finished",
+            "scope": "call",
+            "intent": "tool",
+            "issues": [],
+            "turnId": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea",
+            "outcome": "repaired",
+            "amendmentId": "turn_fa70b6f82eb44a97b3f3b5a541aa9bea",
+            "remainingMs": 62595
+          },
+          "attemptRequestAttempts": 3,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      }
+    ]
+  },
+  {
+    "caseId": 15,
+    "sessionId": "conversation_e173f20ccaac41458530af66ea729031",
+    "status": "failed",
+    "reason": "initial planning requirement conflict and tool input invalid; automatic repairs exhausted before any generation; execution-time pause/query/resume not covered",
+    "httpCalls": 6,
+    "httpDurationMs": 12898,
+    "activeTurnMs": 15049,
+    "generationRequested": 0,
+    "processingRowsRequested": 0,
+    "repairRequests": 2,
+    "turns": [
+      {
+        "id": "turn_20428ec948dc42c5845474841b1a5a30",
+        "event": "user",
+        "userText": "做查物流和改地址两个测试集，各2条，现在开始。",
+        "reply": "本轮尚未提交新的处理任务。 当前操作的参数或范围未通过校验。 已有要求和成果已保留。 助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。",
+        "status": "failed",
+        "error": "assistant_tool_input_invalid",
+        "failedTools": [
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_requirement_conflict",
+              "hint": "方案的测试集份数与本轮明确要求不一致。集合内的分类配额不能拆成独立测试集。",
+              "issues": [
+                {
+                  "code": "assistant_requirement_conflict",
+                  "path": "/",
+                  "tool": "plan_task",
+                  "keyword": "business",
+                  "message": "方案的测试集份数与本轮明确要求不一致。集合内的分类配额不能拆成独立测试集。",
+                  "operation": "prepare"
+                }
+              ]
+            }
+          },
+          {
+            "name": "plan_task",
+            "error": {
+              "code": "assistant_tool_input_invalid",
+              "hint": "plan_task：/deliveries/0 缺少字段：name；请依据当前用户要求和已读取事实补全，不能猜造引用。 允许字段：control、title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、nextAction、question。"
+            }
+          }
+        ],
+        "diagnostic": {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": false,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_20428ec948dc42c5845474841b1a5a30",
+          "failure": {
+            "layer": "tool",
+            "reason": "当前操作的参数或范围未通过校验。",
+            "category": "parameter_invalid",
+            "httpStatus": null,
+            "nextAction": "助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。"
+          },
+          "requests": [
+            {
+              "id": "turn_20428ec948dc42c5845474841b1a5a30:0",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 555,
+              "httpStatus": 200,
+              "preflightMs": 11,
+              "timeToHeadersMs": 551
+            },
+            {
+              "id": "turn_20428ec948dc42c5845474841b1a5a30:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 567,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 561
+            },
+            {
+              "id": "turn_20428ec948dc42c5845474841b1a5a30:2",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 505,
+              "httpStatus": 200,
+              "preflightMs": 7,
+              "timeToHeadersMs": 499
+            },
+            {
+              "id": "turn_20428ec948dc42c5845474841b1a5a30:3",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 2527,
+              "httpStatus": 200,
+              "preflightMs": 5,
+              "timeToHeadersMs": 2523
+            },
+            {
+              "id": "turn_20428ec948dc42c5845474841b1a5a30:4",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "plan_task",
+                "nested": false,
+                "identity": "6dcd0be8029d4f40ccd7dcdddd1959019d2a5d20e1689a56dadad5a03ec525bf"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 7392,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "repairCharged": true,
+              "timeToHeadersMs": 7385
+            },
+            {
+              "id": "turn_20428ec948dc42c5845474841b1a5a30:5",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "plan_task",
+                "nested": true,
+                "identity": "6dcd0be8029d4f40ccd7dcdddd1959019d2a5d20e1689a56dadad5a03ec525bf"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 1560,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "repairCharged": true,
+              "timeToHeadersMs": 1557
+            }
+          ],
+          "errorCode": "assistant_tool_input_invalid",
+          "sessionId": "conversation_e173f20ccaac41458530af66ea729031",
+          "toolCalls": 5,
+          "durationMs": 15049,
+          "modelSteps": 6,
+          "retryWaits": [],
+          "amendmentId": "turn_20428ec948dc42c5845474841b1a5a30",
+          "codeVersion": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+          "currentStep": null,
+          "diagnosticId": "turn_20428ec948dc42c5845474841b1a5a30",
+          "finishReason": "tool-calls",
+          "firstFailure": {
+            "code": "assistant_requirement_conflict",
+            "name": "plan_task",
+            "issues": [
+              {
+                "code": "assistant_requirement_conflict",
+                "path": "/",
+                "tool": "plan_task",
+                "keyword": "business",
+                "message": "方案的测试集份数与本轮明确要求不一致。集合内的分类配额不能拆成独立测试集。",
+                "operation": "prepare"
+              }
+            ]
+          },
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v12",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v15",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 6,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 3983,
+              "finishReason": "tool-calls",
+              "outputTokens": 36,
+              "argumentBytes": 150
+            },
+            {
+              "inputTokens": 4329,
+              "finishReason": "tool-calls",
+              "outputTokens": 45,
+              "argumentBytes": 122
+            },
+            {
+              "inputTokens": 4742,
+              "finishReason": "tool-calls",
+              "outputTokens": 41,
+              "argumentBytes": 101
+            },
+            {
+              "inputTokens": 9549,
+              "finishReason": "tool-calls",
+              "outputTokens": 490,
+              "argumentBytes": 1542
+            },
+            {
+              "inputTokens": 6123,
+              "finishReason": "tool-calls",
+              "outputTokens": 250,
+              "argumentBytes": 835
+            }
+          ],
+          "attemptToolCalls": 5,
+          "executionAttempt": 1,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "invalid"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "exhausted"
+            }
+          ],
+          "transportRetries": 0,
+          "attemptModelSteps": 6,
+          "repairRequestsUsed": 2,
+          "retainedCandidates": null,
+          "retainedOperations": 0,
+          "parameterRepairStatus": {
+            "name": "plan_task",
+            "phase": "finished",
+            "scope": "call",
+            "intent": "tool",
+            "issues": [
+              {
+                "code": "assistant_tool_input_invalid",
+                "path": "/deliveries/0/name",
+                "tool": "plan_task",
+                "keyword": "required",
+                "message": "plan_task：/deliveries/0 缺少字段：name；请依据当前用户要求和已读取事实补全，不能猜造引用。 允许字段：control、baseRevision、deliveries、removeRequirements、title、executionMode、steps、requirements、targetCount、overallTargetCount、countKind、targetDraftId、allowedLabels、classifications、target、allowedFields、metadataKeys、nextAction、question。",
+                "operation": "prepare"
+              }
+            ],
+            "turnId": "turn_20428ec948dc42c5845474841b1a5a30",
+            "outcome": "exhausted",
+            "amendmentId": "turn_20428ec948dc42c5845474841b1a5a30",
+            "remainingMs": 64978
+          },
+          "attemptRequestAttempts": 6,
+          "parameterRepairVersion": "arguments-v4",
+          "requirementsReconciled": false
+        }
+      }
+    ]
+  }
+]

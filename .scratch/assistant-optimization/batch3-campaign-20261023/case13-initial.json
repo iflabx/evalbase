@@ -1,0 +1,124 @@
+{
+  "task": {
+    "goal": "这两条说得太生硬了，改得像真人会问的，其他别动。",
+    "stage": "inspecting",
+    "title": "新任务",
+    "target": {
+      "id": "collabdraft_998d6721530d428ba1c547a050817952",
+      "kind": "draft"
+    },
+    "taskId": "assistanttask_8fcbdf389f384aa2b7d663bcdff7becc",
+    "autoCount": 0,
+    "turnBudget": {
+      "turnId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+      "activeMs": 344,
+      "requests": [
+        {
+          "id": "turn_8bd64dbb4fc64d94b4b01f5e06542cac:0",
+          "state": "sent",
+          "httpStatus": null,
+          "preflightMs": 41,
+          "timeToHeadersMs": 0
+        }
+      ],
+      "startedAt": 1792761602652,
+      "toolCalls": 0,
+      "deadlineAt": 1792761682652,
+      "modelSteps": 1,
+      "retryWaits": [],
+      "attemptToken": "execution_78f2d06ea4ed462fa236d4707e1696a1",
+      "attemptBaseMs": 0,
+      "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "requestAttempts": 1,
+      "attemptStartedAt": 1792761604385,
+      "transportRetries": 0,
+      "accountingVersion": 2
+    },
+    "supplements": [],
+    "turnControl": {
+      "source": "pending",
+      "turnId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+      "taskRevision": 1
+    },
+    "budgetLedger": {
+      "grants": [
+        {
+          "id": "initial:assistanttask_8fcbdf389f384aa2b7d663bcdff7becc",
+          "limits": {
+            "activeMs": 1040000,
+            "toolCalls": 156,
+            "modelSteps": 130,
+            "requestAttempts": 156,
+            "transportRetries": 26
+          },
+          "taskId": "assistanttask_8fcbdf389f384aa2b7d663bcdff7becc",
+          "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+          "purpose": "initial",
+          "issuedAt": 1792761602625,
+          "revision": 1,
+          "expiresAt": null,
+          "startsAtUse": {
+            "activeMs": 0,
+            "toolCalls": 0,
+            "modelSteps": 0,
+            "requestAttempts": 0,
+            "transportRetries": 0
+          }
+        }
+      ],
+      "policy": {
+        "initial": {
+          "activeMs": 1040000,
+          "toolCalls": 156,
+          "modelSteps": 130,
+          "requestAttempts": 156,
+          "transportRetries": 26
+        },
+        "segment": {
+          "activeMs": 80000,
+          "toolCalls": 12,
+          "modelSteps": 10,
+          "requestAttempts": 12,
+          "transportRetries": 2
+        }
+      },
+      "taskId": "assistanttask_8fcbdf389f384aa2b7d663bcdff7becc",
+      "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+      "version": 1,
+      "activeId": "initial:assistanttask_8fcbdf389f384aa2b7d663bcdff7becc"
+    },
+    "observations": [],
+    "originTurnId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+    "requirements": [],
+    "autoEventLimit": null,
+    "executionBudget": {
+      "activeMs": 344,
+      "lastTurn": {
+        "turnId": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+        "elapsedMs": 344,
+        "toolCalls": 0,
+        "modelSteps": 1,
+        "requestAttempts": 1,
+        "transportRetries": 0
+      },
+      "toolCalls": 0,
+      "modelSteps": 1,
+      "requestAttempts": 1,
+      "transportRetries": 0
+    },
+    "boundaryQuestion": null,
+    "transportRecovery": null,
+    "taskContractVersion": 2
+  },
+  "turns": [
+    {
+      "id": "turn_8bd64dbb4fc64d94b4b01f5e06542cac",
+      "event": "user",
+      "text": "这两条说得太生硬了，改得像真人会问的，其他别动。",
+      "reply": "",
+      "status": "running",
+      "error": null,
+      "tools": []
+    }
+  ]
+}

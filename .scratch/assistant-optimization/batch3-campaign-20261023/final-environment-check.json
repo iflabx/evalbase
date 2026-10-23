@@ -1,0 +1,24 @@
+{
+  "jsonValuesParsed": 40,
+  "health": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "6b8b7554301c336fe107d6d79ea4435107b708cd"
+  },
+  "containers": [
+    {
+      "name": "web",
+      "image": "evalbase-agent-checkpoint:6b8b7554301c",
+      "guardPresent": false
+    },
+    {
+      "name": "model-worker",
+      "image": "evalbase-agent-checkpoint:6b8b7554301c",
+      "guardPresent": false
+    }
+  ],
+  "legacyDirtyHashUnchanged": true
+}

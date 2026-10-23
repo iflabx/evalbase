@@ -1,0 +1,55 @@
+{
+  "campaign": "batch3-cu-11-15-20261023",
+  "code": "6b8b7554301c336fe107d6d79ea4435107b708cd",
+  "model": "qwen-new",
+  "cases": [
+    {
+      "id": 11,
+      "name": "否定、反问和引用",
+      "generationLimit": 4,
+      "processingLimit": 0
+    },
+    {
+      "id": 12,
+      "name": "多步骤处理但暂不保存",
+      "generationLimit": 0,
+      "processingLimit": 8
+    },
+    {
+      "id": 13,
+      "name": "只改选中的两条",
+      "generationLimit": 0,
+      "processingLimit": 4
+    },
+    {
+      "id": 14,
+      "name": "继续修改当前候选",
+      "generationLimit": 4,
+      "processingLimit": 4
+    },
+    {
+      "id": 15,
+      "name": "执行中暂停再继续",
+      "generationLimit": 8,
+      "processingLimit": 0
+    }
+  ],
+  "limits": {
+    "perCaseCalls": 36,
+    "perCaseActiveMs": 300000,
+    "totalCalls": 180,
+    "totalActiveMs": 1500000,
+    "singleCallMs": 60000
+  },
+  "manualContinuesPerCase": 1,
+  "projectId": "project_f30db2f20ab3439c9122d72e3e446126",
+  "businessCodeChanged": false,
+  "sessions": {
+    "11": "conversation_6c8e254c31a74ee3a82d084ea0d9d203",
+    "12": "conversation_af0f74a9d2724f11b6eead7e1385392d",
+    "13": "conversation_fea641abcf85430a868d7521568c4daa",
+    "14": "conversation_e99dc5eda2674cfdb77d6cdb5d8597c9",
+    "15": "conversation_e173f20ccaac41458530af66ea729031"
+  },
+  "closedAt": "2026-10-23T13:28:41.613Z"
+}

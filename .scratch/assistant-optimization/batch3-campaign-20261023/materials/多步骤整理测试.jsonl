@@ -1,0 +1,3 @@
+{"question":"  我的快递现在到哪了？  ","expectedOutput":"应核实订单后提供物流查询方式。","metadata":[{"key":"意图","value":"查物流"},{"key":"保留","value":"A"}]}
+{"question":"我的快递现在到哪了？","expectedOutput":"应核实订单后提供物流查询方式。","metadata":[{"key":"意图","value":"查物流"},{"key":"保留","value":"A"}]}
+{"question":"  我要变更收货地址。  ","expectedOutput":"应核实订单状态后说明是否可修改。","metadata":[{"key":"意图","value":"改地址"},{"key":"保留","value":"B"}]}
