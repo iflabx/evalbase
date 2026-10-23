@@ -29,6 +29,25 @@ export function sourceDiscoveryApplies(
         )))
   );
 }
+/** Bind an explicit answer only; a filename mention or a negated choice is not selection. */
+export function sourceReply(task: Record<string, any>, request: string) {
+  if (task.processingClarification?.kind !== "source") return undefined;
+  const text = request.trim().replace(/[。！!]+$/u, "");
+  const items = task.sourceDiscovery?.items ?? [];
+  const named = items.filter((item: any) =>
+    [item.name, "选择" + item.name, "用" + item.name].includes(text),
+  );
+  if (named.length === 1) return toSource(named[0]);
+  const choice = text.match(/^(?:选择|用)?第([1-5一二三四五])份$/u);
+  const item =
+    choice &&
+    items[
+      Number(choice[1])
+        ? Number(choice[1]) - 1
+        : "一二三四五".indexOf(choice[1]!)
+    ];
+  return item ? toSource(item) : undefined;
+}
 /** One bounded source catalogue; legacy kind switches cannot open another search allowance. */
 export async function discoverSources(
   db: Pick<Database, "query">,

@@ -34,7 +34,7 @@ function scopeIntent(text: string): "all" | "partial" | undefined {
       else all = true;
     }
     if (
-      /第[一二三四五六七八九十0-9]+条|(?:前|后)[0-9]+条|这几条|选中|勾选|随机|抽取|指定记录/u.test(
+      /第[一二三四五六七八九十0-9]+条|(?:前|后)[0-9]+条|这几条|(?:只|仅)(?:清洗|处理|改写|选取|保留)?[一二三四五六七八九十0-9]+条|部分(?:记录|数据)|选中|勾选|随机|抽取|指定记录/u.test(
         clause,
       )
     )
@@ -42,11 +42,51 @@ function scopeIntent(text: string): "all" | "partial" | undefined {
   }
   return partial ? "partial" : all ? "all" : undefined;
 }
+/** Only actual user scope directives tied to successful source receipts may survive clarification. */
+export function sourceScopeRequest(
+  history: { user_text: string; tool_results: any[]; status?: string }[],
+  source: Record<string, any> | null | undefined,
+) {
+  if (!source) return "";
+  const wanted = canonicalJson(planSource(source));
+  let active: string | undefined,
+    request = "";
+  for (const row of history) {
+    const targets = (row.tool_results ?? [])
+      .filter((t) => t.status === "succeeded")
+      .map((t) => t.result?.task?.target ?? t.result?.state?.resolvedSource)
+      .filter(Boolean);
+    const next = targets.length
+      ? canonicalJson(planSource(targets.at(-1)))
+      : active;
+    if (next !== active) request = "";
+    active = next;
+    const intent = scopeIntent(row.user_text);
+    const confirmed =
+      row.status === "succeeded" &&
+      (row.tool_results ?? []).some(
+        (t) =>
+          t.name === "plan_task" &&
+          t.status === "succeeded" &&
+          t.result?.task?.target &&
+          canonicalJson(planSource(t.result.task.target)) === wanted &&
+          ["plan", "execute"].includes(
+            t.result.control?.mode ?? t.result.task.turnControl?.mode,
+          ),
+      );
+    if (
+      active === wanted &&
+      (intent === "partial" || (intent === "all" && confirmed))
+    )
+      request = row.user_text;
+  }
+  return active === wanted ? request : "";
+}
 export function wholeSourceAuthorized(request: string, prior: string) {
   const current = scopeIntent(request);
   if (current) return current === "all";
   return (
-    /^(?:请)?(?:执行方案|按方案执行|继续(?:执行)?|开始执行)[。！!\s]*$/u.test(
+    /^(?:请)?(?:执行方案|按方案执行|继续(?:执行)?|开始(?:执行|清洗|处理|改写))[。！!\s]*$/u.test(
       request.trim(),
     ) && scopeIntent(prior) === "all"
   );
@@ -96,6 +136,7 @@ export type ToolFacts = {
   metadataKeys?: string[];
   sourceCount?: number;
   authorizedText?: string;
+  authorizedScopeText?: string;
 };
 export const preparedTools = new Set([
   "query_project",
@@ -534,7 +575,8 @@ export function prepareToolProposal(
         return match ? Number(match[1]) : undefined;
       };
       const count =
-        inputCount(facts.request) ?? inputCount(facts.authorizedText ?? "");
+        inputCount(facts.request) ??
+        inputCount(facts.authorizedScopeText ?? facts.authorizedText ?? "");
       if (
         input.allRecords === true &&
         count !== undefined &&

@@ -9,11 +9,16 @@ import {
 } from "./budget-ledger.js";
 import type { RequestTiming } from "./transport.js";
 import { boundedAssistantFetch } from "./request-context.js";
-import { discoverSources, sourceDiscoveryApplies } from "./source-discovery.js";
+import {
+  discoverSources,
+  sourceDiscoveryApplies,
+  sourceReply,
+} from "./source-discovery.js";
 import {
   prepareToolProposal,
   preparedTools,
   wholeSourceAuthorized,
+  sourceScopeRequest,
   processingRepairIssues,
 } from "./processing-preparation.js";
 import {
@@ -643,6 +648,41 @@ export async function executeAssistantTurn(
       await markPendingAmendment(current);
     }
   }
+  let sourceReplySaved = false;
+  async function saveSourceDiscovery(
+    current: Record<string, any>,
+    found: Awaited<ReturnType<typeof discoverSources>>,
+  ) {
+    await depend(found.items.map((i: any) => ({ kind: i.kind, id: i.id })));
+    const patch = {
+      sourceDiscovery: found.state,
+      error: null,
+      recovery: null,
+      ...(found.resolvedSource && !current.executionPlan?.steps?.length
+        ? {
+            target: found.resolvedSource,
+            targetName: found.items.map((i) => i.name).join("、"),
+            question: null,
+            processingClarification: null,
+          }
+        : {}),
+      ...(found.question
+        ? {
+            question: found.question,
+            processingClarification: { kind: "source", turnId: turn.id },
+            stage: "waiting_input",
+            nextAction: null,
+          }
+        : {}),
+    };
+    await updateTask(db, turn, patch);
+    Object.assign(current, patch);
+    if (found.question) {
+      businessClarification = found.question;
+      waitingForInput = true;
+      plannedAction = undefined;
+    }
+  }
   async function acceptControl(value: unknown, current: Record<string, any>) {
     if (value !== undefined) {
       if (!validControl(value))
@@ -711,6 +751,20 @@ export async function executeAssistantTurn(
         if (turn.event !== "user")
           throw new AssistantError(422, "assistant_plan_only");
         await assistantAccess(db, scope, value.mode !== "query");
+        const reply = sourceReply(current, amendmentRequestText);
+        if (reply && !current.executionPlan?.steps?.length) {
+          await saveSourceDiscovery(
+            current,
+            await discoverSources(db, scope, {
+              task: current,
+              request: amendmentRequestText,
+              requestId: turn.id,
+              input: { kind: reply.kind === "assets" ? "files" : "drafts" },
+              preferred: reply,
+            }),
+          );
+          sourceReplySaved = Boolean(current.sourceDiscovery?.resolvedSource);
+        }
         decision = {
           ...value,
           source: "model",
@@ -815,9 +869,21 @@ export async function executeAssistantTurn(
         [turn.session_id, ids],
       )
     ).rows;
+    const history = (
+      await db.query(
+        "SELECT user_text,tool_results,status FROM assistant_turn WHERE session_id=$1 AND task_id=$2 AND event='user' ORDER BY created_at,id",
+        [turn.session_id, current.taskId],
+      )
+    ).rows;
     return {
       task: current,
       request: amendmentRequestText,
+      authorizedScopeText: sourceScopeRequest(
+        history,
+        planSource(current.target) ??
+          planSource(current.sourceDiscovery?.resolvedSource),
+      ),
+
       picked: turn.candidate_selection ?? current.selectedCandidates,
       authorizedText: [
         current.goal ?? "",
@@ -882,7 +948,10 @@ export async function executeAssistantTurn(
         ],
       };
     }
-    const allText = wholeSourceAuthorized(facts.request, facts.authorizedText);
+    const allText = wholeSourceAuthorized(
+      facts.request,
+      facts.authorizedScopeText,
+    );
     const confirmedSource =
       planSource(current!.target) ??
       planSource(current!.sourceDiscovery?.resolvedSource) ??
@@ -1125,6 +1194,17 @@ export async function executeAssistantTurn(
               code: "processing_scope_changed",
               message: "原固定范围或来源修订已变化，请重新核对；未扩大范围。",
             });
+          // Clean/rewrite preserve row count. A matching redundant count can be
+          // removed only after resolving the actual input rows; it grants no scope.
+          if (
+            ["clean", "rewrite"].includes(input.operation) &&
+            input.outputCount === records.length &&
+            wanted.size === recordIds.length &&
+            records.length === wanted.size
+          ) {
+            delete input.outputCount;
+            issues = issues.filter((i) => i.path !== "/outputCount");
+          }
           preparedScopes.set(canonicalJson(input), {
             version: 1,
             source,
@@ -1144,12 +1224,21 @@ export async function executeAssistantTurn(
       ).values(),
     ];
     if (
-      unique.length &&
-      unique.every(
-        (i) =>
-          (i.code === "processing_scope_invalid" || i.keyword === "revision") &&
-          ["/recordIds", "/allRecords", "/selection"].includes(i.path),
-      )
+      unique.some((i) => i.path !== "/outputCount") &&
+      unique
+        .filter(
+          (i) =>
+            !(
+              ["clean", "rewrite"].includes(input.operation) &&
+              i.path === "/outputCount"
+            ),
+        )
+        .every(
+          (i) =>
+            (i.code === "processing_scope_invalid" ||
+              i.keyword === "revision") &&
+            ["/recordIds", "/allRecords", "/selection"].includes(i.path),
+        )
     )
       return {
         ok: false,
@@ -1994,16 +2083,17 @@ export async function executeAssistantTurn(
       !task.selectionPreview &&
       !latest.input?.steps &&
       (!latest.input?.executionMode || latest.input.executionMode === "plan") &&
-      Object.keys(latest.input ?? {}).some((field) =>
-        [
-          "requirements",
-          "targetCount",
-          "countKind",
-          "allowedFields",
-          "metadataKeys",
-          "classifications",
-        ].includes(field),
-      ) &&
+      (latest.result?.sourceConfirmed === true ||
+        Object.keys(latest.input ?? {}).some((field) =>
+          [
+            "requirements",
+            "targetCount",
+            "countKind",
+            "allowedFields",
+            "metadataKeys",
+            "classifications",
+          ].includes(field),
+        )) &&
       canonicalJson(currentTaskFacts(task)) ===
         canonicalJson(latest.result?.task) &&
       !(
@@ -2025,7 +2115,9 @@ export async function executeAssistantTurn(
         [
           turn.id,
           [
-            "要求已记录，尚未开始新的处理。",
+            latest.result?.sourceConfirmed
+              ? `已选定资料「${task.targetName}」，尚未开始处理。请说明处理方式和记录范围。`
+              : "要求已记录，尚未开始新的处理。",
             ...requirementSummary(task).map((item: string) => `- ${item}`),
           ]
             .join("\n")
@@ -3523,6 +3615,14 @@ export async function executeAssistantTurn(
         }
         if (
           !Object.keys(input).length &&
+          sourceReplySaved &&
+          decision?.requiresUpdate
+        ) {
+          input.target = current.target;
+          submittedFields.push("target");
+        }
+        if (
+          !Object.keys(input).length &&
           ["plan", "execute"].includes(decision?.mode ?? "") &&
           context.state.backgroundDocuments?.length &&
           (!current.executionPlan ||
@@ -3550,7 +3650,8 @@ export async function executeAssistantTurn(
           input.executionMode = "execute";
         if (!Object.keys(input).length)
           return {
-            unchanged: true,
+            unchanged: !sourceReplySaved,
+            ...(sourceReplySaved ? { sourceConfirmed: true } : {}),
             control: decision,
             task: currentTaskFacts(current),
           };
@@ -4710,6 +4811,7 @@ export async function executeAssistantTurn(
         if (!input.question) planningCheckpointRequired = false;
         const presented = currentTaskFacts(task);
         return {
+          ...(sourceReplySaved ? { sourceConfirmed: true } : {}),
           control: decision,
           task: {
             ...presented,
@@ -4863,33 +4965,7 @@ export async function executeAssistantTurn(
             input,
             preferred: preferred ?? undefined,
           });
-          await depend(
-            found.items.map((i: any) => ({ kind: i.kind, id: i.id })),
-          );
-          await updateTask(db, turn, {
-            sourceDiscovery: found.state,
-            error: null,
-            recovery: null,
-            ...(found.resolvedSource && !current.executionPlan?.steps?.length
-              ? {
-                  target: found.resolvedSource,
-                  targetName: found.items.map((i) => i.name).join("、"),
-                }
-              : {}),
-            ...(found.question
-              ? {
-                  question: found.question,
-                  processingClarification: { kind: "source", turnId: turn.id },
-                  stage: "waiting_input",
-                  nextAction: null,
-                }
-              : {}),
-          });
-          if (found.question) {
-            businessClarification = found.question;
-            waitingForInput = true;
-            plannedAction = undefined;
-          }
+          await saveSourceDiscovery(current, found);
           return found;
         }
         const search = `%${input.search ?? ""}%`,

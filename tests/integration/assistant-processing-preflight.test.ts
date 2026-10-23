@@ -276,7 +276,7 @@ describe("OPT47 unified processing public boundary", () => {
     }
     return id as string;
   }
-  async function file(name: string) {
+  async function file(name: string, count = 2) {
     const collections = (
       await app.inject({
         method: "GET",
@@ -296,7 +296,10 @@ describe("OPT47 unified processing public boundary", () => {
       payload:
         '{"fixture":' +
         JSON.stringify(name) +
-        ',"question":"  问题甲  ","answer":"  原标签  ","intent":" A "}\n{"question":"  问题乙  ","answer":"  原标签  ","intent":"B"}\n',
+        ',"question":"  问题甲  ","answer":"  原标签  ","intent":" A "}\n{"question":"  问题乙  ","answer":"  原标签  ","intent":"B"}\n' +
+        (count === 3
+          ? '{"question":"  问题丙  ","answer":"  原标签  ","intent":"C"}\n'
+          : ""),
     });
     expect(upload.statusCode, upload.body).toBe(201);
     const saved = await app.inject({
@@ -397,6 +400,131 @@ describe("OPT47 unified processing public boundary", () => {
       );
       expect(repair.repairClass).toBe("context");
       expect(repair.context.request).toBe("帮我整理一下这些数据");
+    },
+  );
+
+  it.each([false, true])(
+    "OPT50 a filename reply binds the real source with requiresUpdate=%s",
+    async (requiresUpdate) => {
+      const target = await file("回答来源" + requiresUpdate + "测试.jsonl");
+      await file("回答其他" + requiresUpdate + "资料.jsonl");
+      const id = await newSession(),
+        before = await effects();
+      await send(id, "帮我整理一下这些数据", [
+        decision("query"),
+        { name: "query_project", input: { kind: "files" } },
+      ]);
+      const state = await send(id, "回答来源" + requiresUpdate + "测试.jsonl", [
+        decision("plan", { requiresUpdate }),
+        { name: "", input: {}, text: "已选定资料，请说明清洗要求。" },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.target).toEqual({ kind: "assets", assetIds: [target] });
+      expect(state.task.processingClarification).toBeNull();
+      expect(state.task.question ?? "").not.toContain("请选择要处理的资料");
+      expect(await effects()).toEqual(before);
+    },
+  );
+  it.each([
+    "same source",
+    "different source",
+    "changed count",
+    "reduced scope",
+  ])(
+    "OPT50 multi-turn cleaning keeps source-bound authorization: %s",
+    async (scenario) => {
+      const assetId = await file(
+        "多轮范围" + scenario + ".jsonl",
+        scenario === "changed count" ? 3 : 2,
+      );
+      const other = await file("另份范围" + scenario + ".jsonl");
+      const id = await newSession();
+      await send(
+        id,
+        "清洗这份文件的全部2条记录，其他不改。",
+        [
+          decision("execute"),
+          {
+            name: "plan_task",
+            input: {
+              target: { kind: "assets", assetIds: [assetId] },
+              question: "希望怎样清洗？",
+              nextAction: "submit_processing",
+            },
+          },
+        ],
+        { context: { kind: "asset", id: assetId } },
+      );
+      await send(id, "只去掉问题前后的空白，期望输出和Metadata保持原样。", [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            nextAction: "submit_processing",
+            allowedFields: ["question"],
+            requirements: [
+              "只去掉问题字段前后的空白",
+              "期望输出保持原样",
+              "Metadata保持原样",
+            ],
+          },
+        },
+      ]);
+      const targetId = scenario === "different source" ? other : assetId;
+      if (scenario === "different source")
+        await send(
+          id,
+          "换成另份资料，先不要执行",
+          [
+            decision("plan", { requiresUpdate: true }),
+            {
+              name: "plan_task",
+              input: { target: { kind: "assets", assetIds: [other] } },
+            },
+          ],
+          { context: { kind: "asset", id: other } },
+        );
+      if (scenario === "reduced scope")
+        await send(id, "改为只清洗1条，先不要执行", [
+          decision("plan"),
+          { name: "", input: {}, text: "已暂停，请指定要清洗的记录。" },
+        ]);
+      const before = await effects();
+      const state = await send(
+        id,
+        "开始清洗。",
+        [
+          decision("execute", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              nextAction: "submit_processing",
+              allowedFields: ["question"],
+            },
+          },
+          {
+            name: "submit_processing",
+            input: { operation: "clean", outputCount: 2 },
+          },
+        ],
+        { context: { kind: "asset", id: targetId } },
+      );
+      if (scenario !== "same source") {
+        expect(await effects()).toEqual(before);
+        expect(
+          state.task.question,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBeTruthy();
+      } else {
+        const submitted = successes(state, "submit_processing").at(-1);
+        expect(submitted, JSON.stringify(state.turns.at(-1))).toBeDefined();
+        expect(submitted.result.inputCount).toBe(2);
+        expect(submitted.input.outputCount).toBeUndefined();
+        expect(await effects()).toEqual({ ...before, runs: before.runs + 1 });
+      }
     },
   );
 

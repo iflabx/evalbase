@@ -112,7 +112,11 @@ describe("OPT47 shared processing contracts", () => {
   );
 });
 
-import { prepareToolProposal } from "../../src/assistant/processing-preparation.js";
+import {
+  prepareToolProposal,
+  sourceScopeRequest,
+  wholeSourceAuthorized,
+} from "../../src/assistant/processing-preparation.js";
 const prepare = (
   name: string,
   input: Record<string, any>,
@@ -487,7 +491,6 @@ describe("OPT47 review authorization regressions", () => {
   });
 });
 
-import { wholeSourceAuthorized } from "../../src/assistant/processing-preparation.js";
 it.each([
   "不要清洗全部，只处理第一条",
   "保留全部Metadata",
@@ -548,4 +551,78 @@ it("OPT47 both repair entrances preserve unrelated valid input while allowing ci
       [{ ...issue, path: "/target/id" }],
     ),
   ).toMatchObject([{ path: "/target/kind" }]);
+});
+
+describe("source-bound scope evidence", () => {
+  const source = { kind: "assets", assetIds: ["a"] };
+  const receipt = (mode: string) => ({
+    name: "plan_task",
+    status: "succeeded",
+    result: { task: { target: source }, control: { mode } },
+  });
+  it.each(["failed", "query"])(
+    "does not grant all records from a %s turn",
+    (scenario) => {
+      const text = sourceScopeRequest(
+        [
+          {
+            user_text: "清洗全部2条",
+            status: scenario === "failed" ? "failed" : "succeeded",
+            tool_results: [receipt(scenario === "query" ? "query" : "plan")],
+          },
+        ],
+        source,
+      );
+      expect(wholeSourceAuthorized("开始清洗", text)).toBe(false);
+    },
+  );
+  it("a successful query cannot erase the saved input count", () => {
+    const text = sourceScopeRequest(
+      [
+        {
+          user_text: "清洗全部2条",
+          status: "succeeded",
+          tool_results: [receipt("plan")],
+        },
+        {
+          user_text: "项目全部文件有哪些？",
+          status: "succeeded",
+          tool_results: [receipt("query")],
+        },
+      ],
+      source,
+    );
+    expect(text).toBe("清洗全部2条");
+    const result = prepareToolProposal(
+      "submit_processing",
+      { source, operation: "clean", allRecords: true },
+      {
+        task: { target: source },
+        request: "开始清洗",
+        authorizedScopeText: text,
+        sourceCount: 3,
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(
+        result.issues.some(
+          (i) => i.path === "/recordIds" && i.keyword === "revision",
+        ),
+      ).toBe(true);
+  });
+  it("a later partial request revokes an earlier saved whole-source authorization even if its turn failed", () => {
+    const text = sourceScopeRequest(
+      [
+        {
+          user_text: "清洗全部2条",
+          status: "succeeded",
+          tool_results: [receipt("plan")],
+        },
+        { user_text: "只处理部分记录", status: "failed", tool_results: [] },
+      ],
+      source,
+    );
+    expect(wholeSourceAuthorized("开始清洗", text)).toBe(false);
+  });
 });
