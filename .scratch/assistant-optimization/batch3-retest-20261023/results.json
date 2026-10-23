@@ -1,0 +1,80 @@
+{
+  "code": "4e00aeec8e10b989363eea117fc40200d82b4054",
+  "versions": [
+    "85c0859814965f67dca5f03035b71fb5c9ee8da4",
+    "ba24db2adab2bdb4ce41585d241c76e3814b5680",
+    "4e00aeec8e10b989363eea117fc40200d82b4054"
+  ],
+  "projectId": "project_dd9e6a15e2ca49f8bc8f21d727212d30",
+  "limits": {
+    "perCaseCalls": 36,
+    "perCaseActiveMs": 300000,
+    "totalCalls": 180,
+    "totalActiveMs": 1500000,
+    "singleCallMs": 60000
+  },
+  "caseStats": {
+    "11": {
+      "session": "conversation_fd2f42c122844abfbbf5f4c747ae39b9",
+      "calls": 10,
+      "activeMs": 15913,
+      "generationRowsRequested": 2,
+      "processingRowsRequested": 0
+    },
+    "12": {
+      "session": "conversation_48d19acc9c53498686a2e52094dfb641",
+      "calls": 23,
+      "activeMs": 150033,
+      "generationRowsRequested": 0,
+      "processingRowsRequested": 5
+    },
+    "13": {
+      "session": "conversation_5395dab3c43645c0bb8364aeba0638a6",
+      "calls": 8,
+      "activeMs": 55041,
+      "generationRowsRequested": 0,
+      "processingRowsRequested": 2
+    },
+    "14": {
+      "session": "conversation_6485bffd033f4d8a85ae2a87d726d3e0",
+      "calls": 18,
+      "activeMs": 55425,
+      "generationRowsRequested": 2,
+      "processingRowsRequested": 2
+    },
+    "15": {
+      "session": "conversation_7c05770dd2414e16a3949aef21ed8676",
+      "calls": 24,
+      "activeMs": 107491,
+      "generationRowsRequested": 2,
+      "processingRowsRequested": 0
+    }
+  },
+  "results": {
+    "11": {
+      "status": "passed",
+      "note": "Quoted execution phrase and negation produced no jobs; actual start generated2 and confirmed2."
+    },
+    "12": {
+      "status": "completed_with_issue",
+      "note": "Trim3 -> exact dedup2 -> rewrite2 -> review; no adoption. Repeated scope clarification and incorrect target3/2 count display remain."
+    },
+    "13": {
+      "status": "passed_after_clarification",
+      "note": "Rewrote selected first2 and saved into same4-row draft; answers/metadata and last2 preserved; confirmation ended complete."
+    },
+    "14": {
+      "status": "failed",
+      "note": "Generated2 then actually refined2; later background contract compatibility blocked save. No regenerated or re-refined completed parts."
+    },
+    "15": {
+      "status": "failed",
+      "note": "Progress query fixed and paused remains. Second delivery addition has missing name in plan_task deliveries and correction exhausted; continue did not recover. Actively-running-generation pause not covered."
+    }
+  },
+  "totalCalls": 83,
+  "totalActiveMs": 383903,
+  "blocked": [],
+  "allPassed": false,
+  "oldBudgetsReset": false
+}
