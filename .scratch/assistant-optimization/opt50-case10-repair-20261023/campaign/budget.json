@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "campaign": "OPT50-case10-repair-20261023",
+  "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+  "projectId": "project_2d73b0e1ce5241d4b0585559b03adb65",
+  "modelOrigin": "https://agent.bistu.edu.cn:18001",
+  "sessions": {
+    "10": "conversation_c92486b8b2e449f69371857640895076"
+  },
+  "closedCases": [
+    10
+  ],
+  "closed": true,
+  "limits": {
+    "requests": 24,
+    "activeMs": 240000,
+    "cleanRows": 2,
+    "cleanRuns": 1,
+    "newDrafts": 1,
+    "generatedRows": 0,
+    "publish": 0
+  },
+  "calls": [
+    {
+      "index": 1,
+      "caseId": 10,
+      "sessionId": "conversation_c92486b8b2e449f69371857640895076",
+      "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+      "startedAt": "2026-10-23T08:51:10.417Z",
+      "durationMs": 12750,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "2f90cd57f87139ab4dcb3e8608d867b4b6c6ca7a978611ce9adffdc6897d6ec0",
+      "activeBefore": {
+        "caseMs": 382,
+        "totalMs": 382
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 2,
+      "caseId": 10,
+      "sessionId": "conversation_c92486b8b2e449f69371857640895076",
+      "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+      "startedAt": "2026-10-23T08:51:23.317Z",
+      "durationMs": 568,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "aca3aed3cf03278b55d14cf01ecc1b025ec94b4b0ce7f5252f6dceab90ddd25a",
+      "activeBefore": {
+        "caseMs": 13283,
+        "totalMs": 13283
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 3,
+      "caseId": 10,
+      "sessionId": "conversation_c92486b8b2e449f69371857640895076",
+      "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+      "startedAt": "2026-10-23T08:51:24.129Z",
+      "durationMs": 187,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "a44bdf0ddc4855fdabda0d89f1786447e1dd6d67f5cc6cf753a2342fa3571666",
+      "activeBefore": {
+        "caseMs": 14095,
+        "totalMs": 14095
+      },
+      "httpStatus": 200
+    },
+    {
+      "index": 4,
+      "caseId": 10,
+      "sessionId": "conversation_c92486b8b2e449f69371857640895076",
+      "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+      "startedAt": "2026-10-23T08:51:24.411Z",
+      "durationMs": 372,
+      "limitMs": 60000,
+      "generationCount": 0,
+      "generated": 0,
+      "purpose": "assistant",
+      "requestHash": "b52ca7f21e6267477e36677a76d2869b584c21be18ff8643168bee464b6125c3",
+      "activeBefore": {
+        "caseMs": 14377,
+        "totalMs": 14377
+      },
+      "httpStatus": 200
+    }
+  ],
+  "blocked": [],
+  "startedAt": "2026-10-23T08:50:37.386Z",
+  "closedAt": "2026-10-23T08:54:12.689Z",
+  "outcome": "failed: query root parameters invalid after two automatic corrections; no technical intervention"
+}

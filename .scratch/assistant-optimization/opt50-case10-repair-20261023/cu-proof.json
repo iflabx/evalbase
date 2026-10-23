@@ -1,0 +1,195 @@
+{
+  "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+  "model": "qwen-new",
+  "modelRevision": 2,
+  "projectId": "project_2d73b0e1ce5241d4b0585559b03adb65",
+  "sessionId": "conversation_c92486b8b2e449f69371857640895076",
+  "taskId": "assistanttask_8d0b8d39886848cfb42db379908ebc7c",
+  "prompts": [
+    "帮我整理一下这些数据"
+  ],
+  "result": "failed",
+  "actualRequests": 4,
+  "automaticCorrections": 2,
+  "activeMs": 14812,
+  "observations": [
+    {
+      "intent": {
+        "mode": "query",
+        "source": "model",
+        "pauseFirst": false,
+        "reasonCode": "turn_query",
+        "updateSaved": true,
+        "requiresUpdate": false
+      },
+      "turnId": "turn_8d565942afd942dd93832d999d4dd67f",
+      "failure": {
+        "layer": "tool",
+        "reason": "当前操作的参数或范围未通过校验。",
+        "category": "parameter_invalid",
+        "httpStatus": null,
+        "nextAction": "助手未能完成内部参数校验。已有成果保留，可重试未完成步骤；重复失败时请联系管理员查看诊断。"
+      },
+      "requests": [
+        {
+          "id": "turn_8d565942afd942dd93832d999d4dd67f:0",
+          "state": "parsed",
+          "bodyMs": 3,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 12822,
+          "httpStatus": 200,
+          "preflightMs": 17,
+          "timeToHeadersMs": 12815
+        },
+        {
+          "id": "turn_8d565942afd942dd93832d999d4dd67f:1",
+          "state": "parsed",
+          "bodyMs": 1,
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 604,
+          "httpStatus": 200,
+          "preflightMs": 7,
+          "timeToHeadersMs": 598
+        },
+        {
+          "id": "turn_8d565942afd942dd93832d999d4dd67f:2",
+          "state": "parsed",
+          "bodyMs": 0,
+          "repair": {
+            "kind": "format",
+            "name": "query_project",
+            "nested": true,
+            "identity": "ab4a78928bbe87a8c1c090644e8ddabdec7b816b6998fdb9d417f9da13b9379f"
+          },
+          "parseMs": 1,
+          "parseOk": true,
+          "totalMs": 301,
+          "httpStatus": 200,
+          "preflightMs": 72,
+          "repairCharged": true,
+          "timeToHeadersMs": 292
+        },
+        {
+          "id": "turn_8d565942afd942dd93832d999d4dd67f:3",
+          "state": "parsed",
+          "bodyMs": 0,
+          "repair": {
+            "kind": "format",
+            "name": "query_project",
+            "nested": true,
+            "identity": "ab4a78928bbe87a8c1c090644e8ddabdec7b816b6998fdb9d417f9da13b9379f"
+          },
+          "parseMs": 0,
+          "parseOk": true,
+          "totalMs": 401,
+          "httpStatus": 200,
+          "preflightMs": 9,
+          "repairCharged": true,
+          "timeToHeadersMs": 395
+        }
+      ],
+      "errorCode": "assistant_tool_input_invalid",
+      "sessionId": "conversation_c92486b8b2e449f69371857640895076",
+      "toolCalls": 2,
+      "durationMs": 16491,
+      "modelSteps": 4,
+      "retryWaits": [],
+      "amendmentId": "turn_8d565942afd942dd93832d999d4dd67f",
+      "codeVersion": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+      "currentStep": null,
+      "diagnosticId": "turn_8d565942afd942dd93832d999d4dd67f",
+      "finishReason": "tool-calls",
+      "firstFailure": {
+        "code": "assistant_tool_input_invalid",
+        "name": "query_project",
+        "issues": [
+          {
+            "code": "assistant_tool_input_invalid",
+            "path": "/",
+            "tool": "query_project",
+            "keyword": "type",
+            "message": "参数须为对象。",
+            "operation": "query_project"
+          }
+        ]
+      },
+      "taskRevision": 1,
+      "toolsVersion": "assistant-tools-v12",
+      "modelRevision": 2,
+      "promptVersion": "assistant-prompt-v15",
+      "contractVersion": "assistant-diagnostics-v2",
+      "protocolRepairs": 0,
+      "requestAttempts": 4,
+      "stepDiagnostics": [
+        {
+          "inputTokens": 15818,
+          "finishReason": "tool-calls",
+          "outputTokens": 48,
+          "argumentBytes": 235
+        },
+        {
+          "inputTokens": 4181,
+          "finishReason": "tool-calls",
+          "outputTokens": 11,
+          "argumentBytes": 10
+        }
+      ],
+      "attemptToolCalls": 2,
+      "executionAttempt": 1,
+      "parameterRepairs": [
+        {
+          "name": "query_project",
+          "outcome": "invalid"
+        },
+        {
+          "name": "query_project",
+          "outcome": "invalid"
+        },
+        {
+          "name": "query_project",
+          "outcome": "exhausted"
+        }
+      ],
+      "transportRetries": 0,
+      "attemptModelSteps": 4,
+      "repairRequestsUsed": 2,
+      "retainedCandidates": null,
+      "retainedOperations": 0,
+      "parameterRepairStatus": {
+        "name": "query_project",
+        "phase": "finished",
+        "scope": "call",
+        "intent": "tool",
+        "issues": [
+          {
+            "code": "assistant_tool_input_invalid",
+            "path": "/",
+            "tool": "query_project",
+            "keyword": "meaning",
+            "message": "参数须为对象。",
+            "operation": "query_project"
+          }
+        ],
+        "turnId": "turn_8d565942afd942dd93832d999d4dd67f",
+        "outcome": "exhausted",
+        "amendmentId": "turn_8d565942afd942dd93832d999d4dd67f",
+        "remainingMs": 63540
+      },
+      "attemptRequestAttempts": 4,
+      "parameterRepairVersion": "arguments-v4",
+      "requirementsReconciled": false
+    }
+  ],
+  "effects": {
+    "sessions": 1,
+    "runs": 0,
+    "drafts": 0,
+    "versions": 0
+  },
+  "originalMaterialRowsUnchanged": true,
+  "budgetClosed": true,
+  "technicalIntervention": false,
+  "ordinaryContinue": 0
+}

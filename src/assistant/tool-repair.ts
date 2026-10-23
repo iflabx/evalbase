@@ -117,7 +117,10 @@ export function repairScope(
     if (issue.keyword !== "type") return issue;
     let item: any = value,
       definition = schema;
-    for (const token of issue.path.split("/").slice(1)) {
+    for (const part of issue.path === "/"
+      ? []
+      : issue.path.split("/").slice(1)) {
+      const token = part.replace(/~1/g, "/").replace(/~0/g, "~");
       definition = inputContract(item, definition);
       definition = Array.isArray(item)
         ? (definition.items ?? {})
@@ -131,8 +134,8 @@ export function repairScope(
     return types.some(
       (type: string) => type === "object" || type === "array",
     ) &&
-      !isPlainObject(item) &&
-      !Array.isArray(item)
+      !(types.includes("object") && isPlainObject(item)) &&
+      !(types.includes("array") && Array.isArray(item))
       ? { ...issue, keyword: "container" }
       : issue;
   });

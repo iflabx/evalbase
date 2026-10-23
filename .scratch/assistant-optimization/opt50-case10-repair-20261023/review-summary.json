@@ -1,0 +1,18 @@
+{
+  "baseline": "9b2de35",
+  "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+  "standards": {
+    "findings": 0,
+    "followupFindings": 0
+  },
+  "spec": {
+    "findings": 1,
+    "resolved": "plan_task.steps[].input now carries projectQueryConstraints(action)",
+    "remaining": 0
+  },
+  "additionalBoundaries": [
+    "same unresolved source clarification retains correction identity across ordinary continue",
+    "named source preserved on first-query-failure continuation"
+  ],
+  "realAcceptance": "case10 failed; no signoff"
+}

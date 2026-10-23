@@ -1,0 +1,25 @@
+{
+  "case": 10,
+  "code": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+  "budget": {
+    "requests": 24,
+    "activeMs": 240000,
+    "cleanRows": 2,
+    "cleanRuns": 1,
+    "newDrafts": 1,
+    "generatedRows": 0,
+    "publish": 0
+  },
+  "prompts": [
+    "帮我整理一下这些数据",
+    "客服清洗测试.jsonl",
+    "清洗这份文件的全部2条记录，其他不改。",
+    "保存为新的测试集草稿，叫客服清洗复测。"
+  ],
+  "recovery": "至多一次普通继续；不提供内部参数、不追加额度、不更换会话",
+  "stop": "24次实际请求或240000ms活跃、同因修复耗尽、需技术干预则停止",
+  "materials": [
+    "客服清洗测试.jsonl",
+    "客服其他资料.jsonl"
+  ]
+}

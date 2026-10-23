@@ -1,0 +1,19 @@
+{
+  "base": "b035e767cabbe06d501a8e22692c510f5299c0ec",
+  "rootCauses": [
+    "Business root path / traversed as empty property, classifying damaged containers as lossless format repairs",
+    "Contextual acceptance rejected nonobject originals even for read-only query discovery"
+  ],
+  "scope": "root JSON pointer and type mismatch handling; read-only query reconstruction after shared preflight, original write guards retained",
+  "regression": {
+    "red": 3,
+    "green": 43,
+    "report": ".scratch/assistant-optimization/opt50-case10-repair-20261023/root-green.json"
+  },
+  "reviews": {
+    "Standards": 0,
+    "Spec": 0
+  },
+  "static": "typecheck, changed-file eslint, prettier and diff check passed",
+  "realVerification": "pending new independently bounded case 10"
+}

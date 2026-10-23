@@ -367,6 +367,39 @@ describe("OPT47 unified processing public boundary", () => {
     return result.json();
   }
 
+  it.each([null, "files", [{ kind: "files" }]])(
+    "OPT50 damaged root query %j uses context and persists bounded source clarification",
+    async (broken) => {
+      await file("根参数候选甲" + randomUUID() + ".jsonl");
+      await file("根参数候选乙" + randomUUID() + ".jsonl");
+      const id = await newSession(),
+        before = await effects();
+      const state = await send(id, "帮我整理一下这些数据", [
+        decision("query"),
+        { name: "query_project", input: {}, rawInput: JSON.stringify(broken) },
+        { name: "query_project", input: { kind: "files" } },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.stage).toBe("waiting_input");
+      expect(state.task.question).toContain("请选择");
+      expect(state.task.sourceDiscovery.reads).toBeLessThanOrEqual(2);
+      expect(await effects()).toEqual(before);
+      expect(observed).toHaveLength(3);
+      const repair = JSON.parse(
+        observed[2].messages.find(
+          (m: any) =>
+            typeof m.content === "string" &&
+            m.content.includes('"operation":"repair_tool_arguments"'),
+        ).content,
+      );
+      expect(repair.repairClass).toBe("context");
+      expect(repair.context.request).toBe("帮我整理一下这些数据");
+    },
+  );
+
   it("OPT50 query correction dispatch carries latest business issues before ordinary discovery", async () => {
     await file("修复候选A.jsonl");
     await file("修复候选B.jsonl");

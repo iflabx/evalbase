@@ -1,10 +1,10 @@
 # OPT-47 资料发现收束与处理提议统一预检
 
 Status: ready-for-agent
-Implementation: completed
-Validation: targeted-pass
+Implementation: in-progress
+Validation: partial-pass
 Owner: pending
-Blocked by: none（OPT-46共享准备/纠错合同已完成）
+Blocked by: 第10项真实query_project根参数对象校验及纠错仍未闭合
 
 
 - 优先级：P1。范围：第10项从模糊资料发现到清洗提交的完整链。
@@ -92,3 +92,5 @@ Blocked by: none（OPT-46共享准备/纠错合同已完成）
 ### 2026-10-23 OPT-50真实CU补充发现
 
 原247项定向通过事实保留；后续固定be2b8b1的CU10，query_project(kind=project)带search/offset被拒绝，普通继续后files/drafts读取成功但未收束为具体来源澄清，最终result_incomplete，未提交清洗。按本票发现/准备职责承接复核模型声明和分支条件、参数纠错后持久澄清的公共链；不在此更新重跑、扩额或改签历史。首错和关闭预算见[OPT-50唯一记录](../opt50-verification-20261023.md)。
+
+- 2026-10-23后续：第10项模型/计划声明、业务纠错优先级和原需求恢复已补修；99项定向通过，但新CU10首轮根参数非对象、两次纠错无效，真实完整链未到达。按新证据保持in-progress/partial-pass，详见[OPT50唯一验证记录](../opt50-verification-20261023.md)，不改签历史。

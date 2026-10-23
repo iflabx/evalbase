@@ -7491,6 +7491,9 @@ export async function executeAssistantTurn(
           if (!preparedTools.has(name)) return false;
           const ready = await prepareBusinessProposal(name, fixed);
           if (!ready.ok) preparationError(ready.issues);
+          // A broken root has no fields to compare. Only read-only discovery may
+          // reconstruct it from context; execution still checks current project access.
+          if (!isPlainObject(original) && name === "query_project") return true;
           let base: Record<string, any>;
           try {
             base = context.decode(original as Record<string, any>);
