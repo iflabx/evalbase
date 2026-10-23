@@ -488,7 +488,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     ]);
     expect(successes(state, "query_project")).toHaveLength(1);
   });
-  it("an execute control without work cannot finish as business success", async () => {
+  it("an execute control with unknown source ends in real clarification, never claimed execution", async () => {
     const id = (
       await app.inject({
         method: "POST",
@@ -501,7 +501,11 @@ describe("OPT42 per-turn intent public boundary", () => {
     const state = await send(id, "现在开始清洗全部记录。", [
       decision("execute", { explanation: "已开始清洗。" }),
     ]);
-    expect(state.turns.at(-1).status).toBe("failed");
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    expect(successes(state, "query_project")).toHaveLength(1);
+    expect(state.task.stage).toBe("waiting_input");
+    expect(state.task.question).toContain("资料");
+    expect(state.turns.at(-1).assistantText).not.toContain("已开始清洗");
     expect(await effects()).toEqual(before);
   });
   it("a clarified execute request can save a real step after an empty paused plan", async () => {
@@ -2738,21 +2742,25 @@ describe("OPT42 per-turn intent public boundary", () => {
   );
   it("OPT46 truncated patch excludes unrelated delivery definitions after the target is known", async () => {
     const { id, goal } = await savedRefundPlan();
-    const initial = await send(id, "另外增加一份物流测试集2条，先保存方案", [
-      decision("plan", { requiresUpdate: true }),
-      {
-        name: "plan_task",
-        input: {
-          deliveries: [
-            {
-              ...simpleDelivery(),
-              name: "物流测试",
-              instructions: "无关交付详情-marker-" + "物流场景".repeat(400),
-            },
-          ],
+    const initial = await send(
+      id,
+      "继续当前任务，在当前方案中增加一份物流测试集2条，先保存方案",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            deliveries: [
+              {
+                ...simpleDelivery(),
+                name: "物流测试",
+                instructions: "无关交付详情-marker-" + "物流场景".repeat(400),
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ],
+    );
     expect(
       initial.turns.at(-1).status,
       JSON.stringify(initial.turns.at(-1)),
@@ -2760,7 +2768,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     const other = deliveryGoals(initial.task.executionPlan)[1];
     const state = await send(
       id,
-      "只把退款测试的名称改成退款服务测试，其他交付不变，先保存方案",
+      "继续当前任务，只把退款测试的名称改成退款服务测试，其他交付不变，先保存方案",
       [
         decision("plan", { requiresUpdate: true }),
         {
@@ -3369,7 +3377,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(await effects()).toEqual(before);
   });
 
-  it("OPT46 completion retains full long requirements when the existing context guard stops the turn", async () => {
+  it("OPT48 compact planning context retains and saves full long requirements", async () => {
     const requirements = Array.from(
       { length: 20 },
       (_, i) => String(i).padStart(2, "0") + "a".repeat(998),
@@ -3389,15 +3397,17 @@ describe("OPT42 per-turn intent public boundary", () => {
       },
     ]);
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
-      "failed",
+      "succeeded",
     );
-    expect(state.turns.at(-1).errorCode).toBe("assistant_context_capacity");
+    expect(state.task.requirements).toEqual(
+      expect.arrayContaining(requirements),
+    );
     const proposal = state.turns
       .at(-1)
       .tools.find((t: any) => t.name === "plan_task" && t.input.requirements);
     expect(proposal.input.requirements).toEqual(requirements);
     expect(await effects()).toEqual(before);
-    // Full current-fact projection is OPT-48. Never report this guarded turn as success.
+    // OPT-48 compacts provider context without truncating persisted requirements.
   });
   it("OPT46 completion rejects derived instruction overflow through the ordinary legacy planning entry", async () => {
     const id = await session("plan");
