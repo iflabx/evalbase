@@ -1,4 +1,6 @@
-2026-10-23 当前状态：更新后的[OPT-46](issues/46-compact-plan-amendment-and-recovery.md)开发及定向验证完成，Implementation completed / Validation targeted-pass，Owner pending；177项不同用例通过，详见[本轮证据](opt46-completion-verification-20261023.md)。47～50保持not-started/not-run，依赖不变。本轮未更新4217、未调用真实模型/CU、未合并推送，最近部署仍2c74b8e；历史CU-7失败、验收数据及旧预算保留。下列带日期条目为历史快照。
+2026-10-23 当前状态：[OPT-47](issues/47-source-discovery-and-processing-preflight.md)开发及定向验证完成，代码 ca2e4b1；247项不同用例通过，Implementation completed / Validation targeted-pass / Owner pending，见[本轮证据](opt47-verification-20261023.md)。OPT-48～50仍not-started，依赖不变。未部署4217、调用真实模型/CU或合并推送，历史验收数据与旧预算保留。以下带日期记录为历史快照。
+
+2026-10-23 上次阶段记录：更新后的[OPT-46](issues/46-compact-plan-amendment-and-recovery.md)开发及定向验证完成，Implementation completed / Validation targeted-pass，Owner pending；177项不同用例通过，详见[本轮证据](opt46-completion-verification-20261023.md)。47～50保持not-started/not-run，依赖不变。本轮未更新4217、未调用真实模型/CU、未合并推送，最近部署仍2c74b8e；历史CU-7失败、验收数据及旧预算保留。下列带日期条目为历史快照。
 
 2026-10-22 最新4217：首次分类纠正已修复并部署2c74b8e。新CU-7会话完成三条普通提示：首次2＋2自动纠正后保存成功、相同类别核对成功；3＋2增量因缺少交付标识仍失败，整项未通过。新额度9次/55822ms后已关闭，零生成；18表旧行及20份旧预算保留。见[本轮唯一记录](opt46-cu7-repair-verification.md)。未合并推送，OPT-47～50未开发；以下带日期记录保持历史原义。
 
@@ -166,7 +168,7 @@ Implementation: in-progress
 | [OPT-44](issues/44-resume-decision-and-budget-continuity.md) | 恢复决策、续段与累计预算统一（阶段 B） | OPT-43 已完成 | completed | `7502523`；[定向验证与审阅](opt44-verification.md)，Owner pending；4217未切换 |
 | [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md) | 事实反馈、恢复交互与五项流程验收（阶段 C） | OPT-44（传递依赖43） | completed | 定向通过；CU-4/5后续通过，前三项旧证据保持，Owner pending |
 | [OPT-46](issues/46-compact-plan-amendment-and-recovery.md) | 可信目标、统一准备、逐次纠错与当前反馈 | 现有实现；无未开发票依赖 | completed | targeted-pass、Owner pending；177项定向通过，[本轮记录](opt46-completion-verification-20261023.md)。CU-7历史未通过；本轮未部署或运行CU |
-| [OPT-47](issues/47-source-discovery-and-processing-preflight.md) | 资料发现、处理准备及部分提交对账 | OPT-46共享准备/纠错合同 | not-started | 增补范围；Validation not-run；旧数据/预算保留 |
+| [OPT-47](issues/47-source-discovery-and-processing-preflight.md) | 资料发现、处理准备及部分提交对账 | OPT-46共享准备/纠错合同 | completed | targeted-pass、Owner pending；247项定向通过，[本轮记录](opt47-verification-20261023.md)。未部署/CU，旧数据和预算保留 |
 | [OPT-48](issues/48-conversation-task-boundaries-and-context.md) | 长会话任务边界与有界上下文 | OPT-46 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
 | [OPT-49](issues/49-budget-grants-and-task-continuation.md) | 复杂任务预算分层与可续接执行 | OPT-47、OPT-48 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
 | [OPT-50](issues/50-continuation-ui-and-bounded-acceptance.md) | 续接交互与第7、10项集中验收 | OPT-49（传递依赖46～48） | not-started | 仅开票；Validation not-run；旧数据/预算保留 |

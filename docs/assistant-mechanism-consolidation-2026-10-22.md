@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 当前状态（2026-10-23）：更新后的OPT-46已开发及定向验证完成，177项不同用例通过；[本轮实施/兼容/限制](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)。OPT-47～50未实施，Owner pending。本轮未部署或运行真实模型/CU，4217最近记录仍2c74b8e；CU-7历史失败、现有数据及旧预算保留。
+- 当前状态（2026-10-23）：OPT-46、OPT-47已完成开发及定向验证；[OPT-47实施与247项证据](../.scratch/assistant-optimization/opt47-verification-20261023.md)。OPT-48～50未实施，Owner pending；未部署或运行真实模型/CU，4217最近记录仍2c74b8e，历史数据与旧预算保留。
 - 2026-10-22最初诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -285,3 +285,7 @@ OPT-46负责共享结果与方案规则，OPT-47实现处理规则及所有处�
 ### 11.7 OPT-46共同准备交付（2026-10-23）
 
 plan-preparation 提供无副作用 PreparationResult；正式规划、SDK/业务纠错、补保存及恢复复用真实引用解码、可信对象绑定、授权变化合并、派生与完整验证。结构化问题保留tool/operation/path/keyword/code/message，后续OPT-47接入处理规则，不另建参数引擎。现有任务与旧预算不迁移；明确缺省、false及未来引用由实际工具合同判断。完整调用方、旧分支退出、兼容和177项定向证据统一见[本轮实施记录](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)。完整上下文容量仍由OPT-48承担。
+
+### 11.8 OPT-47处理合同接入（2026-10-23）
+
+有界目录、处理提议准备、正常/SDK/业务纠错/步骤派发/恢复、复合提交对账及选择合同已按本节接入真实调用方。247项定向回归、一次双轴审阅发现与修复、旧路径退出、兼容和未覆盖边界统一见[实施记录](../.scratch/assistant-optimization/opt47-verification-20261023.md)。本票不增加公开API、数据表或预算；真实模型第10项验收仍由OPT-50集中执行。

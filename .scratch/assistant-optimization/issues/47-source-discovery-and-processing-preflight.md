@@ -1,9 +1,10 @@
 # OPT-47 资料发现收束与处理提议统一预检
 
 Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
-Blocked by: OPT-46（共享准备结果与逐次纠错合同）
+Implementation: completed
+Validation: targeted-pass
+Owner: pending
+Blocked by: none（OPT-46共享准备/纠错合同已完成）
 
 
 - 优先级：P1。范围：第10项从模糊资料发现到清洗提交的完整链。
@@ -85,3 +86,5 @@ Blocked by: OPT-46（共享准备结果与逐次纠错合同）
 - 2026-10-23：按全链路审查增补复合提交/部分回执和R47-8～10，明确依赖OPT-46；Implementation not-started、Validation not-run。部分提交是代码识别的风险，尚未在真实验收库制造或观察重复草稿。
 
 - 2026-10-23：补齐15工具参数传递审查，增加R47-11、R47-12、R47-13、R47-14、R47-15、R47-16；仅文档/离线源码探针，未实现新增范围、运行应用回归/CU、部署或消费预算。
+
+- 2026-10-23：按更新后范围完成开发，代码 ca2e4b1f3072f8e31d9bbaf4a163e413af726c05；247项不同定向用例通过，受控HTTP/SDK/SQL/Worker验证与收尾审阅修复完成。完整接线、兼容、首次失败、去重清单及限制统一见[本轮实施记录](../opt47-verification-20261023.md)。Owner pending；未运行真实模型/CU、更新4217或合并推送，旧数据和预算保留。

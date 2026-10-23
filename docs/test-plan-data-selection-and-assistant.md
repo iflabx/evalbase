@@ -298,7 +298,7 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 
 <a id="full-agent-review-tests"></a>
 
-### 5.20 全链路组合覆盖（待开发验证）
+### 5.20 全链路组合覆盖（分票验证）
 
 依据[全链路审查](assistant-full-review-2026-10-23.md)。本节为测试索引，详细通过标准只在各票维护；2026-10-23未运行应用回归、CU或真实模型。离线源码探针用于复现缺口，不计作业务通过，不替代以下公共入口验证。
 
@@ -322,7 +322,7 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 
 <a id="tool-parameter-tests"></a>
 
-### 5.21 全工具参数传递一致性（待开发验证）
+### 5.21 全工具参数传递一致性（分票验证）
 
 [逐字段审查](assistant-tool-parameter-review-2026-10-23.md)及[15工具字段表](../.scratch/assistant-optimization/tool-contract-audit-20261023/field-matrix.md)覆盖声明、绑定、调用、校验和恢复。2026-10-23仅静态审查及14条离线观察，不计业务验收通过。下表仅索引；规则在机制§11.6，通过标准在票据，不重复维护。
 
@@ -341,3 +341,9 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 复用已有SDK/HTTP/Worker及前端夹具，每工具至少列明适用入口和正/负例；按实际条件分支及已知失败链成对覆盖，不穷举全排列。条件选择和参数错误须测真实准备/服务边界，不只看模型下一步桩输出。原权限、字段保护、采用/发布和旧回执的受影响保护一并检查。
 
 真实CU仍仅采用OPT-50既定第7/10项与原逐项上限；本轮不新开预算、不重跑已完成项。静态清单完成、受控回归通过、真实用户流程通过分别报告。
+
+### 5.22 OPT-47定向实施记录（2026-10-23）
+
+[OPT-47](../.scratch/assistant-optimization/issues/47-source-discovery-and-processing-preflight.md)的R47-1～16已完成本票受控定向验证；247项不同用例的去重结果、实际调用方、首次失败与修复、静态检查及限制统一见[本轮证据](../.scratch/assistant-optimization/opt47-verification-20261023.md)。新回归位于tests/unit/assistant-processing-preparation.test.ts和tests/integration/assistant-processing-preflight.test.ts，覆盖真实消息/SDK/SQL/Worker，原相邻保护按受影响范围复检。
+
+§5.20～21此前“仅静态/待开发”的说明是补审时快照，不代替各票最新状态。OPT-48～50尚未完成；未运行真实模型/CU或重跑历史业务验收，不将定向通过当成第10项Owner验收通过。
