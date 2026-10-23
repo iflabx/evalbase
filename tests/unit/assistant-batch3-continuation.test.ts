@@ -90,3 +90,25 @@ it("B3 a confirmed trim/dedup/rewrite request compiles actual ordered steps only
     }),
   ).toBeUndefined();
 });
+
+it("B3 saved cancellation remains later than the initial goal on an ordinary start", () => {
+  const source = { kind: "assets", assetIds: ["a"] };
+  const goal = "先整理格式，去掉完全重复，再把问法改自然";
+  const requirements = ["只去首尾空白", "不用去重"];
+  const request = [goal, ...requirements, "开始处理"].join("\n");
+  expect(
+    processingWorkflowSteps({ source, request, wholeSource: true }),
+  ).toBeUndefined();
+});
+
+it("B3 removing a saved operation never borrows it back from the old goal", () => {
+  const source = { kind: "assets", assetIds: ["a"] };
+  const requirements = ["只去首尾空白", "把问法改自然"];
+  expect(
+    processingWorkflowSteps({
+      source,
+      request: requirements.join("，") + "\n开始处理",
+      wholeSource: true,
+    }),
+  ).toBeUndefined();
+});

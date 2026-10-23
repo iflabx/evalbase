@@ -1635,6 +1635,7 @@ export async function executeAssistantTurn(
     });
   }
   let planningResultReady = false;
+  let reviewResultReady = false;
   const planningRepairInputs = new Map<string, Record<string, any>>();
   let planningCheckpointRequired = false;
   let stepMessages: ModelMessage[] = [];
@@ -2264,6 +2265,16 @@ export async function executeAssistantTurn(
       input,
     );
     if (!settled.executionPlan) return;
+    if (
+      name === "read_processing" &&
+      value.executionComplete === true &&
+      !settled.executionPlan.needsReview &&
+      !task.question &&
+      settled.executionPlan.steps.every(
+        (step: any) => step.status === "executed",
+      )
+    )
+      reviewResultReady = true;
     plannedAction = settled.nextAction ?? undefined;
     if (
       settled.executionPlan === task.executionPlan &&
@@ -4058,7 +4069,14 @@ export async function executeAssistantTurn(
           const facts = await processingFacts(current);
           const workflow = processingWorkflowSteps({
             source: planSource(input.target ?? current.target),
-            request: amendmentRequestText,
+            request: [
+              current.requirements?.length
+                ? current.requirements.join("，")
+                : current.goal,
+              turn.event === "user" ? turn.user_text : amendmentRequestText,
+            ]
+              .filter(Boolean)
+              .join("\n"),
             wholeSource: wholeSourceAuthorized(
               facts.request,
               facts.authorizedScopeText,
@@ -4108,10 +4126,31 @@ export async function executeAssistantTurn(
           current.uiCandidateSave?.turnId === turn.id &&
           input.nextAction === "request_processing_apply" &&
           oldPlan?.steps.length &&
-          oldPlan.steps.every((step: any) => step.status === "executed")
+          !current.question &&
+          oldPlan.steps
+            .slice(oldPlan.current)
+            .every(
+              (step: any) =>
+                !step.question &&
+                ["read_processing", "request_processing_apply"].includes(
+                  step.action,
+                ),
+            )
         ) {
+          const prefix = oldPlan.steps
+            .slice(0, oldPlan.current)
+            .filter((step: any) => step.status === "executed");
           input.steps = [
-            ...oldPlan.steps,
+            ...prefix,
+            ...(oldPlan.current < oldPlan.steps.length
+              ? [
+                  {
+                    title: "核对当前所选成果",
+                    action: "read_processing",
+                    input: { runId: current.runId },
+                  },
+                ]
+              : []),
             {
               title: "确认采用所选成果",
               action: "request_processing_apply",
@@ -8217,6 +8256,7 @@ export async function executeAssistantTurn(
           budgetBoundary ||
           waitingForInput ||
           planningResultReady ||
+          reviewResultReady ||
           requirementsOnlySaved ||
           Boolean(exhaustedProcessing),
       ],
@@ -8982,7 +9022,7 @@ export async function executeAssistantTurn(
         : "",
       finishReason: "stop",
     };
-    if (!yieldToProcessing) {
+    if (!yieldToProcessing && !reviewResultReady) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const generated = await agent.generate({

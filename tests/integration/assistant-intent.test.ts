@@ -3757,11 +3757,11 @@ describe("OPT42 per-turn intent public boundary", () => {
       id,
       "去掉首尾多余空白就好，整份草稿都处理。先看结果，不保存。",
       [
-        decision("execute"),
+        decision("plan"),
         {
           name: "plan_task",
           input: {
-            executionMode: "execute",
+            executionMode: "plan",
             requirements: [
               "只去首尾空白，再去掉完全重复，最后把问法改自然",
               "只改问题，期望输出和Metadata不变",
@@ -3771,6 +3771,11 @@ describe("OPT42 per-turn intent public boundary", () => {
         },
       ],
     );
+    expect(state.task.runId).toBeFalsy();
+    state = await send(id, "开始处理。", [
+      decision("execute"),
+      { name: "plan_task", input: { executionMode: "execute" } },
+    ]);
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
       "succeeded",
     );
@@ -3927,171 +3932,215 @@ describe("OPT42 per-turn intent public boundary", () => {
     ]);
   });
 
-  it("B3 truncated dissatisfaction saves a real candidate refinement instead of a no-op", async () => {
-    const { id, documentId } = await backgroundSession();
-    let state = await send(id, "按说明生成2条查物流的问题，先给我看。", [
-      decision("execute"),
-      { name: "read_background", input: { documentId } },
-      {
-        name: "plan_task",
-        input: { executionMode: "execute", deliveries: [simpleDelivery()] },
-      },
-    ]);
-    const first = state.task.runId;
-    expect(first).toBeTruthy();
-    await finishB3(first);
-    await expect
-      .poll(
-        async () => {
-          state = await read(id);
-          return state.turns.every(
-            (t: any) => !["queued", "running"].includes(t.status),
-          );
-        },
-        { timeout: 15000 },
-      )
-      .toBe(true);
-    await expect
-      .poll(
-        async () => {
-          state = await read(id);
-          return state.task.review?.total;
-        },
-        { timeout: 15000 },
-      )
-      .toBe(2);
-    await expect
-      .poll(
-        async () => {
-          state = await read(id);
-          return state.turns.every(
-            (t: any) => !["queued", "running"].includes(t.status),
-          );
-        },
-        { timeout: 15000 },
-      )
-      .toBe(true);
-    const selection = (
-      await app.inject({
-        method: "GET",
-        url: base() + "/sessions/" + id + "/candidates",
-        headers,
-      })
-    ).json();
-    state = await send(
-      id,
-      "太像标准模板了，换成日常聊天的说法，意思别变。",
-      [
-        decision("plan", { requiresUpdate: true }),
+  it.each([false, true])(
+    "B3 truncated dissatisfaction saves a real candidate refinement instead of a no-op (stale review=%s)",
+    async (staleReview) => {
+      const { id, documentId } = await backgroundSession();
+      let state = await send(id, "按说明生成2条查物流的问题，先给我看。", [
+        decision("execute"),
+        { name: "read_background", input: { documentId } },
         {
           name: "plan_task",
-          input: {},
-          rawInput: '{"candidateEdit":{"instructions":"换成日常聊天',
-          finishReason: "length",
+          input: { executionMode: "execute", deliveries: [simpleDelivery()] },
         },
-        {
-          name: "plan_task",
-          input: {
-            candidateEdit: {
-              instructions: "将当前问题改成日常聊天的自然问法，意思不变",
-              allowedFields: ["question"],
-              allResults: true,
+      ]);
+      const first = state.task.runId;
+      expect(first).toBeTruthy();
+      await finishB3(first);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.review?.total;
+          },
+          { timeout: 15000 },
+        )
+        .toBe(2);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const selection = (
+        await app.inject({
+          method: "GET",
+          url: base() + "/sessions/" + id + "/candidates",
+          headers,
+        })
+      ).json();
+      state = await send(
+        id,
+        "太像标准模板了，换成日常聊天的说法，意思别变。",
+        [
+          decision("plan", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {},
+            rawInput: '{"candidateEdit":{"instructions":"换成日常聊天',
+            finishReason: "length",
+          },
+          {
+            name: "plan_task",
+            input: {
+              candidateEdit: {
+                instructions: "将当前问题改成日常聊天的自然问法，意思不变",
+                allowedFields: ["question"],
+                allResults: true,
+              },
+              executionMode: "plan",
             },
-            executionMode: "plan",
+          },
+        ],
+        {
+          candidates: {
+            scope: "task",
+            reviewRevision: selection.reviewRevision,
+            resultIds: selection.records.map((r: any) => r.id),
           },
         },
-      ],
-      {
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.runId).toBe(first);
+      expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
+      state = await send(id, "按当前已保存方案执行", [], {
+        operation: "execute_plan",
+        expectedTaskRevision: state.task.turnControl.taskRevision,
+      });
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.runId).not.toBe(first);
+      expect(state.task.turnControl.updateSaved).toBe(true);
+      expect(successes(state, "generate_candidates")).toHaveLength(0);
+      expect(
+        state.task.executionPlan.steps.filter(
+          (s: any) =>
+            s.action === "generate_candidates" && s.status === "executed",
+        ),
+      ).toHaveLength(1);
+      const refine = successes(state, "refine_candidates").at(-1);
+      expect(refine.input.allowedFields).toEqual(["question"]);
+      const controlRequestsBeforeReview = observed.filter(
+        (r: any) => r.tools?.length,
+      ).length;
+      await finishB3(state.task.runId);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.stage;
+          },
+          { timeout: 15000 },
+        )
+        .toBe("awaiting_review");
+      expect(state.task.review.total).toBe(2);
+      expect(state.task.review.protectedFieldChanges).toBe(0);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      expect(
+        observed.filter((r: any) => r.tools?.length).length,
+        "Completed read must not ask the model for another operation",
+      ).toBe(controlRequestsBeforeReview);
+      if (staleReview) {
+        const db = createPool(databaseUrl);
+        try {
+          const task = (
+            await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+              id,
+            ])
+          ).rows[0].task;
+          const old = task.executionPlan.steps[0];
+          task.executionPlan = {
+            ...task.executionPlan,
+            steps: [
+              old,
+              { title: "旧核对", action: "read_processing", status: "pending" },
+              {
+                title: "旧确认",
+                action: "request_processing_apply",
+                status: "pending",
+                input: { runId: task.runId, allTask: true, allValid: true },
+              },
+            ],
+            current: 1,
+          };
+          task.nextAction = "read_processing";
+          await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+            id,
+            task,
+          ]);
+        } finally {
+          await db.end();
+        }
+      }
+      const results = (
+        await app.inject({
+          method: "GET",
+          url: base() + "/sessions/" + id + "/candidates",
+          headers,
+        })
+      ).json();
+      const prepared = await send(id, "将勾选成果保存回原草稿", [], {
+        operation: "save_candidates",
+        expectedTaskRevision: state.task.turnControl.taskRevision,
         candidates: {
           scope: "task",
-          reviewRevision: selection.reviewRevision,
-          resultIds: selection.records.map((r: any) => r.id),
+          reviewRevision: results.reviewRevision,
+          resultIds: results.records.map((r: any) => r.id),
         },
-      },
-    );
-    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
-      "succeeded",
-    );
-    expect(state.task.runId).toBe(first);
-    expect(state.turns.at(-1).diagnostics.repairRequestsUsed).toBe(1);
-    state = await send(id, "按当前已保存方案执行", [], {
-      operation: "execute_plan",
-      expectedTaskRevision: state.task.turnControl.taskRevision,
-    });
-    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
-      "succeeded",
-    );
-    expect(state.task.runId).not.toBe(first);
-    expect(state.task.turnControl.updateSaved).toBe(true);
-    expect(successes(state, "generate_candidates")).toHaveLength(0);
-    expect(
-      state.task.executionPlan.steps.filter(
-        (s: any) =>
-          s.action === "generate_candidates" && s.status === "executed",
-      ),
-    ).toHaveLength(1);
-    const refine = successes(state, "refine_candidates").at(-1);
-    expect(refine.input.allowedFields).toEqual(["question"]);
-    await finishB3(state.task.runId);
-    await expect
-      .poll(
-        async () => {
-          state = await read(id);
-          return state.task.stage;
-        },
-        { timeout: 15000 },
-      )
-      .toBe("awaiting_review");
-    expect(state.task.review.total).toBe(2);
-    expect(state.task.review.protectedFieldChanges).toBe(0);
-    await expect
-      .poll(
-        async () => {
-          state = await read(id);
-          return state.turns.every(
-            (t: any) => !["queued", "running"].includes(t.status),
-          );
-        },
-        { timeout: 15000 },
-      )
-      .toBe(true);
-    const results = (
-      await app.inject({
-        method: "GET",
-        url: base() + "/sessions/" + id + "/candidates",
+      });
+      const proposal = prepared.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(proposal, JSON.stringify(prepared)).toBeTruthy();
+      const confirmed = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
         headers,
-      })
-    ).json();
-    const prepared = await send(id, "将勾选成果保存回原草稿", [], {
-      operation: "save_candidates",
-      expectedTaskRevision: state.task.turnControl.taskRevision,
-      candidates: {
-        scope: "task",
-        reviewRevision: results.reviewRevision,
-        resultIds: results.records.map((r: any) => r.id),
-      },
-    });
-    const proposal = prepared.proposals.find(
-      (p: any) => p.status === "pending",
-    );
-    expect(proposal, JSON.stringify(prepared)).toBeTruthy();
-    const confirmed = await app.inject({
-      method: "POST",
-      url: base() + "/proposals/" + proposal.id + "/confirm",
-      headers,
-      payload: {},
-    });
-    expect(confirmed.statusCode, confirmed.body).toBe(200);
-    await expect
-      .poll(
-        async () => {
-          state = await read(id);
-          return state.task.stage;
-        },
-        { timeout: 15000 },
-      )
-      .toBe("complete");
-  });
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.stage;
+          },
+          { timeout: 15000 },
+        )
+        .toBe("complete");
+    },
+  );
   it("B3 paused progress query reads actual joined job status without restarting work", async () => {
     const { id, draft, recordIds } = await sourceB3(true);
     let state = await send(
