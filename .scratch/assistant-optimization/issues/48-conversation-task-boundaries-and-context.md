@@ -1,9 +1,10 @@
 # OPT-48 长会话任务边界与有界上下文
 
 Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
-Blocked by: OPT-46
+Implementation: completed
+Validation: targeted-pass
+Owner: pending
+Blocked by: none（OPT-46共享准备/纠错合同已完成）
 
 
 - 优先级：P1。范围：同一会话内顺序任务与长历史；当前一个session.task长期累积预算、100条turn限制混合自动事件和用户对话。
@@ -74,3 +75,5 @@ Blocked by: OPT-46
 - 2026-10-23：增补当前执行依赖/历史权限、整包上下文、意图边界及R48-8～10；保留原120条/3任务合成验证。未实施，未运行长对话或修改旧任务身份/预算。
 
 - 2026-10-23：补齐15工具参数传递审查，增加R48-11、R48-12；仅文档/离线源码探针，未实现新增范围、运行应用回归/CU、部署或消费预算。
+
+- 2026-10-23：按更新后的R48-1～12完成任务边界、当前依赖与历史权限分离、分页及实际出站整包投影。实现、回归映射、过程失败与审阅关闭项统一见[本轮实施证据](../opt48-verification-20261023.md)。仅完成开发及定向验证；Owner pending，未更新4217、调用真实模型/CU或重跑历史验收。OPT-49/50仍待开发，原数据及旧预算保留。

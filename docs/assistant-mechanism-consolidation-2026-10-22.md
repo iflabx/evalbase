@@ -1,7 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
-- 当前状态（2026-10-23）：OPT-46、OPT-47已完成开发及定向验证；[OPT-47实施与247项证据](../.scratch/assistant-optimization/opt47-verification-20261023.md)。OPT-48～50未实施，Owner pending；未部署或运行真实模型/CU，4217最近记录仍2c74b8e，历史数据与旧预算保留。
+- 当前状态（2026-10-23）：OPT-46～48已完成开发及定向验证；最新[OPT-48实施证据](../.scratch/assistant-optimization/opt48-verification-20261023.md)。OPT-49/50未实施，Owner pending；未部署或运行真实模型/CU，4217最近记录仍2c74b8e，历史数据与旧预算保留。
 - 2026-10-22最初诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。
 
@@ -289,3 +289,7 @@ plan-preparation 提供无副作用 PreparationResult；正式规划、SDK/业�
 ### 11.8 OPT-47处理合同接入（2026-10-23）
 
 有界目录、处理提议准备、正常/SDK/业务纠错/步骤派发/恢复、复合提交对账及选择合同已按本节接入真实调用方。247项定向回归、一次双轴审阅发现与修复、旧路径退出、兼容和未覆盖边界统一见[实施记录](../.scratch/assistant-optimization/opt47-verification-20261023.md)。本票不增加公开API、数据表或预算；真实模型第10项验收仍由OPT-50集中执行。
+
+### 11.9 OPT-48任务边界与请求投影交付（2026-10-23）
+
+当前任务身份、原子归档/切换/恢复及旧执行围栏已接入消息、状态、控制、队列和出站请求。执行依赖按任务聚合，历史逐页按当前权限脱敏；新格式移除会话100条拒绝条件，旧格式只读不迁移。正常、增量、SDK纠错和恢复共用最终HTTP载荷容量控制，必要合同/待修改意图保持，近期交流只提供指代证据。存储、索引及回滚选择见[ADR补充](adr/0014-project-agent-and-processing-runtime.md#2026-10-23-opt-48-会话内任务身份与上下文补充)，调用方、被替代路径、120条合成历史、9/20条长要求、权限/确认和审阅证据统一见[本轮记录](../.scratch/assistant-optimization/opt48-verification-20261023.md)。本票不提供追加额度、前端任务管理或新的摘要模型；OPT-49/50保持未开发。

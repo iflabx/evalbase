@@ -1,0 +1,1022 @@
+{
+  "ticket": "OPT-48",
+  "baseline": "db7ebe0",
+  "codeCommit": "83e7d3d0f5193b1080268c6d6d32e9a49548fb9f",
+  "implementation": "completed",
+  "validation": "targeted-pass",
+  "owner": "pending",
+  "targetedDistinctTests": 160,
+  "tests": [
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts bounds historical prose and serializes optional user rules without undefined values",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts retains completion metadata for large read receipts and recovery",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts keeps current constraints and fixed identities without serializing record arrays",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts keeps a bounded reread reference and paired protocol for large results",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts OPT31 summarizes narrative result labels without dropping the eight delivery contracts",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts never silently truncates effective requirements",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-context.test.ts",
+      "name": "OPT-23 bounded current facts keeps short background definitions across a large receipt envelope",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-budget.test.ts",
+      "name": "OPT36 execution budget starts legacy tasks at zero and charges repeated checkpoints only once",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-budget.test.ts",
+      "name": "OPT36 execution budget preserves cumulative use across continuation turns without charging background waiting",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-budget.test.ts",
+      "name": "OPT36 execution budget cannot refund counters or elapsed time when the same turn is reclaimed",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-budget.test.ts",
+      "name": "OPT36 execution budget stops at each cumulative threshold without replacing smaller per-turn limits",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-budget.test.ts",
+      "name": "does not start a retry that cannot fit after a slow model request",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts compiles an actionable confirmation card without another model decision",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts binds run and destination to this delivery even when a different delivery ran last",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts never invents missing delivery dependencies from task or another delivery",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts restores the frozen operation input but leaves explicit conflicts visible to guards",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts keeps a waiting real run until that exact run completes",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts projects only unpaused current work and preserves manual confirmation",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-plan.test.ts",
+      "name": "OPT36 fixed execution facts compiles review and adoption for a single new delivery while keeping legacy plans unchanged",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution OPT37 releases only a failed candidate lookup while retaining unknown domain outcomes",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution releases a corrected plan reference without releasing unknown business writes",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution resolves a corrected attempt only within its original step and revision without erasing history",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution does not let a different delivery or revision hide the failure",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution requires the same domain key for an unknown write",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution retains another action's failure and a new unsaved requirement",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-execution-receipts.test.ts",
+      "name": "OPT36 receipt failure resolution preserves recorded legacy no-effect semantics without promoting unknown outcomes",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract only binds a unique trusted target and derives the whole count",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract does not select a first ambiguous delivery or repair an unknown ID by guessing",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract requires real update IDs in ordinary as well as truncated model contracts",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract preserves explicit false, unknown fields and future references for the actual validator",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract returns all known blank, duplicate and capacity field problems without truncating values",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract keeps a full valid requirements list when the delivery has its own bounded instructions",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion pure preparation contract retains saved one-scene contracts on later quantity-only changes",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion does not turn a negated single-scene request into a limit",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan-preparation.test.ts",
+      "name": "OPT46 completion never drops an out-of-range ordinal from the requested targets",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries binds a verified single-class criterion without relabeling contexts or changing other contracts",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries checks explicit document delivery quantities without inventing unspecified counts",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries keeps approved parameters when enabling a plan with unchanged step titles",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries binds an omitted original draft id without mutating approved parameters or overriding explicit targets",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries binds a preview and its draft as a pair and carries a confirmed new draft forward",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries binds current dependencies to the matching prior receipts and leaves future holes open",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries preserves committed processing facts when the selected background basis changes",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries finishes a full background read only after every page in the declared range",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries treats an unknown future processing reference as missing, never as a fixed empty ID",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries restores an asset-page source while still rejecting another real asset",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries does not use another source's receipt to complete a legacy full read",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "restored execution plan boundaries keeps committed adoption history without treating a changed destination as completed",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT29 preserves per-delivery generation receipts and waits for completed results",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT31 preserves only unchanged saved delivery history during resume: saved",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT31 preserves only unchanged saved delivery history during resume: changed",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT31 preserves only unchanged saved delivery history during resume: unconfirmed",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT31 preserves only unchanged saved delivery history during resume: shared",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT40 waits only for a delivery with missing evidence while an independent delivery advances",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT40 separates frozen classification criteria from contextual scenarios: '鼓励行为'",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT40 separates frozen classification criteria from contextual scenarios: '虚假且有害'",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT40 separates frozen classification criteria from contextual scenarios: '兜底'",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-plan.test.ts",
+      "name": "OPT40 separates frozen classification criteria from contextual scenarios: '退款申请'",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision uses the same next-attempt estimate after a 50 second timeout and backoff",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision shares request reserve at 5000 ms",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision shares request reserve at 9999 ms",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision shares request reserve at 10000 ms",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision shares request reserve at 10001 ms",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision does not invent a continuation from expiry alone",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses permission without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses revision without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses background without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses repair without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses attempt without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses budget without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses legacy without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision refuses stopped without a new allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision counts execution intervals once and excludes retry waiting",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision does not create another segment without new persistent progress",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision keeps timeout observations distinct from requests refused before dispatch",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision accepts a verifiable legacy snapshot without rewriting its times or spending",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision does not retry a pause as if it were a provider failure",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision does not retry a question as if it were a provider failure",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "OPT44 recovery decision keeps the shared failure allowance across linked segments",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "frozen limits never widens an invalid or smaller persisted allowance",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "commits a previously reserved final step at the cap but refuses a fresh request",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-recovery-decision.test.ts",
+      "name": "only the exact persisted planning question can settle without new business input",
+      "status": "passed",
+      "evidence": "unit-reviewed.json"
+    },
+    {
+      "file": "tests/unit/assistant-task-context.test.ts",
+      "name": "OPT48 task and request boundaries accepts only explicit affirmative switching, never quoted/negated controls",
+      "status": "passed",
+      "evidence": "unit-exact.json"
+    },
+    {
+      "file": "tests/unit/assistant-task-context.test.ts",
+      "name": "OPT48 task and request boundaries bounds the whole payload while preserving facts, pending request and schemas",
+      "status": "passed",
+      "evidence": "unit-exact.json"
+    },
+    {
+      "file": "tests/unit/assistant-task-context.test.ts",
+      "name": "OPT48 task and request boundaries rejects necessary facts exceeding capacity instead of truncating rules",
+      "status": "passed",
+      "evidence": "unit-exact.json"
+    },
+    {
+      "file": "tests/unit/assistant-task-context.test.ts",
+      "name": "OPT48 task and request boundaries keeps all 9 requirements and refuses an oversized derived execution parameter",
+      "status": "passed",
+      "evidence": "unit-exact.json"
+    },
+    {
+      "file": "tests/unit/assistant-task-context.test.ts",
+      "name": "OPT48 task and request boundaries keeps all 20 requirements and refuses an oversized derived execution parameter",
+      "status": "passed",
+      "evidence": "unit-exact.json"
+    },
+    {
+      "file": "tests/unit/assistant-task-context.test.ts",
+      "name": "OPT48 task and request boundaries keeps the last two exchanges when older optional history is dropped",
+      "status": "passed",
+      "evidence": "unit-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection isolates sequential goals, archives actual budgets and restores the original identity",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection keeps failed amendments and continuations in the original task without resetting budget",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection paginates 120 mixed turns across three tasks and accepts one new message",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection does not let stale dependencies block an independent goal or leak their history",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection fences late replies and automatic events after switching unfinished work",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection allows only one concurrent switch from the same observed revision",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection reads legacy state without identity writes, budget migration or history reruns",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection preserves all 9 long requirements in actual normal and correction payloads",
+      "status": "passed",
+      "evidence": "long-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection preserves all 20 long requirements in actual normal and correction payloads",
+      "status": "passed",
+      "evidence": "long-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection preserves Metadata customerId and ID-shaped ordinary values through real aliases",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection accepts independent read goals after downgrade and redacts historical write content",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection permanently deleting an old source purges its task body without clearing the independent current goal or budget",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection reports an actual provider-boundary capacity rejection without an HTTP request or lost input",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection keeps draft creation idempotent and invalidates an old publication card across a task switch",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection uses existing structured intent to clarify an unfamiliar independent goal once",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection projects actual recovery requests with 9 full requirements, pending amendment and original task identity",
+      "status": "passed",
+      "evidence": "long-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection projects actual recovery requests with 20 full requirements, pending amendment and original task identity",
+      "status": "passed",
+      "evidence": "long-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection asks a boundary question once and uses the actual reply without a fresh-budget loophole",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection retains recent explanations as evidence for an ordinary referential follow-up",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection uses the actual new page context instead of the inherited focus",
+      "status": "passed",
+      "evidence": "api-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection rejects 9 oversized derived requirements through the public execution entry without a submitted run",
+      "status": "passed",
+      "evidence": "long-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-task-context.test.ts",
+      "name": "OPT48 task boundaries and complete request projection rejects 20 oversized derived requirements through the public execution entry without a submitted run",
+      "status": "passed",
+      "evidence": "long-exact.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 bounded discovery persists real ambiguity and never requests a model summary",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 selected two-row file cleans exactly once with default protection and real output",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 combined clean configuration errors reach one shared correction then genuine range clarification",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 a preview is not authorization for the entire file",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 validates create conditions before an existing-name reuse",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 preserves target partial commit on processing_configuration_invalid and retries original identity",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 preserves target partial commit on processing_background_changed and retries original identity",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 preserves target partial commit on processing_capacity_exceeded and retries original identity",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 reconciles processing accepted before response loss without resubmitting",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 discovery prefers confirmed object, keeps ambiguity bounded, and rechecks live visibility",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 read, real random selection and submit share the persisted seed and exact IDs",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 saved step dispatch shares the direct clean compiler and scope hash",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 reuse cannot silently ignore a new purpose",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 a viewer cannot discover drafts and cached results recheck revoked membership",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 explicit two-row authorization is not expanded when the source has three rows",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 frozen selection blocks stale revision before any submission",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 frozen selection blocks implicit expansion before any submission",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 an explicit new filename overrides a different live page source within two reads",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-processing-preflight.test.ts",
+      "name": "OPT47 unified processing public boundary OPT47 all-selection defaults are accepted without inventing a null random seed",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow read and retry agree at 5000 ms without dispatching an ineligible same-segment request",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow read and retry agree at 10000 ms without dispatching an ineligible same-segment request",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow read and retry agree at -1 ms without dispatching an ineligible same-segment request",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow ordinary continue planning creates one linked segment, saves the pending count and never generates",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow OPT45 planning-only continuation rejects an exhausted amendment before any model call: 继续规划，先不要生成",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow OPT45 planning-only continuation rejects an exhausted amendment before any model call: 继续规划\n先不要生成",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow OPT45 planning-only continuation rejects an exhausted amendment before any model call: 继续规划，暂时不要生成",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow double recovery claims create one segment and preserve consumed repair and transport limits",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow rechecks time again at claim and makes no request after the queued retry expires",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalidates recovery for stopped without touching saved results",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalidates recovery for new-revision without touching saved results",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalidates recovery for background without touching saved results",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalidates recovery for budget without touching saved results",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalidates recovery for attempts without touching saved results",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalidates recovery for missing-evidence without touching saved results",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow same-segment retry keeps the deadline and charges only the new execution interval",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow a smaller frozen active budget bounds a new segment without changing old counters",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow does not resume no-progress through a new turn",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow does not resume repair-limit through a new turn",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow continues only the remaining step after a saved draft receipt",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow continues only the remaining step after a response-lost draft receipt",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow late correction cannot save after stop invalidates the segment",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow late correction cannot save after background invalidates the segment",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow revoking write permission invalidates the queued recovery without a model request",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow invalid background revokes both read and structured execution capabilities",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow receipt pruning is not progress after a linked segment fails without work",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow ordinary continuation keeps revision and completed replay fences at -1",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow ordinary continuation keeps revision and completed replay fences at 50000",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow a real Worker completion resumes the authorized read once with cumulative budget intact",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow OPT45 recovery rejects a stale displayed revision or action before queueing",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow OPT45 preserves the actual saved plan when only its reply summary fails",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    },
+    {
+      "file": "tests/integration/assistant-recovery.test.ts",
+      "name": "OPT44 persisted recovery public flow OPT45 read exposes a validated business conflict rather than claiming a ready saved plan",
+      "status": "passed",
+      "evidence": "affected-confirmed.json"
+    }
+  ],
+  "reports": [
+    "unit-reviewed.json",
+    "unit-exact.json",
+    "api-confirmed.json",
+    "long-exact.json",
+    "affected-confirmed.json"
+  ],
+  "review": {
+    "standardsFindings": 0,
+    "specFindings": [
+      {
+        "priority": "P1",
+        "issue": "continuation budget bypass",
+        "status": "fixed; public exhausted-budget regression"
+      },
+      {
+        "priority": "P1",
+        "issue": "recent dialogue missing",
+        "status": "fixed; actual outgoing referential follow-up regression"
+      },
+      {
+        "priority": "P2",
+        "issue": "long requirements recovery and execution capacity coverage",
+        "status": "fixed; exact 1000-char 9/20 requirements in actual recovery and public execution capacity"
+      }
+    ]
+  },
+  "compatibilityExtras": {
+    "passed": 0,
+    "failed": 8,
+    "evidence": "project-compat.json",
+    "baselineEvidence": "baseline-project-compat.json",
+    "note": "Seven selected cases use an outdated model mock without plan_task.control (including cascading missing draft); the first independently reproduced on baseline. One asserts obsolete whole-session 404 rather than authorized redaction. These eight are not counted as passing or as full-suite green."
+  },
+  "safety": {
+    "realModelRequests": 0,
+    "computerUseRuns": 0,
+    "deployed": false,
+    "merged": false,
+    "pushed": false,
+    "ownerAcceptanceDatabaseWrites": false,
+    "oldBudgetReset": false,
+    "semanticResultsSha256": "c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c"
+  },
+  "staticChecks": {
+    "typecheck": "types-final-source.log: exit 0",
+    "eslint": "lint-reviewed.log and final-checks.log: exit 0",
+    "prettier": "changed code/test files formatted",
+    "gitDiffCheck": "passed",
+    "docsCheck": "npm run docs:check: exit 0"
+  }
+}

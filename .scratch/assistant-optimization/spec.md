@@ -1,3 +1,5 @@
+2026-10-23 当前状态：[OPT-48](issues/48-conversation-task-boundaries-and-context.md)开发及定向验证完成，代码83e7d3d，160项不同定向用例通过；稳定任务身份、原子切换/恢复、历史权限与最终出站整包投影已接入，Implementation completed / Validation targeted-pass / Owner pending。用例、双轴审阅及限制见[本轮证据](opt48-verification-20261023.md)。OPT-49/50仍not-started，依赖不变。未更新4217、调用真实模型/CU、合并或推送；原验收数据与旧预算保留。以下带日期记录为历史快照。
+
 2026-10-23 当前状态：[OPT-47](issues/47-source-discovery-and-processing-preflight.md)开发及定向验证完成，代码 ca2e4b1；247项不同用例通过，Implementation completed / Validation targeted-pass / Owner pending，见[本轮证据](opt47-verification-20261023.md)。OPT-48～50仍not-started，依赖不变。未部署4217、调用真实模型/CU或合并推送，历史验收数据与旧预算保留。以下带日期记录为历史快照。
 
 2026-10-23 上次阶段记录：更新后的[OPT-46](issues/46-compact-plan-amendment-and-recovery.md)开发及定向验证完成，Implementation completed / Validation targeted-pass，Owner pending；177项不同用例通过，详见[本轮证据](opt46-completion-verification-20261023.md)。47～50保持not-started/not-run，依赖不变。本轮未更新4217、未调用真实模型/CU、未合并推送，最近部署仍2c74b8e；历史CU-7失败、验收数据及旧预算保留。下列带日期条目为历史快照。
@@ -169,7 +171,7 @@ Implementation: in-progress
 | [OPT-45](issues/45-state-feedback-and-five-flow-acceptance.md) | 事实反馈、恢复交互与五项流程验收（阶段 C） | OPT-44（传递依赖43） | completed | 定向通过；CU-4/5后续通过，前三项旧证据保持，Owner pending |
 | [OPT-46](issues/46-compact-plan-amendment-and-recovery.md) | 可信目标、统一准备、逐次纠错与当前反馈 | 现有实现；无未开发票依赖 | completed | targeted-pass、Owner pending；177项定向通过，[本轮记录](opt46-completion-verification-20261023.md)。CU-7历史未通过；本轮未部署或运行CU |
 | [OPT-47](issues/47-source-discovery-and-processing-preflight.md) | 资料发现、处理准备及部分提交对账 | OPT-46共享准备/纠错合同 | completed | targeted-pass、Owner pending；247项定向通过，[本轮记录](opt47-verification-20261023.md)。未部署/CU，旧数据和预算保留 |
-| [OPT-48](issues/48-conversation-task-boundaries-and-context.md) | 长会话任务边界与有界上下文 | OPT-46 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
+| [OPT-48](issues/48-conversation-task-boundaries-and-context.md) | 长会话任务边界与有界上下文 | OPT-46 | completed | [实施与定向证据](opt48-verification-20261023.md)；Validation targeted-pass；Owner pending；未更新4217/真实模型/CU |
 | [OPT-49](issues/49-budget-grants-and-task-continuation.md) | 复杂任务预算分层与可续接执行 | OPT-47、OPT-48 | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
 | [OPT-50](issues/50-continuation-ui-and-bounded-acceptance.md) | 续接交互与第7、10项集中验收 | OPT-49（传递依赖46～48） | not-started | 仅开票；Validation not-run；旧数据/预算保留 |
 
