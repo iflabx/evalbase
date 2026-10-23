@@ -1027,6 +1027,55 @@ export async function executeAssistantTurn(
         });
     let issues = [...(result.ok ? [] : result.issues), ...schemaIssues];
     if (
+      name === "request_processing_apply" &&
+      !partial &&
+      typeof input.runId === "string"
+    ) {
+      const collection = await taskCandidateCollection(
+        db,
+        artifacts,
+        scope,
+        current!,
+      );
+      const run = collection.runs.find((item) => item.run.id === input.runId);
+      if (!run)
+        issues.push({
+          tool: name,
+          operation: name,
+          path: "/runId",
+          keyword: "reference",
+          code: "assistant_candidate_selection_changed",
+          message:
+            "采用对象须为当前任务的有效处理批次；请读取当前处理结果，不要使用文件引用或其他任务批次。",
+        });
+      else if (Array.isArray(input.resultIds)) {
+        const seen = new Set<string>();
+        input.resultIds.forEach((id: string, index: number) => {
+          const missing = !run.allIds.includes(id),
+            duplicate = seen.has(id);
+          seen.add(id);
+          if (!missing && !duplicate) return;
+          issues.push({
+            tool: name,
+            operation: name,
+            path: "/resultIds/" + index,
+            keyword: missing ? "reference" : "duplicate",
+            code: "processing_result_invalid",
+            message:
+              (missing
+                ? "该resultId不是本批处理结果行标识，不能使用文件引用或原始记录ID。"
+                : "该resultId重复，只能去掉重复项，不能替换成其他结果。") +
+              "当前批次可用标识" +
+              JSON.stringify(run.allIds.slice(0, 20)) +
+              (run.allIds.length > 20
+                ? "（仅列前20条，其他通过read_processing读取）"
+                : "") +
+              "；保留其他有效行、runId、保存目标和数量范围，不改成allTask/allSelected/allValid。",
+          });
+        });
+      }
+    }
+    if (
       name === "submit_processing" &&
       !partial &&
       input.source &&
@@ -3255,28 +3304,40 @@ export async function executeAssistantTurn(
                               ? "修正计划参数：新文档方案填写executionMode和deliveries；每个新增集合提供name、count、instructions、scenarios、classifications，省略id，修改已有集合才使用真实id。旧steps方案沿用其原合同。question仅在nextAction为none、确实需要澄清时填写；countKind为new时省略targetDraftId。用户已给出分类配额时，在classifications保存真实字段和配额，修正计划后再提交处理。不要以查询旧结果代替处理。"
                               : error.code === "assistant_context_unavailable"
                                 ? "对象类型或引用不匹配，或该对象已不可用。原始文件用kind:assets及assetIds，草稿用draft，正式版本才用version；重新读取当前对象快照或query_project查询真实引用。不是计划服务不可用。"
-                                : error.code ===
-                                    "assistant_candidate_selection_invalid"
-                                  ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求当前全部候选时用allResults:true，不能用空where条件；已保存草稿应先read_records读取目标真实recordIds，再submit_processing rewrite，不能从历史运行扩大范围。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
-                                  : error.code === "processing_scope_invalid"
-                                    ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
-                                    : [
-                                          "test_set_capacity_exceeded",
-                                          "processing_capacity_exceeded",
+                                : name === "request_processing_apply" &&
+                                    error.code ===
+                                      "assistant_candidate_selection_invalid"
+                                  ? "allSelected只表示浏览器固定勾选，当前无勾选则删除该参数；按用户原范围使用read_processing返回的resultIds，不能改用原始recordIds或任意扩大为全部结果。"
+                                  : error.code ===
+                                      "assistant_candidate_selection_invalid"
+                                    ? "allSelected只代表浏览器已勾选候选，未勾选时不能使用。用户明确要求当前全部候选时用allResults:true，不能用空where条件；已保存草稿应先read_records读取目标真实recordIds，再submit_processing rewrite，不能从历史运行扩大范围。参数失败没有提交任何新任务，必须实际修复并取得新回执，不能仅查询旧结果后声称已提交。"
+                                    : name === "request_processing_apply" &&
+                                        [
+                                          "processing_scope_invalid",
+                                          "processing_result_invalid",
+                                          "assistant_candidate_selection_invalid",
                                         ].includes(error.code)
-                                      ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
+                                      ? "这是采用处理结果的范围问题。单批部分结果使用read_processing返回的resultIds；已有固定勾选才用allSelected。allTask、allValid和resultIds不可混用；修正本次报错字段，保留runId和保存目标，不得把坏引用替换成全部候选。"
                                       : error.code ===
-                                          "assistant_background_not_read"
-                                        ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
-                                        : error.code ===
-                                            "processing_configuration_invalid"
-                                          ? name === "generate_candidates"
-                                            ? "文档生成使用outputCount指定新增数量；核对完整instructions、字段与场景容量，不要删除合法数量。"
-                                            : "outputCount只用于扩写；清洗和改写数量由固定输入确定。核对具体字段问题与范围。"
+                                          "processing_scope_invalid"
+                                        ? "上次请求没有确定实际输入记录，尚未提交任务。用selection（method、conditions及count/value）固定筛选范围，或用已读取的真实recordIds；扩写outputCount是输出数量，不是输入范围。同来源可复用会话固定范围；只有用户明确整个范围才用allRecords:true。不同来源不能借用旧范围，不能猜造记录ID；修正参数后实际重新提交。"
+                                        : [
+                                              "test_set_capacity_exceeded",
+                                              "processing_capacity_exceeded",
+                                            ].includes(error.code)
+                                          ? "本次未提交，单次来源最多5个文件、10000条候选记录、100MB；选取200条不代表可以一次遍历超过10000条的合并来源。先query_project核对各文件数量。用户明确委托方案时，可在其指定来源内选较小参考范围，或分开处理后汇总；不得扩大来源、重复原超限请求或把未执行写成成功。"
                                           : error.code ===
-                                              "assistant_plan_count_conflict"
-                                            ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}规则未保存。先核对本轮用户是否明确更改各类数量：若已明确，新配额和对应targetCount/整体数量须同步保存，旧总数不是新要求；用户未改数量时保留原目标并修正模型自拟配额。用plan_task纠正冲突字段，省略保持原规则；只有用户本轮要求自身矛盾才澄清。${name === "plan_task" && input.steps?.filter((step: any) => step.action === "generate_candidates").length > 1 ? "当前方案包含多个独立测试集：顶层targetCount和classifications只对应第一待生成测试集，整体数量用overallTargetCount，各类配额放入各自generate_candidates步骤的input.classifications。多份各N条不是业务配额冲突，也不是服务只支持一份；删除顶层混入的其他交付类别，保留全部步骤及用户要求，自行重新保存完整方案，不让用户重复确认。" : ""}`
-                                            : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
+                                              "assistant_background_not_read"
+                                            ? "先用read_background读取本会话相关文档片段，并用plan_task保存已理解要求，再提交处理。不要让用户复制全文。"
+                                            : error.code ===
+                                                "processing_configuration_invalid"
+                                              ? name === "generate_candidates"
+                                                ? "文档生成使用outputCount指定新增数量；核对完整instructions、字段与场景容量，不要删除合法数量。"
+                                                : "outputCount只用于扩写；清洗和改写数量由固定输入确定。核对具体字段问题与范围。"
+                                              : error.code ===
+                                                  "assistant_plan_count_conflict"
+                                                ? `${e instanceof Error && "hint" in e && e.hint ? String(e.hint) + "。" : ""}规则未保存。先核对本轮用户是否明确更改各类数量：若已明确，新配额和对应targetCount/整体数量须同步保存，旧总数不是新要求；用户未改数量时保留原目标并修正模型自拟配额。用plan_task纠正冲突字段，省略保持原规则；只有用户本轮要求自身矛盾才澄清。${name === "plan_task" && input.steps?.filter((step: any) => step.action === "generate_candidates").length > 1 ? "当前方案包含多个独立测试集：顶层targetCount和classifications只对应第一待生成测试集，整体数量用overallTargetCount，各类配额放入各自generate_candidates步骤的input.classifications。多份各N条不是业务配额冲突，也不是服务只支持一份；删除顶层混入的其他交付类别，保留全部步骤及用户要求，自行重新保存完整方案，不让用户重复确认。" : ""}`
+                                                : "核对已完成的业务回执并重新查询真实对象。查询失败不代表内容丢失，不要新建空草稿恢复。",
               },
             };
             await updateTurn(

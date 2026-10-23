@@ -749,3 +749,122 @@ it.each([
     ).toBe("改回全部2条");
   },
 );
+
+describe("OPT50 apply repair preserves adoption scope", () => {
+  const base = {
+    runId: "run",
+    resultIds: ["bad"],
+    target: { kind: "newDraft", name: "原草稿" },
+  };
+  const problems: any[] = [
+    {
+      path: "/resultIds/0",
+      code: "processing_result_invalid",
+      keyword: "reference",
+    },
+  ];
+  it("repairs only invalid candidate identities", () => {
+    expect(
+      processingRepairIssues(
+        "request_processing_apply",
+        base,
+        { ...base, resultIds: ["0:0"] },
+        problems,
+      ),
+    ).toEqual([]);
+  });
+  it.each([
+    { runId: "other", resultIds: ["0:0"] },
+    { resultIds: ["0:0", "0:1"] },
+    { resultIds: undefined, allValid: true },
+    { resultIds: undefined, allTask: true },
+    { resultIds: undefined, allSelected: true },
+    { resultIds: ["0:0"], target: { kind: "newDraft", name: "另一个" } },
+  ])(
+    "does not use invalid IDs to authorize another scope or target: %j",
+    (change) => {
+      expect(
+        processingRepairIssues(
+          "request_processing_apply",
+          base,
+          { ...base, ...change },
+          problems,
+        ).length,
+      ).toBeGreaterThan(0);
+    },
+  );
+  it("removes a conflicting task flag while preserving valid single-batch IDs", () => {
+    const fixed = { ...base, resultIds: ["0:0"] };
+    expect(
+      processingRepairIssues(
+        "request_processing_apply",
+        { ...fixed, allTask: true },
+        fixed,
+        [
+          {
+            path: "/allTask",
+            code: "processing_scope_invalid",
+            keyword: "business",
+          } as any,
+        ],
+      ),
+    ).toEqual([]);
+  });
+  it("a missing browser selection cannot silently become all candidates", () => {
+    const fixed = { runId: "run", allSelected: true, target: base.target };
+    expect(prepare("request_processing_apply", fixed).ok).toBe(false);
+  });
+});
+
+it("OPT50 valid candidate references survive repair of another ID", () => {
+  const base = { runId: "run", resultIds: ["0:0", "bad"] };
+  const issues: any[] = [
+    {
+      path: "/resultIds/1",
+      keyword: "reference",
+      code: "processing_result_invalid",
+    },
+  ];
+  expect(
+    processingRepairIssues(
+      "request_processing_apply",
+      base,
+      { ...base, resultIds: ["0:1", "0:2"] },
+      issues,
+    ).length,
+  ).toBeGreaterThan(0);
+  expect(
+    processingRepairIssues(
+      "request_processing_apply",
+      base,
+      { ...base, resultIds: ["0:0", "0:1"] },
+      issues,
+    ),
+  ).toEqual([]);
+});
+it("OPT50 repeated candidate references may deduplicate but never add another result", () => {
+  const base = { runId: "run", resultIds: ["0:0", "0:0"] };
+  const issues: any[] = [
+    {
+      path: "/resultIds/1",
+      keyword: "duplicate",
+      code: "processing_result_invalid",
+    },
+  ];
+  expect(
+    processingRepairIssues(
+      "request_processing_apply",
+      base,
+      { ...base, resultIds: ["0:0", "0:1"] },
+      issues,
+    ).length,
+  ).toBeGreaterThan(0);
+  expect(
+    processingRepairIssues(
+      "request_processing_apply",
+      base,
+      { ...base, resultIds: ["0:0"] },
+      issues,
+    ),
+  ).toEqual([]);
+});

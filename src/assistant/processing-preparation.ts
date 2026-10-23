@@ -669,6 +669,38 @@ export function processingRepairIssues(
         message: "参数纠正须保留未报错的来源、固定范围、字段保护和用户数量。",
       });
   };
+  if (name === "request_processing_apply") {
+    if (base.runId) keep("runId", base.runId, next.runId);
+    if (base.allTask !== undefined) keep("allTask", base.allTask, next.allTask);
+    if (Array.isArray(base.resultIds) && broken("resultIds")) {
+      const invalid = new Set(
+        problems.flatMap((p) => {
+          const match = p.path.match(/^\/resultIds\/(\d+)$/);
+          return match && p.keyword === "reference" ? [Number(match[1])] : [];
+        }),
+      );
+      const retained = new Set(
+        base.resultIds.filter((_: any, i: number) => !invalid.has(i)),
+      );
+      if (
+        !Array.isArray(next.resultIds) ||
+        next.resultIds.length > retained.size + invalid.size ||
+        [...retained].some((id) => !next.resultIds.includes(id)) ||
+        (next.allTask === true && base.allTask !== true) ||
+        next.allValid === true ||
+        next.allSelected === true
+      )
+        issues.push({
+          tool: name,
+          operation: name,
+          path: "/resultIds",
+          keyword: "authorization",
+          code: "assistant_requirement_conflict",
+          message:
+            "错误结果标识只能在原批次内修正，不得扩大数量或改为全部任务、全部候选或未固定勾选。",
+        });
+    }
+  }
   if (base.source && ["assets", "draft", "version"].includes(base.source.kind))
     keep("source", planSource(base.source), planSource(next.source));
   for (const f of ["recordIds", "resultIds", "allowedFields"])

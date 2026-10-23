@@ -573,7 +573,9 @@ describe("OPT47 unified processing public boundary", () => {
             { name: "submit_processing", input: { operation: "clean" } },
           ]);
           expect(await effects()).toEqual(before);
-          expect(successes(continued, "submit_processing").at(-1)?.result).toMatchObject({
+          expect(
+            successes(continued, "submit_processing").at(-1)?.result,
+          ).toMatchObject({
             unchanged: true,
             requiresClarification: true,
             clarification: { kind: "scope" },
@@ -826,6 +828,127 @@ describe("OPT47 unified processing public boundary", () => {
     expect(observed).toHaveLength(2);
     expect(await effects()).toEqual(before);
   });
+  it.each(["file references", "mixed task range", "unknown run"])(
+    "OPT50 invalid apply result %s repairs into a confirmed independent draft",
+    async (scenario) => {
+      const assetId = await file("采用引用复测" + scenario + ".jsonl");
+      const id = await newSession();
+      const initial = await send(
+        id,
+        "清洗全部2条，其他不改",
+        [
+          decision("execute"),
+          {
+            name: "submit_processing",
+            input: { operation: "clean", allRecords: true },
+          },
+        ],
+        { context: { kind: "asset", id: assetId } },
+      );
+      const runId = successes(initial, "submit_processing").at(-1).result.runId;
+      await dbQuery(
+        "UPDATE assistant_session SET task=task||'{\"executionPaused\":true}'::jsonb WHERE id=$1",
+        [id],
+      );
+      const output = await finishClean(runId);
+      await dbQuery("UPDATE assistant_session SET task=task||$2 WHERE id=$1", [
+        id,
+        {
+          stage: "awaiting_review",
+          executionPaused: false,
+          checkedStatus: "succeeded",
+        },
+      ]);
+      const before = await effects();
+      const target = {
+        kind: "newDraft",
+        name: "客服清洗复测",
+        purpose: "保留清洗结果",
+      };
+      const state = await send(id, "保存为新的测试集草稿，叫客服清洗复测", [
+        decision("execute"),
+        {
+          name: "request_processing_apply",
+          input: {
+            runId:
+              scenario === "unknown run"
+                ? "processing_" + "f".repeat(32)
+                : runId,
+            target,
+            ...(scenario === "mixed task range" ? { allTask: true } : {}),
+            resultIds: ["f:280e7d0239e11abb", "f:70c9c0590844c22b"],
+          },
+        },
+        ...(scenario === "unknown run"
+          ? [
+              {
+                name: "request_processing_apply",
+                input: {
+                  runId,
+                  target,
+                  resultIds: ["f:280e7d0239e11abb", "f:70c9c0590844c22b"],
+                },
+              },
+            ]
+          : []),
+        {
+          name: "request_processing_apply",
+          input: {
+            runId,
+            target,
+            resultIds: output.records.map((r: any) => r.id),
+          },
+        },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      const failed = state.turns
+        .at(-1)
+        .tools.find((t: any) => t.status === "failed");
+      expect(failed.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: scenario === "unknown run" ? "/runId" : "/resultIds/0",
+          }),
+        ]),
+      );
+      if (scenario !== "unknown run")
+        expect(JSON.stringify(observed.at(-1))).toContain("0:0");
+      expect(successes(state, "request_processing_apply")).toHaveLength(1);
+      expect(await effects()).toEqual(before);
+      const proposal = (
+        await dbQuery(
+          "SELECT * FROM assistant_proposal WHERE session_id=$1 AND status='pending'",
+          [id],
+        )
+      ).rows[0];
+      expect(proposal).toBeDefined();
+      expect(proposal.parameters.resultIds).toEqual(
+        output.records.map((r: any) => r.id),
+      );
+      await dbQuery(
+        "UPDATE assistant_session SET task=task||'{\"executionPaused\":true}'::jsonb WHERE id=$1",
+        [id],
+      );
+      const confirmed = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      expect(await effects()).toEqual({ ...before, drafts: before.drafts + 1 });
+      const saved = (
+        await dbQuery("SELECT name FROM collaborative_draft WHERE id=$1", [
+          confirmed.json().receipt.receipt.draftId,
+        ])
+      ).rows[0];
+      expect(saved.name).toBe(target.name);
+    },
+  );
+
   it("OPT47 selected two-row file cleans exactly once with default protection and real output", async () => {
     const assetId = await file("opt47-clean.jsonl");
     const id = await newSession();
