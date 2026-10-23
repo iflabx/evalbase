@@ -1,3 +1,4 @@
+import { normalizePlanContent } from "./plan-content.js";
 import { requestedSceneCount } from "./requirements.js";
 import {
   deliveryGoals,
@@ -310,7 +311,7 @@ export function preparePlanProposal(
     if (issues.length) return { ok: false, issues };
     if (input.deliveries)
       input.deliveries = input.deliveries.map((d: any) => facts.resolve(d));
-    const goals = reviseDeliveryGoals(
+    let goals = reviseDeliveryGoals(
       currentGoals,
       input.deliveries,
       facts.request,
@@ -323,6 +324,13 @@ export function preparePlanProposal(
       facts.request,
       facts.canUpdate,
     );
+    const content = normalizePlanContent(
+      goals,
+      merged.requirements,
+      currentGoals,
+    );
+    goals = content.goals;
+    merged.requirements = content.requirements;
     for (const goal of goals)
       facts.validate({
         ...facts.task,

@@ -69,6 +69,7 @@ export function preparePlanAmendment(
   if (/数量|条数|\d+\s*条/u.test(text)) {
     requested.add("count");
     requested.add("classifications");
+    requested.add("instructions");
   }
   if (/类别|分类|标签|Metadata|元数据/iu.test(text))
     requested.add("classifications");
@@ -91,7 +92,7 @@ export function preparePlanAmendment(
         !["control", "deliveries"].includes(name) &&
         (!requested.size ||
           ["executionMode", "question", "nextAction"].includes(name) ||
-          (/要求|约束|字段/iu.test(text) &&
+          ((/要求|约束|字段/iu.test(text) || requested.has("count")) &&
             [
               "requirements",
               "removeRequirements",

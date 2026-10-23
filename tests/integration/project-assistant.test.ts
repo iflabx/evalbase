@@ -24233,6 +24233,7 @@ describe("project assistant public contract", () => {
   async function opt43Plan(
     deliveries?: Record<string, any>[],
     message = "物流和地址各2条，先存方案，不执行",
+    requirements = ["问题自然完整", "保留最近30天时间条件"],
   ) {
     await opt21Session();
     const upload = await app.inject({
@@ -24269,7 +24270,7 @@ describe("project assistant public contract", () => {
         input: {
           executionMode: "plan",
           deliveries,
-          requirements: ["问题自然完整", "保留最近30天时间条件"],
+          requirements,
           allowedFields: ["question"],
           metadataKeys: ["intent"],
         },
@@ -24281,6 +24282,104 @@ describe("project assistant public contract", () => {
     );
     return state;
   }
+  it("quantity content compiles 2+2 to 3+2 through correction and refresh without generation", async () => {
+    const previous = sessionId;
+    try {
+      const categories = ["退款进度", "退款到账时间"];
+      const rule = {
+        field: "metadata",
+        key: "intent",
+        basis: "user",
+        allowedValues: categories,
+        quotas: categories.map((value) => ({ value, count: 2 })),
+      };
+      let state = await opt43Plan(
+        [
+          {
+            name: "退款测试",
+            count: 4,
+            instructions:
+              "生成4条完整自然的问题，其中2条为退款进度：只询问处理环节；2条为退款到账时间：只询问到账时间，通常1至3个工作日。",
+            scenarios: ["用户首次咨询", "用户补充订单", "用户询问异常"],
+            classifications: [rule],
+          },
+        ],
+        "做一份退款测试集，退款进度和退款到账时间各2条，先保存方案，不要生成。",
+        [
+          "生成4条完整自然的问题。",
+          "退款进度2条：只询问处理环节。",
+          "退款到账时间2条：只询问到账时间，通常1至3个工作日。",
+          "保留最近30天条件。",
+        ],
+      );
+      const id = state.task.executionPlan.steps[0].deliveryId;
+      const patch = {
+        deliveries: [
+          {
+            id,
+            count: 5,
+            classifications: [
+              {
+                ...rule,
+                quotas: [
+                  { value: categories[0], count: 3 },
+                  { value: categories[1], count: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      parameterRepairReply = () => patch;
+      toolSequence = [
+        opt43Control(),
+        {
+          name: "plan_task",
+          input: {
+            ...patch,
+            deliveries: [
+              {
+                ...patch.deliveries[0],
+                instructions: "生成77条完整自然的问题",
+              },
+            ],
+          },
+        },
+      ];
+      state = await opt21End(
+        await opt21Submit("退款进度先改3条，另一类不变，还是只保存方案。"),
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.overallTargetCount).toBe(5);
+      const step = state.task.executionPlan.steps[0];
+      expect(
+        step.input.classifications[0].quotas.map((q: any) => q.count),
+      ).toEqual([3, 2]);
+      const text = state.task.requirements.join("\n") + step.input.instructions;
+      expect(text).not.toMatch(/生成4条|退款进度2条|2条为退款进度|77条/);
+      expect(text).toContain("1至3个工作日");
+      expect(text).toContain("最近30天");
+      expect((await read()).json().task.executionPlan).toEqual(
+        state.task.executionPlan,
+      );
+      expect(
+        state.turns.at(-1).tools.some((x: any) => x.status === "failed"),
+      ).toBe(true);
+      expect(
+        state.turns
+          .at(-1)
+          .tools.filter((x: any) => x.name === "generate_candidates"),
+      ).toHaveLength(0);
+    } finally {
+      sessionId = previous;
+      toolSequence = [];
+      requestedTool = undefined;
+      parameterRepairReply = undefined;
+    }
+  });
   it("OPT43 corrects one invalid patch and saves 2+2 to 3+2 to 2+1 without generating", async () => {
     const previous = sessionId,
       db = createPool(databaseUrl);
@@ -24359,7 +24458,14 @@ describe("project assistant public contract", () => {
         );
       expect(corrections).toHaveLength(1);
       const prompt = JSON.parse(corrections[0].messages.at(-1).content);
-      expect(prompt.original.deliveries).toHaveLength(1);
+      expect(prompt.original.deliveries.map((d: any) => d.count)).toEqual([
+        2, 1,
+      ]);
+      expect(
+        prompt.original.deliveries.every(
+          (d: any) => typeof d.id === "string" && d.id.length > 0,
+        ),
+      ).toBe(true);
       expect(prompt.repairClass).toBe("context");
       const raw = (
         await db.query("SELECT task FROM assistant_session WHERE id=$1", [

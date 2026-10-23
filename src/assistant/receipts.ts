@@ -20,6 +20,7 @@ const validationWithoutEffect = new Set([
   "assistant_requirement_conflict",
   "assistant_candidate_selection_invalid",
   "assistant_plan_count_conflict",
+  "assistant_plan_content_conflict",
   "model_connection_unavailable",
 ]);
 export const processingProposalValidationWithoutEffect = new Set([

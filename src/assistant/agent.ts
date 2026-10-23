@@ -27,6 +27,7 @@ import {
   preparePlanProposal,
   type PreparationIssue,
 } from "./plan-preparation.js";
+import { assertPlanContent } from "./plan-content.js";
 import { satisfiedPlanRequest, preparePlanAmendment } from "./plan-request.js";
 import {
   assistantFeedback,
@@ -539,6 +540,7 @@ export async function executeAssistantTurn(
         "assistant_candidate_selection_invalid",
         "assistant_tool_input_invalid",
         "assistant_requirement_conflict",
+        "assistant_plan_content_conflict",
         "assistant_plan_count_conflict",
         "assistant_background_reference_invalid",
         "assistant_reference_invalid",
@@ -1476,6 +1478,7 @@ export async function executeAssistantTurn(
       "assistant_background_reference_invalid",
       "assistant_background_rule_mismatch",
       "assistant_tool_input_invalid",
+      "assistant_plan_content_conflict",
       "assistant_plan_count_conflict",
     ].includes(failure?.code ?? "");
     const relocateOutput =
@@ -3605,6 +3608,10 @@ export async function executeAssistantTurn(
               )
             : undefined;
         if (checkedFacts && !current.question && !current.requirementProblem) {
+          assertPlanContent(
+            deliveryGoals(current.executionPlan),
+            current.requirements ?? [],
+          );
           const client = await db.connect();
           try {
             await client.query("BEGIN");
@@ -5482,6 +5489,11 @@ export async function executeAssistantTurn(
             [turn.session_id],
           )
         ).rows;
+        if (current.executionPlan?.contractVersion === 1)
+          assertPlanContent(
+            deliveryGoals(current.executionPlan),
+            current.requirements ?? [],
+          );
         const deliveryStep =
           current.executionPlan?.steps[current.executionPlan.current];
         const fixedDelivery =
@@ -8195,7 +8207,7 @@ export async function executeAssistantTurn(
             (hint) => schemaHints.set("plan_task", hint),
           );
         }
-        if (planRepairFocus?.details.scope === "delivery") {
+        if (planRepairFocus) {
           const focus = planRepairFocus;
           const currentGoals = deliveryGoals(currentTask.executionPlan);
           tools.plan_task.inputSchema = schema(
