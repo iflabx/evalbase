@@ -515,7 +515,6 @@ export async function assistantContext(
     history: history.rows.slice(0, 6).reverse(),
     drafts: drafts.rows,
     focusDraft,
-    sessionDrafts: new Set(previousCreated),
     dependencies: [
       ...assets.rows.map((a) => ({ kind: "asset" as const, id: a.id })),
       ...versions.rows.map((v) => ({ kind: "version" as const, id: v.id })),

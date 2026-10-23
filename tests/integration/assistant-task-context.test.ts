@@ -1123,4 +1123,52 @@ describe("OPT48 task boundaries and complete request projection", () => {
       expect(await effects()).toEqual(before);
     },
   );
+  it.each(["current", "legacy"])(
+    "reuses older committed drafts independently of model history and isolates same names across tasks (%s)",
+    async (format) => {
+      const id = await newSession(),
+        name = "相同显示名称";
+      const created = await send(id, "创建退款业务的测试集", [
+        decision("execute"),
+        { name: "create_draft", input: { name, purpose: "退款业务" } },
+      ]);
+      const first = successes(created, "create_draft")[0].result.draftId,
+        taskId = created.task.taskId;
+      if (format === "legacy") {
+        await dbQuery(
+          "UPDATE assistant_session SET task=task-'taskId'-'taskContractVersion' WHERE id=$1",
+          [id],
+        );
+        await dbQuery(
+          "UPDATE assistant_turn SET task_id=NULL WHERE session_id=$1",
+          [id],
+        );
+      }
+      for (let n = 0; n < 6; n++)
+        await send(id, "查询当前状态", [decision("query")]);
+      const before = await effects();
+      const reused = await send(id, "继续使用已建立的草稿", [
+        decision("execute"),
+        { name: "create_draft", input: { name, purpose: "退款业务" } },
+      ]);
+      expect(successes(reused, "create_draft")[0].result).toMatchObject({
+        draftId: first,
+        reused: true,
+      });
+      expect(await effects()).toEqual(before);
+      const independent = await send(
+        id,
+        "另开一个任务，创建退货业务的独立测试集",
+        [
+          decision("execute"),
+          { name: "create_draft", input: { name, purpose: "退货业务" } },
+        ],
+      );
+      expect(independent.task.taskId).not.toBe(taskId);
+      expect(successes(independent, "create_draft")[0].result.draftId).not.toBe(
+        first,
+      );
+      expect((await effects()).drafts).toBe(before.drafts + 1);
+    },
+  );
 });

@@ -5027,7 +5027,7 @@ export async function executeAssistantTurn(
     ),
     create_draft: businessTool(
       "create_draft",
-      "按明确要求建立草稿；本会话已有同名草稿默认复用。用户明确要求另建同名草稿才设createAnother:true。派生版本同时提供testSetId和parentVersionId，不提供name/purpose。",
+      "按明确要求建立草稿；当前任务已有同名草稿默认复用。用户明确要求另建同名草稿才设createAnother:true。派生版本同时提供testSetId和parentVersionId，不提供name/purpose。",
       {
         name: { type: "string", maxLength: 200 },
         purpose: shortText,
@@ -5040,14 +5040,16 @@ export async function executeAssistantTurn(
         await assistantAccess(db, scope, true);
         if (input.parentVersionId)
           await depend([{ kind: "version", id: input.parentVersionId }]);
+        // Reuse is a durable business fact, independent of the six-turn model history.
         const existingRows =
           !input.parentVersionId && input.createAnother !== true
             ? (
                 await db.query(
-                  "SELECT d.id,d.name,d.purpose,d.revision,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS record_count FROM collaborative_draft d WHERE d.project_id=$1 AND d.status='editing' AND d.id=ANY($2::text[]) AND d.name=$3 ORDER BY (d.id=$4) DESC,d.updated_at DESC,d.id LIMIT 2",
+                  "SELECT d.id,d.name,d.purpose,d.revision,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS record_count FROM collaborative_draft d WHERE d.project_id=$1 AND d.status='editing' AND d.name=$4 AND d.id IN (SELECT receipt->'result'->>'draftId' FROM assistant_turn t CROSS JOIN LATERAL jsonb_array_elements(t.tool_results) receipt WHERE t.session_id=$2 AND coalesce(t.task_id,'legacy:'||t.session_id)=$3 AND receipt->>'status'='succeeded' AND receipt->>'name' IN ('create_draft','generate_candidates')) ORDER BY (d.id=$5) DESC,d.updated_at DESC,d.id LIMIT 2",
                   [
                     scope.projectId,
-                    [...context.sessionDrafts],
+                    turn.session_id,
+                    turn.task_id ?? "legacy:" + turn.session_id,
                     input.name,
                     context.focusDraft ?? "",
                   ],
@@ -5060,7 +5062,7 @@ export async function executeAssistantTurn(
         )
           throw new RequirementError(
             "assistant_tool_input_invalid",
-            "本会话有多个同名草稿，请先选择要使用的草稿。",
+            "当前任务有多个同名草稿，请先选择要使用的草稿。",
             true,
           );
         const existing = existingRows[0];
@@ -5101,7 +5103,6 @@ export async function executeAssistantTurn(
         const result = await command("create", parameters, key);
         await depend([{ kind: "draft", id: result.draft.id }]);
         context.drafts.push({ ...result.draft, record_count: 0 });
-        context.sessionDrafts.add(result.draft.id);
         await updateTask(db, turn, { createdDraftId: result.draft.id });
         return {
           draftId: result.draft.id,
@@ -5333,7 +5334,6 @@ export async function executeAssistantTurn(
         );
         const draftId = draft.draft.id;
         await depend([{ kind: "draft", id: draftId }]);
-        context.sessionDrafts.add(draftId);
         const result = await createProcessingRun(
           db,
           artifacts,

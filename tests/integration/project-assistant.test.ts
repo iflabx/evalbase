@@ -288,6 +288,88 @@ describe("project assistant public contract", () => {
       );
       return;
     }
+    // Honor the actual protocol before consuming any scripted business call.
+    const requiredControl =
+      body.tool_choice?.function?.name === "plan_task" &&
+      body.tools
+        ?.find((entry: any) => entry.function.name === "plan_task")
+        ?.function.parameters.required?.includes("control");
+    if (requiredControl) {
+      const scriptedControl =
+        toolSequence[0]?.name === "plan_task" &&
+        Object.hasOwn(toolSequence[0].input, "control")
+          ? toolSequence.shift()
+          : undefined;
+      const prompt = String(
+        body.messages.findLast((entry: any) => entry.role === "user")
+          ?.content ?? "",
+      );
+      if (!toolSequence.length && !requestedTool && !scriptedControl) {
+        const action = prompt.includes("读取版本")
+          ? "read_records"
+          : prompt.includes("发布")
+            ? "request_publish"
+            : prompt.includes("查询")
+              ? "query_project"
+              : "create_draft";
+        requestedTool = {
+          name: action,
+          input:
+            action === "read_records"
+              ? { source: { kind: "version", id: publishedVersionId } }
+              : action === "request_publish"
+                ? { draftId }
+                : action === "query_project"
+                  ? { kind: "project" }
+                  : { name: "助手创建的测试集", purpose: "合成测试" },
+        };
+      }
+      const next = toolSequence[0] ?? requestedTool;
+      const mode =
+        next?.name === "plan_task" && next.input.executionMode === "plan"
+          ? "plan"
+          : [
+                "query_project",
+                "read_records",
+                "read_background",
+                "read_processing",
+              ].includes(next?.name ?? "") || /查询|读取/u.test(prompt)
+            ? "query"
+            : "execute";
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "fixture-control",
+          object: "chat.completion",
+          created: 1,
+          model: "synthetic",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "control_" + calls.length,
+                    type: "function",
+                    function: {
+                      name: "plan_task",
+                      arguments: JSON.stringify(
+                        scriptedControl?.input ?? { control: { mode } },
+                      ),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
+        }),
+      );
+      return;
+    }
     if (
       textualToolCallAfterScopeError &&
       body.messages.at(-1)?.role === "tool" &&
@@ -331,6 +413,8 @@ describe("project assistant public contract", () => {
       ) ||
       String(body.messages.at(-1)?.content ?? "").startsWith("[confirmed]");
     const inspectRun = body.tool_choice?.function?.name === "read_processing";
+    const forcedDiscovery =
+      body.tool_choice?.function?.name === "query_project";
     const checkpointRequested =
       backgroundCheckpoint && body.tool_choice?.function?.name === "plan_task";
     const scriptedTool = checkpointRequested
@@ -342,7 +426,9 @@ describe("project assistant public contract", () => {
         }
       : body.tool_choice === "none" || !body.tools?.length
         ? undefined
-        : toolSequence.shift();
+        : forcedDiscovery
+          ? undefined
+          : toolSequence.shift();
     if (checkpointRequested) {
       if (!Array.isArray(backgroundCheckpoint) || !backgroundCheckpoint.length)
         backgroundCheckpoint = undefined;
@@ -350,6 +436,8 @@ describe("project assistant public contract", () => {
     }
     if (
       scriptedTool ||
+      requestedTool ||
+      forcedDiscovery ||
       inspectRun ||
       (repeatRead &&
         !(
@@ -362,6 +450,7 @@ describe("project assistant public contract", () => {
         (m: any) => m.role === "user",
       ).content;
       const action =
+        (forcedDiscovery ? "query_project" : undefined) ??
         scriptedTool?.name ??
         (inspectRun
           ? "read_processing"
@@ -376,6 +465,11 @@ describe("project assistant public contract", () => {
               ? "query_project"
               : "create_draft");
       const args =
+        (forcedDiscovery
+          ? requestedTool?.name === "query_project"
+            ? requestedTool.input
+            : { kind: "project" }
+          : undefined) ??
         scriptedTool?.input ??
         (inspectRun
           ? {
@@ -399,7 +493,8 @@ describe("project assistant public contract", () => {
             : action === "query_project"
               ? { kind: "project" }
               : { name: "助手创建的测试集", purpose: "合成测试" });
-      requestedTool = undefined;
+      if (!forcedDiscovery || requestedTool?.name === "query_project")
+        requestedTool = undefined;
       message = {
         role: "assistant",
         content:
@@ -642,7 +737,9 @@ describe("project assistant public contract", () => {
     expect(drafts.json().drafts).toHaveLength(1);
     expect(drafts.json().drafts[0].name).toBe("助手创建的测试集");
     expect(
-      calls[0].tools.some((t: any) => t.function.name === "create_draft"),
+      calls.some((body) =>
+        body.tools?.some((t: any) => t.function.name === "create_draft"),
+      ),
     ).toBe(true);
     expect(JSON.stringify(state)).not.toContain("synthetic-test-key");
   });
@@ -963,7 +1060,19 @@ describe("project assistant public contract", () => {
         "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'viewer') ON CONFLICT(project_id,user_id) DO UPDATE SET role='viewer'",
         [projectId, actor],
       );
-      expect((await read()).statusCode).toBe(404);
+      const restricted = await read();
+      expect(restricted.statusCode, restricted.body).toBe(200);
+      expect(restricted.json().task).toBeNull();
+      expect(
+        restricted.json().turns.filter((turn: any) => turn.restricted).length,
+      ).toBeGreaterThan(0);
+      for (const turn of restricted
+        .json()
+        .turns.filter((turn: any) => turn.restricted)) {
+        expect(turn.tools).toEqual([]);
+        expect(turn.userText).toBe("");
+      }
+      expect(restricted.body).not.toContain("助手创建的测试集");
       const list = await app.inject({
         method: "GET",
         url: `${base()}/sessions`,
@@ -971,8 +1080,8 @@ describe("project assistant public contract", () => {
       });
       expect(list.statusCode, list.body).toBe(200);
       expect(
-        list.json().sessions.some((item: any) => item.id === originalSession),
-      ).toBe(false);
+        list.json().sessions.find((item: any) => item.id === originalSession),
+      ).toMatchObject({ title: "历史内容受限", task: null });
       expect(
         (
           await app.inject({
@@ -1078,7 +1187,9 @@ describe("project assistant public contract", () => {
       input: { name: "删除竞态验证草稿" },
     };
     const state = (await send("创建删除竞态验证草稿")).json();
-    const created = state.turns[0].tools[0].result.draftId;
+    const created = state.turns[0].tools.find(
+      (tool: any) => tool.name === "create_draft",
+    ).result.draftId;
     const originalContext = contextModule.assistantContext;
     const spy = vi
       .spyOn(contextModule, "assistantContext")
@@ -1119,14 +1230,21 @@ describe("project assistant public contract", () => {
           input: { name: `摘要边界草稿 ${index}` },
         };
         const state = (await send(`创建摘要边界草稿 ${index}`)).json();
-        if (!index) firstId = state.turns[0].tools[0].result.draftId;
+        if (!index)
+          firstId = state.turns[0].tools.find(
+            (tool: any) => tool.name === "create_draft",
+          ).result.draftId;
       }
       requestedTool = {
         name: "create_draft",
         input: { name: "摘要边界草稿 0" },
       };
       const state = (await send("继续摘要边界草稿 0")).json();
-      expect(state.turns.at(-1).tools[0].result).toMatchObject({
+      expect(
+        state.turns
+          .at(-1)
+          .tools.find((tool: any) => tool.name === "create_draft").result,
+      ).toMatchObject({
         draftId: firstId,
         reused: true,
       });
@@ -1267,7 +1385,10 @@ describe("project assistant public contract", () => {
         input: { kind: "drafts", search: "当前页面草稿" },
       };
       expect(
-        (await send("查询当前草稿数量")).json().turns.at(-1).tools[0].result
+        (await send("查询当前草稿数量"))
+          .json()
+          .turns.at(-1)
+          .tools.find((tool: any) => tool.name === "query_project").result
           .items[0].recordCount,
       ).toBe(0);
       requestedTool = {
@@ -1275,15 +1396,20 @@ describe("project assistant public contract", () => {
         input: { source: { kind: "draft", id: current.pageObject.ref } },
       };
       expect(
-        (await send("继续读取当前记录")).json().turns.at(-1).tools[0],
+        (await send("继续读取当前记录"))
+          .json()
+          .turns.at(-1)
+          .tools.find((tool: any) => tool.name === "read_records"),
       ).toMatchObject({ status: "succeeded", result: { total: 0 } });
       requestedTool = {
         name: "read_records",
         input: { source: { kind: "draft", id: "d:unknown" } },
       };
       expect(
-        (await send("未知引用应可恢复")).json().turns.at(-1).tools[0].error
-          .code,
+        (await send("未知引用应可恢复", undefined, "failed"))
+          .json()
+          .turns.at(-1)
+          .tools.find((tool: any) => tool.name === "read_records").error.code,
       ).toBe("assistant_reference_invalid");
       const sessionsAfter = (
         await app.inject({ method: "GET", url: `${base()}/sessions`, headers })
