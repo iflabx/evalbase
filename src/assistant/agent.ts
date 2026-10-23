@@ -1204,6 +1204,15 @@ export async function executeAssistantTurn(
           ) {
             delete input.outputCount;
             issues = issues.filter((i) => i.path !== "/outputCount");
+            // The first compile returned issues for the redundant count; consume
+            // its normalized fields now that the real input count is verified.
+            const compiled = prepareToolProposal(name, input, {
+              ...facts,
+              metadataKeys: keys,
+              sourceCount: data.total,
+            });
+            if (compiled.ok) input = compiled.input;
+            else issues.push(...compiled.issues);
           }
           preparedScopes.set(canonicalJson(input), {
             version: 1,
@@ -3006,6 +3015,9 @@ export async function executeAssistantTurn(
               const result = {
                 unchanged: true,
                 requiresClarification: true,
+                ...(name !== "plan_task"
+                  ? { clarification: { kind: "scope" } }
+                  : {}),
                 question: e.hint,
               };
               await updateTask(db, turn, {

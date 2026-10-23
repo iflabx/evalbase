@@ -461,9 +461,12 @@ describe("OPT47 unified processing public boundary", () => {
   );
   it.each([
     "same source",
+    "combined field requirements",
     "different source",
     "changed count",
     "reduced scope",
+    "only refund",
+    "exclude refund",
   ])(
     "OPT50 multi-turn cleaning keeps source-bound authorization: %s",
     async (scenario) => {
@@ -526,7 +529,13 @@ describe("OPT47 unified processing public boundary", () => {
       const before = await effects();
       const state = await send(
         id,
-        "开始清洗。",
+        scenario === "combined field requirements"
+          ? "开始清洗，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。"
+          : scenario === "only refund"
+            ? "开始清洗，仅限退款类记录。"
+            : scenario === "exclude refund"
+              ? "开始清洗，排除退款类记录。"
+              : "开始清洗。",
         [
           decision("execute", { requiresUpdate: true }),
           {
@@ -538,22 +547,45 @@ describe("OPT47 unified processing public boundary", () => {
           },
           {
             name: "submit_processing",
-            input: { operation: "clean", outputCount: 2 },
+            input: {
+              operation: "clean",
+              outputCount: 2,
+              ...(scenario === "combined field requirements"
+                ? {
+                    instructions:
+                      "仅去除 question 字段首尾的空格和换行；不修改问题内部内容，不修改 expectedOutput 和 metadata。",
+                  }
+                : {}),
+            },
           },
         ],
         { context: { kind: "asset", id: targetId } },
       );
-      if (scenario !== "same source") {
+      if (!["same source", "combined field requirements"].includes(scenario)) {
         expect(await effects()).toEqual(before);
         expect(
           state.task.question,
           JSON.stringify(state.turns.at(-1)),
         ).toBeTruthy();
+        if (["only refund", "exclude refund"].includes(scenario)) {
+          const continued = await send(id, "继续", [
+            decision("execute"),
+            { name: "submit_processing", input: { operation: "clean" } },
+          ]);
+          expect(await effects()).toEqual(before);
+          expect(successes(continued, "submit_processing").at(-1)?.result).toMatchObject({
+            unchanged: true,
+            requiresClarification: true,
+            clarification: { kind: "scope" },
+          });
+          expect(continued.task.question).toBeTruthy();
+        }
       } else {
         const submitted = successes(state, "submit_processing").at(-1);
         expect(submitted, JSON.stringify(state.turns.at(-1))).toBeDefined();
         expect(submitted.result.inputCount).toBe(2);
         expect(submitted.input.outputCount).toBeUndefined();
+        expect(submitted.input.instructions ?? "").toBe("");
         expect(await effects()).toEqual({ ...before, runs: before.runs + 1 });
       }
     },

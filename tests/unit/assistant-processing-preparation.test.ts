@@ -626,3 +626,126 @@ describe("source-bound scope evidence", () => {
     expect(wholeSourceAuthorized("开始清洗", text)).toBe(false);
   });
 });
+
+it.each([
+  "开始清洗，只去掉问题首尾的空格和换行，期望输出和Metadata保持不变。",
+  "请开始处理，期望输出保持原样。",
+])(
+  "OPT50 execution with field clauses keeps previously confirmed whole scope: %s",
+  (request) => {
+    expect(wholeSourceAuthorized(request, "清洗全部2条记录")).toBe(true);
+    expect(wholeSourceAuthorized(request, "只清洗1条")).toBe(false);
+    expect(wholeSourceAuthorized(request, "")).toBe(false);
+  },
+);
+it.each([
+  "开始清洗，只处理退款类记录。",
+  "开始清洗，仅限退款类记录。",
+  "开始清洗，排除退款类记录。",
+  "开始清洗，只清洗第一条。",
+  "开始清洗，只清洗部分记录。",
+])("OPT50 subset clause cannot inherit entire-source scope: %s", (request) => {
+  expect(wholeSourceAuthorized(request, "清洗全部2条记录")).toBe(false);
+});
+it.each([
+  "仅去除 question 字段首尾的空格和换行；不修改问题内部内容，不修改 expectedOutput 和 metadata。",
+  "整理首尾空白，期望输出和Metadata保持不变。",
+  "只去掉问题前后的空白。",
+])(
+  "OPT50 equivalent default clean description compiles without model processing: %s",
+  (instructions) => {
+    const result = prepare("submit_processing", {
+      operation: "clean",
+      recordIds: ["r"],
+      instructions,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok)
+      expect(result.input).toMatchObject({
+        instructions: "",
+        allowedFields: ["question"],
+      });
+  },
+);
+it.each([
+  "只去掉问题首尾的空格。",
+  "只去掉问题首尾的换行。",
+  "整理首尾空白，删除重复记录。",
+  "整理首尾空白，统一分类。",
+  "整理首尾空白，同时删除问题中间的空格。",
+  "整理首尾空白，补写期望输出。",
+])(
+  "OPT50 additional clean effects still require user authorization: %s",
+  (instructions) => {
+    expect(
+      prepare("submit_processing", {
+        operation: "clean",
+        recordIds: ["r"],
+        instructions,
+      }).ok,
+    ).toBe(false);
+  },
+);
+
+it.each([
+  {
+    name: "submit_processing",
+    status: "failed",
+    error: { code: "processing_scope_invalid" },
+  },
+  {
+    name: "submit_processing",
+    status: "succeeded",
+    result: {
+      unchanged: true,
+      requiresClarification: true,
+      question: "请选择记录范围",
+    },
+  },
+  {
+    name: "submit_processing",
+    status: "succeeded",
+    result: {
+      unchanged: true,
+      requiresClarification: true,
+      clarification: { kind: "scope" },
+      question: "请选择记录范围",
+    },
+  },
+])(
+  "OPT50 a persisted scope clarification revokes older whole-source authorization across continue: %j",
+  (receipt) => {
+    const source = { kind: "assets", assetIds: ["a"] };
+    const saved = {
+      name: "plan_task",
+      status: "succeeded",
+      result: { task: { target: source }, control: { mode: "execute" } },
+    };
+    const history = [
+      { user_text: "清洗全部2条", status: "succeeded", tool_results: [saved] },
+      {
+        user_text: "开始清洗，仅限退款类记录",
+        status: "succeeded",
+        tool_results: [receipt],
+      },
+      { user_text: "继续", status: "succeeded", tool_results: [saved] },
+    ];
+    expect(sourceScopeRequest(history, source)).toBe("");
+    expect(
+      wholeSourceAuthorized("继续", sourceScopeRequest(history, source)),
+    ).toBe(false);
+    expect(
+      sourceScopeRequest(
+        [
+          ...history,
+          {
+            user_text: "改回全部2条",
+            status: "succeeded",
+            tool_results: [saved],
+          },
+        ],
+        source,
+      ),
+    ).toBe("改回全部2条");
+  },
+);

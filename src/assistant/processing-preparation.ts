@@ -34,6 +34,11 @@ function scopeIntent(text: string): "all" | "partial" | undefined {
       else all = true;
     }
     if (
+      !match &&
+      /(?:只|仅)(?:清洗|处理|改写|选取|保留).+(?:记录|数据)/u.test(clause)
+    )
+      partial = true;
+    if (
       /第[一二三四五六七八九十0-9]+条|(?:前|后)[0-9]+条|这几条|(?:只|仅)(?:清洗|处理|改写|选取|保留)?[一二三四五六七八九十0-9]+条|部分(?:记录|数据)|选中|勾选|随机|抽取|指定记录/u.test(
         clause,
       )
@@ -79,20 +84,63 @@ export function sourceScopeRequest(
       (intent === "partial" || (intent === "all" && confirmed))
     )
       request = row.user_text;
+    // Once the service asks to resolve a range, ordinary continuation must not
+    // revive an older whole-source grant. Keep the user choice unresolved.
+    const unresolvedScope = (row.tool_results ?? []).some(
+      (tool) =>
+        tool.result?.task?.processingClarification?.kind === "scope" ||
+        tool.result?.clarification?.kind === "scope" ||
+        (["read_records", "submit_processing", "preview_selection"].includes(
+          tool.name,
+        ) &&
+          tool.result?.requiresClarification === true) ||
+        (tool.status === "failed" &&
+          (tool.error?.code === "processing_scope_invalid" ||
+            tool.error?.issues?.some(
+              (issue: any) => issue.code === "processing_scope_invalid",
+            ))),
+    );
+    if (active === wanted && unresolvedScope) request = "";
   }
   return active === wanted ? request : "";
 }
 export function wholeSourceAuthorized(request: string, prior: string) {
   const current = scopeIntent(request);
   if (current) return current === "all";
+  const parts = clauses(request);
+  const continuation =
+    /^(?:请)?(?:执行方案|按方案执行|继续(?:执行)?|开始(?:执行|清洗|处理|改写))$/u;
+  // Extra clauses must be known field/trim constraints; an unrecognized subset
+  // cannot inherit earlier permission for the whole source.
   return (
-    /^(?:请)?(?:执行方案|按方案执行|继续(?:执行)?|开始(?:执行|清洗|处理|改写))[。！!\s]*$/u.test(
-      request.trim(),
-    ) && scopeIntent(prior) === "all"
+    scopeIntent(prior) === "all" &&
+    parts.some((p) => continuation.test(p)) &&
+    parts.every((p) => continuation.test(p) || defaultCleanClause(p))
   );
 }
 const semanticChange =
   /(?:纠错|错别字|标点|改写|翻译|格式|统一|抽取|分类|标注)/u;
+/** Recognize only complete default trim and explicit field preservation. */
+function defaultCleanClause(text: string): "trim" | "preserve" | undefined {
+  const normalized = text
+    .replace(/question/giu, "问题")
+    .replace(/expectedOutput/giu, "期望输出")
+    .replace(/metadata/giu, "元数据")
+    .replace(/\s+/gu, "");
+  const trim =
+    /^(?:仅|只)?(?:整理|去掉|去除|清理)(?:问题(?:字段)?的?)?(?:首尾|前后)(?:的)?(?:空白|空格(?:和|及|、)换行|换行(?:和|及|、)空格)$/u;
+  const preserve =
+    /^(?:(?:不修改|不改变)(?:问题(?:内部)?内容|期望输出|元数据)(?:(?:和|及|、)(?:期望输出|元数据))*|(?:问题(?:内部)?内容|期望输出|元数据)(?:(?:和|及|、)(?:期望输出|元数据))*(?:保持原样|保持不变))$/u;
+  return trim.test(normalized)
+    ? "trim"
+    : preserve.test(normalized)
+      ? "preserve"
+      : undefined;
+}
+function defaultCleanDescription(text: string) {
+  const parts = clauses(text).map(defaultCleanClause);
+  return parts.includes("trim") && parts.every(Boolean);
+}
 function cleanDirective(facts: ToolFacts) {
   const current = clauses(facts.request);
   const positive = (text: string) =>
@@ -547,6 +595,11 @@ export function prepareToolProposal(
             "processing_configuration_invalid",
             "capacity",
           );
+      } else if (
+        typeof input.instructions === "string" &&
+        defaultCleanDescription(input.instructions)
+      ) {
+        input.instructions = "";
       } else if (input.instructions)
         add(
           "/instructions",
