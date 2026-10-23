@@ -1181,4 +1181,82 @@ describe("OPT48 task boundaries and complete request projection", () => {
       expect((await effects()).drafts).toBe(before.drafts + 1);
     },
   );
+  it("OPT50 restores a selected same-title checkpoint by exact identity and fences invalid bindings", async () => {
+    const id = await newSession();
+    const identities: string[] = [];
+    for (const [i, goal] of [
+      "查看资料甲",
+      "查看资料乙",
+      "查看资料丙",
+    ].entries()) {
+      await send(id, i ? "另开一个任务，帮我" + goal : "帮我" + goal, [
+        decision("query"),
+      ]);
+      const current = (
+        await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      identities.push(current.taskId);
+      await dbQuery("UPDATE assistant_session SET task=task||$2 WHERE id=$1", [
+        id,
+        { title: "同名任务", goal, stage: "complete" },
+      ]);
+    }
+    const revision = Number(
+      (
+        await dbQuery(
+          "SELECT task_revision FROM assistant_session WHERE id=$1",
+          [id],
+        )
+      ).rows[0].task_revision,
+    );
+    const payload = {
+      message: "恢复任务“同名任务”",
+      restoreTaskId: identities[0],
+      expectedTaskRevision: revision,
+    };
+    for (const [body, code] of [
+      [{ ...payload, restoreTaskId: "not-this-session" }, 404],
+      [{ ...payload, expectedTaskRevision: revision - 1 }, 409],
+      [{ ...payload, context: { kind: "draft", id: "wrong" } }, 422],
+      [{ ...payload, expectedTaskRevision: undefined }, 422],
+    ] as const) {
+      const rejected = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + id + "/turns",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: body,
+      });
+      expect(rejected.statusCode, rejected.body).toBe(code);
+      expect(
+        (await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id]))
+          .rows[0].task.taskId,
+      ).toBe(identities[2]);
+    }
+    script = [decision("query")];
+    const key = randomUUID();
+    const restored = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": key },
+      payload,
+    });
+    expect(restored.statusCode, restored.body).toBe(202);
+    await expect
+      .poll(
+        async () =>
+          (await read(id)).turns.find(
+            (t: any) => t.id === restored.json().turnId,
+          )?.status,
+      )
+      .toMatch(/succeeded|failed/);
+    expect((await read(id)).task.taskId).toBe(identities[0]);
+    const replay = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": key },
+      payload,
+    });
+    expect(replay.statusCode, replay.body).toBe(200);
+    expect(replay.json().turnId).toBe(restored.json().turnId);
+  });
 });

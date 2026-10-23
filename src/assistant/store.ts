@@ -524,6 +524,27 @@ export async function readSession(
   ).rows[0];
   const recovery = await assistantRecovery(db, scope, current, latestTurn);
   const canRetryTurn = Boolean(recovery.action);
+  // Display only the actual failed request and persisted unfinished steps; never reconstruct scope from chat wording.
+  const pendingRequest =
+    currentSafe && current.task?.planningRecovery?.requestTurnId
+      ? ((
+          await db.query(
+            "SELECT user_text FROM assistant_turn WHERE session_id=$1 AND id=$3 AND " +
+              taskTurnFilter,
+            [
+              id,
+              taskIdentity(current),
+              current.task.planningRecovery.requestTurnId,
+            ],
+          )
+        ).rows[0]?.user_text ?? null)
+      : null;
+  const continuation = {
+    pendingRequest,
+    remainingSteps: (current.task?.executionPlan?.steps ?? [])
+      .filter((step: Record<string, any>) => step.status !== "executed")
+      .map((step: Record<string, any>) => String(step.title)),
+  };
   const planSteps =
     current.task?.executionPlan?.contractVersion === 1
       ? current.task.executionPlan.steps
@@ -631,6 +652,7 @@ export async function readSession(
           canRetryTurn,
           canContinueExecution: recovery.canExecutePlan,
           recoveryDecision: recovery,
+          continuation,
           feedback: assistantFeedback(
             {
               ...current.task,
@@ -807,6 +829,7 @@ export async function startTurn(
   expectedTaskRevision?: unknown,
   artifacts?: ArtifactRepository,
   operation?: unknown,
+  restoreTaskId?: unknown,
 ) {
   if (
     expectedTaskRevision !== undefined &&
@@ -828,6 +851,17 @@ export async function startTurn(
     (!["execute_plan", "resume"].includes(String(operation)) ||
       typeof operation !== "string" ||
       expectedTaskRevision === undefined)
+  )
+    throw new AssistantError(422, "assistant_message_invalid");
+  if (
+    restoreTaskId !== undefined &&
+    (typeof restoreTaskId !== "string" ||
+      !restoreTaskId.trim() ||
+      restoreTaskId.length > 250 ||
+      expectedTaskRevision === undefined ||
+      operation !== undefined ||
+      pageContext !== undefined ||
+      candidateSelection !== undefined)
   )
     throw new AssistantError(422, "assistant_message_invalid");
   let page: Dependency | undefined;
@@ -922,6 +956,7 @@ export async function startTurn(
             legacyRequestHash,
             expectedTaskRevision,
             ...(operation ? { operation } : {}),
+            ...(restoreTaskId !== undefined ? { restoreTaskId } : {}),
           }),
         );
   await readSession(db, scope, sessionId, undefined, {
@@ -1020,6 +1055,7 @@ export async function startTurn(
       scope,
       session,
       text.trim(),
+      restoreTaskId as string | undefined,
     );
     if (
       boundary.switched &&

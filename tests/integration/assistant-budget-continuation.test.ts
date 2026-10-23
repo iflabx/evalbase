@@ -792,6 +792,14 @@ describe("OPT49 persisted recovery public flow", () => {
       row = await f.raw();
     expect(row.task.budgetLedger.grants).toEqual(history);
     expect(s.task.recoveryDecision.reason).toBe("grant_revision_changed");
+    expect(s.task.continuation.pendingRequest).toBe(
+      "把剩余草稿数量改成2份，先保存新方案",
+    );
+    expect(s.task.continuation.remainingSteps).toEqual([
+      "建立草稿1",
+      "建立草稿2",
+      "建立草稿3",
+    ]);
     const next = s.task.recoveryDecision.grantOffers.continue;
     expect(next.revision).toBe(2);
     const resume = await app.inject({

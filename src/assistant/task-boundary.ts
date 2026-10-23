@@ -106,8 +106,9 @@ export async function prepareTaskBoundary(
   scope: AssistantScope,
   session: Record<string, any>,
   text: string,
+  restoreTaskId?: string,
 ) {
-  let intent = taskBoundaryIntent(text),
+  let intent = restoreTaskId ? ("restore" as const) : taskBoundaryIntent(text),
     request = text;
   const pending = session.task?.boundaryQuestion;
   if (pending?.kind === "goal" && !intent) {
@@ -166,7 +167,8 @@ export async function prepareTaskBoundary(
           "继续或修改当前任务将沿用原预算。请说明独立的新目标后再切换。",
       };
   }
-  if (!session.task?.goal) return { request, switched: false };
+  if (!session.task?.goal && intent !== "restore")
+    return { request, switched: false };
   if (/^(?:不要|别|无需|不必).*(?:新|另开|切换)/u.test(text.trim()))
     return { request, switched: false };
   if (!intent) {
@@ -185,10 +187,14 @@ export async function prepareTaskBoundary(
       .replace(/^[“「"：:\s]+|[”」"。\s]+$/gu, "");
     const rows = (
       await db.query(
-        "SELECT * FROM assistant_task_checkpoint WHERE session_id=$1 AND id<>$2 AND ($3='' OR task->>'title'=$3) ORDER BY saved_at DESC LIMIT 2",
-        [session.id, taskIdentity(session), title],
+        restoreTaskId
+          ? "SELECT * FROM assistant_task_checkpoint WHERE session_id=$1 AND id=$3 AND id<>$2 LIMIT 1"
+          : "SELECT * FROM assistant_task_checkpoint WHERE session_id=$1 AND id<>$2 AND ($3='' OR task->>'title'=$3) ORDER BY saved_at DESC LIMIT 2",
+        [session.id, taskIdentity(session), restoreTaskId ?? title],
       )
     ).rows;
+    if (restoreTaskId && !rows.length)
+      throw new AssistantError(404, "assistant_not_found");
     if (!rows.length || (title && rows.length > 1))
       throw new AssistantError(
         409,

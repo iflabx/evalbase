@@ -2,6 +2,13 @@ import { AssistantCandidates, type CandidateSelection } from "./assistant-candid
 import { AssistantBackground, type BackgroundDocument } from "./assistant-background";
 import { AssistantSessionActions } from "./assistant-session-actions";
 import {
+  AssistantBudget,
+  BudgetSummary,
+  type AssistantBudgetFacts,
+  type BudgetOffer,
+} from "./assistant-budget";
+import { AssistantTaskHistory } from "./assistant-task-history";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -52,6 +59,7 @@ type ToolResult = {
 };
 type Turn = {
   id: string;
+  taskId?: string;
   event?: string;
   userText: string;
   assistantText: string;
@@ -105,6 +113,9 @@ type Conversation = {
   backgroundDocuments?: BackgroundDocument[];
   title?: string;
   task?: {
+    taskId?: string;
+    budget?: AssistantBudgetFacts;
+    continuation?: { pendingRequest: string | null; remainingSteps: string[] };
     title?: string;
     goal?: string;
     stage: string;
@@ -137,12 +148,14 @@ type Conversation = {
       revision: number;
       validUntil: number | null;
       canExecutePlan: boolean;
+      grantOffers?: { continue: BudgetOffer | null; repair: BudgetOffer | null };
     };
     feedback?: {
       kind: string;
       message: string;
       action?: "background";
       requirementsSaved: boolean;
+      requirementsVerified?: boolean;
       planReady: boolean;
       summaryFailed?: boolean;
     };
@@ -231,8 +244,10 @@ type Submission = {
   candidates?: CandidateSelection | null | undefined;
   turnId?: string;
   status: "submitting" | "accepted" | "failed";
-  expectedTaskRevision?: number;
+  expectedTaskRevision?: number | undefined;
   operation?: "execute_plan" | "resume";
+  taskId?: string | undefined;
+  restoreTaskId?: string | undefined;
 };
 const toolLabels: Record<string, string> = {
   query_project: "查询项目",
@@ -329,7 +344,6 @@ const messages: Record<string, string> = {
 const errorText = (error: unknown) => {
   if (
     error instanceof Error &&
-    error.message === "assistant_retry_unavailable" &&
     "recoveryMessage" in error &&
     typeof error.recoveryMessage === "string"
   )
@@ -380,6 +394,7 @@ export function ProjectAssistant({
     draftKey = scopeKey + (sessionId ?? "new");
   const [draft, patchDraft] = useAssistantDraft<{
     message: string;
+    restore?: { taskId: string; message: string } | undefined;
     pending?: Submission;
     picked?: CandidateSelection | undefined;
   }>(draftKey);
@@ -650,6 +665,52 @@ export function ProjectAssistant({
             ).values(),
           ],
         };
+  const currentTaskId = visible?.task?.taskId ?? (sessionId ? "legacy:" + sessionId : undefined);
+  const currentTurn = (turn: Turn) =>
+    !currentTaskId || (turn.taskId ?? "legacy:" + sessionId) === currentTaskId;
+  const identity = useRef({ sessionId, taskId: currentTaskId });
+  identity.current = { sessionId, taskId: currentTaskId };
+  const previousTask = useRef<{ sessionId: string; taskId: string } | undefined>(undefined);
+  useEffect(() => {
+    if (!sessionId || !visible?.task || conversation.data?.sessionId !== sessionId) return;
+    const confirmed = visible.task.taskId ?? "legacy:" + sessionId;
+    if (
+      previousTask.current?.sessionId === sessionId &&
+      previousTask.current.taskId !== confirmed
+    ) {
+      setPicked(undefined);
+      setError("");
+      void queryClient.cancelQueries({ queryKey: ["assistant-candidates", base, sessionId] });
+      const saved = JSON.parse(readAssistantDraft(draftKey));
+      writeAssistantDraft(draftKey, { message: saved.message ?? "" });
+    }
+    previousTask.current = { sessionId, taskId: confirmed };
+  }, [
+    currentTaskId,
+    conversation.data?.sessionId,
+    visible?.task,
+    base,
+    sessionId,
+    draftKey,
+    setPicked,
+    queryClient,
+  ]);
+  const feedbackRevision = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const stamp = conversation.data?.messageRevision;
+    const changed = Boolean(
+      feedbackRevision.current && stamp && feedbackRevision.current !== stamp,
+    );
+    feedbackRevision.current = stamp;
+    if (
+      changed &&
+      ["complete", "plan"].includes(visible?.task?.feedback?.kind ?? "") &&
+      (visible?.task?.feedback?.requirementsSaved ||
+        visible?.task?.feedback?.requirementsVerified ||
+        visible?.task?.feedback?.kind === "complete")
+    )
+      setError("");
+  }, [conversation.data?.messageRevision, visible?.task?.feedback]);
   const recovery = visible?.task?.recoveryDecision;
   const recoveryExpired = Boolean(
     recovery?.validUntil !== null &&
@@ -710,7 +771,8 @@ export function ProjectAssistant({
     if (conversation.error || history.error) {
       const failure = conversation.error ?? history.error;
       if ([403, 404, 409].includes(Number((failure as { status?: number })?.status))) {
-        writeAssistantDraft(draftKey, {});
+        const unsent = JSON.parse(readAssistantDraft(draftKey));
+        writeAssistantDraft(draftKey, { message: unsent.message ?? "" });
         setPicked(undefined);
         try {
           if (sessionStorage.getItem(scopeKey + "last") === sessionId)
@@ -770,7 +832,8 @@ export function ProjectAssistant({
     writeAssistantDraft(key, { ...current, pending: submission });
   }
   const running = Boolean(
-    visible?.active || visible?.turns.some((t) => ["queued", "running"].includes(t.status)),
+    visible?.active ||
+    visible?.turns.some((t) => currentTurn(t) && ["queued", "running"].includes(t.status)),
   );
   useLayoutEffect(() => {
     follow.current = true;
@@ -803,25 +866,23 @@ export function ProjectAssistant({
   )[visible?.task?.feedback?.kind ?? ""];
   const stageLabel =
     factStage ||
-    (["assistant_auto_limit", "assistant_auto_plan_limit"].includes(visible?.task?.error ?? "")
-      ? "自动执行已暂停"
-      : visible?.task?.executionPaused && visible.task.stage !== "stopped"
-        ? "已暂停"
-        : (
-            {
-              inspecting: "检查资料与要求",
-              planning: "方案待执行",
-              processing: "处理中",
-              checking: "核对结果",
-              yielding: "准备继续",
-              awaiting_review: "候选待审核",
-              awaiting_confirmation: "等待确认",
-              waiting_input: "等待补充",
-              failed: "任务未完成",
-              stopped: "已停止",
-              complete: visible?.task?.overallTargetCount ? "当前目标已完成" : "已完成",
-            } as Record<string, string>
-          )[visible?.task?.stage ?? ""]);
+    (visible?.task?.executionPaused && visible.task.stage !== "stopped"
+      ? "已暂停"
+      : (
+          {
+            inspecting: "检查资料与要求",
+            planning: "方案待执行",
+            processing: "处理中",
+            checking: "核对结果",
+            yielding: "准备继续",
+            awaiting_review: "候选待审核",
+            awaiting_confirmation: "等待确认",
+            waiting_input: "等待补充",
+            failed: "任务未完成",
+            stopped: "已停止",
+            complete: visible?.task?.overallTargetCount ? "当前目标已完成" : "已完成",
+          } as Record<string, string>
+        )[visible?.task?.stage ?? ""]);
   const validLink = (url: string | undefined) =>
     url?.startsWith(`/projects/${projectId}/`) ? url : undefined;
   async function createSession(preserveInput = false) {
@@ -838,6 +899,12 @@ export function ProjectAssistant({
     return value.sessionId;
   }
   async function send(retry?: Submission, textOverride?: string) {
+    if (sessionId && conversation.isPending) return;
+    if (retry?.taskId && retry.taskId !== currentTaskId) {
+      setError("当前任务已切换，请核对本次要求后重新发送。输入已保留。");
+      await refreshConversation();
+      return;
+    }
     const text = retry?.message ?? textOverride ?? message;
     if (
       !text.trim() ||
@@ -851,11 +918,12 @@ export function ProjectAssistant({
     setBusy(true);
     setError("");
     follow.current = true;
+    const restoring = !retry && draft.restore?.message === text ? draft.restore.taskId : undefined;
     const retrySame =
       pending?.status === "failed" &&
       pending.message === text &&
       pending.sessionId === sessionId &&
-      JSON.stringify(pending.context) === JSON.stringify(pageContext);
+      JSON.stringify(pending.context) === JSON.stringify(restoring ? undefined : pageContext);
     const submission: Submission =
       retry ??
       (retrySame
@@ -864,8 +932,13 @@ export function ProjectAssistant({
             message: text,
             key: crypto.randomUUID(),
             sessionId,
-            context: pageContext,
-            ...(picked ? { candidates: picked.resultIds.length ? picked : null } : {}),
+            taskId: currentTaskId,
+            expectedTaskRevision: visible?.taskRevision,
+            context: restoring ? undefined : pageContext,
+            ...(restoring ? { restoreTaskId: restoring } : {}),
+            ...(!restoring && picked
+              ? { candidates: picked.resultIds.length ? picked : null }
+              : {}),
             status: "submitting",
           });
     setPending({ ...submission, status: "submitting" });
@@ -877,6 +950,7 @@ export function ProjectAssistant({
         `${base}/sessions/${id}/turns`,
         {
           message: text,
+          ...(submission.restoreTaskId ? { restoreTaskId: submission.restoreTaskId } : {}),
           ...(submission.context ? { context: submission.context } : {}),
           ...(submission.candidates !== undefined ? { candidates: submission.candidates } : {}),
           ...(submission.operation ? { operation: submission.operation } : {}),
@@ -906,7 +980,11 @@ export function ProjectAssistant({
       });
       await sessions.refetch();
     } catch (e) {
-      setError(errorText(e));
+      if (
+        identity.current.sessionId === submission.sessionId &&
+        (!submission.taskId || identity.current.taskId === submission.taskId)
+      )
+        setError(errorText(e));
       setPending({ ...submission, status: "failed" });
       const status = Number((e as { status?: number })?.status);
       if (
@@ -1028,6 +1106,32 @@ export function ProjectAssistant({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canWrite && sessionId && currentTaskId && visible?.taskRevision !== undefined && (
+            <AssistantBudget
+              key={sessionId + ":" + currentTaskId}
+              base={base}
+              sessionId={sessionId}
+              taskId={currentTaskId}
+              revision={visible.taskRevision}
+              title={visible.task?.title ?? visible.task?.goal ?? "当前任务"}
+              requirements={visible.task?.requirementSummary}
+              scope={visible.task?.continuation}
+              offers={
+                recovery?.revision === visible.taskRevision ? recovery.grantOffers : undefined
+              }
+              budget={visible.task?.budget}
+              disabled={busy || running}
+              onBusy={setBusy}
+              onRefresh={refreshConversation}
+              onError={(e) => {
+                if (
+                  identity.current.taskId === currentTaskId &&
+                  identity.current.sessionId === sessionId
+                )
+                  setError(errorText(e));
+              }}
+            />
+          )}
           {(visible?.task?.executionPlan?.mode === "plan" || visible?.task?.executionPaused) &&
             visible.task.stage !== "stopped" &&
             visible.task.recoveryDecision?.canExecutePlan === true &&
@@ -1306,6 +1410,25 @@ export function ProjectAssistant({
 
                 {visible?.turns.map((turn) => (
                   <section key={turn.id} className="space-y-3">
+                    {!currentTurn(turn) && turn.taskId && sessionId && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>历史任务</span>
+                        <AssistantTaskHistory
+                          key={turn.taskId + ":" + currentTaskId}
+                          base={base}
+                          sessionId={sessionId}
+                          taskId={turn.taskId}
+                          actorId={actorId}
+                          canWrite={canWrite}
+                          disabled={busy || running}
+                          canFill={!message.trim()}
+                          onRestore={(text, taskId) => {
+                            setPicked(undefined);
+                            patchDraft({ message: text, restore: { taskId, message: text } });
+                          }}
+                        />
+                      </div>
+                    )}
                     {turn.userText && (!turn.event || turn.event === "user") && (
                       <div className="ml-8 rounded-md bg-muted p-3 text-sm">
                         <p className="mb-1 text-xs text-muted-foreground">你</p>
@@ -1436,6 +1559,7 @@ export function ProjectAssistant({
                                     size="sm"
                                     disabled={
                                       !canWrite ||
+                                      !currentTurn(turn) ||
                                       busy ||
                                       new Date(p.expires_at).getTime() <= Date.now()
                                     }
@@ -1446,7 +1570,7 @@ export function ProjectAssistant({
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    disabled={busy}
+                                    disabled={busy || !currentTurn(turn)}
                                     onClick={() => void confirm(p.id, "reject")}
                                   >
                                     暂不执行
@@ -1722,6 +1846,7 @@ export function ProjectAssistant({
                   aria-label="当前任务"
                   className="space-y-3 rounded-md border bg-card p-4 shadow-sm"
                 >
+                  {visible.task.budget && <BudgetSummary budget={visible.task.budget} />}
                   {Boolean(visible.task.deliveries?.length) && (
                     <div className="space-y-2 border-b pb-3">
                       <h3 className="text-sm font-medium">交付目标</h3>

@@ -503,6 +503,7 @@ export function registerAssistant({
                 "candidates",
                 "expectedTaskRevision",
                 "operation",
+                "restoreTaskId",
               ].includes(k),
           )
         )
@@ -519,6 +520,7 @@ export function registerAssistant({
             request.body.expectedTaskRevision,
             artifacts,
             request.body.operation,
+            request.body.restoreTaskId,
           );
         if (!started.replayed)
           void dispatch().catch((error) => app.log.error(error));
