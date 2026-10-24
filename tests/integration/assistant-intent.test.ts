@@ -5086,4 +5086,93 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.task.executionPaused).toBe(true);
     expect(await effects()).toEqual(before);
   });
+  it("B3v7 initial repair advertises creation or specific clarification, never candidate edit", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(id, "先设计两个测试集，各2条，不执行。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+      },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [
+            { ...simpleDelivery(), name: "第一组" },
+            { ...simpleDelivery(), name: "第二组" },
+          ],
+        },
+        when: (r) => {
+          const p = r.tools.find((t: any) => t.function.name === "plan_task")
+            ?.function.parameters;
+          return (
+            r.tool_choice?.function?.name === "plan_task" &&
+            p.oneOf?.some(
+              (b: any) =>
+                b.required?.includes("deliveries") &&
+                b.required.includes("executionMode") &&
+                b.not?.required?.includes("question"),
+            ) &&
+            p.oneOf.some(
+              (b: any) =>
+                b.required?.includes("question") && b.maxProperties === 1,
+            ) &&
+            !p.properties.candidateEdit &&
+            !p.properties.control &&
+            !p.properties.nextAction &&
+            p.properties.executionMode.enum[0] === "plan"
+          );
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(2);
+    expect(state.task.runId).toBeFalsy();
+  });
+
+  it.each([
+    ["帮我设计测试集，数量等我确认后再定。先问清楚。", "想要多少条？"],
+    [
+      "创建两个测试集，各2条；风险类还是正常类我没决定，先问清楚。",
+      "要风险类还是正常类？",
+    ],
+  ])(
+    "B3v7 correction preserves a real business clarification: %s",
+    async (prompt, question) => {
+      const { id, documentId } = await backgroundSession();
+      const state = await send(id, prompt, [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: prompt.includes("风险类")
+            ? { executionMode: "plan", deliveries: [simpleDelivery()] }
+            : { question, unknown: "bad" },
+        },
+        {
+          name: "plan_task",
+          input: { question },
+          when: (r) => {
+            const p = r.tools.find((t: any) => t.function.name === "plan_task")
+              ?.function.parameters;
+            return (
+              Boolean(p.properties.question) &&
+              !p.required?.includes("deliveries")
+            );
+          },
+        },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.question).toBe(question);
+      expect(state.task.executionPlan?.steps?.length ?? 0).toBe(0);
+      expect(state.task.runId).toBeFalsy();
+    },
+  );
 });

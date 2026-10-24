@@ -5,6 +5,7 @@ import {
   savedPlanningMode,
   needsPlanningSubmission,
   echoesPlanningRequest,
+  initialDeliveryRepair,
 } from "./planning-state.js";
 import { projectQueryConstraints } from "./query-contract.js";
 import { effectiveOperationInput } from "./operation-input.js";
@@ -373,6 +374,7 @@ function schema(
   invalid?: (hint: string) => void,
   explain?: (value: any, errors: ErrorObject[] | null | undefined) => string,
   compatible?: ValidateFunction,
+  constraints: Record<string, unknown> = {},
 ) {
   const definition = {
     type: "object",
@@ -380,6 +382,7 @@ function schema(
     required,
     additionalProperties: false,
     ...projectQueryConstraints(name, properties),
+    ...constraints,
   } as const;
   const validate = (
     name === "plan_task" ? new Ajv({ strict: false, allErrors: true }) : ajv
@@ -3977,6 +3980,28 @@ export async function executeAssistantTurn(
           if (selectedPlanningEvidence.length)
             current.backgroundEvidence = selectedPlanningEvidence;
         }
+        if (
+          initialDeliveryRepair(
+            current,
+            documents.length > 0,
+            Boolean(planRepairContext),
+          ) &&
+          (input.question
+            ? submittedFields.some((name) => name !== "question")
+            : !input.deliveries?.length ||
+              input.executionMode !== decision?.mode)
+        )
+          preparationError([
+            {
+              tool: "plan_task",
+              operation: "prepare",
+              path: "/deliveries",
+              keyword: "required",
+              code: "assistant_tool_input_invalid",
+              message:
+                "首次方案尚未保存：提交当前executionMode和完整deliveries；若确有未解决业务缺口，仅提交具体question，不混改要求。当前没有可修改候选，不能用candidateEdit、空对象或仅控制代替全部独立交付。",
+            },
+          ]);
         const candidateEdit = input.candidateEdit;
         if (candidateEdit && !hasCurrentCandidates(current))
           throw new AssistantError(
@@ -8600,7 +8625,52 @@ export async function executeAssistantTurn(
           )
         ) {
           const reads = await backgroundReadReceipts();
-          const focus = planRepairFocus;
+          const initialSubmission = initialDeliveryRepair(
+            currentTask,
+            Boolean(context.state.backgroundDocuments?.length),
+            Boolean(activeRepair?.name === "plan_task" || planRepairContext),
+          );
+          const focus = initialSubmission ? undefined : planRepairFocus;
+          if (initialSubmission) {
+            planRepairFocus = undefined;
+            tools.plan_task.inputSchema = schema(
+              Object.fromEntries(
+                Object.entries(deliveryPlanProperties)
+                  .filter(
+                    ([name]) =>
+                      !["control", "candidateEdit", "nextAction"].includes(
+                        name,
+                      ),
+                  )
+                  .map(([name, value]) => [
+                    name,
+                    name === "executionMode"
+                      ? { enum: [decision!.mode] }
+                      : name === "question"
+                        ? {
+                            ...(value as Record<string, unknown>),
+                            description:
+                              "仅有真实未解决的业务缺口时提交具体问题，且只填写question。不得混改要求、重复已回答问题或将原请求和参数错误转交用户。",
+                          }
+                        : value,
+                  ]),
+              ),
+              [],
+              "plan_task",
+              (hint) => schemaHints.set("plan_task", hint),
+              undefined,
+              undefined,
+              {
+                oneOf: [
+                  {
+                    required: ["executionMode", "deliveries"],
+                    not: { required: ["question"] },
+                  },
+                  { required: ["question"], maxProperties: 1 },
+                ],
+              },
+            );
+          }
           const repairFacts = repairing ?? planRepairContext;
           const needsEvidence =
             activeRepair?.kind === "reference" ||

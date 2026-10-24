@@ -9,6 +9,7 @@ import {
   savedPlanningMode,
   needsPlanningSubmission,
   echoesPlanningRequest,
+  initialDeliveryRepair,
 } from "../../src/assistant/planning-state.js";
 import { currentTaskFacts } from "../../src/assistant/context.js";
 import { turnNeedsWork } from "../../src/assistant/intent.js";
@@ -28,6 +29,16 @@ const task = {
   },
 };
 describe("B3v5 complete planning state", () => {
+  it("initial delivery correction uses creation or specific question; existing candidates and sources keep their contract", () => {
+    expect(initialDeliveryRepair({}, true, true)).toBe(true);
+    for (const task of [
+      { target: { kind: "assets" } },
+      { runId: "run" },
+      { executionPlan: { steps: [{}] } },
+    ])
+      expect(initialDeliveryRepair(task, true, true)).toBe(false);
+    expect(initialDeliveryRepair({}, true, false)).toBe(false);
+  });
   it("an original request echo is not a business clarification", () => {
     expect(echoesPlanningRequest(task, task.goal + "？", task.goal)).toBe(true);
     expect(

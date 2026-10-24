@@ -81,3 +81,18 @@ export function echoesPlanningRequest(
     (s) => typeof s === "string" && normalized(s) === normalized(question),
   );
 }
+
+export function initialDeliveryRepair(
+  task: Record<string, any>,
+  hasBackground: boolean,
+  correcting: boolean,
+) {
+  return (
+    correcting &&
+    hasBackground &&
+    !task.target &&
+    !task.draftId &&
+    !task.runId &&
+    !task.executionPlan?.steps?.length
+  );
+}
