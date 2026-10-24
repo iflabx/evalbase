@@ -31,6 +31,39 @@ export type TaskSave = {
   requestHash?: string;
 };
 
+/** Move explicit exclusions into the workspace shared by processing and assistant callers.
+ * Caller holds the project fence and verifies revisions in the same transaction.
+ */
+export async function excludeTaskReferences(
+  db: Pick<Database, "query">,
+  projectId: string,
+  taskId: string,
+  groups: { runId: string; resultIds: string[] }[],
+) {
+  const task = (
+    await db.query(
+      "SELECT current_refs,excluded_refs FROM processing_task WHERE id=$1 AND project_id=$2 FOR UPDATE",
+      [taskId, projectId],
+    )
+  ).rows[0];
+  if (!task) throw new ProcessingError(404, "processing_task_not_found");
+  const matches = (ref: TaskRef) =>
+    groups.some(
+      (g) => g.runId === ref.runId && g.resultIds.includes(ref.resultId),
+    );
+  const removed: TaskRef[] = task.current_refs.filter(matches);
+  if (!removed.length) return 0;
+  await db.query(
+    "UPDATE processing_task SET current_refs=$2,excluded_refs=$3,revision=revision+1,updated_at=now() WHERE id=$1",
+    [
+      taskId,
+      JSON.stringify(task.current_refs.filter((r: TaskRef) => !matches(r))),
+      JSON.stringify([...task.excluded_refs, ...removed]),
+    ],
+  );
+  return removed.length;
+}
+
 /** The same project fence is used by round submission and adoption. */
 export async function guardProcessingTask(
   db: Pick<Database, "query">,

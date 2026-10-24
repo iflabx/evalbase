@@ -9,6 +9,7 @@ import {
 import { reviewCandidates } from "../processing/review.js";
 import { adoptedCandidateKeys, candidateKey } from "../processing/adoption.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
+import { contentHash } from "../processing/content-review.js";
 import { processingTaskCandidates } from "../processing/tasks.js";
 import { presentProcessingReview } from "../processing/presentation.js";
 import { planRequirementsKey } from "./plan.js";
@@ -75,6 +76,7 @@ export async function taskCandidateCollection(
     excluded: { runId: string; resultIds: string[] }[] = [];
   const executionRuns: { id: string; status: string }[] = [];
   const excludedInputIdentities: { taskId: string; identity?: string }[] = [];
+  const pendingExclusions: { runId: string; resultIds: string[] }[] = [];
   const seenTasks = new Set<string>();
   const candidates: Awaited<ReturnType<typeof readProcessingRun>>[] = [];
   const fixedTaskScope =
@@ -120,6 +122,27 @@ export async function taskCandidateCollection(
         count: Number(run.output_count ?? 0),
       }),
     );
+    // Legacy assistant exclusions remain valid evidence until persisted in the
+    // shared workspace. They are explicit exclusions, never merely unselected rows.
+    const assistantExcluded = new Set<string>(
+      task.candidateScope?.excludedOriginKeys ?? [],
+    );
+    for (const row of current.rows.filter((row) =>
+      assistantExcluded.has(candidateKey(row.candidateOrigin)),
+    )) {
+      if (row.localId) {
+        const group = { runId: row.runId, resultIds: [row.localId] };
+        pendingExclusions.push(group);
+        excluded.push(group);
+      }
+      const raw = await read(row.runId);
+      const id =
+        row.original?.baseline?.id ?? row.original?.id ?? row.result.sourceId;
+      excludedInputIdentities.push({
+        taskId: current.id,
+        identity: id ? frozenInputIdentity(raw.run.source, id) : undefined,
+      });
+    }
     for (const runId of new Set(current.excluded.map((ref) => ref.runId))) {
       const raw = await read(runId);
       for (const ref of current.excluded.filter((ref) => ref.runId === runId)) {
@@ -230,6 +253,7 @@ export async function taskCandidateCollection(
     excluded,
     executionRuns,
     excludedInputIdentities,
+    pendingExclusions,
   };
 }
 
@@ -249,7 +273,10 @@ export async function presentTaskCandidates(
   const problems = new Map(
     collection.runs.map((run) => [
       run.run.id,
-      taskCompatibilityProblem(task, [run]),
+      taskCompatibilityProblem(task, [run]) ??
+        (hasContractRecheck(task, run)
+          ? "已按当前分类完成结构核对，内容仍需人工审核。"
+          : null),
     ]),
   );
   const data = {
@@ -483,6 +510,29 @@ export async function reviewTask(
   task = reviewGoal(task, runs);
   const goal = resolveCandidateGoal(task, runs, excludedInputIdentities);
   task = goal;
+  const contractRechecks = [];
+  for (const item of runs) {
+    if (
+      !item.backgroundGoal ||
+      item.backgroundGoal.classifications?.length ||
+      !validateRules(task).length ||
+      !item.deliveryRoot?.id ||
+      item.deliveryRoot.id === item.run.id
+    )
+      continue;
+    const root = await readProcessingRun(
+      db,
+      artifacts,
+      scope,
+      item.deliveryRoot.id,
+      { limit: "10000" },
+      true,
+    );
+    const proof = historicalContractRecheck(task, item, root);
+    if (proof) contractRechecks.push(proof);
+  }
+  if (contractRechecks.length)
+    task = { ...task, review: { ...task.review, contractRechecks } };
   let final;
   const destinationId =
     task.targetDraftId ??
@@ -658,6 +708,17 @@ export async function reviewTask(
       revision,
     };
   }
+  reviewedRuns = reviewedRuns.map((run) =>
+    hasContractRecheck(task, run)
+      ? {
+          ...run,
+          records: run.records.map((row) => ({
+            ...row,
+            contentReview: undefined,
+          })),
+        }
+      : run,
+  );
   const review = reviewCandidates(
     data,
     goal,
@@ -690,6 +751,7 @@ export async function reviewTask(
     runs,
     review: {
       ...review,
+      ...(contractRechecks.length ? { contractRechecks } : {}),
       ...(goal.goalRecovered ? { goalRecovered: true } : {}),
       ...(publication
         ? {
@@ -834,6 +896,77 @@ export function taskCompatibilityProblem(
   return null;
 }
 
+function contractHash(task: Record<string, any>) {
+  return sha256(
+    canonicalJson({
+      requirements: normalizedRequirements(requirementSummary(task)),
+      classifications: validateRules(task),
+      evidence: task.backgroundEvidence ?? [],
+    }),
+  );
+}
+function hasContractRecheck(task: Record<string, any>, data: CompatibilityRun) {
+  return (task.review?.contractRechecks ?? []).some(
+    (proof: any) =>
+      proof.kind === "structural" &&
+      proof.runId === data.run.id &&
+      proof.contractHash === contractHash(task) &&
+      proof.frozenHash === sha256(canonicalJson(data.backgroundGoal)) &&
+      data.records?.length &&
+      data.records.every((row) =>
+        proof.records?.some(
+          (saved: any) =>
+            saved.id === row.id && saved.hash === contentHash(row.result),
+        ),
+      ),
+  );
+}
+/** Recover only the known missing-classification snapshot, using the immutable owning root.
+ * This creates fresh structural evidence; it never edits the snapshot or approves semantics.
+ */
+export function historicalContractRecheck(
+  task: Record<string, any>,
+  data: CompatibilityRun,
+  root: CompatibilityRun,
+) {
+  const id = deliveryIdForRuns(task, [root.run.id]);
+  const owned = id && taskForDelivery(task, id);
+  if (
+    !owned ||
+    data.deliveryRoot?.id !== root.run.id ||
+    !data.backgroundGoal ||
+    data.backgroundGoal.classifications?.length ||
+    !data.records?.length ||
+    canonicalJson(root.backgroundGoal?.classifications ?? []) !==
+      canonicalJson(validateRules(owned))
+  )
+    return;
+  const noRules = { ...owned, classifications: [], allowedLabels: [] };
+  const generation = owned.executionPlan.steps.find(
+    (step: any) => step.action === "generate_candidates",
+  );
+  if (
+    compatibilityProblem(noRules, [data], undefined, true) ||
+    canonicalJson(root.backgroundEvidence ?? []) !==
+      canonicalJson(data.backgroundEvidence ?? []) ||
+    root.run.options.instructions !== generation.input.instructions ||
+    canonicalJson(root.run.options.scenarios ?? []) !==
+      canonicalJson(generation.input.scenarios ?? [])
+  )
+    return;
+  return {
+    kind: "structural",
+    runId: data.run.id,
+    rootRunId: root.run.id,
+    contractHash: contractHash(owned),
+    frozenHash: sha256(canonicalJson(data.backgroundGoal)),
+    records: data.records.map((row) => ({
+      id: row.id,
+      hash: contentHash(row.result),
+    })),
+  };
+}
+
 function compatibilityProblem(
   task: Record<string, any>,
   runs: (Pick<Awaited<ReturnType<typeof readProcessingRun>>, "run"> &
@@ -918,6 +1051,7 @@ function compatibilityProblem(
       ).some((id) => !ids.has(id))
     );
   });
+  let contractMismatch: "requirements" | "missing" | undefined;
   const backgroundMismatch =
     task.backgroundEvidence !== undefined &&
     runs.some((item) => {
@@ -977,10 +1111,19 @@ function compatibilityProblem(
             ) ||
           canonicalJson(item.backgroundGoal.classifications ?? []) !==
             canonicalJson(validateRules(task))
-        )
-          return true;
+        ) {
+          if (!hasContractRecheck(task, item)) {
+            contractMismatch =
+              !item.backgroundGoal.classifications?.length &&
+              validateRules(task).length
+                ? "missing"
+                : "requirements";
+            return true;
+          }
+        }
       } else if (validateRules(task).some((rule) => rule.basis !== "user")) {
         // Legacy evidence alone cannot prove which document definitions were applied.
+        contractMismatch = "missing";
         return true;
       }
       return (
@@ -1013,9 +1156,13 @@ function compatibilityProblem(
     ? "要求已变化，请先核对步骤和已有成果。"
     : sourceMismatch || rangeMismatch
       ? "已有成果的来源或记录范围与当前要求不同，不能按当前要求采用。"
-      : backgroundMismatch
-        ? "背景依据已变化，请核对已有成果是否适用，再继续处理或采用。"
-        : null;
+      : contractMismatch === "missing"
+        ? "这份历史成果未完整记录分类要求，需按当前交付重新核对；已有结果保留。"
+        : contractMismatch === "requirements"
+          ? "处理时的要求与当前交付不同，请核对已有成果后继续。"
+          : backgroundMismatch
+            ? "背景文档依据已变化，请核对已有成果是否适用，再继续处理或采用。"
+            : null;
 }
 
 function currentRecordScope(

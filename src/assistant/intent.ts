@@ -190,7 +190,7 @@ export function planningContinuation(text: string): "plan" | "continue" | null {
     .filter(Boolean);
   if (
     !parts.length ||
-    !/^请?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做)?$/u.test(
+    !/^请?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做|未完成的部分|未完成部分|剩下的部分)?$/u.test(
       parts[0],
     )
   )
@@ -200,11 +200,18 @@ export function planningContinuation(text: string): "plan" | "continue" | null {
       .slice(1)
       .some(
         (s) =>
-          !/^(?:先|暂时|暂且)?(?:不要|别|不)(?:开始)?(?:生成|执行)$/u.test(s),
+          !/^(?:(?:先|暂时|暂且)?(?:不要|别|不)(?:开始)?(?:生成|执行)|(?:已经|已)(?:生成|完成)的(?:不要|别|不)(?:重做|重新生成))$/u.test(
+            s,
+          ),
       )
   )
     return null;
-  return /规划|保存方案/u.test(parts[0]) || parts.length > 1
+  return /规划|保存方案/u.test(parts[0]) ||
+    parts
+      .slice(1)
+      .some((s) =>
+        /^(?:先|暂时|暂且)?(?:不要|别|不)(?:开始)?(?:生成|执行)$/u.test(s),
+      )
     ? "plan"
     : "continue";
 }

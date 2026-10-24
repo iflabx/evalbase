@@ -1135,7 +1135,12 @@ export async function startTurn(
             g.purpose !== "initial",
         )) &&
       !candidateSelection &&
-      !operation
+      !operation &&
+      // Pause/query turns have their own revision and no failed request to retry.
+      // A new ordinary turn resumes the original business amendment in the agent,
+      // retaining its identity and accumulated allowance instead of retrying a query.
+      (!session.task.planningRecovery?.amendment ||
+        session.task.planningRecovery.taskRevision === session.task_revision)
     ) {
       const latest = (
         await client.query(

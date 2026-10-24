@@ -2,7 +2,7 @@ import { normalizePlanContent } from "./plan-content.js";
 import { requestedSceneCount } from "./requirements.js";
 import {
   deliveryGoals,
-  deliveryAdditionClause,
+  isDeliveryAddition,
   reviseDeliveryGoals,
 } from "./delivery-plan.js";
 import { reviseDeliveryRequirements } from "./requirements.js";
@@ -88,12 +88,7 @@ export function bindPlanProposal(
   input.deliveries = input.deliveries.map((change: any) => {
     if (!change || typeof change !== "object" || Array.isArray(change))
       return change;
-    const addition =
-      typeof change.name === "string" &&
-      !goals.some((g) => g.name === change.name) &&
-      request
-        .split(/[，,。；;\n]/u)
-        .some((c) => c.includes(change.name) && deliveryAdditionClause(c));
+    const addition = isDeliveryAddition(goals, change, request);
     if (goals.length && !change.id && !addition) {
       const matching = targets.filter(
         (g) => !change.name || g.name === change.name,
@@ -148,13 +143,7 @@ export function requiredPlanTarget(
       typeof d === "object" &&
       !Array.isArray(d) &&
       !d.id &&
-      !(
-        typeof d.name === "string" &&
-        !goals.some((g) => g.name === d.name) &&
-        request
-          .split(/[，,。；;\n]/u)
-          .some((c) => c.includes(d.name) && deliveryAdditionClause(c))
-      ),
+      !isDeliveryAddition(goals, d, request),
   );
   if (index < 0) return;
   const question =
@@ -265,12 +254,7 @@ export function preparePlanProposal(
       if (
         deliveryGoals(facts.task.executionPlan).length &&
         !d.id &&
-        !(
-          typeof d.name === "string" &&
-          facts.request
-            .split(/[，,。；;\n]/u)
-            .some((c) => c.includes(d.name) && deliveryAdditionClause(c))
-        )
+        !isDeliveryAddition(currentGoals, d, facts.request)
       )
         issue(
           "/deliveries/" + i + "/id",

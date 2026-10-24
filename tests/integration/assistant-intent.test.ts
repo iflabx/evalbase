@@ -23,6 +23,7 @@ type Call = {
   rawInput?: string;
   finishReason?: string;
   text?: string;
+  httpStatus?: number;
 };
 let script: Call[] = [];
 let observed: any[] = [];
@@ -46,7 +47,12 @@ const model = createServer(async (request, response) => {
       (_, i) => ({
         question: "我的第" + (i + 1) + "个包裹还要多久送到？",
         expectedOutput: "应核实订单和运单信息后说明物流进度",
-        metadata: [],
+        metadata: (processingInput.background?.classifications ?? [])
+          .filter((rule: any) => rule.field === "metadata")
+          .map((rule: any) => ({
+            key: rule.key,
+            value: rule.allowedValues?.[0] ?? "",
+          })),
       }),
     );
     response.writeHead(200, { "content-type": "application/json" });
@@ -101,6 +107,13 @@ const model = createServer(async (request, response) => {
     return;
   }
   let call = script.shift();
+  if (call?.httpStatus) {
+    response.writeHead(call.httpStatus, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({ error: { message: "synthetic interrupted repair" } }),
+    );
+    return;
+  }
   const body = observed.at(-1);
   if (
     !call &&
@@ -3732,7 +3745,7 @@ describe("OPT42 per-turn intent public boundary", () => {
       await db.end();
     }
   }
-  it("B3 clean deduplicate rewrite completes in order without a save proposal", async () => {
+  it("B3v3 clean deduplicate rewrite completes in order without a save proposal", async () => {
     const { id, draft } = await sourceB3();
     let state = await send(
       id,
@@ -3772,10 +3785,10 @@ describe("OPT42 per-turn intent public boundary", () => {
       ],
     );
     expect(state.task.runId).toBeFalsy();
-    state = await send(id, "开始处理。", [
-      decision("execute"),
-      { name: "plan_task", input: { executionMode: "execute" } },
-    ]);
+    state = await send(id, "按当前已保存方案执行", [], {
+      operation: "execute_plan",
+      expectedTaskRevision: state.task.turnControl.taskRevision,
+    });
     expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
       "succeeded",
     );
@@ -3802,6 +3815,29 @@ describe("OPT42 per-turn intent public boundary", () => {
       .toBe("awaiting_review");
     expect(state.task.review.total).toBe(2);
     expect(state.task.review.duplicates).toBe(0);
+    expect(state.task.review.expectedCount).toBe(2);
+    expect(state.task.review.countSatisfied).toBe(true);
+    expect(state.task.review.complete).toBe(true);
+    const { processingTaskCandidates } =
+      await import("../../src/processing/tasks.js");
+    const checkDb = createPool(databaseUrl);
+    try {
+      const scope = (
+        await checkDb.query("SELECT actor_id FROM processing_run WHERE id=$1", [
+          state.task.runId,
+        ])
+      ).rows[0];
+      const workspace = await processingTaskCandidates(
+        checkDb,
+        new ArtifactRepository(loadConfig().minio),
+        { projectId, actorId: scope.actor_id },
+        state.task.runId,
+      );
+      expect(workspace.rows).toHaveLength(2);
+      expect(workspace.excluded).toHaveLength(1);
+    } finally {
+      await checkDb.end();
+    }
     await expect
       .poll(
         async () => {
@@ -3933,15 +3969,36 @@ describe("OPT42 per-turn intent public boundary", () => {
   });
 
   it.each([false, true])(
-    "B3 truncated dissatisfaction saves a real candidate refinement instead of a no-op (stale review=%s)",
+    "B3v3 classified dissatisfaction saves a real candidate refinement instead of a no-op (stale review=%s)",
     async (staleReview) => {
-      const { id, documentId } = await backgroundSession();
+      const { id, documentId } = await backgroundSession(
+        "查物流：查询订单运输进度。完整用户问题，不含真实个人信息。",
+      );
       let state = await send(id, "按说明生成2条查物流的问题，先给我看。", [
         decision("execute"),
         { name: "read_background", input: { documentId } },
         {
           name: "plan_task",
-          input: { executionMode: "execute", deliveries: [simpleDelivery()] },
+          input: {
+            executionMode: "execute",
+            deliveries: [
+              {
+                ...simpleDelivery(),
+                classifications: [
+                  {
+                    field: "metadata",
+                    key: "意图",
+                    basis: "background",
+                    allowedValues: ["查物流"],
+                    quotas: [{ value: "查物流", count: 2 }],
+                    definitions: [
+                      { value: "查物流", text: "查物流：查询订单运输进度。" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
         },
       ]);
       const first = state.task.runId;
@@ -4056,6 +4113,8 @@ describe("OPT42 per-turn intent public boundary", () => {
         .toBe("awaiting_review");
       expect(state.task.review.total).toBe(2);
       expect(state.task.review.protectedFieldChanges).toBe(0);
+      expect(state.task.review.compatibilityProblem).toBeNull();
+      expect(state.task.review.classifications[0].satisfied).toBe(true);
       await expect
         .poll(
           async () => {
@@ -4095,6 +4154,69 @@ describe("OPT42 per-turn intent public boundary", () => {
             current: 1,
           };
           task.nextAction = "read_processing";
+          const artifacts = new ArtifactRepository(loadConfig().minio);
+          const row = (
+            await db.query(
+              "SELECT input_ref,options FROM processing_run WHERE id=$1",
+              [task.runId],
+            )
+          ).rows[0];
+          const frozen = JSON.parse(
+            (await artifacts.readBytes(row.input_ref, 100000000)).toString(
+              "utf8",
+            ),
+          );
+          const { taskForDelivery } =
+            await import("../../src/assistant/delivery-plan.js");
+          const { requirementSummary } =
+            await import("../../src/assistant/requirements.js");
+          frozen.background.classifications = [];
+          frozen.background.requirements = requirementSummary({
+            ...taskForDelivery(task, old.deliveryId),
+            classifications: [],
+            allowedLabels: [],
+          });
+          const stored = await artifacts.storeProcessing(
+            Buffer.from(JSON.stringify(frozen)),
+            task.runId,
+            "input",
+          );
+          await db.query(
+            "UPDATE processing_run SET input_ref=$2,input_hash=$3 WHERE id=$1",
+            [task.runId, stored.objectRef, stored.sha256],
+          );
+          const { contentHash, reviewRulesHash } =
+            await import("../../src/processing/content-review.js");
+          for (const batch of (
+            await db.query(
+              "SELECT ordinal,result_ref,result_indices FROM processing_batch WHERE run_id=$1",
+              [task.runId],
+            )
+          ).rows) {
+            const result = JSON.parse(
+              (await artifacts.readBytes(batch.result_ref, 100000000)).toString(
+                "utf8",
+              ),
+            );
+            result.contentReview = {
+              rulesHash: reviewRulesHash(row.options, frozen.background),
+              items: result.records.map((record: any, index: number) => ({
+                sourceId: `review:${batch.ordinal}:${batch.result_indices?.[index] ?? index}`,
+                contentHash: contentHash(record),
+                verdict: "conforms",
+                reason: "historical fixture",
+              })),
+            };
+            const stored = await artifacts.storeProcessing(
+              Buffer.from(JSON.stringify(result)),
+              task.runId,
+              "batch-" + batch.ordinal,
+            );
+            await db.query(
+              "UPDATE processing_batch SET result_ref=$3 WHERE run_id=$1 AND ordinal=$2",
+              [task.runId, batch.ordinal, stored.objectRef],
+            );
+          }
           await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
             id,
             task,
@@ -4123,6 +4245,26 @@ describe("OPT42 per-turn intent public boundary", () => {
         (p: any) => p.status === "pending",
       );
       expect(proposal, JSON.stringify(prepared)).toBeTruthy();
+      if (staleReview) {
+        expect(prepared.task.review.content.pending).toBe(2);
+        const page = (
+          await app.inject({
+            method: "GET",
+            url: base() + "/sessions/" + id + "/candidates",
+            headers,
+          })
+        ).json();
+        expect(
+          page.records.every(
+            (row: any) => row.contentReview?.verdict === "pending",
+          ),
+        ).toBe(true);
+        expect(
+          page.records.every(
+            (row: any) => row.historicalContentReview?.verdict === "conforms",
+          ),
+        ).toBe(true);
+      }
       const confirmed = await app.inject({
         method: "POST",
         url: base() + "/proposals/" + proposal.id + "/confirm",
@@ -4141,6 +4283,255 @@ describe("OPT42 per-turn intent public boundary", () => {
         .toBe("complete");
     },
   );
+  it.each([false, true])(
+    "B3v3 legacy exclusions converge on explicit deduplication and protect adopted refinements (%s)",
+    async (adopted) => {
+      const { id, draft } = await sourceB3();
+      let state = await send(
+        id,
+        "清理整份草稿首尾空白，先看结果。",
+        [
+          decision("execute"),
+          {
+            name: "submit_processing",
+            input: {
+              source: { kind: "draft", id: draft },
+              allRecords: true,
+              operation: "clean",
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          },
+        ],
+        { context: { kind: "draft", id: draft } },
+      );
+      await finishB3(state.task.runId);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return (
+              state.task.stage === "awaiting_review" &&
+              state.turns.every(
+                (t: any) => !["queued", "running"].includes(t.status),
+              )
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const db = createPool(databaseUrl),
+        artifacts = new ArtifactRepository(loadConfig().minio);
+      try {
+        const actor = (
+          await db.query("SELECT actor_id FROM processing_run WHERE id=$1", [
+            state.task.runId,
+          ])
+        ).rows[0].actor_id;
+        const scope = { projectId, actorId: actor };
+        const { readProcessingRun } =
+          await import("../../src/processing/store.js");
+        const { createRefinementGroups } =
+          await import("../../src/processing/refine.js");
+        const { taskCandidateCollection } =
+          await import("../../src/assistant/review.js");
+        const { deduplicateCandidateCollection } =
+          await import("../../src/assistant/candidates.js");
+        const { processingTaskCandidates } =
+          await import("../../src/processing/tasks.js");
+        const first = await readProcessingRun(
+          db,
+          artifacts,
+          scope,
+          state.task.runId,
+          { limit: "10000" },
+          true,
+        );
+        const next = (
+          await createRefinementGroups(
+            db,
+            artifacts,
+            scope,
+            [{ runId: first.run.id, resultIds: first.allIds }],
+            randomUUID(),
+            { instructions: "用自然问法", allowedFields: ["question"] },
+          )
+        )[0]!;
+        await finishB3(next.run.id);
+        const task = (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+        ).rows[0].task;
+        task.runId = next.run.id;
+        task.runIds = [next.run.id];
+        task.stage = "awaiting_review";
+        task.checkedStatus = "succeeded";
+        const data = await readProcessingRun(
+          db,
+          artifacts,
+          scope,
+          next.run.id,
+          { limit: "10000" },
+          true,
+        );
+        if (adopted) {
+          const { acceptProcessingResults } =
+            await import("../../src/processing/accept.js");
+          await acceptProcessingResults(
+            db,
+            artifacts,
+            scope,
+            next.run.id,
+            randomUUID(),
+            { resultIds: [data.allIds[1]], target: { kind: "asset" } },
+          );
+        } else {
+          const collection = await taskCandidateCollection(
+            db,
+            artifacts,
+            scope,
+            task,
+            data,
+          );
+          task.candidateScope = deduplicateCandidateCollection(
+            data,
+            collection.runs,
+          ).candidateScope;
+        }
+        await db.query("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+          id,
+          task,
+        ]);
+        state = await send(id, "去掉完全重复的记录，先看结果，不保存。", [
+          decision("execute"),
+          {
+            name: "select_candidates",
+            input: { runId: next.run.id, deduplicate: true },
+          },
+        ]);
+        const workspace = await processingTaskCandidates(
+          db,
+          artifacts,
+          scope,
+          next.run.id,
+        );
+        if (adopted) {
+          expect(
+            state.turns
+              .at(-1)
+              .tools.some(
+                (tool: any) =>
+                  tool.error?.code === "processing_already_adopted",
+              ),
+          ).toBe(true);
+          expect(workspace.rows).toHaveLength(3);
+        } else {
+          expect(
+            state.turns.at(-1).status,
+            JSON.stringify(state.turns.at(-1)),
+          ).toBe("succeeded");
+          expect(workspace.rows).toHaveLength(2);
+          expect(workspace.excluded).toHaveLength(1);
+        }
+      } finally {
+        await db.end();
+      }
+    },
+  );
+  it("B3v3 interrupted second delivery repair resumes after pause and query without replacing the first", async () => {
+    const { id, documentId } = await backgroundSession(
+      "查物流：查询订单运输进度。改地址：变更订单收件地址。完整用户问题。",
+    );
+    let state = await send(id, "先做查物流测试集，2条，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          deliveries: [{ ...simpleDelivery(), name: "查物流测试集" }],
+        },
+      },
+    ]);
+    const first = state.task.runId;
+    await finishB3(first);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.stage;
+        },
+        { timeout: 15000 },
+      )
+      .toBe("awaiting_review");
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    const oldGoal = deliveryGoals(state.task.executionPlan)[0];
+    const second = { ...simpleDelivery(), name: "改地址测试集" };
+    state = await send(
+      id,
+      "按原来的要求，再做一份测试集测改地址，2条。保留查物流的候选，不要重新生成。",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: { deliveries: [{ classifications: [] }, { id: oldGoal.id }] },
+        },
+        { name: "plan_task", input: {}, httpStatus: 400 },
+      ],
+    );
+    const failed = state.turns.at(-1);
+    expect(failed.status, JSON.stringify(failed)).not.toBe("succeeded");
+    const db = createPool(databaseUrl);
+    const before = (
+      await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    expect(before.planningRecovery?.amendment).toBe(true);
+    const identity = before.planningRecovery.requestTurnId;
+    const used = Object.values(before.parameterRepairLimits ?? {}).reduce(
+      (n: number, v: any) => n + (v.used ?? 0),
+      0,
+    );
+    expect(used).toBe(1);
+    await send(id, "先停一下。", [decision("pause")]);
+    await send(id, "现在做到哪了？", [decision("query")]);
+    state = await send(id, "继续未完成的部分，已经生成的不要重做。", [
+      decision("execute"),
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [second] },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    const current = (
+      await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    await db.end();
+    expect(deliveryGoals(current.executionPlan)).toHaveLength(2);
+    expect(deliveryGoals(current.executionPlan)[0]).toEqual(oldGoal);
+    expect(current.runId).toBe(first);
+    expect(current.planningRecovery).toBeFalsy();
+    expect(
+      Object.values(current.parameterRepairLimits ?? {}).reduce(
+        (n: number, v: any) => n + (v.used ?? 0),
+        0,
+      ),
+    ).toBe(used + 1);
+    expect(current.parameterRepairLimits.plan_task.identity).toBe(
+      before.parameterRepairLimits.plan_task.identity,
+    );
+    expect(identity).toBe(failed.id);
+  });
   it("B3 paused progress query reads actual joined job status without restarting work", async () => {
     const { id, draft, recordIds } = await sourceB3(true);
     let state = await send(

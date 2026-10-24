@@ -772,6 +772,19 @@ export function deliveryAdditionClause(clause: string) {
   );
 }
 
+/** A create request authorizes new names; names need not be literal user substrings. */
+export function isDeliveryAddition(
+  current: DeliveryGoal[],
+  change: Record<string, any>,
+  request: string,
+) {
+  return (
+    !change.id &&
+    !current.some((g) => g.name === change.name) &&
+    request.split(/[，,。；;\n]/u).some(deliveryAdditionClause)
+  );
+}
+
 /** Omission preserves goals and fields; IDs, not names or array positions, identify updates. */
 export function reviseDeliveryGoals(
   current: DeliveryGoal[],
@@ -825,16 +838,7 @@ export function reviseDeliveryGoals(
         );
         continue;
       }
-      const explicitAddition =
-        !current.some((goal) => goal.name === change.name) &&
-        userText
-          .split(/[。；;，,\n]/u)
-          .some(
-            (clause) =>
-              typeof change.name === "string" &&
-              clause.includes(change.name) &&
-              deliveryAdditionClause(clause),
-          );
+      const explicitAddition = isDeliveryAddition(current, change, userText);
       if (current.length && !change.id && !explicitAddition)
         fail(
           "更新交付必须使用当前方案中的真实引用，不能按名称覆盖或另建重复交付。",
@@ -1348,7 +1352,10 @@ export function deliveryIdForRuns(task: Record<string, any>, runIds: string[]) {
 }
 
 /** Project one goal from the existing plan, without changing its authority or receipts. */
-export function taskForDelivery(task: Record<string, any>, id: string) {
+export function taskForDelivery(
+  task: Record<string, any>,
+  id: string,
+): Record<string, any> | undefined {
   const plan = task.executionPlan;
   const goal = deliveryGoals(plan).find((goal) => goal.id === id);
   if (!goal) return;
@@ -1373,6 +1380,21 @@ export function taskForDelivery(task: Record<string, any>, id: string) {
           : steps.findIndex((step: any) => step.status !== "executed"),
     },
   };
+}
+
+/** Resolve the authoritative contract using real run receipts or the active plan step. */
+export function effectiveDeliveryTask(
+  task: Record<string, any>,
+  parentRunId?: string,
+  rootRunId?: string,
+) {
+  if (!deliveryGoals(task.executionPlan).length) return task;
+  const id = parentRunId
+    ? deliveryIdForRuns(task, [parentRunId, rootRunId ?? ""])
+    : currentDeliveryId(task.executionPlan);
+  const owned = id && taskForDelivery(task, id);
+  if (!owned) fail("成果归属待核对，请确认对应交付后继续。");
+  return owned;
 }
 
 /** Only asynchronous work and user confirmations require continuation events. */

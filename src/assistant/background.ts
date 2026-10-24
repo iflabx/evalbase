@@ -1,5 +1,9 @@
 import { newQuestionPolicy } from "../processing/deduplication.js";
-import { deliveryGoals, currentDeliveryId } from "./delivery-plan.js";
+import {
+  deliveryGoals,
+  currentDeliveryId,
+  effectiveDeliveryTask,
+} from "./delivery-plan.js";
 import { pendingDeliveryQuestion } from "./plan.js";
 import type { Database } from "../db/pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -702,9 +706,23 @@ export async function freezeBackground(
     records: ProcessingInput[];
     source: ProcessingSource;
     rootOperation?: string;
+    parentRunId?: string;
   },
 ): Promise<BackgroundSnapshot | undefined> {
   const session = await sessionRow(db, scope, sessionId);
+  const rootRunId = processing?.parentRunId
+    ? (
+        await db.query(
+          "SELECT t.root_run_id FROM processing_run r JOIN processing_task t ON t.id=r.task_id AND t.project_id=r.project_id WHERE r.id=$1 AND r.project_id=$2 AND t.assistant_session_id=$3",
+          [processing.parentRunId, scope.projectId, sessionId],
+        )
+      ).rows[0]?.root_run_id
+    : undefined;
+  session.task = effectiveDeliveryTask(
+    session.task,
+    processing?.parentRunId,
+    rootRunId,
+  );
   if (
     session.task.executionPlan?.steps
       ?.slice(0, session.task.executionPlan.current + 1)

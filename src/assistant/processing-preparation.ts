@@ -35,7 +35,9 @@ function scopeIntent(text: string): "all" | "partial" | undefined {
     }
     if (
       !match &&
-      /(?:只|仅)(?:清洗|处理|改写|选取|保留).+(?:记录|数据)/u.test(clause)
+      /(?:仅限|只限|(?:只|仅)(?:清洗|处理|改写|选取|保留)).+(?:记录|数据|类)/u.test(
+        clause,
+      )
     )
       partial = true;
     if (
@@ -93,20 +95,20 @@ export function sourceScopeRequest(
         (["read_records", "submit_processing", "preview_selection"].includes(
           tool.name,
         ) &&
-          tool.result?.requiresClarification === true) ||
-        (tool.status === "failed" &&
-          (tool.error?.code === "processing_scope_invalid" ||
-            tool.error?.issues?.some(
-              (issue: any) => issue.code === "processing_scope_invalid",
-            ))),
+          tool.result?.requiresClarification === true),
     );
     if (active === wanted && unresolvedScope) request = "";
   }
   return active === wanted ? request : "";
 }
-export function wholeSourceAuthorized(request: string, prior: string) {
+export function wholeSourceAuthorized(
+  request: string,
+  prior: string,
+  executeSavedPlan = false,
+) {
   const current = scopeIntent(request);
   if (current) return current === "all";
+  if (executeSavedPlan && scopeIntent(prior) === "all") return true;
   const parts = clauses(request);
   const continuation =
     /^(?:请)?(?:执行方案|按方案执行|继续(?:执行)?|开始(?:执行|清洗|处理|改写))$/u;
@@ -185,6 +187,7 @@ export type ToolFacts = {
   sourceCount?: number;
   authorizedText?: string;
   authorizedScopeText?: string;
+  executeSavedPlan?: boolean;
 };
 export const preparedTools = new Set([
   "query_project",

@@ -109,6 +109,11 @@ export function assistantFeedback(
       "请上传本次生成依据的背景文档，或选择已有原始资料进行处理。",
       "background",
     );
+  if (pending && task.parameterRepairStatus?.outcome === "exhausted")
+    return result(
+      "amendment",
+      "自动修正次数已用完，原方案和已有成果保留，本次修改尚未保存。",
+    );
   if (pending)
     return result(
       "amendment",

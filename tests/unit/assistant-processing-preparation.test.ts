@@ -730,7 +730,9 @@ it.each([
       },
       { user_text: "继续", status: "succeeded", tool_results: [saved] },
     ];
-    expect(sourceScopeRequest(history, source)).toBe("");
+    expect(sourceScopeRequest(history, source)).toBe(
+      receipt.status === "failed" ? "开始清洗，仅限退款类记录" : "",
+    );
     expect(
       wholeSourceAuthorized("继续", sourceScopeRequest(history, source)),
     ).toBe(false);

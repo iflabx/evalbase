@@ -79,6 +79,22 @@ export function backgroundVersion(
     ),
   );
 }
+export function pendingPlanningAmendment(
+  task: Record<string, any>,
+  documentsKey?: string,
+  evidenceKey?: string,
+) {
+  const pending = task.planningRecovery;
+  return pending?.amendment &&
+    pending.requestTurnId &&
+    pending.planKey === planRequirementsKey(task) &&
+    (!pending.documentsKey || pending.documentsKey === documentsKey) &&
+    (!evidenceKey ||
+      !pending.evidenceKey ||
+      pending.evidenceKey === evidenceKey)
+    ? pending
+    : undefined;
+}
 export function liveExecutionBudget(
   task: Record<string, any>,
   now = Date.now(),
@@ -240,7 +256,9 @@ export function recoveryDecision(
     return stop("context_changed");
   const pending =
     task.planningRecovery &&
-    (task.planningRecovery.taskRevision === facts.revision || chain)
+    (pendingPlanningAmendment(task, facts.documentsKey) ||
+      task.planningRecovery.taskRevision === facts.revision ||
+      chain)
       ? task.planningRecovery
       : undefined;
   if (
@@ -475,7 +493,8 @@ export function recoveryDecision(
   const position =
     (phase === "event" && facts.eventReady) ||
     Boolean(
-      pending?.requestTurnId && pending.taskRevision === facts.revision,
+      pending?.requestTurnId &&
+      (pending.amendment || pending.taskRevision === facts.revision),
     ) ||
     Boolean(
       step &&

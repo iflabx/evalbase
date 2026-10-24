@@ -85,8 +85,15 @@ import {
   type SelectionRecord,
 } from "../selection/index.js";
 import { updateTask, settleAssistantBudget } from "./tasks.js";
-import { backgroundVersion, validExecutionBudget } from "./recovery.js";
-import { guardProcessingTask } from "../processing/task-state.js";
+import {
+  backgroundVersion,
+  validExecutionBudget,
+  pendingPlanningAmendment,
+} from "./recovery.js";
+import {
+  guardProcessingTask,
+  excludeTaskReferences,
+} from "../processing/task-state.js";
 import {
   RequirementError,
   explicitRequirementCount,
@@ -366,7 +373,9 @@ function schema(
     additionalProperties: false,
     ...projectQueryConstraints(name, properties),
   } as const;
-  const validate = ajv.compile(definition);
+  const validate = (
+    name === "plan_task" ? new Ajv({ strict: false, allErrors: true }) : ajv
+  ).compile(definition);
   // Some compatible servers cannot constrain uniqueItems during forced tool decoding.
   // Keep the full contract in Ajv; omit only this unsupported generation hint on the wire.
   const modelDefinition = JSON.parse(
@@ -703,15 +712,13 @@ export async function executeAssistantTurn(
       // A failed amendment has not changed the saved plan. "Continue execution"
       // must first resume and save that amendment, even if intent chose execute.
       if (
-        current.planningRecovery?.amendment &&
-        current.planningRecovery.planKey === planRequirementsKey(current) &&
-        (!current.planningRecovery.documentsKey ||
-          current.planningRecovery.documentsKey === planningDocumentsKey) &&
-        current.planningRecovery.evidenceKey ===
-          sha256(canonicalJson(current.backgroundEvidence ?? [])) &&
-        current.planningRecovery.taskRevision === turn.task_revision - 1 &&
+        pendingPlanningAmendment(
+          current,
+          planningDocumentsKey,
+          sha256(canonicalJson(current.backgroundEvidence ?? [])),
+        ) &&
         value.mode === "execute" &&
-        Boolean(planningContinuation(turn.user_text))
+        (!value.requiresUpdate || Boolean(planningContinuation(turn.user_text)))
       )
         Object.assign(value, { mode: "plan", requiresUpdate: true });
       if (
@@ -806,7 +813,11 @@ export async function executeAssistantTurn(
               }
             : {}),
         });
-        if (documentPlanning) {
+        if (
+          documentPlanning ||
+          (decision.requiresUpdate &&
+            pendingPlanningAmendment(current, planningDocumentsKey))
+        ) {
           const pending = current.planningRecovery;
           const reusable =
             pending &&
@@ -817,7 +828,8 @@ export async function executeAssistantTurn(
               pending.documentsKey === planningDocumentsKey) &&
             pending.evidenceKey ===
               sha256(canonicalJson(current.backgroundEvidence ?? [])) &&
-            pending.taskRevision === turn.task_revision - 1;
+            (pending.amendment ||
+              pending.taskRevision === turn.task_revision - 1);
           // A new user request replans against the current documents and normal
           // validators. A stale recovery cursor must not veto that request.
           if (pending && !reusable)
@@ -887,6 +899,10 @@ export async function executeAssistantTurn(
     return {
       task: current,
       request: turn.event === "user" ? turn.user_text : amendmentRequestText,
+      executeSavedPlan:
+        decision?.mode === "execute" &&
+        !decision.requiresUpdate &&
+        Boolean(current.executionPlan?.steps?.length),
       authorizedScopeText: sourceScopeRequest(
         history,
         planSource(current.target) ??
@@ -960,6 +976,7 @@ export async function executeAssistantTurn(
     const allText = wholeSourceAuthorized(
       facts.request,
       facts.authorizedScopeText,
+      facts.executeSavedPlan,
     );
     const confirmedSource =
       planSource(current!.target) ??
@@ -4080,6 +4097,7 @@ export async function executeAssistantTurn(
             wholeSource: wholeSourceAuthorized(
               facts.request,
               facts.authorizedScopeText,
+              facts.executeSavedPlan,
             ),
           });
           if (workflow)
@@ -4101,6 +4119,9 @@ export async function executeAssistantTurn(
           input.steps = [
             ...prefix,
             {
+              ...(currentDeliveryId(oldPlan)
+                ? { deliveryId: currentDeliveryId(oldPlan) }
+                : {}),
               title: "按新要求改写候选",
               action: "refine_candidates",
               input: {
@@ -4112,7 +4133,13 @@ export async function executeAssistantTurn(
                   : { allResults: true }),
               },
             },
-            { title: "核对改写结果", action: "read_processing" },
+            {
+              ...(currentDeliveryId(oldPlan)
+                ? { deliveryId: currentDeliveryId(oldPlan) }
+                : {}),
+              title: "核对改写结果",
+              action: "read_processing",
+            },
           ];
           input.requirements = [
             ...new Set([
@@ -4676,7 +4703,7 @@ export async function executeAssistantTurn(
         input = {
           ...input,
           ...reviseRequirements(
-            businessDeliveries
+            businessDeliveries && !preserveSavedDeliveries
               ? { ...current, classifications: [], allowedLabels: [] }
               : current,
             input,
@@ -6016,6 +6043,70 @@ export async function executeAssistantTurn(
             ...executionScope,
             assistantResultsGuard: { states: collection.states },
           });
+          if (
+            dedup &&
+            (dedup.excluded || collection.pendingExclusions.length)
+          ) {
+            const excluded = new Set(candidateScope.excludedOriginKeys);
+            const rows = collection.records.filter((row) =>
+              excluded.has(row.id),
+            );
+            const groups = [
+              ...collection.pendingExclusions,
+              ...rows.map((row) => ({
+                runId: row.resultRef.runId,
+                resultIds: [row.resultRef.resultId],
+              })),
+            ];
+            const rawRuns = await Promise.all(
+              [...new Set(groups.map((group) => group.runId))].map((id) =>
+                readProcessingRun(
+                  db,
+                  artifacts,
+                  scope,
+                  id,
+                  { limit: "10000" },
+                  true,
+                ),
+              ),
+            );
+            const adopted = await adoptedCandidateKeys(
+              client,
+              artifacts,
+              scope,
+              rawRuns,
+              undefined,
+              true,
+            );
+            if (
+              groups.some((group) =>
+                group.resultIds.some((id) =>
+                  adopted.has(`${group.runId}:${id}`),
+                ),
+              )
+            )
+              throw new AssistantError(409, "processing_already_adopted");
+            let removed = 0;
+            for (const state of collection.states)
+              removed += await excludeTaskReferences(
+                client,
+                scope.projectId,
+                state.id,
+                groups,
+              );
+            if (
+              removed !==
+              new Set(
+                groups.flatMap((group) =>
+                  group.resultIds.map((id) => `${group.runId}:${id}`),
+                ),
+              ).size
+            )
+              throw new AssistantError(
+                409,
+                "assistant_candidate_selection_changed",
+              );
+          }
           await updateTask(
             client,
             turn,
@@ -6207,7 +6298,10 @@ export async function executeAssistantTurn(
             artifacts,
             {
               ...executionScope,
-              assistantResultsGuard: { states: collection.states },
+              assistantResultsGuard: {
+                states: collection.states,
+                excludedGroups: collection.excluded,
+              },
             },
             groups,
             key,
@@ -6872,7 +6966,7 @@ export async function executeAssistantTurn(
   };
   fixedInputValidators.set(
     "plan_task",
-    ajv.compile({
+    new Ajv({ strict: false, allErrors: true }).compile({
       type: "object",
       properties: planProperties,
       additionalProperties: false,
@@ -7553,6 +7647,22 @@ export async function executeAssistantTurn(
     planningDocumentsKey = backgroundVersion(
       context.decode((context.state as any).backgroundDocuments ?? []),
     );
+    const pendingAmendment = pendingPlanningAmendment(
+      task,
+      planningDocumentsKey,
+      sha256(canonicalJson(task.backgroundEvidence ?? [])),
+    );
+    if (pendingAmendment && planningContinuation(turn.user_text)) {
+      planningRequestTurnId = pendingAmendment.requestTurnId;
+      const original = (
+        await db.query(
+          "SELECT user_text FROM assistant_turn WHERE id=$1 AND session_id=$2",
+          [planningRequestTurnId, turn.session_id],
+        )
+      ).rows[0];
+      if (original?.user_text)
+        amendmentRequestText = planningRequestText = original.user_text;
+    }
     if (task.recoverySegment?.turnId === turn.id) {
       planningRequestTurnId = task.recoverySegment.amendmentId;
       firstFailure ??= savedState?.observations?.find(

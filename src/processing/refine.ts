@@ -11,7 +11,11 @@ import { deduplicate } from "./deduplication.js";
 import { freezeBackground } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import { adoptedCandidateKeys, candidateKey } from "./adoption.js";
-import { attachProcessingRound, guardProcessingTask } from "./task-state.js";
+import {
+  attachProcessingRound,
+  guardProcessingTask,
+  excludeTaskReferences,
+} from "./task-state.js";
 import type { ArtifactRepository } from "../storage/artifacts.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId, isPlainObject } from "../server/support.js";
@@ -364,6 +368,7 @@ export async function createRefinementRun(
           records,
           source: parent.source,
           rootOperation: refinement.rootOperation,
+          parentRunId: parentId,
         })
       : input.background;
     if (model?.enabled) {
@@ -634,6 +639,12 @@ export async function createRefinementGroups(
     for (const [index, { workspace, selected }] of [
       ...grouped.values(),
     ].entries()) {
+      const excludedGroups = scope.assistantResultsGuard?.excludedGroups ?? [];
+      const excluded = (row: { runId: string; localId: string }) =>
+        excludedGroups.some(
+          (group) =>
+            group.runId === row.runId && group.resultIds.includes(row.localId),
+        );
       const receipts = await adoptedCandidateKeys(
         client,
         artifacts,
@@ -653,13 +664,31 @@ export async function createRefinementGroups(
       if (
         workspace.rows.some(
           (row) =>
-            selected.has(row.id) &&
+            (selected.has(row.id) || excluded(row)) &&
             receipts.has(
               candidateKey({ runId: row.runId, resultId: row.localId }),
             ),
         )
       )
         throw new ProcessingError(409, "processing_already_adopted");
+      const removed = await excludeTaskReferences(
+        client,
+        scope.projectId,
+        workspace.id,
+        excludedGroups,
+      );
+      if (removed) {
+        workspace.rows = workspace.rows.filter((row) => !excluded(row));
+        workspace.refs = workspace.refs.filter(
+          (ref) =>
+            !excludedGroups.some(
+              (group) =>
+                group.runId === ref.runId &&
+                group.resultIds.includes(ref.resultId),
+            ),
+        );
+        workspace.revision++;
+      }
       const records = workspace.rows
         .filter((row) => row.localId)
         .map((row) => ({

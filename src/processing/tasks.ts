@@ -34,7 +34,11 @@ import {
   type ProcessingRun,
   type ProcessingSource,
 } from "./store.js";
-import { guardProcessingTask, type TaskRef } from "./task-state.js";
+import {
+  guardProcessingTask,
+  excludeTaskReferences,
+  type TaskRef,
+} from "./task-state.js";
 
 type Task = {
   id: string;
@@ -1050,16 +1054,11 @@ export async function deduplicateTask(
     );
     if (body.action === "exclude") {
       const excluded = new Set(plan.excludedIds);
-      await client.query(
-        "UPDATE processing_task SET current_refs=$2,excluded_refs=$3,revision=revision+1 WHERE id=$1",
-        [
-          task.id,
-          JSON.stringify(task.current_refs.filter((r) => !excluded.has(r.key))),
-          JSON.stringify([
-            ...task.excluded_refs,
-            ...task.current_refs.filter((r) => excluded.has(r.key)),
-          ]),
-        ],
+      await excludeTaskReferences(
+        client,
+        scope.projectId,
+        task.id,
+        groupRefs(task.current_refs.filter((ref) => excluded.has(ref.key))),
       );
     } else if (body.action !== undefined)
       throw new ProcessingError(422, "processing_scope_invalid");
