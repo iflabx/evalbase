@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deliveryProgress,
+  confirmationStatus,
   type WorkspaceFacts,
 } from "../../src/assistant/workspace.js";
 
@@ -173,5 +174,104 @@ describe("OPT37 workspace delivery facts", () => {
       confirmed: false,
     });
     expect(deliveryProgress(current, facts)![1].run).toBeUndefined();
+  });
+});
+
+describe("StatusFix confirmation facts", () => {
+  it.each([
+    ["pending", 3, 999, "pending"],
+    ["pending", 2, 999, "invalid"],
+    ["pending", 3, 99, "expired"],
+    ["succeeded", 1, 99, "succeeded"],
+    ["executing", 3, 99, "executing"],
+  ])(
+    "projects %s revision %s expiry %s as %s",
+    (status, revision, expiry, expected) => {
+      expect(
+        confirmationStatus(
+          {
+            status,
+            receipt: status === "succeeded" ? { saved: true } : undefined,
+            task_revision: revision,
+            expires_at: new Date(Number(expiry)),
+          },
+          { task_revision: 3, task: { stage: "awaiting_confirmation" } },
+          100,
+        ),
+      ).toBe(expected);
+    },
+  );
+  it("invalidates a stopped pending card without losing a committed receipt", () => {
+    const session = { task_revision: 3, task: { stage: "stopped" } };
+    expect(
+      confirmationStatus(
+        { status: "pending", task_revision: 3, expires_at: new Date(999) },
+        session,
+        100,
+      ),
+    ).toBe("invalid");
+    expect(
+      confirmationStatus(
+        { status: "succeeded", receipt: { saved: true }, task_revision: 2 },
+        session,
+        100,
+      ),
+    ).toBe("succeeded");
+  });
+  it("a missing success receipt remains unverified", () => {
+    expect(
+      confirmationStatus({ status: "succeeded" }, { task_revision: 3 }),
+    ).toBe("unverified");
+  });
+  it("retains a saved first delivery while the next has not generated", () => {
+    const t = task();
+    t.stage = "stopped";
+    const f = structuredClone(facts);
+    f.runs = f.runs.slice(0, 1);
+    f.confirmations = f.confirmations.slice(0, 1);
+    delete (t.executionPlan.steps[3] as any).receipt;
+    expect(deliveryProgress(t, f)).toMatchObject([
+      { status: "saved", savedCount: 5 },
+      { generatedCount: null, confirmed: false },
+    ]);
+  });
+  it("relinks an invalid card by its run after the waiting preparation was reset", () => {
+    const t = task();
+    delete (t.executionPlan.steps[5] as any).receipt;
+    const f = structuredClone(facts);
+    f.confirmations[1] = { id: "apply-b", status: "expired", runId: "run-b" };
+    expect(deliveryProgress(t, f)![1]).toMatchObject({
+      status: "awaiting_review",
+      confirmationStatus: "expired",
+      generatedCount: 5,
+    });
+  });
+  it("cumulative partial adoptions satisfy the goal without duplicate receipts", () => {
+    const f = structuredClone(facts);
+    f.confirmations = [
+      {
+        id: "one",
+        runId: "run-a",
+        status: "succeeded",
+        summary: { range: "partial" },
+        receipt: {
+          receipt: { draftId: "draft-a", adopted: 2, adoptionId: "one" },
+        },
+      },
+      {
+        id: "two",
+        runId: "run-a",
+        status: "succeeded",
+        summary: { range: "task" },
+        receipt: {
+          receipt: { draftId: "draft-a", adopted: 3, adoptionId: "two" },
+        },
+      },
+    ];
+    f.confirmations.push({ ...f.confirmations[1], id: "replay" });
+    expect(deliveryProgress(task(), f)![0]).toMatchObject({
+      status: "saved",
+      savedCount: 5,
+    });
   });
 });

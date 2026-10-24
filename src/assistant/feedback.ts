@@ -1,3 +1,4 @@
+import { deliveryProgress, type WorkspaceFacts } from "./workspace.js";
 import { planVerificationCurrent } from "./plan.js";
 // Model clarification is useful input, never an execution or save receipt.
 export const claimedExecution = (text: string) =>
@@ -19,6 +20,8 @@ export function assistantFeedback(
     documentsKey?: string;
     summaryFailed?: boolean;
     recoveryReason?: string;
+    workspace?: WorkspaceFacts;
+    recovery?: { canExecutePlan: boolean; reason: string };
   },
 ) {
   const pending = Boolean(
@@ -44,7 +47,19 @@ export function assistantFeedback(
   );
   const result = (kind: string, message: string, action?: "background") => ({
     kind,
-    message,
+    message:
+      facts.workspace &&
+      [
+        "stopped",
+        "paused",
+        "processing",
+        "awaiting_confirmation",
+        "awaiting_review",
+        "checking_submission",
+        "complete",
+      ].includes(kind)
+        ? progressMessage(task, facts.workspace, facts.recovery, message)
+        : message,
     requirementsSaved: saved,
     requirementsVerified: verified,
     planReady: kind === "plan" ? planReady : false,
@@ -129,7 +144,14 @@ export function assistantFeedback(
     return result("processing", "处理任务已提交，完成后将继续核对候选。");
   if (task.stage === "awaiting_confirmation")
     return result(
-      "awaiting_confirmation",
+      facts.workspace?.confirmations.some((c) =>
+        ["executing", "unverified"].includes(c.status),
+      )
+        ? "checking_submission"
+        : facts.workspace &&
+            !facts.workspace.confirmations.some((c) => c.status === "pending")
+          ? "awaiting_review"
+          : "awaiting_confirmation",
       "操作已准备好，请核对下方确认卡片。",
     );
   if (task.stage === "complete")
@@ -199,4 +221,87 @@ export function recoveryReason(reason: string | undefined): string | undefined {
         "该历史任务缺少安全恢复所需的记录，已有成果仍可查看。",
     } as Record<string, string>
   )[reason ?? ""];
+}
+
+/** Server facts replace model progress prose; this function cannot prepare or confirm an operation. */
+export function progressMessage(
+  task: Record<string, any>,
+  workspace: WorkspaceFacts,
+  recovery?: { canExecutePlan: boolean; reason: string },
+  fallback = "",
+) {
+  const deliveries = deliveryProgress(task, workspace) ?? [];
+  const lines = deliveries.map((d: Record<string, any>) => {
+    if (d.status === "saved")
+      return d.name + "：已保存 " + d.savedCount + " 条。";
+    let text = d.name + "：";
+    if (!d.run) text += "尚未生成。";
+    else if (["executing", "unverified"].includes(d.confirmationStatus))
+      text += "提交结果正在核对，候选保留。";
+    else if (d.generatedCount === null) text += "正在核对候选数量。";
+    else
+      text +=
+        "已保留 " +
+        d.generatedCount +
+        " 条候选，" +
+        (d.savedCount ? "已保存 " + d.savedCount + " 条。" : "尚未采用。");
+    return text;
+  });
+  const cards = workspace.confirmations;
+  // Old invalid cards remain history, but never override a newer usable card for the same operation.
+  const current = cards.filter(
+    (c, i) =>
+      !cards
+        .slice(0, i)
+        .some(
+          (p) =>
+            (p.operationKey ?? p.runId ?? p.id) ===
+            (c.operationKey ?? c.runId ?? c.id),
+        ),
+  );
+  if (!deliveries.length)
+    for (const card of current) {
+      if (card.status !== "succeeded") continue;
+      const receipt = card.receipt?.receipt ?? card.receipt;
+      if (card.action === "publish" && card.receipt?.version?.id)
+        lines.push(
+          "已发布" +
+            (card.receipt.version.label
+              ? " " + card.receipt.version.label
+              : "") +
+            "。",
+        );
+      else if (receipt?.draftId)
+        lines.push(
+          "已保存 " +
+            Number(receipt.adopted ?? receipt.added ?? 0) +
+            " 条到草稿。",
+        );
+    }
+  const active = current.some((c) => c.status === "pending");
+  const submitting = current.some((c) =>
+    ["executing", "unverified"].includes(c.status),
+  );
+  const invalid = current.some((c) =>
+    ["invalid", "expired"].includes(c.status),
+  );
+  const stopped = task.stage === "stopped";
+  const prefix = stopped
+    ? "任务已停止。"
+    : task.executionPaused
+      ? "后续执行已暂停。"
+      : "";
+  if (submitting) lines.push("确认提交正在核对，请等待结果，避免重复提交。");
+  else if (active && !stopped)
+    lines.push("当前确认可用，请核对下方卡片后确认。");
+  else if (invalid) {
+    lines.push("旧确认已失效，已有结果保留。");
+    lines.push(
+      recovery?.canExecutePlan
+        ? "继续后将重新核对；符合当前要求的结果可重新确认。"
+        : "请先核对当前可用的恢复操作，再继续未完成部分。",
+    );
+  }
+  if (!lines.length) return prefix || fallback;
+  return prefix + lines.join("\n");
 }

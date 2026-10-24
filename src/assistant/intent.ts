@@ -6,6 +6,11 @@ export const turnControlSchema = {
   additionalProperties: false,
   properties: {
     mode: { enum: ["query", "plan", "execute", "pause"] },
+    querySubject: {
+      enum: ["task_progress", "content"],
+      description:
+        "query查询任务进度、停止或确认状态时用task_progress；文档内容、业务解释或项目资料查询用content。仅决定答复来源，不授予执行权限。",
+    },
     taskBoundary: {
       enum: ["continue", "new"],
       description:
@@ -33,6 +38,7 @@ export const turnControlSchema = {
 export type TurnControl = {
   mode: "query" | "plan" | "execute" | "pause";
   taskBoundary?: "continue" | "new";
+  querySubject?: "task_progress" | "content";
   requiresUpdate?: boolean;
   pauseFirst?: boolean;
   explanation?: string;
@@ -49,6 +55,7 @@ export function validControl(value: unknown): value is TurnControl {
     Object.keys(value).every((key) =>
       [
         "mode",
+        "querySubject",
         "taskBoundary",
         "requiresUpdate",
         "pauseFirst",
@@ -57,6 +64,8 @@ export function validControl(value: unknown): value is TurnControl {
     ) &&
     (value.taskBoundary === undefined ||
       ["continue", "new"].includes(String(value.taskBoundary))) &&
+    (value.querySubject === undefined ||
+      ["task_progress", "content"].includes(String(value.querySubject))) &&
     typeof value.mode === "string" &&
     ["query", "plan", "execute", "pause"].includes(value.mode) &&
     ["requiresUpdate", "pauseFirst"].every(

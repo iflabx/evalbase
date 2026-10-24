@@ -1,3 +1,5 @@
+import { readWorkspaceFacts } from "./workspace.js";
+import { progressMessage } from "./feedback.js";
 import {
   answeredPlanningQuestion,
   planningRequestFacts,
@@ -2394,7 +2396,7 @@ export async function executeAssistantTurn(
     key: string,
     input?: Record<string, any>,
   ) {
-    if (value.historical === true) return;
+    if (decision?.mode === "query" || value.historical === true) return;
     const task = (
       await db.query("SELECT task FROM assistant_session WHERE id=$1", [
         turn.session_id,
@@ -6618,7 +6620,7 @@ export async function executeAssistantTurn(
           ),
         };
         for (const item of runs) await depend(references(item.run.source));
-        if (finished)
+        if (decision?.mode !== "query" && finished)
           await updateTask(
             db,
             turn,
@@ -6639,7 +6641,7 @@ export async function executeAssistantTurn(
             },
             Boolean(review.goalRecovered),
           );
-        else
+        else if (decision?.mode !== "query")
           await updateTask(db, turn, {
             runId: input.runId,
             runIds,
@@ -9729,9 +9731,41 @@ export async function executeAssistantTurn(
                 : "已核对处理结果，请查看下方候选和异常。"),
       ));
     await saveDiagnostics();
+    // Refresh after the model: expiry and confirmation may change without another model request.
+    let finalReply = reply;
+    if (decision?.mode === "query" && decision.querySubject !== "content") {
+      const reads =
+        (
+          await db.query(
+            "SELECT tool_results FROM assistant_turn WHERE id=$1",
+            [turn.id],
+          )
+        ).rows[0]?.tool_results ?? [];
+      if (
+        decision.querySubject === "task_progress" ||
+        !reads.some(
+          (r: any) => r.status === "succeeded" && readTools.includes(r.name),
+        )
+      ) {
+        await turnFence(db, scope, turn.id, turn.execution_token);
+        const fresh = (
+          await db.query(
+            "SELECT id,task,task_revision FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
+            [turn.session_id, scope.projectId, scope.actorId],
+          )
+        ).rows[0];
+        const workspace = await readWorkspaceFacts(db, scope, fresh);
+        const recovery = await assistantRecovery(db, scope, fresh, turn);
+        finalReply = workspace
+          ? progressMessage(fresh.task, workspace, recovery, reply)
+          : fresh.task?.stage === "stopped"
+            ? "任务已停止，已有成果保留。"
+            : reply;
+      }
+    }
     await updateTurn(
       "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
-      [turn.id, reply],
+      [turn.id, finalReply],
     );
   } catch (caught) {
     const e = cancellation?.aborted

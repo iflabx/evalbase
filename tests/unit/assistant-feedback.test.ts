@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { assistantFeedback } from "../../src/assistant/feedback.js";
+import {
+  assistantFeedback,
+  progressMessage,
+} from "../../src/assistant/feedback.js";
 const ctx = { revision: 3, hasBackground: false };
 describe("OPT45 persistent feedback", () => {
   it("keeps the exact saved background question, including existing-material alternatives", () => {
@@ -165,5 +168,103 @@ describe("OPT46 completion pending blockers", () => {
     expect(f.message).not.toContain("继续完成修改后再执行");
     expect(f.message).not.toBe("请选择分类");
     expect(f.requirementsSaved).toBe(false);
+  });
+});
+
+describe("StatusFix grounded progress", () => {
+  const workspace = {
+    projectId: "p",
+    runs: [],
+    drafts: [],
+    confirmations: [{ id: "old", status: "invalid", runId: "r" }],
+  };
+  it("never advertises an invalid confirmation from historical model text", () => {
+    const m = progressMessage(
+      { stage: "stopped" },
+      workspace,
+      { canExecutePlan: false, reason: "permission_denied" },
+      "等待你确认",
+    );
+    expect(m).toContain("任务已停止");
+    expect(m).toContain("确认已失效");
+    expect(m).not.toContain("等待你确认");
+    expect(m).not.toContain("继续后将重新核对");
+  });
+  it("requires recovery eligibility before offering to rebuild confirmation", () => {
+    expect(
+      progressMessage({ stage: "stopped" }, workspace, {
+        canExecutePlan: true,
+        reason: "ready",
+      }),
+    ).toContain("继续后将重新核对");
+  });
+  it("keeps unknown submission outcome distinct from unsaved data", () => {
+    const m = progressMessage(
+      {},
+      {
+        ...workspace,
+        confirmations: [{ id: "x", runId: "r", status: "executing" }],
+      },
+    );
+    expect(m).toContain("提交正在核对");
+    expect(m).not.toContain("尚未采用");
+  });
+  it("a newer usable card supersedes the invalid history for the same run", () => {
+    const m = progressMessage(
+      {},
+      {
+        ...workspace,
+        confirmations: [
+          { id: "new", runId: "r", status: "pending" },
+          ...workspace.confirmations,
+        ],
+      },
+    );
+    expect(m).toContain("当前确认可用");
+    expect(m).not.toContain("旧确认已失效");
+  });
+  it("the page feedback consumes the same expired-card facts", () => {
+    const f = assistantFeedback(
+      { stage: "awaiting_confirmation" },
+      {
+        ...ctx,
+        workspace: {
+          ...workspace,
+          confirmations: [{ id: "old", runId: "r", status: "expired" }],
+        },
+      },
+    );
+    expect(f.kind).toBe("awaiting_review");
+    expect(f.message).toContain("确认已失效");
+    expect(f.message).not.toContain("操作已准备好");
+  });
+  it("progress facts do not replace a pending business clarification", () => {
+    const f = assistantFeedback(
+      { stage: "waiting_input", question: "要哪一类？" },
+      { ...ctx, workspace },
+    );
+    expect(f.message).toBe("要哪一类？");
+  });
+  it("a committed legacy publication supersedes its invalid older card", () => {
+    const message = progressMessage(
+      { stage: "complete" },
+      {
+        ...workspace,
+        confirmations: [
+          {
+            id: "new",
+            operationKey: "publish:d",
+            action: "publish",
+            status: "succeeded",
+            receipt: { version: { id: "v1", label: "v1" } },
+          },
+          { id: "old", operationKey: "publish:d", status: "invalid" },
+        ],
+      },
+      undefined,
+      "当前目标已完成，已保存成果可在工作区查看。",
+    );
+    expect(message).toContain("已发布");
+    expect(message).not.toContain("确认已失效");
   });
 });

@@ -24,7 +24,7 @@ type Call = {
   finishReason?: string;
   text?: string;
   httpStatus?: number;
-  when?: (request: any) => boolean;
+  when?: (request: any) => boolean | Promise<boolean>;
 };
 let script: Call[] = [];
 let observed: any[] = [];
@@ -116,7 +116,7 @@ const model = createServer(async (request, response) => {
     return;
   }
   const body = observed.at(-1);
-  if (call?.when && !call.when(body))
+  if (call?.when && !(await call.when(body)))
     call = { name: "plan_task", input: {}, text: "未收到完整规划纠错合同。" };
   if (
     !call &&
@@ -1104,6 +1104,235 @@ describe("OPT42 per-turn intent public boundary", () => {
     } finally {
       await db.end();
     }
+  });
+  it("StatusFix stopped query cannot advertise an invalid confirmation and resume reuses the draft", async () => {
+    const id = await session();
+    const { draft } = await populated(id);
+    const db = createPool(databaseUrl);
+    try {
+      const task = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      const executionPlan = revisePlan(
+        undefined,
+        {
+          executionMode: "execute",
+          steps: [
+            {
+              title: "准备发布确认",
+              action: "request_publish",
+              input: { draftId: draft },
+            },
+          ],
+        },
+        1,
+        undefined,
+        planRequirementsKey(task),
+      );
+      await db.query(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [id, JSON.stringify({ executionPlan })],
+      );
+      const first = await send(id, "准备发布", [decision("execute")]);
+      expect(first.proposals.some((p: any) => p.status === "pending")).toBe(
+        true,
+      );
+      expect(first.task.feedback.message).toContain("当前确认可用");
+      await db.query(
+        "UPDATE assistant_proposal SET expires_at=now()-interval '1 second' WHERE id=$1",
+        [first.proposals[0].id],
+      );
+      const expired = await read(id);
+      expect(expired.proposals[0].status).toBe("expired");
+      expect(expired.task.feedback.message).toContain("确认已失效");
+      expect(expired.task.feedback.message).not.toContain("操作已准备好");
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + id + "/stop",
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      const before = await effects();
+      const query = await send(id, "现在做到哪了？", [
+        decision("query", { explanation: "确认卡已准备好，等待你确认。" }),
+      ]);
+      expect(query.turns.at(-1).assistantText).toContain("任务已停止");
+      expect(query.turns.at(-1).assistantText).toContain("确认已失效");
+      expect(query.turns.at(-1).assistantText).not.toContain("等待你确认");
+      expect(await effects()).toEqual(before);
+      expect(
+        query.proposals.find((p: any) => p.id === first.proposals[0].id).status,
+      ).toBe("invalid");
+      expect(query.task.executionPlan.steps[0].status).toBe("pending");
+      const resumed = await send(id, "继续准备发布确认", [
+        decision("execute"),
+        { name: "request_publish", input: { draftId: draft } },
+      ]);
+      expect(
+        resumed.proposals.some((p: any) => p.status === "pending"),
+        JSON.stringify(resumed.turns.at(-1)),
+      ).toBe(true);
+      expect(
+        (await db.query("SELECT count(*)::int AS n FROM test_set_version"))
+          .rows[0].n,
+      ).toBe(0);
+      const current = resumed.proposals.find(
+        (p: any) => p.status === "pending",
+      );
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: base() + "/proposals/" + current.id + "/confirm",
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (await read(id)).turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            ),
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const completed = await send(id, "现在保存了吗？", [
+        decision("query", {
+          querySubject: "task_progress",
+          explanation: "请重新核对旧确认。",
+        }),
+      ]);
+      expect(
+        completed.proposals.find((p: any) => p.id === current.id).status,
+      ).toBe("succeeded");
+      expect(completed.turns.at(-1).assistantText).toContain("已发布");
+      expect(completed.turns.at(-1).assistantText).not.toContain("确认已失效");
+    } finally {
+      await db.end();
+    }
+  });
+  it("StatusFix content queries keep the document answer while a task is stopped", async () => {
+    const { id } = await backgroundSession();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + id + "/stop",
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const answer = "文档中的查物流指查询订单运输进度。";
+    const before = await effects();
+    const state = await send(id, "说明文档中的查物流是什么意思", [
+      decision("query", { querySubject: "content", explanation: answer }),
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.turns.at(-1).assistantText).toBe(answer);
+    expect(await effects()).toEqual(before);
+  });
+  it("StatusFix a concurrent stop prevents stale query completion", async () => {
+    const id = await session();
+    let stopped = false;
+    script = [
+      {
+        ...decision("query", {
+          querySubject: "task_progress",
+          explanation: "操作已准备好，等待确认。",
+        }),
+        when: async () => {
+          const response = await app.inject({
+            method: "POST",
+            url: base() + "/sessions/" + id + "/stop",
+            headers,
+            payload: {},
+          });
+          stopped = response.statusCode === 200;
+          return true;
+        },
+      },
+    ];
+    const response = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "现在做到哪了？" },
+    });
+    expect(response.statusCode).toBe(202);
+    await expect.poll(async () => stopped, { timeout: 15000 }).toBe(true);
+    const state = await read(id);
+    const turn = state.turns.find((r: any) => r.id === response.json().turnId);
+    expect(turn.status).toBe("interrupted");
+    expect(turn.assistantText ?? "").not.toContain("等待确认");
+    expect(state.task.stage).toBe("stopped");
+  });
+  it("StatusFix read_processing query preserves the stopped stage and execution plan", async () => {
+    const { id, draft, recordIds } = await sourceB3(true);
+    let state = await send(
+      id,
+      "前两条清理首尾空白，其他别动。",
+      [
+        decision("execute"),
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "draft", id: draft },
+            recordIds,
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      ],
+      { context: { kind: "draft", id: draft } },
+    );
+    const runId = state.task.runId;
+    await finishB3(runId);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return (
+            state.task.stage === "awaiting_review" &&
+            state.turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            )
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + id + "/stop",
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const stopped = await read(id);
+    const before = await effects();
+    state = await send(id, "现在做到哪了？", [
+      decision("query", { querySubject: "task_progress" }),
+      { name: "read_processing", input: { runId } },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.stage).toBe("stopped");
+    expect(state.task.executionPlan).toEqual(stopped.task.executionPlan);
+    expect(await effects()).toEqual(before);
   });
   it("structured operations still require CSRF and replay the original receipt", async () => {
     const id = await session("plan");

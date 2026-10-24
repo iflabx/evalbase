@@ -861,6 +861,8 @@ export function ProjectAssistant({
       amendment: "修改待保存",
       input: "等待补充",
       blocked: "需要核对",
+      awaiting_review: "候选待审核",
+      checking_submission: "核对提交中",
       failed: "任务未完成",
     } as Record<string, string>
   )[visible?.task?.feedback?.kind ?? ""];
@@ -1593,7 +1595,7 @@ export function ProjectAssistant({
                                 </div>
                                 {new Date(p.expires_at).getTime() <= Date.now() && (
                                   <p className="text-xs text-destructive">
-                                    确认已过期，请重新生成。
+                                    此确认已过期，已有结果保留；请重新核对后确认。
                                   </p>
                                 )}
                               </>
@@ -1605,10 +1607,10 @@ export function ProjectAssistant({
                                     : p.action === "processing"
                                       ? `已采用${p.receipt?.receipt?.adopted !== undefined ? ` · ${p.receipt.receipt.adopted} 条记录` : ""}`
                                       : `已加入草稿${p.receipt?.receipt?.added !== undefined ? ` · 新增 ${p.receipt.receipt.added} 条记录` : ""}`
-                                  : p.status === "executing"
-                                    ? "正在提交…"
-                                    : p.status === "invalid"
-                                      ? "要求或范围已变化，此确认已失效；请在本会话重新核对。"
+                                  : ["executing", "unverified"].includes(p.status)
+                                    ? "提交结果正在核对…"
+                                    : ["invalid", "expired"].includes(p.status)
+                                      ? "此确认已失效，已有结果保留；请重新核对后确认。"
                                       : "已取消"}
                               </p>
                             )}

@@ -1,4 +1,9 @@
 import {
+  readWorkspaceFacts,
+  deliveryProgress,
+  confirmationStatus,
+} from "./workspace.js";
+import {
   answeredPlanningQuestion,
   planningRequestFacts,
 } from "./planning-state.js";
@@ -303,15 +308,19 @@ export async function assistantContext(
       [sessionId],
     ),
     db.query(
-      "SELECT p.action,p.status,p.summary,p.receipt FROM assistant_proposal p JOIN assistant_turn t ON t.id=p.turn_id JOIN assistant_session s ON s.id=p.session_id WHERE p.session_id=$1 AND p.actor_id=$2 AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id) ORDER BY p.created_at DESC,p.id DESC LIMIT 20",
+      "SELECT p.id,p.action,p.status,p.summary,p.receipt,p.task_revision,p.expires_at FROM assistant_proposal p JOIN assistant_turn t ON t.id=p.turn_id JOIN assistant_session s ON s.id=p.session_id WHERE p.session_id=$1 AND p.actor_id=$2 AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id) ORDER BY p.created_at DESC,p.id DESC LIMIT 20",
       [sessionId, scope.actorId],
     ),
     db.query(
-      "SELECT task FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
+      "SELECT id,task,task_revision FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
       [sessionId, scope.projectId, scope.actorId],
     ),
   ]);
   const task = current.rows[0]?.task ?? {};
+  const workspace =
+    current.rows[0] && canWrite
+      ? await readWorkspaceFacts(db, scope, current.rows[0])
+      : undefined;
   const allowed = await availableDependencies(
     db,
     scope,
@@ -510,9 +519,20 @@ export async function assistantContext(
       recordCount: pageRow.record_count ?? pageRow.count,
       label: pageRow.label,
     },
+    progress: workspace
+      ? {
+          stage: task.stage,
+          deliveries: deliveryProgress(task, workspace),
+          confirmations: workspace.confirmations.map((p) => ({
+            id: p.id,
+            status: p.status,
+            runId: p.runId,
+          })),
+        }
+      : undefined,
     confirmedOperations: confirmedOperations.slice(0, 10),
     pendingOperations: proposals.rows
-      .filter((p) => p.status === "pending")
+      .filter((p) => confirmationStatus(p, current.rows[0]) === "pending")
       .slice(0, 10)
       .map((p) => ({ action: p.action, ...p.summary })),
   });
