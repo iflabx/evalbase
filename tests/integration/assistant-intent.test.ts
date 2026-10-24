@@ -24,6 +24,7 @@ type Call = {
   finishReason?: string;
   text?: string;
   httpStatus?: number;
+  when?: (request: any) => boolean;
 };
 let script: Call[] = [];
 let observed: any[] = [];
@@ -115,6 +116,8 @@ const model = createServer(async (request, response) => {
     return;
   }
   const body = observed.at(-1);
+  if (call?.when && !call.when(body))
+    call = { name: "plan_task", input: {}, text: "未收到完整规划纠错合同。" };
   if (
     !call &&
     !omitDiscovery &&
@@ -4586,7 +4589,7 @@ describe("OPT42 per-turn intent public boundary", () => {
       const used = before.parameterRepairLimits.plan_task.used;
       await send(id, "先停一下。", [decision("pause")]);
       await send(id, "现在做到哪了？", [decision("query")]);
-      state = await send(id, "继续未完成的部分，已经生成的不要重做。", [
+      state = await send(id, "继续规划，先不要执行。", [
         decision("plan", { requiresUpdate: true }),
         {
           name: "plan_task",
@@ -4717,5 +4720,300 @@ describe("OPT42 per-turn intent public boundary", () => {
           (t: any) => t.error?.code === "assistant_requirement_conflict",
         ),
     ).toBe(true);
+  });
+  it("B3v5 answered source clarification forces a complete plan with the actual ordinary wording", async () => {
+    const { id, draft } = await sourceB3();
+    let state = await send(
+      id,
+      "把这份资料清理首尾空白，去掉完全重复的，再把问法改自然一点。整份处理，答案和标签不动。先给方案，别开始。",
+      [
+        decision("plan"),
+        {
+          name: "plan_task",
+          input: {
+            question: "整条记录完全相同才去重吗？",
+            target: { kind: "draft", id: draft },
+          },
+        },
+      ],
+      { context: { kind: "draft", id: draft } },
+    );
+    const start = 0;
+    state = await send(id, "整条记录完全相同才去重。", [
+      decision("plan", { requiresUpdate: true }),
+      { name: "plan_task", input: { question: "整条记录完全相同才去重吗？" } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          requirements: [
+            "只清理首尾空白，整条记录完全相同才去重，再把问法改自然",
+            "答案和Metadata保持不变",
+          ],
+        },
+        when: (r) =>
+          r.tool_choice?.function?.name === "plan_task" &&
+          JSON.stringify(r.messages).includes("repair_planning") &&
+          JSON.stringify(r.messages).includes("整条记录完全相同才去重。"),
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.question).toBeFalsy();
+    expect(state.task.executionPlan.steps.map((s: any) => s.action)).toEqual([
+      "submit_processing",
+      "select_candidates",
+      "refine_candidates",
+      "read_processing",
+    ]);
+    expect(state.task.runId).toBeFalsy();
+    expect(
+      observed
+        .slice(start)
+        .some(
+          (r) =>
+            JSON.stringify(r.messages).includes("repair_planning") &&
+            r.tool_choice?.function?.name === "plan_task",
+        ),
+    ).toBe(true);
+    state = await send(id, "按当前已保存方案执行", [], {
+      operation: "execute_plan",
+      expectedTaskRevision: state.task.turnControl.taskRevision,
+    });
+    const first = state.task.runId;
+    await finishB3(first);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.runId;
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe(first);
+    await finishB3(state.task.runId);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.stage;
+        },
+        { timeout: 15000 },
+      )
+      .toBe("awaiting_review");
+    expect(state.task.review.total).toBe(2);
+    expect(state.task.review.duplicates).toBe(0);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+  });
+  it("B3v5 initial repair after pause and query receives the missing-delivery failure and resumes execute", async () => {
+    const { id, documentId } = await backgroundSession(
+      "查物流：查询订单运输进度。改地址：变更收件地址。完整用户问题。",
+    );
+    const delivery = (name: string) => ({
+      ...simpleDelivery(),
+      name: name + "测试集",
+      classifications: [
+        {
+          field: "metadata",
+          key: "意图",
+          basis: "background",
+          allowedValues: [name],
+          quotas: [{ value: name, count: 2 }],
+          definitions: [
+            {
+              value: name,
+              text:
+                name === "查物流"
+                  ? "查物流：查询订单运输进度。"
+                  : "改地址：变更收件地址。",
+            },
+          ],
+        },
+      ],
+    });
+    await send(id, "做查物流和改地址两个测试集，各2条，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "execute", deliveries: [delivery("查物流")] },
+      },
+      { name: "plan_task", input: {}, httpStatus: 400 },
+    ]);
+    const db = createPool(databaseUrl);
+    try {
+      const before = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      const oldIdentity = before.parameterRepairLimits.plan_task.identity;
+      await send(id, "先停一下。", [decision("pause")]);
+      await send(id, "现在做到哪了？", [decision("query")]);
+      const start = 0;
+      let state = await send(id, "继续未完成的部分，已经生成的不要重做。", [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "execute",
+            deliveries: [delivery("查物流"), delivery("改地址")],
+          },
+          when: (r) =>
+            r.tool_choice?.function?.name === "plan_task" &&
+            JSON.stringify(r.messages).includes("failedProposal") &&
+            JSON.stringify(r.messages).includes("份数为2份"),
+        },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(state.task.executionPlan)).toHaveLength(2);
+      expect(state.task.executionPlan.mode).toBe("execute");
+      expect(state.task.runId).toBeTruthy();
+      const after = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(after.parameterRepairLimits.plan_task.identity).toBe(oldIdentity);
+      expect(after.parameterRepairLimits.plan_task.used).toBe(
+        before.parameterRepairLimits.plan_task.used + 1,
+      );
+      expect(
+        observed
+          .slice(start)
+          .some(
+            (r) =>
+              r.tool_choice?.function?.name === "plan_task" &&
+              JSON.stringify(r.messages).includes("份数为2份"),
+          ),
+      ).toBe(true);
+      const adopt = async () => {
+        await expect
+          .poll(
+            async () => {
+              state = await read(id);
+              return state.turns.every(
+                (t: any) => !["queued", "running"].includes(t.status),
+              );
+            },
+            { timeout: 15000 },
+          )
+          .toBe(true);
+        const page = (
+          await app.inject({
+            method: "GET",
+            url: base() + "/sessions/" + id + "/candidates",
+            headers,
+          })
+        ).json();
+        const saved = state.proposals?.some((p: any) => p.status === "pending")
+          ? state
+          : await send(id, "将勾选成果保存回原草稿", [], {
+              operation: "save_candidates",
+              expectedTaskRevision: state.task.turnControl.taskRevision,
+              candidates: {
+                scope: "task",
+                reviewRevision: page.reviewRevision,
+                resultIds: page.records.map((r: any) => r.id),
+              },
+            });
+        const proposal = saved.proposals.find(
+          (p: any) => p.status === "pending",
+        );
+        expect(proposal, JSON.stringify(saved)).toBeTruthy();
+        const confirmed = await app.inject({
+          method: "POST",
+          url: base() + "/proposals/" + proposal.id + "/confirm",
+          headers,
+          payload: {},
+        });
+        expect(confirmed.statusCode, confirmed.body).toBe(200);
+      };
+      const first = state.task.runId;
+      await finishB3(first);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.stage;
+          },
+          { timeout: 15000 },
+        )
+        .toBe("awaiting_review");
+      await adopt();
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.runId;
+          },
+          { timeout: 15000 },
+        )
+        .not.toBe(first);
+      await finishB3(state.task.runId);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.stage;
+          },
+          { timeout: 15000 },
+        )
+        .toBe("awaiting_review");
+      await adopt();
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.task.stage;
+          },
+          { timeout: 15000 },
+        )
+        .toBe("complete");
+    } finally {
+      await db.end();
+    }
+  });
+  it("B3v5 text-only contextual corrections stop on the original two-request allowance", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(id, "先设计两个测试集，各2条，不执行。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+      },
+      { name: "plan_task", input: {}, text: "我会补齐第二份方案。" },
+      { name: "plan_task", input: {}, text: "方案还在准备中。" },
+    ]);
+    expect(state.turns.at(-1).status).toBe("failed");
+    expect(state.task.executionPlan?.steps?.length ?? 0).toBe(0);
+    expect(state.task.runId).toBeFalsy();
+    const db = createPool(databaseUrl);
+    try {
+      const task = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(task.parameterRepairLimits.plan_task.used).toBe(2);
+      const repairs = observed.filter((r) =>
+        JSON.stringify(r.messages).includes("repair_planning"),
+      );
+      expect(repairs.length).toBeGreaterThan(0);
+      expect(
+        repairs.every((r) => r.tool_choice?.function?.name === "plan_task"),
+      ).toBe(true);
+    } finally {
+      await db.end();
+    }
   });
 });

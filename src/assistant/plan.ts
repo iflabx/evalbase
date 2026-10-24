@@ -734,6 +734,24 @@ export function resolvedStepInput(
     ...(step?.operation?.input ?? step?.input ?? {}),
     ...(supplied ?? {}),
   };
+  const rangeFields =
+    step?.action === "request_processing_apply"
+      ? ["resultIds", "allSelected", "allValid"]
+      : step?.action === "refine_candidates"
+        ? ["resultIds", "allSelected", "allResults", "where"]
+        : step?.action === "submit_processing"
+          ? ["recordIds", "allRecords", "selection"]
+          : [];
+  if (rangeFields.some((field) => supplied?.[field] !== undefined)) {
+    for (const field of rangeFields)
+      if (supplied?.[field] === undefined) delete input[field];
+    if (
+      step?.action === "request_processing_apply" &&
+      supplied?.allTask === undefined &&
+      supplied?.allValid !== true
+    )
+      delete input.allTask;
+  }
   if (!plan || !step) return input;
   const delivery = plan.contractVersion === 1 && step.deliveryId;
   const receipts = plan.steps

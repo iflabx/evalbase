@@ -1,3 +1,10 @@
+import {
+  answeredPlanningQuestion,
+  planningRequestFacts,
+  recoverPlanningFailure,
+  savedPlanningMode,
+  needsPlanningSubmission,
+} from "./planning-state.js";
 import { projectQueryConstraints } from "./query-contract.js";
 import { effectiveOperationInput } from "./operation-input.js";
 import {
@@ -513,8 +520,10 @@ export async function executeAssistantTurn(
         kind: RepairClass;
         proposal?: any;
         issues?: RepairDetails["issues"];
+        reason?: { code: string; hint?: string };
       }
     | undefined;
+  let planRepairContext: typeof pendingContextRepair;
   let planRepairFocus: ReturnType<typeof repairScope> | undefined;
   let processingRepairFocus:
     | { name: string; focus: ReturnType<typeof repairScope> }
@@ -569,6 +578,7 @@ export async function executeAssistantTurn(
       pendingContextRepair = {
         name,
         kind: classifyToolFailure([], code),
+        reason: { code, hint },
         proposal: proposal ? context.encode(proposal) : undefined,
         issues: issues?.length
           ? issues
@@ -709,18 +719,24 @@ export async function executeAssistantTurn(
           "assistant_intent_required",
           "本轮操作方式不完整，请结合用户要求重新判断；不要执行旧计划。",
         );
-      // A failed amendment has not changed the saved plan. "Continue execution"
-      // must first resume and save that amendment, even if intent chose execute.
-      if (
-        pendingPlanningAmendment(
-          current,
-          planningDocumentsKey,
-          sha256(canonicalJson(current.backgroundEvidence ?? [])),
-        ) &&
-        value.mode === "execute" &&
-        (!value.requiresUpdate || Boolean(planningContinuation(turn.user_text)))
-      )
-        Object.assign(value, { mode: "plan", requiresUpdate: true });
+      const pendingPlan = pendingPlanningAmendment(
+        current,
+        planningDocumentsKey,
+        sha256(canonicalJson(current.backgroundEvidence ?? [])),
+      );
+      if (pendingPlan && ["plan", "execute"].includes(value.mode)) {
+        if (planningContinuation(turn.user_text) === "continue") {
+          const original = (
+            await db.query(
+              "SELECT tool_results FROM assistant_turn WHERE id=$1 AND session_id=$2 AND event='user'",
+              [pendingPlan.requestTurnId, turn.session_id],
+            )
+          ).rows[0];
+          const originalMode = savedPlanningMode(original?.tool_results ?? []);
+          if (originalMode) Object.assign(value, { mode: originalMode });
+        }
+        Object.assign(value, { requiresUpdate: true });
+      }
       if (
         value.taskBoundary === "new" &&
         current.goal &&
@@ -796,6 +812,21 @@ export async function executeAssistantTurn(
           !deliveryGoals(current.executionPlan).length;
         await updateTask(db, turn, {
           turnControl: decision,
+          ...(current.question &&
+          ["plan", "execute"].includes(value.mode) &&
+          !current.processingClarification &&
+          !current.boundaryQuestion
+            ? {
+                planningClarification: {
+                  question: current.question,
+                  askedTurnId:
+                    current.planningClarification?.askedTurnId ??
+                    current.originTurnId,
+                  answerTurnId: turn.id,
+                  answer: turn.user_text,
+                },
+              }
+            : {}),
           ...(value.mode === "execute" &&
           current.processingClarification &&
           current.processingClarification.turnId !== turn.id
@@ -850,7 +881,18 @@ export async function executeAssistantTurn(
             (pending.amendment ||
               current.parameterRepairStatus?.name === "plan_task")
           ) {
-            pendingContextRepair = { name: "plan_task", kind: "context" };
+            const failedTurn = (
+              await db.query(
+                "SELECT tool_results FROM assistant_turn WHERE id=$1 AND session_id=$2",
+                [pending.requestTurnId ?? pending.turnId, turn.session_id],
+              )
+            ).rows[0];
+            const failure = recoverPlanningFailure(
+              failedTurn?.tool_results ?? [],
+            );
+            pendingContextRepair = failure
+              ? { ...failure, proposal: context.encode(failure.proposal) }
+              : { name: "plan_task", kind: "context" };
             const original = (
               await db.query(
                 "SELECT user_text FROM assistant_turn WHERE id=$1 AND session_id=$2 AND event='user'",
@@ -989,6 +1031,7 @@ export async function executeAssistantTurn(
       facts.request,
       facts.authorizedScopeText,
       facts.executeSavedPlan,
+      answeredPlanningQuestion(current!),
     );
     const confirmedSource =
       planSource(current!.target) ??
@@ -4110,6 +4153,7 @@ export async function executeAssistantTurn(
               facts.request,
               facts.authorizedScopeText,
               facts.executeSavedPlan,
+              answeredPlanningQuestion(current),
             ),
           });
           if (workflow)
@@ -5127,6 +5171,9 @@ export async function executeAssistantTurn(
               : {}),
             nextAction: addedWorkExceedsLimit ? null : nextAction,
             question: clarification ?? null,
+            planningClarification: clarification
+              ? { question: clarification, askedTurnId: turn.id }
+              : null,
             ...(input.target
               ? { targetName: await sourceName(input.target) }
               : {}),
@@ -7758,10 +7805,13 @@ export async function executeAssistantTurn(
           decision?.requiresUpdate &&
           !decision.updateSaved))
     ) {
-      pendingContextRepair = {
-        name: "plan_task",
-        kind: classifyToolFailure(task.parameterRepairStatus?.issues ?? []),
-      };
+      const failed = recoverPlanningFailure(turn.tool_results);
+      pendingContextRepair = failed
+        ? { ...failed, proposal: context.encode(failed.proposal) }
+        : {
+            name: "plan_task",
+            kind: classifyToolFailure(task.parameterRepairStatus?.issues ?? []),
+          };
       requirementRepair = true;
     }
     planningCheckpointRequired = task?.planningCheckpointTurnId === turn.id;
@@ -7882,7 +7932,13 @@ export async function executeAssistantTurn(
       await updateTask(db, turn, { parameterRepairStatus });
       activeRepair = undefined;
       nestedRepairRequest = false;
-      if (outcome === "repaired") schemaHints.delete(name);
+      if (outcome === "repaired") {
+        schemaHints.delete(name);
+        if (name === "plan_task") {
+          planRepairContext = undefined;
+          planRepairFocus = undefined;
+        }
+      }
     }
     const repair = argumentRepair({
       model: model.model,
@@ -8382,6 +8438,16 @@ export async function executeAssistantTurn(
               ? "invalid"
               : "repaired",
           );
+        if (
+          planRepairContext &&
+          stepToolResults.some(
+            (r) =>
+              ["read_background", "query_project"].includes(r.toolName) &&
+              isPlainObject(r.output) &&
+              !r.output.error,
+          )
+        )
+          pendingContextRepair = planRepairContext;
         await saveBudget();
         await advanceExecution(messages);
       },
@@ -8412,9 +8478,11 @@ export async function executeAssistantTurn(
         const fixedState = fixedReceipts.length
           ? { messages: [...messages, ...stepMessages] }
           : {};
-        if (pendingContextRepair) {
+        const repairing = pendingContextRepair;
+        if (pendingContextRepair && decision) {
           const pending = pendingContextRepair;
           pendingContextRepair = undefined;
+          if (pending.name === "plan_task") planRepairContext = pending;
           const identity = repairIdentity(budgetTask, planningRequestTurnId);
           if (
             !repairRequestAvailable(
@@ -8432,7 +8500,10 @@ export async function executeAssistantTurn(
                 type: "object",
                 properties:
                   pending.name === "plan_task"
-                    ? deliveryPlanProperties
+                    ? deliveryGoals(budgetTask.executionPlan).length ||
+                      documentPlanning
+                      ? deliveryPlanProperties
+                      : singlePlanProperties
                     : (toolInputs.get(pending.name)?.properties ?? {}),
                 additionalProperties: false,
               },
@@ -8505,6 +8576,77 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1
             ? singlePlanSchema
             : fullPlanSchema;
+        if (
+          needsPlanningSubmission(
+            currentTask,
+            decision,
+            Boolean(
+              activeRepair?.name === "plan_task" ||
+              planRepairFocus ||
+              planRepairContext,
+            ),
+          )
+        ) {
+          const reads = await backgroundReadReceipts();
+          const focus = planRepairFocus;
+          const repairFacts = repairing ?? planRepairContext;
+          const needsEvidence =
+            activeRepair?.kind === "reference" ||
+            /background_reference|background_rule|background_capacity/.test(
+              repairFacts?.reason?.code ?? "",
+            );
+          const repairTools = [
+            "plan_task",
+            ...(needsEvidence
+              ? activeTools.filter((n) =>
+                  ["read_background", "query_project"].includes(n),
+                )
+              : []),
+          ] as (keyof typeof tools)[];
+          if (focus)
+            tools.plan_task.inputSchema = schema(
+              focus.schema.properties,
+              focus.schema.required,
+              "plan_task",
+              (hint) => schemaHints.set("plan_task", hint),
+            );
+          activeRepairTools = new Set(repairTools);
+          return {
+            activeTools: repairTools,
+            toolChoice:
+              repairTools.length > 1
+                ? ("required" as const)
+                : { type: "tool" as const, toolName: "plan_task" },
+            messages: [
+              {
+                role: "user" as const,
+                content: JSON.stringify({
+                  operation: "repair_planning",
+                  request: amendmentRequestText,
+                  ...planningRequestFacts(currentTask),
+                  control: decision,
+                  failedProposal: repairFacts?.proposal ?? focus?.value,
+                  failure: repairFacts?.reason ?? lastFailure ?? firstFailure,
+                  errors: repairFacts?.issues ?? focus?.details.issues ?? [],
+                  facts: context.encode({
+                    target: currentTask.target,
+                    requirements: currentTask.requirements,
+                    allowedFields: currentTask.allowedFields,
+                    metadataKeys: currentTask.metadataKeys,
+                    deliveries: deliveryGoals(currentTask.executionPlan),
+                    backgroundDocuments: context.state.backgroundDocuments,
+                    backgroundDefinitions:
+                      currentTask.backgroundDefinitions ?? [],
+                    background: reads.slice(-3).map((r: any) => r.result),
+                  }),
+                }),
+              },
+            ],
+            instructions:
+              instructions +
+              "\n当前必须修正未提交方案。用户原始目标、已回答澄清和失败提议均在本轮事实中；已回答的问题不再询问。按当前Schema提交全部必要步骤或交付，不能只返回文字、control或空对象。首次方案补齐全部独立交付；已有方案只改实际变化。保留用户数量、字段保护和当前控制模式。control.mode为plan时只保存不执行；为execute时先保存完整校验通过的方案，再续接该授权的未完成步骤。仅确有新的业务缺口才提出具体新问题，不能把参数错误转交用户。",
+          };
+        }
         // A pending correction must not be replaced by generic discovery/work prompts.
         if (processingRepairFocus) {
           const { focus } = processingRepairFocus;
@@ -8580,10 +8722,16 @@ export async function executeAssistantTurn(
               "\n本轮没有已核对的资料对象，引用列表为空不表示项目没有资料。请先query_project按用户给出的名称查询files、drafts或testSets；没有名称可列出当前项目供选择。不要只返回query控制或声称项目没有资料。查询只读取当前用户有权访问的元信息，不授予数据修改权限。",
           };
         }
-        const processingChain =
-          /(?:整理格式|清洗)/u.test(currentTask.goal ?? "") &&
-          /去重|去掉完全重复|去除完全重复/u.test(currentTask.goal ?? "") &&
-          /改写|问法改|改自然/u.test(currentTask.goal ?? "");
+        const processingChain = processingWorkflowSteps({
+          source: planSource(currentTask.target),
+          request: [currentTask.goal, ...(currentTask.supplements ?? [])]
+            .filter(Boolean)
+            .join("\n"),
+          wholeSource: wholeSourceAuthorized(
+            amendmentRequestText,
+            currentTask.goal,
+          ),
+        });
         if (
           !goalContract &&
           needsWork &&
@@ -8627,50 +8775,6 @@ export async function executeAssistantTurn(
             "plan_task",
             (hint) => schemaHints.set("plan_task", hint),
           );
-        }
-        if (planRepairFocus) {
-          const focus = planRepairFocus;
-          const currentGoals = deliveryGoals(currentTask.executionPlan);
-          tools.plan_task.inputSchema = schema(
-            focus.schema.properties,
-            focus.schema.required,
-            "plan_task",
-            (hint) => schemaHints.set("plan_task", hint),
-          );
-          activeRepairTools = new Set(["plan_task"]);
-          return {
-            activeTools: ["plan_task"],
-            toolChoice: { type: "tool" as const, toolName: "plan_task" },
-            messages: [
-              {
-                role: "user" as const,
-                content: JSON.stringify({
-                  operation: "repair_tool_arguments",
-                  toolName: "plan_task",
-                  repairClass: activeRepair?.kind ?? "context",
-                  original: focus.value,
-                  error: focus.details.issues,
-                  context: context.encode({
-                    request: amendmentRequestText,
-                    control: decision,
-                    requirements: currentTask.requirements,
-                    deliveries:
-                      preparePlanAmendment(
-                        currentTask,
-                        deliveryPlanProperties,
-                        amendmentRequestText,
-                        Number(turn.task_revision),
-                      )?.facts.deliveries ?? currentGoals,
-                    backgroundDefinitions:
-                      currentTask.backgroundDefinitions ?? [],
-                  }),
-                }),
-              },
-            ],
-            instructions:
-              instructions +
-              "\n首次创建尚无已保存交付时，返回完整的新建方案，补齐用户要求的全部集合并保留有效内容。只有修改已保存方案才按真实id提交变化。不要因份数不足只修分类或删除新建必填字段。修正不能改变授权或删除约束。",
-          };
         }
         const amendment = preparePlanAmendment(
           currentTask,

@@ -1,3 +1,4 @@
+import { answeredPlanningQuestion } from "./planning-state.js";
 import { isPlainObject } from "../server/support.js";
 
 export const turnControlSchema = {
@@ -126,7 +127,12 @@ export function turnNeedsWork(
       task.runId ||
       task.executionPlan?.steps?.length
     );
-  if (task.question || task.executionPlan?.steps?.length) return false;
+  if (task.question && !answeredPlanningQuestion(task)) return false;
+  if (
+    task.executionPlan?.steps?.length &&
+    !(decision.requiresUpdate && !decision.updateSaved)
+  )
+    return false;
   if (
     completed.some(
       (r) =>
@@ -147,6 +153,7 @@ export function turnNeedsWork(
     return false;
   if (
     decision.mode === "plan" &&
+    !(decision.requiresUpdate && !decision.updateSaved) &&
     completed.some((r) => r.name === "plan_task" && !r.result?.unchanged)
   )
     return false;

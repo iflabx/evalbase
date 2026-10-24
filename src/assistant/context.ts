@@ -1,3 +1,7 @@
+import {
+  answeredPlanningQuestion,
+  planningRequestFacts,
+} from "./planning-state.js";
 import { deliveryGoals } from "./delivery-plan.js";
 import type { Database } from "../db/pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -38,10 +42,15 @@ export function currentTaskFacts(
       }
     : null;
   if (facts.goal !== undefined)
-    facts.objective =
-      facts.requirements?.length || task.executionPlan
-        ? task.title
-        : facts.goal;
+    facts.objective = task.executionPlan?.steps?.length
+      ? task.title
+      : facts.goal;
+  if (answeredPlanningQuestion(task)) delete facts.question;
+  if (
+    task.goal &&
+    (!task.executionPlan?.steps?.length || task.planValidationRequired)
+  )
+    facts.planningRequest = planningRequestFacts(task);
   delete facts.goal;
   delete facts.supplements;
   if (task.executionPlan?.contractVersion === 1)

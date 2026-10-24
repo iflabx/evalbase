@@ -105,10 +105,15 @@ export function wholeSourceAuthorized(
   request: string,
   prior: string,
   executeSavedPlan = false,
+  answeredClarification = false,
 ) {
   const current = scopeIntent(request);
   if (current) return current === "all";
-  if (executeSavedPlan && scopeIntent(prior) === "all") return true;
+  if (
+    (executeSavedPlan || answeredClarification) &&
+    scopeIntent(prior) === "all"
+  )
+    return true;
   const parts = clauses(request);
   const continuation =
     /^(?:请)?(?:执行方案|按方案执行|继续(?:执行)?|开始(?:执行|清洗|处理|改写))$/u;
@@ -804,8 +809,7 @@ export function processingWorkflowSteps(facts: {
         allRecords: true,
         operation: "clean",
         allowedFields: ["question"],
-        instructions:
-          "只去掉问题首尾多余空白，保留问题内部内容、期望输出和Metadata。",
+        instructions: "",
       },
     },
     {
