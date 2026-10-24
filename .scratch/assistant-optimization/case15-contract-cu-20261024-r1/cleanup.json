@@ -1,0 +1,13 @@
+{
+  "code": "580bbf41ee392d4b1a5ea3aaca7f9efde04b58a4",
+  "guardRemoved": true,
+  "all18TableFingerprintsUnchanged": true,
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "580bbf41ee392d4b1a5ea3aaca7f9efde04b58a4"
+  }
+}
