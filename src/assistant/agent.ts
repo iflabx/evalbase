@@ -9886,7 +9886,13 @@ export async function executeAssistantTurn(
             },
           }
         : {}),
-      stage: retainedProcessing ? "awaiting_review" : "failed",
+      stage:
+        decision?.mode === "query" ||
+        ["stopped", "complete"].includes(retainedTask?.stage)
+          ? retainedTask.stage
+          : retainedProcessing
+            ? "awaiting_review"
+            : "failed",
       error: errorCode,
       recovery: {
         kind: failure

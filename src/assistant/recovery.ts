@@ -240,7 +240,8 @@ export function recoveryDecision(
   if (!facts.canWrite) return stop("permission_denied");
   if (task.error === "assistant_context_deleted")
     return stop("context_changed");
-  if (task.stage === "complete") return { ...result, reason: "complete" };
+  if (task.stage === "complete" && !resolvingUserControl)
+    return { ...result, reason: "complete" };
   if (
     allowance &&
     (task.stage === "stopped" || task.error === "assistant_stopped") &&
@@ -251,7 +252,7 @@ export function recoveryDecision(
     return stop("budget_evidence_missing");
   if (!facts.dependenciesValid) return stop("context_changed");
   result.canExecutePlan = Boolean(
-    task.stage !== "stopped" &&
+    !["stopped", "complete"].includes(task.stage) &&
     task.executionPlan?.steps?.length &&
     !task.question &&
     !task.requirementProblem &&

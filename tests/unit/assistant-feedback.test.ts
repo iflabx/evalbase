@@ -268,3 +268,60 @@ describe("StatusFix grounded progress", () => {
     expect(message).not.toContain("确认已失效");
   });
 });
+
+describe("StatusFix committed completion survives a failed query", () => {
+  it("uses executed goal receipts without hiding pending changes", () => {
+    const task: any = {
+      stage: "failed",
+      executionPlan: {
+        contractVersion: 1,
+        mode: "execute",
+        current: 3,
+        steps: [
+          {
+            action: "generate_candidates",
+            deliveryId: "g",
+            status: "executed",
+            input: { name: "物流", outputCount: 2 },
+            receipt: { runId: "r", draftId: "d" },
+          },
+          {
+            action: "request_processing_apply",
+            deliveryId: "g",
+            status: "executed",
+            receipt: { proposalId: "p", draftId: "d", runId: "r" },
+          },
+        ],
+      },
+    };
+    const workspace = {
+      projectId: "p",
+      runs: [{ id: "r", status: "succeeded", count: 2 }],
+      drafts: [{ id: "d", count: 2 }],
+      confirmations: [
+        {
+          id: "p",
+          status: "succeeded",
+          receipt: { receipt: { draftId: "d", adopted: 2 } },
+        },
+      ],
+    };
+    expect(assistantFeedback(task, { ...ctx, workspace })).toMatchObject({
+      kind: "complete",
+    });
+    task.planValidationRequired = true;
+    expect(assistantFeedback(task, { ...ctx, workspace }).kind).not.toBe(
+      "complete",
+    );
+  });
+  it.each([
+    { planValidationRequired: true },
+    { question: "还需要哪一类？" },
+    { requirementProblem: "要求待核对", requirementProblemKind: "diagnostic" },
+    { executionPlan: { needsReview: true } },
+  ])("a retained complete stage does not hide a new blocker %s", (blocker) => {
+    expect(["amendment", "input", "blocked"]).toContain(
+      assistantFeedback({ stage: "complete", ...blocker }, ctx).kind,
+    );
+  });
+});

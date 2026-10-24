@@ -74,8 +74,23 @@ export function assistantFeedback(
     )
   )
     return result("failed", recoveryReason(facts.recoveryReason)!);
+  const completedReceipts =
+    !pending &&
+    !task.question &&
+    !task.executionPlan?.needsReview &&
+    task.executionPlan?.steps?.length > 0 &&
+    task.executionPlan.steps.every((step: any) => step.status === "executed") &&
+    facts.workspace &&
+    (deliveryProgress(task, facts.workspace) ?? []).length > 0 &&
+    deliveryProgress(task, facts.workspace)!.every(
+      (d: Record<string, any>) => d.status === "saved",
+    );
   if (
-    task.stage === "complete" &&
+    (task.stage === "complete" || completedReceipts) &&
+    !pending &&
+    !task.question &&
+    !task.requirementProblem &&
+    !task.executionPlan?.needsReview &&
     ![
       "permission_denied",
       "context_changed",
@@ -103,6 +118,10 @@ export function assistantFeedback(
             ? "方案已保存；"
             : "") + blocker,
     );
+  if (task.executionPlan?.needsReview)
+    return result("blocked", "当前方案需要重新核对，已有成果保留。");
+  if (task.requirementProblem && task.requirementProblemKind !== "business")
+    return result("blocked", "当前要求需要核对，已有成果保留。");
   if (task.requirementProblem && task.requirementProblemKind === "business")
     return result("input", task.requirementProblem);
   if (task.question)
@@ -154,8 +173,6 @@ export function assistantFeedback(
           : "awaiting_confirmation",
       "操作已准备好，请核对下方确认卡片。",
     );
-  if (task.stage === "complete")
-    return result("complete", "当前目标已完成，已保存成果可在工作区查看。");
   if (recoveryReason(facts.recoveryReason))
     return result(
       "blocked",

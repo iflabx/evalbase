@@ -1334,6 +1334,53 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.task.executionPlan).toEqual(stopped.task.executionPlan);
     expect(await effects()).toEqual(before);
   });
+  it("StatusFix a completed task accepts a fresh read-only progress query", async () => {
+    const id = await session("execute");
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(jsonb_set(task,'{stage}','\"complete\"'),' {executionPlan,steps}',(SELECT jsonb_agg(x||'{\"status\":\"executed\"}'::jsonb) FROM jsonb_array_elements(task->'executionPlan'->'steps') x)) WHERE id=$1",
+        [id],
+      );
+      const before = await effects();
+      const state = await send(id, "现在保存了吗？", [
+        decision("query", {
+          querySubject: "task_progress",
+          explanation: "已核对当前已完成任务。",
+        }),
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.stage).toBe("complete");
+      expect(await effects()).toEqual(before);
+    } finally {
+      await db.end();
+    }
+  });
+  it("StatusFix a failed follow-up cannot erase committed completion", async () => {
+    const id = await session("execute");
+    const db = createPool(databaseUrl);
+    try {
+      await db.query(
+        "UPDATE assistant_session SET task=jsonb_set(jsonb_set(task,'{stage}','\"complete\"'),' {executionPlan,steps}',(SELECT jsonb_agg(x||'{\"status\":\"executed\"}'::jsonb) FROM jsonb_array_elements(task->'executionPlan'->'steps') x)) WHERE id=$1",
+        [id],
+      );
+      const before = await effects();
+      const state = await send(id, "现在保存了吗？", [
+        { name: "plan_task", input: {}, httpStatus: 400 },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("failed");
+      expect(state.task.stage).toBe("complete");
+      expect(await effects()).toEqual(before);
+    } finally {
+      await db.end();
+    }
+  });
   it("structured operations still require CSRF and replay the original receipt", async () => {
     const id = await session("plan");
     const before = await effects();

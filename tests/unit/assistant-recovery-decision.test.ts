@@ -124,6 +124,47 @@ describe("OPT44 recovery decision", () => {
       }).reason,
     ).toBe("stopped");
   });
+  it("a fresh user control request can query a completed task without authorizing commits", () => {
+    const { turn, task, facts } = fixture(80000);
+    turn.event = "user";
+    turn.status = "running";
+    turn.execution_token = "token";
+    turn.expires_at = new Date(now + 90000).toISOString();
+    task.stage = "complete";
+    task.turnControl = { turnId: turn.id, taskRevision: 2, source: "pending" };
+    expect(
+      recoveryDecision(task, turn, {
+        ...facts,
+        phase: "request",
+        token: "token",
+      }).reason,
+    ).toBe("request_allowed");
+    expect(
+      recoveryDecision(task, turn, {
+        ...facts,
+        phase: "commit",
+        token: "token",
+      }).reason,
+    ).toBe("complete");
+    expect(
+      recoveryDecision(task, turn, {
+        ...facts,
+        phase: "request",
+        token: "token",
+        canWrite: false,
+      }).reason,
+    ).toBe("permission_denied");
+    task.turnControl.turnId = turn.id;
+    task.turnControl.mode = "execute";
+    task.turnControl.source = "model";
+    expect(
+      recoveryDecision(task, turn, {
+        ...facts,
+        phase: "request",
+        token: "token",
+      }).reason,
+    ).toBe("complete");
+  });
   it("uses the same next-attempt estimate after a 50 second timeout and backoff", () => {
     const f = fixture(29500);
     f.turn.status = "running";

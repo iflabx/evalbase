@@ -863,6 +863,7 @@ export function ProjectAssistant({
       blocked: "需要核对",
       awaiting_review: "候选待审核",
       checking_submission: "核对提交中",
+      complete: visible?.task?.overallTargetCount ? "当前目标已完成" : "已完成",
       failed: "任务未完成",
     } as Record<string, string>
   )[visible?.task?.feedback?.kind ?? ""];
