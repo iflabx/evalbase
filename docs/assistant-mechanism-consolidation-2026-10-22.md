@@ -1,6 +1,7 @@
 # 项目助手机制整理与修改方案
 
 - 日期：2026-10-22。
+- 最新实施/验收状态（2026-10-24）：4217已更新8a49155；169单元、7项HTTP定向通过。第12/14/15项各一独立新会话，CU仅14通过，12/15在原纠错限额内未完成有效规划，整体仍未通过。暂停/查询续接已统一初次及修改方案的原身份；剩余澄清/工具提交与查询限时缺口、旧数据及44份预算保护，以[本轮证据](../.scratch/assistant-optimization/batch3-retest-20261024/report.md)为准。下方带日期条目为历史快照。
 - 当前状态（2026-10-23）：OPT-46～49已完成各票开发及定向验证；OPT-50代码be2b8b1和58项定向通过，4217已更新，但两项真实CU未通过，整票in-progress/partial-pass。CU7测试门禁误拦与CU10真实纠错/澄清失败严格分开，旧数据与22份预算保持；详见[唯一验证记录](../.scratch/assistant-optimization/opt50-verification-20261023.md)。
 - 2026-10-22最初诊断基线：4217 应用 `92492e7a7b2a4eab2abf635226bdd6895f01997a`。已确认事实与未确定项见 [诊断记录](../.scratch/assistant-optimization/mechanism-review-20261022/diagnosis.md)。
 - 产品依据：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；技术依据：[ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。历史验收结果、数据和预算保持。

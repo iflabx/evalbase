@@ -1,0 +1,158 @@
+{
+  "12": {
+    "session": "conversation_114098f5577147d5ae06353731136db1",
+    "status": "failed",
+    "requests": 10,
+    "knownRequestMs": 88783,
+    "unsettledRequests": 0,
+    "lastActiveBefore": {
+      "caseMs": 91428,
+      "totalMs": 164172
+    },
+    "generationRequested": 0,
+    "processingRequested": 0,
+    "stage": "failed",
+    "repairLimits": {
+      "plan_task": {
+        "used": 2,
+        "version": 2,
+        "identity": "4a41d36023d646eb7aefa647ea50f94205b83787ebbbadfa8820b1bce8403277"
+      }
+    },
+    "failures": [
+      {
+        "turn": "turn_27b918cba73644c2bc89b3d725b56c08",
+        "tool": "plan_task",
+        "code": "assistant_reference_invalid",
+        "hint": "assets来源必须提供真实assetIds；draft/version必须提供真实id。使用当前业务上下文或查询返回的引用，未知引用需重新查询。"
+      },
+      {
+        "turn": "turn_f3517d0a552e41db8b372878d144dd7a",
+        "tool": "plan_task",
+        "code": "assistant_plan_clarification_unnecessary",
+        "hint": "用户已回答上一个澄清问题，不能原样再次要求确认。结合原始目标与本轮补充保存完整有效方案；若仍有真实未解决的业务缺口，提出具体的新问题。只保存方案不代表开始执行。"
+      }
+    ],
+    "turnStatuses": [
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "failed",
+        "assistant_plan_clarification_unnecessary"
+      ]
+    ]
+  },
+  "14": {
+    "session": "conversation_0bb4a2069b944c3a8df9313ca1ca1b84",
+    "status": "passed",
+    "requests": 9,
+    "knownRequestMs": 22015,
+    "unsettledRequests": 0,
+    "lastActiveBefore": {
+      "caseMs": 21184,
+      "totalMs": 83155
+    },
+    "generationRequested": 2,
+    "processingRequested": 2,
+    "stage": "complete",
+    "repairLimits": {},
+    "failures": [],
+    "turnStatuses": [
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "processing_completed",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "succeeded",
+        null
+      ],
+      [
+        "processing_completed",
+        "succeeded",
+        null
+      ],
+      [
+        "user",
+        "succeeded",
+        null
+      ]
+    ]
+  },
+  "15": {
+    "session": "conversation_082c3063f0cd4061aeb5e5d6990734ae",
+    "status": "failed",
+    "requests": 7,
+    "knownRequestMs": 45562,
+    "unsettledRequests": 0,
+    "lastActiveBefore": {
+      "caseMs": 46111,
+      "totalMs": 133618
+    },
+    "generationRequested": 0,
+    "processingRequested": 0,
+    "stage": "failed",
+    "repairLimits": {
+      "plan_task": {
+        "used": 2,
+        "version": 2,
+        "identity": "a0e065d598d6391e09916291c510436b3260c3bb4541c44b7b7029e14e627e85"
+      }
+    },
+    "failures": [
+      {
+        "turn": "turn_a9e162f877274ad9ac360c72f523a015",
+        "tool": "plan_task",
+        "code": "assistant_requirement_conflict",
+        "hint": "本轮明确要求的份数为2份测试集，当前方案为1份。请补齐全部独立交付及各自名称、数量、要求和分类；单份内部的分类配额保持在该份。"
+      }
+    ],
+    "turnStatuses": [
+      [
+        "user",
+        "interrupted",
+        "assistant_stopped"
+      ],
+      [
+        "user",
+        "failed",
+        "assistant_budget_exhausted"
+      ],
+      [
+        "user",
+        "failed",
+        "assistant_tool_repair_exhausted"
+      ]
+    ]
+  }
+}
