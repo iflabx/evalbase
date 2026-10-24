@@ -85,6 +85,7 @@ import {
   continuationEventCount,
   assertDeliveryRepair,
   validateRequestedCategories,
+  requestedDeliveryShape,
 } from "./delivery-plan.js";
 import { createRefinementGroups } from "../processing/refine.js";
 import { adoptedCandidateKeys } from "../processing/adoption.js";
@@ -183,6 +184,9 @@ import {
   classifyToolFailure,
   toolValidationIssues,
   repairScope,
+  repairInputSummary,
+  redactRepairInput,
+  toolInputFailure,
   type RepairDetails,
   type RepairClass,
   type RepairLimits,
@@ -401,15 +405,25 @@ function schema(
       validate: (value) => {
         if (validate(value) || compatible?.(value))
           return { success: true, value: value as Record<string, any> };
+        // Creation and clarification are alternatives; do not report both as missing.
+        const branch =
+          isPlainObject(value) && Object.hasOwn(value, "question") ? 1 : 0;
+        const errors =
+          name === "plan_task" && Array.isArray(constraints.oneOf)
+            ? validate.errors?.filter(
+                (e) =>
+                  !e.schemaPath.startsWith("#/oneOf/" + (1 - branch)) &&
+                  e.keyword !== "oneOf",
+              )
+            : validate.errors;
         const hint =
-          explain?.(value, validate.errors) ??
-          inputHint(validate.errors, name, properties);
+          explain?.(value, errors) ?? inputHint(errors, name, properties);
         invalid?.(hint);
         return {
           success: false,
           error: Object.assign(
             new AssistantError(422, "assistant_tool_input_invalid", hint),
-            { issues: toolValidationIssues(validate.errors) },
+            { issues: toolValidationIssues(errors) },
           ),
         };
       },
@@ -507,7 +521,10 @@ export async function executeAssistantTurn(
   let lastFailure:
     | { name: string; code: string; hint: string; fingerprint?: string }
     | undefined;
-  const schemaHints = new Map<string, string>();
+  const repairRejections = new Map<
+    string,
+    { input: any; issues: RepairDetails["issues"]; stage: string }
+  >();
   let executionBudget: ExecutionBudget | undefined;
   let reconciledExecution = false;
   let activeRepair:
@@ -524,6 +541,7 @@ export async function executeAssistantTurn(
         kind: RepairClass;
         proposal?: any;
         issues?: RepairDetails["issues"];
+        lastInput?: any;
         reason?: { code: string; hint?: string };
       }
     | undefined;
@@ -547,9 +565,16 @@ export async function executeAssistantTurn(
         phase: "started" | "finished";
         outcome?: string;
         remainingMs: number;
+        inputSummary?: {
+          hash: string;
+          bytes: number;
+          keys: string[];
+          deliveryCounts?: unknown[];
+        };
+        validationStage?: string;
       })
     | undefined;
-  function recordFailure(
+  async function recordFailure(
     name: string,
     code: string,
     hint = "",
@@ -559,7 +584,36 @@ export async function executeAssistantTurn(
     issues?: PreparationIssue[],
   ) {
     const reason = hint.slice(0, 320);
-    firstFailure ??= { name, code };
+    issues = issues?.length
+      ? issues
+      : [
+          {
+            tool: name,
+            operation: "prepare",
+            path: "/",
+            keyword: "business",
+            code,
+            message: hint || code,
+          },
+        ];
+    firstFailure ??= { name, code, issues };
+    if (name === "plan_task" || preparedTools.has(name)) {
+      parameterRepairStatus = {
+        ...parameterRepairStatus!,
+        name,
+        turnId: turn.id,
+        amendmentId: planningRequestTurnId,
+        intent: documentPlanning ? "document_plan" : "tool",
+        phase: "finished",
+        outcome: "invalid",
+        scope: "call",
+        issues,
+        validationStage: "business",
+        inputSummary: repairInputSummary(proposal),
+        remainingMs: Math.max(0, turnBudget.deadlineAt - Date.now()),
+      };
+      await updateTask(db, turn, { parameterRepairStatus });
+    }
     if (
       (name === "plan_task" || preparedTools.has(name)) &&
       [
@@ -1557,6 +1611,20 @@ export async function executeAssistantTurn(
     const prepared = await prepareProposal(fixed, current, documents);
     if (!prepared.ok) preparationError(prepared.issues);
     const next = prepared.input;
+    if (initialDeliveryRepair(current, documents!.length > 0, true)) {
+      // A rejected first proposal is not an accepted delivery. Validate against
+      // the original request and trusted field protections, not its invented name.
+      assertDeliveryRepair(
+        {
+          allowedFields: current.allowedFields,
+          metadataKeys: current.metadataKeys,
+          requirements: current.requirements,
+        },
+        next,
+        amendmentRequestText,
+      );
+      return;
+    }
     const unacceptedCorrection = [
       "assistant_background_reference_invalid",
       "assistant_background_rule_mismatch",
@@ -1932,7 +2000,7 @@ export async function executeAssistantTurn(
       taskRevision: turn.task_revision,
       codeVersion: config.gitSha,
       contractVersion: "assistant-diagnostics-v2",
-      promptVersion: "assistant-prompt-v15",
+      promptVersion: "assistant-prompt-v16",
       intent: decision
         ? {
             mode: decision.mode,
@@ -1948,8 +2016,8 @@ export async function executeAssistantTurn(
             reasonCode: "intent_not_recorded",
           },
       requirementsReconciled: requirementRepair,
-      toolsVersion: "assistant-tools-v12",
-      parameterRepairVersion: "arguments-v4",
+      toolsVersion: "assistant-tools-v13",
+      parameterRepairVersion: "arguments-v5",
       modelRevision,
       requestAttempts: requestCount(),
       transportRetries: turnBudget.transportRetries,
@@ -2407,9 +2475,7 @@ export async function executeAssistantTurn(
     );
     return tool({
       description,
-      inputSchema: schema(properties, modelRequired, name, (hint) => {
-        schemaHints.set(name, hint);
-      }),
+      inputSchema: schema(properties, modelRequired, name, undefined),
       execute: (input) => {
         const businessRepair =
           processingRepairFocus?.name === name
@@ -3350,7 +3416,7 @@ export async function executeAssistantTurn(
             const failureKey = actionStarted
               ? key
               : `assistant:${turn.id}:validation:${sha256(canonicalJson({ name, input }))}`;
-            recordFailure(
+            await recordFailure(
               name,
               error.code,
               "hint" in error ? String(error.hint) : "",
@@ -7102,9 +7168,7 @@ export async function executeAssistantTurn(
     planProperties,
     [],
     "plan_task",
-    (hint) => {
-      schemaHints.set("plan_task", hint);
-    },
+    undefined,
     explainPlanInput,
   );
   const fullPlanSchema = tools.plan_task.inputSchema;
@@ -7127,7 +7191,7 @@ export async function executeAssistantTurn(
     deliveryPlanProperties,
     [],
     "plan_task",
-    (hint) => schemaHints.set("plan_task", hint),
+    undefined,
   );
   // Old persisted plans retain their contract; new generated goals have one write path.
   const singlePlanProperties = {
@@ -7146,7 +7210,7 @@ export async function executeAssistantTurn(
     singlePlanProperties,
     [],
     "plan_task",
-    (hint) => schemaHints.set("plan_task", hint),
+    undefined,
     explainPlanInput,
   );
   // Compatibility only: pre-contract saved document plans keep their frozen inputs.
@@ -7194,7 +7258,7 @@ export async function executeAssistantTurn(
     },
     ["executionMode", "steps", "requirements"],
     "plan_task",
-    (hint) => schemaHints.set("plan_task", hint),
+    undefined,
   );
   // Consume already fixed parameters through the same guarded tools; the model
   // supplies only missing parameters or genuine business choices. Confirmation stays manual.
@@ -7970,7 +8034,6 @@ export async function executeAssistantTurn(
       activeRepair = undefined;
       nestedRepairRequest = false;
       if (outcome === "repaired") {
-        schemaHints.delete(name);
         if (name === "plan_task") {
           planRepairContext = undefined;
           planRepairFocus = undefined;
@@ -7980,6 +8043,18 @@ export async function executeAssistantTurn(
     const repair = argumentRepair({
       model: model.model,
       deferMalformed: true,
+      deferContext: (name) => name === "plan_task",
+      rejected: async ({ name, toolCallId, input, issues, stage }) => {
+        repairRejections.set(toolCallId, { input, issues, stage });
+        parameterRepairStatus = {
+          ...parameterRepairStatus!,
+          name,
+          issues,
+          validationStage: stage,
+          inputSummary: repairInputSummary(input),
+        };
+        await updateTask(db, turn, { parameterRepairStatus });
+      },
       check: async (name) => {
         await controlModelRequest(() =>
           turnFence(db, scope, turn.id, turn.execution_token),
@@ -8066,49 +8141,7 @@ export async function executeAssistantTurn(
             sourceDiscovery: current.sourceDiscovery,
           });
         }
-        const current = (
-          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
-            turn.session_id,
-          ])
-        ).rows[0].task;
-        const amendment = preparePlanAmendment(
-          current,
-          deliveryPlanProperties,
-          amendmentRequestText,
-          Number(turn.task_revision),
-        );
-        const goals =
-          amendment?.facts.deliveries ?? deliveryGoals(current.executionPlan);
-        const documents = (
-          await db.query(
-            'SELECT id,sha256,extractor_version AS "extractorVersion" FROM assistant_background_document WHERE session_id=$1',
-            [turn.session_id],
-          )
-        ).rows;
-        const reads = (await backgroundReadReceipts()).filter((record: any) =>
-          documents.some(
-            (doc: any) =>
-              doc.id === record.input.documentId &&
-              doc.sha256 === record.result.sha256 &&
-              doc.extractorVersion === record.result.extractorVersion,
-          ),
-        );
-        return context.encode({
-          request: amendmentRequestText,
-          control: decision,
-          requirements: current.requirements,
-          deliveries: goals,
-          availableDeliveries: amendment?.facts.availableDeliveries,
-          background: reads.slice(-3).map((record: any) => ({
-            definitions: record.result.definitions ?? [],
-            fragments: (record.result.fragments ?? []).map((fragment: any) => ({
-              index: fragment.index,
-              text: clip(fragment.text, 2000),
-            })),
-          })),
-          allowedFields: current.allowedFields,
-          metadataKeys: current.metadataKeys,
-        });
+        return undefined;
       },
       accept: async (name, original, fixed) => {
         if (!isPlainObject(fixed)) return false;
@@ -8135,40 +8168,7 @@ export async function executeAssistantTurn(
           if (issues.length) preparationError(issues);
           return true;
         }
-        let current = (
-          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
-            turn.session_id,
-          ])
-        ).rows[0].task;
-        const documents = (
-          await db.query(
-            'SELECT id,sha256,extractor_version AS "extractorVersion",fragments FROM assistant_background_document WHERE session_id=$1',
-            [turn.session_id],
-          )
-        ).rows;
-        if (!current.backgroundEvidence?.length)
-          current = {
-            ...current,
-            backgroundEvidence: evidenceFromReads(
-              await backgroundReadReceipts(),
-              documents,
-            ),
-          };
-        const prepared = await prepareProposal(fixed, current, documents);
-        if (!prepared.ok) preparationError(prepared.issues);
-        const decoded = prepared.input;
-        if (
-          (decoded.control &&
-            decision &&
-            decoded.control.mode !== decision.mode) ||
-          (decision?.mode === "plan" && decoded.executionMode === "execute")
-        )
-          return false;
-        if (original !== undefined)
-          await assertPlanRepair(original, decoded, current, documents, {
-            code: "assistant_tool_input_invalid",
-          });
-        return true;
+        return false;
       },
       started: startParameterRepair,
       observed: (name, outcome) =>
@@ -8265,14 +8265,9 @@ export async function executeAssistantTurn(
                       )
                     ).rows[0].task,
                   );
-                  const floor = Object.fromEntries(
-                    Object.keys(toolInputs.get("plan_task")!.properties)
-                      .filter((field) => proposal[field] !== undefined)
-                      .map((field) => [field, proposal[field]]),
-                  );
-                  if (Buffer.byteLength(JSON.stringify(floor)) > 100000)
+                  if (Buffer.byteLength(JSON.stringify(proposal)) > 100000)
                     throw new AssistantError(422, "assistant_context_capacity");
-                  planningRepairInputs.set(input.toolCall.toolCallId, floor);
+                  planningRepairInputs.set(input.toolCall.toolCallId, proposal);
                 }
               } catch (error) {
                 if (error instanceof AssistantError) throw error;
@@ -8325,10 +8320,22 @@ export async function executeAssistantTurn(
               if (status?.outcome === "context_required") {
                 const kind = classifyToolFailure(status.issues);
                 if (kind === "truncated") truncatedPlanning = true;
+                const proposal = planningRepairInputs.get(
+                  input.toolCall.toolCallId,
+                );
                 pendingContextRepair = {
                   name: input.toolCall.toolName,
                   kind,
+                  proposal:
+                    proposal?.deliveries || proposal?.steps
+                      ? proposal
+                      : (planRepairContext?.proposal ?? proposal),
+                  lastInput: proposal,
                   issues: status.issues,
+                  reason: {
+                    code: "assistant_tool_input_invalid",
+                    hint: toolInputFailure(input.error).hint,
+                  },
                 };
               } else budgetBoundary = true;
             }
@@ -8401,6 +8408,31 @@ export async function executeAssistantTurn(
             toolCalls = Math.min(12, toolCalls + 1);
           if (toolCalls >= segment.toolCalls) budgetBoundary = true;
           const key = `assistant:${turn.id}:sdk:${sha256(failure.toolCallId)}`;
+          const rejection = repairRejections.get(failure.toolCallId);
+          const detail =
+            rejection ?? toolInputFailure(invalid ? call.error : failure.error);
+          const failedInput =
+            rejection?.input ??
+            call?.input ??
+            planningRepairInputs.get(failure.toolCallId) ??
+            {};
+          if (invalidInput && failure.toolName === "plan_task") {
+            parameterRepairStatus = {
+              ...parameterRepairStatus!,
+              name: "plan_task",
+              turnId: turn.id,
+              amendmentId: planningRequestTurnId,
+              intent: documentPlanning ? "document_plan" : "tool",
+              phase: "finished",
+              outcome: pendingContextRepair ? "context_required" : "invalid",
+              scope: "call",
+              issues: detail.issues,
+              validationStage: rejection?.stage ?? "schema",
+              inputSummary: repairInputSummary(failedInput),
+              remainingMs: Math.max(0, turnBudget.deadlineAt - Date.now()),
+            };
+            await updateTask(db, turn, { parameterRepairStatus });
+          }
           await updateTurn(
             "UPDATE assistant_turn SET tool_results=(SELECT coalesce(jsonb_agg(x),'[]') FROM jsonb_array_elements(tool_results) x WHERE x->>'key'<>$2)||$3::jsonb WHERE id=$1 AND status='running'",
             [
@@ -8414,8 +8446,16 @@ export async function executeAssistantTurn(
                     : "unknown_tool",
                   input:
                     failure.toolName === "plan_task"
-                      ? (planningRepairInputs.get(failure.toolCallId) ?? {})
+                      ? redactRepairInput(failedInput, {
+                          type: "object",
+                          properties: toolInputs.get("plan_task")!.properties,
+                        })
                       : {},
+                  validation: {
+                    stage: rejection?.stage ?? "schema",
+                    schemaRevision: Number(turn.task_revision),
+                    input: repairInputSummary(failedInput),
+                  },
                   binding: executionBinding(
                     (
                       await db.query(
@@ -8439,8 +8479,10 @@ export async function executeAssistantTurn(
                     ...(invalidInput
                       ? {
                           hint:
-                            schemaHints.get(failure.toolName) ??
-                            "工具参数格式不合法，请核对必填字段和允许取值后纠正。",
+                            "hint" in detail && typeof detail.hint === "string"
+                              ? detail.hint
+                              : "工具参数未通过校验；具体字段见诊断。",
+                          issues: detail.issues,
                         }
                       : {}),
                   },
@@ -8613,25 +8655,32 @@ export async function executeAssistantTurn(
               currentTask.executionPlan.contractVersion === 1
             ? singlePlanSchema
             : fullPlanSchema;
-        if (
-          needsPlanningSubmission(
-            currentTask,
-            decision,
-            Boolean(
-              activeRepair?.name === "plan_task" ||
-              planRepairFocus ||
-              planRepairContext,
-            ),
-          )
-        ) {
-          const reads = await backgroundReadReceipts();
-          const initialSubmission = initialDeliveryRepair(
+        const submissionNeeded = needsPlanningSubmission(
+          currentTask,
+          decision,
+          Boolean(
+            activeRepair?.name === "plan_task" ||
+            planRepairFocus ||
+            planRepairContext,
+          ),
+        );
+        const reads =
+          goalContract || submissionNeeded
+            ? await backgroundReadReceipts()
+            : [];
+        const initialSubmission =
+          goalContract &&
+          Boolean(decision && ["plan", "execute"].includes(decision.mode)) &&
+          initialDeliveryRepair(
             currentTask,
             Boolean(context.state.backgroundDocuments?.length),
-            Boolean(activeRepair?.name === "plan_task" || planRepairContext),
-          );
+            true,
+          ) &&
+          reads.some((r: any) => r.result.fragments?.length);
+        if (submissionNeeded || initialSubmission) {
           const focus = initialSubmission ? undefined : planRepairFocus;
           if (initialSubmission) {
+            const shape = requestedDeliveryShape(amendmentRequestText);
             planRepairFocus = undefined;
             tools.plan_task.inputSchema = schema(
               Object.fromEntries(
@@ -8644,20 +8693,43 @@ export async function executeAssistantTurn(
                   )
                   .map(([name, value]) => [
                     name,
-                    name === "executionMode"
-                      ? { enum: [decision!.mode] }
-                      : name === "question"
-                        ? {
-                            ...(value as Record<string, unknown>),
-                            description:
-                              "仅有真实未解决的业务缺口时提交具体问题，且只填写question。不得混改要求、重复已回答问题或将原请求和参数错误转交用户。",
-                          }
-                        : value,
+                    name === "deliveries"
+                      ? {
+                          ...(value as any),
+                          ...(shape.count !== undefined && shape.count <= 10
+                            ? { minItems: shape.count, maxItems: shape.count }
+                            : { minItems: 1 }),
+                          description:
+                            "首次创建须提交原请求的全部独立交付，不存在可省略保留的旧方案。",
+                          items: {
+                            ...(value as any).items,
+                            ...(shape.each
+                              ? {
+                                  properties: {
+                                    ...(value as any).items.properties,
+                                    count: {
+                                      type: "integer",
+                                      const: shape.each,
+                                    },
+                                  },
+                                }
+                              : {}),
+                          },
+                        }
+                      : name === "executionMode"
+                        ? { enum: [decision!.mode] }
+                        : name === "question"
+                          ? {
+                              ...(value as Record<string, unknown>),
+                              description:
+                                "仅有真实未解决的业务缺口时提交具体问题，且只填写question。不得混改要求、重复已回答问题或将原请求和参数错误转交用户。",
+                            }
+                          : value,
                   ]),
               ),
               [],
               "plan_task",
-              (hint) => schemaHints.set("plan_task", hint),
+              undefined,
               undefined,
               undefined,
               {
@@ -8673,6 +8745,7 @@ export async function executeAssistantTurn(
           }
           const repairFacts = repairing ?? planRepairContext;
           const needsEvidence =
+            (initialSubmission && !repairFacts) ||
             activeRepair?.kind === "reference" ||
             /background_reference|background_rule|background_capacity/.test(
               repairFacts?.reason?.code ?? "",
@@ -8690,7 +8763,7 @@ export async function executeAssistantTurn(
               focus.schema.properties,
               focus.schema.required,
               "plan_task",
-              (hint) => schemaHints.set("plan_task", hint),
+              undefined,
             );
           activeRepairTools = new Set(repairTools);
           return {
@@ -8703,11 +8776,22 @@ export async function executeAssistantTurn(
               {
                 role: "user" as const,
                 content: JSON.stringify({
-                  operation: "repair_planning",
+                  operation: repairFacts
+                    ? "repair_planning"
+                    : "create_planning",
+                  phase: initialSubmission ? "create" : "amend",
+                  ...(initialSubmission
+                    ? {
+                        requestedShape:
+                          requestedDeliveryShape(amendmentRequestText),
+                      }
+                    : {}),
                   request: amendmentRequestText,
                   ...planningRequestFacts(currentTask),
                   control: decision,
                   failedProposal: repairFacts?.proposal ?? focus?.value,
+                  lastInput: repairFacts?.lastInput ?? repairFacts?.proposal,
+                  originalFailure: firstFailure,
                   failure: repairFacts?.reason ?? lastFailure ?? firstFailure,
                   errors: repairFacts?.issues ?? focus?.details.issues ?? [],
                   facts: context.encode({
@@ -8726,7 +8810,7 @@ export async function executeAssistantTurn(
             ],
             instructions:
               instructions +
-              "\n当前必须修正未提交方案。用户原始目标、已回答澄清和失败提议均在本轮事实中；已回答的问题不再询问。按当前Schema提交全部必要步骤或交付，不能只返回文字、control或空对象。首次方案补齐全部独立交付；已有方案只改实际变化。保留用户数量、字段保护和当前控制模式。control.mode为plan时只保存不执行；为execute时先保存完整校验通过的方案，再续接该授权的未完成步骤。仅确有新的业务缺口才提出具体新问题，不能把参数错误转交用户。",
+              "\n当前必须修正未提交方案。用户原始目标、已回答澄清和失败提议均在本轮事实中；已回答的问题不再询问。按当前Schema提交全部必要步骤或交付，不能只返回文字、control或空对象。首次创建必须完整提交原请求的全部独立交付，此时没有可省略保留的旧方案；已有方案修改才只提交实际变化。保留用户数量、字段保护和当前控制模式。control.mode为plan时只保存不执行；为execute时先保存完整校验通过的方案，再续接该授权的未完成步骤。仅确有新的业务缺口才提出具体新问题，不能把参数错误转交用户。",
           };
         }
         // A pending correction must not be replaced by generic discovery/work prompts.
@@ -8737,7 +8821,7 @@ export async function executeAssistantTurn(
             focus.schema.properties,
             focus.schema.required,
             name,
-            (hint) => schemaHints.set(name, hint),
+            undefined,
           );
           activeRepairTools = new Set([name]);
           return {
@@ -8855,7 +8939,7 @@ export async function executeAssistantTurn(
             },
             [],
             "plan_task",
-            (hint) => schemaHints.set("plan_task", hint),
+            undefined,
           );
         }
         const amendment = preparePlanAmendment(
@@ -8870,7 +8954,7 @@ export async function executeAssistantTurn(
             amendment!.properties,
             amendment!.properties.candidateEdit ? ["candidateEdit"] : [],
             "plan_task",
-            (hint) => schemaHints.set("plan_task", hint),
+            undefined,
             undefined,
             fixedInputValidators.get("plan_task"),
           );
@@ -8992,7 +9076,7 @@ export async function executeAssistantTurn(
                   : planProperties,
             ["control"],
             "plan_task",
-            (hint) => schemaHints.set("plan_task", hint),
+            undefined,
           );
           activeRepairTools = new Set(reads);
           return {

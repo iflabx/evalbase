@@ -4871,7 +4871,9 @@ describe("OPT42 per-turn intent public boundary", () => {
           when: (r) =>
             r.tool_choice?.function?.name === "plan_task" &&
             JSON.stringify(r.messages).includes("failedProposal") &&
-            JSON.stringify(r.messages).includes("份数为2份"),
+            (JSON.stringify(r.messages).includes("份数为2份") ||
+              JSON.stringify(r.messages).includes("minItems") ||
+              JSON.stringify(r.messages).includes("minItems")),
         },
       ]);
       expect(
@@ -4894,7 +4896,8 @@ describe("OPT42 per-turn intent public boundary", () => {
           .some(
             (r) =>
               r.tool_choice?.function?.name === "plan_task" &&
-              JSON.stringify(r.messages).includes("份数为2份"),
+              (JSON.stringify(r.messages).includes("份数为2份") ||
+                JSON.stringify(r.messages).includes("minItems")),
           ),
       ).toBe(true);
       const adopt = async () => {
@@ -5175,4 +5178,330 @@ describe("OPT42 per-turn intent public boundary", () => {
       expect(state.task.runId).toBeFalsy();
     },
   );
+  it.each(["plan", "execute"] as const)(
+    "B3v8 real SDK keeps complete creation through error-wrapper correction: %s",
+    async (mode) => {
+      const { id, documentId } = await backgroundSession(
+        "查物流：询问订单运输状态。\n改地址：请求变更订单收货地址。",
+      );
+      const proposal = {
+        executionMode: mode,
+        title: "客服双份",
+        deliveries: [
+          ...["查物流", "改地址"].map((value) => ({
+            ...simpleDelivery(),
+            name: value + "测试集",
+            instructions: value + "的完整用户问题和逐题客服处理行为",
+            classifications: [
+              {
+                field: "metadata",
+                key: "意图",
+                basis: "background",
+                allowedValues: [value],
+                requiredValues: [value],
+                quotas: [{ value, count: 2 }],
+                definitions: [
+                  {
+                    value,
+                    text:
+                      value === "查物流"
+                        ? "查物流：询问订单运输状态。"
+                        : "改地址：请求变更订单收货地址。",
+                  },
+                ],
+              },
+            ],
+          })),
+        ],
+      };
+      const before = await effects();
+      const state = await send(
+        id,
+        "按客服说明做查物流和改地址两个测试集，各2条，" +
+          (mode === "plan" ? "先保存方案，不执行。" : "现在开始。"),
+        [
+          decision(mode),
+          { name: "read_background", input: { documentId } },
+          {
+            name: "plan_task",
+            input: { ...proposal, deliveries: proposal.deliveries.slice(0, 1) },
+          },
+          {
+            name: "plan_task",
+            input: { error: { message: "failed planning" } },
+          },
+          {
+            name: "plan_task",
+            input: proposal,
+            when: (r) => {
+              const p = r.tools.find(
+                (t: any) => t.function.name === "plan_task",
+              )?.function.parameters;
+              const raw = r.messages
+                .map((m: any) => m.content ?? "")
+                .join("\n");
+              return (
+                p.properties.deliveries.minItems === 2 &&
+                p.properties.deliveries.maxItems === 2 &&
+                raw.includes("repair_planning") &&
+                raw.includes("failed planning") &&
+                raw.includes("查物流")
+              );
+            },
+          },
+        ],
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(
+        deliveryGoals(state.task.executionPlan).map((g) => [g.name, g.count]),
+      ).toEqual([
+        ["查物流测试集", 2],
+        ["改地址测试集", 2],
+      ]);
+      expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
+      expect(
+        state.task.diagnostics.requests.filter((r: any) => r.repair?.nested),
+      ).toHaveLength(0);
+      expect(state.turns.at(-1).tools.some((r: any) => r.input?.error)).toBe(
+        true,
+      );
+      if (mode === "plan") {
+        expect(state.task.runId).toBeFalsy();
+        expect(await effects()).toEqual(before);
+      } else expect(state.task.runId).toBeTruthy();
+    },
+  );
+  it.each(["schema", "business", "reference", "scenario", "omission"] as const)(
+    "B3v8 real SDK persists the final rejected input and current issues: %s",
+    async (failureStage) => {
+      const { id, documentId } = await backgroundSession();
+      const proposal = {
+        executionMode: "plan",
+        deliveries: [
+          { ...simpleDelivery(), name: "查物流" },
+          { ...simpleDelivery(), name: "改地址" },
+        ],
+      };
+      const state = await send(id, "创建两个测试集，各2条，先存方案不执行。", [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: { ...proposal, deliveries: proposal.deliveries.slice(0, 1) },
+        },
+        { name: "plan_task", input: { error: { message: "bad wrapper" } } },
+        {
+          name: "plan_task",
+          input: {
+            ...proposal,
+            deliveries: (failureStage === "omission"
+              ? proposal.deliveries.slice(0, 1)
+              : proposal.deliveries
+            ).map((d, i) =>
+              i
+                ? failureStage === "schema"
+                  ? { ...d, count: 0 }
+                  : failureStage === "business"
+                    ? { ...d, instructions: "   " }
+                    : failureStage === "scenario"
+                      ? { ...d, scenarios: [] }
+                      : failureStage === "reference"
+                        ? {
+                            ...d,
+                            classifications: [
+                              {
+                                field: "metadata",
+                                key: "意图",
+                                basis: "background",
+                                allowedValues: ["未知类"],
+                                quotas: [{ value: "未知类", count: 2 }],
+                                definitions: [
+                                  {
+                                    value: "未知类",
+                                    reference: "definition:missing",
+                                  },
+                                ],
+                              },
+                            ],
+                          }
+                        : d
+                : d,
+            ),
+          },
+        },
+      ]);
+      const turn = state.turns.at(-1);
+      expect(turn.status).toBe("failed");
+      const records = turn.tools;
+      const last = records
+        .filter((r: any) => r.name === "plan_task" && r.status === "failed")
+        .at(-1);
+      expect(last.input.deliveries).toHaveLength(
+        failureStage === "omission" ? 1 : 2,
+      );
+      if (failureStage !== "omission")
+        expect(last.input.deliveries[1].count).toBe(
+          failureStage === "schema" ? 0 : 2,
+        );
+      const problem =
+        failureStage === "schema"
+          ? { path: "/deliveries/1/count", keyword: "const" }
+          : failureStage === "business"
+            ? { path: "/deliveries/1/instructions", keyword: "minLength" }
+            : failureStage === "scenario"
+              ? { path: "/deliveries/1/scenarios", keyword: "minItems" }
+              : failureStage === "omission"
+                ? { path: "/deliveries", keyword: "minItems" }
+                : { code: "assistant_background_reference_invalid" };
+      expect(state.task.diagnostics.parameterRepairStatus.validationStage).toBe(
+        failureStage === "business" || failureStage === "reference"
+          ? "business"
+          : "schema",
+      );
+      expect(last.error.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining(problem)]),
+      );
+      expect(last.error.hint).not.toMatch(
+        /缺少字段：question|不支持字段：error/,
+      );
+      expect(state.task.diagnostics.parameterRepairStatus.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining(problem)]),
+      );
+      expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
+      expect(state.task.executionPlan?.steps?.length ?? 0).toBe(0);
+      expect(state.task.runId).toBeFalsy();
+    },
+  );
+  it("B3v8 initial creation can read the second background before proposing deliveries", async () => {
+    const { id, documentId } =
+      await backgroundSession("要求一：完整自然的中文问题。");
+    const uploaded = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/background-documents",
+      headers,
+      payload: {
+        fileName: "第二份规则.txt",
+        contentBase64:
+          Buffer.from("要求二：期望输出写具体处理行为。").toString("base64"),
+      },
+    });
+    expect(uploaded.statusCode).toBe(201);
+    const second = uploaded.json().document.id;
+    const state = await send(
+      id,
+      "按两份说明设计两个测试集，各2条，先保存方案不执行。",
+      [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "read_background",
+          input: { documentId: second },
+          when: (r) =>
+            r.tool_choice?.function?.name !== "plan_task" &&
+            r.tools.some((t: any) => t.function.name === "read_background"),
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [
+              { ...simpleDelivery(), name: "第一份" },
+              { ...simpleDelivery(), name: "第二份" },
+            ],
+          },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(2);
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(0);
+    expect(state.task.runId).toBeFalsy();
+  });
+  it("B3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget", async () => {
+    const { id, documentId } = await backgroundSession();
+    const first = { ...simpleDelivery(), name: "第一份" };
+    let state = await send(id, "做两个测试集，各2条，先保存方案，不执行。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [first] },
+      },
+      { name: "plan_task", input: {}, httpStatus: 400 },
+    ]);
+    const failedTurn = state.turns.at(-1).id;
+    const db = createPool(databaseUrl);
+    try {
+      const task = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      const used = task.parameterRepairLimits.plan_task.used;
+      const identity = task.parameterRepairLimits.plan_task.identity;
+      expect(used).toBe(1);
+      // Synthetic persisted snapshot of the wrapper response, before another dispatch.
+      await db.query(
+        "UPDATE assistant_turn SET tool_results=tool_results||$2::jsonb WHERE id=$1",
+        [
+          failedTurn,
+          JSON.stringify([
+            {
+              key: "synthetic-wrapper-receipt",
+              name: "plan_task",
+              status: "failed",
+              effect: "none",
+              binding: { revision: task.planningRecovery.baseRevision },
+              input: { error: "[unsupported]" },
+              error: {
+                code: "assistant_tool_input_invalid",
+                hint: "unsupported error",
+                issues: [{ path: "/error", keyword: "additionalProperties" }],
+              },
+            },
+          ]),
+        ],
+      );
+      await send(id, "先停一下。", [decision("pause")]);
+      await send(id, "现在做到哪了？", [decision("query")]);
+      state = await send(id, "继续保存方案，先不要执行。", [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [first, { ...simpleDelivery(), name: "第二份" }],
+          },
+          when: (r) => {
+            const raw = JSON.stringify(r.messages);
+            return (
+              raw.includes("lastInput") &&
+              raw.includes("[unsupported]") &&
+              raw.includes("failedProposal") &&
+              raw.includes("第一份")
+            );
+          },
+        },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(deliveryGoals(state.task.executionPlan)).toHaveLength(2);
+      const after = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(after.parameterRepairLimits.plan_task).toMatchObject({
+        identity,
+        used: used + 1,
+      });
+      expect(after.executionPlan.mode).toBe("plan");
+      expect(after.runId).toBeFalsy();
+    } finally {
+      await db.end();
+    }
+  });
 });

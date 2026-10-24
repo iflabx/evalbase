@@ -35,15 +35,43 @@ export function recoverPlanningFailure(receipts: Record<string, any>[]) {
               r.result?.task?.executionPlan?.steps?.length))),
     ),
   );
-  return receipt && hasNoEffect(receipt) && receipt.input && receipt.error?.code
-    ? {
-        name: "plan_task",
-        kind: "context" as const,
-        proposal: receipt.input,
-        reason: receipt.error,
-        issues: receipt.error.issues ?? [],
+  if (
+    !receipt ||
+    !hasNoEffect(receipt) ||
+    !receipt.input ||
+    !receipt.error?.code
+  )
+    return undefined;
+  let proposal = receipt.input;
+  if (!Array.isArray(proposal.deliveries) && !Array.isArray(proposal.steps)) {
+    for (let i = receipts.indexOf(receipt) - 1; i >= 0; i--) {
+      const prior = receipts[i]!;
+      if (prior.name !== "plan_task") continue;
+      if (
+        prior.status === "succeeded" &&
+        !prior.result?.unchanged &&
+        (prior.input?.deliveries || prior.input?.steps)
+      )
+        break;
+      if (prior.status === "failed" && !hasNoEffect(prior)) break;
+      if (
+        prior.status === "failed" &&
+        (Array.isArray(prior.input?.deliveries) ||
+          Array.isArray(prior.input?.steps))
+      ) {
+        proposal = prior.input;
+        break;
       }
-    : undefined;
+    }
+  }
+  return {
+    name: "plan_task",
+    kind: "context" as const,
+    proposal,
+    lastInput: receipt.input,
+    reason: receipt.error,
+    issues: receipt.error.issues ?? [],
+  };
 }
 
 /** Only a successful, server-recorded control supplies the original execution mode. */

@@ -10,7 +10,7 @@ import {
   type ToolCallRepairFunction,
   type ToolSet,
 } from "ai";
-import { canonicalJson } from "../package/contract.js";
+import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject } from "../server/support.js";
 import { Ajv } from "ajv";
 
@@ -381,6 +381,82 @@ export function sameRepairMeaning(
   );
 }
 
+/** Metadata only: diagnostics never need credentials, document text or generated questions. */
+export function repairInputSummary(input: unknown) {
+  const text = JSON.stringify(input) ?? "undefined";
+  return {
+    hash: sha256(text),
+    bytes: Buffer.byteLength(text),
+    keys: isPlainObject(input) ? Object.keys(input).slice(0, 100) : [],
+    ...(isPlainObject(input) && Array.isArray(input.deliveries)
+      ? {
+          deliveryCounts: input.deliveries
+            .slice(0, 10)
+            .map((d: any) =>
+              typeof d?.count === "number" ? d.count : "invalid",
+            ),
+        }
+      : {}),
+  };
+}
+/** Keep valid business fields; unsupported fields carry structure, never arbitrary text. */
+export function redactRepairInput(input: unknown, definition: any): unknown {
+  const contract = inputContract(input, definition);
+  const types = Array.isArray(contract.type)
+    ? contract.type
+    : contract.type
+      ? [contract.type]
+      : [];
+  const actual =
+    input === null ? "null" : Array.isArray(input) ? "array" : typeof input;
+  if (
+    types.length &&
+    !types.includes(actual) &&
+    !(
+      actual === "number" &&
+      types.includes("integer") &&
+      Number.isInteger(input)
+    )
+  )
+    return "[invalid type]";
+  if (Array.isArray(contract.enum) && !contract.enum.includes(input))
+    return "[invalid value]";
+  if (
+    typeof input === "string" &&
+    contract.maxLength !== undefined &&
+    input.length > contract.maxLength
+  )
+    return "[invalid value]";
+  if (Array.isArray(input))
+    return input
+      .slice(0, 100)
+      .map((v) => redactRepairInput(v, contract.items ?? {}));
+  if (isPlainObject(input))
+    return Object.fromEntries(
+      Object.entries(input)
+        .slice(0, 100)
+        .map(([key, value]) => [
+          key,
+          contract.properties?.[key]
+            ? redactRepairInput(value, contract.properties[key])
+            : "[unsupported]",
+        ]),
+    );
+  return input;
+}
+/** Unwrap the SDK's typed cause; a per-tool last-error cache can describe another call. */
+export function toolInputFailure(error: unknown) {
+  let current: any = error;
+  for (let depth = 0; current && depth < 8; depth++, current = current.cause) {
+    if (Array.isArray(current.issues) && current.issues.length)
+      return {
+        issues: current.issues as RepairDetails["issues"],
+        hint: typeof current.hint === "string" ? current.hint : undefined,
+      };
+  }
+  return { issues: [{ path: "/", keyword: "schema" }], hint: undefined };
+}
+
 /** One guarded correction path; no repair tool executes business side effects. */
 export function argumentRepair(options: {
   model: LanguageModel;
@@ -399,6 +475,14 @@ export function argumentRepair(options: {
       | "failed",
   ) => void | Promise<void>;
   deferMalformed?: boolean;
+  deferContext?: (name: string) => boolean;
+  rejected?: (attempt: {
+    name: string;
+    toolCallId: string;
+    input: unknown;
+    issues: RepairDetails["issues"];
+    stage: "prepare" | "schema" | "authorization";
+  }) => Promise<void>;
   started?: (name: string, details: RepairDetails) => void | Promise<void>;
   context?: (
     name: string,
@@ -433,7 +517,7 @@ export function argumentRepair(options: {
     }
     let normalized = parsed ? repairInputMeaning(original, schema) : undefined;
     let preparationIssues: RepairDetails["issues"] | undefined;
-    if (parsed && options.prepare) {
+    if (parsed && options.prepare && !options.deferContext?.(name)) {
       const prepared = await options.prepare(name, normalized);
       if (prepared.ok) normalized = prepared.input;
       else preparationIssues = prepared.issues;
@@ -444,7 +528,8 @@ export function argumentRepair(options: {
         : undefined;
     if (
       local?.success &&
-      (options.prepare || sameRepairMeaning(original, local.value, schema))
+      ((options.prepare && !options.deferContext?.(name)) ||
+        sameRepairMeaning(original, local.value, schema))
     ) {
       if (abortSignal?.aborted) {
         await options.observed(name, "interrupted");
@@ -481,6 +566,11 @@ export function argumentRepair(options: {
       await options.observed(name, "context_required");
       return null;
     }
+    if (options.deferContext?.(name)) {
+      await options.started?.(name, focus.details);
+      await options.observed(name, "context_required");
+      return null;
+    }
     let context =
       kind === "format"
         ? undefined
@@ -511,6 +601,13 @@ export function argumentRepair(options: {
         const prepared = await options.prepare(name, merged);
         if (!prepared.ok) {
           latestIssues = prepared.issues;
+          await options.rejected?.({
+            name,
+            toolCallId: toolCall.toolCallId,
+            input: merged,
+            issues: latestIssues,
+            stage: "prepare",
+          });
           return false;
         }
         merged = prepared.input;
@@ -520,6 +617,13 @@ export function argumentRepair(options: {
       if (!checked?.success) {
         latestIssues = (checked?.error as { issues?: RepairDetails["issues"] })
           ?.issues ?? [{ path: "/", keyword: "schema" }];
+        await options.rejected?.({
+          name,
+          toolCallId: toolCall.toolCallId,
+          input: merged,
+          issues: latestIssues,
+          stage: "schema",
+        });
         return false;
       }
       if (kind === "format" && !sameRepairMeaning(normalized, merged, schema)) {
@@ -535,11 +639,25 @@ export function argumentRepair(options: {
           !(await options.accept?.(name, original, merged))
         ) {
           latestIssues = [{ path: "/", keyword: "authorization" }];
+          await options.rejected?.({
+            name,
+            toolCallId: toolCall.toolCallId,
+            input: merged,
+            issues: latestIssues,
+            stage: "authorization",
+          });
           return false;
         }
       } catch (error) {
         latestIssues = (error as { issues?: RepairDetails["issues"] })
           ?.issues ?? [{ path: "/", keyword: "business" }];
+        await options.rejected?.({
+          name,
+          toolCallId: toolCall.toolCallId,
+          input: merged,
+          issues: latestIssues,
+          stage: "authorization",
+        });
         return false;
       }
       accepted = merged;

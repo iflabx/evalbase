@@ -1,7 +1,11 @@
 import { Ajv } from "ajv";
 import { describe, expect, it, vi } from "vitest";
 import { generateText, InvalidToolInputError, jsonSchema, tool } from "ai";
-import { argumentRepair } from "../../src/assistant/tool-repair.js";
+import {
+  argumentRepair,
+  redactRepairInput,
+  repairInputSummary,
+} from "../../src/assistant/tool-repair.js";
 
 vi.mock("ai", async (original) => ({
   ...(await original<typeof import("ai")>()),
@@ -410,4 +414,109 @@ it("OPT46 completion second correction consumes the latest candidate and field p
   );
   expect(context).toHaveBeenCalledTimes(2);
   expect(f.reserve).toHaveBeenCalledTimes(2);
+});
+
+it("B3v8 defers contextual planning to the main loop without consuming a nested request", async () => {
+  const fixture = setup({ error: { message: "bad wrapper" } }, undefined, {
+    deferContext: (n) => n === "plan_task",
+  });
+  expect(await fixture.repair(fixture.request as any)).toBeNull();
+  expect(generateText).not.toHaveBeenCalled();
+  expect(fixture.reserve).not.toHaveBeenCalled();
+  expect(fixture.observed).toHaveBeenCalledWith(
+    "plan_task",
+    "context_required",
+  );
+});
+it("B3v8 reports the newest rejected candidate before an exhausted nested correction", async () => {
+  const original = plan();
+  delete (original.steps[0].input as any).outputCount;
+  const rejected = vi.fn(async () => {});
+  const fixture = setup(original, undefined, {
+    context: async () => ({ request: "保存全部八类" }),
+    accept: async () => {
+      throw Object.assign(new Error("latest business error"), {
+        issues: [{ path: "/steps/0/input/name", keyword: "reference" }],
+      });
+    },
+    rejected,
+  });
+  vi.mocked(generateText).mockResolvedValue({
+    toolCalls: [
+      {
+        toolName: "plan_task",
+        input: {
+          steps: [
+            {
+              action: "generate_candidates",
+              input: { name: "latest", outputCount: 50 },
+            },
+          ],
+        },
+      },
+    ],
+  } as any);
+  expect(await fixture.repair(fixture.request as any)).toBeNull();
+  expect(rejected).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      toolCallId: "original-call",
+      stage: "authorization",
+      issues: [{ path: "/steps/0/input/name", keyword: "reference" }],
+      input: expect.objectContaining({
+        steps: expect.arrayContaining([
+          expect.objectContaining({
+            input: { name: "latest", outputCount: 50 },
+          }),
+        ]),
+      }),
+    }),
+  );
+});
+
+it("B3v8 failed diagnostics redact unknown nested text while preserving known fields and a full-input hash", () => {
+  const input = {
+    executionMode: "plan",
+    steps: [
+      {
+        action: "generate_candidates",
+        input: {
+          name: "已知业务名",
+          outputCount: 2,
+          apiKey: "synthetic-secret",
+        },
+      },
+    ],
+    error: {
+      message: "private synthetic document",
+      apiKey: "synthetic-secret",
+    },
+  };
+  const safe = redactRepairInput(input, schema);
+  expect(JSON.stringify(safe)).not.toMatch(
+    /synthetic-secret|private synthetic document/,
+  );
+  expect((safe as any).steps[0].input.name).toBe("已知业务名");
+  expect((safe as any).error).toBe("[unsupported]");
+  expect(repairInputSummary(input).hash).not.toBe(
+    repairInputSummary(safe).hash,
+  );
+});
+
+it("B3v8 malformed containers and enum values do not persist arbitrary response text", () => {
+  const privateText = "private synthetic document";
+  expect(redactRepairInput(privateText, schema)).toBe("[invalid type]");
+  expect(
+    redactRepairInput(
+      { executionMode: privateText, steps: privateText },
+      schema,
+    ),
+  ).toEqual({ executionMode: "[invalid value]", steps: "[invalid type]" });
+  expect(
+    redactRepairInput(
+      { steps: [{ action: "generate_candidates", input: privateText }] },
+      schema,
+    ),
+  ).toEqual({
+    steps: [{ action: "generate_candidates", input: "[invalid type]" }],
+  });
 });

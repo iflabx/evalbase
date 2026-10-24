@@ -202,3 +202,50 @@ describe("B3v5 complete planning state", () => {
     ).toBeUndefined();
   });
 });
+
+it("B3v8 recovery separates the last malformed input from the preceding business proposal", () => {
+  const business = {
+    name: "plan_task",
+    status: "failed",
+    effect: "none",
+    input: { deliveries: [{ name: "第一份", count: 2 }] },
+    error: {
+      code: "assistant_requirement_conflict",
+      issues: [{ path: "/deliveries", keyword: "minItems" }],
+    },
+  };
+  const wrapper = {
+    name: "plan_task",
+    status: "failed",
+    effect: "none",
+    input: { error: "[unsupported]" },
+    error: {
+      code: "assistant_tool_input_invalid",
+      issues: [{ path: "/error", keyword: "additionalProperties" }],
+    },
+  };
+  expect(
+    recoverPlanningFailure([
+      business,
+      wrapper,
+      {
+        name: "plan_task",
+        status: "succeeded",
+        result: { unchanged: true },
+        input: { control: { mode: "pause" } },
+      },
+    ]),
+  ).toMatchObject({
+    proposal: business.input,
+    lastInput: wrapper.input,
+    reason: wrapper.error,
+    issues: wrapper.error.issues,
+  });
+  expect(
+    recoverPlanningFailure([
+      business,
+      { ...business, status: "succeeded", result: { unchanged: false } },
+      wrapper,
+    ])?.proposal,
+  ).toEqual(wrapper.input);
+});

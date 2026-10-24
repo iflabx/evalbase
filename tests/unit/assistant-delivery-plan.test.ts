@@ -5,6 +5,7 @@ import {
   generationSteps,
   reviseDeliveryGoals,
   validateRequestedCategories,
+  requestedDeliveryShape,
 } from "../../src/assistant/delivery-plan.js";
 
 const single = (name = "GB A.1.a", count = 5) => ({
@@ -1296,3 +1297,36 @@ describe("OPT-35 delivery planning contract", () => {
     ).not.toThrow();
   });
 });
+
+it.each([
+  ["按说明做两个测试集，各2条。", { count: 2, each: 2 }],
+  ["一份客服意图测试集共6条，退款和物流各3条", { count: 1, each: undefined }],
+  ["两份各3条", { count: 2, each: 3 }],
+  ["帮我设计测试集", { count: undefined, each: undefined }],
+])(
+  "B3v8 creation bounds preserve collection versus category counts: %s",
+  (request, expected) => {
+    expect(requestedDeliveryShape(request as string)).toEqual(expected);
+  },
+);
+
+it.each([
+  "创建查物流和改地址两个测试集各2条，改地址改成3条",
+  "做查物流和改地址两个测试集，各2条，不，改成3条。",
+])(
+  "B3v8 does not freeze a uniform count replaced by a later correction: %s",
+  (request) => {
+    expect(requestedDeliveryShape(request)).toEqual({
+      count: 2,
+      each: undefined,
+    });
+    const counts = request.includes("改地址改成") ? [2, 3] : [3, 3];
+    expect(
+      reviseDeliveryGoals(
+        [],
+        counts.map((count, i) => single(i ? "改地址" : "查物流", count)),
+        request,
+      ),
+    ).toHaveLength(2);
+  },
+);

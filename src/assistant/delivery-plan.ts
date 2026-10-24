@@ -428,28 +428,8 @@ const numeric = (value: string) =>
     ? 2
     : Number(value) || "一二三四五六七八九十".indexOf(value) + 1;
 
-/** Only explicit collection/count clauses; internal category quotas never create collections. */
-function validateRequestedShape(goals: DeliveryGoal[], request: string) {
-  const namedEach = request.match(
-    /([^，,。；;\n]+(?:和|与|及|、)[^，,。；;\n]+?)各\s*(?:做|生成|创建)?\s*([1-9]\d*)\s*条/u,
-  );
-  // An explicit single collection may contain several categories; do not split it.
-  if (namedEach && !/(?<!各)(?:一|1)(?:份|个)|同一|合并/u.test(request)) {
-    const names = namedEach[1]
-      .split(/和|与|及|、/u)
-      .map((name) => name.trim())
-      .filter(Boolean);
-    if (goals.length !== names.length)
-      fail(
-        "本轮要求的多份交付不完整；请保留每个主题及其数量，不能只保存首份。",
-      );
-    const later = request.slice((namedEach.index ?? 0) + namedEach[0].length);
-    if (
-      !/(?:改成|改为|调整为|只要)\s*[1-9]\d*\s*条/u.test(later) &&
-      goals.some((goal) => goal.count !== Number(namedEach[2]))
-    )
-      fail("每份交付数量与本轮要求不一致；请保留全部主题和数量。");
-  }
+/** Shared explicit creation bounds; category quotas never imply extra collections. */
+export function requestedDeliveryShape(request: string) {
   const number = "([1-9]\\d*|两|[一二三四五六七八九十])";
   const eachOne = request.match(/各\s*(?:建|创建)?\s*一份\s*([1-9]\d*)\s*条/u);
   const compact = request.match(
@@ -480,23 +460,69 @@ function validateRequestedShape(goals: DeliveryGoal[], request: string) {
               "u",
             ),
           )?.[1];
-  if (
-    count !== undefined &&
-    goals.length !== (typeof count === "number" ? count : numeric(count))
-  )
-    fail(
-      "本轮明确要求的份数为" +
-        (typeof count === "number" ? count : numeric(count!)) +
-        "份测试集，当前方案为" +
-        goals.length +
-        "份。请补齐全部独立交付及各自名称、数量、要求和分类；单份内部的分类配额保持在该份。",
-    );
   const per =
     separate?.[2] ??
     (compact && numeric(compact[1]) === 1 ? compact[2] : undefined) ??
     eachOne?.[1];
+  const explicitCount =
+    count === undefined
+      ? undefined
+      : typeof count === "number"
+        ? count
+        : numeric(count);
+  const each =
+    per ??
+    (explicitCount !== undefined && explicitCount > 1
+      ? request.match(
+          /(?:测试集|集合|份|[，,。；;\n])\s*(?:各|每份)\s*([1-9]\d*)\s*条/u,
+        )?.[1]
+      : undefined);
+  const uniform = request.match(/(?:各|每份)\s*([1-9]\d*)\s*条/u);
+  const laterCorrection =
+    uniform &&
+    /(?:改成|改为|调整为|只要)\s*[1-9]\d*\s*条/u.test(
+      request.slice((uniform.index ?? 0) + uniform[0].length),
+    );
+  return {
+    count: explicitCount,
+    each: each && !laterCorrection ? Number(each) : undefined,
+  };
+}
+
+/** Only explicit collection/count clauses; internal category quotas never create collections. */
+function validateRequestedShape(goals: DeliveryGoal[], request: string) {
+  const namedEach = request.match(
+    /([^，,。；;\n]+(?:和|与|及|、)[^，,。；;\n]+?)各\s*(?:做|生成|创建)?\s*([1-9]\d*)\s*条/u,
+  );
+  // An explicit single collection may contain several categories; do not split it.
+  if (namedEach && !/(?<!各)(?:一|1)(?:份|个)|同一|合并/u.test(request)) {
+    const names = namedEach[1]
+      .split(/和|与|及|、/u)
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (goals.length !== names.length)
+      fail(
+        "本轮要求的多份交付不完整；请保留每个主题及其数量，不能只保存首份。",
+      );
+    const later = request.slice((namedEach.index ?? 0) + namedEach[0].length);
+    if (
+      !/(?:改成|改为|调整为|只要)\s*[1-9]\d*\s*条/u.test(later) &&
+      goals.some((goal) => goal.count !== Number(namedEach[2]))
+    )
+      fail("每份交付数量与本轮要求不一致；请保留全部主题和数量。");
+  }
+  const { count, each: per } = requestedDeliveryShape(request);
+  if (count !== undefined && goals.length !== count)
+    fail(
+      "本轮明确要求的份数为" +
+        count +
+        "份测试集，当前方案为" +
+        goals.length +
+        "份。请补齐全部独立交付及各自名称、数量、要求和分类；单份内部的分类配额保持在该份。",
+    );
   if (per && goals.some((goal) => goal.count !== Number(per)))
     fail("每份测试集的数量与本轮明确要求不一致，请保留全部交付并修正数量。");
+  const eachOne = request.match(/各\s*(?:建|创建)?\s*一份\s*([1-9]\d*)\s*条/u);
   if (eachOne) {
     const named = request
       .slice(0, eachOne.index)
