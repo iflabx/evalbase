@@ -1,0 +1,65 @@
+{
+  "code": "3afc44fc633d424375fb429896c370321b574448",
+  "projectId": "project_2243284e32f949749f9df3894e01e6c9",
+  "sessionId": "conversation_530e1067180d48108cc9ec3c1a945456",
+  "stage": "complete",
+  "steps": 6,
+  "allStepsExecuted": true,
+  "drafts": [
+    {
+      "id": "collabdraft_b12fac497a56ab11ec5b8c7b77474fd83e229af8abd415d32bb39e212b35cd25",
+      "name": "改地址测试集",
+      "status": "editing",
+      "published_version_id": null,
+      "records": 2,
+      "distinct_records": 2
+    },
+    {
+      "id": "collabdraft_7273a1549a2905bf68dc119c92e1c75ef0976faee0ea82205fb7cdbfdebd6077",
+      "name": "查物流测试集",
+      "status": "editing",
+      "published_version_id": null,
+      "records": 2,
+      "distinct_records": 2
+    }
+  ],
+  "acceptances": [
+    {
+      "id": "adoption_5ff1d163b5a441ec9a7542b5152a2a22",
+      "run_id": "processing_cb8bb495246f4e4e9b8d4ba37f0a0987",
+      "draft_id": "collabdraft_7273a1549a2905bf68dc119c92e1c75ef0976faee0ea82205fb7cdbfdebd6077",
+      "adopted": 2
+    },
+    {
+      "id": "adoption_7ba17d47f5844358b1fa2ad31bf0c90f",
+      "run_id": "processing_2d73e5b310f84965ae66d4bf8222033f",
+      "draft_id": "collabdraft_b12fac497a56ab11ec5b8c7b77474fd83e229af8abd415d32bb39e212b35cd25",
+      "adopted": 2
+    }
+  ],
+  "labels": [
+    {
+      "name": "改地址测试集",
+      "label": "改地址",
+      "records": 2
+    },
+    {
+      "name": "查物流测试集",
+      "label": "查物流",
+      "records": 2
+    }
+  ],
+  "counts": {
+    "assistant_session": 1,
+    "processing_run": 2,
+    "data_asset": 2,
+    "test_set": 0
+  },
+  "requests": 12,
+  "requestDurationMsSum": 21455,
+  "repairs": 0,
+  "toolErrors": 0,
+  "generated": 4,
+  "published": 0,
+  "queryWordingObservation": "暂停查询正确报告首份2条和第二份未生成，但称确认卡待确认；实际旧卡已失效，继续后正确重建。"
+}

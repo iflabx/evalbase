@@ -1,0 +1,13 @@
+{
+  "code": "3afc44fc633d424375fb429896c370321b574448",
+  "guardRemoved": true,
+  "all18TableFingerprintsUnchanged": true,
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "3afc44fc633d424375fb429896c370321b574448"
+  }
+}
