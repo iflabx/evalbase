@@ -4,6 +4,7 @@ import {
   recoverPlanningFailure,
   savedPlanningMode,
   needsPlanningSubmission,
+  echoesPlanningRequest,
 } from "./planning-state.js";
 import { projectQueryConstraints } from "./query-contract.js";
 import { effectiveOperationInput } from "./operation-input.js";
@@ -4307,6 +4308,7 @@ export async function executeAssistantTurn(
           lastFailure?.name === "plan_task" &&
           [
             "assistant_tool_input_invalid",
+            "assistant_requirement_conflict",
             "assistant_delivery_pending",
             "assistant_background_reference_invalid",
             "assistant_background_rule_mismatch",
@@ -4316,6 +4318,15 @@ export async function executeAssistantTurn(
             422,
             "assistant_tool_input_invalid",
             "不能用question把工具参数错误转交用户。按上一条具体错误修正方案；保留本轮用户的先规划或执行意图，不重复询问开工确认。真实的业务范围或配额冲突仍按原规则澄清。",
+          );
+        if (
+          input.question &&
+          echoesPlanningRequest(current, input.question, amendmentRequestText)
+        )
+          throw new AssistantError(
+            422,
+            "assistant_plan_clarification_unnecessary",
+            "原用户请求已经明确，不能将原请求原样作为澄清问题。按已知全部交付和数量修正并保存完整方案，不把缺失步骤转交用户。",
           );
         if (
           input.question &&
@@ -5152,6 +5163,7 @@ export async function executeAssistantTurn(
               ? {
                   planningRecovery: input.question
                     ? {
+                        planKey: planRequirementsKey({ ...current, ...fields }),
                         turnId: turn.id,
                         requestTurnId: planningRequestTurnId,
                         taskRevision: turn.task_revision,

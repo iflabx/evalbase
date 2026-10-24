@@ -1,3 +1,4 @@
+import { pendingPlanningAmendment } from "../../src/assistant/recovery.js";
 import { bindTaskInput } from "../../src/assistant/plan.js";
 import { wholeSourceAuthorized } from "../../src/assistant/processing-preparation.js";
 import { describe, expect, it } from "vitest";
@@ -7,6 +8,7 @@ import {
   recoverPlanningFailure,
   savedPlanningMode,
   needsPlanningSubmission,
+  echoesPlanningRequest,
 } from "../../src/assistant/planning-state.js";
 import { currentTaskFacts } from "../../src/assistant/context.js";
 import { turnNeedsWork } from "../../src/assistant/intent.js";
@@ -26,6 +28,37 @@ const task = {
   },
 };
 describe("B3v5 complete planning state", () => {
+  it("an original request echo is not a business clarification", () => {
+    expect(echoesPlanningRequest(task, task.goal + "？", task.goal)).toBe(true);
+    expect(
+      echoesPlanningRequest(task, "只去掉问题相同还是整条相同？", task.goal),
+    ).toBe(false);
+  });
+  it("a legacy initial question checkpoint preserves the root identity without a plan key", () => {
+    const t = {
+      originTurnId: "root",
+      goal: "两份各2条",
+      planningRecovery: {
+        requestTurnId: "root",
+        documentsKey: "docs",
+        evidenceKey: "e",
+      },
+    };
+    expect(pendingPlanningAmendment(t, "docs", "e")?.requestTurnId).toBe(
+      "root",
+    );
+    expect(pendingPlanningAmendment(t, "changed", "e")).toBeUndefined();
+    expect(
+      pendingPlanningAmendment(
+        { ...t, planningRecovery: { requestTurnId: "root" } },
+        "new-docs",
+        "new-evidence",
+      ),
+    ).toBeUndefined();
+    expect(
+      pendingPlanningAmendment({ ...t, originTurnId: "other" }, "docs", "e"),
+    ).toBeUndefined();
+  });
   it("answered state never bypasses the current control or hijacks query and pause", () => {
     for (const decision of [undefined, { mode: "query" }, { mode: "pause" }])
       expect(needsPlanningSubmission(task, decision, true)).toBe(false);

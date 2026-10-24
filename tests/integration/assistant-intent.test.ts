@@ -5016,4 +5016,74 @@ describe("OPT42 per-turn intent public boundary", () => {
       await db.end();
     }
   });
+  it("B3v6 request echo cannot replace the missing second delivery", async () => {
+    const { id, documentId } = await backgroundSession();
+    const prompt = "先设计两个测试集，各2条，不执行。";
+    const state = await send(id, prompt, [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+      },
+      {
+        name: "plan_task",
+        input: {
+          question: prompt,
+          requirements: ["只制作第一份2条"],
+          nextAction: "none",
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [
+            { ...simpleDelivery(), name: "第一组" },
+            { ...simpleDelivery(), name: "第二组" },
+          ],
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(2);
+    expect(state.task.question).toBeFalsy();
+    expect(state.task.requirements).not.toContain("只制作第一份2条");
+  });
+  it("B3v6 actual stop endpoint permits a fresh status query without execution", async () => {
+    const { id, draft } = await sourceB3();
+    await send(
+      id,
+      "先帮我设计整理方案，别执行。",
+      [
+        decision("plan"),
+        {
+          name: "plan_task",
+          input: {
+            question: "只清理首尾空白吗？",
+            target: { kind: "draft", id: draft },
+          },
+        },
+      ],
+      { context: { kind: "draft", id: draft } },
+    );
+    const stopped = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/stop",
+      headers,
+      payload: {},
+    });
+    expect(stopped.statusCode).toBe(200);
+    const before = await effects();
+    const state = await send(id, "现在做到哪了？", [
+      decision("query", { explanation: "任务已停止，尚未处理资料。" }),
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.executionPaused).toBe(true);
+    expect(await effects()).toEqual(before);
+  });
 });

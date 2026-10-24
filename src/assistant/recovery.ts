@@ -87,7 +87,17 @@ export function pendingPlanningAmendment(
   const pending = task.planningRecovery;
   return pending &&
     pending.requestTurnId &&
-    pending.planKey === planRequirementsKey(task) &&
+    (pending.planKey === planRequirementsKey(task) ||
+      (!pending.planKey &&
+        !task.executionPlan?.steps?.length &&
+        !task.runId &&
+        pending.requestTurnId === task.originTurnId &&
+        typeof pending.documentsKey === "string" &&
+        pending.documentsKey === documentsKey &&
+        typeof pending.evidenceKey === "string" &&
+        pending.evidenceKey ===
+          (evidenceKey ??
+            sha256(canonicalJson(task.backgroundEvidence ?? []))))) &&
     (!pending.documentsKey || pending.documentsKey === documentsKey) &&
     (!evidenceKey ||
       !pending.evidenceKey ||
@@ -218,13 +228,23 @@ export function recoveryDecision(
     reason,
     canExecutePlan: false,
   });
+  const resolvingUserControl =
+    facts.phase === "request" &&
+    turn?.event === "user" &&
+    Number(turn.task_revision) === facts.revision &&
+    (task.turnControl?.turnId !== turn.id ||
+      (task.turnControl?.source === "pending" &&
+        task.turnControl?.mode === undefined &&
+        task.turnControl?.taskRevision === facts.revision) ||
+      task.turnControl?.mode === "query");
   if (!facts.canWrite) return stop("permission_denied");
   if (task.error === "assistant_context_deleted")
     return stop("context_changed");
   if (task.stage === "complete") return { ...result, reason: "complete" };
   if (
     allowance &&
-    (task.stage === "stopped" || task.error === "assistant_stopped")
+    (task.stage === "stopped" || task.error === "assistant_stopped") &&
+    !resolvingUserControl
   )
     return stop("stopped");
   if (task.executionBudget && !validExecutionBudget(task.executionBudget))
@@ -246,7 +266,10 @@ export function recoveryDecision(
   if (!turn && !allowance) return result;
   if (turn && Number(turn.task_revision) !== facts.revision)
     return stop("revision_changed");
-  if (task.stage === "stopped" || task.error === "assistant_stopped")
+  if (
+    (task.stage === "stopped" || task.error === "assistant_stopped") &&
+    !resolvingUserControl
+  )
     return stop("stopped");
   if (
     chain &&

@@ -70,3 +70,14 @@ export function needsPlanningSubmission(
       (answeredPlanningQuestion(task) && !task.executionPlan?.steps?.length)),
   );
 }
+
+export function echoesPlanningRequest(
+  task: Record<string, any>,
+  question: string,
+  request: string,
+) {
+  const normalized = (s: string) => s.replace(/[。？！?!\s]/gu, "");
+  return [task.goal, request].some(
+    (s) => typeof s === "string" && normalized(s) === normalized(question),
+  );
+}
