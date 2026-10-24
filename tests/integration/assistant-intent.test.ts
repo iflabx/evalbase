@@ -1817,12 +1817,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(uploaded.statusCode).toBe(201);
     const bad = {
       name: "plan_task",
-      input: {
-        control: { mode: "plan" },
-        executionMode: "plan",
-        question: "请确认是否按上述方案执行？",
-        nextAction: "none",
-      },
+      input: { question: "请确认是否按上述方案执行？" },
     };
     const failed = await send(id, "按附件创建2条物流问题，先给方案，不执行。", [
       decision("plan"),
@@ -1836,28 +1831,24 @@ describe("OPT42 per-turn intent public boundary", () => {
       bad,
     ]);
     expect(failed.turns.at(-1).status).toBe("failed");
-    expect(failed.turns.at(-1).errorCode).toBe("assistant_no_progress");
-    expect(failed.turns.at(-1).diagnostics.failure).toMatchObject({
-      layer: "application",
-      category: "workflow_stalled",
-    });
-    expect(failed.turns.at(-1).diagnostics.failure.reason).toContain(
-      "仍未保存完整方案",
+    expect(failed.turns.at(-1).errorCode).toBe(
+      "assistant_plan_clarification_unnecessary",
     );
-    expect(observed).toHaveLength(5);
-    expect(script).toHaveLength(1);
+    expect(failed.turns.at(-1).diagnostics.firstFailure.code).toBe(
+      "assistant_plan_clarification_unnecessary",
+    );
+    expect(observed.length).toBeLessThanOrEqual(5);
+    expect(failed.task.diagnostics.repairRequestsUsed).toBeLessThanOrEqual(2);
     expect(failed.task.executionPlan?.steps?.length ?? 0).toBe(0);
     expect(await effects()).toEqual(before);
-    const clarified = await send(id, "按附件继续规划", [
+    const { id: genuineId, documentId: genuineDoc } =
+      await backgroundSession("只使用完整中文问题。");
+    const clarified = await send(genuineId, "按附件继续规划", [
       decision("plan"),
+      { name: "read_background", input: { documentId: genuineDoc } },
       {
         name: "plan_task",
-        input: {
-          control: { mode: "plan" },
-          executionMode: "plan",
-          question: "文档缺失物流业务范围，应该覆盖查询还是修改地址？",
-          nextAction: "none",
-        },
+        input: { question: "文档缺失物流业务范围，应该覆盖查询还是修改地址？" },
       },
     ]);
     expect(
@@ -5520,7 +5511,8 @@ describe("OPT42 per-turn intent public boundary", () => {
                 p.properties.deliveries.minItems === 2 &&
                 p.properties.deliveries.maxItems === 2 &&
                 raw.includes("repair_planning") &&
-                raw.includes("failed planning") &&
+                raw.includes('"latestInput"') &&
+                raw.includes('"error"') &&
                 raw.includes("查物流")
               );
             },
@@ -5754,9 +5746,9 @@ describe("OPT42 per-turn intent public boundary", () => {
           when: (r) => {
             const raw = JSON.stringify(r.messages);
             return (
-              raw.includes("lastInput") &&
-              raw.includes("[unsupported]") &&
-              raw.includes("failedProposal") &&
+              raw.includes("latestInput") &&
+              raw.includes("error") &&
+              raw.includes("proposal") &&
               raw.includes("第一份")
             );
           },
@@ -5779,5 +5771,417 @@ describe("OPT42 per-turn intent public boundary", () => {
     } finally {
       await db.end();
     }
+  });
+  it("B4 create declaration and instructions agree after evidence; redundant equal control is lossless", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(
+      id,
+      "按说明设计查物流测试集，2条，先给方案不要执行。",
+      [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: {
+            control: { mode: "plan" },
+            executionMode: "plan",
+            deliveries: [simpleDelivery()],
+          },
+          when: (r) => {
+            const t = r.tools.find(
+              (t: any) => t.function.name === "plan_task",
+            ).function;
+            return (
+              r.tool_choice?.function?.name === "plan_task" &&
+              t.description.includes("当前阶段：创建方案") &&
+              !t.parameters.properties.control &&
+              t.parameters.properties.deliveries.items.properties.scenarios
+                .minItems === 3 &&
+              !r.messages.some((m: any) =>
+                String(m.content).includes("可与业务字段同次提交"),
+              )
+            );
+          },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.executionPlan.steps.length).toBeGreaterThan(0);
+    expect(state.task.runId).toBeFalsy();
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(0);
+  });
+  it("B4 malformed correction keeps the full proposal and returns through the same SDK contract", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(id, "按说明设计查物流测试集，2条，不执行。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [
+            { ...simpleDelivery(), scenarios: ["运输进度", "送达时间"] },
+          ],
+        },
+      },
+      {
+        name: "plan_task",
+        input: { code: "bad", hint: "failed planning", errors: [] },
+      },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+        when: (r) => {
+          const raw = JSON.stringify(r.messages);
+          return (
+            raw.includes("repair_planning") &&
+            raw.includes("proposal") &&
+            raw.includes("latestInput") &&
+            r.tools
+              .find((t: any) => t.function.name === "plan_task")
+              .function.description.includes("纠正未保存方案")
+          );
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(1);
+  });
+  it("B4 rejected candidates can be renamed and saved without regeneration or rewrite", async () => {
+    const { id, documentId } = await backgroundSession();
+    let state = await send(id, "按说明做查物流测试集，2条，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "execute", deliveries: [simpleDelivery()] },
+      },
+    ]);
+    const runId = state.task.runId;
+    expect(runId).toBeTruthy();
+    await finishB3(runId);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.proposals.some((p: any) => p.status === "pending");
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    const oldCard = state.proposals.find((p: any) => p.status === "pending");
+    const reject = await app.inject({
+      method: "POST",
+      url: base() + "/proposals/" + oldCard.id + "/reject",
+      headers,
+      payload: {},
+    });
+    expect(reject.statusCode, reject.body).toBe(200);
+    const before = await effects();
+    state = await send(id, "叫“电商物流基础测试”，存成新的测试集草稿。", [
+      decision("execute", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          candidateEdit: {
+            instructions: "把问题改写一下",
+            allowedFields: ["question"],
+            allResults: true,
+          },
+        },
+      },
+      {
+        name: "plan_task",
+        input: {
+          candidateSave: {
+            target: { kind: "newDraft", name: "电商物流基础测试" },
+          },
+        },
+        when: (r) => {
+          const p = r.tools.find((t: any) => t.function.name === "plan_task")
+            .function.parameters;
+          return (
+            Boolean(p.properties.candidateSave) && !p.properties.candidateEdit
+          );
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.runId).toBe(runId);
+    expect(state.task.question).toBeFalsy();
+    expect(successes(state, "refine_candidates")).toHaveLength(0);
+    expect(successes(state, "generate_candidates")).toHaveLength(0);
+    const card = state.proposals.find((p: any) => p.status === "pending");
+    expect(card, JSON.stringify(state)).toBeTruthy();
+    expect(card.summary.target).toBe("电商物流基础测试");
+    expect(state.proposals.find((p: any) => p.id === oldCard.id).status).toBe(
+      "rejected",
+    );
+    expect(await effects()).toEqual(before);
+    const db = createPool(databaseUrl);
+    let input: any;
+    try {
+      input = (
+        await db.query(
+          "SELECT parameters AS input FROM assistant_proposal WHERE id=$1",
+          [card.id],
+        )
+      ).rows[0].input;
+    } finally {
+      await db.end();
+    }
+    expect(input.target.kind).toBe("newDraft");
+    expect(input.target.name).toBe("电商物流基础测试");
+    const result = await app.inject({
+      method: "POST",
+      url: base() + "/proposals/" + card.id + "/confirm",
+      headers,
+      payload: {},
+    });
+    expect(result.statusCode, result.body).toBe(200);
+    const twice = await app.inject({
+      method: "POST",
+      url: base() + "/proposals/" + card.id + "/confirm",
+      headers,
+      payload: {},
+    });
+    expect(twice.statusCode, twice.body).toBe(200);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.stage;
+        },
+        { timeout: 15000 },
+      )
+      .toBe("complete");
+    const countDb = createPool(databaseUrl);
+    try {
+      const rows = (
+        await countDb.query(
+          "SELECT d.name,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS n FROM collaborative_draft d WHERE project_id=$1 AND name='电商物流基础测试'",
+          [projectId],
+        )
+      ).rows;
+      expect(rows).toEqual([{ name: "电商物流基础测试", n: 2 }]);
+    } finally {
+      await countDb.end();
+    }
+  });
+  it("B4 ordinary continuation refuses exhausted repair before another model request", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(id, "设计两个测试集，各2条，先给方案不执行。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+      },
+      { name: "plan_task", input: { error: "invalid" } },
+      { name: "plan_task", input: { error: "invalid again" } },
+    ]);
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
+    const before = await effects();
+    observed = [];
+    const result = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "继续刚才的任务。" },
+    });
+    expect(result.statusCode, result.body).toBe(409);
+    expect(observed).toHaveLength(0);
+    expect(await effects()).toEqual(before);
+  });
+  it("B4 saving the second delivery never adopts the first delivery into the new target", async () => {
+    const { id, documentId } = await backgroundSession();
+    let state = await send(id, "创建两个测试集，各2条，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          deliveries: [
+            { ...simpleDelivery(), name: "第一份" },
+            { ...simpleDelivery(), name: "第二份" },
+          ],
+        },
+      },
+    ]);
+    const first = state.task.runId;
+    await finishB3(first);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.proposals.some((p: any) => p.status === "pending");
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    const card = state.proposals.find((p: any) => p.status === "pending");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: base() + "/proposals/" + card.id + "/confirm",
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.runId;
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe(first);
+    const second = state.task.runId;
+    await finishB3(second);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.proposals.some((p: any) => p.status === "pending");
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    state = await send(id, "第二份存成新的测试集草稿，叫“第二份另存”。", [
+      decision("execute", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          candidateSave: { target: { kind: "newDraft", name: "第二份另存" } },
+        },
+      },
+    ]);
+    const pending = state.proposals.find((p: any) => p.status === "pending");
+    expect(pending, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+    expect(pending.summary.count).toBe(2);
+    expect(state.task.runId).toBe(second);
+    const confirmed = await app.inject({
+      method: "POST",
+      url: base() + "/proposals/" + pending.id + "/confirm",
+      headers,
+      payload: {},
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+  });
+  it("B4 an unknown save destination is clarified and its answer prepares the same candidates", async () => {
+    const { id, documentId } = await backgroundSession();
+    let state = await send(id, "按说明制作2条查物流数据，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "execute", deliveries: [simpleDelivery()] },
+      },
+    ]);
+    const runId = state.task.runId;
+    await finishB3(runId);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.proposals.some((p: any) => p.status === "pending");
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    const before = await effects();
+    state = await send(id, "换个地方保存。", [
+      decision("execute", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: { question: "要保存到新草稿还是哪个已有草稿？" },
+        when: (r) => {
+          const p = r.tools.find((t: any) => t.function.name === "plan_task")
+            .function.parameters;
+          return Boolean(p.properties.question) && !p.properties.candidateSave;
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.stage).toBe("waiting_input");
+    expect(state.task.planningClarification.missingFact).toBe("save_target");
+    expect(await effects()).toEqual(before);
+    state = await send(id, "新的草稿，叫“另一个保存位置”。", [
+      decision("execute", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          candidateSave: {
+            target: { kind: "newDraft", name: "另一个保存位置" },
+          },
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.runId).toBe(runId);
+    const card = state.proposals.find((p: any) => p.status === "pending");
+    expect(card, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+    expect(card.summary.target).toBe("另一个保存位置");
+    expect(card.summary.count).toBe(2);
+    expect(await effects()).toEqual(before);
   });
 });

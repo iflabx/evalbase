@@ -705,3 +705,10 @@ export function requestedSceneCount(request: string) {
   ];
   return counts.length === 1 && counts[0] <= 20 ? counts[0] : undefined;
 }
+
+/** One policy for advertised plans, business validation and contextual correction. */
+export function minimumPlanScenes(request: string, prior?: readonly string[]) {
+  return (
+    requestedSceneCount(request) ?? (prior ? Math.min(3, prior.length) : 3)
+  );
+}

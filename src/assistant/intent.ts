@@ -206,7 +206,7 @@ export function planningContinuation(text: string): "plan" | "continue" | null {
     .filter(Boolean);
   if (
     !parts.length ||
-    !/^请?继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做|未完成的部分|未完成部分|剩下的部分)?$/u.test(
+    !/^(?:请)?(?:继续(?:按最后(?:的)?要求)?(?:保存方案|规划|执行|生成|做|未完成的部分|未完成部分|剩下的部分|刚才的任务|未完成的任务)?|接着(?:刚才的)?做)$/u.test(
       parts[0],
     )
   )

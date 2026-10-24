@@ -58,6 +58,7 @@ export function preparePlanAmendment(
   truncated = false,
 ):
   | {
+      operation: "amend_plan" | "edit_current_candidates" | "save_candidates";
       needsBackground: boolean;
       properties: Record<string, any>;
       facts: Record<string, any>;
@@ -65,6 +66,70 @@ export function preparePlanAmendment(
   | undefined {
   const goals = deliveryGoals(task.executionPlan);
   if (task.executionPlan?.contractVersion !== 1 || !goals.length)
+    return undefined;
+  const answeringSave =
+    task.planningClarification?.missingFact === "save_target" &&
+    Boolean(task.planningClarification?.answer);
+  if (answeringSave)
+    request += "\n保存去向补充：" + task.planningClarification.answer;
+  const clauses = request
+    .split(/[，,。；;\n]/u)
+    .filter(
+      (clause) =>
+        !/(?:不要|不得|禁止|不能|先不|暂不|不想|不|别)(?:再)?(?:保存|另存|存成|采用|加入)/u.test(
+          clause,
+        ),
+    );
+  const contentChange = clauses.some(
+    (clause) =>
+      /改写|重写|清洗|去重|(?:问法|说法|表达|语气).*(?:改|换)|(?:改|换).*(?:问法|说法|表达|语气)/u.test(
+        clause,
+      ) && !/(?:不要|不得|不|别).*(?:改写|重写|清洗|去重)/u.test(clause),
+  );
+  const asking =
+    /怎么|如何|能不能|是否|什么|先.{0,5}(?:方案|规划)|不执行|别执行|先不|暂不/u.test(
+      request,
+    );
+  const saving = Boolean(
+    !contentChange &&
+    !asking &&
+    task.runId &&
+    (answeringSave ||
+      clauses.some((clause) =>
+        /(?:保存|另存|存成|存到|存为|保存确认|加入.{0,12}草稿)/u.test(clause),
+      )) &&
+    !/保存方案/u.test(request),
+  );
+  const missingSaveTarget = Boolean(
+    task.runId &&
+    /换.{0,8}(?:地方|位置|保存)|另存/u.test(request) &&
+    !/新(?:的)?(?:测试集)?草稿|原草稿|当前草稿/u.test(request),
+  );
+  if (saving)
+    return {
+      operation: "save_candidates",
+      needsBackground: false,
+      properties: {
+        baseRevision: { type: "integer", const: revision },
+        ...(missingSaveTarget
+          ? { question: { type: "string", minLength: 1, maxLength: 500 } }
+          : { candidateSave: properties.candidateSave }),
+      },
+      facts: {
+        operation: "save_candidates",
+        ...(missingSaveTarget ? { missingFact: "save_target" } : {}),
+        baseRevision: revision,
+        request,
+        runId: task.runId,
+        target: task.target,
+        draftId: task.targetDraftId ?? task.draftId,
+        selectedCandidates: task.selectedCandidates,
+      },
+    };
+  if (
+    contentChange &&
+    clauses.some((clause) => /保存|另存|存成|存到|存为/u.test(clause))
+  )
     return undefined;
   const changes = request
     .split(/[，,。；;\n]/u)
@@ -96,6 +161,7 @@ export function preparePlanAmendment(
     !requested.has("classifications")
   ) {
     return {
+      operation: "edit_current_candidates",
       needsBackground: false,
       properties: {
         baseRevision: { type: "integer", const: revision },
@@ -123,7 +189,9 @@ export function preparePlanAmendment(
   const top = Object.fromEntries(
     Object.entries(properties).filter(
       ([name]) =>
-        !["control", "deliveries"].includes(name) &&
+        !["control", "deliveries", "candidateEdit", "candidateSave"].includes(
+          name,
+        ) &&
         (!requested.size ||
           ["executionMode", "question", "nextAction"].includes(name) ||
           ((/要求|约束|字段/iu.test(text) || requested.has("count")) &&
@@ -166,6 +234,7 @@ export function preparePlanAmendment(
     })),
   }));
   return {
+    operation: "amend_plan",
     needsBackground:
       adding ||
       requested.has("classifications") ||

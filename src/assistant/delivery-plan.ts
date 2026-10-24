@@ -1,4 +1,4 @@
-import { requestedSceneCount } from "./requirements.js";
+import { minimumPlanScenes } from "./requirements.js";
 import { opaqueId } from "../server/support.js";
 import { canonicalJson } from "../package/contract.js";
 import {
@@ -932,8 +932,7 @@ export function reviseDeliveryGoals(
         !candidate.instructions?.trim() ||
         !Array.isArray(candidate.scenarios) ||
         candidate.scenarios.length <
-          (requestedSceneCount(userText) ??
-            (prior ? Math.min(3, prior.scenarios.length) : 3)) ||
+          minimumPlanScenes(userText, prior?.scenarios) ||
         candidate.scenarios.some(
           (scene) => typeof scene !== "string" || scene.trim().length < 2,
         )
