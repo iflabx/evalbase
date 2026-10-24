@@ -819,17 +819,25 @@ export async function executeAssistantTurn(
             pendingPlanningAmendment(current, planningDocumentsKey))
         ) {
           const pending = current.planningRecovery;
+          const evidenceKey = sha256(
+            canonicalJson(current.backgroundEvidence ?? []),
+          );
           const reusable =
             pending &&
             !requestsBusinessAmendment(turn.user_text) &&
-            (!pending.amendment ||
-              pending.planKey === planRequirementsKey(current)) &&
-            (!pending.documentsKey ||
-              pending.documentsKey === planningDocumentsKey) &&
-            pending.evidenceKey ===
-              sha256(canonicalJson(current.backgroundEvidence ?? [])) &&
-            (pending.amendment ||
-              pending.taskRevision === turn.task_revision - 1);
+            (Boolean(
+              pendingPlanningAmendment(
+                current,
+                planningDocumentsKey,
+                evidenceKey,
+              ),
+            ) ||
+              (!pending.amendment &&
+                !pending.planKey &&
+                pending.taskRevision === turn.task_revision - 1 &&
+                (!pending.documentsKey ||
+                  pending.documentsKey === planningDocumentsKey) &&
+                pending.evidenceKey === evidenceKey));
           // A new user request replans against the current documents and normal
           // validators. A stale recovery cursor must not veto that request.
           if (pending && !reusable)
@@ -837,7 +845,11 @@ export async function executeAssistantTurn(
           planningRequestTurnId = reusable
             ? (pending.requestTurnId ?? pending.turnId)
             : turn.id;
-          if (reusable && pending.amendment) {
+          if (
+            reusable &&
+            (pending.amendment ||
+              current.parameterRepairStatus?.name === "plan_task")
+          ) {
             pendingContextRepair = { name: "plan_task", kind: "context" };
             const original = (
               await db.query(
@@ -4260,6 +4272,20 @@ export async function executeAssistantTurn(
             422,
             "assistant_tool_input_invalid",
             "不能用question把工具参数错误转交用户。按上一条具体错误修正方案；保留本轮用户的先规划或执行意图，不重复询问开工确认。真实的业务范围或配额冲突仍按原规则澄清。",
+          );
+        if (
+          input.question &&
+          current.question &&
+          turn.event === "user" &&
+          (["plan", "execute"].includes(decision?.mode ?? "") ||
+            decision?.requiresUpdate) &&
+          input.question.replace(/[。？?\s]/gu, "") ===
+            current.question.replace(/[。？?\s]/gu, "")
+        )
+          throw new AssistantError(
+            422,
+            "assistant_plan_clarification_unnecessary",
+            "用户已回答上一个澄清问题，不能原样再次要求确认。结合原始目标与本轮补充保存完整有效方案；若仍有真实未解决的业务缺口，提出具体的新问题。只保存方案不代表开始执行。",
           );
         if (input.question && documents.length) {
           const reads = await backgroundReadReceipts();

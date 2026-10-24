@@ -3773,6 +3773,10 @@ describe("OPT42 per-turn intent public boundary", () => {
         decision("plan"),
         {
           name: "plan_task",
+          input: { question: "整理格式具体要做什么？", nextAction: "none" },
+        },
+        {
+          name: "plan_task",
           input: {
             executionMode: "plan",
             requirements: [
@@ -3784,6 +3788,8 @@ describe("OPT42 per-turn intent public boundary", () => {
         },
       ],
     );
+    expect(state.task.question).toBeFalsy();
+    expect(state.task.executionPlan.steps.length).toBeGreaterThan(0);
     expect(state.task.runId).toBeFalsy();
     state = await send(id, "按当前已保存方案执行", [], {
       operation: "execute_plan",
@@ -4531,6 +4537,81 @@ describe("OPT42 per-turn intent public boundary", () => {
       before.parameterRepairLimits.plan_task.identity,
     );
     expect(identity).toBe(failed.id);
+  });
+  it("B3v4 initial planning repair resumes after pause and query on the original identity", async () => {
+    const { id, documentId } = await backgroundSession(
+      "查物流：查询订单运输进度。\n改地址：变更收件地址。\n完整用户问题。",
+    );
+    const delivery = (value: string) => ({
+      ...simpleDelivery(),
+      name: value + "测试集",
+      classifications: [
+        {
+          field: "metadata",
+          key: "意图",
+          basis: "background",
+          allowedValues: [value],
+          quotas: [{ value, count: 2 }],
+          definitions: [
+            {
+              value,
+              text:
+                value === "查物流"
+                  ? "查物流：查询订单运输进度。"
+                  : "改地址：变更收件地址。",
+            },
+          ],
+        },
+      ],
+    });
+    let state = await send(
+      id,
+      "做查物流和改地址两个测试集，各2条，现在开始。",
+      [
+        decision("execute"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: { executionMode: "execute", deliveries: [delivery("查物流")] },
+        },
+        { name: "plan_task", input: {}, httpStatus: 400 },
+      ],
+    );
+    const db = createPool(databaseUrl);
+    try {
+      const before = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(before.planningRecovery?.amendment).toBe(false);
+      const used = before.parameterRepairLimits.plan_task.used;
+      await send(id, "先停一下。", [decision("pause")]);
+      await send(id, "现在做到哪了？", [decision("query")]);
+      state = await send(id, "继续未完成的部分，已经生成的不要重做。", [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [delivery("查物流"), delivery("改地址")],
+          },
+        },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      const after = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(deliveryGoals(after.executionPlan)).toHaveLength(2);
+      expect(after.planningRecovery).toBeFalsy();
+      expect(after.parameterRepairLimits.plan_task.identity).toBe(
+        before.parameterRepairLimits.plan_task.identity,
+      );
+      expect(after.parameterRepairLimits.plan_task.used).toBe(used + 1);
+    } finally {
+      await db.end();
+    }
   });
   it("B3 paused progress query reads actual joined job status without restarting work", async () => {
     const { id, draft, recordIds } = await sourceB3(true);

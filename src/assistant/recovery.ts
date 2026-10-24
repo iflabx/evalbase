@@ -85,7 +85,7 @@ export function pendingPlanningAmendment(
   evidenceKey?: string,
 ) {
   const pending = task.planningRecovery;
-  return pending?.amendment &&
+  return pending &&
     pending.requestTurnId &&
     pending.planKey === planRequirementsKey(task) &&
     (!pending.documentsKey || pending.documentsKey === documentsKey) &&

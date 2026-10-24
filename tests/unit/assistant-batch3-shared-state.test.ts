@@ -132,6 +132,16 @@ it("B3v3 amendment checkpoint survives control revisions without changing its bu
       "evidence",
     ),
   ).toBeUndefined();
+  expect(
+    pendingPlanningAmendment(
+      {
+        ...pending,
+        planningRecovery: { ...pending.planningRecovery, amendment: false },
+      },
+      "docs",
+      "evidence",
+    )?.requestTurnId,
+  ).toBe("original");
   expect(pending.parameterRepairLimits.plan_task.used).toBe(1);
 });
 it("B3v3 missing historical classification gets new structural proof, never a changed snapshot", () => {
