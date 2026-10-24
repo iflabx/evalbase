@@ -584,6 +584,28 @@ export async function readSession(
       delete presentedTask.processingScope.source.recordIds;
     }
   }
+  const feedback = presentedTask
+    ? assistantFeedback(
+        {
+          ...current.task,
+          requirementProblem: presentedTask.requirementProblem,
+          requirementProblemKind: presentedTask.requirementProblemKind,
+        },
+        {
+          revision: Number(current.task_revision),
+          workspace,
+          recovery,
+          hasBackground: backgroundDocuments.length > 0,
+          documentsKey: backgroundVersion(backgroundDocuments),
+          recoveryReason: recovery.reason,
+          summaryFailed:
+            latestTurn?.status === "failed" &&
+            current.task?.requirementSave?.turnId === latestTurn.id &&
+            !unresolvedFailure(latestTurn.tool_results ?? []),
+        },
+      )
+    : undefined;
+  const complete = feedback?.kind === "complete";
   return {
     sessionId: id,
     ...(view
@@ -605,29 +627,22 @@ export async function readSession(
     task: presentedTask
       ? {
           ...presentedTask,
-          canRetryTurn,
-          canContinueExecution: recovery.canExecutePlan,
-          recoveryDecision: recovery,
+          ...(complete
+            ? { stage: "complete", error: null, recovery: null }
+            : {}),
+          canRetryTurn: !complete && canRetryTurn,
+          canContinueExecution: !complete && recovery.canExecutePlan,
+          recoveryDecision: complete
+            ? {
+                ...recovery,
+                action: null,
+                canExecutePlan: false,
+                reason: "complete",
+                grantOffers: undefined,
+              }
+            : recovery,
           continuation,
-          feedback: assistantFeedback(
-            {
-              ...current.task,
-              requirementProblem: presentedTask.requirementProblem,
-              requirementProblemKind: presentedTask.requirementProblemKind,
-            },
-            {
-              revision: Number(current.task_revision),
-              workspace,
-              recovery,
-              hasBackground: backgroundDocuments.length > 0,
-              documentsKey: backgroundVersion(backgroundDocuments),
-              recoveryReason: recovery.reason,
-              summaryFailed:
-                latestTurn?.status === "failed" &&
-                current.task?.requirementSave?.turnId === latestTurn.id &&
-                !unresolvedFailure(latestTurn.tool_results ?? []),
-            },
-          ),
+          feedback,
         }
       : presentedTask,
     title: currentSafe
