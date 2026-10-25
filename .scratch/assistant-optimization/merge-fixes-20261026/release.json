@@ -1,0 +1,30 @@
+{
+  "code": "f85e78ba75420f0d0ade0ea07725d6d4fc23976c",
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "f85e78ba75420f0d0ade0ea07725d6d4fc23976c"
+  },
+  "updated_services": [
+    "web",
+    "worker",
+    "model-worker"
+  ],
+  "unchanged_services": [
+    "postgres",
+    "minio"
+  ],
+  "business_counts_equal": true,
+  "draft_content_unchanged": true,
+  "history_and_budgets_equal": true,
+  "buildExit": 0,
+  "protectedTables": 19,
+  "oldBudgetFiles": 61,
+  "oldRowsPreserved": true,
+  "preexistingDirtyEvidenceUnchanged": true,
+  "realModelRequests": 0,
+  "productionDeployment": false
+}
