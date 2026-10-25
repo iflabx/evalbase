@@ -1,0 +1,32 @@
+{
+  "code": "5965a1b469c8fee7eb073645cb09a3929f5287d9",
+  "projectId": "project_a46f5bccd2ea4c86ab2631f34be72077",
+  "sessions": {
+    "18": "conversation_0aaf4e4d1c084299b26932141903dc4d",
+    "20": "conversation_9894e389c8e94a4ba100e39af97e6a48"
+  },
+  "cases": {
+    "18": {
+      "result": "passed",
+      "calls": 11,
+      "requestMs": 19357,
+      "generated": 4,
+      "toolErrors": 0,
+      "automaticCorrections": 0
+    },
+    "20": {
+      "result": "passed",
+      "calls": 8,
+      "requestMs": 9942,
+      "generated": 2,
+      "toolErrors": 2,
+      "automaticCorrections": 2
+    }
+  },
+  "calls": 19,
+  "requestMs": 29299,
+  "generated": 6,
+  "saved": 4,
+  "blocked": [],
+  "closed": true
+}
