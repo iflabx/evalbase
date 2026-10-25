@@ -58,6 +58,29 @@ function prepare(task: any, patch: any) {
   });
 }
 describe("quantity and content consistency", () => {
+  it("binds each count to two deliveries without treating it as category quotas", () => {
+    const sample = {
+      id: "one",
+      name: "查物流",
+      count: 2,
+      countKind: "new" as const,
+      instructions: "自然问题",
+      scenarios: [],
+      classifications: [],
+    };
+    expect(
+      normalizePlanContent(
+        [sample, { ...sample, id: "two", name: "改地址" }],
+        ["两份测试集各2条自然完整问题"],
+      ).requirements,
+    ).toEqual(["两份测试集自然完整问题"]);
+    expect(() =>
+      normalizePlanContent(
+        [sample, { ...sample, id: "two", name: "改地址", count: 3 }],
+        ["两份测试集各2条自然完整问题"],
+      ),
+    ).toThrow();
+  });
   it("protects only explicit per-item and input spans, never adjacent output counts", () => {
     const task = fixture(),
       raw = task.executionPlan.steps[0].input;

@@ -505,6 +505,15 @@ export async function controlAssistantTask(
           "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=ANY($1::text[]) AND status IN('queued','running','retry_wait')",
           [jobs.map((item) => item.id)],
         );
+      const interruptedUser =
+        action === "pause"
+          ? (
+              await client.query(
+                "SELECT id FROM assistant_turn WHERE session_id=$1 AND coalesce(task_id,'legacy:'||session_id)=$2 AND event='user' AND status IN('queued','running') ORDER BY created_at DESC,id DESC LIMIT 1",
+                [id, taskIdentity(session)],
+              )
+            ).rows[0]
+          : undefined;
       await client.query(
         "UPDATE assistant_session SET task_revision=task_revision+1,task=task||$2::jsonb,updated_at=now() WHERE id=$1",
         [
@@ -517,6 +526,7 @@ export async function controlAssistantTask(
                   nextAction: null,
                   error: null,
                   recovery: null,
+                  interruptedTurnId: interruptedUser?.id ?? null,
                 }
               : { stage: "stopped" },
           ),

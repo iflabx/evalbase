@@ -85,10 +85,12 @@ export function taskPresentation(
     // A generation name is not a source-object name. Keep the original task
     // and receipts intact; project focus and historical candidates separately.
     if (!task.target) delete presented.targetName;
-    presented.currentDeliveryName = steps.find(
+    const currentDeliveryName = steps.find(
       (step: any) =>
         step.deliveryId === focus && step.action === "generate_candidates",
     )?.input.name;
+    if (currentDeliveryName === undefined) delete presented.currentDeliveryName;
+    else presented.currentDeliveryName = currentDeliveryName;
     presented.candidateHistory = Boolean(
       task.runId &&
       !steps.some((step: any) => step.receipt?.runId === task.runId),
@@ -1379,10 +1381,9 @@ export async function startTurn(
     const task: Record<string, any> = continuing
       ? {
           ...session.task,
-          supplements: [
-            ...(session.task.supplements ?? []),
-            effectiveText.trim(),
-          ],
+          supplements: planningContinuation(effectiveText.trim())
+            ? (session.task.supplements ?? [])
+            : [...(session.task.supplements ?? []), effectiveText.trim()],
           autoCount: session.task.autoCount,
         }
       : {

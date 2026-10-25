@@ -75,7 +75,14 @@ export function planContentText(
       }
       value = value.replace(
         /(?:并)?(?:分别)?(?:每类|每种|各类|各)(?:为|共)?\s*([0-9]+)\s*条/gu,
-        (_m, n) => {
+        (_m, n, offset) => {
+          const perDelivery =
+            goals.length > 1 &&
+            goals.every((g) => g.count === Number(n)) &&
+            /[0-9一二三四五六七八九十两]+\s*(?:份|个)\s*(?:独立)?(?:测试集|交付|草稿)/u.test(
+              part.slice(0, offset),
+            );
+          if (perDelivery) return "";
           const matching = contracts.some((g) => {
             const qs = g.classifications.flatMap((r) => r.quotas ?? []);
             return qs.length > 0 && qs.every((q) => q.count === Number(n));

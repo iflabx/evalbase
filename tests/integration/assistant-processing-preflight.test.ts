@@ -2097,4 +2097,217 @@ describe("OPT47 unified processing public boundary", () => {
       release();
     }
   });
+
+  it("CU10 SDK: action word matching a file name still asks which source", async () => {
+    await file("客服清洗两条.jsonl");
+    await file("客服范围四条.jsonl");
+    const id = await newSession();
+    const before = await effects();
+    const state = await send(id, "帮我清洗一下这些数据。", [
+      decision("execute"),
+      {
+        name: "query_project",
+        input: { kind: "files", search: "清洗", offset: 0 },
+      },
+      ...Array.from({ length: 6 }, () => ({
+        name: "query_project",
+        input: { kind: "files", search: "清洗", offset: 0 },
+      })),
+    ]);
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    expect(state.task.processingClarification?.kind).toBe("source");
+    expect(state.task.question).toContain("请选择要处理的资料");
+    expect(state.task.target).toBeFalsy();
+    expect(observed.length).toBeLessThanOrEqual(3);
+    expect(await effects()).toEqual(before);
+  });
+  it("CU15 SDK: paused empty delivery plan can answer a progress query", async () => {
+    const id = await newSession();
+    const question = "期望回答由谁拟定？";
+    const seeded = {
+      goal: "新建两个客服测试集，先给方案",
+      title: "两个客服测试集",
+      stage: "waiting_input",
+      question,
+      requirements: ["两份测试集各2条，期望回答由助手拟定"],
+      supplements: ["期望回答由你拟定，按这个方案开始生成。"],
+      executionPlan: {
+        mode: "plan",
+        current: 0,
+        steps: [],
+        contractVersion: 1,
+      },
+      executionPaused: true,
+      planningClarification: { question, askedTurnId: "original-turn" },
+      turnControl: { mode: "pause", source: "ui" },
+    };
+    await dbQuery("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+      id,
+      seeded,
+    ]);
+    const state = await send(id, "现在做到哪了？", [
+      {
+        name: "plan_task",
+        input: {
+          control: {
+            mode: "query",
+            explanation: "任务已暂停。",
+            querySubject: "task_progress",
+          },
+        },
+      },
+      { name: "", input: {}, text: "当前暂停，尚未生成数据。" },
+    ]);
+    expect(state.turns.at(-1).status).toBe("succeeded");
+    expect(
+      state.turns.at(-1).tools?.filter((r: any) => r.status === "failed") ?? [],
+    ).toHaveLength(0);
+    expect(state.task.executionPaused).toBe(true);
+    expect(state.task.planningClarification?.answer).toBeUndefined();
+  });
+
+  it("CU15 SDK: interrupted answer survives pause and builds executable plan before model generation", async () => {
+    const id = await newSession();
+    const prompt =
+      "新建两个客服测试集：查物流和修改收货地址，各2条自然完整问题及期望回答。先给方案。";
+    const question = "期望回答由我拟定，还是你提供固定回答？";
+    const planned = await send(id, prompt, [
+      decision("plan"),
+      {
+        name: "plan_task",
+        input: {
+          title: "客服测试集",
+          executionMode: "plan",
+          question,
+          nextAction: "none",
+          targetCount: 2,
+          overallTargetCount: 4,
+          target: null,
+          requirements: ["两份测试集各2条自然完整问题与期望回答"],
+          allowedFields: ["question", "expectedOutput", "metadata"],
+          classifications: [],
+          metadataKeys: null,
+        },
+      },
+    ]);
+    expect(
+      planned.turns.at(-1).status,
+      JSON.stringify(planned.turns.at(-1)),
+    ).toBe("succeeded");
+    expect(planned.task.executionPlan.steps).toHaveLength(0);
+    const upload = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/background-documents",
+      headers,
+      payload: {
+        fileName: "客服说明.txt",
+        contentBase64: Buffer.from(
+          "客服测试覆盖物流查询和修改收货地址。提问应自然完整，期望回答说明应答行为，不编造订单数据。",
+        ).toString("base64"),
+      },
+    });
+    expect(upload.statusCode, upload.body).toBe(201);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    script = [
+      {
+        ...decision("execute"),
+        beforeReply: async () => {
+          entered = true;
+          await held;
+        },
+      },
+    ];
+    const start = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "期望回答由你拟定，按这个方案开始生成。" },
+    });
+    expect(start.statusCode, start.body).toBe(202);
+    try {
+      await expect.poll(() => entered, { timeout: 10000 }).toBe(true);
+      const stop = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + id + "/turns",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: "先停一下。", expectedTaskId: planned.task.taskId },
+      });
+      expect(stop.statusCode, stop.body).toBe(200);
+      release();
+      const progress = await send(id, "现在做到哪了？", [
+        {
+          name: "plan_task",
+          input: {
+            control: {
+              mode: "query",
+              querySubject: "task_progress",
+              explanation: "任务已暂停。",
+            },
+          },
+        },
+        { name: "", input: {}, text: "任务已暂停。" },
+      ]);
+      expect(progress.turns.at(-1).status).toBe("succeeded");
+      expect(progress.task.executionPaused).toBe(true);
+      const continued = await send(id, "继续。", [
+        decision("execute", { requiresUpdate: true }),
+        {
+          name: "read_background",
+          input: { documentId: upload.json().document.id },
+        },
+        {
+          name: "plan_task",
+          input: {
+            deliveries: [
+              {
+                name: "查物流",
+                count: 2,
+                instructions: "生成自然完整的客服物流查询及期望回答",
+                scenarios: ["查询位置", "延迟咨询", "签收核对"],
+                classifications: [],
+              },
+              {
+                name: "修改收货地址",
+                count: 2,
+                instructions: "生成自然完整的客服改地址问题及期望回答",
+                scenarios: ["发货前修改", "发货后咨询", "地址核对"],
+                classifications: [],
+              },
+            ],
+            requirements: ["期望回答由助手拟定", "两份测试集各2条自然完整问题"],
+            allowedFields: ["question", "expectedOutput", "metadata"],
+          },
+        },
+      ]);
+      const last = continued.turns.at(-1);
+      expect(last.tools?.[0]?.result?.control?.mode, JSON.stringify(last)).toBe(
+        "execute",
+      );
+      expect(continued.task.supplements).toContain(
+        "期望回答由你拟定，按这个方案开始生成。",
+      );
+      const savedPlan = last.tools?.find(
+        (x: any) =>
+          x.name === "plan_task" &&
+          x.status === "succeeded" &&
+          x.result?.task?.executionPlan?.steps?.length,
+      );
+      expect(savedPlan, JSON.stringify(last)).toBeTruthy();
+      expect(savedPlan.result.task.executionPlan.steps.length).toBeGreaterThan(
+        0,
+      );
+      expect(continued.task.interruptedTurnId).toBeNull();
+      expect(
+        last.tools?.some(
+          (x: any) => x.error?.code === "assistant_operation_failed",
+        ),
+      ).toBe(false);
+    } finally {
+      release();
+    }
+  });
 });

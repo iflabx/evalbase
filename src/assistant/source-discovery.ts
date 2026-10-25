@@ -70,7 +70,7 @@ export async function discoverSources(
   const old = args.task.sourceDiscovery;
   const request = sourceDiscoveryRequest(args.task, args.request);
   const generic =
-    /^(?:这些数据|这些|数据|资料|文件|原始数据|当前项目|全部|所有)$/u;
+    /^(?:这些数据|这些|数据|资料|文件|原始数据|当前项目|全部|所有|清洗|整理|处理|改写|扩写|扩充|去重|筛选)$/u;
   const search =
     typeof args.input.search === "string" ? args.input.search.trim() : "";
   let query =

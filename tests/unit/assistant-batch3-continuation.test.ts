@@ -1,6 +1,9 @@
 import { it, expect } from "vitest";
 import { completeDocumentDeliveries } from "../../src/assistant/plan.js";
-import { clarifiedRequest } from "../../src/assistant/intent.js";
+import {
+  clarifiedRequest,
+  explicitlyRequestsExecution,
+} from "../../src/assistant/intent.js";
 import { processingWorkflowSteps } from "../../src/assistant/processing-preparation.js";
 it("B3 re-entry preserves completed generation without inserting an old confirmation", () => {
   const steps: any[] = [
@@ -111,4 +114,13 @@ it("B3 removing a saved operation never borrows it back from the old goal", () =
       wholeSource: true,
     }),
   ).toBeUndefined();
+});
+
+it("an interrupted answer resumes only explicit execution permission", () => {
+  expect(
+    explicitlyRequestsExecution("期望回答由你拟定，按这个方案开始生成。 "),
+  ).toBe(true);
+  expect(explicitlyRequestsExecution("只生成2条即可")).toBe(true);
+  expect(explicitlyRequestsExecution("先不要生成，只给方案")).toBe(false);
+  expect(explicitlyRequestsExecution("生成步骤有哪些？")).toBe(false);
 });

@@ -64,6 +64,7 @@ import {
   continuationAllowed,
   clarifiedRequest,
   planningContinuation,
+  explicitlyRequestsExecution,
   requestsBusinessAmendment,
   intentTools,
   legacyExecute,
@@ -792,6 +793,17 @@ export async function executeAssistantTurn(
           "assistant_intent_required",
           "本轮操作方式不完整，请结合用户要求重新判断；不要执行旧计划。",
         );
+      const interruptedRequestText =
+        planningContinuation(turn.user_text) === "continue" &&
+        current.interruptedTurnId
+          ? ((
+              await db.query(
+                "SELECT user_text FROM assistant_turn WHERE id=$1 AND session_id=$2 AND task_id=$3 AND event='user' AND status='interrupted'",
+                [current.interruptedTurnId, turn.session_id, current.taskId],
+              )
+            ).rows[0]?.user_text as string | undefined)
+          : undefined;
+      if (interruptedRequestText) amendmentRequestText = interruptedRequestText;
       const pendingPlan = pendingPlanningAmendment(
         current,
         planningDocumentsKey,
@@ -806,7 +818,15 @@ export async function executeAssistantTurn(
             )
           ).rows[0];
           const originalMode = savedPlanningMode(original?.tool_results ?? []);
-          if (originalMode) Object.assign(value, { mode: originalMode });
+          if (
+            originalMode &&
+            !(
+              originalMode === "plan" &&
+              interruptedRequestText &&
+              explicitlyRequestsExecution(interruptedRequestText)
+            )
+          )
+            Object.assign(value, { mode: originalMode });
         }
         Object.assign(value, { requiresUpdate: true });
       }
@@ -897,6 +917,10 @@ export async function executeAssistantTurn(
           !deliveryGoals(current.executionPlan).length;
         await updateTask(db, turn, {
           turnControl: decision,
+          ...(value.mode === "query" &&
+          current.supplements?.at(-1) === turn.user_text
+            ? { supplements: current.supplements.slice(0, -1) }
+            : {}),
           ...(current.question &&
           ["plan", "execute"].includes(value.mode) &&
           !current.processingClarification &&
@@ -909,7 +933,7 @@ export async function executeAssistantTurn(
                     current.planningClarification?.askedTurnId ??
                     current.originTurnId,
                   answerTurnId: turn.id,
-                  answer: turn.user_text,
+                  answer: interruptedRequestText ?? turn.user_text,
                 },
               }
             : {}),
@@ -985,7 +1009,8 @@ export async function executeAssistantTurn(
                 [planningRequestTurnId, turn.session_id],
               )
             ).rows[0];
-            if (original?.user_text) amendmentRequestText = original.user_text;
+            if (original?.user_text && !interruptedRequestText)
+              amendmentRequestText = original.user_text;
           }
           planningRequestText = [
             current.goal,
@@ -3250,7 +3275,6 @@ export async function executeAssistantTurn(
               )
                 repeatedPlanningRead = true;
             }
-            lastFailure = undefined;
             await turnFence(db, scope, turn.id, turn.execution_token);
             if (
               ["read_records", "read_processing", "query_project"].includes(
@@ -3319,6 +3343,12 @@ export async function executeAssistantTurn(
                 input,
               );
             if (
+              name === "plan_task" &&
+              (completionValue as any).task?.executionPlan?.steps?.length &&
+              (completionValue as any).task?.interruptedTurnId
+            )
+              await updateTask(db, turn, { interruptedTurnId: null });
+            if (
               requirementsOnly &&
               name === "plan_task" &&
               [
@@ -3350,6 +3380,7 @@ export async function executeAssistantTurn(
               !input.question
             )
               planningResultReady = true;
+            lastFailure = undefined;
             return context.encode(value);
           } catch (e) {
             if (
@@ -3510,6 +3541,8 @@ export async function executeAssistantTurn(
               Object.assign(error, {
                 issues: (e as Error & { issues: PreparationIssue[] }).issues,
               });
+            if (error.code === "assistant_operation_failed")
+              budgetBoundary = true;
             const partial = actionStarted
               ? await recoverAssistantPartialReceipt(db, scope, {
                   key,

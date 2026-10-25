@@ -232,6 +232,14 @@ export function planningContinuation(text: string): "plan" | "continue" | null {
     : "continue";
 }
 
+/** An interrupted user turn may resume execution only if it explicitly authorized it. */
+export function explicitlyRequestsExecution(text: string) {
+  return text.split(/[，,；;。!！?？\n]/u).some((part) =>
+    !/(?:不要|别|不必|禁止|先不|暂不).{0,8}(?:生成|执行|创建)|(?:先给方案|只要方案)/u.test(part) &&
+    /(?:开始|直接|立即|按.{0,8}方案).{0,10}(?:生成|执行|创建)|(?:生成|执行|创建).{0,10}(?:即可|就行|吧|起来)/u.test(part),
+  );
+}
+
 /** Only an affirmative business amendment may receive a new bounded correction identity. */
 export function requestsBusinessAmendment(text: string) {
   return text
