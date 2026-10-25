@@ -2665,4 +2665,45 @@ describe("OPT47 unified processing public boundary", () => {
     ).toHaveLength(0);
     expect(observed).toHaveLength(3);
   });
+
+  it("CU10 SDK: ordinary continuation cannot reset an exhausted correction limit", async () => {
+    const assetId = await file("失败续接范围.jsonl"),
+      id = await newSession(),
+      target = { kind: "assets", assetIds: [assetId] };
+    const bad = {
+      name: "plan_task",
+      input: {
+        target,
+        question: "请确认是否继续清洗并保存为新草稿“客服清洗结果”。",
+        nextAction: "none",
+        executionMode: "execute",
+      },
+    };
+    const failed = await send(
+      id,
+      "清洗这2条，去掉问题前后空格，其他不变，保存为新草稿“客服清洗结果”。",
+      [decision("execute", { requiresUpdate: true }), bad, bad, bad],
+      { context: { kind: "asset", id: assetId } },
+    );
+    expect(failed.turns.at(-1).status).toBe("failed");
+    const before = await effects();
+    const continued = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "继续。" },
+    });
+    expect(continued.statusCode, continued.body).toBe(409);
+    expect(continued.json().error.reason).toBe("initial_plan_repair_limit");
+    expect(await effects()).toEqual(before);
+    const after = await read(id);
+    expect(after.task.saveTarget).toEqual({
+      kind: "newDraft",
+      name: "客服清洗结果",
+    });
+    expect(after.task.taskId).toBe(failed.task.taskId);
+    expect(after.task.executionBudget.requestAttempts).toBe(
+      failed.task.executionBudget.requestAttempts,
+    );
+  });
 });
