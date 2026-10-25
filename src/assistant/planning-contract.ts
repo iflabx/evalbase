@@ -123,6 +123,12 @@ export function planningStageContract(
   return { description: text, instructions: shared + text };
 }
 
+export function isPlanningQuestion(question: string) {
+  return /[？?]|什么|哪|多少|几条|几道|几份|是否|还是|请(?:提供|补充|明确|选择|确认)|能否|吗/u.test(
+    question,
+  );
+}
+
 /** A wait state must name a business fact that is actually missing. */
 export function planningQuestionFact(
   task: Record<string, any>,
@@ -141,12 +147,7 @@ export function planningQuestionFact(
     )
   )
     return undefined;
-  if (
-    !/[？?]|什么|哪|多少|几条|是否|还是|请(?:提供|补充|明确|选择|确认)|能否|吗/u.test(
-      question,
-    )
-  )
-    return undefined;
+  if (!isPlanningQuestion(question)) return undefined;
   const knownCount =
     task.targetCount ??
     requestedDeliveryShape(request).each ??

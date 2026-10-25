@@ -4,11 +4,13 @@ import {
   createPlanningProperties,
   normalizePlanningInput,
   planningQuestionFact,
+  isPlanningQuestion,
 } from "./planning-contract.js";
 import {
   saveTargetSchema,
   newDraftSaveTarget,
   savedSaveTarget,
+  namedSaveTarget,
 } from "./save-target.js";
 import { taskBoundaryIntent } from "./task-boundary.js";
 import { readWorkspaceFacts } from "./workspace.js";
@@ -1615,6 +1617,41 @@ export async function executeAssistantTurn(
           },
         ],
       };
+    }
+    if (
+      bound.question &&
+      (!isPlanningQuestion(bound.question) ||
+        (namedSaveTarget(amendmentRequestText) &&
+          /保存|另存|名称|名字|命名/u.test(bound.question)))
+    )
+      throw new AssistantError(
+        422,
+        "assistant_plan_clarification_unnecessary",
+        "这是用户已经明确的处理要求或保存目标，不是缺失的业务信息。保存真实要求和saveTarget，然后按原授权执行；不要把要求复述为问题。",
+      );
+    const questionedSource = planSource(
+      bound.target ??
+        current!.target ??
+        current!.sourceDiscovery?.resolvedSource,
+    );
+    if (
+      bound.question &&
+      questionedSource &&
+      /范围|整份|指定.*记录|哪些记录/u.test(bound.question)
+    ) {
+      const actual = await previewProcessingInput(
+        db,
+        scope,
+        { source: questionedSource, limit: 1 },
+        "write",
+        true,
+      );
+      if (refersToWholeSourceCount(amendmentRequestText, actual.total))
+        throw new AssistantError(
+          422,
+          "assistant_plan_clarification_unnecessary",
+          "用户的‘这几条’已与当前来源全部真实记录一致。使用当前来源固定真实ID继续，不重复询问全量或部分，也不把outputCount当作范围授权。",
+        );
     }
     if (
       bound.question &&

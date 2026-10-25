@@ -2547,4 +2547,76 @@ describe("OPT47 unified processing public boundary", () => {
     ).toBe(true);
     expect(successes(state, "submit_processing")).toHaveLength(1);
   });
+  it.each(["复制要求", "重复范围"])(
+    "CU10 SDK: source-confirmed echo or scope questions are corrected without another user turn: %s",
+    async (scenario) => {
+      const assetId = await file("澄清守卫-" + scenario + ".jsonl"),
+        id = await newSession();
+      const target = { kind: "assets", assetIds: [assetId] };
+      const request =
+        "清洗这2条，去掉问题前后的空格，其他内容不变，保存为新草稿“客服清洗结果”。";
+      const state = await send(
+        id,
+        request,
+        [
+          decision("execute", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              target,
+              requirements: ["只去掉问题前后空格，其他内容不变"],
+              question:
+                scenario === "复制要求"
+                  ? request
+                  : "请说明要处理整份资料，还是其中指定的记录？",
+              nextAction: "none",
+              executionMode: "execute",
+            },
+          },
+          {
+            name: "plan_task",
+            input: {
+              target,
+              saveTarget: { kind: "newDraft", name: "客服清洗结果" },
+              requirements: ["只去掉问题前后空格，其他内容不变"],
+              allowedFields: ["question"],
+              nextAction: "submit_processing",
+              executionMode: "execute",
+            },
+          },
+          {
+            name: "submit_processing",
+            input: {
+              source: target,
+              operation: "clean",
+              outputCount: 2,
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          },
+        ],
+        { context: { kind: "asset", id: assetId } },
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+      expect(state.task.question).toBeFalsy();
+      expect(state.task.saveTarget).toEqual({
+        kind: "newDraft",
+        name: "客服清洗结果",
+      });
+      expect(
+        state.turns
+          .at(-1)
+          .tools.some(
+            (t: any) =>
+              t.status === "failed" &&
+              t.error?.code === "assistant_plan_clarification_unnecessary",
+          ),
+      ).toBe(true);
+      expect(successes(state, "submit_processing")).toHaveLength(1);
+    },
+  );
 });
