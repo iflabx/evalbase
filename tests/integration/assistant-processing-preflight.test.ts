@@ -232,6 +232,22 @@ describe("OPT47 unified processing public boundary", () => {
         payload: {},
       })
     ).json().sessionId as string;
+  async function withFreshSourceProject(action: () => Promise<void>) {
+    const originalProject = projectId;
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "独立来源目录-" + randomUUID() },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    projectId = created.json().project.id;
+    try {
+      await action();
+    } finally {
+      projectId = originalProject;
+    }
+  }
   async function dbQuery(sql: string, params: any[] = []) {
     const db = createPool(databaseUrl);
     try {
@@ -439,28 +455,36 @@ describe("OPT47 unified processing public boundary", () => {
 
   it.each([false, true])(
     "OPT50 a filename reply binds the real source with requiresUpdate=%s",
-    async (requiresUpdate) => {
-      const target = await file("回答来源" + requiresUpdate + "测试.jsonl");
-      await file("回答其他" + requiresUpdate + "资料.jsonl");
-      const id = await newSession(),
-        before = await effects();
-      await send(id, "帮我整理一下这些数据", [
-        decision("query"),
-        { name: "query_project", input: { kind: "files" } },
-      ]);
-      const state = await send(id, "回答来源" + requiresUpdate + "测试.jsonl", [
-        decision("plan", { requiresUpdate }),
-        { name: "", input: {}, text: "已选定资料，请说明清洗要求。" },
-      ]);
-      expect(
-        state.turns.at(-1).status,
-        JSON.stringify(state.turns.at(-1)),
-      ).toBe("succeeded");
-      expect(state.task.target).toEqual({ kind: "assets", assetIds: [target] });
-      expect(state.task.processingClarification).toBeNull();
-      expect(state.task.question ?? "").not.toContain("请选择要处理的资料");
-      expect(await effects()).toEqual(before);
-    },
+    async (requiresUpdate) =>
+      withFreshSourceProject(async () => {
+        const target = await file("回答来源" + requiresUpdate + "测试.jsonl");
+        await file("回答其他" + requiresUpdate + "资料.jsonl");
+        const id = await newSession(),
+          before = await effects();
+        await send(id, "帮我整理一下这些数据", [
+          decision("query"),
+          { name: "query_project", input: { kind: "files" } },
+        ]);
+        const state = await send(
+          id,
+          "回答来源" + requiresUpdate + "测试.jsonl",
+          [
+            decision("plan", { requiresUpdate }),
+            { name: "", input: {}, text: "已选定资料，请说明清洗要求。" },
+          ],
+        );
+        expect(
+          state.turns.at(-1).status,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBe("succeeded");
+        expect(state.task.target).toEqual({
+          kind: "assets",
+          assetIds: [target],
+        });
+        expect(state.task.processingClarification).toBeNull();
+        expect(state.task.question ?? "").not.toContain("请选择要处理的资料");
+        expect(await effects()).toEqual(before);
+      }),
   );
   it.each([
     "same source",
@@ -2941,48 +2965,50 @@ describe("OPT47 unified processing public boundary", () => {
     expect(actual.executionPlan.steps[0].command).toBeUndefined();
     expect(successes(state, "submit_processing")).toHaveLength(1);
   });
-  it("CU10 command: generic request followed by source clarification compiles the complete intent", async () => {
-    await file("澄清编译-另一个.jsonl", 3);
-    const assetId = await file("澄清编译-两条.jsonl"),
-      id = await newSession();
-    let state = await send(id, "帮我清洗一下这些数据。", [
-      decision("execute"),
-      { name: "query_project", input: { kind: "files" } },
-    ]);
-    expect(state.task.question).toContain("请选择");
-    const actual = (
-      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
-    ).rows[0].task;
-    const ordinal =
-      actual.sourceDiscovery.items.findIndex((x: any) => x.id === assetId) + 1;
-    expect(ordinal).toBeGreaterThan(0);
-    state = await send(
-      id,
-      "第" +
-        ordinal +
-        "份，全部两条，只去掉问题前后的空格，其他不变，保存为新草稿“客服清洗结果”。",
-      [
-        decision("execute", { requiresUpdate: true }),
-        { name: "query_project", input: { kind: "project" } },
-        {
-          name: "plan_task",
-          input: {
-            question: "清洗工具无法仅去掉首尾空格，请确认是否保留内部格式？",
-            allowedFields: ["question"],
-            nextAction: "submit_processing",
+  it("CU10 command: generic request followed by source clarification compiles the complete intent", async () =>
+    withFreshSourceProject(async () => {
+      await file("澄清编译-另一个.jsonl", 3);
+      const assetId = await file("澄清编译-两条.jsonl"),
+        id = await newSession();
+      let state = await send(id, "帮我清洗一下这些数据。", [
+        decision("execute"),
+        { name: "query_project", input: { kind: "files" } },
+      ]);
+      expect(state.task.question).toContain("请选择");
+      const actual = (
+        await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      const ordinal =
+        actual.sourceDiscovery.items.findIndex((x: any) => x.id === assetId) +
+        1;
+      expect(ordinal).toBeGreaterThan(0);
+      state = await send(
+        id,
+        "第" +
+          ordinal +
+          "份，全部两条，只去掉问题前后的空格，其他不变，保存为新草稿“客服清洗结果”。",
+        [
+          decision("execute", { requiresUpdate: true }),
+          { name: "query_project", input: { kind: "project" } },
+          {
+            name: "plan_task",
+            input: {
+              question: "清洗工具无法仅去掉首尾空格，请确认是否保留内部格式？",
+              allowedFields: ["question"],
+              nextAction: "submit_processing",
+            },
           },
-        },
-      ],
-    );
-    expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
-    expect(state.task.question).toBeFalsy();
-    expect(observed).toHaveLength(3);
-    expect(state.task.saveTarget).toEqual({
-      kind: "newDraft",
-      name: "客服清洗结果",
-    });
-    expect(successes(state, "submit_processing")).toHaveLength(1);
-  });
+        ],
+      );
+      expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+      expect(state.task.question).toBeFalsy();
+      expect(observed).toHaveLength(3);
+      expect(state.task.saveTarget).toEqual({
+        kind: "newDraft",
+        name: "客服清洗结果",
+      });
+      expect(successes(state, "submit_processing")).toHaveLength(1);
+    }));
   it("CU10 command: an unresolved scope stays a business question", async () => {
     const assetId = await file("规则清洗范围未知.jsonl"),
       id = await newSession();
@@ -3006,4 +3032,133 @@ describe("OPT47 unified processing public boundary", () => {
     expect(state.task.runId).toBeFalsy();
     expect(state.task.question).toBeTruthy();
   });
+  it("Merge review: negated and multiple sources stay unresolved through the SDK until a clear reply", async () => {
+    await file("合并来源甲.jsonl", 2);
+    await file("合并来源乙.jsonl", 3);
+    const id = await newSession(),
+      before = await effects();
+    await send(id, "帮我清洗这些资料", [
+      decision("query"),
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    const initial = (
+      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    const second = initial.sourceDiscovery.items[1];
+    expect(second).toBeTruthy();
+    for (const message of [
+      "不要用第1份，用第2份",
+      "第1份和第2份都要",
+      "不选第1份",
+    ]) {
+      const state = await send(id, message, [
+        decision("query"),
+        { name: "query_project", input: { kind: "files" } },
+      ]);
+      const actual = (
+        await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(actual.sourceDiscovery.resolvedSource).toBeUndefined();
+      expect(actual.target).toBeFalsy();
+      expect(state.task.question).toContain("请选择");
+      expect(await effects()).toEqual(before);
+    }
+    const state = await send(id, "选择第2份", [
+      decision("plan"),
+      { name: "", input: {}, text: "已明确资料，请继续说明要求。" },
+    ]);
+    expect(state.task.target).toEqual({
+      kind: "assets",
+      assetIds: [second.id],
+    });
+    expect(state.task.processingClarification).toBeNull();
+    expect(await effects()).toEqual(before);
+  });
+  it("Merge review: an unseen negative search never binds its single result, but an affirmative request can", async () => {
+    await file("搜索目录甲-" + randomUUID() + ".jsonl");
+    await file("搜索目录乙-" + randomUUID() + ".jsonl");
+    const id = await newSession(),
+      before = await effects();
+    await send(id, "帮我清洗这些资料", [
+      decision("query"),
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    const name = "新文件-" + randomUUID() + ".jsonl";
+    const assetId = await file(name);
+    const other = "另一文件-" + randomUUID() + ".jsonl";
+    await file(other);
+    expect(await effects()).toEqual(before);
+    for (const request of [
+      "请不要用" + name,
+      "请用" + name + "，不要用" + name,
+      "请用" + name + "，请用" + other,
+    ]) {
+      const state = await send(id, request, [
+        decision("query"),
+        { name: "query_project", input: { kind: "files", search: name } },
+      ]);
+      const saved = (
+        await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+      ).rows[0].task;
+      expect(saved.target).toBeFalsy();
+      expect(saved.sourceDiscovery.resolvedSource).toBeUndefined();
+      expect(state.task.question).toContain("请选择");
+      expect(await effects()).toEqual(before);
+    }
+    const state = await send(id, "请用" + name, [
+      decision("query"),
+      { name: "query_project", input: { kind: "files", search: name } },
+    ]);
+    expect(state.task.target).toEqual({ kind: "assets", assetIds: [assetId] });
+    expect(state.task.processingClarification).toBeNull();
+    expect(await effects()).toEqual(before);
+  });
+  it("Merge review: a newly searched source counts as a saved requirement update", async () =>
+    withFreshSourceProject(async () => {
+      await file("初始目录.jsonl");
+      const id = await newSession(),
+        before = await effects();
+      await send(id, "帮我清洗这些资料", [
+        decision("query"),
+        { name: "query_project", input: { kind: "files" } },
+      ]);
+      const name = "新搜到的资料.jsonl",
+        assetId = await file(name);
+      const state = await send(id, "请用" + name + "，先不执行", [
+        decision("plan", { requiresUpdate: true }),
+        { name: "query_project", input: { kind: "files", search: name } },
+        {
+          name: "plan_task",
+          input: { target: { kind: "assets", assetIds: [assetId] } },
+        },
+        { name: "", input: {}, text: "已选定资料，暂不执行。" },
+      ]);
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.target).toEqual({
+        kind: "assets",
+        assetIds: [assetId],
+      });
+      expect(state.task.turnControl.updateSaved).toBe(true);
+      expect(state.task.processingClarification).toBeNull();
+      expect(
+        state.turns
+          .at(-1)
+          .tools.filter((tool: any) => tool.status === "failed"),
+      ).toEqual([]);
+      expect(await effects()).toEqual(before);
+      const unchanged = await send(id, "把数量改为5条，先不执行", [
+        decision("plan", { requiresUpdate: true }),
+        { name: "query_project", input: { kind: "files", search: name } },
+        {
+          name: "plan_task",
+          input: { target: { kind: "assets", assetIds: [assetId] } },
+        },
+      ]);
+      expect(unchanged.turns.at(-1).status).toBe("failed");
+      expect(unchanged.task.turnControl.updateSaved).toBe(false);
+      expect(await effects()).toEqual(before);
+    }));
 });

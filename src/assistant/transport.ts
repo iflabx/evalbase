@@ -149,6 +149,7 @@ export function assistantTransport(
           });
         }
       } catch (error) {
+        const failureReason = signal.aborted ? signal.reason : error;
         observation.failurePhase = observation.state;
         if (observation.state === "headers")
           observation.bodyMs =
@@ -157,11 +158,10 @@ export function assistantTransport(
           observation.state === "reserved" ? "not_sent" : "failed";
         observation.totalMs = Date.now() - requestAt;
         await options.onObservation?.(observation);
-        options.onFailure?.(error);
-        if (signal.aborted) options.onFailure?.(signal.reason);
+        options.onFailure?.(failureReason);
         parent.throwIfAborted();
-        failure = error;
-        let cause = error,
+        failure = failureReason;
+        let cause = failureReason,
           transient = false;
         let timedOut = signal.reason?.name === "TimeoutError";
         for (let i = 0; i < 5 && cause && typeof cause === "object"; i++) {
@@ -182,11 +182,11 @@ export function assistantTransport(
             timeoutRetried ||
             !requestFitsDeadline(options.deadlineAt, TIMEOUT_RETRY_REQUEST_MS)
           )
-            throw error;
+            throw failureReason;
           timeoutRetried = true;
           transient = true;
         } else signal.throwIfAborted();
-        if (!transient) throw error;
+        if (!transient) throw failureReason;
       }
       if (complete) {
         if (retried) await options.onRecovered?.();

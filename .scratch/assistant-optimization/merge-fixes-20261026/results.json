@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-26",
+  "reviewedBase": "86948e3a0b3fc211038baeacd6e6c94237f025aa",
+  "mainBase": "f261a79437247349fd8f3e25b49819229ee5741e",
+  "checks": [
+    {
+      "name": "receipt-all-unit",
+      "exit": 0,
+      "passed": 680,
+      "skipped": 1,
+      "command": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/unit/assistant-amendment-mechanism.test.ts",
+        "tests/unit/assistant-background.test.ts",
+        "tests/unit/assistant-batch2-contract.test.ts",
+        "tests/unit/assistant-batch3-continuation.test.ts",
+        "tests/unit/assistant-batch3-contract.test.ts",
+        "tests/unit/assistant-batch3-shared-state.test.ts",
+        "tests/unit/assistant-batch4-contract.test.ts",
+        "tests/unit/assistant-budget-ledger.test.ts",
+        "tests/unit/assistant-cancellation-settlement.test.ts",
+        "tests/unit/assistant-candidates.test.ts",
+        "tests/unit/assistant-context.test.ts",
+        "tests/unit/assistant-continuation.test.ts",
+        "tests/unit/assistant-contract.test.ts",
+        "tests/unit/assistant-control.test.ts",
+        "tests/unit/assistant-delivery-plan.test.ts",
+        "tests/unit/assistant-delivery-seams.test.ts",
+        "tests/unit/assistant-diagnostics.test.ts",
+        "tests/unit/assistant-execution-budget.test.ts",
+        "tests/unit/assistant-execution-plan.test.ts",
+        "tests/unit/assistant-execution-receipts.test.ts",
+        "tests/unit/assistant-feedback.test.ts",
+        "tests/unit/assistant-name-consistency.test.ts",
+        "tests/unit/assistant-plan-content.test.ts",
+        "tests/unit/assistant-plan-preparation.test.ts",
+        "tests/unit/assistant-plan.test.ts",
+        "tests/unit/assistant-planning-state.test.ts",
+        "tests/unit/assistant-processing-preparation.test.ts",
+        "tests/unit/assistant-query-contract.test.ts",
+        "tests/unit/assistant-recovery-decision.test.ts",
+        "tests/unit/assistant-review.test.ts",
+        "tests/unit/assistant-save-target.test.ts",
+        "tests/unit/assistant-task-context.test.ts",
+        "tests/unit/assistant-tool-repair-runtime.test.ts",
+        "tests/unit/assistant-tool-repair.test.ts",
+        "tests/unit/assistant-transport-deadline.test.ts",
+        "tests/unit/assistant-transport.test.ts",
+        "tests/unit/assistant-workspace.test.ts",
+        "tests/unit/cleaning-whitespace.test.ts",
+        "tests/unit/generation.test.ts",
+        "tests/unit/processing-content-review.test.ts",
+        "tests/unit/processing-protocol.test.ts",
+        "tests/unit/processing-review.test.ts",
+        "tests/unit/assistant-source-discovery.test.ts",
+        "--exclude",
+        "**/.scratch/**",
+        "--reporter=default"
+      ],
+      "logSha256": "db857c18bff270238bbc05a7c4ff8a2cf1de0c3fe7e2c5db835bcac362dc6873"
+    },
+    {
+      "name": "source-receipt-sdk",
+      "exit": 0,
+      "passed": 5,
+      "skipped": 86,
+      "command": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/integration/assistant-processing-preflight.test.ts",
+        "tests/integration/assistant-task-context.test.ts",
+        "-t",
+        "Merge review:",
+        "--exclude",
+        "**/.scratch/**",
+        "--reporter=default"
+      ],
+      "logSha256": "3f318ab2e6f1d8396f2cbc3b943c719b48aacaa59e74df40e635d696366dc4e3"
+    },
+    {
+      "name": "source-receipt-adjacent-sdk",
+      "exit": 0,
+      "passed": 19,
+      "skipped": 72,
+      "command": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/integration/assistant-processing-preflight.test.ts",
+        "tests/integration/assistant-task-context.test.ts",
+        "-t",
+        "OPT47 discovery prefers|OPT47 a viewer|OPT50 a filename|OPT50 generic processing intent|CU10 command: generic|CU10 command: a saved|CU10 command: stale|archives actual budgets|delet|stop|pause",
+        "--exclude",
+        "**/.scratch/**",
+        "--reporter=default"
+      ],
+      "logSha256": "15d66e58353b065e213d5347972617ed8d2c18c942ad6e63a326d72552a80104"
+    }
+  ],
+  "static": [
+    {
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0
+    },
+    {
+      "command": [
+        "node",
+        "node_modules/eslint/bin/eslint.js",
+        "src/assistant/source-discovery.ts",
+        "src/assistant/agent.ts",
+        "src/assistant/tasks.ts",
+        "src/assistant/transport.ts",
+        "tests/unit/assistant-background.test.ts",
+        "tests/unit/assistant-source-discovery.test.ts",
+        "tests/integration/assistant-processing-preflight.test.ts",
+        "tests/integration/assistant-task-context.test.ts"
+      ],
+      "exit": 0
+    },
+    {
+      "command": [
+        "node",
+        "node_modules/prettier/bin/prettier.cjs",
+        "--check",
+        "src/assistant/source-discovery.ts",
+        "src/assistant/agent.ts",
+        "src/assistant/tasks.ts",
+        "src/assistant/transport.ts",
+        "tests/unit/assistant-background.test.ts",
+        "tests/unit/assistant-source-discovery.test.ts",
+        "tests/integration/assistant-processing-preflight.test.ts",
+        "tests/integration/assistant-task-context.test.ts"
+      ],
+      "exit": 0
+    }
+  ],
+  "independentSdkCases": 22,
+  "reviews": {
+    "Standards": "no blocking finding in targeted final rereview",
+    "Spec": "no blocking finding in targeted final rereview"
+  },
+  "realModelRequests": 0,
+  "oldBudgetsReset": false,
+  "privateBackupCommitted": false
+}

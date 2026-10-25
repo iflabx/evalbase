@@ -29,24 +29,99 @@ export function sourceDiscoveryApplies(
         )))
   );
 }
-/** Bind an explicit answer only; a filename mention or a negated choice is not selection. */
+const genericSourceReference =
+  /^(?:(?:这些|这份|当前|所有|全部)(?:的)?(?:数据|资料|文件|记录|问题)?|数据|资料|文件|原始数据|当前项目|问题|期望输出|Metadata|文本|内容|清洗|整理|处理|改写|扩写|扩充|去重|筛选)$/iu;
+
+/** Keep literal names as well as complete affirmative source commands. */
+function sourceReferences(value: string) {
+  const text = value
+    .trim()
+    .replace(/[。！!]+$/u, "")
+    .replace(/^(?:(?:请(?:你)?|帮我|麻烦(?:你)?)\s*)+/u, "");
+  const unquote = (s: string) => s.replace(/^[“「"]|[”」"]$/gu, "").trim();
+  return [
+    unquote(text),
+    unquote(
+      text.replace(
+        /^(?:选择|使用|清洗|整理|处理|改写|扩写|扩充|用|选)(?:一下)?\s*/u,
+        "",
+      ),
+    ),
+  ];
+}
+/** Replies, searches and continuation all require the same single uncontradicted choice. */
+function explicitSourceChoice(
+  task: Record<string, any>,
+  request: string,
+  searchedName?: string,
+) {
+  const items = task.sourceDiscovery?.items ?? [];
+  const names = [
+    ...items.map((item: any) => item.name),
+    ...(searchedName ? [searchedName] : []),
+  ];
+  const clean = (value: string) => value.trim().replace(/[。！!]+$/u, "");
+  function itemFor(clause: string) {
+    const references = sourceReferences(clause);
+    const named = items.filter((item: any) => references.includes(item.name));
+    if (named.length === 1) return named[0];
+    const choice = references
+      .map((text) => text.match(/^第([1-5一二三四五])份$/u))
+      .find(Boolean);
+    return choice
+      ? items[
+          Number(choice[1])
+            ? Number(choice[1]) - 1
+            : "一二三四五".indexOf(choice[1]!)
+        ]
+      : undefined;
+  }
+  function referencesSource(clause: string) {
+    const [literal, operand] = sourceReferences(clause);
+    return (
+      /第[0-9一二两三四五六七八九十]+份/u.test(literal) ||
+      /^(?:不要|别|不必|无需|不需要|不)(?:再)?(?:用|使用|选|选择)/u.test(
+        literal,
+      ) ||
+      names.some((name) => clause.includes(name)) ||
+      /\.(?:csv|jsonl?|pdf|txt|md)(?:[”」"]|$)/iu.test(literal) ||
+      (/^(?:选择|使用|清洗|整理|处理|改写|扩写|扩充|用|选)/u.test(literal) &&
+        !!operand &&
+        !genericSourceReference.test(operand))
+    );
+  }
+  const whole = itemFor(request);
+  if (whole)
+    return {
+      referenced: true,
+      source: toSource(whole),
+      searchConfirmed: false,
+    };
+  const clauses = clean(request)
+    .split(/[，,；;。\n]/u)
+    .filter(referencesSource);
+  const choices = clauses.map(itemFor);
+  const first = choices[0];
+  const source =
+    first &&
+    choices.every(
+      (item: any) => item?.id === first.id && item?.kind === first.kind,
+    )
+      ? toSource(first)
+      : undefined;
+  const searchConfirmed =
+    !!searchedName &&
+    !!clauses.length &&
+    clauses.every((clause) =>
+      sourceReferences(clause).some(
+        (reference) => reference.toLowerCase() === searchedName.toLowerCase(),
+      ),
+    );
+  return { referenced: !!clauses.length, source, searchConfirmed };
+}
 export function sourceReply(task: Record<string, any>, request: string) {
   if (task.processingClarification?.kind !== "source") return undefined;
-  const text = request.trim().replace(/[。！!]+$/u, "");
-  const items = task.sourceDiscovery?.items ?? [];
-  const named = items.filter((item: any) =>
-    [item.name, "选择" + item.name, "用" + item.name].includes(text),
-  );
-  if (named.length === 1) return toSource(named[0]);
-  const choice = text.match(/^(?:选择|用)?第([1-5一二三四五])份$/u);
-  const item =
-    choice &&
-    items[
-      Number(choice[1])
-        ? Number(choice[1]) - 1
-        : "一二三四五".indexOf(choice[1]!)
-    ];
-  return item ? toSource(item) : undefined;
+  return explicitSourceChoice(task, request).source;
 }
 /** One bounded source catalogue; legacy kind switches cannot open another search allowance. */
 export async function discoverSources(
@@ -68,17 +143,31 @@ export async function discoverSources(
     "write",
   );
   const old = args.task.sourceDiscovery;
+
   const request = sourceDiscoveryRequest(args.task, args.request);
   const generic =
     /^(?:这些数据|这些|数据|资料|文件|原始数据|当前项目|全部|所有|清洗|整理|处理|改写|扩写|扩充|去重|筛选)$/u;
   const search =
     typeof args.input.search === "string" ? args.input.search.trim() : "";
-  let query =
-    search &&
+  const choice = explicitSourceChoice(
+    args.task,
+    request,
+    generic.test(search) ? undefined : search,
+  );
+  const unresolvedChoice =
+    choice.referenced && !choice.source && !choice.searchConfirmed;
+  const explicitName =
+    !unresolvedChoice &&
+    !!search &&
     !generic.test(search) &&
-    request.toLowerCase().includes(search.toLowerCase())
-      ? search
-      : (old?.query ?? "");
+    choice.searchConfirmed;
+  let query = choice.source
+    ? ""
+    : unresolvedChoice
+      ? ""
+      : explicitName
+        ? search
+        : (old?.query ?? "");
   const pageAsked = /下一页|翻页|换一页/u.test(args.request);
   const offset =
     pageAsked && old && old.requestId !== args.requestId
@@ -86,29 +175,16 @@ export async function discoverSources(
       : old?.requestId === args.requestId
         ? (old.offset ?? 0)
         : 0;
-  const choice = args.request.match(/第([1-5一二三四五])份/u);
-  const chosen =
-    choice &&
-    old?.items?.[
-      Number(choice[1])
-        ? Number(choice[1]) - 1
-        : "一二三四五".indexOf(choice[1]!)
-    ];
-  const named = (old?.items ?? []).filter((i: any) => request.includes(i.name));
-  let preferred =
-    args.preferred ??
-    (chosen
-      ? toSource(chosen)
-      : named.length === 1
-        ? toSource(named[0])
-        : undefined) ??
-    args.task.target ??
-    args.task.processingScope?.source ??
-    old?.resolvedSource;
-  const explicitName =
-    !!search &&
-    !generic.test(search) &&
-    request.toLowerCase().includes(search.toLowerCase());
+
+  let preferred = unresolvedChoice
+    ? undefined
+    : (choice.source ??
+      (old?.question && !explicitName
+        ? undefined
+        : (args.preferred ??
+          args.task.target ??
+          args.task.processingScope?.source ??
+          old?.resolvedSource)));
   if (
     !explicitName &&
     preferred &&
@@ -202,7 +278,7 @@ export async function discoverSources(
   const exactPreferred = preferredIds && items.length === preferredIds.length;
   const selected = exactPreferred
     ? preferred
-    : query && items.length === 1
+    : explicitName && query && items.length === 1
       ? toSource(items[0])
       : undefined;
   const question = selected

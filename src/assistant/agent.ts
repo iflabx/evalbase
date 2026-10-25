@@ -759,7 +759,7 @@ export async function executeAssistantTurn(
       await markPendingAmendment(current);
     }
   }
-  let sourceReplySaved = false;
+  let sourceSelectionSaved = false;
   async function saveSourceDiscovery(
     current: Record<string, any>,
     found: Awaited<ReturnType<typeof discoverSources>>,
@@ -779,6 +779,9 @@ export async function executeAssistantTurn(
         : {}),
       ...(found.question
         ? {
+            ...(!current.executionPlan?.steps?.length
+              ? { target: null, targetName: null, processingScope: null }
+              : {}),
             question: found.question,
             processingClarification: { kind: "source", turnId: turn.id },
             stage: "waiting_input",
@@ -786,8 +789,17 @@ export async function executeAssistantTurn(
           }
         : {}),
     };
+    const savedSelection = Boolean(
+      found.resolvedSource &&
+      !current.executionPlan?.steps?.length &&
+      (sourceSelectionSaved ||
+        current.processingClarification?.kind === "source" ||
+        canonicalJson(current.target ?? null) !==
+          canonicalJson(found.resolvedSource)),
+    );
     await updateTask(db, turn, patch);
     Object.assign(current, patch);
+    sourceSelectionSaved = savedSelection;
     if (found.question) {
       businessClarification = found.question;
       waitingForInput = true;
@@ -897,19 +909,20 @@ export async function executeAssistantTurn(
         if (turn.event !== "user")
           throw new AssistantError(422, "assistant_plan_only");
         await assistantAccess(db, scope, value.mode !== "query");
-        const reply = sourceReply(current, amendmentRequestText);
+        const choiceText =
+          turn.event === "user" ? turn.user_text : amendmentRequestText;
+        const reply = sourceReply(current, choiceText);
         if (reply && !current.executionPlan?.steps?.length) {
           await saveSourceDiscovery(
             current,
             await discoverSources(db, scope, {
               task: current,
-              request: amendmentRequestText,
+              request: choiceText,
               requestId: turn.id,
               input: { kind: reply.kind === "assets" ? "files" : "drafts" },
               preferred: reply,
             }),
           );
-          sourceReplySaved = Boolean(current.sourceDiscovery?.resolvedSource);
         }
         decision = {
           ...value,
@@ -2588,7 +2601,13 @@ export async function executeAssistantTurn(
     if (
       latest?.status === "succeeded" &&
       !unresolvedFailure(tools) &&
-      tools.every((item) => item.name === "plan_task") &&
+      tools.every(
+        (item) =>
+          item.name === "plan_task" ||
+          (latest.result?.sourceConfirmed === true &&
+            item.name === "query_project" &&
+            item.status === "succeeded"),
+      ) &&
       !plannedAction &&
       !processingEventRunId &&
       !planningCheckpointRequired &&
@@ -4229,7 +4248,7 @@ export async function executeAssistantTurn(
         }
         if (
           !Object.keys(input).length &&
-          sourceReplySaved &&
+          sourceSelectionSaved &&
           decision?.requiresUpdate
         ) {
           input.target = current.target;
@@ -4264,8 +4283,8 @@ export async function executeAssistantTurn(
           input.executionMode = "execute";
         if (!Object.keys(input).length)
           return {
-            unchanged: !sourceReplySaved,
-            ...(sourceReplySaved ? { sourceConfirmed: true } : {}),
+            unchanged: !sourceSelectionSaved,
+            ...(sourceSelectionSaved ? { sourceConfirmed: true } : {}),
             control: decision,
             task: currentTaskFacts(current),
           };
@@ -5665,9 +5684,22 @@ export async function executeAssistantTurn(
               field,
             ),
         );
+        const sourceUpdateSaved =
+          sourceSelectionSaved &&
+          submittedFields.includes("target") &&
+          submittedFields.every((field) =>
+            [
+              "target",
+              "title",
+              "executionMode",
+              "nextAction",
+              "question",
+            ].includes(field),
+          );
         const savedUpdate =
           suppliedUpdate &&
-          (requirementsKey !== planRequirementsKey(current) ||
+          (sourceUpdateSaved ||
+            requirementsKey !== planRequirementsKey(current) ||
             Boolean(candidateEdit) ||
             Boolean(candidateSave) ||
             submittedFields.some(
@@ -5787,7 +5819,7 @@ export async function executeAssistantTurn(
         if (!input.question) planningCheckpointRequired = false;
         const presented = currentTaskFacts(task);
         return {
-          ...(sourceReplySaved ? { sourceConfirmed: true } : {}),
+          ...(sourceSelectionSaved ? { sourceConfirmed: true } : {}),
           control: decision,
           task: {
             ...presented,
@@ -5936,7 +5968,8 @@ export async function executeAssistantTurn(
               : undefined) ?? planSource(current.target);
           const found = await discoverSources(db, scope, {
             task: current,
-            request: amendmentRequestText,
+            request:
+              turn.event === "user" ? turn.user_text : amendmentRequestText,
             requestId: turn.id,
             input,
             preferred: preferred ?? undefined,

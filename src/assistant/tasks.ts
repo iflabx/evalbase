@@ -458,8 +458,11 @@ export async function controlAssistantTask(
             await client.query(
               `SELECT j.*,r.id AS run_id FROM job j JOIN processing_run r ON r.job_id=j.id
              WHERE r.project_id=$2 AND ($3::text IS NULL OR r.actor_id=$4)
-             AND (r.id=ANY($1::text[]) OR ($3::text IS NOT NULL AND EXISTS(
-               SELECT 1 FROM assistant_background_document b WHERE b.session_id=$3 AND b.id=ANY(r.background_document_ids))))
+             AND (r.id=ANY($1::text[]) OR ($3::text IS NOT NULL AND (
+               EXISTS(SELECT 1 FROM assistant_background_document b WHERE b.session_id=$3 AND b.id=ANY(r.background_document_ids))
+               OR EXISTS(SELECT 1 FROM assistant_task_checkpoint c WHERE c.session_id=$3 AND
+                 (c.task->>'runId'=r.id OR c.task->'runIds' ? r.id))
+               OR EXISTS(SELECT 1 FROM processing_task p WHERE p.id=r.task_id AND p.assistant_session_id=$3))))
              ORDER BY j.id FOR UPDATE OF j${action === "delete" ? ",r" : ""}`,
               [
                 observedRunIds,

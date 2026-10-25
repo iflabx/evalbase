@@ -1,3 +1,4 @@
+import { prepareTaskBoundary } from "../../src/assistant/task-boundary.js";
 import { sha256 } from "../../src/package/contract.js";
 import { updateTask, queueContinuation } from "../../src/assistant/tasks.js";
 import { assistantContext } from "../../src/assistant/context.js";
@@ -1259,4 +1260,174 @@ describe("OPT48 task boundaries and complete request projection", () => {
     expect(replay.statusCode, replay.body).toBe(200);
     expect(replay.json().turnId).toBe(restored.json().turnId);
   });
+  it.each(["queued", "running"])(
+    "Merge review: deleting a switched session cancels archived raw runs in %s state",
+    async (status) => {
+      const id = await newSession(),
+        otherSession = await newSession();
+      const keptDraft = await draft("删除会话仍保留草稿" + status);
+      const keptBefore = (
+        await dbQuery(
+          "SELECT name,purpose FROM collaborative_draft WHERE id=$1",
+          [keptDraft],
+        )
+      ).rows;
+      const keptRowsBefore = (
+        await dbQuery(
+          "SELECT question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 ORDER BY position",
+          [keptDraft],
+        )
+      ).rows;
+      const actor = (
+        await dbQuery("SELECT actor_id FROM assistant_session WHERE id=$1", [
+          id,
+        ])
+      ).rows[0].actor_id;
+      const suffix = randomUUID(),
+        runA = "review_run_a_" + suffix,
+        runRound = "review_run_round_" + suffix;
+      const runLegacy = "review_run_legacy_" + suffix,
+        runB = "review_run_b_" + suffix;
+      const runOther = "review_run_other_" + suffix,
+        runDone = "review_run_done_" + suffix;
+      async function seedRun(runId: string, jobStatus: string) {
+        const jobId = "job_" + runId;
+        await dbQuery(
+          "INSERT INTO job(id,project_id,actor_id,kind,payload,status,correlation_id,idempotency_key,lease_owner,lease_expires_at) VALUES($1,$2,$3,'process_data','{}',$4,$1,$1,'merge-review',now()+interval '1 minute')",
+          [jobId, projectId, actor, jobStatus],
+        );
+        await dbQuery(
+          "INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count) VALUES($1,$2,$3,$4,$1,'synthetic',$5,$6,'synthetic-input','synthetic',2)",
+          [
+            runId,
+            projectId,
+            actor,
+            jobId,
+            { kind: "assets", assetIds: ["synthetic-source"] },
+            { operation: "clean", allowedFields: ["question"] },
+          ],
+        );
+      }
+      for (const runId of [runA, runRound, runLegacy, runB, runOther])
+        await seedRun(runId, status);
+      await seedRun(runDone, "succeeded");
+      const processingTask = "processing_task_" + suffix;
+      await dbQuery(
+        "INSERT INTO processing_task(id,project_id,root_run_id,latest_run_id,assistant_session_id) VALUES($1,$2,$3,$4,$5)",
+        [processingTask, projectId, runA, runRound, id],
+      );
+      await dbQuery(
+        "UPDATE processing_run SET task_id=$2 WHERE id=ANY($1::text[])",
+        [[runA, runRound], processingTask],
+      );
+      await dbQuery("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+        id,
+        {
+          taskId: "task_a_" + suffix,
+          taskContractVersion: 2,
+          goal: "清洗原始资料A",
+          title: "原任务",
+          runId: runA,
+          runIds: [runA, runLegacy, runDone],
+          stage: "processing",
+        },
+      ]);
+      await dbQuery("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+        otherSession,
+        {
+          taskId: "other_" + suffix,
+          taskContractVersion: 2,
+          goal: "其他会话",
+          runId: runOther,
+          runIds: [runOther],
+        },
+      ]);
+      const db = createPool(databaseUrl),
+        client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtext('assistant-concurrency'))",
+        );
+        const session = (
+          await client.query(
+            "SELECT * FROM assistant_session WHERE id=$1 FOR UPDATE",
+            [id],
+          )
+        ).rows[0];
+        const switched = await prepareTaskBoundary(
+          client,
+          { projectId, actorId: actor },
+          session,
+          "新开独立任务，查询当前项目的测试集",
+        );
+        expect(switched.switched).toBe(true);
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+        await db.end();
+      }
+      await dbQuery(
+        "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+        [
+          id,
+          JSON.stringify({ goal: "当前任务B", runId: runB, runIds: [runB] }),
+        ],
+      );
+      const removed = await app.inject({
+        method: "DELETE",
+        url: base() + "/sessions/" + id,
+        headers,
+        payload: { confirm: true },
+      });
+      expect(removed.statusCode, removed.body).toBe(200);
+      const statuses = (
+        await dbQuery("SELECT id,status FROM job WHERE id=ANY($1::text[])", [
+          [runA, runRound, runLegacy, runB, runOther, runDone].map(
+            (x) => "job_" + x,
+          ),
+        ])
+      ).rows;
+      const actual = new Map(statuses.map((x: any) => [x.id, x.status]));
+      for (const runId of [runA, runRound, runLegacy, runB])
+        expect(actual.get("job_" + runId)).toBe("cancel_requested");
+      expect(actual.get("job_" + runOther)).toBe(status);
+      expect(actual.get("job_" + runDone)).toBe("succeeded");
+      expect(
+        (
+          await dbQuery(
+            "SELECT count(*)::int AS n FROM assistant_task_checkpoint WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await dbQuery(
+            "SELECT count(*)::int AS n FROM assistant_session WHERE id=$1",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await dbQuery(
+            "SELECT name,purpose FROM collaborative_draft WHERE id=$1",
+            [keptDraft],
+          )
+        ).rows,
+      ).toEqual(keptBefore);
+      expect(
+        (
+          await dbQuery(
+            "SELECT question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 ORDER BY position",
+            [keptDraft],
+          )
+        ).rows,
+      ).toEqual(keptRowsBefore);
+    },
+  );
 });

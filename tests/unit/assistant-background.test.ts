@@ -624,7 +624,7 @@ describe("OPT33 document entry boundaries", () => {
       "1.2 客服\n1.2.3 退款咨询\n申请退回已付款项。\n1.2.4 物流查询\n查询配送进度。",
     ],
     [
-      "1.1",
+      "退款咨询",
       "一、客服\n（一）退款咨询\n申请退回已付款项。\n（二）物流查询\n查询配送进度。",
     ],
   ])("supports bounded numbering: %s", (value, text) => {
@@ -634,6 +634,16 @@ describe("OPT33 document entry boundaries", () => {
         document(text),
       ),
     ).not.toThrow();
+  });
+  it("rejects Chinese list ordinals as new business category values", () => {
+    expect(() =>
+      validateBackgroundRules(
+        task("1.1", "申请退回已付款项。"),
+        document(
+          "一、客服\n（一）退款咨询\n申请退回已付款项。\n（二）物流查询\n查询配送进度。",
+        ),
+      ),
+    ).toThrow("assistant_background_rule_mismatch");
   });
   it("rejects an ambiguous duplicate heading", () => {
     expect(() =>
