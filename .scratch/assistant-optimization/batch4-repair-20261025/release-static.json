@@ -1,0 +1,1 @@
+[{"command": ["node", "node_modules/prettier/bin/prettier.cjs", "--write"], "exit": 0}, {"command": ["node", "node_modules/typescript/bin/tsc", "--noEmit"], "exit": 0}, {"command": ["node", "node_modules/eslint/bin/eslint.js", "src/assistant/agent.ts"], "exit": 0}]

@@ -1,0 +1,336 @@
+{
+  "code": "39c9ec3cd448cda6aebb1f7f319e3a1e92bdb399",
+  "projectId": "project_1a47dc016ee342d7b4419be45721a949",
+  "boundaryProjectId": "project_a7811e71e39a41c8bb8287d1e9b18c2a",
+  "cases": {
+    "16": {
+      "sessionId": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+      "result": "passed_with_auto_correction",
+      "stage": "complete",
+      "requests": 6,
+      "requestDurationMs": 13257,
+      "requestedGeneration": 2,
+      "parameterRepairLimits": {
+        "plan_task": {
+          "used": 1,
+          "version": 2,
+          "identity": "6772d8b306b8ab110d85ef377919f075ba23fb0ba6e68d3db1b9215e76f513ca"
+        }
+      },
+      "toolErrors": [
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 缺少字段：executionMode；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 缺少字段：deliveries；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 不支持字段：toolName；请删除该字段，按工具声明的结构提供参数。 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          }
+        },
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 缺少字段：executionMode；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 缺少字段：deliveries；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 不支持字段：toolName；请删除该字段，按工具声明的结构提供参数。 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [],
+      "runIds": [
+        "processing_d96860b242a34a8f8cee4f5a973860ad"
+      ]
+    },
+    "17": {
+      "sessionId": "conversation_3eff076dceb04edeaa5208a614abc02e",
+      "result": "passed",
+      "stage": "complete",
+      "requests": 7,
+      "requestDurationMs": 9832,
+      "requestedGeneration": 2,
+      "parameterRepairLimits": {},
+      "toolErrors": [],
+      "failedTurns": [],
+      "runIds": [
+        "processing_8aeac03f34f84fc3950e17bd28d3b511"
+      ]
+    },
+    "18": {
+      "sessionId": "conversation_2091f72821514efe91f053c8626d2fc4",
+      "result": "failed_planning_contract",
+      "stage": "failed",
+      "requests": 6,
+      "requestDurationMs": 6374,
+      "requestedGeneration": 0,
+      "parameterRepairLimits": {
+        "plan_task": {
+          "used": 2,
+          "version": 2,
+          "identity": "e5ae3b15244cd546b9e5b3643bbcab53235d49accead037c053333232995b719"
+        }
+      },
+      "toolErrors": [
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 缺少字段：executionMode；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 缺少字段：deliveries；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 不支持字段：tool；请删除该字段，按工具声明的结构提供参数。 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/tool",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          }
+        },
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 缺少字段：executionMode；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 缺少字段：deliveries；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 不支持字段：tool；请删除该字段，按工具声明的结构提供参数。 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/tool",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [
+        {
+          "id": "turn_2968f5e8857a4dd6b1cedc99bcd5f8a9",
+          "code": "assistant_tool_input_invalid"
+        }
+      ],
+      "runIds": []
+    },
+    "19": {
+      "sessionId": "conversation_21b15c42eedc4260bb5bd4bc0ed8365c",
+      "result": "failed_planning_boundary_partial",
+      "stage": "failed",
+      "requests": 5,
+      "requestDurationMs": 23050,
+      "requestedGeneration": 0,
+      "parameterRepairLimits": {
+        "plan_task": {
+          "used": 2,
+          "version": 2,
+          "identity": "96969f1896af5a332f02e386f068b2e73fb8d108a1069051bd864eb90a53ca1f",
+          "truncated": 1
+        }
+      },
+      "toolErrors": [
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：/deliveries must NOT have more than 1 items 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/deliveries",
+                "keyword": "maxItems"
+              }
+            ]
+          }
+        },
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_requirement_conflict",
+            "hint": "交付引用已失效，请使用当前方案中的真实交付引用。",
+            "issues": [
+              {
+                "code": "assistant_requirement_conflict",
+                "path": "/deliveries/0",
+                "tool": "plan_task",
+                "keyword": "business",
+                "message": "交付引用已失效，请使用当前方案中的真实交付引用。",
+                "operation": "prepare"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [
+        {
+          "id": "turn_a14bf4be983c4d099b211a2ad2a7e7f8",
+          "code": "assistant_requirement_conflict"
+        }
+      ],
+      "runIds": []
+    },
+    "20": {
+      "sessionId": "conversation_731e1660e1e84eed9baaafc64b8f0c4c",
+      "result": "failed_intent_clarification",
+      "stage": "failed",
+      "requests": 7,
+      "requestDurationMs": 21142,
+      "requestedGeneration": 2,
+      "parameterRepairLimits": {
+        "plan_task": {
+          "used": 1,
+          "version": 2,
+          "identity": "685ec16270f244c0c5da07230d6d3202b26b54882966ca693cce81a5a2bd57e5",
+          "truncated": 1
+        }
+      },
+      "toolErrors": [
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [
+        {
+          "id": "turn_cab854064c8b40e7ad1575b6fefdc3c4",
+          "code": "assistant_intent_required"
+        }
+      ],
+      "runIds": [
+        "processing_eac55dfae7e044178612fa715462580b"
+      ]
+    }
+  },
+  "requests": 31,
+  "requestDurationMs": 73655,
+  "generated": 6,
+  "saved": 4,
+  "inputRecords": 0,
+  "modelLengthResponses": [
+    {
+      "caseId": 19,
+      "index": 22
+    },
+    {
+      "caseId": 20,
+      "index": 27
+    }
+  ],
+  "modelHTTPStatuses": [
+    200
+  ],
+  "guardBlocks": [],
+  "boundaryProjectCounts": {
+    "assistant_session": 0,
+    "processing_run": 0,
+    "collaborative_draft": 0,
+    "data_asset": 0,
+    "test_set": 0
+  },
+  "closed": true,
+  "completePassed": [
+    16,
+    17
+  ],
+  "failed": [
+    18,
+    19,
+    20
+  ]
+}

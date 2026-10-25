@@ -1,0 +1,2024 @@
+{
+  "runs": [
+    {
+      "id": "processing_d96860b242a34a8f8cee4f5a973860ad",
+      "source": {
+        "id": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+        "kind": "background",
+        "recordIds": []
+      },
+      "status": "succeeded",
+      "task_id": "processing_d96860b242a34a8f8cee4f5a973860ad",
+      "input_count": 0
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_50b18752dd364324b8dafd8650614466",
+      "event": "user",
+      "status": "succeeded",
+      "task_id": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+      "resuming": false,
+      "user_text": "按客服说明做一个查物流测试集，2条，现在开始。",
+      "created_at": "2026-10-24T19:04:08.526032+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-24T19:05:38.560395+00:00",
+      "session_id": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+      "dependencies": [
+        {
+          "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+          "kind": "draft"
+        }
+      ],
+      "request_hash": "6437ea690fe2f0d5849e1d56dcf8866a80db56f167fbc7bf7f5eb1a11aa2f3a5",
+      "tool_results": [
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:7f4bc92605698760360cf4e5882bf6bfed5f153c0a62fdd488f522c5ea27acb7",
+          "name": "plan_task",
+          "input": {
+            "control": {
+              "mode": "execute",
+              "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+              "taskBoundary": "continue"
+            }
+          },
+          "result": {
+            "task": {
+              "stage": "inspecting",
+              "title": "新任务",
+              "taskId": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+              "autoCount": 0,
+              "objective": "按客服说明做一个查物流测试集，2条，现在开始。",
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_50b18752dd364324b8dafd8650614466",
+                "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+                "updateSaved": true,
+                "taskBoundary": "continue",
+                "taskRevision": 2
+              },
+              "originTurnId": "turn_50b18752dd364324b8dafd8650614466",
+              "requirements": [],
+              "autoEventLimit": null,
+              "classifications": [],
+              "planningRequest": {
+                "supplements": [],
+                "originalRequest": "按客服说明做一个查物流测试集，2条，现在开始。",
+                "clarificationAnswers": []
+              },
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "backgroundEvidence": [],
+              "candidateSelection": null,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": false,
+              "requirementProblemKind": "diagnostic"
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_50b18752dd364324b8dafd8650614466",
+              "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+              "updateSaved": true,
+              "taskBoundary": "continue",
+              "taskRevision": 2
+            },
+            "unchanged": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          },
+          "resolves": []
+        },
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:b995260126f9d75972280507cc7cc254cb723f17f96056a081462def93309d12",
+          "name": "read_background",
+          "input": {
+            "documentId": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+            "replaceEvidence": true,
+            "useForProcessing": false
+          },
+          "result": {
+            "id": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+            "units": 7,
+            "format": "txt",
+            "sha256": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+            "fileName": "客服业务说明.txt",
+            "fileSize": 590,
+            "nextFrom": null,
+            "fragments": [
+              {
+                "text": "电商客服测试说明（合成测试资料）\n查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。\n改地址：用户希望变更订单的收货地址，应先核对订单及发货状态，符合条件时引导办理，不能声称已经改好。\n每条问题须是完整、自然的普通用户问法，期望输出写客服正确处理行为，不虚构已经查到或完成的操作。\n只根据用户当前要求制作指定数量。分类可放Metadata的“意图”字段。\n采用和发布由用户确认，本文不授权任何操作。\n",
+                "index": 1,
+                "endLine": 7,
+                "startLine": 1
+              }
+            ],
+            "characters": 206,
+            "definitions": [
+              {
+                "name": "查物流",
+                "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                "value": "查物流",
+                "aliases": [
+                  "查物流"
+                ],
+                "reference": "definition:01601556f2a164cbd1f2bd186ab635dfca677e12d0b0f3114f4d8df15185faaf",
+                "documentId": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+                "fragmentIndices": [
+                  1
+                ]
+              },
+              {
+                "name": "改地址",
+                "text": "改地址：用户希望变更订单的收货地址，应先核对订单及发货状态，符合条件时引导办理，不能声称已经改好。\n每条问题须是完整、自然的普通用户问法，期望输出写客服正确处理行为，不虚构已经查到或完成的操作。\n只根据用户当前要求制作指定数量。分类可放Metadata的“意图”字段。\n采用和发布由用户确认，本文不授权任何操作。",
+                "value": "改地址",
+                "aliases": [
+                  "改地址"
+                ],
+                "reference": "definition:253be980f15a8a822c79d40c52ec3fa696420f07928035bdbe5562dae5c21019",
+                "documentId": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+                "fragmentIndices": [
+                  1
+                ]
+              }
+            ],
+            "fragmentCount": 1,
+            "extractorVersion": "background-text-v1",
+            "usedForProcessing": false,
+            "definitionsTruncated": false
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          },
+          "resolves": []
+        },
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:sdk:aac54c451cd129e5ddbc09ea20d87a2d5444cf01c56931c7a6986bccddee3dad",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 缺少字段：executionMode；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 缺少字段：deliveries；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 不支持字段：toolName；请删除该字段，按工具声明的结构提供参数。 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          },
+          "input": {
+            "input": "[unsupported]",
+            "toolName": "[unsupported]"
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 2
+          },
+          "validation": {
+            "input": {
+              "hash": "ee02b377dc3b899c6cf6a47412ac20d8e8688de0a574785815188e97db30cb8b",
+              "keys": [
+                "toolName",
+                "input"
+              ],
+              "bytes": 1201
+            },
+            "stage": "schema",
+            "schemaRevision": 2
+          }
+        },
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:e093161e4b2216f43c89f3a0a8b4bc0c24193c61a7d495f5ec6f9d9ad884c4b4",
+          "name": "plan_task",
+          "input": {
+            "title": "查物流测试集",
+            "deliveries": [
+              {
+                "name": "查物流测试集",
+                "count": 2,
+                "countKind": "new",
+                "scenarios": [
+                  "用户询问已下单商品当前运输状态",
+                  "用户询问订单配送进度",
+                  "用户询问预计送达时间"
+                ],
+                "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。",
+                "classifications": [
+                  {
+                    "key": "意图",
+                    "basis": "background",
+                    "field": "metadata",
+                    "quotas": [
+                      {
+                        "count": 2,
+                        "value": "查物流"
+                      }
+                    ],
+                    "definitions": [
+                      {
+                        "value": "查物流",
+                        "reference": "definition:01601556f2a164cbd1f2bd186ab635dfca677e12d0b0f3114f4d8df15185faaf"
+                      }
+                    ],
+                    "allowedValues": [
+                      "查物流"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "requirements": [
+              "每条问题须是完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间",
+              "期望输出写客服正确处理行为，不虚构已经查到或完成的操作",
+              "分类放Metadata的“意图”字段，值为“查物流”"
+            ],
+            "executionMode": "execute"
+          },
+          "result": {
+            "task": {
+              "stage": "inspecting",
+              "title": "查物流测试集",
+              "target": null,
+              "taskId": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+              "question": null,
+              "autoCount": 0,
+              "countKind": "new",
+              "objective": "查物流测试集",
+              "deliveries": [
+                {
+                  "id": "delivery_742830784bb54660a2ce602e04e213f1",
+                  "name": "查物流测试集",
+                  "count": 2,
+                  "countKind": "new",
+                  "scenarios": [
+                    "用户询问已下单商品当前运输状态",
+                    "用户询问订单配送进度",
+                    "用户询问预计送达时间"
+                  ],
+                  "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                  "boundaryVersion": 1,
+                  "classifications": [
+                    {
+                      "key": "意图",
+                      "basis": "background",
+                      "field": "metadata",
+                      "quotas": [
+                        {
+                          "count": 2,
+                          "value": "查物流"
+                        }
+                      ],
+                      "definitions": [
+                        {
+                          "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                          "value": "查物流"
+                        }
+                      ],
+                      "allowedValues": [
+                        "查物流"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "nextAction": "generate_candidates",
+              "targetCount": 2,
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_50b18752dd364324b8dafd8650614466",
+                "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+                "updateSaved": true,
+                "taskBoundary": "continue",
+                "taskRevision": 2,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_50b18752dd364324b8dafd8650614466",
+              "requirements": [
+                "分类放Metadata的“意图”字段，值为“查物流”",
+                "期望输出写客服正确处理行为，不虚构已经查到或完成的操作",
+                "每条问题须是完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间"
+              ],
+              "executionPlan": {
+                "mode": "execute",
+                "steps": [
+                  {
+                    "id": "step_a1e361c554bc4899ad9775de84f8d092",
+                    "action": "generate_candidates",
+                    "status": "pending",
+                    "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1",
+                    "boundaryVersion": 1
+                  },
+                  {
+                    "id": "step_a69f5453568a4433970fb2632b598e52",
+                    "action": "read_processing",
+                    "status": "pending",
+                    "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+                  },
+                  {
+                    "id": "step_29538e5e194f45c2b6e0d125ea8a5aa6",
+                    "action": "request_processing_apply",
+                    "status": "pending",
+                    "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+                  }
+                ],
+                "target": null,
+                "current": 0,
+                "needsReview": false,
+                "contractVersion": 1
+              },
+              "autoEventLimit": 4,
+              "classifications": [
+                {
+                  "key": "意图",
+                  "basis": "background",
+                  "field": "metadata",
+                  "quotas": [
+                    {
+                      "count": 2,
+                      "value": "查物流"
+                    }
+                  ],
+                  "definitions": [
+                    {
+                      "value": "查物流",
+                      "reference": "definition:aac569df70f4cd180219c44c51d1ed338448cce3db5ec9c054fbc307ce2e24aa"
+                    }
+                  ],
+                  "allowedValues": [
+                    "查物流"
+                  ]
+                }
+              ],
+              "executionPaused": false,
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "backgroundEvidence": [
+                {
+                  "sha256": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+                  "textHash": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+                  "documentId": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+                  "fragmentIndex": 1,
+                  "extractorVersion": "background-text-v1"
+                }
+              ],
+              "candidateSelection": null,
+              "overallTargetCount": 2,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": true,
+              "planningClarification": null,
+              "requirementProblemKind": "diagnostic"
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_50b18752dd364324b8dafd8650614466",
+              "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+              "updateSaved": true,
+              "taskBoundary": "continue",
+              "taskRevision": 2,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          },
+          "resolves": []
+        },
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:a70233da4367f868da3ef11a0f590f2ec5a0062030177e3c19370befaf7232ce",
+          "name": "generate_candidates",
+          "input": {
+            "name": "查物流测试集",
+            "scenarios": [
+              "用户询问已下单商品当前运输状态",
+              "用户询问订单配送进度",
+              "用户询问预计送达时间"
+            ],
+            "outputCount": 2,
+            "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+            "classifications": [
+              {
+                "key": "意图",
+                "basis": "background",
+                "field": "metadata",
+                "quotas": [
+                  {
+                    "count": 2,
+                    "value": "查物流"
+                  }
+                ],
+                "definitions": [
+                  {
+                    "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                    "value": "查物流"
+                  }
+                ],
+                "allowedValues": [
+                  "查物流"
+                ]
+              }
+            ]
+          },
+          "result": {
+            "url": "/projects/project_1a47dc016ee342d7b4419be45721a949/processing?run=processing_d96860b242a34a8f8cee4f5a973860ad",
+            "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+            "status": "queued",
+            "draftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+            "replayed": false,
+            "inputCount": 0,
+            "outputCount": 2
+          },
+          "status": "succeeded",
+          "binding": {
+            "stepId": "step_a1e361c554bc4899ad9775de84f8d092",
+            "revision": 2,
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+          },
+          "resolves": []
+        }
+      ],
+      "operation_key": "936fed63-bd49-4afe-a59d-f0d3deeff516",
+      "task_revision": 2,
+      "assistant_text": "处理任务已提交，完成后将继续核对候选。",
+      "requires_write": true,
+      "execution_token": "execution_1538be1efe844229be10a4b972eb9186",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    },
+    {
+      "id": "turn_5dea1309728e4e3c903ba3107f54c39e",
+      "event": "processing_completed",
+      "status": "succeeded",
+      "task_id": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+      "resuming": true,
+      "user_text": "[processing_completed] 已有授权任务的实际结果发生变化。读取当前结果并继续原目标；不构成新的用户授权。",
+      "created_at": "2026-10-24T19:04:27.193458+00:00",
+      "error_code": null,
+      "expires_at": "2026-10-24T19:05:57.209995+00:00",
+      "session_id": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+      "dependencies": [
+        {
+          "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+          "kind": "draft"
+        },
+        {
+          "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+          "kind": "draft"
+        },
+        {
+          "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+          "kind": "draft"
+        }
+      ],
+      "request_hash": "cf6fc08ea564ce0978ca7e98ce2aab50ffd333f7fb098b3b2c078f3bdc65df82",
+      "tool_results": [
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:sdk:aac54c451cd129e5ddbc09ea20d87a2d5444cf01c56931c7a6986bccddee3dad",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 缺少字段：executionMode；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 缺少字段：deliveries；请依据当前用户要求和已读取事实补全，不能猜造引用。；参数 不支持字段：toolName；请删除该字段，按工具声明的结构提供参数。 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          },
+          "input": {
+            "input": "[unsupported]",
+            "toolName": "[unsupported]"
+          },
+          "effect": "none",
+          "status": "failed",
+          "binding": {
+            "revision": 2
+          },
+          "validation": {
+            "input": {
+              "hash": "ee02b377dc3b899c6cf6a47412ac20d8e8688de0a574785815188e97db30cb8b",
+              "keys": [
+                "toolName",
+                "input"
+              ],
+              "bytes": 1201
+            },
+            "stage": "schema",
+            "schemaRevision": 2
+          }
+        },
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:e093161e4b2216f43c89f3a0a8b4bc0c24193c61a7d495f5ec6f9d9ad884c4b4",
+          "name": "plan_task",
+          "input": {
+            "title": "查物流测试集",
+            "deliveries": [
+              {
+                "name": "查物流测试集",
+                "count": 2,
+                "countKind": "new",
+                "scenarios": [
+                  "用户询问已下单商品当前运输状态",
+                  "用户询问订单配送进度",
+                  "用户询问预计送达时间"
+                ],
+                "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。",
+                "classifications": [
+                  {
+                    "key": "意图",
+                    "basis": "background",
+                    "field": "metadata",
+                    "quotas": [
+                      {
+                        "count": 2,
+                        "value": "查物流"
+                      }
+                    ],
+                    "definitions": [
+                      {
+                        "value": "查物流",
+                        "reference": "definition:01601556f2a164cbd1f2bd186ab635dfca677e12d0b0f3114f4d8df15185faaf"
+                      }
+                    ],
+                    "allowedValues": [
+                      "查物流"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "requirements": [
+              "每条问题须是完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间",
+              "期望输出写客服正确处理行为，不虚构已经查到或完成的操作",
+              "分类放Metadata的“意图”字段，值为“查物流”"
+            ],
+            "executionMode": "execute"
+          },
+          "result": {
+            "task": {
+              "stage": "inspecting",
+              "title": "查物流测试集",
+              "target": null,
+              "taskId": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+              "question": null,
+              "autoCount": 0,
+              "countKind": "new",
+              "objective": "查物流测试集",
+              "deliveries": [
+                {
+                  "id": "delivery_742830784bb54660a2ce602e04e213f1",
+                  "name": "查物流测试集",
+                  "count": 2,
+                  "countKind": "new",
+                  "scenarios": [
+                    "用户询问已下单商品当前运输状态",
+                    "用户询问订单配送进度",
+                    "用户询问预计送达时间"
+                  ],
+                  "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                  "boundaryVersion": 1,
+                  "classifications": [
+                    {
+                      "key": "意图",
+                      "basis": "background",
+                      "field": "metadata",
+                      "quotas": [
+                        {
+                          "count": 2,
+                          "value": "查物流"
+                        }
+                      ],
+                      "definitions": [
+                        {
+                          "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                          "value": "查物流"
+                        }
+                      ],
+                      "allowedValues": [
+                        "查物流"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "nextAction": "generate_candidates",
+              "targetCount": 2,
+              "turnControl": {
+                "mode": "execute",
+                "source": "model",
+                "turnId": "turn_50b18752dd364324b8dafd8650614466",
+                "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+                "updateSaved": true,
+                "taskBoundary": "continue",
+                "taskRevision": 2,
+                "requiresUpdate": true
+              },
+              "originTurnId": "turn_50b18752dd364324b8dafd8650614466",
+              "requirements": [
+                "分类放Metadata的“意图”字段，值为“查物流”",
+                "期望输出写客服正确处理行为，不虚构已经查到或完成的操作",
+                "每条问题须是完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间"
+              ],
+              "executionPlan": {
+                "mode": "execute",
+                "steps": [
+                  {
+                    "id": "step_a1e361c554bc4899ad9775de84f8d092",
+                    "action": "generate_candidates",
+                    "status": "pending",
+                    "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1",
+                    "boundaryVersion": 1
+                  },
+                  {
+                    "id": "step_a69f5453568a4433970fb2632b598e52",
+                    "action": "read_processing",
+                    "status": "pending",
+                    "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+                  },
+                  {
+                    "id": "step_29538e5e194f45c2b6e0d125ea8a5aa6",
+                    "action": "request_processing_apply",
+                    "status": "pending",
+                    "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+                  }
+                ],
+                "target": null,
+                "current": 0,
+                "needsReview": false,
+                "contractVersion": 1
+              },
+              "autoEventLimit": 4,
+              "classifications": [
+                {
+                  "key": "意图",
+                  "basis": "background",
+                  "field": "metadata",
+                  "quotas": [
+                    {
+                      "count": 2,
+                      "value": "查物流"
+                    }
+                  ],
+                  "definitions": [
+                    {
+                      "value": "查物流",
+                      "reference": "definition:aac569df70f4cd180219c44c51d1ed338448cce3db5ec9c054fbc307ce2e24aa"
+                    }
+                  ],
+                  "allowedValues": [
+                    "查物流"
+                  ]
+                }
+              ],
+              "executionPaused": false,
+              "boundaryQuestion": null,
+              "transportRecovery": null,
+              "backgroundEvidence": [
+                {
+                  "sha256": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+                  "textHash": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+                  "documentId": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+                  "fragmentIndex": 1,
+                  "extractorVersion": "background-text-v1"
+                }
+              ],
+              "candidateSelection": null,
+              "overallTargetCount": 2,
+              "requirementProblem": null,
+              "taskContractVersion": 2,
+              "canContinueExecution": true,
+              "planningClarification": null,
+              "requirementProblemKind": "diagnostic"
+            },
+            "control": {
+              "mode": "execute",
+              "source": "model",
+              "turnId": "turn_50b18752dd364324b8dafd8650614466",
+              "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+              "updateSaved": true,
+              "taskBoundary": "continue",
+              "taskRevision": 2,
+              "requiresUpdate": true
+            }
+          },
+          "status": "succeeded",
+          "binding": {
+            "revision": 2
+          },
+          "resolves": []
+        },
+        {
+          "key": "assistant:turn_50b18752dd364324b8dafd8650614466:a70233da4367f868da3ef11a0f590f2ec5a0062030177e3c19370befaf7232ce",
+          "name": "generate_candidates",
+          "input": {
+            "name": "查物流测试集",
+            "scenarios": [
+              "用户询问已下单商品当前运输状态",
+              "用户询问订单配送进度",
+              "用户询问预计送达时间"
+            ],
+            "outputCount": 2,
+            "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+            "classifications": [
+              {
+                "key": "意图",
+                "basis": "background",
+                "field": "metadata",
+                "quotas": [
+                  {
+                    "count": 2,
+                    "value": "查物流"
+                  }
+                ],
+                "definitions": [
+                  {
+                    "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                    "value": "查物流"
+                  }
+                ],
+                "allowedValues": [
+                  "查物流"
+                ]
+              }
+            ]
+          },
+          "result": {
+            "url": "/projects/project_1a47dc016ee342d7b4419be45721a949/processing?run=processing_d96860b242a34a8f8cee4f5a973860ad",
+            "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+            "status": "queued",
+            "draftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+            "replayed": false,
+            "inputCount": 0,
+            "outputCount": 2
+          },
+          "status": "succeeded",
+          "binding": {
+            "stepId": "step_a1e361c554bc4899ad9775de84f8d092",
+            "revision": 2,
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+          },
+          "resolves": []
+        },
+        {
+          "key": "assistant:turn_5dea1309728e4e3c903ba3107f54c39e:8240689b2487525565ddd46fca7bb0c0af9de5435810ac85ac5b590203299893",
+          "name": "read_processing",
+          "input": {
+            "runId": "processing_d96860b242a34a8f8cee4f5a973860ad"
+          },
+          "result": {
+            "url": "/projects/project_1a47dc016ee342d7b4419be45721a949/processing?run=processing_d96860b242a34a8f8cee4f5a973860ad",
+            "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+            "total": 2,
+            "issues": [],
+            "review": {
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "total": 2,
+              "labels": [
+                {
+                  "count": 1,
+                  "label": "客服应核实用户订单信息后，根据系统显示提供当前运输状态或引导用户查看物流详情，不得声称已手动查询到具体位置或完成操作。"
+                },
+                {
+                  "count": 1,
+                  "label": "客服应确认订单发货状态，若已发货则告知当前配送环节或建议用户通过订单页面查看实时进度，不得虚构已联系快递员或已更新进度。"
+                }
+              ],
+              "content": {
+                "checked": 2,
+                "pending": 0,
+                "conforms": 2,
+                "uncertain": 0,
+                "nonconforms": 0,
+                "autoRepaired": 0
+              },
+              "complete": true,
+              "countKind": "new",
+              "duplicates": 0,
+              "labelKinds": 2,
+              "formatIssues": [],
+              "missingCount": 0,
+              "effectiveness": {
+                "modified": 0,
+                "unchanged": 0,
+                "unprocessed": 0,
+                "ineffectiveRewrite": 0
+              },
+              "expectedCount": 2,
+              "outsideLabels": 0,
+              "candidateCount": 2,
+              "countSatisfied": true,
+              "emptyQuestions": 0,
+              "semanticReview": "required",
+              "classifications": [
+                {
+                  "key": "意图",
+                  "field": "metadata",
+                  "values": [
+                    {
+                      "count": 2,
+                      "value": "查物流"
+                    }
+                  ],
+                  "missing": 0,
+                  "satisfied": true,
+                  "outsideValues": 0,
+                  "additionalValues": 0,
+                  "quotaDifferences": []
+                }
+              ],
+              "countUnverified": false,
+              "labelsTruncated": false,
+              "additionalLabels": 0,
+              "formatIssueCount": 0,
+              "questionCollisions": 0,
+              "compatibilityProblem": null,
+              "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+              "formatIssuesTruncated": false,
+              "protectedFieldChanges": 0
+            },
+            "status": "succeeded",
+            "partial": false,
+            "records": [
+              {
+                "id": "0:0",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "查物流"
+                  }
+                ],
+                "question": "我昨天下午买的那箱牛奶现在到哪里了？麻烦帮忙查一下运输状态。",
+                "resultRef": {
+                  "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+                  "resultId": "0:0"
+                },
+                "expectedOutput": "客服应核实用户订单信息后，根据系统显示提供当前运输状态或引导用户查看物流详情，不得声称已手动查询到具体位置或完成操作。"
+              },
+              {
+                "id": "0:1",
+                "metadata": [
+                  {
+                    "key": "意图",
+                    "value": "查物流"
+                  }
+                ],
+                "question": "我上周三下的那个订单，现在配送进度走到哪一步了？",
+                "resultRef": {
+                  "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+                  "resultId": "0:1"
+                },
+                "expectedOutput": "客服应确认订单发货状态，若已发货则告知当前配送环节或建议用户通过订单页面查看实时进度，不得虚构已联系快递员或已更新进度。"
+              }
+            ],
+            "recovery": {
+              "reason": null,
+              "canRetry": false,
+              "canContinue": false,
+              "generationBudget": {
+                "used": 2,
+                "limit": 3,
+                "blocked": false,
+                "deadline": 1792868720966,
+                "exhausted": false,
+                "remaining": 1,
+                "rootRunId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+                "targetCount": 2
+              }
+            },
+            "taskRuns": [
+              {
+                "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+                "total": 2,
+                "status": "succeeded"
+              }
+            ],
+            "taskTotal": 2,
+            "diagnostics": [
+              {
+                "batch": 0,
+                "calls": [
+                  {
+                    "code": "ok",
+                    "attempt": 1,
+                    "invalid": 0,
+                    "accepted": 2,
+                    "generated": 2,
+                    "validated": 2,
+                    "duplicates": 0,
+                    "durationMs": 1497,
+                    "finishReason": "stop"
+                  },
+                  {
+                    "code": "ok",
+                    "attempt": 2,
+                    "invalid": 0,
+                    "purpose": "content_initial",
+                    "accepted": 0,
+                    "generated": 2,
+                    "validated": 2,
+                    "duplicates": 0,
+                    "durationMs": 3891,
+                    "finishReason": "stop"
+                  }
+                ],
+                "missing": 0,
+                "accepted": 2,
+                "attempts": 2
+              }
+            ],
+            "missingCount": 0,
+            "executionComplete": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "stepId": "step_a69f5453568a4433970fb2632b598e52",
+            "revision": 2,
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+          },
+          "resolves": []
+        },
+        {
+          "key": "assistant:turn_5dea1309728e4e3c903ba3107f54c39e:ccc6241d6c53e258200acf85e9bf1815da0ad94febd1f492f877f1be30d312bb",
+          "name": "request_processing_apply",
+          "input": {
+            "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+            "target": {
+              "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+              "kind": "draft"
+            },
+            "allTask": true,
+            "allValid": true
+          },
+          "result": {
+            "id": "proposal_1131cfc335b94ea787a6e46d91ec6732",
+            "status": "pending",
+            "summary": {
+              "url": "/projects/project_1a47dc016ee342d7b4419be45721a949/processing?run=processing_d96860b242a34a8f8cee4f5a973860ad",
+              "count": 2,
+              "range": "task",
+              "title": "采用处理结果",
+              "target": "查物流测试集"
+            },
+            "requiresUserConfirmation": true
+          },
+          "status": "succeeded",
+          "binding": {
+            "stepId": "step_29538e5e194f45c2b6e0d125ea8a5aa6",
+            "revision": 2,
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+          },
+          "resolves": []
+        }
+      ],
+      "operation_key": "auto:2:4c43d5b45743d699ab77bee08d13c019306aa7d856a2b20a28756ab5aefa3d06",
+      "task_revision": 2,
+      "assistant_text": "操作已准备好，请核对下方确认卡片。",
+      "requires_write": true,
+      "execution_token": "execution_ff5d75b7ce524e0095768ab2ea098eae",
+      "execution_attempt": 1,
+      "candidate_selection": null
+    }
+  ],
+  "drafts": [
+    {
+      "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+      "name": "查物流测试集",
+      "count": 2
+    },
+    {
+      "id": "collabdraft_2423c32b54995ab796251f8a6c623a6cc6aee2a163a218d5f12ca130f72d4263",
+      "name": "查物流测试集",
+      "count": 2
+    },
+    {
+      "id": "collabdraft_2829b7c3f8e1bd8f916bc0c07ea654ae24b42dee2aa14a543ea5b9e5c2ec168b",
+      "name": "查物流测试集",
+      "count": 0
+    }
+  ],
+  "session": {
+    "id": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+    "task": {
+      "goal": "按客服说明做一个查物流测试集，2条，现在开始。",
+      "error": null,
+      "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+      "stage": "complete",
+      "title": "查物流测试集",
+      "review": {
+        "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+        "total": 2,
+        "labels": [
+          {
+            "count": 1,
+            "label": "客服应核实用户订单信息后，根据系统显示提供当前运输状态或引导用户查看物流详情，不得声称已手动查询到具体位置或完成操作。"
+          },
+          {
+            "count": 1,
+            "label": "客服应确认订单发货状态，若已发货则告知当前配送环节或建议用户通过订单页面查看实时进度，不得虚构已联系快递员或已更新进度。"
+          }
+        ],
+        "content": {
+          "checked": 2,
+          "pending": 0,
+          "conforms": 2,
+          "uncertain": 0,
+          "nonconforms": 0,
+          "autoRepaired": 0
+        },
+        "complete": true,
+        "countKind": "new",
+        "duplicates": 0,
+        "formatIssues": [],
+        "missingCount": 0,
+        "effectiveness": {
+          "modified": 0,
+          "unchanged": 0,
+          "unprocessed": 0,
+          "ineffectiveRewrite": 0
+        },
+        "expectedCount": 2,
+        "outsideLabels": 0,
+        "candidateCount": 2,
+        "countSatisfied": true,
+        "emptyQuestions": 0,
+        "semanticReview": "required",
+        "classifications": [
+          {
+            "key": "意图",
+            "field": "metadata",
+            "values": [
+              {
+                "count": 2,
+                "value": "查物流"
+              }
+            ],
+            "missing": 0,
+            "satisfied": true,
+            "outsideValues": 0,
+            "additionalValues": 0,
+            "quotaDifferences": []
+          }
+        ],
+        "countUnverified": false,
+        "additionalLabels": 0,
+        "questionCollisions": 0,
+        "compatibilityProblem": null,
+        "contentReviewMeaning": "模型核对不代替人工审核；字段变化、标签种数和结构完整不代表语义合格。",
+        "protectedFieldChanges": 0
+      },
+      "runIds": [
+        "processing_d96860b242a34a8f8cee4f5a973860ad"
+      ],
+      "target": null,
+      "taskId": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+      "question": null,
+      "recovery": null,
+      "autoCount": 1,
+      "countKind": "new",
+      "nextAction": null,
+      "targetName": "查物流测试集",
+      "turnBudget": {
+        "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+        "activeMs": 718,
+        "requests": [],
+        "startedAt": 1792868667204,
+        "toolCalls": 3,
+        "deadlineAt": 1792868747201,
+        "modelSteps": 0,
+        "retryWaits": [],
+        "attemptToken": null,
+        "attemptBaseMs": 718,
+        "progressStart": "9d9088e26298ffe042d3d1d58c7f290e552a78b3456c8d70645a86dcb7a687e3",
+        "requestAttempts": 0,
+        "attemptStartedAt": null,
+        "transportRetries": 0,
+        "accountingVersion": 2
+      },
+      "diagnostics": {
+        "intent": {
+          "mode": "execute",
+          "source": "continuation",
+          "pauseFirst": false,
+          "reasonCode": "turn_execute",
+          "updateSaved": true,
+          "requiresUpdate": true
+        },
+        "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+        "requests": [],
+        "sessionId": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+        "toolCalls": 3,
+        "durationMs": 1961,
+        "modelSteps": 0,
+        "retryWaits": [],
+        "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+        "codeVersion": "39c9ec3cd448cda6aebb1f7f319e3a1e92bdb399",
+        "currentStep": {
+          "id": "step_29538e5e194f45c2b6e0d125ea8a5aa6",
+          "action": "request_processing_apply"
+        },
+        "diagnosticId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+        "finishReason": "not_returned",
+        "firstFailure": {
+          "code": "assistant_tool_input_invalid",
+          "name": "plan_task",
+          "issues": [
+            {
+              "path": "/executionMode",
+              "keyword": "required"
+            },
+            {
+              "path": "/deliveries",
+              "keyword": "required"
+            },
+            {
+              "path": "/toolName",
+              "keyword": "additionalProperties"
+            },
+            {
+              "path": "/input",
+              "keyword": "additionalProperties"
+            }
+          ]
+        },
+        "taskRevision": 2,
+        "toolsVersion": "assistant-tools-v13",
+        "modelRevision": 2,
+        "promptVersion": "assistant-prompt-v16",
+        "recoveryOrigin": {
+          "mode": "execute",
+          "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+          "revision": 2,
+          "rootTurnId": "turn_50b18752dd364324b8dafd8650614466",
+          "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+          "progressKey": "9d9088e26298ffe042d3d1d58c7f290e552a78b3456c8d70645a86dcb7a687e3",
+          "documentsKey": "1657d8af02e37574049070b4283d7f813b1ccd3fe5a0ce472a76e6ee63372947",
+          "parentTurnId": "turn_50b18752dd364324b8dafd8650614466",
+          "progressFacts": [
+            "cc82b7b021540d783e805dea47cbb449287a6822ea55d37171f1c62ac76d8b3a",
+            "e8a877c489d131e4797e5912fb277527ad1e678935505e7510393ddab7557c12",
+            "save:assistant:turn_50b18752dd364324b8dafd8650614466:e093161e4b2216f43c89f3a0a8b4bc0c24193c61a7d495f5ec6f9d9ad884c4b4"
+          ],
+          "attemptsBefore": 0,
+          "transportRetriesBefore": 0
+        },
+        "contractVersion": "assistant-diagnostics-v2",
+        "protocolRepairs": 0,
+        "requestAttempts": 0,
+        "stepDiagnostics": [],
+        "attemptToolCalls": 3,
+        "executionAttempt": 1,
+        "parameterRepairs": [],
+        "transportRetries": 0,
+        "attemptModelSteps": 0,
+        "repairRequestsUsed": 1,
+        "retainedCandidates": 2,
+        "retainedOperations": 1,
+        "attemptRequestAttempts": 0,
+        "parameterRepairVersion": "arguments-v5",
+        "requirementsReconciled": false
+      },
+      "grantResume": null,
+      "supplements": [],
+      "targetCount": 2,
+      "turnControl": {
+        "mode": "execute",
+        "source": "continuation",
+        "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+        "explanation": "已按“查物流测试集、2条、现在开始”进入执行；会先读取《客服业务说明.txt》再形成候选，采用仍需你确认。",
+        "updateSaved": true,
+        "taskBoundary": "continue",
+        "taskRevision": 2,
+        "requiresUpdate": true
+      },
+      "budgetLedger": {
+        "grants": [
+          {
+            "id": "initial:assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+            "limits": {
+              "activeMs": 1040000,
+              "toolCalls": 156,
+              "modelSteps": 130,
+              "requestAttempts": 156,
+              "transportRetries": 26
+            },
+            "taskId": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+            "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+            "purpose": "initial",
+            "issuedAt": 1792868648539,
+            "revision": 2,
+            "expiresAt": null,
+            "startsAtUse": {
+              "activeMs": 0,
+              "toolCalls": 0,
+              "modelSteps": 0,
+              "requestAttempts": 0,
+              "transportRetries": 0
+            }
+          }
+        ],
+        "policy": {
+          "initial": {
+            "activeMs": 1040000,
+            "toolCalls": 156,
+            "modelSteps": 130,
+            "requestAttempts": 156,
+            "transportRetries": 26
+          },
+          "segment": {
+            "activeMs": 80000,
+            "toolCalls": 12,
+            "modelSteps": 10,
+            "requestAttempts": 12,
+            "transportRetries": 2
+          }
+        },
+        "taskId": "assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+        "actorId": "user_01ca4f48aa10492cabc15da73876264e",
+        "version": 1,
+        "activeId": "initial:assistanttask_b04ba5435aa24a71bd0bcf495e01b859",
+        "segments": [
+          {
+            "turnId": "turn_50b18752dd364324b8dafd8650614466",
+            "activeMs": 10075,
+            "requests": [
+              {
+                "id": "turn_50b18752dd364324b8dafd8650614466:0",
+                "state": "parsed",
+                "bodyMs": 4,
+                "parseMs": 0,
+                "parseOk": true,
+                "totalMs": 560,
+                "httpStatus": 200,
+                "preflightMs": 11,
+                "timeToHeadersMs": 551
+              },
+              {
+                "id": "turn_50b18752dd364324b8dafd8650614466:1",
+                "state": "parsed",
+                "bodyMs": 0,
+                "parseMs": 0,
+                "parseOk": true,
+                "totalMs": 3163,
+                "httpStatus": 200,
+                "preflightMs": 9,
+                "timeToHeadersMs": 3158
+              },
+              {
+                "id": "turn_50b18752dd364324b8dafd8650614466:2",
+                "state": "parsed",
+                "bodyMs": 1,
+                "parseMs": 0,
+                "parseOk": true,
+                "totalMs": 1546,
+                "httpStatus": 200,
+                "preflightMs": 15,
+                "timeToHeadersMs": 1539
+              },
+              {
+                "id": "turn_50b18752dd364324b8dafd8650614466:3",
+                "state": "parsed",
+                "bodyMs": 0,
+                "repair": {
+                  "kind": "context",
+                  "name": "plan_task",
+                  "nested": false,
+                  "identity": "6772d8b306b8ab110d85ef377919f075ba23fb0ba6e68d3db1b9215e76f513ca"
+                },
+                "parseMs": 0,
+                "parseOk": true,
+                "totalMs": 2877,
+                "httpStatus": 200,
+                "preflightMs": 11,
+                "repairCharged": true,
+                "timeToHeadersMs": 2872
+              }
+            ],
+            "startedAt": 1792868648580,
+            "toolCalls": 5,
+            "deadlineAt": 1792868728580,
+            "modelSteps": 4,
+            "retryWaits": [],
+            "attemptToken": null,
+            "attemptBaseMs": 10075,
+            "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "requestAttempts": 4,
+            "attemptStartedAt": null,
+            "transportRetries": 0,
+            "accountingVersion": 2
+          },
+          {
+            "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+            "activeMs": 718,
+            "requests": [],
+            "startedAt": 1792868667204,
+            "toolCalls": 3,
+            "deadlineAt": 1792868747201,
+            "modelSteps": 0,
+            "retryWaits": [],
+            "attemptToken": null,
+            "attemptBaseMs": 718,
+            "progressStart": "9d9088e26298ffe042d3d1d58c7f290e552a78b3456c8d70645a86dcb7a687e3",
+            "requestAttempts": 0,
+            "attemptStartedAt": null,
+            "transportRetries": 0,
+            "accountingVersion": 2
+          }
+        ]
+      },
+      "observations": [
+        {
+          "intent": {
+            "mode": "execute",
+            "source": "model",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_50b18752dd364324b8dafd8650614466",
+          "requests": [
+            {
+              "id": "turn_50b18752dd364324b8dafd8650614466:0",
+              "state": "parsed",
+              "bodyMs": 4,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 560,
+              "httpStatus": 200,
+              "preflightMs": 11,
+              "timeToHeadersMs": 551
+            },
+            {
+              "id": "turn_50b18752dd364324b8dafd8650614466:1",
+              "state": "parsed",
+              "bodyMs": 0,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 3163,
+              "httpStatus": 200,
+              "preflightMs": 9,
+              "timeToHeadersMs": 3158
+            },
+            {
+              "id": "turn_50b18752dd364324b8dafd8650614466:2",
+              "state": "parsed",
+              "bodyMs": 1,
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 1546,
+              "httpStatus": 200,
+              "preflightMs": 15,
+              "timeToHeadersMs": 1539
+            },
+            {
+              "id": "turn_50b18752dd364324b8dafd8650614466:3",
+              "state": "parsed",
+              "bodyMs": 0,
+              "repair": {
+                "kind": "context",
+                "name": "plan_task",
+                "nested": false,
+                "identity": "6772d8b306b8ab110d85ef377919f075ba23fb0ba6e68d3db1b9215e76f513ca"
+              },
+              "parseMs": 0,
+              "parseOk": true,
+              "totalMs": 2877,
+              "httpStatus": 200,
+              "preflightMs": 11,
+              "repairCharged": true,
+              "timeToHeadersMs": 2872
+            }
+          ],
+          "sessionId": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+          "toolCalls": 5,
+          "durationMs": 11632,
+          "modelSteps": 4,
+          "retryWaits": [],
+          "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+          "codeVersion": "39c9ec3cd448cda6aebb1f7f319e3a1e92bdb399",
+          "currentStep": {
+            "id": "step_a1e361c554bc4899ad9775de84f8d092",
+            "action": "generate_candidates"
+          },
+          "diagnosticId": "turn_50b18752dd364324b8dafd8650614466",
+          "finishReason": "tool-calls",
+          "firstFailure": {
+            "code": "assistant_tool_input_invalid",
+            "name": "plan_task",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          },
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v13",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v16",
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 4,
+          "stepDiagnostics": [
+            {
+              "inputTokens": 1315,
+              "finishReason": "tool-calls",
+              "outputTokens": 51,
+              "argumentBytes": 222
+            },
+            {
+              "inputTokens": 1842,
+              "finishReason": "tool-calls",
+              "outputTokens": 35,
+              "argumentBytes": 83
+            },
+            {
+              "inputTokens": 3299,
+              "finishReason": "tool-calls",
+              "outputTokens": 292,
+              "argumentBytes": 1201
+            },
+            {
+              "inputTokens": 3687,
+              "finishReason": "tool-calls",
+              "outputTokens": 426,
+              "argumentBytes": 1168
+            }
+          ],
+          "attemptToolCalls": 5,
+          "executionAttempt": 1,
+          "parameterRepairs": [
+            {
+              "name": "plan_task",
+              "outcome": "context_required"
+            },
+            {
+              "name": "plan_task",
+              "outcome": "repaired"
+            }
+          ],
+          "transportRetries": 0,
+          "attemptModelSteps": 4,
+          "repairRequestsUsed": 1,
+          "retainedCandidates": null,
+          "retainedOperations": 1,
+          "parameterRepairStatus": {
+            "name": "plan_task",
+            "phase": "finished",
+            "scope": "call",
+            "intent": "tool",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ],
+            "turnId": "turn_50b18752dd364324b8dafd8650614466",
+            "outcome": "repaired",
+            "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+            "remainingMs": 69324
+          },
+          "attemptRequestAttempts": 4,
+          "parameterRepairVersion": "arguments-v5",
+          "requirementsReconciled": false
+        },
+        {
+          "intent": {
+            "mode": "execute",
+            "source": "continuation",
+            "pauseFirst": false,
+            "reasonCode": "turn_execute",
+            "updateSaved": true,
+            "requiresUpdate": true
+          },
+          "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+          "requests": [],
+          "sessionId": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+          "toolCalls": 3,
+          "durationMs": 1961,
+          "modelSteps": 0,
+          "retryWaits": [],
+          "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+          "codeVersion": "39c9ec3cd448cda6aebb1f7f319e3a1e92bdb399",
+          "currentStep": {
+            "id": "step_29538e5e194f45c2b6e0d125ea8a5aa6",
+            "action": "request_processing_apply"
+          },
+          "diagnosticId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+          "finishReason": "not_returned",
+          "firstFailure": {
+            "code": "assistant_tool_input_invalid",
+            "name": "plan_task",
+            "issues": [
+              {
+                "path": "/executionMode",
+                "keyword": "required"
+              },
+              {
+                "path": "/deliveries",
+                "keyword": "required"
+              },
+              {
+                "path": "/toolName",
+                "keyword": "additionalProperties"
+              },
+              {
+                "path": "/input",
+                "keyword": "additionalProperties"
+              }
+            ]
+          },
+          "taskRevision": 2,
+          "toolsVersion": "assistant-tools-v13",
+          "modelRevision": 2,
+          "promptVersion": "assistant-prompt-v16",
+          "recoveryOrigin": {
+            "mode": "execute",
+            "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+            "revision": 2,
+            "rootTurnId": "turn_50b18752dd364324b8dafd8650614466",
+            "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+            "progressKey": "9d9088e26298ffe042d3d1d58c7f290e552a78b3456c8d70645a86dcb7a687e3",
+            "documentsKey": "1657d8af02e37574049070b4283d7f813b1ccd3fe5a0ce472a76e6ee63372947",
+            "parentTurnId": "turn_50b18752dd364324b8dafd8650614466",
+            "progressFacts": [
+              "cc82b7b021540d783e805dea47cbb449287a6822ea55d37171f1c62ac76d8b3a",
+              "e8a877c489d131e4797e5912fb277527ad1e678935505e7510393ddab7557c12",
+              "save:assistant:turn_50b18752dd364324b8dafd8650614466:e093161e4b2216f43c89f3a0a8b4bc0c24193c61a7d495f5ec6f9d9ad884c4b4"
+            ],
+            "attemptsBefore": 0,
+            "transportRetriesBefore": 0
+          },
+          "contractVersion": "assistant-diagnostics-v2",
+          "protocolRepairs": 0,
+          "requestAttempts": 0,
+          "stepDiagnostics": [],
+          "attemptToolCalls": 3,
+          "executionAttempt": 1,
+          "parameterRepairs": [],
+          "transportRetries": 0,
+          "attemptModelSteps": 0,
+          "repairRequestsUsed": 1,
+          "retainedCandidates": 2,
+          "retainedOperations": 1,
+          "attemptRequestAttempts": 0,
+          "parameterRepairVersion": "arguments-v5",
+          "requirementsReconciled": false
+        }
+      ],
+      "originTurnId": "turn_50b18752dd364324b8dafd8650614466",
+      "requirements": [
+        "分类放Metadata的“意图”字段，值为“查物流”",
+        "期望输出写客服正确处理行为，不虚构已经查到或完成的操作",
+        "每条问题须是完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间"
+      ],
+      "allowedFields": [
+        "question",
+        "expectedOutput",
+        "metadata"
+      ],
+      "allowedLabels": [],
+      "checkedStatus": "succeeded",
+      "executionPlan": {
+        "mode": "execute",
+        "steps": [
+          {
+            "id": "step_a1e361c554bc4899ad9775de84f8d092",
+            "input": {
+              "name": "查物流测试集",
+              "scenarios": [
+                "用户询问已下单商品当前运输状态",
+                "用户询问订单配送进度",
+                "用户询问预计送达时间"
+              ],
+              "outputCount": 2,
+              "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+              "classifications": [
+                {
+                  "key": "意图",
+                  "basis": "background",
+                  "field": "metadata",
+                  "quotas": [
+                    {
+                      "count": 2,
+                      "value": "查物流"
+                    }
+                  ],
+                  "definitions": [
+                    {
+                      "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                      "value": "查物流"
+                    }
+                  ],
+                  "allowedValues": [
+                    "查物流"
+                  ]
+                }
+              ]
+            },
+            "title": "生成「查物流测试集」",
+            "action": "generate_candidates",
+            "status": "executed",
+            "receipt": {
+              "key": "assistant:turn_50b18752dd364324b8dafd8650614466:a70233da4367f868da3ef11a0f590f2ec5a0062030177e3c19370befaf7232ce",
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "draftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd"
+            },
+            "revision": 2,
+            "countKind": "new",
+            "operation": {
+              "key": "assistant:turn_50b18752dd364324b8dafd8650614466:a70233da4367f868da3ef11a0f590f2ec5a0062030177e3c19370befaf7232ce",
+              "input": {
+                "name": "查物流测试集",
+                "scenarios": [
+                  "用户询问已下单商品当前运输状态",
+                  "用户询问订单配送进度",
+                  "用户询问预计送达时间"
+                ],
+                "outputCount": 2,
+                "instructions": "制作2条查物流测试数据。每条question为完整、自然的普通用户问法，表达用户询问已下单商品的运输状态、配送进度或预计送达时间；expectedOutput写客服正确处理行为，不虚构已经查到或完成的操作；metadata.意图固定为“查物流”。\n生成边界v1：类别必须满足冻结定义及当前要求中的必要条件和排除边界；scenarios仅提供角色、表达或情境变化。讨论、研究或改写某主题不等于鼓励该行为；尚未证实不等于虚假；概括性兜底规则或规范名称不证明具体行为违法。不得编造规范名称、适用条件或事实结论。场景若包含额外目标或与类别条件冲突，舍弃冲突目标，改用中性情境；仍无法确定关键条件时保留待补充，不按关键词或编号归类。",
+                "classifications": [
+                  {
+                    "key": "意图",
+                    "basis": "background",
+                    "field": "metadata",
+                    "quotas": [
+                      {
+                        "count": 2,
+                        "value": "查物流"
+                      }
+                    ],
+                    "definitions": [
+                      {
+                        "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+                        "value": "查物流"
+                      }
+                    ],
+                    "allowedValues": [
+                      "查物流"
+                    ]
+                  }
+                ]
+              },
+              "parameterContractVersion": 1
+            },
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1",
+            "boundaryVersion": 1
+          },
+          {
+            "id": "step_a69f5453568a4433970fb2632b598e52",
+            "title": "核对本类生成结果",
+            "action": "read_processing",
+            "status": "executed",
+            "receipt": {
+              "key": "assistant:turn_5dea1309728e4e3c903ba3107f54c39e:8240689b2487525565ddd46fca7bb0c0af9de5435810ac85ac5b590203299893",
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad"
+            },
+            "revision": 2,
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+          },
+          {
+            "id": "step_29538e5e194f45c2b6e0d125ea8a5aa6",
+            "input": {
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "target": {
+                "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+                "kind": "draft"
+              },
+              "allTask": true,
+              "allValid": true
+            },
+            "title": "确认采用本类结果",
+            "action": "request_processing_apply",
+            "status": "executed",
+            "receipt": {
+              "key": "assistant:turn_5dea1309728e4e3c903ba3107f54c39e:ccc6241d6c53e258200acf85e9bf1815da0ad94febd1f492f877f1be30d312bb",
+              "draftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+              "proposalId": "proposal_1131cfc335b94ea787a6e46d91ec6732"
+            },
+            "revision": 2,
+            "operation": {
+              "key": "assistant:turn_5dea1309728e4e3c903ba3107f54c39e:ccc6241d6c53e258200acf85e9bf1815da0ad94febd1f492f877f1be30d312bb",
+              "input": {
+                "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+                "target": {
+                  "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+                  "kind": "draft"
+                },
+                "allTask": true,
+                "allValid": true
+              },
+              "parameterContractVersion": 1
+            },
+            "deliveryId": "delivery_742830784bb54660a2ce602e04e213f1"
+          }
+        ],
+        "target": null,
+        "current": 3,
+        "needsReview": false,
+        "contractVersion": 1,
+        "requirementsKey": "c49b5d3849d6d95d5921c3ea89014ebd46c408f524f390d6a3d6af135a954dbd"
+      },
+      "targetDraftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+      "autoEventLimit": 4,
+      "budgetSegments": [
+        {
+          "turnId": "turn_50b18752dd364324b8dafd8650614466",
+          "activeMs": 10075,
+          "startedAt": 1792868648580,
+          "toolCalls": 5,
+          "deadlineAt": 1792868728580,
+          "modelSteps": 4,
+          "rootTurnId": "turn_50b18752dd364324b8dafd8650614466",
+          "attemptToken": null,
+          "parentTurnId": null,
+          "attemptBaseMs": 10075,
+          "progressStart": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "requestAttempts": 4,
+          "attemptStartedAt": null,
+          "transportRetries": 0,
+          "accountingVersion": 2
+        }
+      ],
+      "candidateScope": null,
+      "createdDraftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+      "classifications": [
+        {
+          "key": "意图",
+          "basis": "background",
+          "field": "metadata",
+          "quotas": [
+            {
+              "count": 2,
+              "value": "查物流"
+            }
+          ],
+          "definitions": [
+            {
+              "text": "查物流：用户询问已下单商品的运输状态、配送进度或预计送达时间。",
+              "value": "查物流"
+            }
+          ],
+          "allowedValues": [
+            "查物流"
+          ]
+        }
+      ],
+      "executionBudget": {
+        "activeMs": 10793,
+        "lastTurn": {
+          "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+          "elapsedMs": 718,
+          "toolCalls": 3,
+          "modelSteps": 0,
+          "requestAttempts": 0,
+          "transportRetries": 0
+        },
+        "toolCalls": 8,
+        "modelSteps": 4,
+        "requestAttempts": 4,
+        "transportRetries": 0
+      },
+      "executionPaused": false,
+      "processingScope": null,
+      "recoverySegment": {
+        "mode": "execute",
+        "turnId": "turn_5dea1309728e4e3c903ba3107f54c39e",
+        "revision": 2,
+        "rootTurnId": "turn_50b18752dd364324b8dafd8650614466",
+        "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+        "progressKey": "9d9088e26298ffe042d3d1d58c7f290e552a78b3456c8d70645a86dcb7a687e3",
+        "documentsKey": "1657d8af02e37574049070b4283d7f813b1ccd3fe5a0ce472a76e6ee63372947",
+        "parentTurnId": "turn_50b18752dd364324b8dafd8650614466",
+        "progressFacts": [
+          "cc82b7b021540d783e805dea47cbb449287a6822ea55d37171f1c62ac76d8b3a",
+          "e8a877c489d131e4797e5912fb277527ad1e678935505e7510393ddab7557c12",
+          "save:assistant:turn_50b18752dd364324b8dafd8650614466:e093161e4b2216f43c89f3a0a8b4bc0c24193c61a7d495f5ec6f9d9ad884c4b4"
+        ],
+        "attemptsBefore": 0,
+        "transportRetriesBefore": 0
+      },
+      "requirementSave": {
+        "key": "assistant:turn_50b18752dd364324b8dafd8650614466:e093161e4b2216f43c89f3a0a8b4bc0c24193c61a7d495f5ec6f9d9ad884c4b4",
+        "turnId": "turn_50b18752dd364324b8dafd8650614466",
+        "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+        "taskRevision": 2,
+        "requirementsKey": "76aeae4f296b781464cab4dbf057b94abdf7093363ee4ffa6d74fbff69b17f0b"
+      },
+      "boundaryQuestion": null,
+      "planningRecovery": null,
+      "selectionPreview": null,
+      "transportRecovery": null,
+      "backgroundEvidence": [
+        {
+          "sha256": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+          "textHash": "272658375c01e6fdf2cdc79cf29c7faac1b1e41091e74a1059c37dc99c69432f",
+          "documentId": "background_4bb8aa0d96154665bf07c3be6df57a0a",
+          "fragmentIndex": 1,
+          "extractorVersion": "background-text-v1"
+        }
+      ],
+      "overallTargetCount": 2,
+      "requirementProblem": null,
+      "selectedCandidates": null,
+      "taskContractVersion": 2,
+      "backgroundDefinitions": [
+        {
+          "key": "意图",
+          "field": "metadata",
+          "value": "查物流",
+          "reference": "definition:aac569df70f4cd180219c44c51d1ed338448cce3db5ec9c054fbc307ce2e24aa"
+        }
+      ],
+      "generationPreparation": {
+        "key": "assistant:turn_50b18752dd364324b8dafd8650614466:a70233da4367f868da3ef11a0f590f2ec5a0062030177e3c19370befaf7232ce",
+        "requirementsKey": "89d867c7c460bf9203d7eb219b9422733cb5f4e056d2b032a7a7f263abcba3ed"
+      },
+      "parameterRepairLimits": {
+        "plan_task": {
+          "used": 1,
+          "version": 2,
+          "identity": "6772d8b306b8ab110d85ef377919f075ba23fb0ba6e68d3db1b9215e76f513ca"
+        }
+      },
+      "parameterRepairStatus": {
+        "name": "plan_task",
+        "phase": "finished",
+        "scope": "call",
+        "intent": "tool",
+        "issues": [
+          {
+            "path": "/executionMode",
+            "keyword": "required"
+          },
+          {
+            "path": "/deliveries",
+            "keyword": "required"
+          },
+          {
+            "path": "/toolName",
+            "keyword": "additionalProperties"
+          },
+          {
+            "path": "/input",
+            "keyword": "additionalProperties"
+          }
+        ],
+        "turnId": "turn_50b18752dd364324b8dafd8650614466",
+        "outcome": "repaired",
+        "amendmentId": "turn_50b18752dd364324b8dafd8650614466",
+        "remainingMs": 69324
+      },
+      "planningClarification": null,
+      "planValidationRequired": null,
+      "planningCheckpointTurnId": null
+    },
+    "title": "查物流测试集",
+    "actor_id": "user_01ca4f48aa10492cabc15da73876264e",
+    "created_at": "2026-10-24T18:59:16.97803+00:00",
+    "project_id": "project_1a47dc016ee342d7b4419be45721a949",
+    "updated_at": "2026-10-24T19:04:46.377989+00:00",
+    "custom_title": null,
+    "task_revision": 2,
+    "content_revision": 1
+  },
+  "proposals": [
+    {
+      "id": "proposal_1131cfc335b94ea787a6e46d91ec6732",
+      "action": "processing",
+      "digest": "a11a6229f7c320ecd8d8f7584b323e35c27376bdf0b7fe4d3364fd56fa27befa",
+      "status": "succeeded",
+      "receipt": {
+        "receipt": {
+          "added": 2,
+          "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+          "adopted": 2,
+          "assetId": "asset_8a0931a4f97c4289bd012fa56d20f99b",
+          "draftId": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+          "removed": 0,
+          "updated": 0,
+          "fileName": "依据背景文档生成结果-973860ad.jsonl",
+          "revision": 1,
+          "savedRows": [
+            {
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "recordId": "draftrow_7ea6de0c3ddc4b40912c017b96d99061",
+              "resultId": "0:0"
+            },
+            {
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "recordId": "draftrow_0d325ebdc95e4970a8d6ef00e3906cf3",
+              "resultId": "0:1"
+            }
+          ],
+          "acceptanceId": "adoption_270dcb2cc7034f25a6ed6bce7bfe3b00",
+          "changedFields": 0,
+          "candidateOrigins": [
+            {
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "resultId": "0:0"
+            },
+            {
+              "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "resultId": "0:1"
+            }
+          ]
+        },
+        "replayed": false
+      },
+      "summary": {
+        "url": "/projects/project_1a47dc016ee342d7b4419be45721a949/processing?run=processing_d96860b242a34a8f8cee4f5a973860ad",
+        "count": 2,
+        "range": "task",
+        "title": "采用处理结果",
+        "target": "查物流测试集"
+      },
+      "turn_id": "turn_5dea1309728e4e3c903ba3107f54c39e",
+      "actor_id": "user_01ca4f48aa10492cabc15da73876264e",
+      "created_at": "2026-10-24T19:04:29.127758+00:00",
+      "expires_at": "2026-10-24T19:24:29.127758+00:00",
+      "parameters": {
+        "runId": "processing_d96860b242a34a8f8cee4f5a973860ad",
+        "target": {
+          "id": "collabdraft_6d98c89f9be5018e592a03410dd83126db13122af802f40ae27e9c58f85542cd",
+          "kind": "draft",
+          "expectedRevision": 0
+        },
+        "resultIds": [
+          "0:0",
+          "0:1"
+        ],
+        "resultsGuard": {
+          "states": [
+            {
+              "id": "processing_d96860b242a34a8f8cee4f5a973860ad",
+              "revision": 1
+            }
+          ],
+          "excludedGroups": []
+        }
+      },
+      "project_id": "project_1a47dc016ee342d7b4419be45721a949",
+      "session_id": "conversation_ee49a40d19d945ec84ac55729c7c6e5b",
+      "lease_token": "confirmation_33dd5bf749234e798c55b0e5f666c13e",
+      "lease_until": null,
+      "task_revision": 2
+    }
+  ]
+}

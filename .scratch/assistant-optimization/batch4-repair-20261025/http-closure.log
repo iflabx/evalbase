@@ -1,0 +1,235 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/app[39m
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary
+[22m[39m{"correlation_id":"req-1","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":108,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary
+[22m[39m{"correlation_id":"req-2","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":73,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary
+[22m[39m{"correlation_id":"req-3","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":16,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary
+[22m[39m{"correlation_id":"req-4","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mbounds repeated planning clarification failures and still permits genuine ambiguity
+[22m[39m{"correlation_id":"req-5","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":453,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mbounds repeated planning clarification failures and still permits genuine ambiguity
+[22m[39m{"correlation_id":"req-6","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_4797b366a5eb43ca883acc16d2be99dd","stage":"http:response","duration_ms":44,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mbounds repeated planning clarification failures and still permits genuine ambiguity
+[22m[39m{"correlation_id":"req-7","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_4797b366a5eb43ca883acc16d2be99dd","stage":"http:response","duration_ms":27,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mbounds repeated planning clarification failures and still permits genuine ambiguity
+[22m[39m{"correlation_id":"req-g","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mbounds repeated planning clarification failures and still permits genuine ambiguity
+[22m[39m{"correlation_id":"req-h","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b6edec1d612a489cb459dfd20b5c6596","stage":"http:response","duration_ms":21,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mbounds repeated planning clarification failures and still permits genuine ambiguity
+[22m[39m{"correlation_id":"req-i","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b6edec1d612a489cb459dfd20b5c6596","stage":"http:response","duration_ms":17,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v7 correction preserves a real business clarification: 帮我设计测试集，数量等我确认后再定。先问清楚。
+[22m[39m{"correlation_id":"req-o","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v7 correction preserves a real business clarification: 帮我设计测试集，数量等我确认后再定。先问清楚。
+[22m[39m{"correlation_id":"req-p","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_35c55553c9f24aa5937a57100ded3eeb","stage":"http:response","duration_ms":17,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v7 correction preserves a real business clarification: 帮我设计测试集，数量等我确认后再定。先问清楚。
+[22m[39m{"correlation_id":"req-q","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_35c55553c9f24aa5937a57100ded3eeb","stage":"http:response","duration_ms":16,"error_code":null,"status_code":202}
+
+[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[2m[90m-[39m[22m[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v7 correction preserves a real business clarification: 创建两个测试集，各2条；风险类还是正常类我没决定，先问清楚。
+[22m[39m{"correlation_id":"req-x","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":4,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v7 correction preserves a real business clarification: 创建两个测试集，各2条；风险类还是正常类我没决定，先问清楚。
+[22m[39m{"correlation_id":"req-y","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_653f6d9b54e246ab9f15baaf4ea9f514","stage":"http:response","duration_ms":13,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v7 correction preserves a real business clarification: 创建两个测试集，各2条；风险类还是正常类我没决定，先问清楚。
+[22m[39m{"correlation_id":"req-z","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_653f6d9b54e246ab9f15baaf4ea9f514","stage":"http:response","duration_ms":15,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK keeps complete creation through error-wrapper correction: plan
+[22m[39m{"correlation_id":"req-16","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":4,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK keeps complete creation through error-wrapper correction: plan
+[22m[39m{"correlation_id":"req-17","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_8cd347bec0fd4ce8b02f3ebc69f68488","stage":"http:response","duration_ms":16,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK keeps complete creation through error-wrapper correction: plan
+[22m[39m{"correlation_id":"req-18","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_8cd347bec0fd4ce8b02f3ebc69f68488","stage":"http:response","duration_ms":20,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK keeps complete creation through error-wrapper correction: execute
+[22m[39m{"correlation_id":"req-1h","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK keeps complete creation through error-wrapper correction: execute
+[22m[39m{"correlation_id":"req-1i","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_a4799b8b85d1442d8a1f4ca058b3dd2d","stage":"http:response","duration_ms":20,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK keeps complete creation through error-wrapper correction: execute
+[22m[39m{"correlation_id":"req-1j","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_a4799b8b85d1442d8a1f4ca058b3dd2d","stage":"http:response","duration_ms":22,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: schema
+[22m[39m{"correlation_id":"req-1z","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: schema
+[22m[39m{"correlation_id":"req-20","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_62362b1b49094e55886bf9ed703cf73c","stage":"http:response","duration_ms":20,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: schema
+[22m[39m{"correlation_id":"req-21","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_62362b1b49094e55886bf9ed703cf73c","stage":"http:response","duration_ms":15,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: business
+[22m[39m{"correlation_id":"req-2a","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":3,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: business
+[22m[39m{"correlation_id":"req-2b","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_3804e5d7deef47b8b491273e06333612","stage":"http:response","duration_ms":13,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: business
+[22m[39m{"correlation_id":"req-2c","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_3804e5d7deef47b8b491273e06333612","stage":"http:response","duration_ms":13,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: reference
+[22m[39m{"correlation_id":"req-2l","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: reference
+[22m[39m{"correlation_id":"req-2m","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_c48442d2fe4345898131038aa1b872fb","stage":"http:response","duration_ms":17,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: reference
+[22m[39m{"correlation_id":"req-2n","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_c48442d2fe4345898131038aa1b872fb","stage":"http:response","duration_ms":15,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: scenario
+[22m[39m{"correlation_id":"req-2w","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: scenario
+[22m[39m{"correlation_id":"req-2x","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_c0e63e61dc3e42fda2caf4e720e23737","stage":"http:response","duration_ms":22,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: scenario
+[22m[39m{"correlation_id":"req-2y","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_c0e63e61dc3e42fda2caf4e720e23737","stage":"http:response","duration_ms":16,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: omission
+[22m[39m{"correlation_id":"req-37","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":4,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: omission
+[22m[39m{"correlation_id":"req-38","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_34905011aa5241459df4a0acde238f20","stage":"http:response","duration_ms":15,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 real SDK persists the final rejected input and current issues: omission
+[22m[39m{"correlation_id":"req-39","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_34905011aa5241459df4a0acde238f20","stage":"http:response","duration_ms":13,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 initial creation can read the second background before proposing deliveries
+[22m[39m{"correlation_id":"req-3h","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":4,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 initial creation can read the second background before proposing deliveries
+[22m[39m{"correlation_id":"req-3i","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_e4293017b43049a4b1c9163c45909e8c","stage":"http:response","duration_ms":14,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 initial creation can read the second background before proposing deliveries
+[22m[39m{"correlation_id":"req-3j","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_e4293017b43049a4b1c9163c45909e8c","stage":"http:response","duration_ms":13,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 initial creation can read the second background before proposing deliveries
+[22m[39m{"correlation_id":"req-3k","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_e4293017b43049a4b1c9163c45909e8c","stage":"http:response","duration_ms":27,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget
+[22m[39m{"correlation_id":"req-3s","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":3,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget
+[22m[39m{"correlation_id":"req-3t","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b411f38c65784416a38b2041579a7ed6","stage":"http:response","duration_ms":12,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget
+[22m[39m{"correlation_id":"req-3u","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b411f38c65784416a38b2041579a7ed6","stage":"http:response","duration_ms":21,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget
+[22m[39m{"correlation_id":"req-41","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b411f38c65784416a38b2041579a7ed6","stage":"http:response","duration_ms":37,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget
+[22m[39m{"correlation_id":"req-46","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b411f38c65784416a38b2041579a7ed6","stage":"http:response","duration_ms":20,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB3v8 pause-query-resume restores meaningful proposal and latest malformed attempt without resetting budget
+[22m[39m{"correlation_id":"req-4b","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_b411f38c65784416a38b2041579a7ed6","stage":"http:response","duration_ms":20,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 create declaration and instructions agree after evidence; redundant equal control is lossless
+[22m[39m{"correlation_id":"req-4h","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 create declaration and instructions agree after evidence; redundant equal control is lossless
+[22m[39m{"correlation_id":"req-4i","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_8d45463d2c8f45a0ace6bf2fef968343","stage":"http:response","duration_ms":26,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 create declaration and instructions agree after evidence; redundant equal control is lossless
+[22m[39m{"correlation_id":"req-4j","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_8d45463d2c8f45a0ace6bf2fef968343","stage":"http:response","duration_ms":22,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 malformed correction keeps the full proposal and returns through the same SDK contract
+[22m[39m{"correlation_id":"req-4p","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":3,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 malformed correction keeps the full proposal and returns through the same SDK contract
+[22m[39m{"correlation_id":"req-4q","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_e82aabc93f0343d7bb470f1d79622929","stage":"http:response","duration_ms":43,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 malformed correction keeps the full proposal and returns through the same SDK contract
+[22m[39m{"correlation_id":"req-4r","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_e82aabc93f0343d7bb470f1d79622929","stage":"http:response","duration_ms":30,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-50","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-51","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_6d5181231f6d45acba0511e1c3774779","stage":"http:response","duration_ms":20,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-52","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_6d5181231f6d45acba0511e1c3774779","stage":"http:response","duration_ms":15,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-5k","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"proposal_32449eca023540efb82eb4b96b4b8978","stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-5l","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_6d5181231f6d45acba0511e1c3774779","stage":"http:response","duration_ms":48,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-5z","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"proposal_ea7c1e0e54de44eb9c373d21869818e9","stage":"http:response","duration_ms":159,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 rejected candidates can be renamed and saved without regeneration or rewrite
+[22m[39m{"correlation_id":"req-60","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"proposal_ea7c1e0e54de44eb9c373d21869818e9","stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 ordinary continuation refuses exhausted repair before another model request
+[22m[39m{"correlation_id":"req-68","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 ordinary continuation refuses exhausted repair before another model request
+[22m[39m{"correlation_id":"req-69","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_4cb6bbad9b054ed2a364297005005db0","stage":"http:response","duration_ms":29,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 ordinary continuation refuses exhausted repair before another model request
+[22m[39m{"correlation_id":"req-6a","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_4cb6bbad9b054ed2a364297005005db0","stage":"http:response","duration_ms":20,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 ordinary continuation refuses exhausted repair before another model request
+[22m[39m{"correlation_id":"req-6k","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_4cb6bbad9b054ed2a364297005005db0","stage":"http:response","duration_ms":39,"error_code":"assistant_retry_unavailable","status_code":409}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 saving the second delivery never adopts the first delivery into the new target
+[22m[39m{"correlation_id":"req-6l","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 saving the second delivery never adopts the first delivery into the new target
+[22m[39m{"correlation_id":"req-6m","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_a1418006f5a84e4a98ef070e27494f2d","stage":"http:response","duration_ms":20,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 saving the second delivery never adopts the first delivery into the new target
+[22m[39m{"correlation_id":"req-6n","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_a1418006f5a84e4a98ef070e27494f2d","stage":"http:response","duration_ms":15,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 saving the second delivery never adopts the first delivery into the new target
+[22m[39m{"correlation_id":"req-7a","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"proposal_8940890040d948fd8b0d8bffbb95780d","stage":"http:response","duration_ms":116,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 saving the second delivery never adopts the first delivery into the new target
+[22m[39m{"correlation_id":"req-7x","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_a1418006f5a84e4a98ef070e27494f2d","stage":"http:response","duration_ms":54,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 saving the second delivery never adopts the first delivery into the new target
+[22m[39m{"correlation_id":"req-86","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"proposal_e6d3aca22cd24451bd5c23954cdd077d","stage":"http:response","duration_ms":123,"error_code":null,"status_code":200}
+
+[33m[39m[32m·[39m[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 an unknown save destination is clarified and its answer prepares the same candidates
+[22m[39m{"correlation_id":"req-8a","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 an unknown save destination is clarified and its answer prepares the same candidates
+[22m[39m{"correlation_id":"req-8b","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_ed4f05cc819349ed97cc3b67271758e8","stage":"http:response","duration_ms":26,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 an unknown save destination is clarified and its answer prepares the same candidates
+[22m[39m{"correlation_id":"req-8c","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_ed4f05cc819349ed97cc3b67271758e8","stage":"http:response","duration_ms":26,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 an unknown save destination is clarified and its answer prepares the same candidates
+[22m[39m{"correlation_id":"req-90","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_ed4f05cc819349ed97cc3b67271758e8","stage":"http:response","duration_ms":46,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/assistant-intent.test.ts[2m > [22m[2mOPT42 per-turn intent public boundary[2m > [22m[2mB4 an unknown save destination is clarified and its answer prepares the same candidates
+[22m[39m{"correlation_id":"req-96","job_id":null,"project_id":"project_0c9111e1b9cb4690bdb3b9954fd0eab7","object_id":"conversation_ed4f05cc819349ed97cc3b67271758e8","stage":"http:response","duration_ms":42,"error_code":null,"status_code":202}
+
+[33m[39m[32m·[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m18 passed[39m[22m[2m | [22m[33m136 skipped[39m[90m (154)[39m
+[2m   Start at [22m 18:53:48
+[2m   Duration [22m 50.02s[2m (transform 2.61s, setup 40ms, import 3.78s, tests 46.00s, environment 0ms)[22m
+
