@@ -19,7 +19,7 @@ import {
 } from "./recovery.js";
 import type { Database } from "../db/pool.js";
 import { opaqueId } from "../server/support.js";
-import { sha256 } from "../package/contract.js";
+import { canonicalJson, sha256 } from "../package/contract.js";
 import { getProcessingRun } from "../processing/store.js";
 import { processingRecovery } from "../processing/recovery.js";
 import { reconcileExecutionConfirmations, hasNoEffect } from "./receipts.js";
@@ -405,7 +405,7 @@ export async function controlAssistantTask(
   db: Database,
   scope: AssistantScope,
   id: string,
-  action: "stop" | "retry" | "delete" | "grant",
+  action: "stop" | "pause" | "retry" | "delete" | "grant",
   attempt = 0,
   expected?: {
     revision: number;
@@ -414,7 +414,31 @@ export async function controlAssistantTask(
     purpose?: "continue" | "repair";
     key?: string;
   },
-): Promise<{ runId: string | undefined }> {
+  message?: { key: unknown; text: unknown; taskId: unknown },
+): Promise<{
+  runId: string | undefined;
+  turn?: Record<string, any>;
+  replayed?: boolean;
+}> {
+  if (
+    action === "pause" &&
+    (!message ||
+      typeof message.key !== "string" ||
+      !message.key.trim() ||
+      message.key.length > 200 ||
+      typeof message.text !== "string" ||
+      !message.text.trim() ||
+      message.text.length > 4000 ||
+      typeof message.taskId !== "string" ||
+      !message.taskId ||
+      message.taskId.length > 250)
+  )
+    throw new AssistantError(422, "assistant_message_invalid");
+  const controlHash = message
+    ? sha256(
+        canonicalJson({ action, text: message.text, taskId: message.taskId }),
+      )
+    : undefined;
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -448,6 +472,22 @@ export async function controlAssistantTask(
         : [];
     const job = jobs.find((item) => item.run_id === observed.task?.runId);
     const session = await sessionRow(client, scope, id, true);
+    if (message) {
+      const prior = (
+        await client.query(
+          "SELECT * FROM assistant_turn WHERE session_id=$1 AND operation_key=$2",
+          [id, message.key],
+        )
+      ).rows[0];
+      if (prior) {
+        if (prior.request_hash !== controlHash)
+          throw new AssistantError(409, "idempotency_conflict");
+        await client.query("COMMIT");
+        return { runId: session.task?.runId, turn: prior, replayed: true };
+      }
+      if (taskIdentity(session) !== message.taskId)
+        throw new AssistantError(409, "assistant_task_changed");
+    }
     if (expected && Number(session.task_revision) !== expected.revision)
       throw new AssistantError(409, "assistant_plan_revalidation_required");
     if (
@@ -456,7 +496,8 @@ export async function controlAssistantTask(
         JSON.stringify(observed.task?.runIds ?? [])
     )
       throw new AssistantError(409, "assistant_task_changed");
-    if (action === "stop" || action === "delete") {
+    let controlTurn: Record<string, any> | undefined;
+    if (action === "stop" || action === "pause" || action === "delete") {
       if (session.task?.turnBudget?.turnId)
         await closeBudget(client, session, session.task.turnBudget.turnId);
       if (jobs.length)
@@ -465,8 +506,21 @@ export async function controlAssistantTask(
           [jobs.map((item) => item.id)],
         );
       await client.query(
-        'UPDATE assistant_session SET task_revision=task_revision+1,task=task||\'{"stage":"stopped"}\'::jsonb WHERE id=$1',
-        [id],
+        "UPDATE assistant_session SET task_revision=task_revision+1,task=task||$2::jsonb,updated_at=now() WHERE id=$1",
+        [
+          id,
+          JSON.stringify(
+            action === "pause"
+              ? {
+                  stage: "waiting_input",
+                  executionPaused: true,
+                  nextAction: null,
+                  error: null,
+                  recovery: null,
+                }
+              : { stage: "stopped" },
+          ),
+        ],
       );
       await client.query(
         "UPDATE assistant_turn SET status='interrupted',execution_token=NULL,error_code='assistant_stopped' WHERE session_id=$1 AND status IN('queued','running')",
@@ -476,6 +530,46 @@ export async function controlAssistantTask(
         "UPDATE assistant_proposal SET status='invalid' WHERE session_id=$1 AND status='pending'",
         [id],
       );
+      if (action === "pause" && message) {
+        controlTurn = (
+          await client.query(
+            "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,assistant_text,status,expires_at,task_revision,task_id,requires_write,dependencies) VALUES($1,$2,$3,$4,$5,$6,'succeeded',now(),$7,$8,true,$9) RETURNING *",
+            [
+              opaqueId("turn"),
+              id,
+              message.key,
+              controlHash,
+              message.text,
+              "已暂停后续执行，已保存成果保留。在途处理正在停止；继续时会先核对已有结果。",
+              Number(session.task_revision) + 1,
+              taskIdentity(session),
+              JSON.stringify(
+                (
+                  await client.query(
+                    "SELECT dependencies FROM assistant_turn WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1",
+                    [id],
+                  )
+                ).rows[0]?.dependencies ?? [],
+              ),
+            ],
+          )
+        ).rows[0];
+        await client.query(
+          "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+          [
+            id,
+            JSON.stringify({
+              turnControl: {
+                mode: "pause",
+                source: "ui",
+                turnId: controlTurn!.id,
+                taskRevision: Number(session.task_revision) + 1,
+                updateSaved: true,
+              },
+            }),
+          ],
+        );
+      }
       if (action === "delete") {
         await client.query(
           "DELETE FROM assistant_proposal WHERE session_id=$1",
@@ -636,7 +730,10 @@ export async function controlAssistantTask(
       await queueRecovery(client, session, turn, decision);
     }
     await client.query("COMMIT");
-    return { runId: session.task?.runId };
+    return {
+      runId: session.task?.runId,
+      ...(controlTurn ? { turn: controlTurn } : {}),
+    };
   } catch (error) {
     await client.query("ROLLBACK");
     if (
@@ -648,7 +745,15 @@ export async function controlAssistantTask(
           error.code === "40P01")) &&
       attempt < 2
     ) {
-      return controlAssistantTask(db, scope, id, action, attempt + 1, expected);
+      return controlAssistantTask(
+        db,
+        scope,
+        id,
+        action,
+        attempt + 1,
+        expected,
+        message,
+      );
     }
     throw error;
   } finally {

@@ -20,10 +20,12 @@ import { canonicalJson, sha256 } from "../package/contract.js";
 import { isPlainObject, opaqueId } from "../server/support.js";
 import {
   processingSourceRows,
+  previewProcessingInput,
   processingSourceAvailable,
 } from "../processing/store.js";
 import { processingAcceptanceHash } from "../processing/accept.js";
 import {
+  planSource,
   advancePlan,
   planRequirementsKey,
   planVerificationCurrent,
@@ -860,10 +862,15 @@ export async function startTurn(
   )
     throw new AssistantError(422, "assistant_message_invalid");
   let page: Dependency | undefined;
+  let inputSelection:
+    | { recordIds: string[]; sourceRevision: string; total?: number }
+    | undefined;
   if (pageContext !== undefined) {
     if (
       !isPlainObject(pageContext) ||
-      Object.keys(pageContext).some((k) => !["kind", "id"].includes(k)) ||
+      Object.keys(pageContext).some(
+        (k) => !["kind", "id", "inputSelection"].includes(k),
+      ) ||
       !["asset", "draft", "version", "testSet"].includes(
         String(pageContext.kind),
       ) ||
@@ -872,6 +879,28 @@ export async function startTurn(
       pageContext.id.length > 250
     )
       throw new AssistantError(422, "assistant_message_invalid");
+    if (pageContext.inputSelection !== undefined) {
+      const selection = pageContext.inputSelection;
+      if (
+        pageContext.kind === "testSet" ||
+        !isPlainObject(selection) ||
+        Object.keys(selection).some(
+          (k) => !["recordIds", "sourceRevision", "total"].includes(k),
+        ) ||
+        !Array.isArray(selection.recordIds) ||
+        !selection.recordIds.length ||
+        selection.recordIds.length > 10000 ||
+        selection.recordIds.some(
+          (v) => typeof v !== "string" || !v || v.length > 250,
+        ) ||
+        new Set(selection.recordIds).size !== selection.recordIds.length ||
+        typeof selection.sourceRevision !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(selection.sourceRevision)
+      )
+        throw new AssistantError(422, "assistant_input_selection_invalid");
+      inputSelection = selection as typeof inputSelection;
+      await assistantAccess(db, scope, true);
+    }
     page = {
       kind: pageContext.kind as Dependency["kind"],
       id: pageContext.id,
@@ -943,12 +972,15 @@ export async function startTurn(
               }),
             )
           : sha256(text);
+  const contextRequestHash = inputSelection
+    ? sha256(canonicalJson({ legacyRequestHash, inputSelection }))
+    : legacyRequestHash;
   const requestHash =
     expectedTaskRevision === undefined
-      ? legacyRequestHash
+      ? contextRequestHash
       : sha256(
           canonicalJson({
-            legacyRequestHash,
+            legacyRequestHash: contextRequestHash,
             expectedTaskRevision,
             ...(operation ? { operation } : {}),
             ...(restoreTaskId !== undefined ? { restoreTaskId } : {}),
@@ -988,6 +1020,40 @@ export async function startTurn(
       selectionError = error;
     } // Receipt replay still wins over a changed live collection.
   }
+  let inputScope: Record<string, any> | undefined;
+  let inputScopeError: unknown;
+  if (inputSelection && page) {
+    try {
+      const source =
+        page.kind === "asset"
+          ? { kind: "assets", assetIds: [page.id] }
+          : { kind: page.kind, id: page.id };
+      const data = await previewProcessingInput(
+        db,
+        scope,
+        { source, limit: 10000 },
+        "write",
+        true,
+      );
+      if (data.sourceRevision !== inputSelection.sourceRevision)
+        throw new AssistantError(409, "assistant_input_selection_changed");
+      const wanted = new Set(inputSelection.recordIds);
+      const records = data.records.filter((r) => wanted.has(r.id));
+      if (records.length !== wanted.size)
+        throw new AssistantError(409, "assistant_input_selection_changed");
+      inputScope = {
+        source,
+        recordIds: inputSelection.recordIds,
+        hash: sha256(
+          canonicalJson({ records, revision: data.revision ?? null }),
+        ),
+        origin: "ui",
+        sourceRevision: inputSelection.sourceRevision,
+      };
+    } catch (error) {
+      inputScopeError = error;
+    }
+  }
   const observedRevision = Number(
     (await sessionRow(db, scope, sessionId)).task_revision,
   );
@@ -1014,6 +1080,7 @@ export async function startTurn(
       await client.query("COMMIT");
       return { turn: prior, replayed: true };
     }
+    if (inputScopeError) throw inputScopeError;
     const recoveryReceipt = session.task?.recoveryRequests?.[sha256(key)];
     if (recoveryReceipt) {
       if (recoveryReceipt.requestHash !== requestHash)
@@ -1057,7 +1124,10 @@ export async function startTurn(
       (candidateSelection !== undefined || operation !== undefined)
     )
       throw new AssistantError(409, "assistant_task_boundary_required");
-    if (boundary.switched && !/当前|这个来源/u.test(text)) page = undefined;
+    if (boundary.switched && !/当前|这个来源/u.test(text)) {
+      page = undefined;
+      inputScope = undefined;
+    }
     const effectiveText = boundary.request;
     if (boundary.question) {
       const task = {
@@ -1333,6 +1403,25 @@ export async function startTurn(
             : {}),
           ...(page ? { target: { kind: page.kind, id: page.id } } : {}),
         };
+    if (inputScope) {
+      if (
+        continuing &&
+        task.uiInputScope &&
+        canonicalJson(task.uiInputScope) !== canonicalJson(inputScope)
+      )
+        throw new AssistantError(409, "assistant_input_selection_changed");
+      if (
+        continuing &&
+        task.target &&
+        canonicalJson(
+          planSource(task.processingScope?.source ?? task.target),
+        ) !== canonicalJson(planSource(inputScope.source))
+      )
+        throw new AssistantError(409, "assistant_task_boundary_required");
+      task.uiInputScope = inputScope;
+      task.processingScope = inputScope;
+      task.target = inputScope.source;
+    }
     task.taskId = taskIdentity(session);
     task.taskContractVersion = 2;
     if (!continuing)

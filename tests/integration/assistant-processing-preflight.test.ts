@@ -1,3 +1,4 @@
+import { revisePlan, planRequirementsKey } from "../../src/assistant/plan.js";
 import { canonicalJson, sha256 } from "../../src/package/contract.js";
 import { selectRecords } from "../../src/selection/index.js";
 import { vi } from "vitest";
@@ -23,6 +24,7 @@ type Call = {
   rawInput?: string;
   finishReason?: string;
   text?: string;
+  beforeReply?: () => Promise<void>;
 };
 let script: Call[] = [];
 let observed: any[] = [];
@@ -50,6 +52,7 @@ const model = createServer(async (request, response) => {
       name: "plan_task",
       input: { control: { mode: "query", explanation: prose } },
     };
+  if (call?.beforeReply) await call.beforeReply();
   response.writeHead(200, { "content-type": "application/json" });
   response.end(
     JSON.stringify({
@@ -584,7 +587,10 @@ describe("OPT47 unified processing public boundary", () => {
         }
       } else {
         const submitted = successes(state, "submit_processing").at(-1);
-        expect(submitted, JSON.stringify(state.turns.at(-1))).toBeDefined();
+        expect(
+          submitted?.result?.runId,
+          JSON.stringify(state.turns.at(-1)),
+        ).toBeTruthy();
         expect(submitted.result.inputCount).toBe(2);
         expect(submitted.input.outputCount).toBeUndefined();
         expect(submitted.input.instructions ?? "").toBe("");
@@ -1508,7 +1514,10 @@ describe("OPT47 unified processing public boundary", () => {
       { context: { kind: "draft", id: draftId } },
     );
     const submitted = successes(state, "submit_processing").at(-1);
-    expect(submitted, JSON.stringify(state.turns.at(-1))).toBeDefined();
+    expect(
+      submitted?.result?.runId,
+      JSON.stringify(state.turns.at(-1)),
+    ).toBeTruthy();
     const run = (
       await dbQuery("SELECT source FROM processing_run WHERE id=$1", [
         submitted.result.runId,
@@ -1812,7 +1821,10 @@ describe("OPT47 unified processing public boundary", () => {
       "succeeded",
     );
     const submitted = successes(state, "submit_processing").at(-1);
-    expect(submitted, JSON.stringify(state.turns.at(-1))).toBeDefined();
+    expect(
+      submitted?.result?.runId,
+      JSON.stringify(state.turns.at(-1)),
+    ).toBeTruthy();
     const run = (
       await dbQuery("SELECT source FROM processing_run WHERE id=$1", [
         submitted.result.runId,
@@ -1840,11 +1852,249 @@ describe("OPT47 unified processing public boundary", () => {
       { context: { kind: "draft", id: draftId } },
     );
     const submitted = successes(state, "submit_processing").at(-1);
-    expect(submitted, JSON.stringify(state.turns.at(-1))).toBeDefined();
+    expect(
+      submitted?.result?.runId,
+      JSON.stringify(state.turns.at(-1)),
+    ).toBeTruthy();
     expect(submitted.result.inputCount).toBe(2);
     expect(submitted.input.selection).toEqual({
       method: "all",
       conditions: [],
     });
+  });
+
+  it.each([
+    "全部2条整理问题首尾空白，期望输出和Metadata保持原样",
+    "全部2条去掉问题前后空格，保留换行，其他不改",
+  ])("CU10 SDK compiles explicit whitespace semantics: %s", async (message) => {
+    const assetId = await file("CU10" + randomUUID() + ".jsonl"),
+      id = await newSession();
+    const state = await send(
+      id,
+      message,
+      [
+        decision("execute"),
+        {
+          name: "submit_processing",
+          input: {
+            source: { kind: "assets", assetIds: [assetId] },
+            operation: "clean",
+            allRecords: true,
+            instructions:
+              "清除前后空白，但不要修改语义、标点、换行，保留所有答案、分类和元数据",
+          },
+        },
+      ],
+      { context: { kind: "asset", id: assetId } },
+    );
+    const submitted = successes(state, "submit_processing").at(-1);
+    expect(
+      submitted?.result?.runId,
+      JSON.stringify(state.turns.at(-1)),
+    ).toBeTruthy();
+    await dbQuery(
+      "UPDATE assistant_session SET task=task||'{\"executionPaused\":true}'::jsonb WHERE id=$1",
+      [id],
+    );
+    const result = await finishClean(submitted.result.runId);
+    expect(result.records).toHaveLength(2);
+    for (const record of result.records) {
+      expect(record.result.question).toBe(record.result.question.trim());
+      expect(record.result.expectedOutput).toBe("  原标签  ");
+    }
+    expect(
+      state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
+    ).toHaveLength(0);
+  });
+  it("CU13 SDK carries selected rows and rejects a widened repair", async () => {
+    const draftId = await draft("CU13", 4),
+      id = await newSession();
+    const preview = (
+      await app.inject({
+        method: "POST",
+        url: "/api/projects/" + projectId + "/processing-inputs",
+        headers,
+        payload: { source: { kind: "draft", id: draftId }, limit: 100 },
+      })
+    ).json();
+    expect(preview.records, JSON.stringify(preview)).toHaveLength(4);
+    const recordIds = preview.records.slice(0, 2).map((r: any) => r.id);
+    const state = await send(
+      id,
+      "这两条整理一下前后空格，其他别动",
+      [
+        decision("execute"),
+        { name: "submit_processing", input: { operation: "clean" } },
+      ],
+      {
+        context: {
+          kind: "draft",
+          id: draftId,
+          inputSelection: {
+            recordIds,
+            sourceRevision: preview.sourceRevision,
+            total: 4,
+          },
+        },
+      },
+    );
+    const submitted = successes(state, "submit_processing").at(-1);
+    expect(
+      submitted?.result?.runId,
+      JSON.stringify(state.turns.at(-1)),
+    ).toBeTruthy();
+    expect(submitted.result.inputCount).toBe(2);
+    const stored = (
+      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    expect(stored.uiInputScope.recordIds).toEqual(recordIds);
+    const rebound = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        message: "现在怎么样了",
+        context: {
+          kind: "draft",
+          id: draftId,
+          inputSelection: {
+            recordIds: preview.records.map((r: any) => r.id),
+            sourceRevision: preview.sourceRevision,
+          },
+        },
+      },
+    });
+    expect(rebound.statusCode, rebound.body).toBe(409);
+    expect(
+      (await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id]))
+        .rows[0].task.uiInputScope.recordIds,
+    ).toEqual(recordIds);
+    await dbQuery(
+      "UPDATE assistant_session SET task=task||'{\"executionPaused\":true}'::jsonb WHERE id=$1",
+      [id],
+    );
+    const result = await finishClean(submitted.result.runId);
+    expect(result.records).toHaveLength(2);
+    const invalid = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + (await newSession()) + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: {
+        message: "清洗",
+        context: {
+          kind: "draft",
+          id: draftId,
+          inputSelection: {
+            recordIds: ["invented"],
+            sourceRevision: preview.sourceRevision,
+          },
+        },
+      },
+    });
+    expect(invalid.statusCode).toBe(409);
+  });
+  it("CU15 pause interrupts an in-flight SDK request, replays safely and fences its late response", async () => {
+    const id = await newSession();
+    const seeded: any = {
+      goal: "建立两条用例的草稿",
+      title: "暂停恢复",
+      requirements: ["保持原意"],
+      targetCount: 2,
+      stage: "inspecting",
+      executionPaused: false,
+      autoCount: 0,
+      autoEventLimit: 12,
+    };
+    seeded.executionPlan = revisePlan(
+      undefined,
+      {
+        executionMode: "execute",
+        steps: [
+          {
+            title: "建立草稿",
+            action: "create_draft",
+            input: { name: "暂停恢复草稿", purpose: "隔离测试" },
+          },
+        ],
+      },
+      0,
+      undefined,
+      planRequirementsKey(seeded),
+    );
+    await dbQuery("UPDATE assistant_session SET task=$2 WHERE id=$1", [
+      id,
+      seeded,
+    ]);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    script = [
+      {
+        ...decision("execute"),
+        beforeReply: async () => {
+          entered = true;
+          await held;
+        },
+      },
+    ];
+    const start = await app.inject({
+      method: "POST",
+      url: base() + "/sessions/" + id + "/turns",
+      headers: { ...headers, "idempotency-key": randomUUID() },
+      payload: { message: "执行方案" },
+    });
+    expect(start.statusCode, start.body).toBe(202);
+    try {
+      await expect.poll(() => entered, { timeout: 10000 }).toBe(true);
+      const before = await read(id),
+        key = randomUUID(),
+        payload = { message: "先停一下。", expectedTaskId: before.task.taskId };
+      const pause = () =>
+        app.inject({
+          method: "POST",
+          url: base() + "/sessions/" + id + "/turns",
+          headers: { ...headers, "idempotency-key": key },
+          payload,
+        });
+      const stopped = await pause();
+      expect(stopped.statusCode, stopped.body).toBe(200);
+      const repeated = await pause();
+      expect(repeated.statusCode).toBe(200);
+      expect(repeated.json().turnId).toBe(stopped.json().turnId);
+      expect((await read(id)).task.executionPaused).toBe(true);
+      expect(
+        (await read(id)).turns.find((t: any) => t.id === start.json().turnId)
+          .status,
+      ).toBe("interrupted");
+      release();
+      const queried = await send(id, "现在怎么样了", [decision("query")]);
+      expect(queried.task.executionPaused).toBe(true);
+      expect(
+        queried.turns.filter((t: any) => t.userText === "先停一下。"),
+      ).toHaveLength(1);
+      const stale = await app.inject({
+        method: "POST",
+        url: base() + "/sessions/" + id + "/turns",
+        headers: { ...headers, "idempotency-key": randomUUID() },
+        payload: { message: "先停一下", expectedTaskId: "wrong-task" },
+      });
+      expect(stale.statusCode).toBe(409);
+      const beforeResume = await effects();
+      const resumed = await send(id, "继续", [
+        decision("execute"),
+        { name: "plan_task", input: { executionMode: "execute" } },
+      ]);
+      expect(
+        resumed.turns.at(-1).status,
+        JSON.stringify(resumed.turns.at(-1)),
+      ).toBe("succeeded");
+      expect((await effects()).drafts).toBe(beforeResume.drafts + 1);
+      expect(resumed.task.taskId).toBe(before.task.taskId);
+      expect(resumed.task.executionPaused).toBe(false);
+    } finally {
+      release();
+    }
   });
 });

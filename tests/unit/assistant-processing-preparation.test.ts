@@ -870,3 +870,54 @@ it("OPT50 repeated candidate references may deduplicate but never add another re
     ),
   ).toEqual([]);
 });
+
+it.each([
+  "只去掉问题开头和结尾的空白，换行和其他内容全部保持原样。",
+  "只整理这份文件全部两条的首尾空白，其他内容不改。",
+])(
+  "CU10 compiles user whitespace policy independent of model wording: %s",
+  (request) => {
+    const result = prepare(
+      "submit_processing",
+      {
+        operation: "clean",
+        recordIds: ["r"],
+        instructions:
+          "仅删除 question 开头和结尾的空白字符；保留原有换行、连续空白及其他全部内容，不修改 expectedOutput 或 metadata。",
+      },
+      { request },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.input.instructions).toBe("");
+      expect(result.input.cleanWhitespace).toBe(
+        request.includes("换行") ? "preserve_newlines" : "trim_edges",
+      );
+    }
+  },
+);
+
+it.each(["只删除问题开头的空白，保留结尾空格", "去掉问题内部的空格"])(
+  "CU10 never broadens unsupported whitespace instructions: %s",
+  (request) => {
+    const r = prepare(
+      "submit_processing",
+      { operation: "clean", recordIds: ["r"], instructions: request },
+      { request },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.input.cleanWhitespace).toBeUndefined();
+      expect(r.input.instructions).toBe(request);
+    }
+  },
+);
+it("CU10 preserves line breaks when user says not to delete them", () => {
+  const r = prepare(
+    "submit_processing",
+    { operation: "clean", recordIds: ["r"] },
+    { request: "去掉问题前后空格，换行不要删" },
+  );
+  expect(r.ok).toBe(true);
+  if (r.ok) expect(r.input.cleanWhitespace).toBe("preserve_newlines");
+});

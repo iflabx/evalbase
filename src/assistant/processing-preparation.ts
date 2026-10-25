@@ -148,11 +148,55 @@ function defaultCleanDescription(text: string) {
   const parts = clauses(text).map(defaultCleanClause);
   return parts.includes("trim") && parts.every(Boolean);
 }
+export type CleanWhitespace = "trim_edges" | "preserve_newlines";
+/** Compile an explicit user constraint once; model paraphrases never define its effects. */
+export function cleanWhitespaceRule(
+  facts: ToolFacts,
+): CleanWhitespace | undefined {
+  const text = facts.request;
+  const positive = clauses(text).filter((c) => !denied(c));
+  const whitespace = positive.some(
+    (c) => /(?:整理|去掉|去除|删除|清理)/u.test(c) && /空白|空格/u.test(c),
+  );
+  const semantic = positive.some((c) => semanticChange.test(c));
+  const internal = positive.some((c) =>
+    /合并|压缩|中间|内部|连续|(?:删除|去掉|去除).{0,8}换行/u.test(c),
+  );
+  const bothEdges = positive.some((c) =>
+    /(?:首尾|前后|两端|开头(?:和|与|及)结尾).{0,8}(?:空白|空格)/u.test(c),
+  );
+  const oneEdge =
+    !/开头(?:和|与|及)结尾/u.test(text) &&
+    /(?:只|仅).{0,12}(?:开头|结尾|末尾)|(?:保留|保持).{0,8}(?:开头|结尾|末尾).{0,8}(?:空白|空格)/u.test(
+      text,
+    );
+  if (whitespace && bothEdges && !oneEdge && !semantic && !internal) {
+    return /(?:保留|保持|不改|不删|不要删|别删|不能删)[^。；;]{0,20}换行|换行[^。；;]{0,20}(?:保留|保持|不改|不删|不要删|别删|不能删)/u.test(
+      text,
+    )
+      ? "preserve_newlines"
+      : "trim_edges";
+  }
+  // A current processing change replaces a prior rule; ordinary continuation inherits it.
+  if (whitespace || semantic || internal) return undefined;
+  if (["trim_edges", "preserve_newlines"].includes(facts.task.cleanWhitespace))
+    return facts.task.cleanWhitespace;
+  return undefined;
+}
 function cleanDirective(facts: ToolFacts) {
   const current = clauses(facts.request);
   const positive = (text: string) =>
     clauses(text).some((c) => semanticChange.test(c) && !denied(c));
-  if (positive(facts.request)) return facts.request.trim();
+  if (
+    positive(facts.request) ||
+    current.some(
+      (c) =>
+        !denied(c) &&
+        /空白|空格|换行/u.test(c) &&
+        /整理|去掉|去除|删除|清理|合并|压缩/u.test(c),
+    )
+  )
+    return facts.request.trim();
   if (
     current.some(
       (c) => (semanticChange.test(c) || /语义|内容/u.test(c)) && denied(c),
@@ -599,8 +643,14 @@ export function prepareToolProposal(
         "assistant_step_context_changed",
       );
     if (op === "clean") {
+      const rule = cleanWhitespaceRule(facts);
       const directive = cleanDirective(facts);
-      if (directive) {
+      delete input.cleanWhitespace;
+      if (rule) {
+        input.instructions = "";
+        input.cleanWhitespace = rule;
+      } else if (directive) {
+        delete input.cleanWhitespace;
         input.instructions = directive;
         if (directive.length > 8000)
           add(
@@ -614,6 +664,7 @@ export function prepareToolProposal(
         defaultCleanDescription(input.instructions)
       ) {
         input.instructions = "";
+        delete input.cleanWhitespace;
       } else if (input.instructions)
         add(
           "/instructions",

@@ -1,3 +1,5 @@
+import { selectionConsumed, consumeSelection } from "@/services/assistant-input-context";
+import { isPauseRequest } from "../../../src/shared/assistant-control";
 import { AssistantCandidates, type CandidateSelection } from "./assistant-candidates";
 import { AssistantBackground, type BackgroundDocument } from "./assistant-background";
 import { AssistantSessionActions } from "./assistant-session-actions";
@@ -230,7 +232,11 @@ type Conversation = {
     pageObject?: { kind: string; name: string; recordCount?: number; label?: string };
   };
 };
-export type AssistantPageContext = { kind: "draft" | "asset" | "version" | "testSet"; id: string };
+export type AssistantPageContext = {
+  kind: "draft" | "asset" | "version" | "testSet";
+  id: string;
+  inputSelection?: import("@/services/assistant-input-context").InputSelection;
+};
 type PageData = {
   draft?: { name: string };
   testSet?: { name: string };
@@ -284,6 +290,8 @@ const deliveryStatuses: Record<string, string> = {
   needs_review: "需重新核对",
 };
 const messages: Record<string, string> = {
+  assistant_input_selection_invalid: "请返回来源勾选要处理的记录。输入已保留。",
+  assistant_input_selection_changed: "勾选范围或来源已变化，请返回来源重新核对。输入已保留。",
   assistant_document_format: "请选择 PDF、Markdown 或 TXT 文档。",
   assistant_document_capacity:
     "背景文档超出容量。最多 5 份、合计 10 MB；PDF 最多 200 页，文本最多 10,000 行。",
@@ -367,12 +375,16 @@ export function ProjectAssistant({
   actorId,
   sessionId,
   pageContext,
+  selectionToken,
+  selectionMissing = false,
   canWrite,
 }: {
   projectId: string;
   actorId: string;
   sessionId?: string | undefined;
   pageContext?: AssistantPageContext | undefined;
+  selectionToken?: string | undefined;
+  selectionMissing?: boolean;
   canWrite: boolean;
 }) {
   const assistantIndex = useRouterState({
@@ -433,7 +445,12 @@ export function ProjectAssistant({
         : undefined,
       replace = false,
     ) {
-      const search = { sourceKind: context?.kind, sourceId: context?.id };
+      const search = {
+        sourceKind: context?.kind,
+        sourceId: context?.id,
+        selection:
+          context?.kind === contextKind && context?.id === contextId ? selectionToken : undefined,
+      };
       return id
         ? navigate({
             to: "/projects/$projectId/assistant/$sessionId",
@@ -448,7 +465,7 @@ export function ProjectAssistant({
             replace,
           });
     },
-    [navigate, projectId, contextKind, contextId],
+    [navigate, projectId, contextKind, contextId, selectionToken],
   );
   function openWork(tab: "results" | "sources") {
     paneScroll.current.chat = historyRef.current?.scrollTop ?? paneScroll.current.chat;
@@ -856,7 +873,7 @@ export function ProjectAssistant({
     pageData?.fileName;
   const currentCount = pageData?.total ?? pageData?.version?.recordCount ?? pageData?.recordCount;
   const currentLabel = pageContext
-    ? `所选${pageContext.kind === "draft" ? "草稿" : pageContext.kind === "asset" ? "原始数据" : pageContext.kind === "version" ? "版本" : "测试集"}：${currentName ?? "正在核对…"}${currentCount !== undefined ? ` · ${currentCount} 条记录` : ""}`
+    ? `所选${pageContext.kind === "draft" ? "草稿" : pageContext.kind === "asset" ? "原始数据" : pageContext.kind === "version" ? "版本" : "测试集"}：${currentName ?? "正在核对…"}${pageContext.inputSelection ? ` · 已选 ${pageContext.inputSelection.recordIds.length}/${pageContext.inputSelection.total} 条` : currentCount !== undefined ? ` · ${currentCount} 条记录` : ""}`
     : undefined;
   const factStage = (
     {
@@ -916,10 +933,18 @@ export function ProjectAssistant({
       return;
     }
     const text = retry?.message ?? textOverride ?? message;
+    const pause = isPauseRequest(text);
+    const consumed = selectionConsumed(selectionToken, sessionId);
+    const requestContext =
+      consumed && pageContext ? { kind: pageContext.kind, id: pageContext.id } : pageContext;
+    if (selectionMissing && !consumed && !pause) {
+      setError("之前的勾选范围已失效，请返回来源重新选择。输入已保留。");
+      return;
+    }
     if (
       !text.trim() ||
       busy ||
-      running ||
+      (running && !pause) ||
       (!retry && pending?.status === "submitting") ||
       sessions.error ||
       conversation.error
@@ -933,7 +958,7 @@ export function ProjectAssistant({
       pending?.status === "failed" &&
       pending.message === text &&
       pending.sessionId === sessionId &&
-      JSON.stringify(pending.context) === JSON.stringify(restoring ? undefined : pageContext);
+      JSON.stringify(pending.context) === JSON.stringify(restoring ? undefined : requestContext);
     const submission: Submission =
       retry ??
       (retrySame
@@ -945,7 +970,7 @@ export function ProjectAssistant({
             taskId: currentTaskId,
             expectedTaskRevision: visible?.taskRevision,
             ...(operation ? { operation } : {}),
-            context: restoring ? undefined : pageContext,
+            context: restoring ? undefined : requestContext,
             ...(restoring ? { restoreTaskId: restoring } : {}),
             ...(!restoring && picked
               ? { candidates: picked.resultIds.length ? picked : null }
@@ -961,6 +986,7 @@ export function ProjectAssistant({
         `${base}/sessions/${id}/turns`,
         {
           message: text,
+          ...(pause ? { expectedTaskId: submission.taskId } : {}),
           ...(submission.restoreTaskId ? { restoreTaskId: submission.restoreTaskId } : {}),
           ...(submission.context ? { context: submission.context } : {}),
           ...(submission.candidates !== undefined ? { candidates: submission.candidates } : {}),
@@ -971,6 +997,7 @@ export function ProjectAssistant({
         },
         submission.key,
       );
+      if (submission.context?.inputSelection) consumeSelection(selectionToken, id);
       const key = scopeKey + id,
         saved = JSON.parse(readAssistantDraft(key));
       writeAssistantDraft(key, { ...saved, message: saved.message === text ? "" : saved.message });
@@ -1782,7 +1809,7 @@ export function ProjectAssistant({
                   type="submit"
                   disabled={
                     busy ||
-                    running ||
+                    (running && !isPauseRequest(message)) ||
                     pending?.status === "submitting" ||
                     !message.trim() ||
                     sessions.isPending ||

@@ -35,6 +35,7 @@ import {
 } from "./source-discovery.js";
 import {
   prepareToolProposal,
+  cleanWhitespaceRule,
   preparedTools,
   wholeSourceAuthorized,
   processingWorkflowSteps,
@@ -1025,7 +1026,7 @@ export async function executeAssistantTurn(
     ].filter(Boolean);
     const rows = (
       await db.query(
-        "SELECT user_text FROM assistant_turn WHERE session_id=$1 AND id=ANY($2::text[]) AND event='user'",
+        "SELECT user_text FROM assistant_turn WHERE session_id=$1 AND id=ANY($2::text[]) AND event='user' ORDER BY created_at,id",
         [turn.session_id, ids],
       )
     ).rows;
@@ -1111,6 +1112,37 @@ export async function executeAssistantTurn(
           },
         ],
       };
+    }
+    const uiScope = current!.uiInputScope;
+    if (uiScope && name === "submit_processing") {
+      const changedSource =
+        canonicalJson(planSource(input.source)) !==
+        canonicalJson(planSource(uiScope.source));
+      const changedIds =
+        Array.isArray(input.recordIds) &&
+        canonicalJson([...input.recordIds].sort()) !==
+          canonicalJson([...uiScope.recordIds].sort());
+      if (
+        changedSource ||
+        changedIds ||
+        input.allRecords === true ||
+        input.selection
+      )
+        return {
+          ok: false as const,
+          issues: [
+            {
+              tool: name,
+              operation: name,
+              path: "/recordIds",
+              keyword: "scope",
+              code: "assistant_input_selection_changed",
+              message:
+                "请使用页面已固定的勾选范围，省略recordIds、selection和allRecords；不能扩大到整份来源。",
+            },
+          ],
+        };
+      input.recordIds = uiScope.recordIds;
     }
     const allText = wholeSourceAuthorized(
       facts.request,
@@ -1395,11 +1427,11 @@ export async function executeAssistantTurn(
               message: "原选取范围的内容或修订已变化，请重新核对；保留原hash。",
             });
           if (
-            input.recordIds === undefined &&
+            (input.recordIds === undefined || uiScope) &&
             input.allRecords !== true &&
             !input.selection &&
-            current!.processingScope?.hash &&
-            current!.processingScope.hash !== hash
+            (uiScope ?? current!.processingScope)?.hash &&
+            (uiScope ?? current!.processingScope).hash !== hash
           )
             issues.push({
               tool: name,
@@ -1536,6 +1568,17 @@ export async function executeAssistantTurn(
           },
         ],
       };
+    }
+    if (
+      bound.question &&
+      bound.question === current!.question &&
+      current!.planningClarification?.answerTurnId === turn.id &&
+      cleanWhitespaceRule(await processingFacts(current!)) &&
+      (Array.isArray(bound.requirements) ||
+        bound.nextAction === "submit_processing")
+    ) {
+      // The answered whitespace choice is a resolved fact, not another model obligation.
+      delete bound.question;
     }
     const validate =
       !deliveryGoals(current!.executionPlan).length &&
@@ -5138,6 +5181,12 @@ export async function executeAssistantTurn(
         )
           throw new AssistantError(422, "assistant_plan_only");
         if (revokeBackgroundRules) fields.backgroundEvidence = [];
+        if (
+          fields.requirements !== undefined ||
+          fields.allowedFields !== undefined
+        )
+          fields.cleanWhitespace =
+            cleanWhitespaceRule(await processingFacts(current)) ?? null;
         validateBackgroundRules({ ...current, ...fields }, documents);
         const backgroundDefinitions = backgroundDefinitionReferences(
           { ...current, ...fields },
@@ -6249,6 +6298,11 @@ export async function executeAssistantTurn(
             "只有用户明确要求重新抽一批时设true；相同选取规则默认继续已固定输入，不重复抽样。",
         },
         operation: { enum: ["clean", "rewrite", "augment"] },
+        cleanWhitespace: {
+          enum: ["trim_edges", "preserve_newlines"],
+          description:
+            "确定性空白规则，由服务端根据用户要求核对；不与语义处理说明混用。",
+        },
         instructions: { type: "string", maxLength: 8000 },
         allowedFields: {
           type: "array",
@@ -6316,6 +6370,9 @@ export async function executeAssistantTurn(
             options: {
               operation: input.operation,
               instructions: input.instructions,
+              ...(input.cleanWhitespace
+                ? { cleanWhitespace: input.cleanWhitespace }
+                : {}),
               allowedFields: input.allowedFields ?? ["question"],
               ...(input.metadataKeys
                 ? { metadataKeys: input.metadataKeys }
@@ -6337,6 +6394,12 @@ export async function executeAssistantTurn(
         await updateTask(db, turn, {
           runId: result.run.id,
           processingScope: {
+            ...(state.processingScope?.origin === "ui"
+              ? {
+                  origin: "ui",
+                  sourceRevision: state.processingScope.sourceRevision,
+                }
+              : {}),
             source,
             recordIds,
             hash: expectedInputHash,

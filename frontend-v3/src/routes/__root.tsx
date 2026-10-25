@@ -6,8 +6,10 @@ import {
   Outlet,
   createRootRouteWithContext,
   useRouterState,
+  useNavigate,
 } from "@tanstack/react-router";
 
+import { handoffInputContext } from "@/services/assistant-input-context";
 import { type AssistantPageContext } from "@/components/project-assistant";
 import { AccountGate } from "@/components/account-gate";
 import { useProjectAccess } from "@/hooks/use-project-access";
@@ -77,6 +79,7 @@ function AuthenticatedApp() {
     retry: false,
   });
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const access = useProjectAccess(projectId, Boolean(session.data));
   const draftId = location.pathname.match(/\/test-sets\/drafts\/([^/]+)/)?.[1] ?? "";
   const presenceDraftId = access.canWrite ? draftId : "";
@@ -187,16 +190,28 @@ function AuthenticatedApp() {
                 </button>
               )}
               {projectId && access.canRead && (
-                <Button variant="ghost" size="sm" asChild>
-                  <Link
-                    to="/projects/$projectId/assistant"
-                    params={{ projectId }}
-                    search={{ sourceKind: pageContext?.kind, sourceId: pageContext?.id }}
-                    aria-label="打开项目助手"
-                  >
-                    <MessageSquare className="size-4" />
-                    <span className="hidden sm:inline">项目助手</span>
-                  </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="打开项目助手"
+                  onClick={() => {
+                    const handoff = location.pathname.endsWith("/processing")
+                      ? handoffInputContext(queryClient, projectId, actor.id)
+                      : undefined;
+                    const context = handoff?.context ?? pageContext;
+                    void navigate({
+                      to: "/projects/$projectId/assistant",
+                      params: { projectId },
+                      search: {
+                        sourceKind: context?.kind,
+                        sourceId: context?.id,
+                        selection: handoff?.token,
+                      },
+                    });
+                  }}
+                >
+                  <MessageSquare className="size-4" />
+                  <span className="hidden sm:inline">项目助手</span>
                 </Button>
               )}
               <OnlineAvatars users={users} selfId={actor.id} className="ml-auto" />

@@ -1466,3 +1466,83 @@ test("OPT46 ordinary continue displays the server repair limit and retains the u
   expect(submissions).toBe(1);
   await expect(page.getByText("操作未完成，请重试。输入已保留。", { exact: true })).toHaveCount(0);
 });
+
+test("CU13 selected processing input survives navigation, new conversation and refresh without re-binding", async ({
+  page,
+}) => {
+  const state = await fixture(page, {
+    empty: true,
+    intercept: async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith("/processing-inputs")) {
+        await route.fulfill({
+          json: {
+            records: [1, 2, 3, 4].map((n) => ({
+              id: "r" + n,
+              question: "问题" + n,
+              expectedOutput: "答案",
+              metadata: [],
+            })),
+            allIds: ["r1", "r2", "r3", "r4"],
+            total: 4,
+            sourceTotal: 4,
+            sourceRevision: "a".repeat(64),
+            revision: 4,
+            sourceSummary: { name: "来源草稿", files: [] },
+          },
+        });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto("/projects/assistant_project/processing?source=draft&sourceId=draft-1");
+  await page.getByRole("checkbox", { name: "选择记录 r1", exact: true }).check();
+  await page.getByRole("checkbox", { name: "选择记录 r2", exact: true }).check();
+  await page.getByRole("button", { name: "打开项目助手", exact: true }).click();
+  await page.getByRole("button", { name: "展开会话列表", exact: true }).click();
+  await page.getByRole("button", { name: "新会话", exact: true }).click();
+  await expect(page.getByText("已选 2/4 条", { exact: false })).toBeVisible();
+  await page.getByLabel("向项目助手发送消息").fill("这两条改自然一点，其他别动");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(state.posts.find((p) => p.path.endsWith("/turns")).body.context).toEqual({
+    kind: "draft",
+    id: "draft-1",
+    inputSelection: { recordIds: ["r1", "r2"], sourceRevision: "a".repeat(64), total: 4 },
+  });
+  await page.reload();
+  await page.getByLabel("向项目助手发送消息").fill("现在怎么样了");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(2);
+  expect(
+    state.posts.filter((p) => p.path.endsWith("/turns"))[1].body.context.inputSelection,
+  ).toBeUndefined();
+});
+test("CU15 pause remains sendable while the assistant is running", async ({ page }) => {
+  const state = await fixture(page, {
+    task: { taskId: "task-1", goal: "两份交付", stage: "processing" },
+    messages: [{ ...turn("active"), status: "running" }],
+  });
+  state.active = true;
+  await page.goto(url + "/one");
+  await page.getByLabel("向项目助手发送消息").fill("生成更多");
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeDisabled();
+  await page.getByLabel("向项目助手发送消息").fill("先停一下。");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect.poll(() => state.posts.filter((p) => p.path.endsWith("/turns")).length).toBe(1);
+  expect(state.posts.find((p) => p.path.endsWith("/turns")).body).toMatchObject({
+    message: "先停一下。",
+    expectedTaskId: "task-1",
+  });
+});
+
+test("CU13 malformed selection cannot fall back to whole-source submission", async ({ page }) => {
+  const state = await fixture(page, { empty: true });
+  await page.goto(url + "?sourceKind=draft&sourceId=draft-1&selection=broken");
+  await page.getByLabel("向项目助手发送消息").fill("处理全部记录");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    page.getByText("之前的勾选范围已失效，请返回来源重新选择。输入已保留。", { exact: true }),
+  ).toBeVisible();
+  expect(state.posts).toHaveLength(0);
+});

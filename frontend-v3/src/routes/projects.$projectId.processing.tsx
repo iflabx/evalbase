@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { inputContextKey } from "@/services/assistant-input-context";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Plus, Search, MoreHorizontal, RefreshCw, CircleHelp } from "lucide-react";
@@ -884,6 +885,43 @@ function ProcessingForm({
     refetchOnWindowFocus: false,
     refetchOnMount: "always",
   });
+  useEffect(() => {
+    const key = inputContextKey(projectId, actorId);
+    const kind = source["kind"] === "assets" ? "asset" : source["kind"];
+    const id = kind === "asset" ? (source["assetIds"] as string[] | undefined)?.[0] : source["id"];
+    const usable =
+      !followup &&
+      ["draft", "version", "asset"].includes(String(kind)) &&
+      typeof id === "string" &&
+      !(kind === "asset" && (source["assetIds"] as string[]).length !== 1) &&
+      !input.isError &&
+      !input.isPlaceholderData &&
+      !scopeChanged &&
+      input.data?.sourceRevision;
+    if (usable)
+      queryClient.setQueryData(key, {
+        kind,
+        id,
+        inputSelection: {
+          recordIds: [...selected],
+          sourceRevision: input.data!.sourceRevision,
+          total: input.data!.sourceTotal ?? input.data!.total,
+        },
+      });
+    else queryClient.removeQueries({ queryKey: key, exact: true });
+    return () => queryClient.removeQueries({ queryKey: key, exact: true });
+  }, [
+    projectId,
+    actorId,
+    JSON.stringify(source),
+    selected,
+    input.data,
+    input.isError,
+    input.isPlaceholderData,
+    scopeChanged,
+    followup,
+    queryClient,
+  ]);
   useEffect(() => {
     if (!followup || !input.data || input.isPlaceholderData || initialized.current) return;
     initialized.current = true;

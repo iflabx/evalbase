@@ -1,3 +1,4 @@
+import { isPauseRequest } from "../../shared/assistant-control.js";
 import { recoveryReason } from "../../assistant/feedback.js";
 import type { registerDrafts } from "./drafts.js";
 import { createSharedDraft } from "../../drafts/create.js";
@@ -504,24 +505,51 @@ export function registerAssistant({
                 "expectedTaskRevision",
                 "operation",
                 "restoreTaskId",
+                "expectedTaskId",
               ].includes(k),
           )
         )
           throw new AssistantError(422, "assistant_message_invalid");
-        const context = scope(request),
-          started = await startTurn(
+        const context = scope(request);
+        if (
+          isPauseRequest(request.body.message) &&
+          typeof request.body.expectedTaskId === "string" &&
+          !request.body.operation &&
+          !request.body.restoreTaskId
+        ) {
+          const result = await controlAssistantTask(
             db,
             context,
             request.params.sessionId,
-            request.headers["idempotency-key"],
-            request.body.message,
-            request.body.context,
-            request.body.candidates,
-            request.body.expectedTaskRevision,
-            artifacts,
-            request.body.operation,
-            request.body.restoreTaskId,
+            "pause",
+            0,
+            undefined,
+            {
+              key: request.headers["idempotency-key"],
+              text: request.body.message,
+              taskId: request.body.expectedTaskId,
+            },
           );
+          void dispatch().catch((error) => app.log.error(error));
+          return reply.code(200).send({
+            turnId: result.turn!.id,
+            status: result.turn!.status,
+            replayed: result.replayed ?? false,
+          });
+        }
+        const started = await startTurn(
+          db,
+          context,
+          request.params.sessionId,
+          request.headers["idempotency-key"],
+          request.body.message,
+          request.body.context,
+          request.body.candidates,
+          request.body.expectedTaskRevision,
+          artifacts,
+          request.body.operation,
+          request.body.restoreTaskId,
+        );
         if (!started.replayed)
           void dispatch().catch((error) => app.log.error(error));
         return reply.code(started.replayed ? 200 : 202).send({

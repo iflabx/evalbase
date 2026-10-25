@@ -19,6 +19,7 @@ export type ProcessingField = "question" | "expectedOutput" | "metadata";
 export type ProcessingOptions = {
   operation: "clean" | "rewrite" | "augment" | "generate";
   instructions: string;
+  cleanWhitespace?: "trim_edges" | "preserve_newlines";
   allowedFields: ProcessingField[];
   metadataKeys?: string[];
   outputCount?: number;
@@ -56,6 +57,7 @@ export function processingOptions(value: unknown): ProcessingOptions {
         ![
           "operation",
           "instructions",
+          "cleanWhitespace",
           "allowedFields",
           "metadataKeys",
           "outputCount",
@@ -67,6 +69,15 @@ export function processingOptions(value: unknown): ProcessingOptions {
     typeof value.instructions !== "string" ||
     value.instructions.length > 8000 ||
     (value.operation !== "clean" && !value.instructions.trim())
+  )
+    throw new Error("processing_configuration_invalid");
+  if (
+    value.cleanWhitespace !== undefined &&
+    (value.operation !== "clean" ||
+      value.instructions.trim() ||
+      !["trim_edges", "preserve_newlines"].includes(
+        String(value.cleanWhitespace),
+      ))
   )
     throw new Error("processing_configuration_invalid");
   const allowedFields = value.allowedFields ?? ["question"];
@@ -122,6 +133,12 @@ export function processingOptions(value: unknown): ProcessingOptions {
   return {
     operation: value.operation as ProcessingOptions["operation"],
     instructions: value.instructions.trim(),
+    ...(value.cleanWhitespace
+      ? {
+          cleanWhitespace:
+            value.cleanWhitespace as ProcessingOptions["cleanWhitespace"],
+        }
+      : {}),
     allowedFields: allowedFields as ProcessingField[],
     ...(value.scenarios
       ? { scenarios: value.scenarios.map((s: string) => s.trim()) }
@@ -153,11 +170,15 @@ export function cleanRecords(
   options: ProcessingOptions,
 ): ProcessingResult {
   const fields = new Set(options.allowedFields);
+  const trim = (value: string) =>
+    options.cleanWhitespace === "preserve_newlines"
+      ? value.replace(/^[^\S\r\n\u2028\u2029]+|[^\S\r\n\u2028\u2029]+$/gu, "")
+      : value.trim();
   const records = inputs.map((input) => ({
     sourceId: input.id,
-    question: fields.has("question") ? input.question.trim() : input.question,
+    question: fields.has("question") ? trim(input.question) : input.question,
     expectedOutput: fields.has("expectedOutput")
-      ? input.expectedOutput.trim()
+      ? trim(input.expectedOutput)
       : input.expectedOutput,
     metadata: input.metadata.map(({ key, value }) => ({
       key,
@@ -167,7 +188,7 @@ export function cleanRecords(
           options.metadataKeys.some(
             (editable) => editable.toLowerCase() === key.toLowerCase(),
           ))
-          ? value.trim()
+          ? trim(value)
           : value,
     })),
   }));
