@@ -5852,7 +5852,13 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
     expect(deliveryGoals(state.task.executionPlan)).toHaveLength(1);
   });
-  it("B4 rejected candidates can be renamed and saved without regeneration or rewrite", async () => {
+  it.each([
+    "continue",
+    "mistaken-new",
+    "no-regeneration",
+    "answered-boundary",
+    "natural-boundary",
+  ])("B4B rejected candidates rename/save entry: %s", async (boundary) => {
     const { id, documentId } = await backgroundSession();
     let state = await send(id, "按说明做查物流测试集，2条，现在开始。", [
       decision("execute"),
@@ -5894,8 +5900,39 @@ describe("OPT42 per-turn intent public boundary", () => {
     });
     expect(reject.statusCode, reject.body).toBe(200);
     const before = await effects();
-    state = await send(id, "叫“电商物流基础测试”，存成新的测试集草稿。", [
-      decision("execute", { requiresUpdate: true }),
+    if (boundary.endsWith("boundary")) {
+      const db = createPool(databaseUrl);
+      try {
+        await db.query(
+          "UPDATE assistant_session SET task=jsonb_set(task,'{boundaryQuestion}',$2::jsonb) WHERE id=$1",
+          [
+            id,
+            JSON.stringify({
+              kind: "choice",
+              taskId: state.task.taskId,
+              request: "叫“电商物流基础测试”，存成新的测试集草稿。",
+            }),
+          ],
+        );
+      } finally {
+        await db.end();
+      }
+    }
+    const message =
+      boundary === "no-regeneration"
+        ? "不要重新生成，内容不变，只把刚才两条另存为名叫“电商物流基础测试”的新草稿。"
+        : boundary === "answered-boundary"
+          ? "继续当前任务，内容不变，把刚才这2条存到名为“电商物流基础测试”的新草稿。"
+          : boundary === "natural-boundary"
+            ? "还是刚才那两条，按我说的名字存下来就行。"
+            : "叫“电商物流基础测试”，存成新的测试集草稿。";
+    state = await send(id, message, [
+      decision("execute", {
+        requiresUpdate: true,
+        taskBoundary: ["mistaken-new", "no-regeneration"].includes(boundary)
+          ? "new"
+          : "continue",
+      }),
       {
         name: "plan_task",
         input: {
@@ -5977,11 +6014,12 @@ describe("OPT42 per-turn intent public boundary", () => {
     try {
       const rows = (
         await countDb.query(
-          "SELECT d.name,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS n FROM collaborative_draft d WHERE project_id=$1 AND name='电商物流基础测试'",
+          "SELECT d.name,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS n FROM collaborative_draft d WHERE project_id=$1 AND name='电商物流基础测试' ORDER BY created_at DESC LIMIT 1",
           [projectId],
         )
       ).rows;
       expect(rows).toEqual([{ name: "电商物流基础测试", n: 2 }]);
+      expect(await effects()).toEqual({ ...before, drafts: before.drafts + 1 });
     } finally {
       await countDb.end();
     }
@@ -6182,6 +6220,143 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(card, JSON.stringify(state.turns.at(-1))).toBeTruthy();
     expect(card.summary.target).toBe("另一个保存位置");
     expect(card.summary.count).toBe(2);
+    expect(await effects()).toEqual(before);
+  });
+  it("B4B first wrapped proposal is normalized through the real SDK without a model retry", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(
+      id,
+      "按说明设计查物流测试集，2条，先给方案不要执行。",
+      [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: {
+            tool: "plan_task",
+            input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+          },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(1);
+    expect(state.task.runId).toBeFalsy();
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(0);
+  });
+  it("B4B truncated first plan reports cardinality and illegal create IDs together", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(
+      id,
+      "按说明设计一个查物流测试集，2条，先给方案不要执行。",
+      [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: {},
+          rawInput: "9".repeat(4096),
+          finishReason: "length",
+        },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [
+              { ...simpleDelivery(), id: "delivery-logistics-test-set" },
+              {
+                ...simpleDelivery(),
+                id: "delivery-plan-only",
+                name: "设计方案",
+                count: 1,
+              },
+            ],
+          },
+        },
+        {
+          name: "plan_task",
+          input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+          when: (r) => {
+            const schema = r.tools.find(
+              (t: any) => t.function.name === "plan_task",
+            ).function.parameters;
+            const raw = JSON.stringify(r.messages);
+            return (
+              !schema.properties.deliveries.items.properties.id &&
+              !schema.properties.deliveries.items.properties.remove &&
+              raw.includes("/deliveries/0/id") &&
+              raw.includes("maxItems")
+            );
+          },
+        },
+      ],
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(1);
+    expect(state.task.runId).toBeFalsy();
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
+  });
+  it("B4B bad root correction cannot replace a usable wrapped proposal", async () => {
+    const { id, documentId } = await backgroundSession();
+    const state = await send(id, "按说明设计查物流测试集，2条，不执行。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          tool: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [{ ...simpleDelivery(), scenarios: ["运输进度"] }],
+          },
+        },
+      },
+      { name: "plan_task", input: {}, rawInput: "[1]" },
+      {
+        name: "plan_task",
+        input: {
+          tool: "plan_task",
+          input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+        },
+        when: (r) => {
+          const facts = JSON.parse(r.messages.at(-1).content);
+          return (
+            facts.proposal?.deliveries?.length === 1 && !facts.proposal.tool
+          );
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan)).toHaveLength(1);
+    expect(state.task.diagnostics.repairRequestsUsed).toBe(2);
+  });
+
+  it("B4B a genuine new-goal clarification is waiting rather than intent failure", async () => {
+    const { id, documentId } = await backgroundSession();
+    await send(id, "按说明设计查物流测试集，2条，只给方案。", [
+      decision("plan"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: { executionMode: "plan", deliveries: [simpleDelivery()] },
+      },
+    ]);
+    const before = await effects();
+    const state = await send(id, "我还想做退款问题。", [
+      decision("plan", { taskBoundary: "new", requiresUpdate: true }),
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.turns.at(-1).errorCode).toBeFalsy();
+    expect(state.task.stage).toBe("waiting_input");
+    expect(state.task.boundaryQuestion.kind).toBe("choice");
     expect(await effects()).toEqual(before);
   });
 });

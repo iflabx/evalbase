@@ -90,6 +90,18 @@ export function preparePlanAmendment(
     /怎么|如何|能不能|是否|什么|先.{0,5}(?:方案|规划)|不执行|别执行|先不|暂不/u.test(
       request,
     );
+  // A compound request for new content is not a save-only operation.
+  if (
+    clauses.some((clause) =>
+      /重新生成|再生成|新建.{0,16}测试集(?!草稿)/u.test(
+        clause.replace(
+          /(?:不要|不得|禁止|不能|先不|暂不|无需|不必|不用|不|别)(?:重新生成|再生成|生成|新建)/gu,
+          "",
+        ),
+      ),
+    )
+  )
+    return undefined;
   const saving = Boolean(
     !contentChange &&
     !asking &&

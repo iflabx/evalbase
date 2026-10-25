@@ -1,9 +1,11 @@
 import {
   planningStageContract,
+  unwrapPlanningArguments,
+  createPlanningProperties,
   normalizePlanningInput,
   planningQuestionFact,
 } from "./planning-contract.js";
-import { minimumPlanScenes } from "./requirements.js";
+import { taskBoundaryIntent } from "./task-boundary.js";
 import { readWorkspaceFacts } from "./workspace.js";
 import { progressMessage } from "./feedback.js";
 import {
@@ -412,6 +414,7 @@ function schema(
     modelDefinition as Parameters<typeof jsonSchema>[0],
     {
       validate: (value) => {
+        if (name === "plan_task") value = unwrapPlanningArguments(value);
         value = normalize?.(value) ?? value;
         if (validate(value) || compatible?.(value))
           return { success: true, value: value as Record<string, any> };
@@ -806,6 +809,18 @@ export async function executeAssistantTurn(
         }
         Object.assign(value, { requiresUpdate: true });
       }
+      // Candidate-save classification and boundary control must agree before either mutates state.
+      if (
+        value.taskBoundary === "new" &&
+        !taskBoundaryIntent(amendmentRequestText) &&
+        preparePlanAmendment(
+          current,
+          deliveryPlanProperties,
+          amendmentRequestText,
+          Number(turn.task_revision),
+        )?.operation === "save_candidates"
+      )
+        Object.assign(value, { taskBoundary: "continue" });
       if (
         value.taskBoundary === "new" &&
         current.goal &&
@@ -1464,6 +1479,7 @@ export async function executeAssistantTurn(
     current?: Record<string, any>,
     documents?: any[],
   ) {
+    value = unwrapPlanningArguments(value);
     if (!isPlainObject(value))
       return {
         ok: false as const,
@@ -1521,7 +1537,22 @@ export async function executeAssistantTurn(
         ],
       };
     }
-    const validate = fixedInputValidators.get("plan_task")!;
+    const validate =
+      !deliveryGoals(current!.executionPlan).length &&
+      Array.isArray(bound.deliveries)
+        ? new Ajv({ strict: false, allErrors: true }).compile({
+            type: "object",
+            properties: {
+              ...toolInputs.get("plan_task")!.properties,
+              deliveries: createPlanningProperties(
+                toolInputs.get("plan_task")!.properties,
+                amendmentRequestText,
+                decision?.mode ?? "plan",
+              ).deliveries,
+            },
+            additionalProperties: false,
+          })
+        : fixedInputValidators.get("plan_task")!;
     const currentBase = bound.baseRevision === Number(turn.task_revision);
     if (!validate(bound)) {
       const needed = requiredPlanTarget(bound, current!, amendmentRequestText);
@@ -8429,7 +8460,9 @@ export async function executeAssistantTurn(
           try {
             if (input.toolCall.toolName === "plan_task") {
               try {
-                const proposal = JSON.parse(input.toolCall.input);
+                const proposal = unwrapPlanningArguments(
+                  JSON.parse(input.toolCall.input),
+                );
                 if (isPlainObject(proposal)) {
                   if (
                     !decision &&
@@ -8518,7 +8551,7 @@ export async function executeAssistantTurn(
                   proposal:
                     proposal?.deliveries || proposal?.steps
                       ? proposal
-                      : (planRepairContext?.proposal ?? proposal),
+                      : planRepairContext?.proposal,
                   lastInput: proposal,
                   issues: status.issues,
                   reason: {
@@ -8602,8 +8635,8 @@ export async function executeAssistantTurn(
             rejection ?? toolInputFailure(invalid ? call.error : failure.error);
           const failedInput =
             rejection?.input ??
-            call?.input ??
             planningRepairInputs.get(failure.toolCallId) ??
+            call?.input ??
             {};
           if (invalidInput && failure.toolName === "plan_task") {
             parameterRepairStatus = {
@@ -8885,69 +8918,12 @@ export async function executeAssistantTurn(
         if (submissionNeeded || initialSubmission) {
           const focus = initialSubmission ? undefined : planRepairFocus;
           if (initialSubmission) {
-            const shape = requestedDeliveryShape(amendmentRequestText);
             planRepairFocus = undefined;
             tools.plan_task.inputSchema = schema(
-              Object.fromEntries(
-                Object.entries(deliveryPlanProperties)
-                  .filter(
-                    ([name]) =>
-                      ![
-                        "control",
-                        "candidateEdit",
-                        "candidateSave",
-                        "nextAction",
-                      ].includes(name),
-                  )
-                  .map(([name, value]) => [
-                    name,
-                    name === "deliveries"
-                      ? {
-                          ...(value as any),
-                          ...(shape.count !== undefined && shape.count <= 10
-                            ? { minItems: shape.count, maxItems: shape.count }
-                            : { minItems: 1 }),
-                          description:
-                            "首次创建须提交原请求的全部独立交付，不存在可省略保留的旧方案。",
-                          items: {
-                            ...(value as any).items,
-                            properties: {
-                              ...(value as any).items.properties,
-                              scenarios: {
-                                ...(value as any).items.properties.scenarios,
-                                minItems:
-                                  minimumPlanScenes(amendmentRequestText),
-                              },
-                            },
-                            ...(shape.each
-                              ? {
-                                  properties: {
-                                    ...(value as any).items.properties,
-                                    scenarios: {
-                                      ...(value as any).items.properties
-                                        .scenarios,
-                                      minItems:
-                                        minimumPlanScenes(amendmentRequestText),
-                                    },
-                                    count: {
-                                      type: "integer",
-                                      const: shape.each,
-                                    },
-                                  },
-                                }
-                              : {}),
-                          },
-                        }
-                      : name === "executionMode"
-                        ? { enum: [decision!.mode] }
-                        : name === "question"
-                          ? {
-                              ...(value as Record<string, unknown>),
-                              description:
-                                "仅有真实未解决的业务缺口时提交具体问题，且只填写question。不得混改要求、重复已回答问题或将原请求和参数错误转交用户。",
-                            }
-                          : value,
-                  ]),
+              createPlanningProperties(
+                deliveryPlanProperties,
+                amendmentRequestText,
+                decision!.mode,
               ),
               [],
               "plan_task",
@@ -9774,6 +9750,22 @@ export async function executeAssistantTurn(
     }
     await queue;
     await turnFence(db, scope, turn.id, turn.execution_token);
+    if (!decision && businessClarification) {
+      const current = (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          turn.session_id,
+        ])
+      ).rows[0]?.task;
+      if (current?.boundaryQuestion) {
+        finishReason = "awaiting_boundary";
+        await saveDiagnostics();
+        await updateTurn(
+          "UPDATE assistant_turn SET status='succeeded',assistant_text=$2 WHERE id=$1 AND status='running'",
+          [turn.id, businessClarification],
+        );
+        return;
+      }
+    }
     if (!decision && turn.event === "user")
       throw new AssistantError(422, "assistant_intent_required");
     const failedReceipt = unresolvedFailure(

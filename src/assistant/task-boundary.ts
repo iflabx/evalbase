@@ -111,13 +111,21 @@ export async function prepareTaskBoundary(
   let intent = restoreTaskId ? ("restore" as const) : taskBoundaryIntent(text),
     request = text;
   const pending = session.task?.boundaryQuestion;
+  const continuingAnswer =
+    /^(?:请)?继续(?:当前|原来|原)(?:任务|目标)(?:[，,。！!；;\n]|$)/u.test(
+      text.trim(),
+    ) &&
+    !/(?:另开|新开|切换)(?:一个|一项|个|到)?(?:独立|新的|新)?(?:任务|目标)/u.test(
+      text,
+    );
+  const answeredRequest = pending
+    ? pending.request + "\n用户对任务边界的回答：" + text
+    : text;
+  if (pending && !intent && continuingAnswer) {
+    session.task = { ...session.task, boundaryQuestion: null };
+    return { request: answeredRequest, switched: false };
+  }
   if (pending?.kind === "goal" && !intent) {
-    if (
-      /^(?:请)?继续(?:当前|原来|原)(?:任务|目标)[。！!]?$/u.test(text.trim())
-    ) {
-      session.task = { ...session.task, boundaryQuestion: null };
-      return { request: pending.request, switched: false };
-    }
     if (
       goalDisposition(text, String(session.task?.goal ?? "")) !== "independent"
     )
@@ -137,17 +145,11 @@ export async function prepareTaskBoundary(
     ) {
       intent = "new";
       request = pending.request;
-    } else if (
-      /^(?:请)?继续(?:当前|原来|原)(?:任务|目标)[。！!]?$/u.test(text.trim())
-    ) {
-      session.task = { ...session.task, boundaryQuestion: null };
-      return { request: pending.request, switched: false };
-    } else if (!intent)
-      return {
-        request,
-        switched: false,
-        question: "请说明：继续当前任务，还是另开目标并说明新目标？",
-      };
+    } else if (!intent) {
+      // Full natural answers are resolved by the existing intent stage with the original request.
+      // They do not themselves authorize switching, execution or a fresh budget.
+      return { request: answeredRequest, switched: false };
+    }
   }
   if (intent === "new") {
     const remainder = newGoalText(request),

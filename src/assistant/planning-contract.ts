@@ -1,11 +1,81 @@
-import { explicitRequirementCount } from "./requirements.js";
+import { explicitRequirementCount, minimumPlanScenes } from "./requirements.js";
 import { requestedDeliveryShape, deliveryGoals } from "./delivery-plan.js";
 import { isPlainObject } from "../server/support.js";
 import { validControl, type TurnDecision } from "./intent.js";
+/** Only an exact envelope for this tool is losslessly removable; its contents still undergo every validator. */
+export function unwrapPlanningArguments(value: unknown): unknown {
+  return isPlainObject(value) &&
+    value.tool === "plan_task" &&
+    Object.keys(value).length === 2 &&
+    isPlainObject(value.input)
+    ? value.input
+    : value;
+}
+
+/** First creation never inherits the update-by-ID branch. Shared by wire schema and preparation. */
+export function createPlanningProperties(
+  properties: Record<string, any>,
+  request: string,
+  mode: string,
+) {
+  const shape = requestedDeliveryShape(request);
+  const item = properties.deliveries.items;
+  return Object.fromEntries(
+    Object.entries(properties)
+      .filter(
+        ([name]) =>
+          !["control", "candidateEdit", "candidateSave", "nextAction"].includes(
+            name,
+          ),
+      )
+      .map(([name, value]) => [
+        name,
+        name === "executionMode"
+          ? { enum: [mode] }
+          : name !== "deliveries"
+            ? value
+            : {
+                ...value,
+                minItems: shape.count ?? 1,
+                ...(shape.count !== undefined && shape.count <= 10
+                  ? { maxItems: shape.count }
+                  : {}),
+                description:
+                  "原请求中的全部独立测试集；方案说明不是额外交付。首次不填id或remove，服务端生成身份。",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    ...Object.fromEntries(
+                      Object.entries(item.properties).filter(
+                        ([key]) => !["id", "remove"].includes(key),
+                      ),
+                    ),
+                    scenarios: {
+                      ...item.properties.scenarios,
+                      minItems: minimumPlanScenes(request),
+                    },
+                    ...(shape.each
+                      ? { count: { type: "integer", const: shape.each } }
+                      : {}),
+                  },
+                  required: [
+                    "name",
+                    "count",
+                    "instructions",
+                    "scenarios",
+                    "classifications",
+                  ],
+                },
+              },
+      ]),
+  );
+}
 export function normalizePlanningInput(
   value: unknown,
   decision: TurnDecision | undefined,
 ) {
+  value = unwrapPlanningArguments(value);
   if (!isPlainObject(value) || !decision || !validControl(value.control))
     return value;
   const control = value.control;
@@ -42,7 +112,7 @@ export function planningStageContract(
     create:
       "当前阶段：创建方案。控制模式已由服务端记录，不再提交control。依据足够后立即提交executionMode与原请求全部deliveries，仅确有依据缺口时读取新的相关片段，不重复读取。每份填写name、count、instructions、scenarios、classifications；新增交付不填id。遵守Schema中的情境数量，生成条数和情境数量分别处理。共同约束写requirements，定义使用真实reference。只有实际缺少业务信息才仅填写具体question。",
     repair:
-      "当前阶段：纠正未保存方案。仅按当前Schema修正proposal中的最新问题，不复制diagnostic、facts或control到输出。保留完整交付及已合法字段；首次方案不能省略其他交付。数组、错误包装不是方案，按保留的完整提议修正。不要以question转交参数错误。",
+      "当前阶段：纠正未保存方案。仅按当前Schema修正proposal中的最新问题，不复制diagnostic、facts或control到输出。保留完整交付及已合法字段；首次方案不能省略其他交付。数组、标量、错误包装不是方案；proposal缺失时依据request、requestedShape及facts重新构建完整方案，不能保留错误外壳。首次创建不填id/remove，不把“设计方案”另算交付；已有方案修改才引用真实id。不要以question转交参数错误。",
     amend:
       "当前阶段：修改已保存方案。只提交真实交付id和本次变化；未改字段与交付由服务端保留并完整校验。不提交control，不改变原执行授权。未知操作不能默认为改写内容。",
     edit: "当前阶段：改写现有候选。只提交candidateEdit及baseRevision，保留未授权字段和原意；不重生成，不改变保存目标，不采用。",

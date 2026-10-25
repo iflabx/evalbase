@@ -1,3 +1,9 @@
+import { Ajv } from "ajv";
+import {
+  unwrapPlanningArguments,
+  createPlanningProperties,
+} from "../../src/assistant/planning-contract.js";
+import { prepareTaskBoundary } from "../../src/assistant/task-boundary.js";
 import { planningQuestionFact } from "../../src/assistant/planning-contract.js";
 import { normalizePlanningInput } from "../../src/assistant/planning-contract.js";
 import { minimumPlanScenes } from "../../src/assistant/requirements.js";
@@ -214,4 +220,104 @@ it("B4 genuine document scope and changed save destination remain clarifiable", 
       true,
     ),
   ).toBeUndefined();
+});
+
+describe("B4B first-plan and task boundary contracts", () => {
+  const input = { executionMode: "plan", deliveries: [] };
+  it("unwraps only an exact native-tool envelope", () => {
+    expect(unwrapPlanningArguments({ tool: "plan_task", input })).toEqual(
+      input,
+    );
+    for (const value of [
+      { tool: "other", input },
+      { tool: "plan_task", input, extra: true },
+      { tool: "plan_task", input: [input] },
+      [input],
+    ])
+      expect(unwrapPlanningArguments(value)).toEqual(value);
+  });
+  it("does not erase a changed authorization inside an envelope", () => {
+    const inner = { control: { mode: "execute" }, ...input };
+    expect(
+      normalizePlanningInput({ tool: "plan_task", input: inner }, {
+        mode: "plan",
+      } as any),
+    ).toEqual(inner);
+  });
+  it("create schema reports illegal id, missing fields and extra delivery together", () => {
+    const p: any = createPlanningProperties(
+      properties,
+      "设计一个测试集，2条，先给方案。",
+      "plan",
+    );
+    expect(p.deliveries.items.properties.id).toBeUndefined();
+    expect(p.deliveries.items.properties.remove).toBeUndefined();
+    expect(p.deliveries.items.if).toBeUndefined();
+    const validate = new Ajv({ strict: false, allErrors: true }).compile({
+      type: "object",
+      properties: p,
+    });
+    expect(
+      validate({ deliveries: [{ id: "invented" }, { name: "设计方案" }] }),
+    ).toBe(false);
+    expect(validate.errors?.some((e) => e.keyword === "maxItems")).toBe(true);
+    expect(
+      validate.errors?.some(
+        (e) =>
+          e.keyword === "additionalProperties" &&
+          e.instancePath === "/deliveries/0",
+      ),
+    ).toBe(true);
+    expect(validate.errors?.some((e) => e.keyword === "required")).toBe(true);
+  });
+  it.each([
+    "继续当前任务，内容不变，另存为新的草稿。",
+    "还是刚才的内容，按我说的名字保存就行。",
+  ])("retains the original question and full answer: %s", async (answer) => {
+    const session: any = {
+      id: "session",
+      task: {
+        goal: "制作问题",
+        taskId: "task",
+        boundaryQuestion: {
+          kind: "choice",
+          taskId: "task",
+          request: "存成名为物流的新草稿。",
+        },
+      },
+    };
+    const db: any = {
+      query() {
+        throw Error("Unexpected DB access");
+      },
+    };
+    const result = await prepareTaskBoundary(db, {} as any, session, answer);
+    expect(result.question).toBeUndefined();
+    expect(result.switched).toBe(false);
+    expect(result.request).toContain(answer);
+    expect(result.request).toContain("存成名为物流的新草稿。");
+  });
+  it.each(["不要重新生成", "不用再生成", "无需重新生成", "别新建测试集"])(
+    "negative generation still allows save: %s",
+    (negative) => {
+      expect(
+        preparePlanAmendment(
+          task,
+          properties,
+          negative + "，内容不变，另存为新的草稿。",
+          3,
+        )?.operation,
+      ).toBe("save_candidates");
+    },
+  );
+  it("new generation followed by save cannot select save-only", () => {
+    expect(
+      preparePlanAmendment(
+        task,
+        properties,
+        "重新生成两条，再保存为新的草稿。",
+        3,
+      ),
+    ).toBeUndefined();
+  });
 });
