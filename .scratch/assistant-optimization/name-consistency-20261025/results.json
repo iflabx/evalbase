@@ -1,0 +1,38 @@
+{
+  "applicationVersion": "c23e55b4a0895609699c0b5b00c2e4a03fcdcfe5",
+  "automated": {
+    "unitPassed": 78,
+    "sdkIntegrationPassed": 2,
+    "serverTypes": true,
+    "frontendTypes": true,
+    "lint": true,
+    "standardsReview": "no blocking findings",
+    "specReview": "no blocking findings; existing draft reference collection test added"
+  },
+  "computerUse": {
+    "scope": "read-only existing cancellation and save-as sessions",
+    "modelRequestsLimit": 0,
+    "modelRequestsUsed": 0,
+    "generationRuns": 0,
+    "saveActions": 0,
+    "cancel": {
+      "session": "conversation_0aaf4e4d1c084299b26932141903dc4d",
+      "currentDelivery": "查物流测试集",
+      "historicalCandidatesLabel": true,
+      "savedDraft": "collabdraft_5a7fff9b97b46b52fb99851282a3071e666ac753709410e215b56d4eda552bde",
+      "draftCount": 2
+    },
+    "saveAs": {
+      "session": "conversation_9894e389c8e94a4ba100e39af97e6a48",
+      "saveName": "电商物流基础测试",
+      "draft": "collabdraft_a09ee7e122e14e889767ef9cd664232a",
+      "draftCount": 2
+    }
+  },
+  "preservation": {
+    "protectedTables": 18,
+    "unchangedOldBudgetFiles": 53
+  },
+  "merged": false,
+  "pushed": false
+}
