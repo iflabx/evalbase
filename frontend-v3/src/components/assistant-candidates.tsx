@@ -50,6 +50,7 @@ export function AssistantCandidates({
   actorId = "",
   active = true,
   readOnly = false,
+  historical = false,
   selected,
   onSelect,
   onSave,
@@ -61,6 +62,7 @@ export function AssistantCandidates({
   actorId?: string;
   active?: boolean;
   readOnly?: boolean;
+  historical?: boolean;
   selected?: CandidateSelection | undefined;
   onSelect: (value: CandidateSelection) => void;
   onSave?: ((message: string) => void) | undefined;
@@ -174,7 +176,7 @@ export function AssistantCandidates({
     >
       <div className="space-y-2 border-b p-3">
         <div className="flex flex-wrap justify-between gap-2">
-          <h4 className="font-semibold">当前任务成果</h4>
+          <h4 className="font-semibold">{historical ? "历史候选" : "当前任务成果"}</h4>
           <span className="text-muted-foreground">已选 {chosen.size} 条候选</span>
         </div>
         <p className="text-xs text-muted-foreground">

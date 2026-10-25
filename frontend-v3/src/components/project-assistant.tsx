@@ -2052,6 +2052,11 @@ export function ProjectAssistant({
                     visible.task.review?.runId === visible.task.runId &&
                     visible.task.review && (
                       <div className="space-y-2 border-t pt-3 text-xs">
+                        {visible.task.candidateHistory && (
+                          <p className="text-muted-foreground">
+                            历史候选核对 · 对应交付已不在当前方案中
+                          </p>
+                        )}
                         <p>
                           {visible.task.review.countKind === "final" ? "最终总数" : "本次候选"}{" "}
                           {visible.task.review.total}
@@ -2164,11 +2169,6 @@ export function ProjectAssistant({
                 </section>
               )}
               <div hidden={workTab !== "results"} className="space-y-3">
-                {visible?.task?.candidateHistory && reviewRun === visible.task.runId && (
-                  <p className="text-xs text-muted-foreground">
-                    历史候选 · 对应交付已不在当前方案中
-                  </p>
-                )}
                 {!reviewRun && (
                   <p className="py-5 text-sm text-muted-foreground">处理结果会显示在这里。</p>
                 )}
@@ -2197,6 +2197,9 @@ export function ProjectAssistant({
                         (visible.task.candidateScope?.hash ?? "")
                       }
                       readOnly={visible.task.stage === "complete"}
+                      historical={Boolean(
+                        visible.task.candidateHistory && reviewRun === visible.task.runId,
+                      )}
                       selected={visible.task.stage === "complete" ? undefined : picked}
                       onSelect={setPicked}
                       onSave={
