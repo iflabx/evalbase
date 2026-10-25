@@ -1618,21 +1618,16 @@ export async function executeAssistantTurn(
         ],
       };
     }
-    if (
-      bound.question &&
-      (!isPlanningQuestion(bound.question) ||
-        (namedSaveTarget(amendmentRequestText) &&
-          /保存|另存|名称|名字|命名/u.test(bound.question)))
-    )
-      throw new AssistantError(
-        422,
-        "assistant_plan_clarification_unnecessary",
-        "这是用户已经明确的处理要求或保存目标，不是缺失的业务信息。保存真实要求和saveTarget，然后按原授权执行；不要把要求复述为问题。",
-      );
     const questionedSource = planSource(
       bound.target ??
         current!.target ??
         current!.sourceDiscovery?.resolvedSource,
+    );
+    let redundantQuestion = Boolean(
+      bound.question &&
+      (!isPlanningQuestion(bound.question) ||
+        (namedSaveTarget(amendmentRequestText) &&
+          /保存|另存|名称|名字|命名/u.test(bound.question))),
     );
     if (
       bound.question &&
@@ -1646,11 +1641,27 @@ export async function executeAssistantTurn(
         "write",
         true,
       );
-      if (refersToWholeSourceCount(amendmentRequestText, actual.total))
+      redundantQuestion ||= refersToWholeSourceCount(
+        amendmentRequestText,
+        actual.total,
+      );
+    }
+    if (redundantQuestion) {
+      // Drop a provably redundant question only on an already authorized, source-bound
+      // processing action. The complete proposal and eventual command still validate.
+      if (
+        decision?.mode === "execute" &&
+        questionedSource &&
+        bound.nextAction === "submit_processing" &&
+        (bound.allowedFields ?? current!.allowedFields)?.length &&
+        !documents!.length
+      )
+        delete bound.question;
+      else
         throw new AssistantError(
           422,
           "assistant_plan_clarification_unnecessary",
-          "用户的‘这几条’已与当前来源全部真实记录一致。使用当前来源固定真实ID继续，不重复询问全量或部分，也不把outputCount当作范围授权。",
+          "这是用户已明确的处理要求、范围或保存目标，不是缺失信息。保留原授权和真实目标，保存可执行要求，不重复确认。",
         );
     }
     if (

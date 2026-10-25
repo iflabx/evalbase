@@ -2619,4 +2619,50 @@ describe("OPT47 unified processing public boundary", () => {
       expect(successes(state, "submit_processing")).toHaveLength(1);
     },
   );
+  it("CU10 SDK: an execution-ready redundant confirmation is normalized without a repair request", async () => {
+    const assetId = await file("确定性确认归一.jsonl"),
+      id = await newSession();
+    const target = { kind: "assets", assetIds: [assetId] };
+    const state = await send(
+      id,
+      "清洗这2条，去掉问题前后的空格，其他不变，保存为新草稿“客服清洗结果”。",
+      [
+        decision("execute"),
+        {
+          name: "plan_task",
+          input: {
+            control: { mode: "execute", requiresUpdate: true },
+            target,
+            allowedFields: ["question"],
+            nextAction: "submit_processing",
+            question: "请确认是否继续清洗并保存为新草稿“客服清洗结果”。",
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            source: target,
+            operation: "clean",
+            outputCount: 2,
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      ],
+      { context: { kind: "asset", id: assetId } },
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.runId).toBeTruthy();
+    expect(state.task.saveTarget).toEqual({
+      kind: "newDraft",
+      name: "客服清洗结果",
+    });
+    expect(state.task.question).toBeFalsy();
+    expect(
+      state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
+    ).toHaveLength(0);
+    expect(observed).toHaveLength(3);
+  });
 });
