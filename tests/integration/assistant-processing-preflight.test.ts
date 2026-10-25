@@ -2643,6 +2643,7 @@ describe("OPT47 unified processing public boundary", () => {
           input: {
             source: target,
             operation: "clean",
+            metadataKeys: ["__none__"],
             outputCount: 2,
             instructions: "",
             allowedFields: ["question"],

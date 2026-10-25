@@ -600,6 +600,18 @@ export function prepareToolProposal(
             "当前要求保护该字段，本次不能扩大修改范围。",
             "assistant_requirement_conflict",
           );
+    // A model absence marker cannot select a subfield when Metadata is protected.
+    // Real keys and every Metadata-enabled request still use the full checks below.
+    if (
+      Array.isArray(facts.task.allowedFields) &&
+      facts.task.allowedFields.length &&
+      !facts.task.allowedFields.includes("metadata") &&
+      !input.allowedFields?.includes("metadata") &&
+      Array.isArray(input.metadataKeys) &&
+      input.metadataKeys.length === 1 &&
+      input.metadataKeys[0] === "__none__"
+    )
+      delete input.metadataKeys;
     if (Array.isArray(input.metadataKeys)) {
       const norm = input.metadataKeys
         .filter((k: any) => typeof k === "string")

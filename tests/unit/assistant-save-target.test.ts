@@ -110,4 +110,50 @@ describe("processing output save target", () => {
       );
     },
   );
+  it("removes only the absence marker for protected Metadata and keeps real key validation", () => {
+    const facts: any = {
+      task: { allowedFields: ["question"] },
+      request: "其他内容不变",
+      authorizedText: "其他内容不变",
+    };
+    const base = {
+      source: { kind: "assets", assetIds: ["asset"] },
+      operation: "clean",
+      allRecords: true,
+      instructions: "",
+      allowedFields: ["question"],
+    };
+    const none = prepareToolProposal(
+      "submit_processing",
+      { ...base, metadataKeys: ["__none__"] },
+      facts,
+    );
+    expect(none.ok && none.input.metadataKeys).toBeUndefined();
+    expect(none.ok).toBe(true);
+    const real = prepareToolProposal(
+      "submit_processing",
+      { ...base, metadataKeys: ["intent"] },
+      facts,
+    );
+    expect(real.ok).toBe(false);
+    const enabled = prepareToolProposal(
+      "submit_processing",
+      {
+        ...base,
+        operation: "rewrite",
+        instructions: "统一指定字段的格式",
+        allowedFields: ["metadata"],
+        metadataKeys: ["__none__"],
+      },
+      {
+        ...facts,
+        request: "改写Metadata的__none__字段",
+        authorizedText: "改写Metadata的__none__字段",
+        task: { allowedFields: ["metadata"] },
+        metadataKeys: ["__none__"],
+      },
+    );
+    expect(enabled.ok, JSON.stringify(enabled)).toBe(true);
+    if (enabled.ok) expect(enabled.input.metadataKeys).toEqual(["__none__"]);
+  });
 });
