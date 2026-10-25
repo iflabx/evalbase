@@ -2278,7 +2278,30 @@ export async function executeAssistantTurn(
       observations: appendObservation(task?.observations, observation),
     });
   }
+  // Settlement cannot invoke a business tool or grant a model request. The usual
+  // access, dependency, revision and execution-token fences still apply.
+  async function finishCompletedTurn() {
+    if (!yieldToProcessing) return false;
+    const row = await turnFence(
+      db,
+      scope,
+      turn.id,
+      turn.execution_token,
+      "settle",
+    );
+    if (row.task.stage !== "complete") return false;
+    finishReason = "completed";
+    await saveDiagnostics();
+    const result = await updateTurn(
+      "UPDATE assistant_turn SET status='succeeded',error_code=NULL,assistant_text=$2 WHERE id=$1 AND status='running' AND expires_at>now()",
+      [turn.id, "本次任务已完成，已保存的结果保留在下方。"],
+    );
+    if (!result.rowCount)
+      throw new AssistantError(409, "assistant_interrupted");
+    return true;
+  }
   async function finishSavedPlanningTurn() {
+    if (await finishCompletedTurn()) return true;
     await turnFence(db, scope, turn.id, turn.execution_token);
     const saved = (
       await db.query(
@@ -7508,7 +7531,18 @@ export async function executeAssistantTurn(
     messages: ModelMessage[],
     observeOnly = false,
   ) {
-    await turnFence(db, scope, turn.id, turn.execution_token);
+    const fenced = await turnFence(
+      db,
+      scope,
+      turn.id,
+      turn.execution_token,
+      "settle",
+    );
+    if (fenced.task.stage === "complete") {
+      plannedAction = undefined;
+      yieldToProcessing = true;
+      return;
+    }
     if (!reconciledExecution) {
       reconciledExecution = true;
       const task = (
@@ -7528,21 +7562,19 @@ export async function executeAssistantTurn(
         waitingStep.receipt?.runId
       )
         processingEventRunId = waitingStep.receipt.runId;
-      if (
-        turn.event === "confirmed" &&
-        task.executionPlan?.mode === "execute"
-      ) {
-        const step = task.executionPlan.steps[task.executionPlan.current];
-        if (step?.receipt?.proposalId) {
-          const receipt = (
-            await db.query(
-              "SELECT id,status,receipt FROM assistant_proposal WHERE id=$1 AND session_id=$2 AND task_revision=$3",
-              [step.receipt.proposalId, turn.session_id, turn.task_revision],
-            )
-          ).rows[0];
-          if (receipt) {
-            await settlePlan("confirmed", receipt, step.receipt.key);
-          }
+      if (turn.event === "confirmed") {
+        const reconciled = await reconcileExecutionConfirmations(db, {
+          id: turn.session_id,
+          project_id: scope.projectId,
+          actor_id: scope.actorId,
+          task_revision: turn.task_revision,
+          task,
+        });
+        if (reconciled !== task) await updateTask(db, turn, reconciled);
+        if (reconciled.stage === "complete") {
+          plannedAction = undefined;
+          yieldToProcessing = true;
+          return;
         }
       }
 
@@ -7849,6 +7881,20 @@ export async function executeAssistantTurn(
       AbortSignal.timeout(Math.max(1, turnBudget.deadlineAt - Date.now())),
       ...(cancellation ? [cancellation] : []),
     ]);
+    if (turn.event !== "user") {
+      const current = await turnFence(
+        db,
+        scope,
+        turn.id,
+        turn.execution_token,
+        "settle",
+      );
+      if (current.task.stage === "complete") {
+        yieldToProcessing = true;
+        await finishCompletedTurn();
+        return;
+      }
+    }
     await turnFence(db, scope, turn.id, turn.execution_token);
     await updateTask(db, turn, { turnBudget, transportRecovery: null });
     const model = await configuredModel(

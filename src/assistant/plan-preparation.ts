@@ -1,3 +1,4 @@
+import { deliveryRequest } from "./delivery-request.js";
 import { normalizePlanContent } from "./plan-content.js";
 import { requestedSceneCount } from "./requirements.js";
 import {
@@ -23,46 +24,19 @@ export type PreparationResult =
       requirements?: Record<string, any>;
     }
   | { ok: false; issues: PreparationIssue[]; question?: string };
-const changedRequest = (request: string) =>
-  request
-    .split(/[，,。；;\n]/u)
-    .filter((c) => !/保持|不变|不要|不得|禁止/u.test(c))
-    .join("，");
-/** Trusted targets come from the current contract and user request, never a rejected proposal's IDs. */
+/** All amendment callers share the same operation/target interpretation. */
 export function amendmentTargets(task: Record<string, any>, request: string) {
   const goals = deliveryGoals(task.executionPlan);
-  const changed = changedRequest(request);
-  const ordinals = [
-    ...changed.matchAll(
-      /第(\d+|一|二|两|三|四|五|六|七|八|九|十)(?:份|个测试集)/gu,
-    ),
-  ].map((m) => {
-    const n =
-      Number(m[1]) ||
-      (
-        {
-          一: 1,
-          二: 2,
-          两: 2,
-          三: 3,
-          四: 4,
-          五: 5,
-          六: 6,
-          七: 7,
-          八: 8,
-          九: 9,
-          十: 10,
-        } as Record<string, number>
-      )[m[1]!];
-    return goals[n - 1];
-  });
-  if (ordinals.length) {
-    if (ordinals.some((g) => g === undefined)) return [];
-    const targets = ordinals.filter((g) => g !== undefined);
-    return [...new Map(targets.map((g) => [g.id, g])).values()];
-  }
-  const named = goals.filter((g) => changed.includes(g.name));
-  if (named.length) return named;
+  const clauses = deliveryRequest(goals, request).filter((c) =>
+    ["change", "remove"].includes(c.operation),
+  );
+  if (clauses.some((c) => c.conflicting)) return [];
+  const direct = clauses.flatMap((c) => c.targets);
+  if (direct.length) return [...new Map(direct.map((g) => [g.id, g])).values()];
+  const changed = clauses
+    .filter((c) => c.operation === "change")
+    .map((c) => c.text)
+    .join("，");
   const classified = goals.filter((g) =>
     g.classifications.some((r) =>
       r.allowedValues?.some((v) => changed.includes(v)),
@@ -70,7 +44,7 @@ export function amendmentTargets(task: Record<string, any>, request: string) {
   );
   return classified.length
     ? classified
-    : goals.length === 1 || /全部|所有|每份|各份/u.test(changed)
+    : changed && (goals.length === 1 || /全部|所有|每份|各份/u.test(changed))
       ? goals
       : [];
 }
@@ -134,7 +108,12 @@ export function requiredPlanTarget(
   if (
     goals.length < 2 ||
     !Array.isArray(input.deliveries) ||
-    /全部|所有|每份|各份/u.test(changedRequest(request))
+    /全部|所有|每份|各份/u.test(
+      deliveryRequest(goals, request)
+        .filter((c) => ["change", "remove"].includes(c.operation))
+        .map((c) => c.text)
+        .join("，"),
+    )
   )
     return;
   const index = input.deliveries.findIndex(

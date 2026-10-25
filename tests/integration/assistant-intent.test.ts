@@ -6010,6 +6010,58 @@ describe("OPT42 per-turn intent public boundary", () => {
         { timeout: 15000 },
       )
       .toBe("complete");
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.error).toBeFalsy();
+    expect(state.task.recovery).toBeFalsy();
+    if (["continue", "mistaken-new"].includes(boundary)) {
+      // Isolated test DB: simulate completion racing with claim/reclaim.
+      const raceDb = createPool(databaseUrl);
+      const requestsBefore = observed.length;
+      const effectsBefore = await effects();
+      try {
+        if (boundary === "mistaken-new")
+          await raceDb.query(
+            "UPDATE assistant_session SET task=task-'recoverySegment' WHERE id=$1",
+            [id],
+          );
+        await raceDb.query(
+          "UPDATE assistant_turn SET event='confirmed',status='queued',execution_token=NULL,resuming=$2,execution_attempt=$3 WHERE id=$1",
+          [
+            state.turns.at(-1).id,
+            boundary === "continue",
+            boundary === "continue" ? 1 : 0,
+          ],
+        );
+        await expect
+          .poll(
+            async () => {
+              state = await read(id);
+              return state.turns.at(-1).status;
+            },
+            { timeout: 15000 },
+          )
+          .toBe("succeeded");
+        expect(state.task.stage).toBe("complete");
+        expect(state.task.error).toBeFalsy();
+        expect(observed.length).toBe(requestsBefore);
+        expect(await effects()).toEqual(effectsBefore);
+      } finally {
+        await raceDb.end();
+      }
+    }
     const countDb = createPool(databaseUrl);
     try {
       const rows = (
@@ -6149,6 +6201,166 @@ describe("OPT42 per-turn intent public boundary", () => {
         { timeout: 15000 },
       )
       .toBe(true);
+  });
+  it.each(["第二份不取消", "不用取消第二份", "不删除第二份", "无需取消第二份"])(
+    "B4c negated cancellation through SDK: %s",
+    async (request) => {
+      const { id, documentId } = await backgroundSession();
+      let state = await send(id, "设计两个测试集各2条，先只做方案。", [
+        decision("plan"),
+        { name: "read_background", input: { documentId } },
+        {
+          name: "plan_task",
+          input: {
+            executionMode: "plan",
+            deliveries: [
+              { ...simpleDelivery(), name: "查物流测试集" },
+              { ...simpleDelivery(), name: "改地址测试集" },
+            ],
+          },
+        },
+      ]);
+      const goals = deliveryGoals(state.task.executionPlan);
+      expect(goals).toHaveLength(2);
+      const before = await effects();
+      const invalid = {
+        name: "plan_task",
+        input: {
+          executionMode: "plan",
+          deliveries: [{ id: goals[1].id, remove: true }],
+        },
+      };
+      state = await send(id, request, [
+        decision("plan", { requiresUpdate: true }),
+        invalid,
+        invalid,
+        invalid,
+      ]);
+      expect(deliveryGoals(state.task.executionPlan).map((g) => g.id)).toEqual(
+        goals.map((g) => g.id),
+      );
+      expect(await effects()).toEqual(before);
+    },
+  );
+  it.each([
+    "第二个改地址测试集不要了，保留已经保存的查物流测试集，其他先不做。",
+    "第二份不要了，第一份保留。",
+    "请取消第二份，第一份保留。",
+  ])("B4c cancellation through SDK: %s", async (request) => {
+    const { id, documentId } = await backgroundSession();
+    let state = await send(id, "创建两个测试集，各2条，现在开始。", [
+      decision("execute"),
+      { name: "read_background", input: { documentId } },
+      {
+        name: "plan_task",
+        input: {
+          executionMode: "execute",
+          deliveries: [
+            { ...simpleDelivery(), name: "查物流测试集" },
+            { ...simpleDelivery(), name: "改地址测试集" },
+          ],
+        },
+      },
+    ]);
+    const first = state.task.runId;
+    await finishB3(first);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.proposals.some((p: any) => p.status === "pending");
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    const card = state.proposals.find((p: any) => p.status === "pending");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: base() + "/proposals/" + card.id + "/confirm",
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.task.runId;
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe(first);
+    const second = state.task.runId;
+    await finishB3(second);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.proposals.some((p: any) => p.status === "pending");
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(
+        async () => {
+          state = await read(id);
+          return state.turns.every(
+            (t: any) => !["queued", "running"].includes(t.status),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
+
+    const pending = state.proposals.find((p: any) => p.status === "pending");
+    const goals = deliveryGoals(state.task.executionPlan);
+    const before = await effects();
+    state = await send(id, request, [
+      decision("execute", { requiresUpdate: true }),
+      ...(request.startsWith("请取消")
+        ? [
+            {
+              name: "plan_task",
+              input: {
+                deliveries: [{ id: goals[0].id, remove: true }],
+                executionMode: "execute",
+              },
+            },
+          ]
+        : []),
+      {
+        name: "plan_task",
+        input: {
+          deliveries: [{ id: goals[1].id, remove: true }],
+          executionMode: "execute",
+        },
+      },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(deliveryGoals(state.task.executionPlan).map((g) => g.name)).toEqual([
+      "查物流测试集",
+    ]);
+    expect(state.proposals.find((p: any) => p.id === card.id).status).toBe(
+      "succeeded",
+    );
+    expect(state.proposals.find((p: any) => p.id === pending.id).status).toBe(
+      "invalid",
+    );
+    expect(await effects()).toEqual(before);
+    const result = await app.inject({
+      method: "POST",
+      url: base() + "/proposals/" + pending.id + "/confirm",
+      headers,
+      payload: {},
+    });
+    expect(result.statusCode).toBeGreaterThanOrEqual(400);
+    expect(await effects()).toEqual(before);
   });
   it("B4 an unknown save destination is clarified and its answer prepares the same candidates", async () => {
     const { id, documentId } = await backgroundSession();

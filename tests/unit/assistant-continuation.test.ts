@@ -60,7 +60,13 @@ function fixture() {
     status: "succeeded",
     task_revision: 3,
     summary: { range: "task" },
-    receipt: { receipt: { draftId: "draft-" + id, adopted: 50 } },
+    parameters: {
+      runId: "run-" + id,
+      target: { kind: "draft", id: "draft-" + id },
+    },
+    receipt: {
+      receipt: { runId: "run-" + id, draftId: "draft-" + id, adopted: 50 },
+    },
   }));
   const queries: string[] = [];
   const db: any = {

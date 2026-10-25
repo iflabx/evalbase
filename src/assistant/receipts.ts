@@ -117,6 +117,7 @@ export async function reconcileExecutionConfirmations(
   let task = session.task;
   const plan = task.executionPlan;
   if (
+    plan?.contractVersion !== 1 &&
     (!plan?.steps?.length ||
       plan.steps.every((step: any) => step.status === "executed")) &&
     task.runId &&
@@ -174,7 +175,7 @@ export async function reconcileExecutionConfirmations(
   if (!ids.length) return task;
   const facts = (
     await db.query(
-      "SELECT id,status,summary,receipt,task_revision FROM assistant_proposal WHERE session_id=$1 AND project_id=$2 AND actor_id=$3 AND id=ANY($4::text[])",
+      "SELECT id,status,summary,parameters,receipt,task_revision FROM assistant_proposal WHERE session_id=$1 AND project_id=$2 AND actor_id=$3 AND id=ANY($4::text[])",
       [session.id, session.project_id, session.actor_id, ids],
     )
   ).rows;
@@ -187,7 +188,35 @@ export async function reconcileExecutionConfirmations(
         item.deliveryId === step.deliveryId &&
         item.action === "generate_candidates",
     );
-    const expectedDraft = step.receipt?.draftId ?? goal?.receipt?.draftId;
+    const input = step.operation?.input ?? step.input ?? {};
+    const target = input.target;
+    const actualTarget = fact.parameters?.target;
+    const expectedRun = input.runId ?? goal?.receipt?.runId;
+    if (
+      expectedRun &&
+      (fact.parameters?.runId !== expectedRun || saved.runId !== expectedRun)
+    )
+      return false;
+    // A new draft is bound by the confirmed proposal, never the generation draft.
+    if (target?.kind === "newDraft") {
+      if (
+        actualTarget?.kind !== "newDraft" ||
+        actualTarget.name !== target.name
+      )
+        return false;
+    } else if (target?.kind === "draft") {
+      if (
+        actualTarget &&
+        (actualTarget.kind !== "draft" || actualTarget.id !== target.id)
+      )
+        return false;
+      if (saved.draftId !== target.id) return false;
+    }
+    const expectedDraft =
+      step.receipt?.draftId ??
+      (target?.kind === "newDraft"
+        ? undefined
+        : (target?.id ?? goal?.receipt?.draftId));
     return Boolean(
       saved?.draftId &&
       (!expectedDraft || saved.draftId === expectedDraft) &&

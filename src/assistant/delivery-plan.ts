@@ -1,3 +1,4 @@
+import { deliveryRequest } from "./delivery-request.js";
 import { minimumPlanScenes } from "./requirements.js";
 import { opaqueId } from "../server/support.js";
 import { canonicalJson } from "../package/contract.js";
@@ -442,7 +443,9 @@ export function requestedDeliveryShape(request: string) {
   );
   const separate = request.match(
     new RegExp(
-      number + "\\s*份(?:[^，。；;\\n]{0,20})?(?:各|每份)\\s*([1-9]\\d*)\\s*条",
+      "(?<![各第0-9一二两三四五六七八九十百])" +
+        number +
+        "\\s*份(?:[^，。；;\\n]{0,20})?(?:各|每份)\\s*([1-9]\\d*)\\s*条",
       "u",
     ),
   );
@@ -454,7 +457,7 @@ export function requestedDeliveryShape(request: string) {
         ? undefined
         : request.match(
             new RegExp(
-              "(?<!各)" +
+              "(?<![各第0-9一二两三四五六七八九十百])" +
                 number +
                 "\\s*(?:份|个)[^，。；;\\n]{0,15}(?:测试集|集合)",
               "u",
@@ -844,18 +847,19 @@ export function reviseDeliveryGoals(
         fail("同一交付不能在一次修改中重复提交。");
       if (change.id) seen.add(change.id);
       if (change.remove) {
+        const clauses = deliveryRequest(current, userText);
         if (
           !prior ||
-          !userText
-            .split(/[。；;，,\n]/u)
-            .some(
-              (clause) =>
-                clause.includes(prior.name) &&
-                /(?:取消|撤销|删除|去掉|不再需要)/u.test(clause) &&
-                !/(?:不要|不得|别|禁止).{0,8}(?:取消|撤销|删除|去掉)/u.test(
-                  clause,
-                ),
-            )
+          !clauses.some(
+            (clause) =>
+              clause.operation === "remove" &&
+              clause.targets.some((g) => g.id === prior.id),
+          ) ||
+          clauses.some(
+            (clause) =>
+              ["preserve", "pause"].includes(clause.operation) &&
+              clause.targets.some((g) => g.id === prior?.id),
+          )
         )
           fail("本轮没有明确取消这项交付；原交付及其约束保持。");
         goals.splice(

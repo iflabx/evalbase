@@ -1454,6 +1454,7 @@ export async function turnFence(
   scope: AssistantScope,
   turnId: string,
   token?: string,
+  purpose: "execute" | "settle" = "execute",
 ) {
   await assistantAccess(db, scope);
   const row = (
@@ -1478,10 +1479,11 @@ export async function turnFence(
       row,
       { phase: "commit", token },
     );
-    if (!d.action)
+    if (!d.action && !(purpose === "settle" && d.reason === "complete"))
       throw new AssistantError(409, "assistant_retry_unavailable", d.reason);
   }
   await dependenciesAvailable(db, scope, row.dependencies);
+  return row;
 }
 export async function saveProposal(
   db: Database,

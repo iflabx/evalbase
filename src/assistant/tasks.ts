@@ -336,6 +336,14 @@ export async function claimAssistantTurn(db: Database) {
         row,
         { phase: "claim" },
       );
+      if (decision.reason === "complete" && row.event !== "user") {
+        await client.query(
+          "UPDATE assistant_turn SET status='succeeded',execution_token=NULL,error_code=NULL,assistant_text=$2 WHERE id=$1 AND status='queued'",
+          [row.id, "本次任务已完成，已保存的结果保留在下方。"],
+        );
+        await client.query("COMMIT");
+        return;
+      }
       if (!decision.action || decision.action !== "retry_turn") {
         await client.query(
           "UPDATE assistant_turn SET status='failed',execution_token=NULL,error_code=$2 WHERE id=$1",

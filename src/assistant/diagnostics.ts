@@ -55,6 +55,16 @@ export function assistantFailure(
       "等待模型回复超时。",
       "原要求和已完成操作已保留，可继续未完成步骤。",
     );
+  if (
+    code === "assistant_retry_unavailable" &&
+    (error as { hint?: string })?.hint === "complete"
+  )
+    return result(
+      "application",
+      "completion_settlement",
+      "数据已保存，任务结束状态未能正确收尾。",
+      "已有结果保留，无需重复生成或保存。",
+    );
   if (code === "assistant_intent_required")
     return result(
       "business",

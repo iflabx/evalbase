@@ -1,3 +1,4 @@
+import { deliveryRequest } from "./delivery-request.js";
 import { amendmentTargets } from "./plan-preparation.js";
 import { requestedSceneCount } from "./requirements.js";
 import { canonicalJson } from "../package/contract.js";
@@ -143,9 +144,10 @@ export function preparePlanAmendment(
     clauses.some((clause) => /保存|另存|存成|存到|存为/u.test(clause))
   )
     return undefined;
-  const changes = request
-    .split(/[，,。；;\n]/u)
-    .filter((clause) => !/保持|不变|不要|不得|禁止|先不|不执行/u.test(clause));
+  const edits = deliveryRequest(goals, request);
+  const changes = edits
+    .filter((c) => ["change", "remove"].includes(c.operation))
+    .map((c) => c.text);
   const text = changes.join("，");
   const requested = new Set<string>();
   if (/名称|名字|命名/u.test(text)) requested.add("name");
@@ -163,7 +165,7 @@ export function preparePlanAmendment(
     )
   )
     requested.add("instructions");
-  if (/取消|撤销|删除/u.test(text)) requested.add("remove");
+  if (edits.some((c) => c.operation === "remove")) requested.add("remove");
   const adding = changes.some(deliveryAdditionClause);
   const focused = amendmentTargets(task, request);
   if (
