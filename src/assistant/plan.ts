@@ -1,3 +1,4 @@
+import { savedSaveTarget } from "./save-target.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
 import { opaqueId } from "../server/support.js";
 import { normalizedRequirements, RequirementError } from "./requirements.js";
@@ -248,6 +249,7 @@ export function planRequirementsKey(task: Record<string, any>, legacy = false) {
           "targetCount",
           "countKind",
           "targetDraftId",
+          "saveTarget",
           "allowedFields",
           "metadataKeys",
           "classifications",
@@ -912,6 +914,11 @@ export function bindTaskInput(
     : undefined;
   if (["preview_selection", "request_publish"].includes(name))
     input.draftId ??= draftId;
+  if (name === "request_processing_apply" && !delivery) {
+    const saved = savedSaveTarget(task);
+    if (saved && (!input.target || input.target.kind === saved.kind))
+      input.target = { ...saved };
+  }
   if (name === "request_processing_apply" && draftId) {
     input.target ??= { kind: "draft", id: draftId };
     if (input.target.kind === "draft")

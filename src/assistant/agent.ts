@@ -5,6 +5,11 @@ import {
   normalizePlanningInput,
   planningQuestionFact,
 } from "./planning-contract.js";
+import {
+  saveTargetSchema,
+  newDraftSaveTarget,
+  savedSaveTarget,
+} from "./save-target.js";
 import { taskBoundaryIntent } from "./task-boundary.js";
 import { readWorkspaceFacts } from "./workspace.js";
 import { progressMessage } from "./feedback.js";
@@ -40,6 +45,7 @@ import {
   wholeSourceAuthorized,
   processingWorkflowSteps,
   sourceScopeRequest,
+  refersToWholeSourceCount,
   processingRepairIssues,
 } from "./processing-preparation.js";
 import {
@@ -1179,7 +1185,7 @@ export async function executeAssistantTurn(
       planSource(current!.target) ??
       planSource(current!.sourceDiscovery?.resolvedSource) ??
       planSource(current!.processingScope?.source);
-    const allRequested =
+    let allRequested =
       ["read_records", "submit_processing"].includes(name) &&
       !!input.source &&
       allText &&
@@ -1343,6 +1349,22 @@ export async function executeAssistantTurn(
               },
             ],
           };
+        }
+        if (
+          !uiScope &&
+          !current!.processingScope &&
+          confirmedSource &&
+          canonicalJson(planSource(confirmedSource)) ===
+            canonicalJson(planSource(input.source)) &&
+          refersToWholeSourceCount(facts.request, data.total)
+        ) {
+          allRequested = true;
+          if (
+            input.recordIds === undefined &&
+            input.selection === undefined &&
+            input.allRecords === undefined
+          )
+            input.recordIds = data.allIds;
         }
         const keys = [
           ...new Set(data.records.flatMap((r) => r.metadata.map((e) => e.key))),
@@ -3698,30 +3720,16 @@ export async function executeAssistantTurn(
         control: turnControlSchema,
         baseRevision: { type: "integer", minimum: 0 },
         deliveries: { type: "array", maxItems: 10, items: { type: "object" } },
+        saveTarget: {
+          ...saveTargetSchema,
+          description:
+            "处理完成后的保存去向，可在处理前记录；与来源target和任务title分开。新草稿填写name，已有草稿填写真实id。仅记录目标，不建立确认、不采用。",
+        },
         candidateSave: {
           type: "object",
           additionalProperties: false,
           properties: {
-            target: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                kind: { enum: ["newDraft", "draft"] },
-                name: { type: "string", minLength: 1, maxLength: 200 },
-                id: string,
-              },
-              required: ["kind"],
-              allOf: [
-                {
-                  if: { properties: { kind: { const: "newDraft" } } },
-                  then: { required: ["name"] },
-                },
-                {
-                  if: { properties: { kind: { const: "draft" } } },
-                  then: { required: ["id"] },
-                },
-              ],
-            },
+            target: saveTargetSchema,
           },
           required: ["target"],
         },
@@ -4536,6 +4544,9 @@ export async function executeAssistantTurn(
           };
           input = {
             executionMode: "execute",
+            ...(!deliveryGoals(current.executionPlan).length
+              ? { saveTarget: candidateSave.target }
+              : {}),
             steps: [
               ...prefix,
               {
@@ -4603,10 +4614,7 @@ export async function executeAssistantTurn(
                 allSelected: true,
                 ...(current.uiCandidateSave.newDraft
                   ? {
-                      target: {
-                        kind: "newDraft",
-                        name: current.title ?? "处理结果",
-                      },
+                      target: newDraftSaveTarget(current),
                     }
                   : {}),
               },
@@ -5199,6 +5207,8 @@ export async function executeAssistantTurn(
           turn.event !== "user"
         )
           throw new AssistantError(422, "assistant_plan_only");
+        if (input.saveTarget?.kind === "draft")
+          await depend([{ kind: "draft", id: input.saveTarget.id }]);
         const { steps, executionMode, ...fields } = input;
         if (!input.question && selectedPlanningEvidence?.length)
           fields.backgroundEvidence = selectedPlanningEvidence;
@@ -8540,8 +8550,19 @@ export async function executeAssistantTurn(
         ),
     });
     if (task.uiCandidateSave?.turnId === turn.id) {
+      const uiTarget = task.uiCandidateSave.newDraft
+        ? newDraftSaveTarget(task)
+        : task.targetDraftId || task.target?.kind === "draft"
+          ? { kind: "draft", id: task.targetDraftId ?? task.target.id }
+          : savedSaveTarget(task);
       await tools.plan_task.execute!(
-        { executionMode: "execute", nextAction: "request_processing_apply" },
+        {
+          executionMode: "execute",
+          nextAction: "request_processing_apply",
+          ...(!deliveryGoals(task.executionPlan).length && uiTarget
+            ? { saveTarget: uiTarget }
+            : {}),
+        },
         { toolCallId: "ui-save-plan", messages, context: {}, abortSignal },
       );
       await tools.read_processing.execute!(
@@ -8549,7 +8570,7 @@ export async function executeAssistantTurn(
         { toolCallId: "ui-save-review", messages, context: {}, abortSignal },
       );
       const target = task.uiCandidateSave.newDraft
-        ? { kind: "newDraft", name: task.title ?? "处理结果" }
+        ? newDraftSaveTarget(task)
         : undefined;
       const proposal: any = await tools.request_processing_apply.execute!(
         { runId: task.runId, allSelected: true, ...(target ? { target } : {}) },
@@ -8580,6 +8601,7 @@ export async function executeAssistantTurn(
         "固定范围可用read_records的selection完成，不用模型改写来仅选样。同一来源同一选取条件默认复用固定输入；用户明确重新选取时才设reselect:true。后续分类和修改不增加这批候选数量，扩充才产生新增。分类取自文档时classifications.basis设background，并直接使用已读原文中的编号/定义；用户自行指定标签才设user，不因参数校验失败伪称用户指定。补读发现定义改变后，先plan_task修正未执行步骤，再使用已有成果或必要重处理。参数失败按返回hint合法修正，不把question与执行nextAction同时提交；真正业务澄清才question+none。重复失败时明确说明当前阻碍和保留成果，不继续无效重试。" +
         "当前从零生成必须有已上传并读取的背景文档。没有文档时先说明需要上传PDF/MD/TXT，或选择已有原始资料扩充；可记录已知要求，不虚构可执行方案，不追问内部参数或重复确认开工。依据已读取背景文档从零生成使用generate_candidates；基于真实记录扩充使用submit_processing，两者的输入合同不同，不要求用户补种子或把背景当资产。内部参数错误由你按当前工具合同修正，不能用question把工具参数错误转交用户，不要求用户提供工具名、参数或内部ID。只给方案时保存完整plan后说明步骤，不询问是否同意先给方案；本轮用户已明确执行时直接启用execute，不复述历史问题要求再次开工确认。勾选候选后的局部改写直接用refine_candidates，不重列已完成的生成阶段；新要求会使旧确认卡失效，不让用户先确认或取消失效卡，修改后重新核对并建立确认卡。面向用户只解释业务步骤与保留成果，技术参数仅留诊断。" +
         "同一会话可顺序承载独立目标。用户普通表达提出另一件独立工作而边界未明确时，在control填写taskBoundary:new，由服务端只澄清任务边界；继续、改名、改数量和局部换主题仍是continue，不能为绕过耗尽额度而新建任务。" +
+        "用户明确处理完成后的保存去向或新草稿名称时，先用plan_task.saveTarget保存结构化目标；不要只写requirements或任务title。澄清来源和范围时保留该目标；保存按钮、确认卡均沿已保存目标。" +
         "简单任务直接使用必要业务工具，不强制多步骤计划；清洗、去重、改写等连续处理必须先plan_task保存steps和当前requirements：submit_processing clean→select_candidates deduplicate:true→refine_candidates allResults:true→read_processing。后一步使用前一步真实成果；用户只要预览时不列request_*步骤，也不在完成后建立保存卡。文档生成使用plan_task保存executionMode与deliveries，其他复杂任务按当前Schema保存业务steps，资料查询后可补齐后续参数。本轮操作以plan_task.control为唯一入口：纯查询可直接只读回答，不调用写工具；其他请求先保存control，可与业务字段同次提交。mode为query/plan/execute/pause；要求变更与执行组合设requiresUpdate:true。先暂停后修改先单独保存pause控制，再更新要求，失败仍暂停。只解释/引用执行文字不能授予execute；先解释再执行则在control.explanation填写实际业务说明，先显示后执行。简短“好/继续”按当前唯一待答问题和既有授权判断，仅规划或歧义时问一个业务问题。不得把control放入steps.input。暂停只停止后续派发，不代表已入队任务已取消；要取消运行请使用页面现有停止任务入口，不谎称已经取消。steps状态由真实回执管理，后台未完成不能跳过。budget_yield仅继续原授权，不能解除暂停或构成新授权。方法按任务选择，不把安全分类或固定工具顺序套到每种任务。" +
         "按名称找到多个同名资料、版本或草稿，且当前页面/明确业务描述不能唯一定位时，必须先澄清并停止处理；不能选择第一个、最新一个或逐个尝试。向用户展示名称、条数或父版本等可理解的区别；没有区别时请用户打开目标页面再说‘当前资料’，不要求用户提供内部ID。" +
         "仅当用户需要按背景语义分类后选取时：先读取完整相关类别定义，再用rewrite和受限Metadata键逐条分类，保护原题/答案及其他Metadata；源subject不等于新分类。read_processing取得真实结果后按分类固定选取并报告缺额，不凭预览或旧标签推断全量。已有可信分类可直接筛选；不必再分类。不要遗漏跨片段定义，不擅自降级用户类别，也不造标签凑数。其他改写、提取、扩写按用户目标组合现有能力，结构核对不代替语义审核。" +

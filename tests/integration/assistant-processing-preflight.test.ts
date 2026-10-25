@@ -2310,4 +2310,241 @@ describe("OPT47 unified processing public boundary", () => {
       release();
     }
   });
+  it.each(["整份资料", "这2条"])(
+    "CU10 saved destination survives clean, pause and fixed save: %s",
+    async (range) => {
+      const outputName = "客服清洗结果" + range;
+      const assetId = await file("保存名称回归-" + range + ".jsonl"),
+        id = await newSession();
+      const target = { kind: "assets", assetIds: [assetId] };
+      let state = await send(
+        id,
+        "清洗" +
+          range +
+          "，只去掉问题前后的空格，其他内容不变。保存为新测试集草稿，名字叫“" +
+          outputName +
+          "”。",
+        [
+          decision("execute", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              title: "清洗客服资料",
+              target,
+              requirements: [
+                "只去掉问题首尾空格，其他字段不变",
+                "保存为新的测试集草稿“" + outputName + "”",
+              ],
+              allowedFields: ["question"],
+              executionMode: "execute",
+              nextAction: "submit_processing",
+            },
+          },
+          {
+            name: "submit_processing",
+            input: {
+              source: target,
+              operation: "clean",
+              ...(range === "整份资料"
+                ? { allRecords: true }
+                : { outputCount: 2 }),
+              instructions: "",
+              allowedFields: ["question"],
+            },
+          },
+        ],
+        { context: { kind: "asset", id: assetId } },
+      );
+      expect(state.task.saveTarget, JSON.stringify(state.turns.at(-1))).toEqual(
+        { kind: "newDraft", name: outputName },
+      );
+      expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+      const clean = await finishClean(state.task.runId);
+      expect(clean.records).toHaveLength(2);
+      expect(clean.records.map((r: any) => r.result.question)).toEqual([
+        "问题甲",
+        "问题乙",
+      ]);
+      expect(clean.records.map((r: any) => r.result.expectedOutput)).toEqual([
+        "  原标签  ",
+        "  原标签  ",
+      ]);
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return (
+              state.task.stage === "awaiting_review" &&
+              state.turns.every(
+                (t: any) => !["queued", "running"].includes(t.status),
+              )
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      await send(id, "先停一下", []);
+      state = await send(id, "继续。", [
+        decision("execute"),
+        { name: "plan_task", input: { executionMode: "execute" } },
+      ]);
+      expect(state.task.saveTarget).toEqual({
+        kind: "newDraft",
+        name: outputName,
+      });
+      await expect
+        .poll(
+          async () => {
+            state = await read(id);
+            return state.turns.every(
+              (t: any) => !["queued", "running"].includes(t.status),
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const candidates = (
+        await app.inject({
+          method: "GET",
+          url: base() + "/sessions/" + id + "/candidates",
+          headers,
+        })
+      ).json();
+      const picked = {
+        scope: "task",
+        reviewRevision: candidates.reviewRevision,
+        resultIds: candidates.records.map((r: any) => r.id),
+      };
+      const saved = await send(id, "将勾选成果保存为新测试集草稿", [], {
+        operation: "save_candidates_new",
+        expectedTaskRevision: state.task.turnControl.taskRevision,
+        candidates: picked,
+      });
+      expect(observed).toHaveLength(0);
+      const proposal = saved.proposals.find((p: any) => p.status === "pending");
+      expect(proposal?.summary.target, JSON.stringify(saved.turns.at(-1))).toBe(
+        outputName,
+      );
+      const confirmed = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers,
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      const drafts = (
+        await dbQuery(
+          "SELECT id,name FROM collaborative_draft WHERE project_id=$1",
+          [projectId],
+        )
+      ).rows;
+      const actual = drafts.find((d: any) => d.name === outputName);
+      expect(actual).toBeTruthy();
+      const records = (
+        await dbQuery(
+          "SELECT question,expected_output,metadata FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+          [actual.id],
+        )
+      ).rows;
+      expect(records.map((r: any) => r.question)).toEqual(["问题甲", "问题乙"]);
+      expect(
+        records.every((r: any) => r.expected_output === "  原标签  "),
+      ).toBe(true);
+      expect(
+        records.find((r: any) => r.question === "问题甲").metadata,
+      ).toEqual([{ key: "intent", value: " A " }]);
+      const receipt = (
+        await dbQuery("SELECT receipt FROM assistant_proposal WHERE id=$1", [
+          proposal.id,
+        ])
+      ).rows[0].receipt;
+      expect(receipt.receipt.draftId).toBe(actual.id);
+      const opened = await app.inject({
+        method: "GET",
+        url:
+          "/api/projects/" + projectId + "/collaborative-drafts/" + actual.id,
+        headers,
+      });
+      expect(opened.statusCode, opened.body).toBe(200);
+      expect(opened.json().draft.name).toBe(outputName);
+      const repeated = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers,
+        payload: {},
+      });
+      expect(repeated.statusCode, repeated.body).toBe(200);
+      expect(
+        (
+          await dbQuery(
+            "SELECT count(*)::int AS n FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+            [projectId, outputName],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    },
+  );
+  it("CU10 SDK: an unquoted early destination must be repaired into executable state before cleaning", async () => {
+    const assetId = await file("未加引号的保存目标.jsonl"),
+      id = await newSession();
+    const target = { kind: "assets", assetIds: [assetId] };
+    const state = await send(
+      id,
+      "清洗整份资料后保存为新测试集草稿，名字叫客服清洗结果。",
+      [
+        decision("execute", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            target,
+            requirements: ["清洗后保存为名叫客服清洗结果的新草稿"],
+            allowedFields: ["question"],
+            executionMode: "execute",
+            nextAction: "submit_processing",
+          },
+        },
+        {
+          name: "plan_task",
+          input: {
+            target,
+            saveTarget: { kind: "newDraft", name: "客服清洗结果" },
+            requirements: ["清洗后保存"],
+            allowedFields: ["question"],
+            executionMode: "execute",
+            nextAction: "submit_processing",
+          },
+        },
+        {
+          name: "submit_processing",
+          input: {
+            source: target,
+            operation: "clean",
+            allRecords: true,
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      ],
+      { context: { kind: "asset", id: assetId } },
+    );
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.saveTarget).toEqual({
+      kind: "newDraft",
+      name: "客服清洗结果",
+    });
+    expect(state.task.runId).toBeTruthy();
+    expect(
+      state.turns
+        .at(-1)
+        .tools.some(
+          (t: any) =>
+            t.name === "plan_task" &&
+            t.status === "failed" &&
+            t.error?.issues?.some((i: any) => i.path === "/saveTarget"),
+        ),
+    ).toBe(true);
+    expect(successes(state, "submit_processing")).toHaveLength(1);
+  });
 });

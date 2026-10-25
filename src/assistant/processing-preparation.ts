@@ -1,3 +1,4 @@
+import { savedSaveTarget } from "./save-target.js";
 import { projectQueryFields } from "./query-contract.js";
 import { bindTaskInput, planSource, sourceWithinTask } from "./plan.js";
 import { selectionParameters } from "./plan.js";
@@ -100,6 +101,27 @@ export function sourceScopeRequest(
     if (active === wanted && unresolvedScope) request = "";
   }
   return active === wanted ? request : "";
+}
+/** The demonstrative count must identify every row of the already confirmed source; outputCount is never authorization. */
+export function refersToWholeSourceCount(request: string, actualCount: number) {
+  if (
+    !Number.isSafeInteger(actualCount) ||
+    actualCount < 1 ||
+    actualCount > 10000 ||
+    scopeIntent(request) === "partial" ||
+    /部分|其中|中的|随机|抽取|勾选|选中|第[一二三四五六七八九十0-9]+条|(?:前|后)[0-9]+条/u.test(
+      request,
+    )
+  )
+    return false;
+  const counts = [
+    ...request.matchAll(/(?:清洗|处理|改写)这\s*([1-9]\d*)\s*条/gu),
+  ];
+  return (
+    counts.length === 1 &&
+    Number(counts[0][1]) === actualCount &&
+    !/(?:不要|不得|别|禁止).{0,8}(?:清洗|处理|改写)这/u.test(request)
+  );
 }
 export function wholeSourceAuthorized(
   request: string,
@@ -424,6 +446,13 @@ export function prepareToolProposal(
     typeof input.target === "object"
   ) {
     const t = input.target;
+    const saved = savedSaveTarget(facts.task);
+    if (saved && t.kind !== saved.kind)
+      add(
+        "/target",
+        "保存位置与当前生效目标不一致；先按用户要求保存目标变更，再准备确认。",
+        "assistant_requirement_conflict",
+      );
     if (
       t.kind === "draft" &&
       ((!facts.partial && !t.id) ||

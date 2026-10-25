@@ -1,3 +1,8 @@
+import {
+  bindPlannedSaveTarget,
+  savedSaveTarget,
+  requestsProcessingSave,
+} from "./save-target.js";
 import { deliveryRequest } from "./delivery-request.js";
 import { normalizePlanContent } from "./plan-content.js";
 import { requestedSceneCount } from "./requirements.js";
@@ -54,7 +59,7 @@ export function bindPlanProposal(
   request: string,
   revision: number,
 ) {
-  const input = structuredClone(value);
+  const input = bindPlannedSaveTarget(structuredClone(value), task, request);
   const goals = deliveryGoals(task.executionPlan);
   if (goals.length) input.baseRevision ??= revision;
   if (!Array.isArray(input.deliveries)) return input;
@@ -205,6 +210,20 @@ export function preparePlanProposal(
         code: "assistant_tool_input_invalid",
         message,
       });
+    if (
+      !input.question &&
+      !input.deliveries &&
+      !deliveryGoals(facts.task.executionPlan).length &&
+      (input.target || facts.task.target) &&
+      requestsProcessingSave(facts.request) &&
+      !input.saveTarget &&
+      !savedSaveTarget(facts.task)
+    )
+      issue(
+        "/saveTarget",
+        "required",
+        "用户已要求保存处理成果。用saveTarget记录新草稿name或已有草稿id；明确名称原样保留，未指定名称可提出建议。不能只写要求或任务标题，也不要再次询问已明确的信息。",
+      );
     const requirements = input.requirements ?? facts.task.requirements ?? [];
     const steps = input.steps ?? facts.task.executionPlan?.steps ?? [];
     const derivesInstructions =
