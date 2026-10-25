@@ -78,6 +78,20 @@ export function taskPresentation(
       allowedLabels: [],
     };
   const presented = { ...task };
+  if (task.executionPlan?.contractVersion === 1) {
+    const steps = task.executionPlan.steps;
+    // A generation name is not a source-object name. Keep the original task
+    // and receipts intact; project focus and historical candidates separately.
+    if (!task.target) delete presented.targetName;
+    presented.currentDeliveryName = steps.find(
+      (step: any) =>
+        step.deliveryId === focus && step.action === "generate_candidates",
+    )?.input.name;
+    presented.candidateHistory = Boolean(
+      task.runId &&
+      !steps.some((step: any) => step.receipt?.runId === task.runId),
+    );
+  }
   delete presented.selectedCandidates;
   delete presented.backgroundDefinitions;
   delete presented.observations;

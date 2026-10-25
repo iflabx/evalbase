@@ -132,7 +132,8 @@ type Conversation = {
       savedCount: number;
       confirmed: boolean;
       run?: { id: string; status: string; url: string };
-      draft?: { id: string; url: string; count: number };
+      draft?: { id: string; name?: string; url: string; count: number };
+      pendingSaveName?: string;
     }[];
     runId?: string;
     runIds?: string[];
@@ -162,6 +163,8 @@ type Conversation = {
     transportRecovery?: { turnId: string; retry: number; delayMs: number } | null;
     target?: { kind: string; id?: string };
     targetName?: string;
+    currentDeliveryName?: string;
+    candidateHistory?: boolean;
     requirements?: string[];
     requirementSummary?: string[];
     requirementProblem?: string | null;
@@ -1698,6 +1701,11 @@ export function ProjectAssistant({
                   </Button>
                 </div>
               )}
+              {visible?.task?.currentDeliveryName && (
+                <p className="text-xs text-muted-foreground">
+                  当前交付：{visible.task.currentDeliveryName}
+                </p>
+              )}
               {visible?.task?.targetName && visible.task.targetName !== currentName && (
                 <p className="text-xs text-muted-foreground">任务对象：{visible.task.targetName}</p>
               )}
@@ -1877,6 +1885,11 @@ export function ProjectAssistant({
                                 ` · 候选 ${delivery.generatedCount} 条`}
                               {` · 本次已保存 ${delivery.savedCount} 条`}
                             </p>
+                            {delivery.pendingSaveName && (
+                              <p className="text-xs text-muted-foreground">
+                                将保存至：{delivery.pendingSaveName}
+                              </p>
+                            )}
                             {delivery.question && (
                               <p className="text-xs text-muted-foreground">{delivery.question}</p>
                             )}
@@ -1886,7 +1899,9 @@ export function ProjectAssistant({
                                   to={validLink(delivery.draft?.url)!}
                                   className="text-primary hover:underline"
                                 >
-                                  {delivery.savedCount > 0 ? "查看已保存草稿" : "查看草稿"}
+                                  {delivery.savedCount > 0
+                                    ? `已保存至：${delivery.draft?.name ?? "目标草稿"}`
+                                    : `查看草稿${delivery.draft?.name ? `：${delivery.draft.name}` : ""}`}
                                 </Link>
                               )}
                               {validLink(delivery.run?.url) && (
@@ -2149,6 +2164,11 @@ export function ProjectAssistant({
                 </section>
               )}
               <div hidden={workTab !== "results"} className="space-y-3">
+                {visible?.task?.candidateHistory && reviewRun === visible.task.runId && (
+                  <p className="text-xs text-muted-foreground">
+                    历史候选 · 对应交付已不在当前方案中
+                  </p>
+                )}
                 {!reviewRun && (
                   <p className="py-5 text-sm text-muted-foreground">处理结果会显示在这里。</p>
                 )}

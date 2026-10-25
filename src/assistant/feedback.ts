@@ -250,7 +250,14 @@ export function progressMessage(
   const deliveries = deliveryProgress(task, workspace) ?? [];
   const lines = deliveries.map((d: Record<string, any>) => {
     if (d.status === "saved")
-      return d.name + "：已保存 " + d.savedCount + " 条。";
+      return (
+        d.name +
+        "：已保存至" +
+        (d.draft?.name ?? "目标草稿") +
+        "，共 " +
+        d.savedCount +
+        " 条。"
+      );
     let text = d.name + "：";
     if (!d.run) text += "尚未生成。";
     else if (["executing", "unverified"].includes(d.confirmationStatus))

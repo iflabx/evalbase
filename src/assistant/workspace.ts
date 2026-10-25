@@ -5,11 +5,12 @@ import { currentDeliveryId } from "./delivery-plan.js";
 export type WorkspaceFacts = {
   projectId: string;
   runs: { id: string; status: string; count: number | null }[];
-  drafts: { id: string; count: number }[];
+  drafts: { id: string; name?: string; count: number }[];
   confirmations: {
     id: string;
     status: string;
     runId?: string;
+    target?: { kind: string; id?: string; name?: string };
     operationKey?: string;
     action?: string;
     summary?: Record<string, any>;
@@ -116,6 +117,16 @@ export function deliveryProgress(
         savedCount,
         confirmed: saved.length > 0,
         confirmationStatus: confirmation?.status ?? "none",
+        ...(["pending", "executing"].includes(confirmation?.status ?? "")
+          ? {
+              pendingSaveName:
+                confirmation?.target?.kind === "newDraft"
+                  ? confirmation.target.name
+                  : facts.drafts.find(
+                      (row) => row.id === confirmation?.target?.id,
+                    )?.name,
+            }
+          : {}),
         ...(run
           ? {
               run: {
@@ -129,6 +140,7 @@ export function deliveryProgress(
           ? {
               draft: {
                 id: draft.id,
+                name: draft.name,
                 count: draft.count,
                 url: `/projects/${facts.projectId}/test-sets/drafts/${draft.id}`,
               },
@@ -164,11 +176,17 @@ export async function readWorkspaceFacts(
   const refs = (field: string) => [
     ...new Set(
       planSteps
-        .map(
-          (step: any) =>
-            step.receipt?.[field] ??
-            (field === "draftId" ? step.input?.draftId : undefined),
-        )
+        .flatMap((step: any) => [
+          step.receipt?.[field],
+          ...(field === "draftId"
+            ? [
+                step.input?.draftId,
+                step.input?.target?.kind === "draft"
+                  ? step.input.target.id
+                  : undefined,
+              ]
+            : []),
+        ])
         .filter(Boolean),
     ),
   ];
@@ -188,12 +206,12 @@ export async function readWorkspaceFacts(
           [scope.projectId, scope.actorId, refs("runId")],
         ),
         db.query(
-          `SELECT d.id,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS count
+          `SELECT d.id,d.name,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS count
          FROM collaborative_draft d WHERE d.project_id=$1 AND d.id=ANY($2::text[])`,
           [scope.projectId, refs("draftId")],
         ),
         db.query(
-          `SELECT p.id,p.action,p.status,p.summary,p.receipt,p.task_revision,p.expires_at,p.parameters->>'runId' AS "runId",p.parameters->>'draftId' AS "draftId"
+          `SELECT p.id,p.action,p.status,p.summary,p.receipt,p.task_revision,p.expires_at,p.parameters->'target' AS target,p.parameters->>'runId' AS "runId",p.parameters->>'draftId' AS "draftId"
           FROM assistant_proposal p JOIN assistant_turn t ON t.id=p.turn_id
           WHERE p.session_id=$1 AND p.project_id=$2 AND p.actor_id=$3
           AND coalesce(t.task_id,'legacy:'||t.session_id)=$6

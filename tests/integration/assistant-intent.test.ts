@@ -5987,6 +5987,7 @@ describe("OPT42 per-turn intent public boundary", () => {
     }
     expect(input.target.kind).toBe("newDraft");
     expect(input.target.name).toBe("电商物流基础测试");
+    expect(state.task.deliveries[0].pendingSaveName).toBe("电商物流基础测试");
     const result = await app.inject({
       method: "POST",
       url: base() + "/proposals/" + card.id + "/confirm",
@@ -6026,6 +6027,12 @@ describe("OPT42 per-turn intent public boundary", () => {
     );
     expect(state.task.error).toBeFalsy();
     expect(state.task.recovery).toBeFalsy();
+    const savedDelivery = state.task.deliveries[0];
+    expect(savedDelivery.draft.name).toBe("电商物流基础测试");
+    expect(savedDelivery.draft.url).toBe(
+      "/projects/" + projectId + "/test-sets/drafts/" + savedDelivery.draft.id,
+    );
+    expect(state.task.feedback.message).toContain("已保存至电商物流基础测试");
     if (["continue", "mistaken-new"].includes(boundary)) {
       // Isolated test DB: simulate completion racing with claim/reclaim.
       const raceDb = createPool(databaseUrl);
@@ -6352,6 +6359,12 @@ describe("OPT42 per-turn intent public boundary", () => {
     expect(state.proposals.find((p: any) => p.id === pending.id).status).toBe(
       "invalid",
     );
+    expect(state.task.targetName).toBeUndefined();
+    expect(state.task.currentDeliveryName).toBe("查物流测试集");
+    expect(state.task.candidateHistory).toBe(true);
+    expect(state.task.runId).toBe(second);
+    expect(state.task.deliveries).toHaveLength(1);
+    expect(state.task.deliveries[0].draft.name).toBe("查物流测试集");
     expect(await effects()).toEqual(before);
     const result = await app.inject({
       method: "POST",
