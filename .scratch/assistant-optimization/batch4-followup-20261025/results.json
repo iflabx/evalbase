@@ -1,0 +1,258 @@
+{
+  "code": "d9b4cbf7109db6269c6f317156bc358cd0666137",
+  "projectId": "project_88f1d853c87340a18537608efa6304b6",
+  "boundaryProjectId": "project_7f66915d3db44c68a1459fd21b0f5c55",
+  "cases": {
+    "18": {
+      "sessionId": "conversation_4ec8a8682ffb41dcb3fcd67d692b924c",
+      "result": "failed_cancel_authorization;initial_plan_auto_repaired;first_saved_2;continue_no_effect",
+      "stage": "failed",
+      "requests": 13,
+      "requestDurationMs": 68846,
+      "requestedGeneration": 4,
+      "toolErrorsIncludingCarriedHistory": [
+        {
+          "turn": "turn_e0d8793887f64a5fbb609e589cfaba9c",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_fa6e979c4e3447e8ad7cf6df9ad3b787",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_97e69afb22f04f70bd6571166bcd3118",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_821ede0663a546febe5193c37486505a",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_d4e57ab30d5046428e984628f89e19e1",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "工具参数未通过校验；具体字段见诊断。",
+            "issues": [
+              {
+                "path": "/",
+                "keyword": "schema"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_d4e57ab30d5046428e984628f89e19e1",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_requirement_conflict",
+            "hint": "本轮没有明确取消这项交付；原交付及其约束保持。",
+            "issues": [
+              {
+                "code": "assistant_requirement_conflict",
+                "path": "/deliveries/0",
+                "tool": "plan_task",
+                "keyword": "business",
+                "message": "本轮没有明确取消这项交付；原交付及其约束保持。",
+                "operation": "prepare"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_d4e57ab30d5046428e984628f89e19e1",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_requirement_conflict",
+            "hint": "本轮没有明确取消这项交付；原交付及其约束保持。",
+            "issues": [
+              {
+                "code": "assistant_requirement_conflict",
+                "path": "/deliveries/0",
+                "tool": "plan_task",
+                "keyword": "business",
+                "message": "本轮没有明确取消这项交付；原交付及其约束保持。",
+                "operation": "prepare"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [
+        {
+          "id": "turn_d4e57ab30d5046428e984628f89e19e1",
+          "event": "user",
+          "code": "assistant_requirement_conflict"
+        }
+      ],
+      "runIds": [
+        "processing_9f0dec90762741c09ab0637813db18ec",
+        "processing_38684c655ec8420488a41242be08540f"
+      ]
+    },
+    "19": {
+      "sessionId": "conversation_f0e082d5e56347fc98b51afd4ae926d6",
+      "result": "passed;two_auto_repairs;project_isolation;resume_generate_save_2",
+      "stage": "complete",
+      "requests": 8,
+      "requestDurationMs": 24405,
+      "requestedGeneration": 2,
+      "toolErrorsIncludingCarriedHistory": [
+        {
+          "turn": "turn_f9b0e73c02aa4c9985e4363d903de975",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_f9b0e73c02aa4c9985e4363d903de975",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [],
+      "runIds": [
+        "processing_57671084ad154c2590956ded808b47dc"
+      ]
+    },
+    "20": {
+      "sessionId": "conversation_810aa87c78834d9786980ef572b94197",
+      "result": "failed_post_save_continuation;rename_and_save_2_succeeded;no_regeneration_or_clarification",
+      "stage": "complete",
+      "requests": 8,
+      "requestDurationMs": 46475,
+      "requestedGeneration": 2,
+      "toolErrorsIncludingCarriedHistory": [
+        {
+          "turn": "turn_5c8960d04d6d4b62932d8ecf9a682ddb",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        },
+        {
+          "turn": "turn_afee7397f0fd43949f3550a910b2d34a",
+          "name": "plan_task",
+          "error": {
+            "code": "assistant_tool_input_invalid",
+            "hint": "plan_task：参数 must be object 允许字段：title、executionMode、deliveries、requirements、removeRequirements、allowedFields、metadataKeys、question。",
+            "issues": [
+              {
+                "path": "",
+                "keyword": "type"
+              }
+            ]
+          }
+        }
+      ],
+      "failedTurns": [
+        {
+          "id": "turn_93d9550d6cdc4247a1867ba316b819d0",
+          "event": "confirmed",
+          "code": "assistant_retry_unavailable"
+        }
+      ],
+      "runIds": [
+        "processing_9fb4db3a54d747b5bfd578f70e6f6ac6"
+      ]
+    }
+  },
+  "requests": 29,
+  "requestDurationMs": 139726,
+  "generated": 8,
+  "saved": 6,
+  "inputRecords": 0,
+  "modelLengthResponses": [
+    {
+      "caseId": 18,
+      "index": 11
+    },
+    {
+      "caseId": 20,
+      "index": 24
+    }
+  ],
+  "modelHTTPStatuses": [
+    200
+  ],
+  "guardBlocks": [],
+  "boundaryProjectCounts": {
+    "assistant_session": 0,
+    "processing_run": 0,
+    "collaborative_draft": 0,
+    "data_asset": 0,
+    "test_set": 0
+  },
+  "closed": true,
+  "completePassed": [
+    19
+  ],
+  "failed": [
+    18,
+    20
+  ]
+}
