@@ -2941,6 +2941,48 @@ describe("OPT47 unified processing public boundary", () => {
     expect(actual.executionPlan.steps[0].command).toBeUndefined();
     expect(successes(state, "submit_processing")).toHaveLength(1);
   });
+  it("CU10 command: generic request followed by source clarification compiles the complete intent", async () => {
+    await file("澄清编译-另一个.jsonl", 3);
+    const assetId = await file("澄清编译-两条.jsonl"),
+      id = await newSession();
+    let state = await send(id, "帮我清洗一下这些数据。", [
+      decision("execute"),
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    expect(state.task.question).toContain("请选择");
+    const actual = (
+      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    const ordinal =
+      actual.sourceDiscovery.items.findIndex((x: any) => x.id === assetId) + 1;
+    expect(ordinal).toBeGreaterThan(0);
+    state = await send(
+      id,
+      "第" +
+        ordinal +
+        "份，全部两条，只去掉问题前后的空格，其他不变，保存为新草稿“客服清洗结果”。",
+      [
+        decision("execute", { requiresUpdate: true }),
+        { name: "query_project", input: { kind: "project" } },
+        {
+          name: "plan_task",
+          input: {
+            question: "清洗工具无法仅去掉首尾空格，请确认是否保留内部格式？",
+            allowedFields: ["question"],
+            nextAction: "submit_processing",
+          },
+        },
+      ],
+    );
+    expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+    expect(state.task.question).toBeFalsy();
+    expect(observed).toHaveLength(3);
+    expect(state.task.saveTarget).toEqual({
+      kind: "newDraft",
+      name: "客服清洗结果",
+    });
+    expect(successes(state, "submit_processing")).toHaveLength(1);
+  });
   it("CU10 command: an unresolved scope stays a business question", async () => {
     const assetId = await file("规则清洗范围未知.jsonl"),
       id = await newSession();

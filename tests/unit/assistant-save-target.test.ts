@@ -216,6 +216,7 @@ describe("processing output save target", () => {
   it.each([
     "只去掉问题前后空格，其他不变，保存为新草稿“结果”",
     "第一份，全部两条，只去掉问题前后的空格，其他不变",
+    "帮我清洗一下这些数据。\n本轮对澄清的回答：第一份，全部两条，只去掉问题前后的空格，其他不变，保存为新草稿“客服清洗结果”。",
   ])(
     "compiles explicit rule intent without model execution fields: %s",
     (request) => {
@@ -236,6 +237,7 @@ describe("processing output save target", () => {
     "不要去掉问题前后空格，其他不变",
     "只去掉问题前后空格，并且删除无效的记录",
     "只去掉问题前后空格，遇到未知符号时标记为待审核",
+    "帮我清洗一下这些数据，并去重。\n本轮对澄清的回答：第一份，全部两条，只去掉问题前后的空格，其他不变",
   ])(
     "does not turn incomplete or compound intent into a rule-only command: %s",
     (request) => {

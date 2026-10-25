@@ -224,7 +224,17 @@ export function ruleCleanCommand(
   // save destination or control clause. Unknown instructions retain the
   // ordinary semantic path instead of silently executing only their prefix.
   const covered = (clause: string) => {
-    const c = clause.replace(/^请(?:你)?/u, "").trim();
+    const c = clause
+      .replace(/^本轮对澄清的回答[：:]/u, "")
+      .replace(/^请(?:你)?/u, "")
+      .trim();
+    // Neutral initial goals add no processing constraint; retain all substantive clauses.
+    if (
+      /^(?:帮我)?(?:清洗|整理)(?:一下)?(?:这些|这份|这批)?(?:数据|资料)$/u.test(
+        c,
+      )
+    )
+      return true;
     if (defaultCleanClause(c)) return true;
     if (
       /^(?:只|仅)?(?:去掉|去除|整理|清理)问题(?:字段)?的?(?:首尾|前后|两端)的?(?:空格|空白)$/u.test(
