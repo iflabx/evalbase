@@ -43,6 +43,7 @@ import {
 import {
   prepareToolProposal,
   cleanWhitespaceRule,
+  ruleCleanCommand,
   preparedTools,
   wholeSourceAuthorized,
   processingWorkflowSteps,
@@ -1051,6 +1052,7 @@ export async function executeAssistantTurn(
       );
   }
   const preparedScopes = new Map<string, Record<string, any>>();
+  const compiledProcessingPlans = new Map<string, Record<string, any>>();
   async function processingFacts(current: Record<string, any>) {
     const ids = [
       turn.id,
@@ -1316,9 +1318,11 @@ export async function executeAssistantTurn(
           input.source.assetIds.every((id: any) => typeof id === "string")
         : typeof input.source.id === "string")
     ) {
+      const processingStep =
+        current!.executionPlan?.steps[current!.executionPlan.current];
       const frozen =
-        current!.executionPlan?.steps[current!.executionPlan.current]?.operation
-          ?.preparation;
+        processingStep?.operation?.preparation ??
+        processingStep?.command?.preparation;
       if (
         frozen?.version === 1 &&
         canonicalJson(frozen.source) === canonicalJson(input.source)
@@ -1555,6 +1559,99 @@ export async function executeAssistantTurn(
     return unique.length ? { ok: false, issues: unique } : { ok: true, input };
   }
 
+  // Compile only a complete rule-cleaning request. More complex semantics still
+  // use the existing planning contract, never a guessed or truncated recipe.
+  async function compileRuleProcessingPlan(
+    bound: Record<string, any>,
+    current: Record<string, any>,
+    documents: any[],
+  ) {
+    if (
+      documents.length ||
+      current.runId ||
+      current.executionPlan?.steps?.length ||
+      bound.deliveries ||
+      bound.candidateEdit ||
+      bound.candidateSave ||
+      (bound.classifications ?? current.classifications)?.length ||
+      !["plan", "execute"].includes(decision?.mode ?? "") ||
+      ![
+        "question",
+        "requirements",
+        "allowedFields",
+        "steps",
+        "nextAction",
+      ].some((k) => Object.hasOwn(bound, k))
+    )
+      return bound;
+    const facts = await processingFacts(current);
+    const command = ruleCleanCommand({
+      ...facts,
+      request: amendmentRequestText,
+    });
+    if (!command) return bound;
+    const source = planSource(
+      current.target ?? current.sourceDiscovery?.resolvedSource,
+    );
+    if (
+      !source ||
+      (bound.target &&
+        canonicalJson(planSource(bound.target)) !== canonicalJson(source))
+    )
+      return bound;
+    // Do not let a stale planned/source context bind the preparation of a new request.
+    const goal = {
+      ...current,
+      target: source,
+      allowedFields: ["question"],
+      metadataKeys: null,
+    };
+    const ready = await prepareBusinessProposal(
+      "submit_processing",
+      { ...command, source },
+      goal,
+    );
+    if (!ready.ok) {
+      if (ready.question)
+        return { ...bound, question: ready.question, nextAction: "none" };
+      return bound;
+    }
+    const fixed = preparedScopes.get(canonicalJson(ready.input));
+    if (!fixed?.recordIds?.length) return bound;
+    const input: Record<string, any> = {
+      ...ready.input,
+      recordIds: fixed.recordIds,
+    };
+    delete input.allRecords;
+    delete input.selection;
+    const saveTarget = savedSaveTarget({ ...current, ...bound });
+    const steps = [
+      { title: "清洗所选记录", action: "submit_processing", input },
+      { title: "核对清洗结果", action: "read_processing", input: {} },
+      ...(saveTarget
+        ? [
+            {
+              title: "确认保存清洗结果",
+              action: "request_processing_apply",
+              input: { target: saveTarget, allTask: true },
+            },
+          ]
+        : []),
+    ];
+    compiledProcessingPlans.set(canonicalJson(steps), fixed);
+    const compiled: Record<string, any> = {
+      ...bound,
+      target: source,
+      allowedFields: ["question"],
+      metadataKeys: null,
+      requirements: [amendmentRequestText],
+      steps,
+      nextAction: "submit_processing",
+      executionMode: decision!.mode,
+    };
+    delete compiled.question;
+    return compiled;
+  }
   async function prepareProposal(
     value: unknown,
     current?: Record<string, any>,
@@ -1618,6 +1715,7 @@ export async function executeAssistantTurn(
         ],
       };
     }
+    bound = await compileRuleProcessingPlan(bound, current!, documents!);
     const questionedSource = planSource(
       bound.target ??
         current!.target ??
@@ -5338,6 +5436,14 @@ export async function executeAssistantTurn(
           input.target === undefined ? current.target : input.target,
           requirementsKey,
         );
+        const compiledPreparation =
+          steps && compiledProcessingPlans.get(canonicalJson(steps));
+        if (plan && compiledPreparation) {
+          plan.steps[0] = {
+            ...plan.steps[0],
+            command: { version: 1, preparation: compiledPreparation },
+          };
+        }
         if (plan && (businessDeliveries || !oldPlan))
           plan = { ...plan, contractVersion: 1 };
         // A bounded continuation can complete a waiting generation outside this

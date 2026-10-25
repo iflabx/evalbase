@@ -42,7 +42,7 @@ function scopeIntent(text: string): "all" | "partial" | undefined {
     )
       partial = true;
     if (
-      /第[一二三四五六七八九十0-9]+条|(?:前|后)[0-9]+条|这几条|(?:只|仅)(?:清洗|处理|改写|选取|保留)?[一二三四五六七八九十0-9]+条|部分(?:记录|数据)|选中|勾选|随机|抽取|指定记录/u.test(
+      /第[一二两三四五六七八九十0-9]+条|(?:前|后)[0-9]+条|这几条|(?:只|仅)(?:清洗|处理|改写|选取|保留)?[一二两三四五六七八九十0-9]+条|部分(?:记录|数据)|选中|勾选|随机|抽取|指定记录/u.test(
         clause,
       )
     )
@@ -109,7 +109,7 @@ export function refersToWholeSourceCount(request: string, actualCount: number) {
     actualCount < 1 ||
     actualCount > 10000 ||
     scopeIntent(request) === "partial" ||
-    /部分|其中|中的|随机|抽取|勾选|选中|第[一二三四五六七八九十0-9]+条|(?:前|后)[0-9]+条/u.test(
+    /部分|其中|中的|随机|抽取|勾选|选中|第[一二两三四五六七八九十0-9]+条|(?:前|后)[0-9]+条/u.test(
       request,
     )
   )
@@ -205,6 +205,70 @@ export function cleanWhitespaceRule(
     return facts.task.cleanWhitespace;
   return undefined;
 }
+
+/** Known rule intent becomes a command; model prose is never an execution input. */
+export function ruleCleanCommand(
+  facts: ToolFacts,
+): Record<string, any> | undefined {
+  const rule = cleanWhitespaceRule(facts);
+  const text = facts.request;
+  if (
+    !rule ||
+    !/(?:问题|question).{0,12}(?:首尾|前后|两端)/iu.test(text) ||
+    !/(?:其他|其它|其余).{0,6}(?:不变|不改)|(?:只|仅)(?:去掉|去除|整理|清理)/u.test(
+      text,
+    )
+  )
+    return;
+  // Fail closed: every clause must be a known rule, preservation, scope,
+  // save destination or control clause. Unknown instructions retain the
+  // ordinary semantic path instead of silently executing only their prefix.
+  const covered = (clause: string) => {
+    const c = clause.replace(/^请(?:你)?/u, "").trim();
+    if (defaultCleanClause(c)) return true;
+    if (
+      /^(?:只|仅)?(?:去掉|去除|整理|清理)问题(?:字段)?的?(?:首尾|前后|两端)的?(?:空格|空白)$/u.test(
+        c,
+      )
+    )
+      return true;
+    if (
+      /^(?:其他|其它|其余)(?:内容|字段|数据)?(?:都)?(?:保持原样|保持原值|保持不变|不变|不改)$/u.test(
+        c,
+      )
+    )
+      return true;
+    if (
+      /^(?:清洗|处理|选择)?(?:第[一二两三四五六七八九十0-9]+份|整份资料|这份文件的全部[一二两三四五六七八九十0-9]+条记录|(?:全部|这)[一二两三四五六七八九十0-9]+条(?:记录)?)$/u.test(
+        c,
+      )
+    )
+      return true;
+    if (
+      /^(?:先给方案|先保存方案|只给方案|不要执行|先不要执行|按方案执行|开始吧|继续|执行)$/u.test(
+        c,
+      )
+    )
+      return true;
+    return /^(?:保存|另存)(?:为|到)(?:新的?|一个)?(?:测试集)?草稿[“"「][^”"」\n]+[”"」]$/u.test(
+      c,
+    );
+  };
+  if (!clauses(text).every(covered)) return;
+  if (
+    ["metadata", "expectedOutput"].some((field) =>
+      fieldChangeAuthorized(facts, field),
+    )
+  )
+    return;
+  return {
+    operation: "clean",
+    instructions: "",
+    allowedFields: ["question"],
+    cleanWhitespace: rule,
+  };
+}
+
 function cleanDirective(facts: ToolFacts) {
   const current = clauses(facts.request);
   const positive = (text: string) =>
@@ -281,7 +345,8 @@ export function prepareToolProposal(
   const input = bindTaskInput(
     name,
     structuredClone(supplied),
-    facts.task,
+    // A proposed replacement is not an invocation of the old saved step.
+    facts.partial ? { ...facts.task, executionPlan: undefined } : facts.task,
     undefined,
     facts.picked,
   );

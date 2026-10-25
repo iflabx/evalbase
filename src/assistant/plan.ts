@@ -156,6 +156,8 @@ type Step = {
     input: Record<string, any>;
     preparation?: Record<string, any>;
   };
+  // Server-compiled complete input. Model parameters cannot overwrite it.
+  command?: { version: 1; preparation: Record<string, any> };
   backgroundRead?: { identity: string; indices: number[] };
   status: "pending" | "waiting" | "executed";
   receipt?: {
@@ -732,6 +734,7 @@ export function resolvedStepInput(
   supplied?: Record<string, any>,
 ) {
   const step = plan?.steps[plan.current];
+  if (step?.command?.version === 1) supplied = undefined;
   const input = {
     ...(step?.operation?.input ?? step?.input ?? {}),
     ...(supplied ?? {}),
@@ -868,6 +871,15 @@ export function bindTaskInput(
   selection?: Record<string, any> | null,
 ) {
   const plan = task.executionPlan;
+  if (
+    plan?.steps[plan.current]?.action === name &&
+    plan?.steps[plan.current]?.command?.version === 1 &&
+    plan.requirementsKey !== planRequirementsKey(task)
+  )
+    throw new RequirementError(
+      "assistant_plan_revalidation_required",
+      "处理要求已变化，请先保存当前要求；不会使用旧命令执行。",
+    );
   const delivery =
     plan?.contractVersion === 1 &&
     plan.steps[plan.current]?.action === name &&

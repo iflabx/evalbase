@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   namedSaveTarget,
+  requestsProcessingSave,
   savedSaveTarget,
   newDraftSaveTarget,
 } from "../../src/assistant/save-target.js";
@@ -12,9 +13,14 @@ import {
 import {
   refersToWholeSourceCount,
   prepareToolProposal,
+  ruleCleanCommand,
 } from "../../src/assistant/processing-preparation.js";
 
 describe("processing output save target", () => {
+  it("distinguishes saving a clean plan from saving its results", () => {
+    expect(requestsProcessingSave("随机选1条，先保存清洗方案")).toBe(false);
+    expect(requestsProcessingSave("保存清洗结果到新草稿")).toBe(true);
+  });
   const target = { kind: "newDraft", name: "客服清洗结果" };
   it("records an early explicit name even when the model only saves wording", () => {
     const plan = bindPlanProposal(
@@ -156,4 +162,84 @@ describe("processing output save target", () => {
     expect(enabled.ok, JSON.stringify(enabled)).toBe(true);
     if (enabled.ok) expect(enabled.input.metadataKeys).toEqual(["__none__"]);
   });
+  it("compiled processing command ignores model re-expression and requires current requirements", () => {
+    const input = {
+      source: { kind: "assets", assetIds: ["asset"] },
+      recordIds: ["r1", "r2"],
+      operation: "clean",
+      instructions: "",
+      allowedFields: ["question"],
+      cleanWhitespace: "trim_edges",
+    };
+    const task: any = {
+      target: input.source,
+      allowedFields: ["question"],
+      saveTarget: target,
+    };
+    task.executionPlan = {
+      mode: "execute",
+      current: 0,
+      steps: [
+        {
+          action: "submit_processing",
+          input,
+          command: { version: 1, preparation: { hash: "fixed" } },
+        },
+      ],
+      requirementsKey: planRequirementsKey(task),
+    };
+    for (const metadataKeys of [undefined, [], ["__none__"], ["intent"]]) {
+      expect(
+        bindTaskInput(
+          "submit_processing",
+          {
+            operation: "rewrite",
+            source: { kind: "assets", assetIds: ["other"] },
+            allRecords: true,
+            metadataKeys,
+          },
+          task,
+        ),
+      ).toEqual(input);
+    }
+    task.allowedFields = ["metadata"];
+    expect(
+      bindTaskInput("plan_task", { requirements: ["新要求"] }, task),
+    ).toEqual({ requirements: ["新要求"] });
+    expect(bindTaskInput("query_project", { query: "资料" }, task)).toEqual({
+      query: "资料",
+    });
+    expect(() => bindTaskInput("submit_processing", {}, task)).toThrow(
+      /assistant_plan_revalidation_required/,
+    );
+  });
+  it.each([
+    "只去掉问题前后空格，其他不变，保存为新草稿“结果”",
+    "第一份，全部两条，只去掉问题前后的空格，其他不变",
+  ])(
+    "compiles explicit rule intent without model execution fields: %s",
+    (request) => {
+      expect(ruleCleanCommand({ task: {}, request })).toEqual({
+        operation: "clean",
+        instructions: "",
+        allowedFields: ["question"],
+        cleanWhitespace: "trim_edges",
+      });
+    },
+  );
+  it.each([
+    "整理这些数据",
+    "只去掉问题前后空格，再去重",
+    "只去掉问题前后空格，并翻译成英文",
+    "只去掉问题前后空格，并修改Metadata分类",
+    "只去掉问题前后空格，筛选退款记录",
+    "不要去掉问题前后空格，其他不变",
+    "只去掉问题前后空格，并且删除无效的记录",
+    "只去掉问题前后空格，遇到未知符号时标记为待审核",
+  ])(
+    "does not turn incomplete or compound intent into a rule-only command: %s",
+    (request) => {
+      expect(ruleCleanCommand({ task: {}, request })).toBeUndefined();
+    },
+  );
 });

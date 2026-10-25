@@ -120,7 +120,11 @@ export function taskPresentation(
     presented.executionPlan = {
       ...presented.executionPlan,
       steps: presented.executionPlan.steps.map(
-        ({ operation: _operation, ...step }: Record<string, any>) => step,
+        ({
+          operation: _operation,
+          command: _command,
+          ...step
+        }: Record<string, any>) => step,
       ),
     };
     delete presented.executionPlan.requirementsKey;

@@ -1564,6 +1564,7 @@ describe("OPT47 unified processing public boundary", () => {
           name: "plan_task",
           input: {
             executionMode: "plan",
+            requirements: ["随机选1条清洗，先保存方案"],
             steps: [
               {
                 title: "清洗选中记录",
@@ -2374,7 +2375,9 @@ describe("OPT47 unified processing public boundary", () => {
           async () => {
             state = await read(id);
             return (
-              state.task.stage === "awaiting_review" &&
+              ["awaiting_review", "awaiting_confirmation"].includes(
+                state.task.stage,
+              ) &&
               state.turns.every(
                 (t: any) => !["queued", "running"].includes(t.status),
               )
@@ -2615,7 +2618,7 @@ describe("OPT47 unified processing public boundary", () => {
               t.status === "failed" &&
               t.error?.code === "assistant_plan_clarification_unnecessary",
           ),
-      ).toBe(true);
+      ).toBe(false);
       expect(successes(state, "submit_processing")).toHaveLength(1);
     },
   );
@@ -2664,7 +2667,7 @@ describe("OPT47 unified processing public boundary", () => {
     expect(
       state.turns.at(-1).tools.filter((t: any) => t.status === "failed"),
     ).toHaveLength(0);
-    expect(observed).toHaveLength(3);
+    expect(observed).toHaveLength(2);
   });
 
   it("CU10 SDK: ordinary continuation cannot reset an exhausted correction limit", async () => {
@@ -2682,7 +2685,7 @@ describe("OPT47 unified processing public boundary", () => {
     };
     const failed = await send(
       id,
-      "清洗这2条，去掉问题前后空格，其他不变，保存为新草稿“客服清洗结果”。",
+      "清洗这2条，去掉问题前后空格，再去重，其他不变，保存为新草稿“客服清洗结果”。",
       [decision("execute", { requiresUpdate: true }), bad, bad, bad],
       { context: { kind: "asset", id: assetId } },
     );
@@ -2706,5 +2709,259 @@ describe("OPT47 unified processing public boundary", () => {
     expect(after.task.executionBudget.requestAttempts).toBe(
       failed.task.executionBudget.requestAttempts,
     );
+  });
+  it.each(["none", "submit_processing"])(
+    "CU10 command: ready requirements execute without a second model command (%s)",
+    async (nextAction) => {
+      const assetId = await file("命令收敛-" + nextAction + ".jsonl"),
+        id = await newSession();
+      const state = await send(
+        id,
+        "清洗这2条，去掉问题前后的空格，其他内容不变，保存为新草稿“命令收敛结果”。",
+        [
+          decision("execute", { requiresUpdate: true }),
+          {
+            name: "plan_task",
+            input: {
+              target: { kind: "assets", assetIds: [assetId] },
+              requirements: ["只去掉问题前后的空格，其他内容不变"],
+              allowedFields: ["question"],
+              nextAction,
+              executionMode: "execute",
+              question:
+                "请确认是否只去除question字段首尾空格，保留expectedOutput和metadata原值？",
+            },
+          },
+        ],
+        { context: { kind: "asset", id: assetId } },
+      );
+      expect(
+        state.turns.at(-1).status,
+        JSON.stringify(state.turns.at(-1)),
+      ).toBe("succeeded");
+      expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+      expect(state.task.question).toBeFalsy();
+      expect(observed).toHaveLength(2);
+      expect(
+        state.turns.at(-1).tools.filter((x: any) => x.status === "failed"),
+      ).toHaveLength(0);
+      expect(state.task.saveTarget).toEqual({
+        kind: "newDraft",
+        name: "命令收敛结果",
+      });
+      const clean = await finishClean(state.task.runId);
+      expect(clean.records.map((r: any) => r.result.question)).toEqual([
+        "问题甲",
+        "问题乙",
+      ]);
+      expect(
+        clean.records.every(
+          (r: any) => r.result.expectedOutput === "  原标签  ",
+        ),
+      ).toBe(true);
+      expect(
+        clean.records.find((r: any) => r.result.question === "问题甲").result
+          .metadata,
+      ).toEqual([{ key: "intent", value: " A " }]);
+      await expect
+        .poll(
+          async () => {
+            const done = await read(id);
+            return (
+              done.proposals.some((p: any) => p.status === "pending") &&
+              done.turns.every(
+                (t: any) => !["queued", "running"].includes(t.status),
+              )
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      const done = await read(id);
+      expect(
+        done.proposals.some((p: any) => p.status === "pending"),
+        JSON.stringify(done),
+      ).toBe(true);
+      const proposal = done.proposals.find((p: any) => p.status === "pending");
+      expect(proposal.summary.target).toBe("命令收敛结果");
+      const confirmed = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers,
+        payload: {},
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      const receipt = (
+        await dbQuery("SELECT receipt FROM assistant_proposal WHERE id=$1", [
+          proposal.id,
+        ])
+      ).rows[0].receipt;
+      const draftId = receipt.receipt.draftId;
+      const opened = await app.inject({
+        method: "GET",
+        url: "/api/projects/" + projectId + "/collaborative-drafts/" + draftId,
+        headers,
+      });
+      expect(opened.statusCode).toBe(200);
+      expect(opened.json().draft.name).toBe("命令收敛结果");
+      expect(
+        (
+          await dbQuery(
+            "SELECT count(*)::int AS n FROM collaborative_draft_record WHERE draft_id=$1 AND NOT deleted",
+            [draftId],
+          )
+        ).rows[0].n,
+      ).toBe(2);
+      const again = await app.inject({
+        method: "POST",
+        url: base() + "/proposals/" + proposal.id + "/confirm",
+        headers,
+        payload: {},
+      });
+      expect(again.statusCode).toBe(200);
+      await expect
+        .poll(
+          async () => {
+            const x = await read(id);
+            return (
+              x.task.stage === "complete" &&
+              x.turns.every(
+                (t: any) => !["queued", "running"].includes(t.status),
+              )
+            );
+          },
+          { timeout: 15000 },
+        )
+        .toBe(true);
+      expect((await read(id)).task.error).toBeFalsy();
+    },
+  );
+  it("CU10 command: plan-only, pause and ordinary continue preserve one fixed command", async () => {
+    const assetId = await file("规则清洗只规划.jsonl"),
+      id = await newSession();
+    let state = await send(
+      id,
+      "只去掉问题前后空格，其他不变，整份资料。先给方案，不要执行。",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            target: { kind: "assets", assetIds: [assetId] },
+            requirements: ["只去掉问题首尾空格，其他不变"],
+            allowedFields: ["question"],
+            executionMode: "plan",
+            nextAction: "none",
+          },
+        },
+      ],
+      { context: { kind: "asset", id: assetId } },
+    );
+    expect(state.task.runId).toBeFalsy();
+    const saved = (
+      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    expect(saved.executionPlan.steps[0].command?.version).toBe(1);
+    expect(saved.executionPlan.mode).toBe("plan");
+    await send(id, "先停一下", []);
+    state = await send(id, "继续，按方案执行。", [
+      decision("execute"),
+      { name: "plan_task", input: { executionMode: "execute" } },
+    ]);
+    expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+    const actual = (
+      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    expect(actual.executionPlan.steps[0].input).toEqual(
+      saved.executionPlan.steps[0].input,
+    );
+    expect(successes(state, "submit_processing")).toHaveLength(1);
+  });
+  it("CU10 command: stale commands allow query and replacement through the SDK", async () => {
+    const assetId = await file("失效后重规划.jsonl"),
+      id = await newSession();
+    await send(
+      id,
+      "只去掉问题前后空格，其他不变，整份资料。先给方案，不要执行。",
+      [
+        decision("plan", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            requirements: ["只去掉问题首尾空格，其他不变"],
+            allowedFields: ["question"],
+            executionMode: "plan",
+            nextAction: "none",
+          },
+        },
+      ],
+      { context: { kind: "asset", id: assetId } },
+    );
+    await dbQuery(
+      "UPDATE assistant_session SET task=task||$2::jsonb WHERE id=$1",
+      [id, JSON.stringify({ requirements: ["外部保存了新的清洗要求"] })],
+    );
+    let state = await send(id, "先查看资料，不执行。", [
+      decision("query"),
+      { name: "query_project", input: { kind: "files" } },
+    ]);
+    expect(state.turns.at(-1).status, JSON.stringify(state.turns.at(-1))).toBe(
+      "succeeded",
+    );
+    expect(state.task.runId).toBeFalsy();
+    state = await send(id, "改为只清洗问题字段，全部两条，开始执行。", [
+      decision("execute", { requiresUpdate: true }),
+      {
+        name: "plan_task",
+        input: {
+          requirements: ["只清洗问题字段"],
+          allowedFields: ["question"],
+          executionMode: "execute",
+          steps: [
+            {
+              title: "清洗当前两条",
+              action: "submit_processing",
+              input: {
+                source: { kind: "assets", assetIds: [assetId] },
+                operation: "clean",
+                allRecords: true,
+                allowedFields: ["question"],
+                instructions: "",
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(state.task.runId, JSON.stringify(state.turns.at(-1))).toBeTruthy();
+    const actual = (
+      await dbQuery("SELECT task FROM assistant_session WHERE id=$1", [id])
+    ).rows[0].task;
+    expect(actual.executionPlan.steps[0].title).toBe("清洗当前两条");
+    expect(actual.executionPlan.steps[0].command).toBeUndefined();
+    expect(successes(state, "submit_processing")).toHaveLength(1);
+  });
+  it("CU10 command: an unresolved scope stays a business question", async () => {
+    const assetId = await file("规则清洗范围未知.jsonl"),
+      id = await newSession();
+    const state = await send(
+      id,
+      "只去掉问题前后空格，其他不变，处理其中一部分。",
+      [
+        decision("execute", { requiresUpdate: true }),
+        {
+          name: "plan_task",
+          input: {
+            target: { kind: "assets", assetIds: [assetId] },
+            requirements: ["只去掉问题前后空格，其他不变"],
+            question: "要处理哪些记录？",
+            nextAction: "none",
+          },
+        },
+      ],
+      { context: { kind: "asset", id: assetId } },
+    );
+    expect(state.task.runId).toBeFalsy();
+    expect(state.task.question).toBeTruthy();
   });
 });

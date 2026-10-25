@@ -56,7 +56,9 @@ export function requestsProcessingSave(request: string) {
     .split(/[。；;\n]/u)
     .some(
       (clause) =>
-        /(?:保存|另存|存为|存成)(?!方案|要求|设置)/u.test(clause) &&
+        /(?:保存|另存|存为|存成)(?!(?:清洗|处理|改写|扩写|扩充)?(?:方案|要求|设置))/u.test(
+          clause,
+        ) &&
         /结果|成果|草稿|处理|清洗|改写|扩写|扩充/u.test(clause) &&
         !/(?:不要|不得|不必|不需要|禁止|别|先不|暂不|无需|不用|不)(?:再)?(?:保存|另存|存为|存成)/u.test(
           clause,
