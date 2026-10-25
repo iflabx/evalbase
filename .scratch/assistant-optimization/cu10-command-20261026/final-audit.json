@@ -1,0 +1,20 @@
+{
+  "services": {
+    "web": "9f433bcc18904d1ac28fdb4ff4039227ef1534ca",
+    "worker": "9f433bcc18904d1ac28fdb4ff4039227ef1534ca",
+    "model-worker": "9f433bcc18904d1ac28fdb4ff4039227ef1534ca"
+  },
+  "ready": {
+    "status": "ok",
+    "dependencies": {
+      "postgresql": "ok",
+      "minio": "ok"
+    },
+    "git_sha": "9f433bcc18904d1ac28fdb4ff4039227ef1534ca"
+  },
+  "temporaryGuardRemoved": true,
+  "allBudgetsClosed": true,
+  "previousCampaignBudgetsUnchanged": true,
+  "calls": 9,
+  "modelMs": 88537
+}

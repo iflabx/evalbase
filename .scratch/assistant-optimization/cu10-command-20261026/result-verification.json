@@ -1,0 +1,20 @@
+{
+  "code": "9f433bcc18904d1ac28fdb4ff4039227ef1534ca",
+  "sessionId": "conversation_04b64717b12e486591b723994b46036a",
+  "draftId": "collabdraft_d76e186cc7884011866e391d7dc06763",
+  "name": "客服清洗结果",
+  "recordCount": 2,
+  "sourceUnchanged": true,
+  "questionEdgesTrimmedOnly": true,
+  "expectedOutputPreserved": true,
+  "metadataPreserved": true,
+  "oneCleanRun": true,
+  "oneDraft": true,
+  "receiptMatchesLink": true,
+  "taskComplete": true,
+  "calls": 9,
+  "modelMs": 88537,
+  "browserRefreshVerified": true,
+  "acceptance": "completed_after_in_campaign_fix",
+  "freshFinalVersionFirstPass": "not_rerun"
+}
