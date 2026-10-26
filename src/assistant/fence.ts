@@ -1,3 +1,8 @@
+import {
+  guardRuntimeCommit,
+  linkRuntimeProcessing,
+  type RuntimeGuard,
+} from "../operations/runtime-guard.js";
 import type { Database } from "../db/pool.js";
 import { AssistantError, assistantAccess } from "./store.js";
 import { carryCandidateScope } from "./candidates.js";
@@ -22,8 +27,10 @@ export async function guardAssistantCommit(
     projectId: string;
     actorId: string;
     assistantGuard?: AssistantGuard;
+    runtimeGuard?: RuntimeGuard;
   },
 ) {
+  if (scope.runtimeGuard) return guardRuntimeCommit(db, scope);
   const guard = scope.assistantGuard;
   if (!guard) return;
   await db.query("SELECT id FROM app_user WHERE id=$1 FOR SHARE", [
@@ -76,9 +83,11 @@ export async function linkAssistantProcessing(
     projectId: string;
     actorId: string;
     assistantGuard?: AssistantGuard;
+    runtimeGuard?: RuntimeGuard;
   },
   runId: string,
 ) {
+  if (scope.runtimeGuard) return linkRuntimeProcessing(db, scope, runId);
   if (!scope.assistantGuard) return;
   await guardAssistantCommit(db, scope);
   const state = (

@@ -1,3 +1,5 @@
+import { freezeRuntimeBackground } from "../assistant-rebuild/background.js";
+import type { RuntimeGuard } from "../operations/runtime-guard.js";
 import { newQuestionPolicy } from "./deduplication.js";
 import {
   contentVerdict,
@@ -62,6 +64,7 @@ export type ProcessingScope = {
   projectId: string;
   actorId: string;
   assistantGuard?: AssistantGuard;
+  runtimeGuard?: RuntimeGuard;
   expectedInputHash?: string;
   /** Frozen by the assistant confirmation; never accepted from a public processing body. */
   acceptanceGroups?: { runId: string; resultIds: string[] }[];
@@ -303,6 +306,20 @@ export async function processingSourceRows(
         )
       ).rows
     : [];
+  if (
+    process.env.REBUILD_VALIDATION_ENABLED === "true" &&
+    sessions.some((id) => id.startsWith("rebuild_"))
+  ) {
+    background.push(
+      ...(
+        await db.query(
+          "SELECT s.id FROM rebuild_session s WHERE s.project_id=$1 AND s.id=ANY($2::text[]) AND EXISTS(SELECT 1 FROM rebuild_document d WHERE d.session_id=s.id)" +
+            (lock ? " FOR SHARE OF s" : ""),
+          [projectId, sessions],
+        )
+      ).rows,
+    );
+  }
   return {
     assets: assetRows,
     version: versionRows,
@@ -518,7 +535,8 @@ export async function createProcessingRun(
   if (
     (options.operation === "generate") !== (source.kind === "background") ||
     (source.kind === "background" &&
-      source.id !== scope.assistantGuard?.sessionId)
+      source.id !==
+        (scope.runtimeGuard?.sessionId ?? scope.assistantGuard?.sessionId))
   )
     throw new ProcessingError(422, "processing_scope_invalid");
   const target =
@@ -625,7 +643,13 @@ export async function createProcessingRun(
     } else if (data.records.some((row) => row.raw !== undefined))
       throw new ProcessingError(422, "processing_mapping_required");
     await guardAssistantCommit(client, scope);
-    if (scope.assistantGuard) {
+    if (scope.runtimeGuard) {
+      data.background = await freezeRuntimeBackground(
+        client,
+        scope,
+        options.instructions,
+      );
+    } else if (scope.assistantGuard) {
       const background = await freezeBackground(
         client,
         scope,
@@ -650,7 +674,7 @@ export async function createProcessingRun(
         ...data.background,
         questionPolicy,
       };
-    if (modelRevision !== null)
+    if (modelRevision !== null && !scope.runtimeGuard)
       data.background = {
         requirements: [],
         documents: [],
@@ -660,11 +684,10 @@ export async function createProcessingRun(
     const runId = opaqueId("processing"),
       jobId = opaqueId("job");
     if (options.operation === "generate")
-      data.generation = createGenerationPlan(
-        runId,
-        options.outputCount!,
-        options.scenarios,
-      );
+      data.generation = {
+        ...createGenerationPlan(runId, options.outputCount!, options.scenarios),
+        ...(scope.runtimeGuard ? { batchSize: 4 } : {}),
+      };
     const inputBytes = Buffer.from(canonicalJson(data));
     if (inputBytes.byteLength > 100000000)
       throw new ProcessingError(422, "processing_capacity_exceeded");

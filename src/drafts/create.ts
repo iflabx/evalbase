@@ -1,3 +1,4 @@
+import type { RuntimeGuard } from "../operations/runtime-guard.js";
 import {
   guardAssistantCommit,
   type AssistantGuard,
@@ -80,6 +81,7 @@ export async function createSharedDraft(
     projectId: string;
     actorId: string;
     assistantGuard?: AssistantGuard;
+    runtimeGuard?: RuntimeGuard;
   },
   body: unknown,
   key: unknown,

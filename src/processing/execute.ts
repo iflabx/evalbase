@@ -1,3 +1,4 @@
+import { processingCost } from "../assistant-rebuild/budget.js";
 import {
   modelFailure,
   processingRecovery,
@@ -311,7 +312,8 @@ function batches(
     );
   };
   if (outputCount !== undefined) {
-    const batchSize = distinctBatches && outputCount > 20 ? 10 : 20;
+    const batchSize =
+      generation?.batchSize ?? (distinctBatches && outputCount > 20 ? 10 : 20);
     for (let i = 0; i < outputCount; i += batchSize) {
       const start = i % inputs.length,
         count = Math.min(batchSize, outputCount - i),
@@ -775,42 +777,49 @@ export async function runProcessing(
               sharedDeadline = reserved.deadline;
             }
             calledAt = Date.now();
-            const extra = await generateText({
-              model: model.model,
-              ...([
-                "processing-v4",
-                "processing-v5",
-                "processing-v6",
-                "processing-v7",
-                "processing-v8",
-                "processing-v9",
-                CONTENT_RECIPE,
-                GENERATION_RECIPE,
-              ].includes(run.execution_config.recipeVersion)
-                ? {
-                    temperature: [
-                      "processing-v8",
-                      "processing-v9",
-                      GENERATION_RECIPE,
-                    ].includes(run.execution_config.recipeVersion)
-                      ? 0.7
-                      : 0.2,
-                  }
-                : {}),
-              system: prompt.system,
-              prompt: prompt.prompt,
-              maxOutputTokens: run.execution_config.maxOutputTokens,
-              maxRetries: 0,
-              abortSignal: sharedDeadline
-                ? AbortSignal.any([
-                    batchSignal,
-                    AbortSignal.timeout(
-                      Math.max(1, sharedDeadline - Date.now()),
-                    ),
-                  ])
-                : batchSignal,
-              experimental_telemetry: { isEnabled: false },
-            });
+            const extra = await processingCost.run(
+              {
+                rows: Math.max(remaining.length, missing),
+                generated: run.options.operation === "generate" ? missing : 0,
+              },
+              () =>
+                generateText({
+                  model: model.model,
+                  ...([
+                    "processing-v4",
+                    "processing-v5",
+                    "processing-v6",
+                    "processing-v7",
+                    "processing-v8",
+                    "processing-v9",
+                    CONTENT_RECIPE,
+                    GENERATION_RECIPE,
+                  ].includes(run.execution_config.recipeVersion)
+                    ? {
+                        temperature: [
+                          "processing-v8",
+                          "processing-v9",
+                          GENERATION_RECIPE,
+                        ].includes(run.execution_config.recipeVersion)
+                          ? 0.7
+                          : 0.2,
+                      }
+                    : {}),
+                  system: prompt.system,
+                  prompt: prompt.prompt,
+                  maxOutputTokens: run.execution_config.maxOutputTokens,
+                  maxRetries: 0,
+                  abortSignal: sharedDeadline
+                    ? AbortSignal.any([
+                        batchSignal,
+                        AbortSignal.timeout(
+                          Math.max(1, sharedDeadline - Date.now()),
+                        ),
+                      ])
+                    : batchSignal,
+                  experimental_telemetry: { isEnabled: false },
+                }),
+            );
             call.finishReason = [
               "stop",
               "length",
@@ -952,6 +961,7 @@ export async function runProcessing(
       }
       if (
         model &&
+        input.background?.contentReviewPolicy !== "manual-v1" &&
         (modelInputs.length > 0 || run.options.operation === "generate") &&
         result.records.length &&
         [CONTENT_RECIPE, GENERATION_RECIPE].includes(
@@ -1130,17 +1140,21 @@ export async function runProcessing(
             accepted: 0,
           };
           try {
-            const response = await generateText({
-              model: model.model,
-              ...prompt,
-              temperature: 0.1,
-              maxOutputTokens: run.execution_config.maxOutputTokens,
-              maxRetries: 0,
-              abortSignal: AbortSignal.timeout(
-                Math.max(1, deadline - Date.now()),
-              ),
-              experimental_telemetry: { isEnabled: false },
-            });
+            const response = await processingCost.run(
+              { rows: candidates.length, generated: 0 },
+              () =>
+                generateText({
+                  model: model.model,
+                  ...prompt,
+                  temperature: 0.1,
+                  maxOutputTokens: run.execution_config.maxOutputTokens,
+                  maxRetries: 0,
+                  abortSignal: AbortSignal.timeout(
+                    Math.max(1, deadline - Date.now()),
+                  ),
+                  experimental_telemetry: { isEnabled: false },
+                }),
+            );
             call.finishReason = response.finishReason;
             if (response.finishReason === "length")
               throw new Error("model_output_invalid");

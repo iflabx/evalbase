@@ -1242,15 +1242,26 @@ export async function buildApp(
   registerUploads({ db, artifacts, app, authenticate, writeAllowed });
   registerMaterialMapping({ db, app, authenticate, writeAllowed });
   registerProcessing({ db, app, artifacts, authenticate, writeAllowed });
-  registerAssistant({
-    publishDraft,
-    db,
-    app,
-    artifacts,
-    config,
-    authenticate,
-    writeAllowed,
-  });
+  if (process.env.REBUILD_VALIDATION_ENABLED === "true") {
+    const { registerRebuild } = await import("./modules/assistant-rebuild.js");
+    await registerRebuild({
+      db,
+      app,
+      artifacts,
+      config,
+      authenticate,
+      writeAllowed,
+    });
+  } else
+    registerAssistant({
+      publishDraft,
+      db,
+      app,
+      artifacts,
+      config,
+      authenticate,
+      writeAllowed,
+    });
   if (config.allowTestIdentity)
     app.post<{ Params: { projectId: string }; Body: Readable }>(
       "/api/projects/:projectId/assets",

@@ -1,3 +1,7 @@
+import {
+  validationEnabled,
+  validationFetch,
+} from "../assistant-rebuild/budget.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { generateText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -201,7 +205,7 @@ export async function saveModelConnection(
 }
 
 // Providers are administrator configured. Bound responses even if a server ignores token limits.
-const modelFetch: typeof fetch = async (input, init) => {
+export const modelFetch: typeof fetch = async (input, init) => {
   const response = await fetch(input, { ...init, redirect: "error" });
   let received = 0;
   const body = response.body?.pipeThrough(
@@ -282,7 +286,19 @@ export async function configuredModel(
     name: "evalbase",
     baseURL: connection.endpoint,
     apiKey: decrypt(connection, config),
-    fetch: decorateFetch ? decorateFetch(scopedFetch) : scopedFetch,
+    fetch: validationEnabled()
+      ? validationFetch(
+          db,
+          process.env.REBUILD_VALIDATION_CAMPAIGN_ID!,
+          {
+            kind: requestScope?.runId ? "worker" : "assistant",
+            ...requestScope,
+          },
+          decorateFetch ? decorateFetch(scopedFetch) : scopedFetch,
+        )
+      : decorateFetch
+        ? decorateFetch(scopedFetch)
+        : scopedFetch,
   });
   return {
     revision: connection.revision,
@@ -326,5 +342,22 @@ export async function testModelConnection(
     test: { revision: current.revision, ok, code },
     connection: publicConnection(latest),
     encryptionReady: true,
+  };
+}
+
+/** Server-only model client configuration; never returned by HTTP/tool presentation. */
+export async function configuredChatConnection(
+  db: Database,
+  config: Config,
+  revision?: number,
+) {
+  const connection = await readConnection(db, revision);
+  if (!connection?.enabled)
+    throw new ModelConnectionError(409, "model_connection_unavailable");
+  return {
+    revision: connection.revision,
+    model: connection.model,
+    baseURL: connection.endpoint,
+    apiKey: decrypt(connection, config),
   };
 }

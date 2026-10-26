@@ -3,7 +3,7 @@
 - 日期：2026-10-26；状态：重建边界已确定，待实现和验收。
 - 工作分支：`codex/assistant-rebuild`；业务基线 `0b296e67`，能力清单基线提交 `bd7d520`。
 - 产品权威：[助手 PRD §7.14](../PRD-data-selection-and-assistant.md#assistant-rebuild-product)；操作覆盖：[85 项能力清单](../assistant-rebuild-capabilities.md)；取舍：[ADR 0015](../adr/0015-assistant-rebuild-boundaries.md)。
-- 本轮只有文档，不替换线上/4217、不修改数据库、不运行模型或重跑验收。下文“迁出、切换、退出”均为后续开发要求，不是已经完成。
+- 边界文档阶段已结束；当前另获最小适配及独立验证授权，见[适配报告](../research/assistant-rebuild-validation-20261027.md)。未替换线上/4217，未迁移旧数据或预算。下文全量“迁出、切换、退出”仍是后续要求，不因本轮小范围实现而视为完成。
 
 ## 1. 决策与实施范围
 

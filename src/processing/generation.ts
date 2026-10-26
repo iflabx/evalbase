@@ -8,6 +8,7 @@ export function isGenerationRecipe(version: string | undefined) {
   return version === GENERATION_RECIPE || version === "processing-v9";
 }
 export type GenerationPlan = {
+  batchSize?: number;
   rootRunId: string;
   total: number;
   scenarios: string[];

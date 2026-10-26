@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsProjectIdAssistantRouteImport } from './routes/projects.$projectId.assistant'
+import { Route as ProjectsProjectIdAssistantValidationRouteImport } from './routes/projects.$projectId.assistant-validation'
 import { Route as ProjectsProjectIdDatasetsRouteImport } from './routes/projects.$projectId.datasets'
 import { Route as ProjectsProjectIdProcessingRouteImport } from './routes/projects.$projectId.processing'
 import { Route as ProjectsProjectIdTestSetsRouteImport } from './routes/projects.$projectId.test-sets'
@@ -41,6 +42,12 @@ const ProjectsProjectIdAssistantRoute =
   ProjectsProjectIdAssistantRouteImport.update({
     id: '/projects/$projectId/assistant',
     path: '/projects/$projectId/assistant',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ProjectsProjectIdAssistantValidationRoute =
+  ProjectsProjectIdAssistantValidationRouteImport.update({
+    id: '/projects/$projectId/assistant-validation',
+    path: '/projects/$projectId/assistant-validation',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ProjectsProjectIdDatasetsRoute =
@@ -97,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/assistant': typeof ProjectsProjectIdAssistantRouteWithChildren
+  '/projects/$projectId/assistant-validation': typeof ProjectsProjectIdAssistantValidationRoute
   '/projects/$projectId/datasets': typeof ProjectsProjectIdDatasetsRouteWithChildren
   '/projects/$projectId/processing': typeof ProjectsProjectIdProcessingRoute
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
@@ -111,6 +119,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/assistant': typeof ProjectsProjectIdAssistantRouteWithChildren
+  '/projects/$projectId/assistant-validation': typeof ProjectsProjectIdAssistantValidationRoute
   '/projects/$projectId/datasets': typeof ProjectsProjectIdDatasetsRouteWithChildren
   '/projects/$projectId/processing': typeof ProjectsProjectIdProcessingRoute
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
@@ -126,6 +135,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/assistant': typeof ProjectsProjectIdAssistantRouteWithChildren
+  '/projects/$projectId/assistant-validation': typeof ProjectsProjectIdAssistantValidationRoute
   '/projects/$projectId/datasets': typeof ProjectsProjectIdDatasetsRouteWithChildren
   '/projects/$projectId/processing': typeof ProjectsProjectIdProcessingRoute
   '/projects/$projectId/test-sets': typeof ProjectsProjectIdTestSetsRouteWithChildren
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects/'
     | '/projects/$projectId/assistant'
+    | '/projects/$projectId/assistant-validation'
     | '/projects/$projectId/datasets'
     | '/projects/$projectId/processing'
     | '/projects/$projectId/test-sets'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects'
     | '/projects/$projectId/assistant'
+    | '/projects/$projectId/assistant-validation'
     | '/projects/$projectId/datasets'
     | '/projects/$projectId/processing'
     | '/projects/$projectId/test-sets'
@@ -170,6 +182,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects/'
     | '/projects/$projectId/assistant'
+    | '/projects/$projectId/assistant-validation'
     | '/projects/$projectId/datasets'
     | '/projects/$projectId/processing'
     | '/projects/$projectId/test-sets'
@@ -185,6 +198,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   ProjectsProjectIdAssistantRoute: typeof ProjectsProjectIdAssistantRouteWithChildren
+  ProjectsProjectIdAssistantValidationRoute: typeof ProjectsProjectIdAssistantValidationRoute
   ProjectsProjectIdDatasetsRoute: typeof ProjectsProjectIdDatasetsRouteWithChildren
   ProjectsProjectIdProcessingRoute: typeof ProjectsProjectIdProcessingRoute
   ProjectsProjectIdTestSetsRoute: typeof ProjectsProjectIdTestSetsRouteWithChildren
@@ -218,6 +232,13 @@ declare module '@tanstack/react-router' {
       path: '/projects/$projectId/assistant'
       fullPath: '/projects/$projectId/assistant'
       preLoaderRoute: typeof ProjectsProjectIdAssistantRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$projectId/assistant-validation': {
+      id: '/projects/$projectId/assistant-validation'
+      path: '/projects/$projectId/assistant-validation'
+      fullPath: '/projects/$projectId/assistant-validation'
+      preLoaderRoute: typeof ProjectsProjectIdAssistantValidationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/$projectId/datasets': {
@@ -347,6 +368,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   ProjectsProjectIdAssistantRoute: ProjectsProjectIdAssistantRouteWithChildren,
+  ProjectsProjectIdAssistantValidationRoute:
+    ProjectsProjectIdAssistantValidationRoute,
   ProjectsProjectIdDatasetsRoute: ProjectsProjectIdDatasetsRouteWithChildren,
   ProjectsProjectIdProcessingRoute: ProjectsProjectIdProcessingRoute,
   ProjectsProjectIdTestSetsRoute: ProjectsProjectIdTestSetsRouteWithChildren,

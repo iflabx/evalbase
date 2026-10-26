@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    environment:
+      POSTGRES_DB: evalbase_rebuild
+      POSTGRES_USER: evalbase_rebuild
+      POSTGRES_PASSWORD: rebuild-synthetic-validation-only
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U evalbase_rebuild -d evalbase_rebuild]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: [server, /data]
+    environment:
+      MINIO_ROOT_USER: rebuild-validation
+      MINIO_ROOT_PASSWORD: rebuild-synthetic-validation-only
+    volumes: [minio-data:/data]
+    networks: [internal]
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  web:
+    image: evalbase-assistant-rebuild-validation:${GIT_SHA:-development}
+    build:
+      context: ../..
+    command: [sh, -c, 'npm run db:migrate && npm run start:web']
+    environment: &app-env
+      DATABASE_URL: postgresql://evalbase_rebuild:rebuild-synthetic-validation-only@postgres:5432/evalbase_rebuild
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: '9000'
+      MINIO_ACCESS_KEY: rebuild-validation
+      MINIO_SECRET_KEY: rebuild-synthetic-validation-only
+      MINIO_BUCKET: evalbase-rebuild-validation
+      APP_ORIGIN: http://127.0.0.1:4226
+      GIT_SHA: ${GIT_SHA:-development}
+      MODEL_ENCRYPTION_KEY: ${MODEL_ENCRYPTION_KEY:-}
+      NODE_ENV: production
+      SOLO_OWNER_MODE: 'false'
+      ALLOW_TEST_IDENTITY: 'false'
+      REBUILD_VALIDATION_ENABLED: 'true'
+      REBUILD_VALIDATION_CAMPAIGN_ID: ${REBUILD_VALIDATION_CAMPAIGN_ID:-rebuild-adaptation-20261027}
+      HOST: 0.0.0.0
+      PORT: '3000'
+    ports: ['127.0.0.1:4226:3000']
+    networks: [edge, internal]
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  worker:
+    image: evalbase-assistant-rebuild-validation:${GIT_SHA:-development}
+    command: [npm, run, start:worker]
+    environment:
+      <<: *app-env
+      WORKER_HEALTH_PORT: '3001'
+    networks: [edge, internal]
+    depends_on:
+      web: {condition: service_healthy}
+networks:
+  edge: {}
+  internal: {internal: true}
+volumes:
+  postgres-data: {}
+  minio-data: {}
