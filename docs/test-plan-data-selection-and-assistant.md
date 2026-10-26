@@ -373,7 +373,7 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 <a id="assistant-rebuild-acceptance"></a>
 ## 6. 独立重建验收边界（2026-10-26，待执行）
 
-依据 [PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product) 与[重建架构](architecture/assistant-rebuild.md)。本节定义未来证据，不表示本次授权运行测试、调用模型或新增额度；旧 OPT/Computer Use 记录保持原结论。第一候选的可执行步骤、合成材料、8组受控回归、4项CU、独立测试预算和采用判定统一见[适配验证方案](assistant-rebuild-validation-plan.md)，不在本节重复维护。该方案通过也不等于以下15项全部完成。
+依据 [PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product) 与[重建架构](architecture/assistant-rebuild.md)。本节定义未来证据，不表示本次授权运行测试、调用模型或新增额度；旧 OPT/Computer Use 记录保持原结论。第一候选的可执行步骤、合成材料、8组受控回归、2项真实模型纠错、4类7次普通提示CU、独立测试预算和采用判定统一见[适配验证方案](assistant-rebuild-validation-plan.md)，不在本节重复维护。安全拦截与业务完成分开判定，受控夹具通过不能替代真实模型纠错和普通用户闭环；该方案通过也不等于以下15项全部完成。
 
 | 编号 | 要证明的边界 | 最小有效证据 |
 | --- | --- | --- |

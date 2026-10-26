@@ -2,7 +2,7 @@
   "schemaPurpose": "Human-readable validation manifest; not an implemented runtime API",
   "status": "plan-only",
   "plan": "docs/assistant-rebuild-validation-plan.md",
-  "planBaselineCommit": "6ea8ec7a1c8ab87e198b76715cb855f0f0fe05f9",
+  "planBaselineCommit": "8a2b7c02135a22ee1b62c5d876e2d08ea1d013c5",
   "campaignId": null,
   "authorization": {
     "reference": null,
@@ -54,14 +54,16 @@
     "maxNoProgressRepetitions": 3
   },
   "limits": {
-    "liveHttpRequests": 80,
+    "liveHttpRequests": 120,
     "probeRequestsWithinTotal": 4,
-    "cuConversations": 4,
-    "modelProcessingRowAttempts": 30,
+    "cuConversations": 7,
+    "modelProcessingRowAttempts": 50,
     "generationCandidateSlots": 12,
-    "activeLiveMinutes": 120,
+    "activeLiveMinutes": 180,
     "maxConcurrentAssistantRequests": 1,
-    "maxConcurrentWorkerRequests": 1
+    "maxConcurrentWorkerRequests": 1,
+    "liveCorrectionConversations": 2,
+    "liveCorrectionRequestsPerCase": 10
   },
   "materials": [],
   "observations": {
@@ -116,26 +118,132 @@
       "conversationId": null,
       "evidence": []
     },
-    "CU-A": {
+    "L01": {
       "status": "not-run",
       "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
+      "evidence": [],
+      "fault": {
+        "toolName": null,
+        "parameterLocation": null,
+        "registeredMutation": null,
+        "triggerCount": null,
+        "triggerOrigin": null
+      }
+    },
+    "L02": {
+      "status": "not-run",
+      "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
+      "evidence": [],
+      "fault": {
+        "toolName": null,
+        "parameterLocation": null,
+        "registeredMutation": null,
+        "triggerCount": null,
+        "triggerOrigin": null
+      }
+    },
+    "CU-A1": {
+      "status": "not-run",
+      "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
       "evidence": []
     },
-    "CU-B": {
+    "CU-B1": {
       "status": "not-run",
       "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
       "evidence": []
     },
-    "CU-C": {
+    "CU-C1": {
       "status": "not-run",
       "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
       "evidence": []
     },
-    "CU-D": {
+    "CU-D1": {
       "status": "not-run",
       "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
+      "evidence": []
+    },
+    "CU-A2": {
+      "status": "not-run",
+      "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
+      "evidence": []
+    },
+    "CU-B2": {
+      "status": "not-run",
+      "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
+      "evidence": []
+    },
+    "CU-C2": {
+      "status": "not-run",
+      "conversationId": null,
+      "safetyResult": null,
+      "businessResult": null,
+      "completionMode": null,
+      "firstError": null,
+      "correctionAttempts": null,
+      "technicalInterventions": [],
       "evidence": []
     }
   },
-  "oldBudgetRecordsModified": false
+  "oldBudgetRecordsModified": false,
+  "plannedCuOrder": [
+    "CU-A1",
+    "CU-B1",
+    "CU-C1",
+    "CU-D1",
+    "CU-A2",
+    "CU-B2",
+    "CU-C2"
+  ],
+  "plannedLiveCorrectionOrder": [
+    "L01",
+    "L02"
+  ]
 }

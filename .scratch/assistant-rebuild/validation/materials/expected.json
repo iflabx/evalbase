@@ -138,7 +138,27 @@
     }
   ],
   "scenarios": {
-    "CU-A": {
+    "L01": {
+      "operation": "read-only",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03"
+      ],
+      "expectedCount": 3,
+      "businessWritesAllowed": false,
+      "questionComparison": "questionBefore"
+    },
+    "L02": {
+      "draftName": "纠错保存样例",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03"
+      ],
+      "expectedCount": 3
+    },
+    "CU-A1": {
       "draftName": "清洗样例",
       "selectedFixtureIds": [
         "r01",
@@ -149,7 +169,7 @@
       ],
       "expectedCount": 5
     },
-    "CU-B": {
+    "CU-B1": {
       "draftName": "精简版",
       "selectedFixtureIds": [
         "r01",
@@ -160,7 +180,7 @@
       "obsoleteName": "初稿",
       "obsoleteCount": 5
     },
-    "CU-C": {
+    "CU-C1": {
       "draftName": "自然问法",
       "selectedFixtureIds": [
         "r01",
@@ -172,7 +192,7 @@
       "expectedCount": 5,
       "questionComparison": "manual-meaning-preserved"
     },
-    "CU-D": {
+    "CU-D1": {
       "draftName": "预约服务样例",
       "source": "background-only",
       "expectedCount": 8,
@@ -194,6 +214,39 @@
           "迟到处理"
         ]
       }
+    },
+    "CU-A2": {
+      "draftName": "清洗复核",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03",
+        "r04",
+        "r05"
+      ],
+      "expectedCount": 5
+    },
+    "CU-B2": {
+      "draftName": "两条精简版",
+      "selectedFixtureIds": [
+        "r01",
+        "r02"
+      ],
+      "expectedCount": 2,
+      "obsoleteName": "整理草案",
+      "obsoleteCount": 4
+    },
+    "CU-C2": {
+      "draftName": "问法复核",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03",
+        "r04",
+        "r05"
+      ],
+      "expectedCount": 5,
+      "questionComparison": "manual-meaning-preserved"
     }
   }
 }
