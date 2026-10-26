@@ -4,7 +4,7 @@
 
 Owner 已选择从当前 main 的独立分支重建，并授权本次明确边界及更新文档。新的产品合同见[PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product)，能力范围见[85 项清单](assistant-rebuild-capabilities.md)，职责、退出机制与数据兼容统一见[重建架构](architecture/assistant-rebuild.md)，取舍见[ADR 0015](adr/0015-assistant-rebuild-boundaries.md)，验证边界见[重建验收](test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
 
-本次仅完成文档，不新增开发票、不修改业务代码、不更新4217或正式环境、不调用模型。下文“保留 AI SDK”“不更换框架”等仅约束对应历史路径；不能用于要求新助手包装旧编排器。旧OPT及20项测试记录保持原结论，旧会话、成果和预算不迁移重放。后续按共享业务解耦与纵向验证、能力/UI接入、兼容切换验证三阶段推进，开发授权及新验证额度另按明确范围执行。
+本次仅完成文档，不新增开发票、不修改业务代码、不更新4217或正式环境、不调用模型。下文“保留 AI SDK”“不更换框架”等仅约束对应历史路径；不能用于要求新助手包装旧编排器。旧OPT及20项测试记录保持原结论，旧会话、成果和预算不迁移重放。后续先按[适配验证方案](assistant-rebuild-validation-plan.md)完成第一候选的最小业务接入与实际验证，再确定正式框架并展开能力/UI接入和兼容切换。开发授权及新验证额度按明确范围执行；本次新增方案与合成材料仍未执行。
 
 ## 历史整改与证据
 

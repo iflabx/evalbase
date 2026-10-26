@@ -1,0 +1,141 @@
+{
+  "schemaPurpose": "Human-readable validation manifest; not an implemented runtime API",
+  "status": "plan-only",
+  "plan": "docs/assistant-rebuild-validation-plan.md",
+  "planBaselineCommit": "6ea8ec7a1c8ab87e198b76715cb855f0f0fe05f9",
+  "campaignId": null,
+  "authorization": {
+    "reference": null,
+    "authorizedAt": null
+  },
+  "code": {
+    "commit": null,
+    "dirty": false,
+    "lockfileSha256": null
+  },
+  "runtime": {
+    "node": null,
+    "deepagents": null,
+    "langchain": null,
+    "langchainCore": null,
+    "langgraph": null,
+    "modelAdapterPackage": null,
+    "modelAdapterVersion": null,
+    "checkpointerPackage": null,
+    "checkpointerVersion": null,
+    "toolSchemaSha256": null,
+    "exposedTools": []
+  },
+  "environment": {
+    "composeProject": null,
+    "baseUrl": null,
+    "databaseName": null,
+    "objectStorageBucket": null,
+    "checkpointNamespace": null,
+    "testProjectId": null,
+    "independentFrom4217Verified": false
+  },
+  "model": {
+    "modelId": null,
+    "configurationRevision": null,
+    "endpointFingerprint": null,
+    "temperature": null,
+    "maxOutputTokens": null,
+    "contextWindow": null,
+    "reasoningOptions": null,
+    "credentialsIncluded": false
+  },
+  "execution": {
+    "graphStepLimit": null,
+    "automaticContinuationPolicy": null,
+    "parameterCorrectionAttempts": 2,
+    "transportRetryAttempts": 1,
+    "providerTimeoutSeconds": 180,
+    "maxNoProgressRepetitions": 3
+  },
+  "limits": {
+    "liveHttpRequests": 80,
+    "probeRequestsWithinTotal": 4,
+    "cuConversations": 4,
+    "modelProcessingRowAttempts": 30,
+    "generationCandidateSlots": 12,
+    "activeLiveMinutes": 120,
+    "maxConcurrentAssistantRequests": 1,
+    "maxConcurrentWorkerRequests": 1
+  },
+  "materials": [],
+  "observations": {
+    "startedAt": null,
+    "endedAt": null,
+    "httpRequests": null,
+    "modelProcessingRowAttempts": null,
+    "generationCandidateSlots": null,
+    "inputTokens": null,
+    "outputTokens": null,
+    "unknownUsageRequests": null,
+    "stopReason": null
+  },
+  "cases": {
+    "F01": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F02": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F03": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F04": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F05": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F06": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F07": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "F08": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "CU-A": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "CU-B": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "CU-C": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    },
+    "CU-D": {
+      "status": "not-run",
+      "conversationId": null,
+      "evidence": []
+    }
+  },
+  "oldBudgetRecordsModified": false
+}

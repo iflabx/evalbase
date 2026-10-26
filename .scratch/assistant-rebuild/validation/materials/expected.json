@@ -1,0 +1,199 @@
+{
+  "status": "fixture-not-executed",
+  "mapping": {
+    "question": "question",
+    "expectedOutput": "expectedOutput",
+    "metadataFieldsInOrder": [
+      "fixtureId",
+      "channel",
+      "note"
+    ]
+  },
+  "records": [
+    {
+      "sourceLine": 1,
+      "fixtureId": "r01",
+      "questionBefore": "  怎样预约明天下午的自习座位？？  ",
+      "questionAfter": "怎样预约明天下午的自习座位？",
+      "expectedOutput": "新建预约",
+      "metadata": [
+        {
+          "key": "fixtureId",
+          "value": "r01"
+        },
+        {
+          "key": "channel",
+          "value": "网页"
+        },
+        {
+          "key": "note",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "sourceLine": 2,
+      "fixtureId": "r02",
+      "questionBefore": "\t我已经预约了，怎么改时间？？ ",
+      "questionAfter": "我已经预约了，怎么改时间？",
+      "expectedOutput": "修改预约",
+      "metadata": [
+        {
+          "key": "fixtureId",
+          "value": "r02"
+        },
+        {
+          "key": "channel",
+          "value": "移动端"
+        },
+        {
+          "key": "note",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "sourceLine": 3,
+      "fixtureId": "r03",
+      "questionBefore": " 如何取消已有预约？ ",
+      "questionAfter": "如何取消已有预约？",
+      "expectedOutput": "取消预约",
+      "metadata": [
+        {
+          "key": "fixtureId",
+          "value": "r03"
+        },
+        {
+          "key": "channel",
+          "value": "网页"
+        },
+        {
+          "key": "note",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "sourceLine": 4,
+      "fixtureId": "r04",
+      "questionBefore": "  在哪里能看到我当前的预约？？ ",
+      "questionAfter": "在哪里能看到我当前的预约？",
+      "expectedOutput": "查询预约",
+      "metadata": [
+        {
+          "key": "fixtureId",
+          "value": "r04"
+        },
+        {
+          "key": "channel",
+          "value": "移动端"
+        },
+        {
+          "key": "note",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "sourceLine": 5,
+      "fixtureId": "r05",
+      "questionBefore": " 自习座位一次最多能预约多久？ ",
+      "questionAfter": "自习座位一次最多能预约多久？",
+      "expectedOutput": "时长咨询",
+      "metadata": [
+        {
+          "key": "fixtureId",
+          "value": "r05"
+        },
+        {
+          "key": "channel",
+          "value": "网页"
+        },
+        {
+          "key": "note",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "sourceLine": 6,
+      "fixtureId": "r06",
+      "questionBefore": "  忘带借阅证还能入馆吗？？  ",
+      "questionAfter": "忘带借阅证还能入馆吗？",
+      "expectedOutput": "入馆咨询",
+      "metadata": [
+        {
+          "key": "fixtureId",
+          "value": "r06"
+        },
+        {
+          "key": "channel",
+          "value": "网页"
+        },
+        {
+          "key": "note",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "scenarios": {
+    "CU-A": {
+      "draftName": "清洗样例",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03",
+        "r04",
+        "r05"
+      ],
+      "expectedCount": 5
+    },
+    "CU-B": {
+      "draftName": "精简版",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03"
+      ],
+      "expectedCount": 3,
+      "obsoleteName": "初稿",
+      "obsoleteCount": 5
+    },
+    "CU-C": {
+      "draftName": "自然问法",
+      "selectedFixtureIds": [
+        "r01",
+        "r02",
+        "r03",
+        "r04",
+        "r05"
+      ],
+      "expectedCount": 5,
+      "questionComparison": "manual-meaning-preserved"
+    },
+    "CU-D": {
+      "draftName": "预约服务样例",
+      "source": "background-only",
+      "expectedCount": 8,
+      "categoryCounts": {
+        "预约操作": 4,
+        "规则咨询": 4
+      },
+      "scenarios": {
+        "预约操作": [
+          "新建预约",
+          "修改时间",
+          "取消预约",
+          "查询本人预约"
+        ],
+        "规则咨询": [
+          "可预约时间",
+          "单次预约时长",
+          "同时预约数量",
+          "迟到处理"
+        ]
+      }
+    }
+  }
+}

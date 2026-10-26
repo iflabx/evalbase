@@ -1,0 +1,6 @@
+{"question":"  怎样预约明天下午的自习座位？？  ","expectedOutput":"新建预约","fixtureId":"r01","channel":"网页","note":""}
+{"question":"\t我已经预约了，怎么改时间？？ ","expectedOutput":"修改预约","fixtureId":"r02","channel":"移动端","note":""}
+{"question":" 如何取消已有预约？ ","expectedOutput":"取消预约","fixtureId":"r03","channel":"网页","note":""}
+{"question":"  在哪里能看到我当前的预约？？ ","expectedOutput":"查询预约","fixtureId":"r04","channel":"移动端","note":""}
+{"question":" 自习座位一次最多能预约多久？ ","expectedOutput":"时长咨询","fixtureId":"r05","channel":"网页","note":""}
+{"question":"  忘带借阅证还能入馆吗？？  ","expectedOutput":"入馆咨询","fixtureId":"r06","channel":"网页","note":""}
