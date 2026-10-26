@@ -1,0 +1,12 @@
+Browser tab: 33, Title: "EvalBase · 测试数据管理", URL: "http://127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/assistant-validation?session=rebuild_2f20bdb93cc8465081db487f04d2fdb9".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 29
+~			23 text 已暂停
+~				33 button 上传背景文档
++			37 container
++				38 heading 当前要求, Value: 2
++					39 text 当前要求
++				40 text 问法复核  ·  5  条 对验收资料最前面的5条记录，仅改写question字段：把问题改成更自然、像真实读者会问的口语化表达，保持原意不变，不改变意图或关键信息；去除多余空格、制表符和重复标点。expectedOutput和metadata必须原样保留，不得修改。 按当前要求执行
++			41 button (collapsed) 查看处理结果, Secondary Actions: Expand
++				42 text 查看处理结果
+The focused UI element is 25 button 停止任务

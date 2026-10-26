@@ -57,15 +57,22 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
-  worker:
+  worker: &worker
     image: evalbase-assistant-rebuild-validation:${GIT_SHA:-development}
     command: [npm, run, start:worker]
     environment:
       <<: *app-env
       WORKER_HEALTH_PORT: '3001'
+      WORKER_TASK_GROUP: ordinary
     networks: [edge, internal]
     depends_on:
       web: {condition: service_healthy}
+  model-worker:
+    <<: *worker
+    environment:
+      <<: *app-env
+      WORKER_HEALTH_PORT: '3001'
+      WORKER_TASK_GROUP: model
 networks:
   edge: {}
   internal: {internal: true}

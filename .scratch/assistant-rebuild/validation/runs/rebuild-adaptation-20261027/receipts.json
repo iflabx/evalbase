@@ -1,0 +1,522 @@
+[
+  {
+    "id": "adoption_9c110b6ed3f14a0f88f11ba4cf2ed695",
+    "run_id": "processing_4c6246ace991419e9fea59c0d2740f29",
+    "receipt": {
+      "added": 3,
+      "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+      "adopted": 3,
+      "assetId": "asset_4bd594b45e9f4e4ea3faebb151ed72f4",
+      "draftId": "collabdraft_040a1f1d998a4efe809086ad8a0ad02e",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "清洗结果-d2740f29.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+          "recordId": "draftrow_b45cb7e6106d4bfc8db9b2a4a0eeb609",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+          "recordId": "draftrow_9ee1ba51a7804134b6f0ab2b2e41e95a",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+          "recordId": "draftrow_585dee199e4342e4809bc3e00c676822",
+          "resultId": "0:2"
+        }
+      ],
+      "acceptanceId": "adoption_9c110b6ed3f14a0f88f11ba4cf2ed695",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_4c6246ace991419e9fea59c0d2740f29",
+          "resultId": "0:2"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_4bd594b45e9f4e4ea3faebb151ed72f4",
+    "draft_id": "collabdraft_040a1f1d998a4efe809086ad8a0ad02e",
+    "created_at": "2026-10-26T18:18:25.066736+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1",
+      "0:2"
+    ],
+    "request_hash": "99674473ae80282cc6b44e136e58159e6fe6f7d6b890001e50a7ac7d75af8362",
+    "idempotency_key": "rebuildop_020fac0cac5272aef41ffcbed4998803b4727e6ac604285f1b9b540830cec73a"
+  },
+  {
+    "id": "adoption_938fcd6456a448e882dfd18c8fd13742",
+    "run_id": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+    "receipt": {
+      "added": 3,
+      "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+      "adopted": 3,
+      "assetId": "asset_855c751b15f644428e9cdbfc1c07222f",
+      "draftId": "collabdraft_219ce54f43ad4c6ab3fb2ed7116fd14c",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "清洗结果-dbd36b39.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+          "recordId": "draftrow_53729e691940442ab1dfd85295286cb5",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+          "recordId": "draftrow_db355997e8c1406c959cf1fffcbb9eaa",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+          "recordId": "draftrow_601abb1ac51148ffa1db6afe23a73d80",
+          "resultId": "0:2"
+        }
+      ],
+      "acceptanceId": "adoption_938fcd6456a448e882dfd18c8fd13742",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_c911aa18a7fb4e7c9216c5d5dbd36b39",
+          "resultId": "0:2"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_855c751b15f644428e9cdbfc1c07222f",
+    "draft_id": "collabdraft_219ce54f43ad4c6ab3fb2ed7116fd14c",
+    "created_at": "2026-10-26T18:22:44.235028+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1",
+      "0:2"
+    ],
+    "request_hash": "3f6fe39caa8ddd890ae6574804be9f9a1c176322a5bdc23215df57398f7616ac",
+    "idempotency_key": "rebuildop_0be28f45696af418dc2b5b8fc9d461c3440c654664723dd6e559fc4cf14cd029"
+  },
+  {
+    "id": "adoption_bfcb4aa355994838b16026ff4add7059",
+    "run_id": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+    "receipt": {
+      "added": 5,
+      "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+      "adopted": 5,
+      "assetId": "asset_71011ffe10804b0a80ee90a8d939ea47",
+      "draftId": "collabdraft_a5992d3eb570454293ab19546bb877d2",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "清洗结果-d308f47f.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "recordId": "draftrow_aa345bafa36944c7a442accb369d0deb",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "recordId": "draftrow_4d75f52c568f4c44a1bc31678c185987",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "recordId": "draftrow_e862fd9c43b949a89574de18d7b6ba89",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "recordId": "draftrow_4479a4b05485459fb4eaddbce85a2504",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "recordId": "draftrow_81f06b3c680340c4966ffbec71be5394",
+          "resultId": "0:4"
+        }
+      ],
+      "acceptanceId": "adoption_bfcb4aa355994838b16026ff4add7059",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_65d9a415bfe54fc2b9cd669fd308f47f",
+          "resultId": "0:4"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_71011ffe10804b0a80ee90a8d939ea47",
+    "draft_id": "collabdraft_a5992d3eb570454293ab19546bb877d2",
+    "created_at": "2026-10-26T18:29:43.374907+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1",
+      "0:2",
+      "0:3",
+      "0:4"
+    ],
+    "request_hash": "07b6a1d1577789d0d05b048027f6d15763bf3e116226cbf3013e052c959aeaec",
+    "idempotency_key": "rebuildop_68934e8739c394a11ca5c01328f405954cb4208442a5d84b7a8f0423bb9e0a84"
+  },
+  {
+    "id": "adoption_fae44162c9cc481db172bab15335137d",
+    "run_id": "processing_7028c93d3e814707b0f545f7d3d202be",
+    "receipt": {
+      "added": 5,
+      "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+      "adopted": 5,
+      "assetId": "asset_cb23bfa6a9b44dc4b526e19d0fd95b37",
+      "draftId": "collabdraft_45021c2554d54dc5abe96e23138317c4",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "清洗结果-d3d202be.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "recordId": "draftrow_a1ded03015654588befe8a2171a5b668",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "recordId": "draftrow_f073acb68add47a98449ad1c2ca36b07",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "recordId": "draftrow_18c40391eba9429db0e0c66ad58e5c7a",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "recordId": "draftrow_c7c6a6e333d34c0b8ac0a966b70d76c3",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "recordId": "draftrow_1baa4a1a92ff4cffb4cfa00acc8479c1",
+          "resultId": "0:4"
+        }
+      ],
+      "acceptanceId": "adoption_fae44162c9cc481db172bab15335137d",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_7028c93d3e814707b0f545f7d3d202be",
+          "resultId": "0:4"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_cb23bfa6a9b44dc4b526e19d0fd95b37",
+    "draft_id": "collabdraft_45021c2554d54dc5abe96e23138317c4",
+    "created_at": "2026-10-26T18:20:43.764852+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1",
+      "0:2",
+      "0:3",
+      "0:4"
+    ],
+    "request_hash": "c3791ba58f388bf1e109dd800c2d653caf57a9240d4a79a722c155b4937b95ab",
+    "idempotency_key": "rebuildop_9c0d5d185173f2be821b37901fb4453ec85a87f3f4891b019ac4708ee1f323bc"
+  },
+  {
+    "id": "adoption_da725caa96654f979ad612c44f7c1690",
+    "run_id": "processing_6dc32e38838e4760b795536f10b16e35",
+    "receipt": {
+      "added": 5,
+      "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+      "adopted": 5,
+      "assetId": "asset_8fd0d2d09d0b4fb6b4cdf0c94772f38e",
+      "draftId": "collabdraft_c94e30b9097940379d0b1f663ab7d51a",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "改写结果-10b16e35.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "recordId": "draftrow_9069ec49e9114edebc52e0ffa47c1a42",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "recordId": "draftrow_6d1cc9a7c1c847e995eafef3de30947e",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "recordId": "draftrow_f4bebcf96f004af38a46b9f0cde927ae",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "recordId": "draftrow_9a6b27f3971e4842b1a97daaab49b419",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "recordId": "draftrow_30d7f1fb89ef47769f5d18c0eecc074f",
+          "resultId": "0:4"
+        }
+      ],
+      "acceptanceId": "adoption_da725caa96654f979ad612c44f7c1690",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_6dc32e38838e4760b795536f10b16e35",
+          "resultId": "0:4"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_8fd0d2d09d0b4fb6b4cdf0c94772f38e",
+    "draft_id": "collabdraft_c94e30b9097940379d0b1f663ab7d51a",
+    "created_at": "2026-10-26T18:34:07.360324+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1",
+      "0:2",
+      "0:3",
+      "0:4"
+    ],
+    "request_hash": "eb0b5d4c0891181baebedfccdd24846f94c747da177f07978a4115622c4710f0",
+    "idempotency_key": "rebuildop_bea32038a6c7c636cdd2c298f6af9160b38dbe4591857b03cd33054dd11c591f"
+  },
+  {
+    "id": "adoption_3fdab5709a0f4a829b1ee2b56a86bdc6",
+    "run_id": "processing_bd727c9782074ec1b1de7610b1caa78c",
+    "receipt": {
+      "added": 8,
+      "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+      "adopted": 8,
+      "assetId": "asset_b6df9a3402094812b07a26ddbd6cf8d7",
+      "draftId": "collabdraft_89a56e745ab74479a4daa967a32b7455",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "依据背景文档生成结果-b1caa78c.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_b506d33395ec4269b60865ab281b952f",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_db975696eb134c1d83e433aba74f3463",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_f905273a169c4849b272749ccbf0aedd",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_b22478f981c148258af09a24dfd6ba96",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_849b2ff0b2a043fd927f4fbb09503f02",
+          "resultId": "1:0"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_7b87dc4f1633469f8b465ad7a436e1a0",
+          "resultId": "1:1"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_682d217148ee40e68bc6a1dcf2032bda",
+          "resultId": "1:2"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "recordId": "draftrow_21104fa07e2e499cbc2d72c2d0b223b5",
+          "resultId": "1:3"
+        }
+      ],
+      "acceptanceId": "adoption_3fdab5709a0f4a829b1ee2b56a86bdc6",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "0:1"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "0:2"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "0:3"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "1:0"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "1:1"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "1:2"
+        },
+        {
+          "runId": "processing_bd727c9782074ec1b1de7610b1caa78c",
+          "resultId": "1:3"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_b6df9a3402094812b07a26ddbd6cf8d7",
+    "draft_id": "collabdraft_89a56e745ab74479a4daa967a32b7455",
+    "created_at": "2026-10-26T18:27:37.166192+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1",
+      "0:2",
+      "0:3",
+      "1:0",
+      "1:1",
+      "1:2",
+      "1:3"
+    ],
+    "request_hash": "f3053530c0e074e37a37e1ac4f7dc2800fd6b603ecacc4811ce99d3ae0d1e1f6",
+    "idempotency_key": "rebuildop_e209cb0f4b19666ac50b1914287e12b620bdc841761dd9772202c996e488bea5"
+  },
+  {
+    "id": "adoption_51857b68df764324bd20c13eaaf7761d",
+    "run_id": "processing_5a989d36ad064d4c905db0c3d8e2445a",
+    "receipt": {
+      "added": 2,
+      "runId": "processing_5a989d36ad064d4c905db0c3d8e2445a",
+      "adopted": 2,
+      "assetId": "asset_6dcf52fdb8f64593be98cda28c8d3ff9",
+      "draftId": "collabdraft_39a356f3675948baa7e73e43b7a7acf5",
+      "removed": 0,
+      "updated": 0,
+      "fileName": "清洗结果-d8e2445a.jsonl",
+      "revision": 1,
+      "savedRows": [
+        {
+          "runId": "processing_5a989d36ad064d4c905db0c3d8e2445a",
+          "recordId": "draftrow_127ba9b64e3b41f191b7ed33a328ec38",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_5a989d36ad064d4c905db0c3d8e2445a",
+          "recordId": "draftrow_f1ba1b2e9734469db5d184abcb12abca",
+          "resultId": "0:1"
+        }
+      ],
+      "acceptanceId": "adoption_51857b68df764324bd20c13eaaf7761d",
+      "changedFields": 0,
+      "candidateOrigins": [
+        {
+          "runId": "processing_5a989d36ad064d4c905db0c3d8e2445a",
+          "resultId": "0:0"
+        },
+        {
+          "runId": "processing_5a989d36ad064d4c905db0c3d8e2445a",
+          "resultId": "0:1"
+        }
+      ]
+    },
+    "actor_id": "user_10111de91c134d979698a3013ebcb22a",
+    "asset_id": "asset_6dcf52fdb8f64593be98cda28c8d3ff9",
+    "draft_id": "collabdraft_39a356f3675948baa7e73e43b7a7acf5",
+    "created_at": "2026-10-26T18:31:30.421633+00:00",
+    "project_id": "project_325ac65e0e574e008f4fb46dc9bc3c85",
+    "result_ids": [
+      "0:0",
+      "0:1"
+    ],
+    "request_hash": "b7bee9f476129349498a401c64813aa77d8e6d9080cbfa8443fe579782b73eae",
+    "idempotency_key": "rebuildop_f824b02bb47384762ba8e356bcdefc4c1926986ff9e54a677845624775d2580e"
+  }
+]

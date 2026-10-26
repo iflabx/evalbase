@@ -1,0 +1,153 @@
+Browser tab: 33, Title: "EvalBase · 测试数据管理", URL: "http://127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/test-sets/drafts/collabdraft_89a56e745ab74479a4daa967a32b7455".
+1 AXWebArea EvalBase · 测试数据管理, URL: 127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/test-sets/drafts/collabdraft_89a56e745ab74479a4daa967a32b7455
+	2 container root
+		3 container
+			4 link Description: EvalBase 团队测试资料库, Value: 127.0.0.1:4226/
+			5 pop up button (collapsed) Description: 切换项目, ID: radix-_r_0_, Secondary Actions: Expand
+			6 content list
+				7 link Description: 原始数据, Value: 127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/datasets
+				8 link Description: 测试集, Value: 127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/test-sets
+				9 link Description: 项目助手, Value: 127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/assistant
+				10 link Description: 数据处理, Value: 127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/processing
+			11 content list
+				12 link Description: 设置, Value: 127.0.0.1:4226/settings?project=project_325ac65e0e574e008f4fb46dc9bc3c85
+		13 container
+			14 button Toggle Sidebar
+			15 text 团队测试资料库
+			16 button 打开项目助手
+			17 container 在线成员
+				18 container rebuild-editor-20261027（我） · 编辑 · 在线
+			19 button 登出
+		20 container
+			21 text 测试集草稿
+			22 heading 预约服务样例, Value: 1
+				23 text 预约服务样例
+			24 button 处理数据
+			25 button 删除当前草稿
+			26 button 退出草稿
+			27 button 创建 v1
+			28 text 已保存 测试集名称
+			29 text field (settable) 测试集名称, Value: 预约服务样例, ID: draft-name
+			30 text 用途说明（可选）
+			31 text entry area (settable) 用途说明（可选）, ID: draft-purpose
+			32 tab group 测试集草稿工作区
+				33 tab (selected, settable, boolean) 草稿记录 8, Value: 1, ID: draft-records-tab
+				34 tab (selectable, settable, boolean) 添加资料 1, Value: 0, ID: draft-sources-tab
+			35 container Description: 草稿记录 8, ID: draft-workspace-panel
+				36 text field (settable) 搜索草稿记录
+				37 button 新增记录
+				38 table
+					39 row
+						40 cell
+							41 text 序号
+						42 cell
+							43 text 问题 / 最近修改
+						44 cell
+							45 text 期望输出
+						46 cell
+							47 text 来源
+					48 row
+						49 cell
+							50 text 1
+							51 container 在线成员
+						52 cell
+							53 text 我明天上午9点30分想定一个自习座位，帮我新建一个预约。
+							54 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						55 cell
+							56 text 预约操作
+						57 cell
+							58 text 依据背景文档生成
+							59 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					60 row
+						61 cell
+							62 text 2
+							63 container 在线成员
+						64 cell
+							65 text 我后天下午的自习预约时间想改到晚上7点，怎么操作？
+							66 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						67 cell
+							68 text 预约操作
+						69 cell
+							70 text 依据背景文档生成
+							71 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					72 row
+						73 cell
+							74 text 3
+							75 container 在线成员
+						76 cell
+							77 text 我不想去图书馆了，能帮我把今天的自习座位预约取消掉吗？
+							78 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						79 cell
+							80 text 预约操作
+						81 cell
+							82 text 依据背景文档生成
+							83 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					84 row
+						85 cell
+							86 text 4
+							87 container 在线成员
+						88 cell
+							89 text 我刚才下了一个自习预约，想查一下我名下现在有哪些有效的预约记录。
+							90 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						91 cell
+							92 text 预约操作
+						93 cell
+							94 text 依据背景文档生成
+							95 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					96 row
+						97 cell
+							98 text 5
+							99 container 在线成员
+						100 cell
+							101 text 请问星桥图书馆自习座位每天几点到几点可以预约？
+							102 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						103 cell
+							104 text 规则咨询
+						105 cell
+							106 text 依据背景文档生成
+							107 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					108 row
+						109 cell
+							110 text 6
+							111 container 在线成员
+						112 cell
+							113 text 如果我一次想占座5个小时，系统允许最长预约多久？
+							114 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						115 cell
+							116 text 规则咨询
+						117 cell
+							118 text 依据背景文档生成
+							119 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					120 row
+						121 cell
+							122 text 7
+							123 container 在线成员
+						124 cell
+							125 text 我的账号里现在能不能同时保留两个不同时间段的自习预约？
+							126 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						127 cell
+							128 text 规则咨询
+						129 cell
+							130 text 依据背景文档生成
+							131 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+					132 row
+						133 cell
+							134 text 8
+							135 container 在线成员
+						136 cell
+							137 text 如果预约了座位但迟到40分钟才到，这个预约会被自动取消吗？
+							138 text rebuild-editor-20261027  ·  2026/10/27 02:27:37
+						139 cell
+							140 text 规则咨询
+						141 cell
+							142 text 依据背景文档生成
+							143 pop up button (collapsed) 查看来源, Secondary Actions: Expand
+				144 text 第  1  /  1  页 · 共  8  条
+				145 button (disabled) 上一页
+				146 button (disabled) 下一页
+				147 container 记录编辑区
+					148 text 选择一条记录
+					149 text 点击左侧任意一行，在这里编辑。
+		150 container Notifications alt+T
+
+The focused UI element is 1 AXWebArea EvalBase · 测试数据管理, URL: 127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/test-sets/drafts/collabdraft_89a56e745ab74479a4daa967a32b7455
