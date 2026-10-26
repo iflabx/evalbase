@@ -1,5 +1,7 @@
 # 项目助手采用有界模型循环与现有数据库作业
 
+> 2026-10-26：由 [ADR 0015](0015-assistant-rebuild-boundaries.md) 对独立重建的新助手路径部分替代。旧路径的实现记录、持久业务约束和历史数据解释仍保留；新运行时不再受本 ADR 的 AI SDK 对话循环、自研计划/续步选择约束。重建仅处于边界文档阶段，当前部署未切换。
+
 - Status: Accepted for implementation
 - Date: 2026-10-04
 - Authority: Owner 本轮授权代理研究、设计并完整实现；功能范围以新 PRD 为准，本文不代表实现完成。

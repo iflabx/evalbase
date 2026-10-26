@@ -1,53 +1,53 @@
 flowchart LR
     Login["登录 / 账号注册"] --> Projects["有权访问的项目"]
     Projects --> Space["当前项目"]
-    Space --> Raw["原始数据"]
+    Space --> Raw["原始数据 / 集合"]
     Raw --> Upload["上传与解析"]
     Upload --> Confirm{"确认保存"}
     Confirm -->|完成映射| Mapped["已整理文件"]
-    Confirm -->|稍后整理| Original["保留原件  待整理"]
+    Confirm -->|稍后整理| Original["保留原件 待整理"]
     Confirm -->|取消| Cancel["无可见资产"]
     Original --> Mapping["整理字段"] --> Mapped
     Mapped --> Scope["选择来源文件"]
-    Scope --> Filter["条件筛选  全部 / 随机"]
-    Filter --> Preview["固定预览  补选 / 排除"]
+    Scope --> Filter["条件筛选 全部 / 随机"]
+    Filter --> Preview["固定预览 补选 / 排除"]
     Preview --> Accept["核对并加入"]
-    Space --> Draft["共享草稿  自动保存"]
+    Space --> Draft["共享草稿 自动保存"]
     Accept --> Draft
-    Draft --> Publish["创建不可变版本"]
+    Draft --> Publish["确认发布 不可变版本"]
     Publish --> Version["版本 / 来源 / 下载"]
     Version -->|派生| Draft
-    Version --> Trash["回收 / 恢复 / 永久删除"]
-    Space --> Assistant["项目助手  自然语言"]
-    Assistant --> Requirements["当前生效要求  校验对象与字段"]
-    Requirements --> Plan["简单操作或复杂任务步骤  能力预检"]
-    Plan -->|已有执行授权| Tools["固定输入与参数  当前用户业务权限"]
-    Tools --> Yield["保存结果  匹配回执与完成条件"]
-    Yield -->|确定步骤有界续做| Plan
-    Yield -->|需要语义决策| Assistant
+    Version --> Trash["管理员 回收 / 恢复 / 永久删除"]
+    Space --> Settings["设置 个人资料 / 成员 / 模型"]
+    Space -.-> Assistant["新助手入口 重建目标"]
+    Assistant --> Context["当前目标 / 页面对象 / 有效勾选"]
+    Context --> Runtime["开源运行时 工具循环 / 检查点"]
+    Runtime -->|只给方案| Plan["查询与规划 不写业务数据"]
+    Runtime -->|明确执行| Tools["受权业务工具 共享提交保护"]
     Tools --> Filter
     Tools --> Draft
     Tools --> Process["清洗 / 改写 / 扩充"]
+    Tools -->|当前角色及必要确认| Settings
+    Tools -->|管理员及删除确认| Trash
+    Tools -->|受权下载| Version
     Original --> Process
     Mapped --> Process
     Version --> Process
     Draft --> Process
-    Process --> Worker["后台分批处理  校验"]
-    Assistant --> Background["私人背景文档"]
-    Background -.-> Generation["按要求从零生成  OPT-29待实施"]
-    Tools -.-> Generation
-    Generation -.-> Worker
-    Worker --> Result["进度与结果预览"]
-    Worker -->|分类完成| Classified["固定分类结果"]
-    Classified --> ClassifiedSelect["按类别选取与全量核对"]
-    ClassifiedSelect --> Result
-    Result --> Review["结构核对与内容审核分别呈现"]
-    Review -->|用户确认采用  校验修订| Draft
+    Assistant --> Background["私人背景 / 真实证据"]
+    Background --> Generate["按要求从零生成"]
+    Tools --> Generate
+    Process --> Worker["既有 Worker 固定输入 / 分批处理"]
+    Generate --> Worker
+    Worker --> Result["当前成果 / 轮次 / 真实回执"]
+    Tools -->|提交后持久等待| Wait["作业关联与终态核对"]
+    Result --> Wait
+    Wait -->|同一所有者 / 有效授权与额度| Runtime
+    Result --> Review["结构核对 / 人工内容审核"]
+    Review -->|用户确认采用 / 复检修订| Draft
     Review -->|用户确认保存派生文件| Mapped
-    Review -->|规则或执行失败| Recovery["显示原因与已有成果  恢复未完成步骤"]
-    Recovery --> Requirements
-    Tools --> Result
-    Space --> Settings["设置  信息 / 成员 / 个人资料"]
-    Settings --> Connection["管理员模型连接"]
-    Connection -.-> Assistant
-    Connection -.-> Worker
+    Runtime --> Control["暂停 / 有界恢复 / 预算"]
+    Control -->|仅未完成工作| Runtime
+    Space --> Legacy["旧会话兼容读取 / 成果链接 / 原预算"]
+    classDef rebuild fill:#eef5ff,stroke:#3b82f6,stroke-dasharray:5 5,color:#1f2937
+    class Assistant,Context,Runtime,Plan,Tools,Wait,Control rebuild

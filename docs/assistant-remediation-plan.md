@@ -1,5 +1,13 @@
 # 项目助手整改方案
 
+## 2026-10-26 当前重建入口
+
+Owner 已选择从当前 main 的独立分支重建，并授权本次明确边界及更新文档。新的产品合同见[PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product)，能力范围见[85 项清单](assistant-rebuild-capabilities.md)，职责、退出机制与数据兼容统一见[重建架构](architecture/assistant-rebuild.md)，取舍见[ADR 0015](adr/0015-assistant-rebuild-boundaries.md)，验证边界见[重建验收](test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
+
+本次仅完成文档，不新增开发票、不修改业务代码、不更新4217或正式环境、不调用模型。下文“保留 AI SDK”“不更换框架”等仅约束对应历史路径；不能用于要求新助手包装旧编排器。旧OPT及20项测试记录保持原结论，旧会话、成果和预算不迁移重放。后续按共享业务解耦与纵向验证、能力/UI接入、兼容切换验证三阶段推进，开发授权及新验证额度另按明确范围执行。
+
+## 历史整改与证据
+
 2026-10-25 当前实施及验收以[实施台账](../.scratch/assistant-optimization/spec.md)为准。第18～20项两阶段修复已部署d9b4cbf，有限CU仅19完整通过，18取消表达、20保存后续步仍待修，Owner pending；详见[本轮唯一记录](../.scratch/assistant-optimization/batch4-followup-20261025/verification.md)。以下带日期条目保留历史含义。
 
 2026-10-23 当前整改入口：[全链路机制审查](assistant-full-review-2026-10-23.md)和[机制方案§11](assistant-mechanism-consolidation-2026-10-22.md#full-agent-contracts)。更新后的OPT-46已完成开发及177项定向验证，证据见[本轮记录](../.scratch/assistant-optimization/opt46-completion-verification-20261023.md)；47～50仍未开发，依赖不变。Owner pending，最近部署仍2c74b8e；本轮未部署、运行真实模型/CU、重跑旧生成或改旧预算。以下带日期记录为历史快照，当前实施以[台账](../.scratch/assistant-optimization/spec.md)为准。
