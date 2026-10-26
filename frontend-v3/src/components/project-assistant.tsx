@@ -1,3 +1,4 @@
+import { createRequestId } from "@/lib/request-id";
 import { selectionConsumed, consumeSelection } from "@/services/assistant-input-context";
 import { isPauseRequest } from "../../../src/shared/assistant-control";
 import { AssistantCandidates, type CandidateSelection } from "./assistant-candidates";
@@ -952,33 +953,35 @@ export function ProjectAssistant({
       return;
     setBusy(true);
     setError("");
-    follow.current = true;
-    const restoring = !retry && draft.restore?.message === text ? draft.restore.taskId : undefined;
-    const retrySame =
-      pending?.status === "failed" &&
-      pending.message === text &&
-      pending.sessionId === sessionId &&
-      JSON.stringify(pending.context) === JSON.stringify(restoring ? undefined : requestContext);
-    const submission: Submission =
-      retry ??
-      (retrySame
-        ? pending!
-        : {
-            message: text,
-            key: crypto.randomUUID(),
-            sessionId,
-            taskId: currentTaskId,
-            expectedTaskRevision: visible?.taskRevision,
-            ...(operation ? { operation } : {}),
-            context: restoring ? undefined : requestContext,
-            ...(restoring ? { restoreTaskId: restoring } : {}),
-            ...(!restoring && picked
-              ? { candidates: picked.resultIds.length ? picked : null }
-              : {}),
-            status: "submitting",
-          });
-    setPending({ ...submission, status: "submitting" });
+    let submission: Submission | undefined;
     try {
+      follow.current = true;
+      const restoring =
+        !retry && draft.restore?.message === text ? draft.restore.taskId : undefined;
+      const retrySame =
+        pending?.status === "failed" &&
+        pending.message === text &&
+        pending.sessionId === sessionId &&
+        JSON.stringify(pending.context) === JSON.stringify(restoring ? undefined : requestContext);
+      submission =
+        retry ??
+        (retrySame
+          ? pending!
+          : {
+              message: text,
+              key: createRequestId(),
+              sessionId,
+              taskId: currentTaskId,
+              expectedTaskRevision: visible?.taskRevision,
+              ...(operation ? { operation } : {}),
+              context: restoring ? undefined : requestContext,
+              ...(restoring ? { restoreTaskId: restoring } : {}),
+              ...(!restoring && picked
+                ? { candidates: picked.resultIds.length ? picked : null }
+                : {}),
+              status: "submitting",
+            });
+      setPending({ ...submission, status: "submitting" });
       const id = submission.sessionId ?? (await createSession(true));
       submission.sessionId = id;
       setPending({ ...submission, status: "submitting" });
@@ -1018,6 +1021,10 @@ export function ProjectAssistant({
       });
       await sessions.refetch();
     } catch (e) {
+      if (!submission) {
+        setError(errorText(e));
+        return;
+      }
       if (
         identity.current.sessionId === submission.sessionId &&
         (!submission.taskId || identity.current.taskId === submission.taskId)
@@ -1184,7 +1191,7 @@ export function ProjectAssistant({
                       ? "继续执行当前任务"
                       : "按当前已保存方案执行",
                     sessionId,
-                    key: crypto.randomUUID(),
+                    key: createRequestId(),
                     status: "submitting",
                     expectedTaskRevision: visible.taskRevision!,
                     operation: visible.task?.executionPaused ? "resume" : "execute_plan",

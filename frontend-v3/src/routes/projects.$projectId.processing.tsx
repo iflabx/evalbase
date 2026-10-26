@@ -1,3 +1,4 @@
+import { createRequestId } from "@/lib/request-id";
 import { useState, useRef, useEffect } from "react";
 import { inputContextKey } from "@/services/assistant-input-context";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -825,7 +826,7 @@ function ProcessingForm({
       : `${operation === "clean" ? "清洗" : "改写"}${allowedFields.map((field) => fieldNames[field]).join("、") || "范围未选择"}${protectedFields ? ` · ${protectedFields}保持原值` : ""}`;
   const customFields =
     allowedFields.length !== 1 || allowedFields[0] !== "question" || Boolean(metadataKeys?.length);
-  const [operationKey, setOperationKey] = useState(saved?.operationKey ?? crypto.randomUUID());
+  const [operationKey, setOperationKey] = useState(saved?.operationKey ?? createRequestId());
   const input = useQuery({
     queryKey: [
       "processing-inputs",
@@ -988,7 +989,7 @@ function ProcessingForm({
   });
   function change() {
     if (unknownSubmit) return;
-    setOperationKey(crypto.randomUUID());
+    setOperationKey(createRequestId());
     setError("");
   }
   const invalidCount =
@@ -1840,7 +1841,7 @@ function ProcessingResults({
     [confirm, setConfirm] = useState(false);
   const [destination, setDestination] = useState(position?.destination ?? "asset"),
     [name, setName] = useState(position?.name ?? ""),
-    [key, setKey] = useState(() => position?.pendingSave?.key ?? crypto.randomUUID()),
+    [key, setKey] = useState(() => position?.pendingSave?.key ?? createRequestId()),
     [receipt, setReceipt] = useState<Receipt | null>(null);
   const [targetDraftId, setTargetDraftId] = useState(position?.targetDraftId ?? "");
   const [roundHistoryOpen, setRoundHistoryOpen] = useState(false);
@@ -1963,7 +1964,7 @@ function ProcessingResults({
   async function completeMissing() {
     setBusy(true);
     setError("");
-    const submitKey = completionSubmission.current ?? crypto.randomUUID();
+    const submitKey = completionSubmission.current ?? createRequestId();
     completionSubmission.current = submitKey;
     try {
       await post<{ run: { id: string } }>(
@@ -2033,7 +2034,7 @@ function ProcessingResults({
       setConfirm(false);
       setSelected(new Set());
       setDeduplication(undefined);
-      setKey(crypto.randomUUID());
+      setKey(createRequestId());
       await queryClient.invalidateQueries({ queryKey: ["shared-drafts", projectId] });
       await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
       await data.refetch();
@@ -2058,7 +2059,7 @@ function ProcessingResults({
       if (submitted.current && !rejected) setUnknownSave(true);
       else if (rejected) {
         submitted.current = null;
-        setKey(crypto.randomUUID());
+        setKey(createRequestId());
         setUnknownSave(false);
       }
     } finally {
@@ -2437,7 +2438,7 @@ function ProcessingResults({
                       ...value.records.filter((r) => !r.unprocessed).map((r) => r.id),
                     ]),
                 );
-                setKey(crypto.randomUUID());
+                setKey(createRequestId());
               }}
             >
               勾选本页
@@ -2456,7 +2457,7 @@ function ProcessingResults({
                       ...value.allIds.filter((id) => !value.unprocessedIds?.includes(id)),
                     ]),
                 );
-                setKey(crypto.randomUUID());
+                setKey(createRequestId());
               }}
             >
               选择全部匹配结果
@@ -2470,7 +2471,7 @@ function ProcessingResults({
                   setSelected(
                     new Set(value.ineffectiveIds!.filter((id) => !value.adoptedIds?.includes(id))),
                   );
-                  setKey(crypto.randomUUID());
+                  setKey(createRequestId());
                 }}
               >
                 只选改写未生效
@@ -2482,7 +2483,7 @@ function ProcessingResults({
               disabled={busy || unknownSave || Boolean(deduplication)}
               onClick={() => {
                 setSelected(new Set());
-                setKey(crypto.randomUUID());
+                setKey(createRequestId());
               }}
             >
               清空选择
@@ -2584,7 +2585,7 @@ function ProcessingResults({
                       setSelected(
                         (old) => new Set([...old].filter((id) => !savedSelection.includes(id))),
                       );
-                      setKey(crypto.randomUUID());
+                      setKey(createRequestId());
                     }}
                   >
                     移除已保存选择
@@ -2635,7 +2636,7 @@ function ProcessingResults({
                 else next.delete(id);
                 return next;
               });
-              setKey(crypto.randomUUID());
+              setKey(createRequestId());
             }}
           />
           <p className="border-t px-4 py-3 text-xs text-muted-foreground">
@@ -2687,7 +2688,7 @@ function ProcessingResults({
                     expectedRevision: value.task!.revision,
                   });
                   setSelected(new Set(dedupPreview.keptIds));
-                  setKey(crypto.randomUUID());
+                  setKey(createRequestId());
                   setDedupPreview(null);
                   await data.refetch();
                 } catch (e) {
@@ -2740,7 +2741,7 @@ function ProcessingResults({
                   disabled={busy || unknownSave}
                   onValueChange={(v) => {
                     setDestination(v);
-                    setKey(crypto.randomUUID());
+                    setKey(createRequestId());
                   }}
                 >
                   <SelectTrigger>
@@ -2769,7 +2770,7 @@ function ProcessingResults({
                   disabled={busy || unknownSave}
                   onValueChange={(id) => {
                     setTargetDraftId(id);
-                    setKey(crypto.randomUUID());
+                    setKey(createRequestId());
                   }}
                 >
                   <SelectTrigger>
@@ -2798,7 +2799,7 @@ function ProcessingResults({
                   disabled={busy || unknownSave}
                   onChange={(e) => {
                     setName(e.target.value);
-                    setKey(crypto.randomUUID());
+                    setKey(createRequestId());
                   }}
                 />
               </label>

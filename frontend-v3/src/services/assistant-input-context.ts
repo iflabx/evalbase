@@ -1,3 +1,4 @@
+import { createRequestId } from "@/lib/request-id";
 import type { QueryClient } from "@tanstack/react-query";
 export type InputSelection = { recordIds: string[]; sourceRevision: string; total: number };
 export type InputContext = {
@@ -13,7 +14,7 @@ export const inputContextKey = (projectId: string, actorId: string) => [
 export function handoffInputContext(client: QueryClient, projectId: string, actorId: string) {
   const context = client.getQueryData<InputContext>(inputContextKey(projectId, actorId));
   if (!context) return undefined;
-  const token = crypto.randomUUID();
+  const token = createRequestId();
   sessionStorage.setItem(
     "assistant-input:" + token,
     JSON.stringify({ projectId, actorId, context, expiresAt: Date.now() + 30 * 60 * 1000 }),

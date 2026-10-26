@@ -1,3 +1,4 @@
+import { createRequestId } from "@/lib/request-id";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -144,7 +145,7 @@ export function AssistantBudget({
             variant="outline"
             disabled={disabled || saving}
             onClick={() => {
-              setSelected({ offer: o, key: crypto.randomUUID() });
+              setSelected({ offer: o, key: createRequestId() });
               setFailure("");
             }}
           >

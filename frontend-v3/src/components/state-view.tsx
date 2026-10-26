@@ -261,9 +261,30 @@ export function CopyableId({ value, className }: { value: string; className?: st
   return (
     <button
       type="button"
-      onClick={() => {
-        void navigator.clipboard?.writeText(value);
-        toast.success("已复制", { description: value });
+      onClick={async () => {
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(value);
+          } else {
+            const active = document.activeElement as HTMLElement | null;
+            const field = document.createElement("textarea");
+            field.value = value;
+            field.readOnly = true;
+            field.style.position = "fixed";
+            field.style.opacity = "0";
+            document.body.appendChild(field);
+            try {
+              field.select();
+              if (!document.execCommand("copy")) throw new Error("copy_failed");
+            } finally {
+              field.remove();
+              active?.focus?.({ preventScroll: true });
+            }
+          }
+          toast.success("已复制", { description: value });
+        } catch {
+          toast.error("复制失败，请手动选择并复制。");
+        }
       }}
       title="点击复制"
       className={`mono inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground ${className ?? ""}`}
