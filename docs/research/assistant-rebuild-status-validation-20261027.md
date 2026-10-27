@@ -36,7 +36,23 @@
 
 ## 执行结果
 
-待本轮有限额 CU 完成后追加实际会话、消耗、截图和完整结论；此处不预先判通过。
+运行代码：2a4a60b7d9585cbfbad6ce3464f9f688def9ffe9，隔离4226已更新；未合入main、推送GitHub或更新4217。
+
+| 样本 | 结果 | 真实证据 |
+| --- | --- | --- |
+| S1首次 | 时序未覆盖，保留 | 查询回复正确；停止落库05:19:21.638，Worker已于05:19:19.421完成，不能计执行中暂停；5请求 |
+| S1执行中补测 | 通过 | Worker running且尚无结果；15秒响应交付延迟窗口内于05:20:37.164停止，查询分别显示后台正在停止和任务已暂停、0/2条、尚未保存；同一run未恢复、未新建或采用；5请求 |
+| S2保存确认 | 通过 | 有效卡未确认时说尚未保存；停止后旧卡expired、无采用；继续仅重建确认，点击新卡后保存2条；直接从idle再问保存状态仍识别正确草稿，要求revision保持2；7请求 |
+
+S1补测会话 rebuild_041edc2996d4410fb7ebe6d72ec339f8；S2会话 rebuild_b77334597e2542debfd49d850286068d；保存草稿 collabdraft_da3a5a82f51f4a7897bdfd19f31875bf。真实草稿链接已通过CU打开，名称和2条数量一致。第一次时序样本 rebuild_3971ea8e0e454c209c5ff5962ebd4020 及其2条未采用产物原样保留，不混记为执行中停止通过。
+
+- 总消耗17/24实际HTTP、6/8行次、0生成；首请求至关闭约4.75分钟/25分钟。输入34248 tokens、输出1618 tokens；17次均有usage，无未知计量。每会话5/5/7，均未超过10。
+- 无自然参数错误、查询错误、执行错误或参数自动纠正；正常LangGraph interrupt仍在旧tool_error事件名下，不能计为参数失败。没有为本次运行注入参数故障，预算登记的trigger_count均0。
+- 旧两活动预算仍为50请求/37行次/8生成和28请求/18行次/4生成，关闭时间未变；旧会话、消息、确认、操作、真实请求、草稿、记录及原6条源记录摘要逐项一致。旧预算哨兵SHA256仍为c99545cc5a5af148cbc194935cf8973fff6260829435b9f717903f1db2f52a0c。
+- 当前campaign已关闭、无在途请求；专用Worker及builder停止，Web/PG/MinIO、所有数据、首轮时序未覆盖和截图保留。S1不执行恢复保存，未重跑其他已通过CU。
+- Docker镜像构建、服务端typecheck、9项受影响定向测试通过。初始新增SDK红灯及开发中断言/夹具修正分开保留；最终通过证据为status-contract.json，不能将开发夹具问题计为本轮模型错误。
+
+证据：[manifest](../../.scratch/assistant-rebuild/validation/runs/rebuild-status-20261027/manifest.json)、[真实SDK请求和事件](../../.scratch/assistant-rebuild/validation/runs/rebuild-status-20261027/audit.json)、[旧数据保护](../../.scratch/assistant-rebuild/validation/runs/rebuild-status-20261027/integrity.json)、[暂停查询](../../.scratch/assistant-rebuild/validation/runs/rebuild-status-20261027/screenshots/S1-stopped-query.png)、[确认失效查询](../../.scratch/assistant-rebuild/validation/runs/rebuild-status-20261027/screenshots/S2-expired-query.png)、[实际保存后查询](../../.scratch/assistant-rebuild/validation/runs/rebuild-status-20261027/screenshots/S2-saved-query.png)。
 
 ## 结论边界
 

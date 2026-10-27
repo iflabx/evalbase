@@ -1,0 +1,60 @@
+{
+  "session": "paused",
+  "runId": "processing_6fed0bb2fb724f40a8ca9748851c58e4",
+  "job": "cancelled",
+  "result": false,
+  "events": [
+    {
+      "kind": "tool_call",
+      "created_at": "2026-10-27T05:20:38.34144+00:00",
+      "detail": {
+        "id": "chatcmpl-tool-9a82c1a783ab55d6",
+        "args": {},
+        "name": "read_task_status"
+      }
+    },
+    {
+      "kind": "stopped",
+      "created_at": "2026-10-27T05:20:37.163777+00:00",
+      "detail": {}
+    },
+    {
+      "kind": "worker_boundary_delay",
+      "created_at": "2026-10-27T05:20:29.811885+00:00",
+      "detail": {
+        "requestId": 86,
+        "durationMs": 15000
+      }
+    },
+    {
+      "kind": "tool_call",
+      "created_at": "2026-10-27T05:20:28.055572+00:00",
+      "detail": {
+        "id": "chatcmpl-tool-9171c942cd512243",
+        "args": {},
+        "name": "submit_processing"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "created_at": "2026-10-27T05:20:27.494295+00:00",
+      "detail": {
+        "id": "chatcmpl-tool-910794fa475ec096",
+        "args": {
+          "mode": "execute",
+          "name": "暂停进度复验",
+          "count": 2,
+          "assetId": "asset_9651ffc4b3af40c5ad2c75c6e0441f99",
+          "operation": "rewrite",
+          "scenarios": [],
+          "instructions": "对“验收资料.jsonl”的前2条记录，将question换一种自然说法，保持原意；标签和Metadata保留不变。",
+          "allowedFields": [
+            "question"
+          ]
+        },
+        "name": "set_requirements"
+      }
+    }
+  ],
+  "requests": 4
+}

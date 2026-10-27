@@ -1,0 +1,47 @@
+{
+  "adoptions": [
+    {
+      "id": "adoption_794d5c8c8f04448299f0ac3cafbb163e",
+      "runId": "processing_8bcaa9a4c65342619cbeb83f237b389c",
+      "receipt": {
+        "added": 2,
+        "runId": "processing_8bcaa9a4c65342619cbeb83f237b389c",
+        "adopted": 2,
+        "assetId": "asset_2819411d0c2b4e80a93c8bbe5050939d",
+        "draftId": "collabdraft_da3a5a82f51f4a7897bdfd19f31875bf",
+        "removed": 0,
+        "updated": 0,
+        "fileName": "清洗结果-237b389c.jsonl",
+        "revision": 1,
+        "savedRows": [
+          {
+            "runId": "processing_8bcaa9a4c65342619cbeb83f237b389c",
+            "recordId": "draftrow_ff24bc465345459c8ca1a10ceb620a8b",
+            "resultId": "0:0"
+          },
+          {
+            "runId": "processing_8bcaa9a4c65342619cbeb83f237b389c",
+            "recordId": "draftrow_555378b7467d4c669f6e4220ae5c90f7",
+            "resultId": "0:1"
+          }
+        ],
+        "acceptanceId": "adoption_794d5c8c8f04448299f0ac3cafbb163e",
+        "changedFields": 0,
+        "candidateOrigins": [
+          {
+            "runId": "processing_8bcaa9a4c65342619cbeb83f237b389c",
+            "resultId": "0:0"
+          },
+          {
+            "runId": "processing_8bcaa9a4c65342619cbeb83f237b389c",
+            "resultId": "0:1"
+          }
+        ]
+      },
+      "draftName": "确认状态复测",
+      "recordCount": 2
+    }
+  ],
+  "s1Queries": 2,
+  "runCount": 3
+}
