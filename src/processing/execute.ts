@@ -451,7 +451,13 @@ export async function runProcessing(
   if (sha256(bytes) !== run.input_hash)
     throw new ProcessingError(409, "processing_input_corrupt");
   const input = JSON.parse(bytes.toString("utf8")) as InputSnapshot;
+  const contentReviewEnabled =
+    input.background?.contentReviewPolicy !== "manual-v1" &&
+    [CONTENT_RECIPE, GENERATION_RECIPE].includes(
+      run.execution_config.recipeVersion,
+    );
   const evidenceReview =
+    contentReviewEnabled &&
     input.background?.contentReviewPolicy === "evidence-v1";
   const questionPolicy = generatesRecords(run.options.operation)
     ? input.background?.questionPolicy
@@ -973,12 +979,9 @@ export async function runProcessing(
       }
       if (
         model &&
-        input.background?.contentReviewPolicy !== "manual-v1" &&
+        contentReviewEnabled &&
         (modelInputs.length > 0 || run.options.operation === "generate") &&
-        result.records.length &&
-        [CONTENT_RECIPE, GENERATION_RECIPE].includes(
-          run.execution_config.recipeVersion,
-        )
+        result.records.length
       ) {
         const rulesHash = reviewRulesHash(run.options, input.background);
         result.contentReview =

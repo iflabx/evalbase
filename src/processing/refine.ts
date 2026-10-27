@@ -412,10 +412,14 @@ export async function createRefinementRun(
         delete background.questionPolicy;
       }
     }
-    if (background && scope.completionBaseline && !generation) {
+    if (
+      background?.classifications &&
+      scope.completionBaseline &&
+      !generation
+    ) {
       background = {
         ...background,
-        classifications: background.classifications?.map((rule) => {
+        classifications: background.classifications.map((rule) => {
           const counts = new Map<string, number>();
           for (const row of scope.completionBaseline!) {
             const value =

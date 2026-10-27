@@ -25,6 +25,7 @@ describe("single processing task with durable rounds", () => {
   let partialGeneration = false;
   let replies: string[] = [];
   const requests: any[] = [];
+  const reviewRequests: any[] = [];
   const config = {
     ...loadConfig(),
     databaseUrl,
@@ -213,69 +214,130 @@ describe("single processing task with durable rounds", () => {
       recordIds: Array.from({ length: 100 }, (_, i) => `${assetId}:${i + 1}`),
     };
     model = createServer(async (req, res) => {
-      let text = "";
-      for await (const chunk of req) text += chunk;
-      const instruction = JSON.parse(JSON.parse(text).messages.at(-1).content);
-      requests.push(instruction);
-      const reply = replies.shift();
-      if (reply === "temporary") {
-        res.writeHead(503, { "content-type": "application/json" });
-        res.end(
-          JSON.stringify({ error: { message: "private-provider-detail" } }),
+      try {
+        let text = "";
+        for await (const chunk of req) text += chunk;
+        const instruction = JSON.parse(
+          JSON.parse(text).messages.at(-1).content,
         );
-        return;
-      }
-      const inputs =
-        instruction.operation === "augment"
-          ? Array.from(
-              { length: instruction.outputCount },
-              (_, i) => instruction.records[i % instruction.records.length],
-            )
-          : instruction.records;
-      const records = (
-        partialGeneration && instruction.operation === "augment"
-          ? inputs.slice(0, 2)
-          : inputs
-      ).map((r: any, index: number) => ({
-        sourceId: r.id,
-        question:
-          instruction.operation === "augment"
-            ? `Generated ${generation} ${index}`
-            : `Changed ${r.question}`,
-        expectedOutput: r.expectedOutput,
-        metadata: r.metadata,
-      }));
-      if (reply === "partial") records.splice(1);
-      if (reply === "empty") records.splice(0);
-      if (reply === "identity" && records[0])
-        records[0].sourceId = "invalid-source";
-      if (reply === "duplicate")
-        for (const row of records)
-          row.question = instruction.records[0].question;
-      generation++;
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          id: "synthetic",
-          object: "chat.completion",
-          created: 1,
-          model: "synthetic",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content:
-                  reply === "json"
-                    ? "private-invalid-json"
-                    : JSON.stringify({ records }),
+        // The current Worker sends review prompts as well as transformation prompts.
+        // Reviews must not consume the scripted transformation replies or counters.
+        if (instruction.contract && Array.isArray(instruction.candidates)) {
+          reviewRequests.push(instruction);
+          const reviews = instruction.candidates.map((row: any) => ({
+            id: row.id,
+            checks: Object.fromEntries(
+              ["question", "category", "expectedBehavior", "facts"].map(
+                (key) => [
+                  key,
+                  {
+                    verdict: "uncertain",
+                    reason:
+                      "Synthetic relay checks transport, not semantic quality",
+                    questionQuote: row.question.slice(0, 240),
+                    ...(key === "expectedBehavior"
+                      ? { outputQuote: row.expectedOutput.slice(0, 240) }
+                      : {}),
+                    ...(key === "facts" ? { basis: "no_assertion" } : {}),
+                  },
+                ],
+              ),
+            ),
+          }));
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              id: "synthetic-review",
+              object: "chat.completion",
+              model: "synthetic",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: JSON.stringify({ reviews }),
+                  },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
               },
-              finish_reason: reply === "truncated" ? "length" : "stop",
-            },
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-        }),
-      );
+            }),
+          );
+          return;
+        }
+        if (!Array.isArray(instruction.records))
+          throw new Error("unsupported_test_prompt");
+        requests.push(instruction);
+        const reply = replies.shift();
+        if (reply === "temporary") {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: { message: "private-provider-detail" } }),
+          );
+          return;
+        }
+        const inputs =
+          instruction.operation === "augment"
+            ? Array.from(
+                { length: instruction.outputCount },
+                (_, i) => instruction.records[i % instruction.records.length],
+              )
+            : instruction.records;
+        const records = (
+          partialGeneration && instruction.operation === "augment"
+            ? inputs.slice(0, 2)
+            : inputs
+        ).map((r: any, index: number) => ({
+          sourceId: r.id,
+          question:
+            instruction.operation === "augment"
+              ? `Generated ${generation} ${index}`
+              : `Changed ${r.question}`,
+          expectedOutput: r.expectedOutput,
+          metadata: r.metadata,
+        }));
+        if (reply === "partial") records.splice(1);
+        if (reply === "empty") records.splice(0);
+        if (reply === "identity" && records[0])
+          records[0].sourceId = "invalid-source";
+        if (reply === "duplicate")
+          for (const row of records)
+            row.question = instruction.records[0].question;
+        generation++;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            id: "synthetic",
+            object: "chat.completion",
+            created: 1,
+            model: "synthetic",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content:
+                    reply === "json"
+                      ? "private-invalid-json"
+                      : JSON.stringify({ records }),
+                },
+                finish_reason: reply === "truncated" ? "length" : "stop",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+        );
+      } catch {
+        // A broken/unsupported fixture request is an HTTP failure, never a hung socket.
+        res.writeHead(422, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ error: { message: "unsupported_test_prompt" } }),
+        );
+      }
     });
     await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve));
     expect(
@@ -306,6 +368,27 @@ describe("single processing task with durable rounds", () => {
       await root.end();
     }
   });
+  it("rejects unsupported model fixture prompts without hanging or consuming scripted replies", async () => {
+    const before = [...replies],
+      calls = requests.length;
+    const response = await fetch(
+      "http://127.0.0.1:" +
+        (model.address() as { port: number }).port +
+        "/v1/chat/completions",
+      {
+        method: "POST",
+        body: JSON.stringify({ messages: [{ role: "user", content: "{}" }] }),
+        signal: AbortSignal.timeout(2000),
+      },
+    );
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: { message: "unsupported_test_prompt" },
+    });
+    expect(replies).toEqual(before);
+    expect(requests).toHaveLength(calls);
+  });
+
   it("loads saved counts only for the current page and resolves each legacy receipt once per request", async () => {
     const ids: string[] = [];
     for (let index = 0; index < 4; index++) {
@@ -539,6 +622,7 @@ describe("single processing task with durable rounds", () => {
     expect(retry.json().error.code).toBe("processing_retry_unavailable");
   });
   it("OPT18 continues only missing rewrite inputs and preserves successful identities", async () => {
+    const reviewedBefore = reviewRequests.length;
     replies = ["partial", "empty", "empty"];
     const created = await post(runs(), {
       source: { ...source, recordIds: source.recordIds.slice(0, 3) },
@@ -550,6 +634,7 @@ describe("single processing task with durable rounds", () => {
     });
     await finish(created.json().run, true);
     const id = created.json().run.id;
+    expect(reviewRequests.length).toBeGreaterThan(reviewedBefore);
     const before = await get(`${tasks()}/${id}`);
     expect(before.run.partial).toBe(true);
     const successful = before.records.find((r: any) =>

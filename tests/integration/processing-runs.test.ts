@@ -1152,10 +1152,13 @@ describe("durable data processing", () => {
         modelEncryptionKey: Buffer.alloc(32, 9).toString("base64"),
       },
       artifacts = new ArtifactRepository(config.minio);
+    let augmentationRound = 0;
     const server = createServer(async (request, response) => {
       let text = "";
       for await (const chunk of request) text += chunk;
       const instruction = JSON.parse(JSON.parse(text).messages.at(-1).content);
+      const round =
+        instruction.operation === "augment" ? ++augmentationRound : 0;
       const inputs =
         instruction.operation === "augment"
           ? Array.from(
@@ -1167,7 +1170,7 @@ describe("durable data processing", () => {
         sourceId: row.id,
         question:
           instruction.operation === "augment"
-            ? `  新问题 ${index}  `
+            ? `  新问题 ${round === 1 ? "" : round + "-"}${index}  `
             : row.question,
         expectedOutput: "FORGED",
         metadata: [
@@ -1455,6 +1458,17 @@ describe("durable data processing", () => {
         2,
       );
       expect(childAugment.records).toHaveLength(2);
+      expect(
+        childAugment.records.every(
+          (row: any) =>
+            !initial
+              .json()
+              .records.some(
+                (prior: any) =>
+                  prior.result.question.trim() === row.result.question.trim(),
+              ),
+        ),
+      ).toBe(true);
       const finalChild = await follow(
         childAugment.run.id,
         childAugment.allIds,
@@ -1462,7 +1476,7 @@ describe("durable data processing", () => {
       );
       expect(finalChild.rootOperation).toBe("augment");
       expect(finalChild.records.map((row: any) => row.result.question)).toEqual(
-        ["新问题 0", "新问题 1"],
+        ["新问题 2-0", "新问题 2-1"],
       );
       const rerunPreview = await app.inject({
         method: "POST",
@@ -1476,7 +1490,7 @@ describe("durable data processing", () => {
       });
       expect(
         rerunPreview.json().records.map((row: any) => row.question),
-      ).toEqual(["  新问题 0  ", "  新问题 1  "]);
+      ).toEqual(["  新问题 2-0  ", "  新问题 2-1  "]);
       const repeated = await app.inject({
         method: "POST",
         url: `${path}/${finalChild.run.id}/followups`,
@@ -3428,14 +3442,49 @@ describe("durable data processing", () => {
       expect(
         complete.json().runs.some((row: any) => row.id === partial.id),
       ).toBe(false);
-      const child = await app.inject({
-        method: "POST",
+      const completionKey = randomUUID();
+      const completeRequest = {
+        method: "POST" as const,
         url: `${path}/${partial.id}/followups`,
-        headers: { ...headers, "idempotency-key": randomUUID() },
+        headers: { ...headers, "idempotency-key": completionKey },
         payload: { mode: "complete" },
-      });
+      };
+      const child = await app.inject(completeRequest);
       expect(child.statusCode, child.body).toBe(201);
       expect(child.json().run.options.outputCount).toBe(2);
+      const childInputRow = (
+        await db.query(
+          "SELECT input_ref,input_hash FROM processing_run WHERE id=$1",
+          [child.json().run.id],
+        )
+      ).rows[0];
+      const childInput = JSON.parse(
+        (
+          await artifacts.readBytes(childInputRow.input_ref, 100000000)
+        ).toString("utf8"),
+      );
+      expect(childInput.background).toBeDefined();
+      expect(Object.hasOwn(childInput.background, "classifications")).toBe(
+        false,
+      );
+      const replayedChild = await app.inject(completeRequest);
+      expect(replayedChild.statusCode, replayedChild.body).toBe(200);
+      expect(replayedChild.json().run.id).toBe(child.json().run.id);
+      expect(
+        (
+          await db.query("SELECT input_hash FROM processing_run WHERE id=$1", [
+            child.json().run.id,
+          ])
+        ).rows[0].input_hash,
+      ).toBe(childInputRow.input_hash);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM processing_run WHERE parent_run_id=$1",
+            [partial.id],
+          )
+        ).rows[0].count,
+      ).toBe(1);
       // Resume an earlier batch with two calls left; a later batch is already fixed.
       stuck = false;
       recovering = true;
@@ -3470,6 +3519,19 @@ describe("durable data processing", () => {
       });
       expect(recovered.statusCode, recovered.body).toBe(200);
       expect(recovered.json().total).toBe(21);
+      // Legacy recipes never execute content review, so must not reserve a call for it.
+      const firstRecoveredBatch = (
+        await db.query(
+          "SELECT model_attempts,diagnostics FROM processing_batch WHERE run_id=$1 AND ordinal=0",
+          [resumed.id],
+        )
+      ).rows[0];
+      expect(firstRecoveredBatch.model_attempts).toBe(3);
+      expect(
+        firstRecoveredBatch.diagnostics.calls.every(
+          (call: any) => !call.purpose?.startsWith("content_"),
+        ),
+      ).toBe(true);
       expect(
         new Set(recovered.json().records.map((row: any) => row.result.question))
           .size,
