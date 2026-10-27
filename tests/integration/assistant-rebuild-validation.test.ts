@@ -16,6 +16,7 @@ import {
   readProcessingRun,
   previewProcessingInput,
 } from "../../src/processing/store.js";
+import { taskStatusReply } from "../../src/assistant-rebuild/status.js";
 import { processingRecovery } from "../../src/processing/recovery.js";
 import { generationBudget } from "../../src/processing/generation.js";
 import { processingReferences } from "../../src/processing/provenance.js";
@@ -1530,8 +1531,7 @@ it("R1 paused Worker: SDK stop/query/resume retains attempts and completed work 
   for (let i = 0; i < 100; i++) {
     if (
       (await state(id)).messages.some(
-        (m: any) =>
-          m.role === "assistant" && m.content.includes("任务暂停，尚未保存"),
+        (m: any) => m.role === "assistant" && m.content.includes("任务已暂停"),
       )
     )
       break;
@@ -1539,7 +1539,7 @@ it("R1 paused Worker: SDK stop/query/resume retains attempts and completed work 
   }
   expect(
     (await state(id)).messages.some((m: any) =>
-      m.content.includes("任务暂停，尚未保存"),
+      m.content.includes("任务已暂停"),
     ),
   ).toBe(true);
   expect((await state(id)).session.status).toBe("paused");
@@ -1808,4 +1808,257 @@ it("R4 timeout policy: exhausted attempts still block; historical deadlines and 
     used: 1,
     exhausted: true,
   });
+});
+
+it("R5 SDK status: replaces contradictory budget wording and waits for a stopping Worker without resubmitting", async () => {
+  const id = await session();
+  outputs = [
+    call("set_requirements", {
+      mode: "execute",
+      operation: "rewrite",
+      count: 2,
+      name: "进度措辞",
+      instructions: "换种自然说法",
+      assetId,
+      allowedFields: ["question"],
+      scenarios: [],
+    }),
+    call("submit_processing", {}),
+  ];
+  await send(id, "改写前两条，保存为进度措辞");
+  const waiting = await wait(id, ["waiting", "failed"]);
+  const runId = waiting.session.waiting_run_id;
+  const run = await getProcessingRun(db, { projectId, actorId }, runId);
+  await api("POST", url(id, "/stop"));
+  for (const [jobStatus, wrong, expected] of [
+    [
+      "cancel_requested",
+      "当前不可重试、不可续跑，请重新提交这2条。",
+      "后台正在停止",
+    ],
+    [
+      "cancelled",
+      "可以重试，但remaining_budget表示预算不足，不能继续。",
+      "继续原任务",
+    ],
+  ]) {
+    await db.query(
+      "UPDATE job SET status=$2,stage=$2,progress=100 WHERE id=$1",
+      [run.job_id, jobStatus],
+    );
+    const before = await db.query(
+      "SELECT (SELECT count(*) FROM processing_run)::int runs,(SELECT count(*) FROM processing_acceptance)::int saves",
+    );
+    outputs = [
+      call("read_processing", {}),
+      { role: "assistant", content: wrong },
+    ];
+    const seen = requests.length;
+    await send(id, "先别继续，现在做到哪了？");
+    for (let i = 0; i < 200 && outputs.length; i++) await delay(25);
+    for (
+      let i = 0;
+      i < 100 && (await state(id)).messages.at(-1)?.role !== "assistant";
+      i++
+    )
+      await delay(25);
+    const answer = (await state(id)).messages.at(-1).content;
+    expect(requests.length).toBe(seen + 2); // Legacy read_processing still exercises a real SDK final response.
+    expect(answer).toContain(expected);
+    expect(answer).toContain("0/2");
+    expect(answer).not.toMatch(
+      /预算不足|请重新提交|建议重新提交|100%|canRetry|canContinue|remaining_budget/,
+    );
+    expect((await state(id)).session.status).toBe("paused");
+    expect(
+      (
+        await db.query(
+          "SELECT (SELECT count(*) FROM processing_run)::int runs,(SELECT count(*) FROM processing_acceptance)::int saves",
+        )
+      ).rows,
+    ).toEqual(before.rows);
+  }
+});
+
+it("R6 SDK status: no receipt is not saved; expired confirmation cannot authorize adoption; committed receipt proves the target", async () => {
+  const id = await session();
+  outputs = [
+    call("set_requirements", {
+      mode: "execute",
+      operation: "clean",
+      count: 2,
+      name: "确认措辞",
+      instructions: "",
+      assetId,
+      allowedFields: ["question"],
+      scenarios: [],
+    }),
+    call("submit_processing", {}),
+  ];
+  await send(id, "清理前两条首尾空格并保存为确认措辞");
+  const waiting = await wait(id, ["waiting", "failed"]);
+  outputs = [call("prepare_adoption", {})];
+  await complete(waiting.session.waiting_run_id);
+  const ready = await wait(id, ["confirmation", "failed"]);
+  const card = ready.confirmations.find((c: any) => c.status === "pending");
+  expect(taskStatusReply(ready, false)).toContain("点击有效确认卡");
+  expect(
+    taskStatusReply(
+      {
+        ...ready,
+        confirmations: ready.confirmations.map((c: any) => ({
+          ...c,
+          status: "executing",
+        })),
+      },
+      false,
+    ),
+  ).toContain("保存正在提交");
+  await delay(250);
+  await api("POST", url(id, "/stop"));
+  outputs = [
+    call("read_processing", {}),
+    {
+      role: "assistant",
+      content: "已保存，且处理已完成，但尚未正式采纳。请说确认采纳即可保存。",
+    },
+  ];
+  await send(id, "先别继续，现在保存了吗？");
+  for (let i = 0; i < 200 && outputs.length; i++) await delay(25);
+  for (
+    let i = 0;
+    i < 100 && (await state(id)).messages.at(-1)?.role !== "assistant";
+    i++
+  )
+    await delay(25);
+  const answer = (await state(id)).messages.at(-1).content;
+  expect(answer).toContain("尚未保存到测试集草稿");
+  expect(answer).toContain("旧确认已失效");
+  expect(answer).toContain("点击有效确认卡");
+  expect(answer).not.toMatch(/^已保存|说.*采纳.*即可|正式采纳/);
+  expect(
+    (await state(id)).confirmations.find((c: any) => c.id === card.id).status,
+  ).toBe("expired");
+  expect((await state(id)).receipts).toHaveLength(0);
+  outputs = [call("prepare_adoption", {})];
+  await api("POST", url(id, "/continue"));
+  const renewed = await wait(id, ["confirmation", "failed"]);
+  const fresh = renewed.confirmations.find((c: any) => c.status === "pending");
+  expect(
+    (await api("POST", url(id, "/confirmations/" + fresh.id))).statusCode,
+  ).toBe(200);
+  await wait(id, ["idle", "failed"]);
+  expect((await state(id)).session.status).toBe("idle");
+  const savedRevision = (await state(id)).session.revision;
+  outputs = [call("read_task_status", {})];
+  await send(id, "现在保存了吗？");
+  for (let i = 0; i < 200 && outputs.length; i++) await delay(25);
+  for (
+    let i = 0;
+    i < 100 && (await state(id)).messages.at(-1)?.role !== "assistant";
+    i++
+  )
+    await delay(25);
+  expect((await state(id)).messages.at(-1).content).toContain(
+    "已将 2 条保存为“确认措辞”测试集草稿",
+  );
+  expect((await state(id)).receipts).toHaveLength(1);
+  expect((await state(id)).session.revision).toBe(savedRevision);
+});
+
+it("R7 SDK status: a late model reply uses fresh Worker state; status-tool queries and budget boundaries remain read-only", async () => {
+  const id = await session();
+  const submitted = await submit(id, "rewrite", 2);
+  await db.query("UPDATE rebuild_session SET waiting_run_id=$2 WHERE id=$1", [
+    id,
+    submitted.run.id,
+  ]);
+  await api("POST", url(id, "/stop"));
+  await db.query(
+    "UPDATE job SET status='cancel_requested',stage='cancel_requested' WHERE id=$1",
+    [submitted.run.jobId],
+  );
+  let entered!: () => void, unblock!: () => void;
+  const gate = new Promise<void>((r) => (unblock = r));
+  const reached = new Promise<void>((r) => (entered = r));
+  onProviderRequest = async () => {
+    entered();
+    await gate;
+  };
+  outputs = [call("read_task_status", {})];
+  try {
+    await send(id, "现在做到哪了？");
+    await reached;
+    await db.query(
+      "UPDATE job SET status='cancelled',stage='cancelled' WHERE id=$1",
+      [submitted.run.jobId],
+    );
+  } finally {
+    onProviderRequest = undefined;
+    unblock();
+  }
+  for (let i = 0; i < 200 && outputs.length; i++) await delay(25);
+  for (
+    let i = 0;
+    i < 100 && (await state(id)).messages.at(-1)?.role !== "assistant";
+    i++
+  )
+    await delay(25);
+  const current = await state(id);
+  expect(current.messages.at(-1).content).toContain("任务已暂停");
+  expect(current.messages.at(-1).content).not.toContain("后台正在停止");
+  expect(taskStatusReply(current, true)).toContain("限制已阻止继续");
+  expect(taskStatusReply({ ...current, run: null }, false)).toContain(
+    "暂时无法读取",
+  );
+  const original = JSON.stringify(current);
+  const old = {
+    revision: current.session.revision - 1,
+    run_id: current.session.waiting_run_id,
+    status: "committed",
+    receipt: { acceptanceId: "old", adopted: 2 },
+  };
+  expect(
+    taskStatusReply(
+      {
+        ...current,
+        confirmations: [old],
+        receipts: [{ acceptanceId: "old", adopted: 2, name: "旧草稿" }],
+      },
+      false,
+    ),
+  ).toContain("尚未保存到测试集草稿");
+  expect(JSON.stringify(current)).toBe(original);
+});
+
+it("R8 SDK query scope: informational answers survive and undeclared save claims cannot bypass the reply contract", async () => {
+  const id = await session();
+  await api("POST", url(id, "/stop"));
+  outputs = [
+    call("answer_question", { answer: "清洗用于整理格式，改写用于改变表达。" }),
+  ];
+  await send(id, "清洗和改写有什么区别？");
+  for (let i = 0; i < 200 && outputs.length; i++) await delay(25);
+  for (
+    let i = 0;
+    i < 100 && (await state(id)).messages.at(-1)?.role !== "assistant";
+    i++
+  )
+    await delay(25);
+  expect((await state(id)).messages.at(-1).content).toBe(
+    "清洗用于整理格式，改写用于改变表达。",
+  );
+  outputs = [{ role: "assistant", content: "已保存，预算不足，请重新提交。" }];
+  await send(id, "现在保存了吗？");
+  for (let i = 0; i < 200 && outputs.length; i++) await delay(25);
+  for (
+    let i = 0;
+    i < 100 && (await state(id)).messages.at(-1)?.role !== "assistant";
+    i++
+  )
+    await delay(25);
+  expect((await state(id)).messages.at(-1).content).toContain(
+    "未取得经核对的答复",
+  );
+  expect((await state(id)).messages.at(-1).content).not.toContain("已保存");
 });

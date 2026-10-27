@@ -20,6 +20,62 @@ export async function event(
     [sessionId, kind, JSON.stringify(detail)],
   );
 }
+
+/** Same admission checks for execution and progress reporting; reading never reserves anything. */
+export async function validationBudgetBlock(
+  db: Pick<Database, "query">,
+  campaignId: string,
+  owner?: string,
+  cost = { rows: 0, generated: 0 },
+  campaign?: {
+    closed_at: string | null;
+    requests: number;
+    max_requests: number;
+    rows: number;
+    max_rows: number;
+    generated: number;
+    max_generated: number;
+    started_at: string | null;
+    max_minutes: number;
+  },
+) {
+  const c =
+    campaign ??
+    (await db.query("SELECT * FROM rebuild_campaign WHERE id=$1", [campaignId]))
+      .rows[0];
+  if (
+    !c ||
+    c.closed_at ||
+    c.requests >= c.max_requests ||
+    c.rows + cost.rows > c.max_rows ||
+    c.generated + cost.generated > c.max_generated ||
+    (c.started_at &&
+      Date.now() >= new Date(c.started_at).getTime() + c.max_minutes * 60000)
+  )
+    return "validation_budget_exhausted";
+  if (owner) {
+    const f = (
+      await db.query(
+        "SELECT request_limit FROM rebuild_fault WHERE session_id=$1",
+        [owner],
+      )
+    ).rows[0];
+    if (
+      f &&
+      Number(
+        (
+          await db.query(
+            "SELECT count(*) FROM rebuild_request WHERE campaign_id=$1 AND session_id=$2",
+            [campaignId, owner],
+          )
+        ).rows[0].count,
+      ) >= f.request_limit
+    )
+      return "validation_case_budget_exhausted";
+  }
+  return null;
+}
+
 /** One reservation at the HTTP boundary, shared by LangChain and the existing Worker. */
 export function validationFetch(
   db: Database,
@@ -54,17 +110,14 @@ export function validationFetch(
           [campaignId],
         )
       ).rows[0];
-      if (
-        !c ||
-        c.closed_at ||
-        c.requests >= c.max_requests ||
-        c.rows + cost.rows > c.max_rows ||
-        c.generated + cost.generated > c.max_generated ||
-        (c.started_at &&
-          Date.now() >=
-            new Date(c.started_at).getTime() + c.max_minutes * 60000)
-      )
-        throw new RuntimeCommitError("validation_budget_exhausted");
+      const blocked = await validationBudgetBlock(
+        client,
+        campaignId,
+        owner,
+        cost,
+        c,
+      );
+      if (blocked) throw new RuntimeCommitError(blocked);
       if (
         context.kind === "probe" &&
         Number(
@@ -77,26 +130,6 @@ export function validationFetch(
         ) >= 4
       )
         throw new RuntimeCommitError("validation_probe_limit");
-      if (owner) {
-        const fault = (
-          await client.query(
-            "SELECT request_limit FROM rebuild_fault WHERE session_id=$1",
-            [owner],
-          )
-        ).rows[0];
-        if (
-          fault &&
-          Number(
-            (
-              await client.query(
-                "SELECT count(*) FROM rebuild_request WHERE campaign_id=$1 AND session_id=$2",
-                [campaignId, owner],
-              )
-            ).rows[0].count,
-          ) >= fault.request_limit
-        )
-          throw new RuntimeCommitError("validation_case_budget_exhausted");
-      }
       await client.query(
         "UPDATE rebuild_request SET ended_at=now(),error_code='request_outcome_unknown' WHERE campaign_id=$1 AND ended_at IS NULL AND started_at<now()-interval '180 seconds'",
         [campaignId],
