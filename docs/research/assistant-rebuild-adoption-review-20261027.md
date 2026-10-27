@@ -5,6 +5,8 @@
 - 授权：完成收口审查并更新正式采用结论；本次不创建 tickets、不改业务代码、不调用模型、不执行 CU、不重跑通过项，不变更数据或预算。
 - 技术决策权威：[ADR 0015](../adr/0015-assistant-rebuild-boundaries.md)。职责与切换合同仍在[重建架构](../architecture/assistant-rebuild.md)；本报告只维护证据判断和未关闭事项。
 
+后续正式重建的能力、原型和本报告保留事项已统一映射到[范围与批次建议](../assistant-rebuild-scope-and-batches.md)。该索引不追认原整轮门槛、不扩大本报告证据，也未创建开发票。
+
 ## 1. 结论及其准确含义
 
 **正式采用 Deep Agents TypeScript + LangGraph，作为后续独立重建的目标技术栈。** 这是经有限适配验证支持、在本次 Owner 明确授权下作出的研发选型决策；正式助手全功能验收和环境切换尚未完成。
