@@ -1,0 +1,4 @@
+check_exit node_modules/typescript/bin/tsc 0
+check_exit node_modules/eslint/bin/eslint.js 0
+check_exit frontend-v3/node_modules/typescript/bin/tsc 0
+all-static-checks-passed

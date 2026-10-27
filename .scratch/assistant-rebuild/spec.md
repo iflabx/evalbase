@@ -26,7 +26,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | `21038e7` / [验证记录](r02-verification.md) |
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | `bb10a16` / [验证记录](r03-verification.md) |
-| [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | in-progress | partial-pass | `646ab8b` / [验证记录](r04-verification.md#r04-contract-round4)；C02通过，C01说明残留旧数量 |
+| [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | in-progress | partial-pass | `f2e5f20` / [验证记录](r04-verification.md#r04-amendment-round5)；C02沿用通过，C01修改误新增交付未通过 |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | not-started | not-run | — |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | not-started | not-run | — |
@@ -145,3 +145,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-27：Owner授权完成REBUILD-03，代码 `bb10a16`。持久执行、用户确认、预算与无进展机制的定向证据及双轴审阅见[唯一记录](r03-verification.md)；04～10仍未开始，C02/C07普通提示接线与原真实活动上限不变。旧数据/预算保留，未更新4217。
 
 - 2026-10-28：Owner授权完整参数合同修复与第四轮有界CU；代码`646ab8b`，111项定向检查通过。C02执行中暂停→只读查询→78.557秒后继续→唯一保存通过，C01实际正确保存3条但instructions残留旧5条，04保持in-progress/partial-pass。两项活动均封存，共23请求/6行次/0生成，旧数据和预算保持；依据[唯一验证记录](r04-verification.md#r04-contract-round4)，本次不增额或自动重跑。
+
+- 2026-10-28：Owner授权加工规则依赖修复、单独C01有界复测；代码`f2e5f20`、138项受控验证通过。第五轮C01未引用原deliveryId，新增不完整交付后提交被拒，5请求/0行次/0生成，活动封存；04保持in-progress/partial-pass。C02未重跑，全部旧预算/成果保护通过，详见[唯一记录](r04-verification.md#r04-amendment-round5)。

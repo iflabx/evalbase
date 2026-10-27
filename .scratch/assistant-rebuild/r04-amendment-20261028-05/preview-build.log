@@ -1,0 +1,50 @@
+
+> build:formal
+> vite build --outDir ../dist/web --emptyOutDir
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2681 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/web/index.html                                                                      1.02 kB │ gzip:   0.47 kB
+../dist/web/assets/projects._projectId-CHTXCtXO.css                                         2.40 kB │ gzip:   0.84 kB
+../dist/web/assets/index-BZOY36WZ.css                                                     113.83 kB │ gzip:  19.56 kB
+../dist/web/assets/plus-BtfyU-SN.js                                                         0.14 kB │ gzip:   0.14 kB
+../dist/web/assets/search-Ja4vDJRh.js                                                       0.16 kB │ gzip:   0.16 kB
+../dist/web/assets/ellipsis-e6vH7hDs.js                                                     0.21 kB │ gzip:   0.15 kB
+../dist/web/assets/grip-vertical-CPiGWHI4.js                                                0.36 kB │ gzip:   0.19 kB
+../dist/web/assets/dist-Dcs_Kshy.js                                                         0.56 kB │ gzip:   0.41 kB
+../dist/web/assets/card-CNR8chCn.js                                                         1.01 kB │ gzip:   0.37 kB
+../dist/web/assets/use-list-search-qZI1Xcbu.js                                              1.27 kB │ gzip:   0.66 kB
+../dist/web/assets/drafts-By_0gi5R.js                                                       1.54 kB │ gzip:   0.66 kB
+../dist/web/assets/selection-history-SPAZ6Njw.js                                            1.70 kB │ gzip:   1.00 kB
+../dist/web/assets/alert-dialog-DeFeHQwd.js                                                 3.84 kB │ gzip:   1.34 kB
+../dist/web/assets/material-record-table-szWwPTrp.js                                        4.70 kB │ gzip:   1.58 kB
+../dist/web/assets/routes-B3EnLF4G.js                                                       4.88 kB │ gzip:   2.11 kB
+../dist/web/assets/field-mapping-editor-B-sIuVFt.js                                         5.77 kB │ gzip:   2.10 kB
+../dist/web/assets/preload-helper-B6OA8Pfm.js                                               5.81 kB │ gzip:   2.17 kB
+../dist/web/assets/projects._projectId.assistant-validation-mqkKrmxT.js                     6.36 kB │ gzip:   2.52 kB
+../dist/web/assets/dialog-BZHv7hk-.js                                                       7.18 kB │ gzip:   2.65 kB
+../dist/web/assets/projects._projectId.datasets-DBFHZNSK.js                                 7.65 kB │ gzip:   3.05 kB
+../dist/web/assets/projects._projectId.datasets._collectionId.files._assetId-BvCwdeY4.js    9.23 kB │ gzip:   3.36 kB
+../dist/web/assets/projects._projectId.datasets._collectionId-DqVY5xGr.js                   9.50 kB │ gzip:   3.60 kB
+../dist/web/assets/confirmed-upload-dialog-VG0uDG0p.js                                     10.03 kB │ gzip:   3.80 kB
+../dist/web/assets/projects._projectId.test-sets-B2C0yQ_5.js                               13.90 kB │ gzip:   4.62 kB
+../dist/web/assets/processing-review-D1_HCqWw.js                                           20.51 kB │ gzip:   6.93 kB
+../dist/web/assets/select-DHg66ID6.js                                                      22.78 kB │ gzip:   7.68 kB
+../dist/web/assets/settings-K7ruD98l.js                                                    23.94 kB │ gzip:   7.60 kB
+../dist/web/assets/dist-DrXu3nBl.js                                                        35.87 kB │ gzip:  13.20 kB
+../dist/web/assets/projects._projectId.test-sets._testSetId-DukqKXWZ.js                    45.75 kB │ gzip:  14.99 kB
+../dist/web/assets/projects._projectId.test-sets.drafts._draftId-DDCNYDrd.js               53.90 kB │ gzip:  15.81 kB
+../dist/web/assets/es2015-DQ_A5rbU.js                                                      59.07 kB │ gzip:  20.05 kB
+../dist/web/assets/projects._projectId.processing-CxoyIsig.js                              65.17 kB │ gzip:  19.33 kB
+../dist/web/assets/button-COm-kHPF.js                                                      70.54 kB │ gzip:  23.34 kB
+../dist/web/assets/index-JpGmZxwF.js                                                      372.73 kB │ gzip: 114.56 kB
+../dist/web/assets/projects._projectId.assistant-CzPwcD4L.js                              375.11 kB │ gzip: 110.74 kB
+
+✓ built in 12.20s
+web 2119971
+ordinary 2119979
+model 2119987
+preview-ready f2e5f2056540d0c8743ce393cec9d3f647579cff

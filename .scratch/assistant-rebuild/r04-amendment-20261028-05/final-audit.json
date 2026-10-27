@@ -1,0 +1,103 @@
+{
+  "at": "2026-10-27T23:43:19.475Z",
+  "sourceUnchanged": true,
+  "oldBudgetUnchanged": true,
+  "oldBusiness": [
+    {
+      "table": "collaborative_draft",
+      "unchanged": true
+    },
+    {
+      "table": "collaborative_draft_record",
+      "unchanged": true
+    },
+    {
+      "table": "processing_run",
+      "unchanged": true
+    },
+    {
+      "table": "processing_batch",
+      "unchanged": true
+    },
+    {
+      "table": "processing_acceptance",
+      "unchanged": true
+    }
+  ],
+  "modelUnchanged": true,
+  "activities": [
+    {
+      "id": "r04-20261028-amendment5-C01",
+      "request_limit": 18,
+      "requests": 5,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T23:40:15.868Z",
+      "closed_at": "2026-10-27T23:42:07.951Z",
+      "row_limit": 9,
+      "rows_used": 0
+    }
+  ],
+  "task": {
+    "session_id": "assistant_ade104f241754bb19d5f5049d21ad614",
+    "status": "failed",
+    "reason": "single_delivery_required"
+  },
+  "requests": [
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3827,
+        "prompt_tokens": 3735,
+        "completion_tokens": 92
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5516,
+        "prompt_tokens": 5118,
+        "completion_tokens": 398
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 6647,
+        "prompt_tokens": 6545,
+        "completion_tokens": 102,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 4634,
+        "prompt_tokens": 4344,
+        "completion_tokens": 290
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5970,
+        "prompt_tokens": 5955,
+        "completion_tokens": 15
+      }
+    }
+  ],
+  "knownTokens": 26594,
+  "unknownUsage": 0,
+  "externalRequestsDuringAudit": 0
+}

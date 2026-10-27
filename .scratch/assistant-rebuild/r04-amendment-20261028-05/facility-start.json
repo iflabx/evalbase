@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-27T23:39:23.343Z",
+  "phase": "before-C01-session",
+  "requestedUrl": "http://127.0.0.1:4240/",
+  "firstOpenedUrl": "http://localhost:4240/",
+  "firstFailure": {
+    "code": "origin_rejected",
+    "httpStatus": 403,
+    "modelRequests": 0
+  },
+  "recovery": "Use the configured 127.0.0.1 origin; do not widen the allowlist. Subsequent IAB connection unavailable; sidebar open request returned queued.",
+  "applicationSessionsCreated": 0,
+  "activityCreated": false,
+  "laterRecovery": {
+    "browser": "Chrome",
+    "url": "http://127.0.0.1:4240/",
+    "login": "succeeded",
+    "sessionId": "assistant_ade104f241754bb19d5f5049d21ad614",
+    "activityRegisteredBeforePrompt": true
+  }
+}
