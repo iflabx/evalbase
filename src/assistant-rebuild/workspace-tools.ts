@@ -1,3 +1,5 @@
+import { BusinessError } from "../operations/errors.js";
+import { validateDeliveryResults } from "./session-contract.js";
 import { tool } from "langchain";
 import { z } from "zod";
 import { createProcessingRun, readProcessingRun } from "../processing/store.js";
@@ -33,6 +35,12 @@ export function workspaceTools(
       d.saveTarget?.kind !== "newDraft"
     )
       throw new SessionError("execution_requirements_incomplete", 422);
+    if (d.allowedFields.includes("metadata") && d.metadataKeys?.length === 0)
+      throw new BusinessError(
+        422,
+        "metadata_fields_required",
+        "已选择修改Metadata，但没有允许修改的字段；请指定字段或保持Metadata不变。",
+      );
     const snapshot = await store.freezeSource(proof, d.source);
     if (snapshot.sourceSnapshot.hash !== d.sourceSnapshot?.hash)
       throw new SessionError("source_revision_conflict");
@@ -42,6 +50,7 @@ export function workspaceTools(
     ? [
         {
           name: "read_task_progress",
+          readOnly: true,
           description:
             "查询当前后台作业、保存回执和暂停状态。只读，不恢复、不重新提交。",
           run: async () => {
@@ -59,12 +68,14 @@ export function workspaceTools(
         },
         {
           name: "continue_task",
+          readOnly: false,
           description:
             "仅在用户明确要求继续时，恢复原暂停任务，不新建处理、不重置预算、不更改要求。成功后用一句话说明已安排继续，不再调用其他工具。",
           run: async () => execution.requestResume(proof),
         },
         {
           name: "submit_processing",
+          readOnly: false,
           description:
             "执行已经保存的单份清洗或改写方案，无参数。必须mode:execute，固定source.recordIds与count一致，allowedFields明确，saveTarget:newDraft。会创建真实后台作业，后续只用wait_processing等待，禁止重复提交。",
           run: async () => {
@@ -75,7 +86,9 @@ export function workspaceTools(
                 operation: d.operation,
                 instructions: d.instructions ?? "",
                 allowedFields: d.allowedFields,
-                ...(d.metadataKeys ? { metadataKeys: d.metadataKeys } : {}),
+                ...(d.allowedFields!.includes("metadata") && d.metadataKeys
+                  ? { metadataKeys: d.metadataKeys }
+                  : {}),
               },
             };
             const op = await execution.operation(
@@ -103,6 +116,7 @@ export function workspaceTools(
         },
         {
           name: "prepare_adoption",
+          readOnly: false,
           description:
             "为本次已完成的处理结果准备固定的保存确认卡，无参数。不会保存或代用户确认；必须随后wait_confirmation。保存目标从当前已保存要求取得。",
           run: async () => {
@@ -127,6 +141,15 @@ export function workspaceTools(
               data.records.length !== d.count
             )
               throw new SessionError("processing_not_complete", 422);
+            validateDeliveryResults(
+              d,
+              data.records.map((r) => ({ ...r.result, id: r.id })),
+              {
+                operation: d.operation!,
+                instructions: d.instructions ?? "",
+                allowedFields: [],
+              },
+            );
             const adoption = await execution.operation(
               proof,
               "adopt:" + op.id,
@@ -152,6 +175,7 @@ export function workspaceTools(
     : [];
   return {
     schemas: new Map(definitions.map((d) => [d.name, schema])),
+    readOnly: new Set(definitions.filter((d) => d.readOnly).map((d) => d.name)),
     tools: definitions.map((d) =>
       tool(d.run, { name: d.name, description: d.description, schema }),
     ),

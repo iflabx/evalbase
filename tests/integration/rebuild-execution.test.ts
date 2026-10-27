@@ -1074,7 +1074,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       release!: () => void;
     const invalid = {
       expectedRevision: 0,
-      changes: { deliveries: [{ patch: { name: "第一份", count: "50" } }] },
+      changes: { deliveries: [{ patch: { name: "第一份", count: 50 } }] },
+      steps: [],
     };
     outputs = [
       call("update_requirements", invalid),
@@ -1586,7 +1587,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     const id = await fresh();
     const invalid = {
       expectedRevision: 0,
-      changes: { deliveries: [{ patch: { name: "第一份", count: "50" } }] },
+      changes: { deliveries: [{ patch: { name: "第一份", count: 50 } }] },
+      steps: [],
     };
     const stopped = await run(
       id,
@@ -1758,25 +1760,41 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       assetIds: [assetId],
     });
     const before = await effects();
+    const original = {
+      expectedRevision: 0,
+      steps: [],
+      changes: {
+        mode: "execute",
+        objective: "清洗前三条，保留原标签分布",
+        deliveries: [
+          {
+            operation: "clean",
+            source: JSON.stringify(fixed.source),
+            count: "3",
+            allowedFields: ["question"],
+            metadataKeys: [],
+            instructions: "",
+            classifications: [
+              {
+                field: "expectedOutput",
+                allowedValues: ["答案1", "答案2", "答案3"],
+                quotas: [
+                  { value: "答案1", count: 1 },
+                  { value: "答案2", count: 1 },
+                  { value: "答案3", count: 1 },
+                ],
+              },
+            ],
+            saveTarget: { kind: "newDraft", name: "R04三条整理版" },
+          },
+        ],
+      },
+    };
     const state = await run(id, "清洗前三条，只改问题，保存成三条整理版。", [
+      { ...call("update_requirements", original), toolArgumentChunkSize: 2 },
       call("update_requirements", {
         expectedRevision: 0,
-        changes: {
-          mode: "execute",
-          objective: "清洗前三条",
-          deliveries: [
-            {
-              patch: {
-                operation: "clean",
-                source: fixed.source,
-                count: 3,
-                allowedFields: ["question"],
-                instructions: "",
-                saveTarget: { kind: "newDraft", name: "R04三条整理版" },
-              },
-            },
-          ],
-        },
+        changes: { deliveries: [{ patch: { count: 3 } }] },
       }),
       call("submit_processing", {}),
       call("wait_processing", {}),
@@ -1784,6 +1802,29 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     expect(state.execution.status).toBe("waiting");
     expect(state.results).toHaveLength(1);
     const runId = state.results[0]!.run_id;
+    const frozenRow = (
+      await db.query(
+        "SELECT input_ref,options FROM processing_run WHERE id=$1",
+        [runId],
+      )
+    ).rows[0];
+    const frozen = JSON.parse(
+      (
+        await new ArtifactRepository(config.minio).readBytes(
+          frozenRow.input_ref,
+          1000000,
+        )
+      ).toString("utf8"),
+    );
+    expect(frozen.background.requirements).toContain(
+      original.changes.objective,
+    );
+    expect(frozen.background.classifications[0].quotas).toEqual(
+      original.changes.deliveries[0].classifications[0].quotas,
+    );
+    expect(frozen.records).toHaveLength(3);
+    expect(frozenRow.options.metadataKeys).toBeUndefined();
+
     await completeRun(runId);
     await host.execution.wake();
     outputs = [call("prepare_adoption", {}), call("wait_confirmation", {})];
@@ -1818,6 +1859,103 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     );
     expect(refreshed.receipts[0].draftId).toBe(approved.json().receipt.draftId);
   });
+
+  it.each([["question"], ["question", "expectedOutput"]])(
+    "R04 refuses impossible deterministic classification with fields %j before creating a job",
+    async (...allowedFields) => {
+      const id = await fresh(),
+        fixed = await host.store.freezeSource(scope(), {
+          kind: "assets",
+          assetIds: [assetId],
+        }),
+        before = await effects();
+      await expect(
+        run(id, "清洗但保留标签", [
+          call("update_requirements", {
+            expectedRevision: 0,
+            changes: {
+              mode: "execute",
+              deliveries: [
+                {
+                  patch: {
+                    operation: "clean",
+                    source: fixed.source,
+                    count: 3,
+                    allowedFields,
+                    instructions: "",
+                    classifications: [
+                      {
+                        field: "expectedOutput",
+                        allowedValues: ["来源中不存在"],
+                      },
+                    ],
+                    saveTarget: { kind: "newDraft", name: "不应保存" },
+                  },
+                },
+              ],
+            },
+          }),
+          call("submit_processing", {}),
+        ]),
+      ).rejects.toMatchObject({ code: "assistant_requirement_conflict" });
+      expect(await effects()).toEqual(before);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_event WHERE session_id=$1 AND kind='parameter_feedback'",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    },
+  );
+
+  it("R04 validates actual rewritten output constraints before a save confirmation", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      }),
+      before = await effects();
+    const patch = {
+      operation: "rewrite",
+      source: fixed.source,
+      count: 3,
+      allowedFields: ["question", "expectedOutput"],
+      instructions: "期望输出改成新标签",
+      classifications: [{ field: "expectedOutput", allowedValues: ["新标签"] }],
+      saveTarget: { kind: "newDraft", name: "不得误保存" },
+    };
+    const state = await run(id, "改写三条", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: { mode: "execute", deliveries: [{ patch }] },
+      }),
+      call("submit_processing", {}),
+      call("wait_processing", {}),
+    ]);
+    expect(state.execution.status).toBe("waiting");
+    await completeRun(state.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    const turn = (await host.execution.projection(scope(), id)).execution
+      .turn_id;
+    await expect(host.runPending(scope(), id, turn)).rejects.toMatchObject({
+      code: "assistant_requirement_conflict",
+    });
+    const after = await effects();
+    expect(after.runs - before.runs).toBe(1);
+    expect(after.drafts - before.drafts).toBe(0);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_confirmation WHERE session_id=$1 AND action='adopt'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
   it("R04 ordinary progress queries preserve the suspended turn and ordinary continue queues the same work", async () => {
     const id = await fresh(),
       p = await processing(id, "rewrite");

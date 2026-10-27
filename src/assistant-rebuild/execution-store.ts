@@ -1,3 +1,10 @@
+import { cleanRecords } from "../processing/protocol.js";
+import { validateDeliveryResults } from "./session-contract.js";
+import {
+  validateProcessingRequirements,
+  validateRules,
+  normalizedRequirements,
+} from "../processing/requirements.js";
 import { restoreSuspended } from "./suspension.js";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../db/pool.js";
@@ -743,10 +750,69 @@ export class ExecutionStore {
         },
         background: async (db, request) => {
           await this.guard(fixed, db);
+          const session = await this.sessions.get(fixed, fixed.sessionId, db);
+          if (session.requirements_revision !== op.requirements_revision)
+            throw new SessionError("requirements_revision_conflict");
+          const active = session.requirements.deliveries.filter(
+            (d) => d.status === "active",
+          );
+          if (active.length > 1)
+            throw new SessionError("single_delivery_required", 422);
+          const delivery = active[0];
+          if (delivery) {
+            if (
+              delivery.count !== request.records.length ||
+              canonicalJson(delivery.source) !==
+                canonicalJson(request.source) ||
+              canonicalJson(delivery.allowedFields) !==
+                canonicalJson(request.options.allowedFields) ||
+              (delivery.instructions ?? "") !== request.options.instructions ||
+              canonicalJson(
+                (delivery.allowedFields?.includes("metadata")
+                  ? delivery.metadataKeys
+                  : undefined) ?? null,
+              ) !== canonicalJson(request.options.metadataKeys ?? null)
+            )
+              throw new SessionError("operation_payload_conflict");
+            validateProcessingRequirements(
+              {
+                targetCount: delivery.count,
+                allowedFields: delivery.allowedFields,
+                metadataKeys: delivery.metadataKeys,
+                classifications: delivery.classifications,
+              },
+              request.options,
+              request.records,
+              [],
+              true,
+            );
+          }
+          if (
+            delivery &&
+            request.options.operation === "clean" &&
+            !request.options.instructions.trim()
+          ) {
+            const prospective = cleanRecords(
+              request.records,
+              request.options,
+            ).records.map((r) => ({ ...r, id: r.sourceId }));
+            validateDeliveryResults(delivery, prospective, request.options);
+          }
           return {
             contentReviewPolicy: "manual-v1",
             currentRequirements: true,
-            requirements: [request.options.instructions],
+            requirements: normalizedRequirements([
+              session.requirements.objective,
+              request.options.instructions,
+            ]),
+            ...(delivery?.classifications
+              ? {
+                  classifications: validateRules({
+                    targetCount: delivery.count,
+                    classifications: delivery.classifications,
+                  }),
+                }
+              : {}),
             documents: [],
           };
         },

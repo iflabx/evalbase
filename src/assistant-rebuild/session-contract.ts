@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { validateRules } from "../processing/requirements.js";
+import type {
+  ProcessingInput,
+  ProcessingOptions,
+} from "../processing/protocol.js";
+import {
+  validateProcessingRequirements,
+  validateRules,
+} from "../processing/requirements.js";
 
 const id = z.string().min(1).max(250);
 const fields = z
@@ -156,4 +163,19 @@ export function validateDelivery(value: Delivery) {
     metadataKeys: value.metadataKeys,
     allowedFields: value.allowedFields,
   });
+}
+
+/** Exact output values and quotas, independent of semantic content review. */
+export function validateDeliveryResults(
+  delivery: Delivery,
+  records: ProcessingInput[],
+  options: ProcessingOptions,
+) {
+  validateProcessingRequirements(
+    { targetCount: delivery.count, classifications: delivery.classifications },
+    { ...options, allowedFields: [] },
+    records,
+    [],
+    true,
+  );
 }

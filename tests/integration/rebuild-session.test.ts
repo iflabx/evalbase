@@ -655,7 +655,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     await host.store.finish(proof, "记录完成");
   });
   it.each(["wrong-type", "unknown-field"])(
-    "corrects %s through the real SDK while binding the original invocation",
+    "normalizes or corrects %s through the actual SDK",
     async (kind) => {
       const id = await fresh(),
         valid = plan(50),
@@ -665,31 +665,259 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       else broken.steps = [];
       const state = await run(id, "两份方案", [
         call("update_requirements", broken, "original-call"),
-        call("update_requirements", valid, "corrected-call"),
+        ...(kind === "unknown-field"
+          ? [call("update_requirements", valid, "corrected-call")]
+          : []),
       ]);
       expect(state.session.requirements.deliveries[0].count).toBe(50);
-      const feedback = (
+      const events = (
         await db.query(
-          "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='parameter_feedback'",
+          "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
           [id],
         )
       ).rows;
-      expect(feedback[0].detail.originalCallId).toBe("original-call");
-      const attempts = (
-        await db.query(
-          "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='model_request'",
-          [id],
-        )
-      ).rows;
-      expect(
-        attempts.some(
-          (r) =>
-            r.detail.purpose === "correction" &&
-            r.detail.correctionOf === "original-call",
-        ),
-      ).toBe(true);
+      if (kind === "wrong-type") {
+        expect(events.some((e) => e.kind === "parameter_normalized")).toBe(
+          true,
+        );
+        expect(
+          events.filter((e) => e.kind === "parameter_feedback"),
+        ).toHaveLength(0);
+      } else {
+        expect(
+          events.find((e) => e.kind === "parameter_feedback").detail
+            .originalCallId,
+        ).toBe("original-call");
+        expect(
+          events.some(
+            (e) =>
+              e.kind === "model_request" && e.detail.purpose === "correction",
+          ),
+        ).toBe(true);
+      }
     },
   );
+
+  it("C01 captured wrapper and encoded source normalize before the SDK tool executes", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      });
+    const state = await run(id, "先给前三条清洗方案，不执行", [
+      {
+        ...call(
+          "update_requirements",
+          {
+            expectedRevision: 0,
+            changes: {
+              mode: "plan",
+              objective: "前三条清洗，仅方案",
+              deliveries: [
+                {
+                  name: "  三条整理版  ",
+                  count: "3",
+                  operation: "clean",
+                  source: JSON.stringify(fixed.source),
+                  allowedFields: ["question"],
+                  instructions: "",
+                  saveTarget: { kind: "newDraft", name: "三条整理版" },
+                },
+              ],
+            },
+          },
+          "flat-c01",
+        ),
+        toolArgumentChunkSize: 2,
+      },
+    ]);
+    expect(state.session.requirements.objective).toBe("前三条清洗，仅方案");
+    const d = state.session.requirements.deliveries[0];
+    expect(d.count).toBe(3);
+    expect(d.name).toBe("三条整理版");
+    expect(d.source).toEqual(fixed.source);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_event WHERE session_id=$1 AND kind='parameter_feedback'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(await effects()).toEqual({ drafts: 0, runs: 0 });
+  });
+  it("C02 actual SDK repair retains omitted goal and unchanged fields from the first canonical invocation", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      });
+    const first = {
+      expectedRevision: 0,
+      steps: [],
+      changes: {
+        mode: "plan",
+        objective: "改写前三条，标签和Metadata不变",
+        deliveries: [
+          {
+            operation: "rewrite",
+            count: 3,
+            source: fixed.source,
+            allowedFields: ["question"],
+            instructions: "保持原意，问法自然",
+            saveTarget: { kind: "newDraft", name: "自然问法" },
+          },
+        ],
+      },
+    };
+    const state = await run(id, "先保存改写要求", [
+      call("update_requirements", first, "flat-c02"),
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "update_requirements",
+        ]);
+        expect(wireText(body.messages[0])).toContain("workingArguments");
+        return {
+          ...call(
+            "update_requirements",
+            {
+              expectedRevision: 0,
+              changes: { deliveries: [{ patch: { count: 3 } }] },
+            },
+            "partial-c02",
+          ),
+          toolArgumentChunkSize: 1,
+        };
+      },
+    ]);
+    expect(state.session.requirements.objective).toBe(first.changes.objective);
+    const d = state.session.requirements.deliveries[0];
+    expect(d.source).toEqual(fixed.source);
+    expect(d.instructions).toBe(first.changes.deliveries[0].instructions);
+    expect(d.saveTarget).toMatchObject({ kind: "newDraft", name: "自然问法" });
+    expect(d.allowedFields).toEqual(["question"]);
+    expect(
+      (
+        await db.query(
+          "SELECT feedback FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0].feedback,
+    ).toBeNull();
+  });
+  it("classifies a business quota conflict without spending a second SDK correction request", async () => {
+    const id = await fresh(),
+      start = requests.length;
+    await expect(
+      run(id, "三条方案", [
+        call("update_requirements", {
+          expectedRevision: 0,
+          changes: {
+            deliveries: [
+              {
+                patch: {
+                  name: "配额",
+                  count: 3,
+                  classifications: [
+                    {
+                      field: "expectedOutput",
+                      allowedValues: ["a", "b"],
+                      quotas: [
+                        { value: "a", count: 2 },
+                        { value: "b", count: 2 },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "assistant_plan_count_conflict" });
+    expect(requests.length - start).toBe(1);
+    const state = await host.present(scope(), id);
+    expect(state.messages.at(-1).content).toContain("配额合计4");
+    expect(state.session.requirements.deliveries).toEqual([]);
+  });
+
+  it("rejects duplicate invocation IDs from the real SDK with zero requirement writes", async () => {
+    const id = await fresh(),
+      batch = call("update_requirements", plan(), "duplicate");
+    batch.tool_calls.push(
+      call("update_requirements", plan(51), "duplicate").tool_calls[0],
+    );
+    await expect(run(id, "先给方案", [batch])).rejects.toMatchObject({
+      code: "tool_call_identity_conflict",
+    });
+    expect((await host.store.get(scope(), id)).requirements.deliveries).toEqual(
+      [],
+    );
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_event WHERE session_id=$1 AND kind='tool_call'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("repairs a mixed batch with an unknown field before any SDK mutation", async () => {
+    const id = await fresh(),
+      broken = { ...plan(3), steps: [] },
+      batch = call("update_requirements", broken, "batch-first");
+    batch.tool_calls.push(
+      call("read_project", {}, "batch-second").tool_calls[0],
+    );
+    const state = await run(id, "先给方案", [
+      batch,
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "update_requirements",
+        ]);
+        return call("update_requirements", plan(3));
+      },
+    ]);
+    expect(state.session.requirements.deliveries).toHaveLength(2);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "requirements_saved")).toHaveLength(
+      1,
+    );
+    expect(
+      events.some(
+        (e) => e.kind === "tool_call" && e.detail.name === "read_project",
+      ),
+    ).toBe(false);
+  });
+
+  it("recovers a truncated read-only progress call through the actual SDK", async () => {
+    const id = await fresh();
+    await run(id, "看看进度", [
+      call("read_task_progress", "{", "truncated-progress"),
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "read_task_progress",
+        ]);
+        expect(body.tool_choice.function.name).toBe("read_task_progress");
+        return call("read_task_progress", {});
+      },
+    ]);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(
+      events.filter((e) => e.kind === "tool_call").map((e) => e.detail.name),
+    ).toEqual(["read_task_progress"]);
+    expect(await effects()).toEqual({ drafts: 0, runs: 0 });
+  });
 
   it("normalizes JSON object strings through SDK without a correction request or changed scope", async () => {
     const id = await fresh(),
@@ -851,6 +1079,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       valid = plan(50),
       broken = structuredClone(valid) as any;
     broken.changes.deliveries[0].patch.count = "50";
+    broken.steps = [];
     await run(id, "两份方案", [
       call("update_requirements", broken, "first-readable"),
       {
@@ -864,7 +1093,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       (body: any) => {
         const context = wireText(body.messages[0]);
         expect(context).toContain('"originalCallId":"first-readable"');
-        expect(context).toContain('"count":"50"');
+        expect(context).toContain('"count":50');
         expect(context).toContain('"unparsed":false');
         expect(body.tools.map((t: any) => t.function.name)).toEqual([
           "update_requirements",
@@ -968,7 +1197,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
           },
         }),
       ]),
-    ).rejects.toMatchObject({ code: "parameter_correction_incomplete" });
+    ).rejects.toMatchObject({ code: "delivery_not_found" });
     expect(
       (await host.store.get(scope(), second)).requirements.deliveries,
     ).toEqual([]);
@@ -1129,6 +1358,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     const id = await fresh(),
       bad = plan(50) as any;
     bad.changes.deliveries[0].patch.count = "50";
+    bad.steps = [];
     await expect(
       run(id, "第一份50条", [
         call("update_requirements", bad),
@@ -1191,26 +1421,39 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     const second = await fresh();
     const multi = call("update_requirements", plan());
     multi.tool_calls.push(call("update_requirements", plan()).tool_calls[0]);
-    await expect(run(second, "两份方案", [multi])).rejects.toMatchObject({
-      code: "multiple_requirement_updates",
-    });
+    await run(second, "两份方案", [
+      multi,
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "update_requirements",
+        ]);
+        return call("update_requirements", plan());
+      },
+    ]);
     expect(
       (await host.store.get(scope(), second)).requirements.deliveries,
-    ).toEqual([]);
+    ).toHaveLength(2);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_event WHERE session_id=$1 AND kind='requirements_saved'",
+          [second],
+        )
+      ).rows[0].n,
+    ).toBe(1);
   });
 
-  it("does not drop an invalid quantity or replace an invalid object with a new intent", async () => {
+  it("retains omitted known quantities without accepting an invalid original object", async () => {
     const id = await fresh(),
-      bad = plan(50) as any,
+      bad = { ...plan(50), steps: [] },
       removed = plan(50) as any;
-    bad.changes.deliveries[0].patch.count = "50";
     delete removed.changes.deliveries[0].patch.count;
-    await expect(
-      run(id, "50条方案", [
-        call("update_requirements", bad),
-        call("update_requirements", removed),
-      ]),
-    ).rejects.toMatchObject({ code: "correction_intent_changed" });
+    const result = await run(id, "50条方案", [
+      call("update_requirements", bad),
+      call("update_requirements", removed),
+    ]);
+    expect(result.session.requirements.deliveries[0].count).toBe(50);
+    expect(result.session.requirements.deliveries).toHaveLength(2);
     const second = await fresh();
     await expect(
       run(second, "方案", [

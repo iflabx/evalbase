@@ -7,152 +7,148 @@ import {
 } from "@langchain/core/messages";
 import { createMiddleware } from "langchain";
 import { z } from "zod";
-import { canonicalJson } from "../package/contract.js";
+import { canonicalJson, sha256 } from "../package/contract.js";
+import { BusinessError } from "../operations/errors.js";
 import { SessionError } from "./session-store.js";
-import { normalizeToolArguments } from "./tool-arguments.js";
-
+import {
+  normalizeToolArguments,
+  mergeToolCorrection,
+} from "./tool-arguments.js";
 export type FailedCall = {
   id: string;
   name: string;
   args: unknown;
+  workingArgs?: unknown;
   paths: string[][];
   attempts: number;
   removablePaths?: string[][];
   unparsed?: boolean;
+  version?: 2;
+  schemaHash?: string;
 };
-/** One bounded correction path for the formal host; never stacked with validation-host repair. */
+type Issue = {
+  path: PropertyKey[];
+  message: string;
+  code: string;
+  keys?: string[];
+};
+/** One boundary owns canonicalization, bounded repair and its durable working version. */
 export function sessionFeedback(options: {
   schemas: Map<string, z.ZodType>;
+  readOnlyTools?: Set<string>;
   initialPending?: FailedCall;
-  savePending?: (pending: FailedCall | undefined) => Promise<void>;
+  savePending?: (p: FailedCall | undefined) => Promise<void>;
   facts: () => Promise<unknown>;
   guard: () => Promise<void>;
   observe: (kind: string, detail: unknown) => Promise<void>;
   callModel: <T>(call: () => Promise<T> | T) => Promise<T> | T;
 }) {
-  let pending: FailedCall | undefined = options.initialPending;
+  let pending = options.initialPending;
   const maxCorrections = 2;
-  const scrub = (value: unknown, paths: string[][]): unknown => {
-    const copy = structuredClone(value);
-    for (const path of paths) {
-      if (!path.length) return null;
-      let cursor = copy as Record<string, unknown>;
-      for (const key of path.slice(0, -1)) {
-        if (!cursor || typeof cursor !== "object") break;
-        cursor = cursor[key] as Record<string, unknown>;
-      }
-      if (cursor && typeof cursor === "object") delete cursor[path.at(-1)!];
-    }
-    return copy;
-  };
-  const changedPaths = (before: unknown, after: unknown) => {
-    const paths: string[][] = [];
-    const visit = (a: unknown, b: unknown, path: string[]) => {
-      if (paths.length >= 12 || JSON.stringify(a) === JSON.stringify(b)) return;
-      if (
-        a !== null &&
-        b !== null &&
-        typeof a === "object" &&
-        typeof b === "object" &&
-        path.length < 12
-      ) {
-        for (const key of new Set([...Object.keys(a), ...Object.keys(b)]))
-          visit(
-            (a as Record<string, unknown>)[key],
-            (b as Record<string, unknown>)[key],
-            [...path, key],
-          );
-      } else paths.push(path);
-    };
-    visit(before, after, []);
-    return paths;
-  };
-  const sameIntent = (name: string, args: unknown) => {
-    if (!pending) return true;
-    if (name !== pending.name) return false;
-    // Truncated write arguments have no trustworthy semantic snapshot. Fail closed rather than invent intent.
-    if (pending.unparsed) return name === "read_project";
-    const schema = options.schemas.get(name)!;
-    args = normalizeToolArguments(schema, args).args;
-    const original = normalizeToolArguments(schema, pending.args).args;
-    if (
-      canonicalJson(scrub(args, pending.paths)) !==
-      canonicalJson(scrub(original, pending.paths))
-    )
-      return false;
-    const read = (value: unknown, path: string[]) =>
-      path.reduce<unknown>(
-        (v, k) =>
-          v && typeof v === "object"
-            ? (v as Record<string, unknown>)[k]
-            : undefined,
-        value,
+  const schemaHash = (name: string) =>
+    sha256(
+      canonicalJson(
+        z.toJSONSchema(options.schemas.get(name)!, { io: "input" }),
+      ),
+    );
+  const normalize = (name: string, args: unknown, preserveMissing = false) => {
+    const result = normalizeToolArguments(
+      options.schemas.get(name)!,
+      args,
+      name,
+      { applyDefaults: !preserveMissing },
+    );
+    if (result.conflicts?.length)
+      throw new BusinessError(
+        422,
+        "tool_argument_shape_conflict",
+        "同一交付的字段同时出现在两个位置且存在歧义，本步骤未执行。",
       );
-    return pending.paths.every((path) => {
-      const before = read(original, path),
-        after = read(args, path);
-      if (
-        JSON.stringify(before) === JSON.stringify(after) ||
-        (before !== null &&
-          after !== null &&
-          typeof before === "object" &&
-          typeof after === "object" &&
-          canonicalJson(before) === canonicalJson(after))
-      )
-        return true;
-      if (after === undefined)
-        return (pending?.removablePaths ?? []).some(
-          (p) => JSON.stringify(p) === JSON.stringify(path),
-        );
-      // Only lossless representation repair is allowed; a type error is not permission to change a quantity.
-      if (typeof before === "string" && typeof after === "number")
-        return (
-          before.trim() !== "" &&
-          Number.isFinite(Number(before)) &&
-          Number(before) === after
-        );
-      if (typeof before === "string" && typeof after === "boolean")
-        return before === String(after);
-      if (Array.isArray(after) && after.length === 1)
-        return JSON.stringify(before) === JSON.stringify(after[0]);
-      return false;
+    return result;
+  };
+  const checkContract = () => {
+    if (pending && !options.schemas.has(pending.name))
+      throw new BusinessError(
+        403,
+        "tool_not_allowed",
+        "当前权限或工具能力已变化，本步骤未执行。",
+      );
+    if (pending?.schemaHash && pending.schemaHash !== schemaHash(pending.name))
+      throw new BusinessError(
+        409,
+        "correction_contract_changed",
+        "工具合同已经变化，请按当前要求重新发起操作；原数据和成果保留。",
+      );
+  };
+  const readOnlyEmpty = (name: string) => {
+    const s = z.toJSONSchema(options.schemas.get(name)!, { io: "input" });
+    return (
+      (options.readOnlyTools ?? new Set(["read_project"])).has(name) &&
+      s.type === "object" &&
+      Object.keys(s.properties ?? {}).length === 0
+    );
+  };
+  const issuePaths = (issues: Issue[]) =>
+    issues.flatMap((i) =>
+      i.code === "unrecognized_keys"
+        ? (i.keys ?? []).map((key) => [...i.path.map(String), key])
+        : [i.path.map(String)],
+    );
+  const removable = (issues: Issue[]) =>
+    issues.flatMap((i) =>
+      i.code === "unrecognized_keys"
+        ? (i.keys ?? []).map((key) => [...i.path.map(String), key])
+        : [],
+    );
+  const unique = (paths: string[][]) => [
+    ...new Map(paths.map((p) => [JSON.stringify(p), p])).values(),
+  ];
+  const clear = async () => {
+    pending = undefined;
+    await options.savePending?.(undefined);
+  };
+  const reject = async (
+    id: string,
+    name: string,
+    reason: string,
+    changedPaths: string[][] = [],
+  ) => {
+    await options.observe("correction_rejected", {
+      originalCallId: pending?.id,
+      callId: id,
+      name,
+      expectedTool: pending?.name,
+      reason,
+      invalidPaths: pending?.paths ?? [],
+      changedPaths,
     });
+    throw new BusinessError(
+      422,
+      "correction_intent_changed",
+      "无法确认自动纠正仍符合原操作和处理范围，已停止该步骤。",
+    );
   };
   const feedback = async (
     id: string,
     name: string,
     args: unknown,
-    issues: {
-      path: PropertyKey[];
-      message: string;
-      code: string;
-      keys?: string[];
-    }[],
+    issues: Issue[],
   ) => {
-    if (
-      pending &&
-      (!sameIntent(name, args) || pending.attempts >= maxCorrections)
-    )
+    if (pending && pending.attempts >= maxCorrections)
       throw new SessionError("parameter_correction_exhausted", 422);
     pending = {
       id: pending?.id ?? id,
       name,
-      args: pending?.args ?? args,
-      paths:
-        pending?.paths ??
-        issues.flatMap((i) =>
-          i.code === "unrecognized_keys"
-            ? (i.keys ?? []).map((key) => [...i.path.map(String), key])
-            : [i.path.map(String)],
-        ),
+      args: pending ? pending.args : args,
+      workingArgs: args,
+      paths: issuePaths(issues),
       attempts: (pending?.attempts ?? 0) + 1,
-      removablePaths:
-        pending?.removablePaths ??
-        issues.flatMap((i) =>
-          i.code === "unrecognized_keys"
-            ? (i.keys ?? []).map((key) => [...i.path.map(String), key])
-            : [],
-        ),
+      removablePaths: unique([
+        ...(pending?.removablePaths ?? []),
+        ...removable(issues),
+      ]),
+      version: 2,
+      schemaHash: schemaHash(name),
     };
     await options.savePending?.(pending);
     const detail = {
@@ -175,7 +171,7 @@ export function sessionFeedback(options: {
         error: {
           code: "tool_arguments_invalid",
           message:
-            "本次未执行。仅修正这些字段并重试同一工具；对象和数组必须使用JSON结构，不添加记录ID，不改来源、数量或保存目标。",
+            "本次未执行。只修正列明的格式错误；未提供的原有效字段由服务端保留。不得新增或更改来源、数量、分类和保存目标。",
           ...detail,
         },
       }),
@@ -185,6 +181,7 @@ export function sessionFeedback(options: {
     name: "EvalBaseFormalToolBoundary",
     wrapModelCall: async (request, handler) => {
       await options.guard();
+      checkContract();
       if (pending && pending.attempts > maxCorrections)
         throw new SessionError("parameter_correction_exhausted", 422);
       const tools = request.tools.filter(
@@ -197,24 +194,22 @@ export function sessionFeedback(options: {
         "visible_tools",
         tools.map((t) => ("name" in t ? t.name : "")),
       );
-      // Inject current authoritative facts after any framework summary; summary prose never replaces them.
       const current = new SystemMessage(
         "当前服务端事实（历史或摘要不能覆盖）：" +
           JSON.stringify(await options.facts()) +
           (pending
-            ? "\n当前待纠正调用（仅修复该工具的格式，工具声明提供完整参数结构）：" +
+            ? "\n当前待纠正调用（工具声明给出完整结构，未提供的原有效字段由服务端保留）：" +
               JSON.stringify({
                 originalCallId: pending.id,
                 name: pending.name,
                 originalArguments: pending.args,
+                workingArguments: pending.workingArgs ?? pending.args,
                 invalidPaths: pending.paths,
                 unparsed: pending.unparsed ?? false,
-                rule: "保持来源、记录范围、数量、分类和保存目标；不能新增或猜测ID。",
+                rule: "只修复原错误，不能新增或猜测ID、改变来源/记录范围/数量/分类/保存目标。一次只提交一个工具调用。",
               })
             : ""),
       );
-      // Some OpenAI-compatible chat templates reject any System message after the first user.
-      // Keep authority in one leading System message, without changing user/tool chronology.
       const systemMessages = [
         ...(request.systemMessage ? [request.systemMessage] : []),
         ...request.messages.filter((m) => m instanceof SystemMessage),
@@ -250,16 +245,9 @@ export function sessionFeedback(options: {
       canJumpTo: ["model"],
       hook: async (state) => {
         const last = state.messages.at(-1);
-        if (!(last instanceof AIMessage)) return;
-        if (
-          (last.tool_calls ?? []).filter(
-            (t) => t.name === "update_requirements",
-          ).length > 1
-        )
-          throw new SessionError("multiple_requirement_updates", 422);
+        if (!AIMessage.isInstance(last)) return;
         const invalid = [...(last.invalid_tool_calls ?? [])];
         for (const call of last.tool_calls ?? []) {
-          // SDK raw arguments precede its tolerant partial-JSON parser; do not race transport EOF.
           const raw = last.additional_kwargs.tool_calls?.find(
             (t) => t.id === call.id,
           )?.function.arguments;
@@ -276,49 +264,101 @@ export function sessionFeedback(options: {
             }
           }
         }
-        if (!invalid.length) return;
-        const call = invalid[0]!;
-        if (!last.id || !call.name || !options.schemas.has(call.name))
+        const calls = [
+          ...(last.tool_calls ?? []),
+          ...(last.invalid_tool_calls ?? []),
+        ];
+        const ids = calls
+          .map((c) => c.id)
+          .filter((id): id is string => typeof id === "string");
+        if (new Set(ids).size !== ids.length) {
+          await options.observe("tool_response_rejected", {
+            reason: "duplicate_tool_call_id",
+            callCount: calls.length,
+          });
+          throw new BusinessError(
+            422,
+            "tool_call_identity_conflict",
+            "模型返回了重复的操作标识，本响应的工具均未执行；输入和已记录要求保留。",
+          );
+        }
+        if (calls.some((c) => !c.name || !options.schemas.has(c.name)))
+          throw new SessionError("tool_not_allowed", 422);
+        if (!invalid.length && calls.length <= 1) return;
+        const first = calls[0];
+        if (!first?.name || !last.id)
           throw new SessionError("tool_arguments_invalid", 422);
+        const isInvalid = invalid.some((c) => c.id === first.id);
         if (
           pending &&
-          (pending.name !== call.name || pending.attempts >= maxCorrections)
+          (pending.name !== first.name || pending.attempts >= maxCorrections)
         )
           throw new SessionError("parameter_correction_exhausted", 422);
+        if (!pending && isInvalid && !readOnlyEmpty(first.name)) {
+          await options.observe("correction_rejected", {
+            callId: first.id,
+            name: first.name,
+            reason: "original_arguments_unverifiable",
+            changedPaths: [],
+          });
+          throw new BusinessError(
+            422,
+            "correction_intent_changed",
+            "工具未返回可安全恢复的完整参数，本步骤未执行；请说明要继续处理的要求。",
+          );
+        }
+        const args = pending
+          ? pending.args
+          : isInvalid
+            ? null
+            : normalize(first.name, first.args).args;
+        const working = pending ? (pending.workingArgs ?? pending.args) : args;
+        const parsed = isInvalid
+          ? null
+          : options.schemas.get(first.name)!.safeParse(working);
         pending = {
-          id: pending?.id ?? call.id ?? last.id,
-          name: call.name,
-          args: pending ? pending.args : null,
-          paths: pending?.paths ?? [],
-          unparsed: pending?.unparsed ?? !pending,
-          ...(pending?.removablePaths
-            ? { removablePaths: pending.removablePaths }
-            : {}),
+          ...pending,
+          id: pending?.id ?? first.id ?? last.id,
+          name: first.name,
+          args,
+          workingArgs: working,
+          removablePaths:
+            pending?.removablePaths ??
+            (parsed && !parsed.success ? removable(parsed.error.issues) : []),
+          paths:
+            pending?.paths ??
+            (parsed && !parsed.success ? issuePaths(parsed.error.issues) : []),
+          unparsed: pending ? (pending.unparsed ?? false) : isInvalid,
           attempts: (pending?.attempts ?? 0) + 1,
+          version: 2,
+          schemaHash: schemaHash(first.name),
         };
         await options.savePending?.(pending);
+        const reason =
+          calls.length > 1 ? "multiple_tool_calls" : "invalid_json";
         await options.observe("parameter_feedback", {
           originalCallId: pending.id,
-          name: call.name,
+          name: first.name,
           attempt: pending.attempts,
-          reason: "invalid_json",
-          rawArguments: call.args,
+          reason,
+          ...(isInvalid
+            ? { rawArguments: invalid.find((c) => c.id === first.id)?.args }
+            : {}),
         });
         return {
           messages: [
             new AIMessage({
               id: last.id,
-              content:
-                "工具 " + pending.name + " 的参数JSON不完整，本次未执行。",
+              content: "本响应的工具均未执行；需要先重提单个完整调用。",
               tool_calls: [],
             }),
             new HumanMessage({
               content:
-                "上一工具 " +
+                "仅重试工具 " +
                 pending.name +
                 "（原调用 " +
                 pending.id +
-                "）未执行。仅重试该工具并按其声明提供完整JSON；不能改变来源、数量、分类或保存目标。",
+                "），一次一个调用。按声明提供完整JSON；遗漏的原有效字段将保留，不更换来源、数量、分类或保存目标。",
               additional_kwargs: { evalbaseCorrectionOf: pending.id },
             }),
           ],
@@ -332,10 +372,8 @@ export function sessionFeedback(options: {
       if (!id || !options.schemas.has(call.name))
         throw new SessionError("tool_not_allowed", 422);
       await options.guard();
-      const normalized = normalizeToolArguments(
-        options.schemas.get(call.name)!,
-        call.args,
-      );
+      checkContract();
+      const normalized = normalize(call.name, call.args, !!pending);
       if (normalized.paths.length)
         await options.observe("parameter_normalized", {
           id,
@@ -343,35 +381,37 @@ export function sessionFeedback(options: {
           paths: normalized.paths,
           correctionOf: pending?.id ?? null,
         });
-      if (!sameIntent(call.name, normalized.args)) {
-        await options.observe("correction_rejected", {
-          originalCallId: pending?.id,
-          callId: id,
-          name: call.name,
-          expectedTool: pending?.name,
-          reason:
-            call.name !== pending?.name
-              ? "tool_changed"
-              : pending?.unparsed
-                ? "original_arguments_unverifiable"
-                : "protected_arguments_changed",
-          invalidPaths: pending?.paths ?? [],
-          changedPaths:
-            pending && !pending.unparsed
-              ? changedPaths(
-                  normalizeToolArguments(
-                    options.schemas.get(pending.name)!,
-                    pending.args,
-                  ).args,
-                  normalized.args,
-                )
-              : [],
-        });
-        throw new SessionError("correction_intent_changed", 422);
+      let args = normalized.args;
+      if (pending) {
+        if (call.name !== pending.name)
+          return reject(id, call.name, "tool_changed");
+        if (pending.unparsed) {
+          if (!readOnlyEmpty(call.name))
+            return reject(id, call.name, "original_arguments_unverifiable");
+        } else {
+          const base = normalize(
+            call.name,
+            pending.workingArgs ?? pending.args,
+          ).args;
+          const merged = mergeToolCorrection(
+            base,
+            args,
+            pending.removablePaths,
+            (value) => normalize(call.name, value).args,
+          );
+          if (merged.changedPaths.length)
+            return reject(
+              id,
+              call.name,
+              "protected_arguments_changed",
+              merged.changedPaths,
+            );
+          args = normalize(call.name, merged.args).args;
+        }
       }
-      const parsed = options.schemas.get(call.name)!.safeParse(normalized.args);
+      const parsed = options.schemas.get(call.name)!.safeParse(args);
       if (!parsed.success)
-        return feedback(id, call.name, normalized.args, parsed.error.issues);
+        return feedback(id, call.name, args, parsed.error.issues);
       await options.observe("tool_call", {
         id,
         name: call.name,
@@ -384,8 +424,7 @@ export function sessionFeedback(options: {
           toolCall: { ...call, args: parsed.data as Record<string, unknown> },
         });
         await options.observe("tool_result", { id, name: call.name, result });
-        pending = undefined;
-        await options.savePending?.(pending);
+        await clear();
         return result;
       } catch (error) {
         if (
@@ -397,44 +436,29 @@ export function sessionFeedback(options: {
         const failure = error as {
           code?: string;
           status?: number;
-          message?: string;
+          hint?: string;
         };
         await options.observe("tool_error", {
           id,
           name: call.name,
           code: failure.code ?? "tool_failed",
         });
-        // Conflicts and authorization failures are not parameter errors: never fetch a fresh revision to overwrite.
         if (
-          (failure.status ?? 500) >= 500 ||
-          failure.status === 409 ||
-          failure.status === 403 ||
-          failure.code === "project_not_found"
-        )
-          throw error;
-        if (pending && pending.attempts >= maxCorrections)
-          throw new SessionError("parameter_correction_exhausted", 422);
-        pending = {
-          id: pending?.id ?? id,
-          name: call.name,
-          args: call.args,
-          paths: [],
-          attempts: (pending?.attempts ?? 0) + 1,
-        };
-        await options.savePending?.(pending);
-        return new ToolMessage({
-          tool_call_id: id,
-          name: call.name,
-          status: "error",
-          content: JSON.stringify({
-            error: {
-              code: failure.code ?? "tool_failed",
-              message:
-                "未执行，请核对当前可见对象及要求；不能通过重试更换范围或目标。",
-              originalCallId: pending.id,
-            },
-          }),
-        });
+          typeof failure.status === "number" &&
+          failure.status >= 400 &&
+          failure.status < 500 &&
+          typeof failure.code === "string"
+        ) {
+          await clear();
+          throw error instanceof BusinessError
+            ? error
+            : new BusinessError(
+                failure.status,
+                failure.code,
+                failure.hint?.slice(0, 2000),
+              );
+        }
+        throw error;
       }
     },
   });
