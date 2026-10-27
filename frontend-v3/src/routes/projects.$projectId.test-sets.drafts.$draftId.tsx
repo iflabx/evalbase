@@ -1,3 +1,4 @@
+import { registerAssistantFlush, flushAssistantInput } from "@/services/assistant-page-bridge";
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -398,13 +399,24 @@ function DraftWorkspace() {
   useEffect(() => {
     if (dirty) setSaveState("dirty");
   }, [dirty]);
+  useEffect(() =>
+    registerAssistantFlush(projectId, access.actorId, async () => {
+      if (allowNavigation.current) return true;
+      if (!dirty && !savingPromises.current.size) return true;
+      const saved = await save();
+      if (saved) allowNavigation.current = true;
+      return saved;
+    }),
+  );
   useBlocker({
-    shouldBlockFn: () =>
-      dirty &&
-      !allowNavigation.current &&
-      !window.confirm("草稿有未保存的修改。离开页面会丢失这些输入，确定离开吗？"),
+    shouldBlockFn: async ({ next }) =>
+      next.pathname.includes("/assistant") && !allowNavigation.current
+        ? !(await flushAssistantInput(projectId, access.actorId))
+        : dirty &&
+          !allowNavigation.current &&
+          !window.confirm("草稿有未保存的修改。离开页面会丢失这些输入，确定离开吗？"),
     enableBeforeUnload: () => dirty && !allowNavigation.current,
-    disabled: !dirty,
+    disabled: !dirty && !savingFields.size,
   });
   useEffect(() => {
     if (recordFilterInput === recordSearch) return;
@@ -1460,12 +1472,10 @@ function DraftWorkspace() {
                       <div
                         className="grid gap-2"
                         onBlurCapture={(event) => {
-                          if (
-                            !(
-                              event.relatedTarget instanceof Node &&
-                              event.currentTarget.contains(event.relatedTarget)
-                            )
-                          ) {
+                          if (!(
+                            event.relatedTarget instanceof Node &&
+                            event.currentTarget.contains(event.relatedTarget)
+                          )) {
                             clearFocus();
                             void saveField("metadata");
                           }

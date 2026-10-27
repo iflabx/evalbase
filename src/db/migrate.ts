@@ -1,3 +1,4 @@
+import { workspaceSchema } from "../assistant-rebuild/workspace-schema.js";
 import { executionSchema } from "../assistant-rebuild/execution-schema.js";
 import { assistantSessionSchema } from "../assistant-rebuild/session-schema.js";
 import { loadConfig } from "../config.js";
@@ -1990,6 +1991,7 @@ export async function migrate(
       "INSERT INTO schema_migration(id) VALUES('assistant-task-boundaries-v2') ON CONFLICT DO NOTHING",
     );
     await client.query(executionSchema);
+    await client.query(workspaceSchema);
     await client.query(
       "INSERT INTO schema_migration(id) VALUES('assistant-runtime-execution-v1') ON CONFLICT DO NOTHING",
     );

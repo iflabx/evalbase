@@ -1,3 +1,4 @@
+import { flushAssistantInput } from "@/services/assistant-page-bridge";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
@@ -194,7 +195,8 @@ function AuthenticatedApp() {
                   variant="ghost"
                   size="sm"
                   aria-label="打开项目助手"
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!(await flushAssistantInput(projectId, actor.id))) return;
                     const handoff = location.pathname.endsWith("/processing")
                       ? handoffInputContext(queryClient, projectId, actor.id)
                       : undefined;
@@ -226,8 +228,24 @@ function AuthenticatedApp() {
                 登出
               </button>
             </header>
-            <main className="min-w-0 flex-1 px-6 py-6">
-              <div key={location.pathname} className="content-enter min-w-0">
+            <main
+              className={
+                location.pathname.includes("/assistant") &&
+                !location.pathname.includes("/assistant-validation")
+                  ? "min-w-0 flex-1"
+                  : "min-w-0 flex-1 px-6 py-6"
+              }
+            >
+              <div
+                key={
+                  location.pathname.includes("/assistant/")
+                    ? location.pathname.split("/assistant/")[0] + "/assistant"
+                    : location.pathname
+                }
+                className={
+                  location.pathname.includes("/assistant") ? "min-w-0" : "content-enter min-w-0"
+                }
+              >
                 {projectId && !access.canRead ? (
                   access.isPending ? (
                     <LoadingBlock rows={5} />

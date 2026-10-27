@@ -1,3 +1,4 @@
+import { sendFormalCompletion } from "../support/formal-completion.js";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -276,33 +277,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
           );
           return;
         }
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(
-          JSON.stringify({
-            id: "response_" + randomUUID(),
-            object: "chat.completion",
-            created: 1,
-            model: "synthetic",
-            choices: [
-              {
-                index: 0,
-                message,
-                finish_reason: message.tool_calls?.length
-                  ? "tool_calls"
-                  : "stop",
-              },
-            ],
-            ...(omitUsage
-              ? {}
-              : {
-                  usage: {
-                    prompt_tokens: 3,
-                    completion_tokens: 3,
-                    total_tokens: 6,
-                  },
-                }),
-          }),
-        );
+        await sendFormalCompletion(res, body, message, omitUsage);
       } catch {
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: { message: "invalid_test_request" } }));
@@ -550,6 +525,13 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       "list_sources",
       "read_records",
       "update_requirements",
+      "read_attachment",
+      "submit_processing",
+      "prepare_adoption",
+      "wait_processing",
+      "wait_confirmation",
+      "read_task_progress",
+      "continue_task",
     ];
     for (const req of observed)
       expect(req.tools.map((t: any) => t.function.name).sort()).toEqual(

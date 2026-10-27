@@ -1,0 +1,186 @@
+import type { PoolClient } from "pg";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import {
+  SessionStore,
+  SessionError,
+  type SessionScope,
+} from "./session-store.js";
+import {
+  extractBackground,
+  BACKGROUND_LIMITS,
+} from "../processing/extract-background.js";
+import type { ArtifactRepository } from "../storage/artifacts.js";
+
+export const workspaceQuery = z
+  .object({
+    search: z.string().max(200).default(""),
+    offset: z.coerce.number().int().min(0).max(100000).default(0),
+  })
+  .strict();
+export class WorkspaceStore {
+  constructor(
+    readonly sessions: SessionStore,
+    readonly artifacts: ArtifactRepository,
+  ) {}
+  private async write<T>(
+    scope: SessionScope,
+    id: string,
+    action: (client: PoolClient) => Promise<T>,
+  ) {
+    const client = await this.sessions.db.connect();
+    try {
+      await client.query("BEGIN");
+      await this.sessions.get(scope, id, client, true);
+      const result = await action(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  async list(scope: SessionScope, input: unknown) {
+    const q = workspaceQuery.safeParse(input);
+    if (!q.success) throw new SessionError("query_invalid", 422);
+    await this.sessions.access(scope);
+    const rows = await this.sessions.db.query(
+      "SELECT id,revision,status,coalesce(nullif(title,''),nullif(requirements->>'objective',''),'新会话') AS title,updated_at FROM assistant_runtime_session WHERE project_id=$1 AND actor_id=$2 AND (title ILIKE $3 OR requirements->>'objective' ILIKE $3) ORDER BY updated_at DESC,id LIMIT 21 OFFSET $4",
+      [
+        scope.projectId,
+        scope.actorId,
+        "%" + q.data.search.replace(/[\\%_]/g, "\\$&") + "%",
+        q.data.offset,
+      ],
+    );
+    return {
+      sessions: rows.rows.slice(0, 20),
+      nextOffset: rows.rows.length > 20 ? q.data.offset + 20 : null,
+    };
+  }
+  async rename(scope: SessionScope, id: string, input: unknown) {
+    const v = z
+      .object({
+        title: z.string().trim().min(1).max(80),
+        expectedRevision: z.number().int().min(1),
+      })
+      .strict()
+      .safeParse(input);
+    if (!v.success) throw new SessionError("rename_invalid", 422);
+    return this.write(scope, id, async (client) => {
+      const result = await client.query(
+        "UPDATE assistant_runtime_session SET title=$4,revision=revision+1,updated_at=now() WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND revision=$5 RETURNING revision,title",
+        [
+          id,
+          scope.projectId,
+          scope.actorId,
+          v.data.title,
+          v.data.expectedRevision,
+        ],
+      );
+      if (!result.rowCount)
+        throw new SessionError("conversation_revision_conflict");
+      return result.rows[0];
+    });
+  }
+  async attachments(scope: SessionScope, id: string) {
+    await this.sessions.get(scope, id);
+    return (
+      await this.sessions.db.query(
+        "SELECT id,name,created_at FROM assistant_runtime_attachment WHERE session_id=$1 AND removed_at IS NULL ORDER BY created_at,id",
+        [id],
+      )
+    ).rows;
+  }
+  async attach(scope: SessionScope, id: string, name: string, bytes: Buffer) {
+    await this.sessions.get(scope, id);
+    const extracted = await extractBackground(name, bytes);
+    const stored = await this.artifacts.storeImmutable(bytes);
+    const c = await this.sessions.db.connect();
+    try {
+      await c.query("BEGIN");
+      await this.sessions.get(scope, id, c, true);
+      const n = await c.query(
+        "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1 AND removed_at IS NULL",
+        [id],
+      );
+      if ((n.rowCount ?? 0) >= BACKGROUND_LIMITS.files)
+        throw new SessionError("attachment_capacity", 413);
+      const attachmentId = "attachment_" + randomUUID();
+      await c.query(
+        "INSERT INTO assistant_runtime_attachment(id,session_id,name,object_ref,extracted) VALUES($1,$2,$3,$4,$5)",
+        [attachmentId, id, name, stored.objectRef, JSON.stringify(extracted)],
+      );
+      await c.query("COMMIT");
+      return { id: attachmentId, name };
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  async document(scope: SessionScope, id: string, attachmentId: string) {
+    await this.sessions.get(scope, id);
+    const row = (
+      await this.sessions.db.query(
+        "SELECT id,name,extracted FROM assistant_runtime_attachment WHERE id=$1 AND session_id=$2 AND removed_at IS NULL",
+        [attachmentId, id],
+      )
+    ).rows[0];
+    if (!row) throw new SessionError("attachment_not_found", 404);
+    return row;
+  }
+  async detach(scope: SessionScope, id: string, attachmentId: string) {
+    return this.write(scope, id, async (client) => {
+      await client.query(
+        "UPDATE assistant_runtime_attachment SET removed_at=now() WHERE session_id=$1 AND id=$2 AND removed_at IS NULL",
+        [id, attachmentId],
+      );
+      return { removed: true };
+    });
+  }
+  async view(scope: SessionScope, id: string) {
+    await this.sessions.get(scope, id);
+    const events = (
+      await this.sessions.db.query(
+        "SELECT id,turn_id,kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id DESC LIMIT 300",
+        [id],
+      )
+    ).rows.reverse();
+    // Public projection deliberately excludes raw tool arguments, provider requests and checkpoints.
+    const process = events
+      .filter((e) =>
+        [
+          "tool_call",
+          "tool_result",
+          "tool_error",
+          "parameter_feedback",
+          "execution_paused",
+          "execution_error",
+          "requirements_saved",
+        ].includes(e.kind),
+      )
+      .map((e) => ({
+        id: String(e.id),
+        turnId: e.turn_id,
+        kind: e.kind,
+        name: typeof e.detail?.name === "string" ? e.detail.name : undefined,
+        code: typeof e.detail?.code === "string" ? e.detail.code : undefined,
+      }));
+    const textRows = (
+      await this.sessions.db.query(
+        "SELECT detail->>'requestId' AS id,turn_id AS \"turnId\",string_agg(detail->>'text','' ORDER BY id) AS text FROM assistant_runtime_event WHERE session_id=$1 AND kind='message_delta' GROUP BY detail->>'requestId',turn_id ORDER BY min(id) DESC LIMIT 50",
+        [id],
+      )
+    ).rows;
+    return {
+      cursor: String(events.at(-1)?.id ?? 0),
+      process,
+      streams: textRows.reverse(),
+      attachments: await this.attachments(scope, id),
+    };
+  }
+}

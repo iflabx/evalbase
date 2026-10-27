@@ -1,3 +1,5 @@
+import { chromium, expect as browserExpect } from "@playwright/test";
+import { sendFormalCompletion } from "../support/formal-completion.js";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -20,8 +22,8 @@ vi.mock("../../src/assistant/agent.js", () => ({
     throw Error("legacy_dispatch_disabled");
   },
 }));
-const origin = "http://127.0.0.1:4217",
-  base = loadConfig(),
+let origin = "http://127.0.0.1:4217";
+const base = loadConfig(),
   databaseName = "formal_execution_" + randomUUID().replaceAll("-", ""),
   databaseUrl = base.databaseUrl.replace(/\/[^/]+$/, "/" + databaseName);
 const config = {
@@ -151,6 +153,14 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await root.end();
     }
     await migrate(databaseUrl);
+    const portProbe = createServer();
+    await new Promise<void>((resolve) =>
+      portProbe.listen(0, "127.0.0.1", resolve),
+    );
+    origin =
+      "http://127.0.0.1:" + (portProbe.address() as { port: number }).port;
+    config.appOrigin = origin;
+    await new Promise<void>((resolve) => portProbe.close(() => resolve()));
     app = await buildApp(config, {
       disableLegacyTestBootstrap: true,
       disableAssistantRuntimeDispatch: true,
@@ -300,37 +310,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           );
           return;
         }
-        if (message.bodyDelayMs) {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.flushHeaders();
-          await new Promise((r) => setTimeout(r, message.bodyDelayMs));
-        } else res.writeHead(200, { "content-type": "application/json" });
-        res.end(
-          JSON.stringify({
-            id: "response_" + randomUUID(),
-            object: "chat.completion",
-            created: 1,
-            model: "synthetic",
-            choices: [
-              {
-                index: 0,
-                message,
-                finish_reason: message.tool_calls?.length
-                  ? "tool_calls"
-                  : "stop",
-              },
-            ],
-            ...(omitUsage
-              ? {}
-              : {
-                  usage: {
-                    prompt_tokens: 3,
-                    completion_tokens: 3,
-                    total_tokens: 6,
-                  },
-                }),
-          }),
-        );
+        await sendFormalCompletion(res, body, message, omitUsage);
       } catch {
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: { message: "invalid_test_request" } }));
@@ -1669,5 +1649,509 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     } finally {
       await restarted.close();
     }
+  });
+  it("R04 lists, searches and renames only the current actor private sessions with revision checks", async () => {
+    const id = await fresh();
+    const state = await host.store.get(scope(), id);
+    expect(
+      (
+        await api("PATCH", route(id), {
+          title: "独立会话四",
+          expectedRevision: state.revision,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await api("PATCH", route(id), {
+          title: "过期改名",
+          expectedRevision: state.revision,
+        })
+      ).json().error.code,
+    ).toBe("conversation_revision_conflict");
+    expect(
+      (
+        await api(
+          "GET",
+          route() + "?search=" + encodeURIComponent("独立会话四"),
+        )
+      )
+        .json()
+        .sessions.map((r: any) => r.id),
+    ).toContain(id);
+    expect(
+      (
+        await api(
+          "GET",
+          route() + "?search=" + encodeURIComponent("独立会话四"),
+          undefined,
+          "editor",
+        )
+      ).json().sessions,
+    ).toEqual([]);
+    expect(
+      (
+        await api(
+          "PATCH",
+          route(id),
+          { title: "越权", expectedRevision: 2 },
+          "editor",
+        )
+      ).statusCode,
+    ).toBe(404);
+  });
+  it("R04 validates private attachments and keeps upload bytes out of public events", async () => {
+    const id = await fresh();
+    const upload = await api("POST", route(id) + "/attachments", {
+      fileName: "需求.md",
+      contentBase64: Buffer.from(
+        "只清洗问题，标签与Metadata保持不变。",
+      ).toString("base64"),
+    });
+    expect(upload.statusCode, upload.body).toBe(200);
+    const a = upload.json();
+    expect(
+      (await api("GET", route(id) + "/attachments/" + a.id)).json().extracted
+        .fragments[0].text,
+    ).toContain("Metadata");
+    expect(
+      (
+        await api(
+          "GET",
+          route(id) + "/attachments/" + a.id,
+          undefined,
+          "editor",
+        )
+      ).statusCode,
+    ).toBe(404);
+    const state = await host.present(scope(), id);
+    expect(state.workspace.attachments.map((r: any) => r.id)).toEqual([a.id]);
+    expect(JSON.stringify(state.workspace)).not.toContain("object_ref");
+    const unknown = await submit(id, "查看文档", { attachments: ["unknown"] });
+    expect(unknown.json().error.code).toBe("attachment_not_found");
+    expect(
+      (await api("DELETE", route(id) + "/attachments/" + a.id)).statusCode,
+    ).toBe(200);
+    expect(
+      (await api("GET", route(id) + "/attachments/" + a.id)).statusCode,
+    ).toBe(404);
+  });
+  it("R04 streams actual SDK text and reconciles the persisted final message", async () => {
+    const id = await fresh();
+    const state = await run(id, "看一下项目", [
+      {
+        role: "assistant",
+        content: "已经读取真实资料，解释不会当作保存回执。",
+      },
+    ]);
+    expect(state.messages.at(-1)?.content).toContain("真实资料");
+    expect(state.workspace.streams.map((s: any) => s.text).join("")).toBe(
+      state.messages.at(-1)?.content,
+    );
+    expect(state.receipts).toEqual([]);
+    expect(JSON.stringify(state.workspace)).not.toContain("requestHash");
+  });
+  it("R04 runs the real clean → durable wait → fixed confirmation → unique saved draft SDK chain", async () => {
+    const id = await fresh();
+    const fixed = await host.store.freezeSource(scope(), {
+      kind: "assets",
+      assetIds: [assetId],
+    });
+    const before = await effects();
+    const state = await run(id, "清洗前三条，只改问题，保存成三条整理版。", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          objective: "清洗前三条",
+          deliveries: [
+            {
+              patch: {
+                operation: "clean",
+                source: fixed.source,
+                count: 3,
+                allowedFields: ["question"],
+                instructions: "",
+                saveTarget: { kind: "newDraft", name: "R04三条整理版" },
+              },
+            },
+          ],
+        },
+      }),
+      call("submit_processing", {}),
+      call("wait_processing", {}),
+    ]);
+    expect(state.execution.status).toBe("waiting");
+    expect(state.results).toHaveLength(1);
+    const runId = state.results[0]!.run_id;
+    await completeRun(runId);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {}), call("wait_confirmation", {})];
+    const turn = (await host.execution.projection(scope(), id)).execution
+      .turn_id;
+    const pending = await host.runPending(scope(), id, turn);
+    expect(pending.execution.status).toBe("confirmation");
+    const card = pending.confirmations.find(
+      (c: any) => c.status === "pending" && c.action === "adopt",
+    );
+    expect(card).toBeTruthy();
+    const approved = await api(
+      "POST",
+      route(id) + "/confirmations/" + card.id,
+      { accept: true },
+    );
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json().receipt.adopted).toBe(3);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).json().replayed,
+    ).toBe(true);
+    const after = await effects();
+    expect(after.drafts - before.drafts).toBe(1);
+    expect(after.runs - before.runs).toBe(1);
+    const refreshed = (await api("GET", route(id))).json();
+    expect(refreshed.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(
+      1,
+    );
+    expect(refreshed.receipts[0].draftId).toBe(approved.json().receipt.draftId);
+  });
+  it("R04 ordinary progress queries preserve the suspended turn and ordinary continue queues the same work", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    const before = await host.present(scope(), id);
+    expect(before.execution.turn_id).toBe(p.proof.turnId);
+    const query = await run(id, "现在进度怎么样？", [
+      call("read_task_progress", {}),
+      { role: "assistant", content: "原任务仍暂停，尚未保存。" },
+    ]);
+    expect(query.execution.status).toBe("paused");
+    expect(query.execution.turn_id).toBe(p.proof.turnId);
+    expect(query.results.map((r: any) => r.run_id)).toEqual([p.runId]);
+    const resumed = await run(id, "继续吧", [
+      call("continue_task", {}),
+      { role: "assistant", content: "已安排原任务继续。" },
+    ]);
+    expect(resumed.execution.status).toBe("pending");
+    expect(resumed.execution.turn_id).toBe(p.proof.turnId);
+    expect(resumed.execution.requests - before.execution.requests).toBe(4);
+    expect(resumed.results).toHaveLength(1);
+    await host.stop(scope(), id);
+  });
+  it("R04 rejects stale UI source revisions before accepting a message", async () => {
+    const id = await fresh();
+    const state = await host.store.get(scope(), id);
+    const response = await api("POST", route(id) + "/messages", {
+      submissionId: "stale_" + randomUUID(),
+      expectedRevision: state.revision,
+      text: "只处理界面勾选的记录",
+      context: { kind: "assets", assetIds: [assetId] },
+      contextRevision: "0".repeat(64),
+    });
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json().error.code).toBe("source_revision_conflict");
+    expect((await host.present(scope(), id)).messages).toEqual([]);
+  });
+  it("R04 never projects internal summary requests as public assistant text", async () => {
+    const exposed = await db.query(
+      "SELECT 1 FROM assistant_runtime_event e JOIN assistant_runtime_request r ON r.id=e.detail->>'requestId' WHERE e.kind='message_delta' AND r.purpose='summary'",
+    );
+    expect(exposed.rowCount).toBe(0);
+  });
+
+  it("R04 browser faults: lost acceptance, refresh/reconnect, stale tab, late confirmation and narrow panels", async () => {
+    const requestsBefore = requests.length;
+    const address = await webAddress();
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      extraHTTPHeaders: { origin },
+    });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    const a = await fresh(),
+      b = await fresh();
+    await api("PATCH", route(a), { title: "受理丢失 A", expectedRevision: 1 });
+    await api("PATCH", route(b), { title: "竞态会话 B", expectedRevision: 1 });
+    const page = await context.newPage();
+    page.on("console", (msg) => {
+      if (msg.type() === "error")
+        console.log("r04_browser_console", msg.text());
+    });
+    page.on("requestfailed", (req) =>
+      console.log(
+        "r04_browser_network",
+        new URL(req.url()).pathname,
+        req.failure()?.errorText,
+      ),
+    );
+    let release!: () => void, seen!: () => void;
+    const hold = new Promise<void>((r) => (release = r)),
+      accepted = new Promise<void>((r) => (seen = r));
+    let envelope: any;
+    try {
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + a);
+      await page.getByLabel("描述你的需求", { exact: true }).waitFor();
+      await page.route(
+        "**/assistant-runtime/sessions/" + a + "/messages",
+        async (route) => {
+          envelope = route.request().postDataJSON();
+          const acceptedResponse = await route.fetch();
+          expect(acceptedResponse.status()).toBe(202);
+          seen();
+          await hold;
+          await route.abort("failed");
+        },
+      );
+      await page.getByLabel("描述你的需求", { exact: true }).fill("查一下项目");
+      await page.getByRole("button", { name: "发送", exact: true }).click();
+      await accepted;
+      await page
+        .getByLabel("描述你的需求", { exact: true })
+        .fill("下一条尚未发送的输入");
+      await page.screenshot({
+        path: ".scratch/assistant-rebuild/r04-verification/browser-before-stop.png",
+      });
+      console.log(
+        "r04_browser_before_stop",
+        await page.locator("body").innerText(),
+      );
+      await page.getByRole("button", { name: "停止", exact: true }).click();
+      release();
+      await expect
+        .poll(
+          async () =>
+            ((await host.present(scope(), a)).execution as any).status,
+        )
+        .toBe("paused");
+      await page.reload();
+      await browserExpect(
+        page.getByLabel("描述你的需求", { exact: true }),
+      ).toHaveValue("下一条尚未发送的输入");
+      expect(
+        (await api("POST", route(a) + "/messages", envelope)).json().replayed,
+      ).toBe(true);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_turn WHERE session_id=$1",
+            [a],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      await page.route("**/assistant-runtime/sessions/" + b + "/events", (r) =>
+        r.abort(),
+      );
+      await page
+        .getByRole("button", { name: "竞态会话 B", exact: true })
+        .click();
+      await browserExpect(
+        page.getByRole("heading", { name: "竞态会话 B", exact: true }),
+      ).toBeVisible();
+      await api("PATCH", route(b), {
+        title: "竞态会话 B 已改名",
+        expectedRevision: 2,
+      });
+      await page
+        .getByLabel("描述你的需求", { exact: true })
+        .fill("保留冲突输入");
+      await page.getByRole("button", { name: "发送", exact: true }).click();
+      await browserExpect(page.getByRole("alert")).toContainText("其他页面");
+      await browserExpect(
+        page.getByLabel("描述你的需求", { exact: true }),
+      ).toHaveValue("保留冲突输入");
+      await page.unroute("**/assistant-runtime/sessions/" + b + "/events");
+      await page.reload();
+      await browserExpect(
+        page.getByLabel("描述你的需求", { exact: true }),
+      ).toHaveValue("保留冲突输入");
+      const saved = await adoptionCard();
+      await api("PATCH", route(saved.id), {
+        title: "延迟确认 A",
+        expectedRevision: (await host.store.get(scope(), saved.id)).revision,
+      });
+      await page.reload();
+      await page
+        .getByRole("button", { name: "延迟确认 A", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "确认保存", exact: true })
+        .waitFor();
+      let commitSeen!: () => void, releaseCommit!: () => void;
+      const committed = new Promise<void>((r) => (commitSeen = r)),
+        commitGate = new Promise<void>((r) => (releaseCommit = r));
+      await page.route("**/confirmations/" + saved.card.id, async (route) => {
+        const response = await route.fetch();
+        commitSeen();
+        await commitGate;
+        await route.fulfill({ response });
+      });
+      await page.getByRole("button", { name: "确认保存", exact: true }).click();
+      await committed;
+      await page
+        .getByRole("button", { name: "竞态会话 B 已改名", exact: true })
+        .click();
+      await browserExpect(
+        page.getByRole("heading", { name: "竞态会话 B 已改名", exact: true }),
+      ).toBeVisible();
+      releaseCommit();
+      await browserExpect(
+        page.getByLabel("描述你的需求", { exact: true }),
+      ).toHaveValue("保留冲突输入");
+      await browserExpect(
+        page.getByRole("heading", { name: "竞态会话 B 已改名", exact: true }),
+      ).toBeVisible();
+      const receipt = await host.execution.receipt(
+        scope(),
+        saved.id,
+        saved.op.id,
+      );
+      await page.goto(
+        address +
+          "/projects/" +
+          projectId +
+          "/test-sets/drafts/" +
+          receipt.draftId,
+      );
+      await browserExpect(page.locator("#draft-name")).toBeEnabled();
+      await page.locator("#draft-name").fill("交接前已确认保存");
+      await page
+        .getByRole("button", { name: "打开项目助手", exact: true })
+        .click();
+      await browserExpect(
+        page.getByRole("heading", { name: "项目助手", exact: true }),
+      ).toBeVisible();
+      expect(
+        (
+          await db.query("SELECT name FROM collaborative_draft WHERE id=$1", [
+            receipt.draftId,
+          ])
+        ).rows[0].name,
+      ).toBe("交接前已确认保存");
+      await page.setViewportSize({ width: 420, height: 850 });
+      await page
+        .getByRole("button", { name: "切换工作区", exact: true })
+        .click();
+      await browserExpect(page.getByRole("dialog")).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await page
+        .getByRole("button", { name: "切换会话列表", exact: true })
+        .click();
+      await browserExpect(page.getByRole("dialog")).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      expect(requests.length - requestsBefore).toBe(0);
+    } finally {
+      release?.();
+      await context.close();
+      await browser.close();
+    }
+  }, 90000);
+
+  async function webAddress() {
+    const address = app.server.address();
+    return address && typeof address === "object"
+      ? "http://127.0.0.1:" + address.port
+      : await app.listen({
+          host: "127.0.0.1",
+          port: Number(new URL(origin).port),
+        });
+  }
+  it("R04 SSE remains open for new snapshots and closes when its login session is revoked", async () => {
+    const address = await webAddress(),
+      id = await fresh();
+    const login = await api("POST", "/api/session", {
+      email: "admin@r03.example.test",
+      password: "Rebuild02Pass123",
+    });
+    const cookie = String(login.headers["set-cookie"]).split(";")[0]!;
+    const ctl = new AbortController();
+    const response = await fetch(address + route(id) + "/events", {
+      headers: { cookie },
+      signal: ctl.signal,
+    });
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader(),
+      decoder = new TextDecoder();
+    let text = "";
+    const untilText = async (predicate: (value: string) => boolean) => {
+      const timeout = setTimeout(() => ctl.abort(), 7000);
+      try {
+        while (!predicate(text)) {
+          const chunk = await reader.read();
+          if (chunk.done) throw Error("stream_ended_before_update");
+          text += decoder.decode(chunk.value, { stream: true });
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+    try {
+      await untilText((v) => v.includes("event: snapshot"));
+      await api("PATCH", route(id), {
+        title: "SSE持续更新",
+        expectedRevision: 1,
+      });
+      await untilText((v) => v.includes("SSE持续更新"));
+      const loggedOut = await app.inject({
+        method: "DELETE",
+        url: "/api/session",
+        headers: { origin, cookie, "x-csrf-token": login.json().csrfToken },
+      });
+      expect(loggedOut.statusCode).toBe(204);
+      await untilText((v) => v.includes("event: access_lost"));
+    } finally {
+      ctl.abort();
+      await reader.cancel().catch(() => undefined);
+    }
+  });
+
+  it("R04 read-only progress in flight never admits a queued or retrying suspended Worker request", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    let entered!: () => void, release!: () => void;
+    const arrived = new Promise<void>((r) => (entered = r)),
+      gate = new Promise<void>((r) => (release = r));
+    const query = run(id, "现在进度怎么样？", [
+      call("read_task_progress", {}),
+      async () => {
+        entered();
+        await gate;
+        return { role: "assistant", content: "原任务仍保持暂停。" };
+      },
+    ]);
+    try {
+      await arrived;
+      const task = (
+        await db.query(
+          "SELECT * FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0];
+      expect(task.status).toBe("running");
+      expect(task.suspended.turnId).toBe(p.proof.turnId);
+      const count = requests.length;
+      await expect(
+        host.execution.reserveWorker(
+          p.runId,
+          "worker_suspended_" + randomUUID(),
+          "hash",
+        ),
+      ).rejects.toMatchObject({ code: "runtime_interrupted" });
+      expect((await jobState(id)).worker_requests).toBe(task.worker_requests);
+      expect(requests.length).toBe(count);
+    } finally {
+      release();
+    }
+    const result = await query;
+    expect(result.execution.status).toBe("paused");
+    expect(result.execution.turn_id).toBe(p.proof.turnId);
+    await host.execution.resume(scope(), id);
+    await host.stop(scope(), id);
   });
 });

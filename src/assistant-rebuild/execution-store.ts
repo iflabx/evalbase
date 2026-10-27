@@ -1,3 +1,4 @@
+import { restoreSuspended } from "./suspension.js";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../db/pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -83,7 +84,7 @@ export class ExecutionStore {
   }
   async claim(scope: SessionScope, sessionId: string, turnId: string) {
     await this.sessions.get(scope, sessionId);
-    return this.transaction(scope, sessionId, async (c) => {
+    return this.transaction(scope, sessionId, async (c, s) => {
       await this.ensure(c, scope, sessionId);
       const task = (
         await c.query(
@@ -107,6 +108,28 @@ export class ExecutionStore {
         )
       )
         throw new SessionError("turn_not_pending");
+      if (
+        task.status === "paused" &&
+        task.turn_id !== turnId &&
+        !task.suspended
+      ) {
+        await c.query(
+          "UPDATE assistant_runtime_execution SET suspended=$2 WHERE session_id=$1",
+          [
+            sessionId,
+            JSON.stringify({
+              turnId: task.turn_id,
+              requirementsRevision: s.requirements_revision,
+              reason: task.reason,
+              feedback: task.feedback,
+              noProgress: task.no_progress,
+              seen: task.seen,
+              progressRevision: task.progress_revision,
+              progressVersion: task.progress_version,
+            }),
+          ],
+        );
+      }
       // In-flight requests from a dead owner are consumed and remain unknown; never refund them.
       const unknown = (
         await c.query(
@@ -411,6 +434,18 @@ export class ExecutionStore {
           [sessionId],
         )
       ).rows[0];
+      if (task?.suspended) {
+        await restoreSuspended(c, sessionId, s.requirements_revision);
+        Object.assign(
+          task,
+          (
+            await c.query(
+              "SELECT * FROM assistant_runtime_execution WHERE session_id=$1",
+              [sessionId],
+            )
+          ).rows[0],
+        );
+      }
       if (!task || !["paused", "failed"].includes(task.status))
         throw new SessionError("task_not_paused");
       if (
@@ -445,6 +480,28 @@ export class ExecutionStore {
         [sessionId],
       );
       return task.turn_id;
+    });
+  }
+  async requestResume(proof: TurnProof) {
+    const blocked = await this.blocked(proof.sessionId);
+    if (blocked) throw new SessionError(blocked);
+    return this.transaction(proof, proof.sessionId, async (c, s) => {
+      const task = await this.guard(proof, c, true);
+      if (
+        !task.suspended ||
+        task.suspended.requirementsRevision !== s.requirements_revision
+      )
+        throw new SessionError("task_not_paused");
+      if (task.suspended.noProgress >= 3) throw new SessionError("no_progress");
+      await c.query(
+        "UPDATE assistant_runtime_execution SET resume_suspended=true WHERE session_id=$1",
+        [proof.sessionId],
+      );
+      return {
+        queued: true,
+        turnId: task.suspended.turnId,
+        requirementsRevision: s.requirements_revision,
+      };
     });
   }
   async observe(proof: TurnProof, kind: string, detail: any) {
@@ -578,6 +635,41 @@ export class ExecutionStore {
         created.run_id = runId;
       }
       return created;
+    });
+  }
+  async admitRows(proof: TurnProof, operationId: string, rows: number) {
+    return this.transaction(proof, proof.sessionId, async (c) => {
+      const task = await this.guard(proof, c, true);
+      const op = (
+        await c.query(
+          "SELECT rows_admitted FROM assistant_runtime_operation WHERE id=$1 AND session_id=$2 FOR UPDATE",
+          [operationId, proof.sessionId],
+        )
+      ).rows[0];
+      if (!op) throw new SessionError("operation_not_found", 404);
+      if (op.rows_admitted) return;
+      if (task.activity_id) {
+        const cap = (
+          await c.query(
+            "SELECT * FROM assistant_runtime_activity WHERE id=$1 FOR UPDATE",
+            [task.activity_id],
+          )
+        ).rows[0];
+        if (
+          !cap ||
+          cap.closed_at ||
+          (cap.row_limit !== null && cap.rows_used + rows > cap.row_limit)
+        )
+          throw new SessionError("activity_budget_exhausted");
+        await c.query(
+          "UPDATE assistant_runtime_activity SET rows_used=rows_used+$2 WHERE id=$1",
+          [task.activity_id, rows],
+        );
+      }
+      await c.query(
+        "UPDATE assistant_runtime_operation SET rows_admitted=true WHERE id=$1",
+        [operationId],
+      );
     });
   }
   async receipt(
@@ -1142,9 +1234,19 @@ export class ExecutionStore {
         ).rows[0];
         if (
           !["running", "waiting"].includes(task.status) ||
+          task.suspended ||
+          task.turn_id !== op.turn_id ||
           s.requirements_revision !== op.requirements_revision
         )
           throw new SessionError("runtime_interrupted");
+        const inputCount = Number(
+          (
+            await c.query(
+              "SELECT input_count FROM processing_run WHERE id=$1",
+              [runId],
+            )
+          ).rows[0]?.input_count ?? 0,
+        );
         let admittedMs = this.policy.requestMs;
         if (task.activity_id) {
           const cap = (
@@ -1157,6 +1259,8 @@ export class ExecutionStore {
             !cap ||
             cap.closed_at ||
             cap.requests >= cap.request_limit ||
+            (cap.row_limit !== null &&
+              cap.rows_used + inputCount > cap.row_limit) ||
             (cap.started_at &&
               this.now() - new Date(cap.started_at).getTime() >=
                 Number(cap.max_ms))
@@ -1170,8 +1274,8 @@ export class ExecutionStore {
                 : 0),
           );
           await c.query(
-            "UPDATE assistant_runtime_activity SET requests=requests+1,started_at=coalesce(started_at,$2) WHERE id=$1",
-            [cap.id, new Date(this.now())],
+            "UPDATE assistant_runtime_activity SET requests=requests+1,rows_used=rows_used+$3,started_at=coalesce(started_at,$2) WHERE id=$1",
+            [cap.id, new Date(this.now()), inputCount],
           );
         }
         await c.query(

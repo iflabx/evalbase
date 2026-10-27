@@ -23,6 +23,7 @@ export type FailedCall = {
 export function sessionFeedback(options: {
   schemas: Map<string, z.ZodType>;
   initialPending?: FailedCall;
+  rawArguments?: (id: string) => string | undefined;
   savePending?: (pending: FailedCall | undefined) => Promise<void>;
   facts: () => Promise<unknown>;
   guard: () => Promise<void>;
@@ -188,7 +189,22 @@ export function sessionFeedback(options: {
           ).length > 1
         )
           throw new SessionError("multiple_requirement_updates", 422);
-        const invalid = last.invalid_tool_calls ?? [];
+        const invalid = [...(last.invalid_tool_calls ?? [])];
+        for (const call of last.tool_calls ?? []) {
+          const raw = call.id ? options.rawArguments?.(call.id) : undefined;
+          if (raw !== undefined) {
+            try {
+              JSON.parse(raw);
+            } catch {
+              invalid.push({
+                id: call.id ?? "",
+                name: call.name,
+                args: raw,
+                type: "invalid_tool_call",
+              });
+            }
+          }
+        }
         if (!invalid.length) return;
         const call = invalid[0]!;
         if (!last.id || !call.name || !options.schemas.has(call.name))

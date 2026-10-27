@@ -1,6 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { FormalAssistant } from "@/components/formal-assistant";
 import { readInputContext } from "@/services/assistant-input-context";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
-import { ProjectAssistant, type AssistantPageContext } from "@/components/project-assistant";
+import { type AssistantPageContext } from "@/components/project-assistant";
 import { useProjectAccess } from "@/hooks/use-project-access";
 
 export const Route = createFileRoute("/projects/$projectId/assistant")({
@@ -33,15 +35,18 @@ function AssistantPage() {
   const { projectId } = Route.useParams(),
     search = Route.useSearch(),
     access = useProjectAccess(projectId);
+  const actor = useQueryClient().getQueryData<{ actor: { role: string } }>(["session"])?.actor;
   const sessionId = useRouterState({
     select: (state) => state.location.pathname.match(/\/assistant\/([^/]+)\/?$/)?.[1],
   });
   return (
-    <ProjectAssistant
+    <FormalAssistant
       key={`${projectId}:${access.actorId}:${access.canWrite}`}
       projectId={projectId}
       actorId={access.actorId}
       canWrite={access.canWrite}
+      canExport={access.data?.capabilities.export === true}
+      canConfigureModels={actor?.role === "admin"}
       sessionId={sessionId}
       selectionToken={search["selection"]}
       selectionMissing={Boolean(

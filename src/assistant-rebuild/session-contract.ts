@@ -125,6 +125,10 @@ export const messageSubmissionSchema = z
       .max(20000)
       .refine((v) => v.trim().length > 0),
     context: sourceSchema.optional(),
+    contextRevision: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     attachments: z.array(id).max(5).optional(),
   })
   .strict();

@@ -1,3 +1,4 @@
+import { restoreSuspended } from "./suspension.js";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../db/pool.js";
 import { BusinessError } from "../operations/errors.js";
@@ -98,6 +99,7 @@ export class SessionStore {
       requirements_revision: number;
       requirements: SessionRequirements;
       status: string;
+      title: string;
       project_id: string;
       actor_id: string;
     };
@@ -149,6 +151,7 @@ export class SessionStore {
         id: session.id,
         runtime_version: session.runtime_version,
         revision: session.revision,
+        title: session.title,
         requirements_revision: session.requirements_revision,
         requirements: session.requirements,
         status: session.status,
@@ -179,8 +182,7 @@ export class SessionStore {
     const parsed = messageSubmissionSchema.safeParse(input);
     if (!parsed.success) throw new SessionError("message_invalid", 422);
     const payload = parsed.data;
-    if (payload.attachments?.length)
-      throw new SessionError("attachments_not_available", 422);
+
     const hash = sha256(canonicalJson({ ...scope, sessionId: id, payload }));
     const client = await this.db.connect();
     try {
@@ -204,11 +206,44 @@ export class SessionStore {
           replayed: true,
         };
       }
+      if (payload.attachments?.length) {
+        const valid = await client.query(
+          "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1 AND id=ANY($2::text[]) AND removed_at IS NULL FOR SHARE",
+          [id, payload.attachments],
+        );
+        if (valid.rowCount !== new Set(payload.attachments).size)
+          throw new SessionError("attachment_not_found", 404);
+      }
       if (!["idle", "paused"].includes(session.status))
         throw new SessionError("conversation_busy");
       if (session.revision !== payload.expectedRevision)
         throw new SessionError("conversation_revision_conflict");
       if (payload.context) {
+        if (payload.contextRevision) {
+          if (payload.context.kind === "assets")
+            await client.query(
+              "SELECT id FROM parsed_view WHERE asset_id=ANY($1::text[]) AND is_current FOR SHARE",
+              [payload.context.assetIds],
+            );
+          await processingSourceAvailable(
+            client,
+            scope.projectId,
+            { ...payload.context, recordIds: payload.context.recordIds ?? [] },
+            true,
+          );
+          const rootSource =
+            payload.context.kind === "assets"
+              ? { kind: "assets" as const, assetIds: payload.context.assetIds }
+              : { kind: payload.context.kind, id: payload.context.id };
+          const preview = await previewProcessingInput(
+            this.db,
+            scope,
+            { source: rootSource, limit: 1 },
+            "read",
+          );
+          if (preview.sourceRevision !== payload.contextRevision)
+            throw new SessionError("source_revision_conflict");
+        }
         if (payload.context.recordIds)
           await this.freezeSource(scope, payload.context);
         await processingSourceAvailable(
@@ -297,7 +332,11 @@ export class SessionStore {
       )
     ).rows[0];
     if (!row) throw new SessionError("runtime_interrupted");
-    return row.payload as { text: string; context?: Source };
+    return row.payload as {
+      text: string;
+      context?: Source;
+      attachments?: string[];
+    };
   }
   async event(
     proof: TurnProof,
@@ -376,6 +415,17 @@ export class SessionStore {
       await client.query(
         "UPDATE assistant_runtime_session SET status='idle',updated_at=now() WHERE id=$1",
         [proof.sessionId],
+      );
+      const requirements = (
+        await client.query(
+          "SELECT requirements_revision FROM assistant_runtime_session WHERE id=$1",
+          [proof.sessionId],
+        )
+      ).rows[0];
+      await restoreSuspended(
+        client,
+        proof.sessionId,
+        requirements.requirements_revision,
       );
       await client.query("COMMIT");
     } catch (e) {
@@ -531,7 +581,7 @@ export class SessionStore {
           [proof.sessionId, revision],
         );
         await client.query(
-          "UPDATE assistant_runtime_execution SET no_progress=0,seen='[]',progress_revision=$2,progress_version=progress_version+1 WHERE session_id=$1",
+          "UPDATE assistant_runtime_execution SET no_progress=0,seen='[]',progress_revision=$2,progress_version=progress_version+1,suspended=NULL,resume_suspended=false WHERE session_id=$1",
           [proof.sessionId, revision],
         );
       }
