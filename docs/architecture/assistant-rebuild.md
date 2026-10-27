@@ -48,7 +48,7 @@
 
 本表依据基线代码的实际调用，不是要求重写整个业务系统。类型引用也应移到正确归属，但不能将类型导入误报为运行时故障。
 
-REBUILD-01 已在 `6f97cd9` 将草稿、选取、处理/采用和发布的共享提交保护迁入 `src/operations/commit.ts`，纯处理约束/背景合同迁入 `src/processing/`；旧 `assistant/fence` 仅保留兼容适配，新运行时使用独立可信上下文。下表继续保留原耦合清单作为后续领域接线的依据，不表示全部退出项已完成。实际迁出调用者、保留的历史引用、回归及基线失败见[REBUILD-01 验证记录](../../.scratch/assistant-rebuild/r01-verification.md)；REBUILD-02 已在 `21038e7` 增量交付正式会话/原子消息受理、唯一当前要求与交付、受限 Deep Agents 工具宿主和检查点；HTTP 只受理持久待执行引用，受控执行器验证真实 SDK。当前开放项目/资料读取及要求记录，持久派发、确认/暂停恢复和领域写工具仍由后续票接通，详见[REBUILD-02 验证记录](../../.scratch/assistant-rebuild/r02-verification.md)。
+REBUILD-01 已在 `6f97cd9` 将草稿、选取、处理/采用和发布的共享提交保护迁入 `src/operations/commit.ts`，纯处理约束/背景合同迁入 `src/processing/`；旧 `assistant/fence` 仅保留兼容适配，新运行时使用独立可信上下文。下表继续保留原耦合清单作为后续领域接线的依据，不表示全部退出项已完成。实际迁出调用者、保留的历史引用、回归及基线失败见[REBUILD-01 验证记录](../../.scratch/assistant-rebuild/r01-verification.md)；REBUILD-02 已在 `21038e7` 增量交付正式会话/原子消息受理、唯一当前要求与交付、受限 Deep Agents 工具宿主和检查点；HTTP 只受理持久待执行引用，受控执行器验证真实 SDK。R02提交时只开放读取/要求记录，证据见[REBUILD-02 验证记录](../../.scratch/assistant-rebuild/r02-verification.md)。REBUILD-03 已在 `bb10a16` 接通正式持久派发、租约/停止令牌、检查点中断恢复、固定用户确认、真实采用回执对账、独立任务/活动账本及有效进展观察；使用回合检查点引用与当前权威事实续接，不运行旧计划。正式页面与完整领域工具仍由后续票接线，范围和定向证据见[REBUILD-03 验证记录](../../.scratch/assistant-rebuild/r03-verification.md)。
 
 | 当前耦合与证据 | 目标 Interface 及归属 | 保留的不变量与退出条件 |
 | --- | --- | --- |

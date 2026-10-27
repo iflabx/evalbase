@@ -25,7 +25,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | --- | --- | --- | --- | --- | --- |
 | [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | `21038e7` / [验证记录](r02-verification.md) |
-| [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | not-started | not-run | — |
+| [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | `bb10a16` / [验证记录](r03-verification.md) |
 | [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | not-started | not-run | — |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | not-started | not-run | — |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
@@ -141,3 +141,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-27：Owner单票授权完成REBUILD-01，代码 `6f97cd9`。定向验证与双轴审阅见[唯一记录](r01-verification.md)；扩大回归14项基线已有失败保留。02～10仍未开始；后续真实活动的依赖与预算不变，未运行CU或更新4217。
 
 - 2026-10-27：完成Owner另行授权的REBUILD-01后续修复，代码 e1a9f49。原8项处理/模拟服务失败在126项定向组中通过；旧助手6项分别补入R02-9、R05-7/8、R07-7/8，仍待对应新路径验收。见[后续修复记录](r01-followup-verification.md)。02～10状态、依赖、真实活动上限不变，旧数据/预算保留，未更新4217。
+
+- 2026-10-27：Owner授权完成REBUILD-03，代码 `bb10a16`。持久执行、用户确认、预算与无进展机制的定向证据及双轴审阅见[唯一记录](r03-verification.md)；04～10仍未开始，C02/C07普通提示接线与原真实活动上限不变。旧数据/预算保留，未更新4217。
