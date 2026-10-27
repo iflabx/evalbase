@@ -1,13 +1,15 @@
 # 从当前业务基线独立重建助手运行时
 
-- Status: Accepted for rebuild design；尚未实施或切换。
-- Date: 2026-10-26
+- Status: Accepted：正式采用 Deep Agents TypeScript + LangGraph 作为独立重建技术栈；最小适配已验证，正式接入及切换未完成。
+- Date: 2026-10-26；采用决策更新：2026-10-27
 - Scope: codex/assistant-rebuild；部分替代 [ADR 0014](0014-project-agent-and-processing-runtime.md) 对新助手执行路径的选择，不改变既有业务、数据保留及旧版本运行事实。
 
 当前业务层已包含上传、协作草稿、处理轮次、采用、发布与来源等能力；退回 v0.3.1 会重新引入功能回迁和数据迁移。决定在当前 main 的独立分支重建助手运行时和工具适配，业务能力继续复用；不把旧 executeAssistantTurn、计划编译、参数修复和续步控制封装进新 Harness。
 
 新运行时负责通用对话与工具执行，领域服务负责权限、范围、修订、确认、幂等和真实提交。旧会话与账本保留兼容读取，切换时关闭旧派发及确认消费，确保同一任务只有一个执行所有者。新检查点不能替代业务回执，旧检查点不自动转换和重放。
 
-选择第一候选 Deep Agents JavaScript + LangGraph 进行后续兼容验证；本 ADR 不锁依赖版本、不声明已完成框架验收。拒绝长期双引擎自动回退和重新自研通用编排平台。业务 Worker 的模型调用库无需随对话运行时一并替换。
+2026-10-27 经适配收口审查，正式选择 **Deep Agents TypeScript + LangGraph**；LangChain 提供模型与工具适配，LangGraph 使用 PostgreSQL 持久检查点。当前模型和真实业务闭环已有证据，采用现成工具循环/中断并保留应用业务保护，比重新开发通用编排或回退业务版本更符合本项目边界。精确已测依赖、复用范围和取舍证据统一见[采用审查](../research/assistant-rebuild-adoption-review-20261027.md)，不以在线文档最新示例替换锁定版本。拒绝长期双引擎自动回退和重新自研通用编排平台。业务 Worker 的模型调用库无需随对话运行时一并替换。
 
-产品范围见 [PRD §7.14](../PRD-data-selection-and-assistant.md#assistant-rebuild-product)，解耦、兼容、切换和回退细节只在[重建架构](../architecture/assistant-rebuild.md)维护。现有用户授权只覆盖本次边界文档；开发、验证预算和部署按后续明确范围执行。
+此为研发选型决定，不是全功能发布通过：原方案同版本整轮门槛不改签为通过，L02 环境介入、首次失败和后续定向复测分别保留。解释工具误报状态、事件分类、页面快照隔离及完整长会话/能力/历史切换证据仍按采用审查的接入条件处理；框架不保证模型永不犯错。
+
+产品范围见 [PRD §7.14](../PRD-data-selection-and-assistant.md#assistant-rebuild-product)，解耦、兼容、切换和回退细节只在[重建架构](../architecture/assistant-rebuild.md)维护。本次授权覆盖收口审查和采用结论文档，不新增 tickets、业务开发、模型预算或部署。旧数据和已关闭预算原值保留；正式接入按后续明确范围执行。

@@ -1,6 +1,6 @@
 # 筛选选取与模型助手实施架构
 
-> 2026-10-26：本文件保留旧路径的实现及演进记录。独立重建的新路径以[重建架构](assistant-rebuild.md)和[ADR 0015](../adr/0015-assistant-rebuild-boundaries.md)为准；本文件关于固定 AI SDK 对话运行时、旧计划编译、旧续步与旧 task 展示的约定不再约束新路径。业务权限、处理、修订、确认、来源及数据保护继续沿用。新方案尚未实施或切换。
+> 2026-10-26：本文件保留旧路径的实现及演进记录。独立重建的新路径以[重建架构](assistant-rebuild.md)和[ADR 0015](../adr/0015-assistant-rebuild-boundaries.md)为准；本文件关于固定 AI SDK 对话运行时、旧计划编译、旧续步与旧 task 展示的约定不再约束新路径。业务权限、处理、修订、确认、来源及数据保护继续沿用。2026-10-27 已确定正式采用 Deep Agents TypeScript + LangGraph，最小适配仅在独立 4226 验证；完整接入与切换未完成，证据及保留条件见[收口审查](../research/assistant-rebuild-adoption-review-20261027.md)。
 
 2026-10-08 修订。范围以 [PRD](../PRD-data-selection-and-assistant.md) 为准；框架选择依据保留在 [调研](../research/project-agent-framework-and-architecture-2026-10-04.md)。§9 的要求管理和执行恢复已由 OPT-06/07 实施；完整候选审核体验与综合交付仍由 OPT-08 承接。其他章节描述复用基础及既有约束。整改顺序与状态见 [Spec](../../.scratch/assistant-optimization/spec.md)。
 

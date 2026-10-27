@@ -371,9 +371,9 @@ OPT-20 已按 R20-1–5 完成定向接口、诊断单测和浏览器验证，�
 4217固定be2b8b1的两项限额CU未通过：CU7因临时验收门禁误拦规划而失效，CU10真实查询纠错后仍未形成具体澄清/清洗。首错、一次普通继续、18次实际外发及关闭账本均保留。不能以预算安全或控制夹具通过代签真实业务终点，也不能据90字段静态索引宣称任意参数组合均通过。
 
 <a id="assistant-rebuild-acceptance"></a>
-## 6. 独立重建验收边界（2026-10-26，待执行）
+## 6. 独立重建验收边界（2026-10-27：最小适配已执行，总体未完成）
 
-依据 [PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product) 与[重建架构](architecture/assistant-rebuild.md)。本节定义未来证据，不表示本次授权运行测试、调用模型或新增额度；旧 OPT/Computer Use 记录保持原结论。第一候选的可执行步骤、合成材料、8组受控回归、2项真实模型纠错、4类7次普通提示CU、独立测试预算和采用判定统一见[适配验证方案](assistant-rebuild-validation-plan.md)，不在本节重复维护。安全拦截与业务完成分开判定，受控夹具通过不能替代真实模型纠错和普通用户闭环；该方案通过也不等于以下15项全部完成。
+依据 [PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product) 与[重建架构](architecture/assistant-rebuild.md)。本节定义未来证据，不表示本次授权运行测试、调用模型或新增额度；旧 OPT/Computer Use 记录保持原结论。已执行的验证步骤、合成材料、8组受控回归、2项真实模型纠错、4类7次普通提示CU、独立测试预算和原门槛统一见[适配验证方案](assistant-rebuild-validation-plan.md)；现已正式采用 Deep Agents TypeScript + LangGraph 作为重建技术栈，证据边界及保留事项见[收口审查](research/assistant-rebuild-adoption-review-20261027.md)，不在本节重复维护。安全拦截与业务完成分开判定，受控夹具通过不能替代真实模型纠错和普通用户闭环；该方案通过也不等于以下15项全部完成。
 
 | 编号 | 要证明的边界 | 最小有效证据 |
 | --- | --- | --- |
