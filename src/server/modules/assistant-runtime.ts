@@ -1,3 +1,5 @@
+import { ProcessingError } from "../../processing/store.js";
+import { z } from "zod";
 import type { ServerContext } from "../context.js";
 import type { AuthenticatedRequest } from "../support.js";
 import { FormalSessionHost } from "../../assistant-rebuild/session-host.js";
@@ -12,11 +14,17 @@ export function registerAssistantRuntime({
   config,
   authenticate,
   writeAllowed,
+  artifacts,
+  dispatch = true,
 }: Pick<
   ServerContext,
-  "app" | "db" | "config" | "authenticate" | "writeAllowed"
->) {
-  const host = new FormalSessionHost(db, config);
+  "app" | "db" | "config" | "authenticate" | "writeAllowed" | "artifacts"
+> & { dispatch?: boolean }) {
+  const host = new FormalSessionHost(db, config, { artifacts });
+  if (dispatch)
+    app.addHook("onReady", async () => {
+      host.start();
+    });
   app.addHook("onClose", () => host.close());
   const base = "/api/projects/:projectId/assistant-runtime/sessions";
   type Params = { projectId: string; sessionId: string };
@@ -35,7 +43,7 @@ export function registerAssistantRuntime({
         actorId: req.actor.id,
       });
     } catch (error) {
-      if (error instanceof SessionError)
+      if (error instanceof SessionError || error instanceof ProcessingError)
         return reply.code(error.status).send({ error: { code: error.code } });
       throw error;
     }
@@ -59,7 +67,7 @@ export function registerAssistantRuntime({
     { preHandler: authenticate },
     (req, reply) =>
       invoke(req, reply, false, (scope) =>
-        host.store.present(scope, req.params.sessionId),
+        host.present(scope, req.params.sessionId),
       ),
   );
   app.post<{ Params: Params }>(
@@ -73,6 +81,57 @@ export function registerAssistantRuntime({
           req.body,
         );
         return reply.code(result.replayed ? 200 : 202).send(result);
+      }),
+  );
+  app.post<{ Params: Params }>(
+    base + "/:sessionId/control",
+    { preHandler: authenticate },
+    (req, reply) =>
+      invoke(req, reply, true, async (scope) => {
+        const data = z
+          .object({ action: z.enum(["stop", "continue"]) })
+          .strict()
+          .safeParse(req.body);
+        if (!data.success) throw new SessionError("control_invalid", 422);
+        return data.data.action === "stop"
+          ? host.stop(scope, req.params.sessionId)
+          : host.continue(scope, req.params.sessionId);
+      }),
+  );
+  app.post<{ Params: Params }>(
+    base + "/:sessionId/budget-offer",
+    { preHandler: authenticate },
+    (req, reply) =>
+      invoke(req, reply, true, (scope) =>
+        host.execution.offer(scope, req.params.sessionId),
+      ),
+  );
+  app.post<{ Params: Params }>(
+    base + "/:sessionId/confirmations/:confirmationId",
+    { preHandler: authenticate },
+    (req, reply) =>
+      invoke(req, reply, true, async (scope) => {
+        const data = z
+          .object({ accept: z.boolean() })
+          .strict()
+          .safeParse(req.body);
+        if (!data.success) throw new SessionError("confirmation_invalid", 422);
+        const confirmationId = (
+          req.params as Params & { confirmationId: string }
+        ).confirmationId;
+        if (data.data.accept)
+          return host.execution.approve(
+            scope,
+            req.params.sessionId,
+            confirmationId,
+            artifacts,
+          );
+        await host.execution.reject(
+          scope,
+          req.params.sessionId,
+          confirmationId,
+        );
+        return host.present(scope, req.params.sessionId);
       }),
   );
   return host;

@@ -1,9 +1,5 @@
-export const EXECUTION_BUDGET_LIMITS = {
-  modelSteps: 130,
-  toolCalls: 156,
-  transportRetries: 26,
-  activeMs: 13 * 80000,
-} as const;
+import { EXECUTION_BUDGET_LIMITS } from "../operations/execution-limits.js";
+export { EXECUTION_BUDGET_LIMITS };
 
 type TurnCounters = {
   turnId: string;

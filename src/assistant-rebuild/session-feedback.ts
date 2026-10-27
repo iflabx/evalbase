@@ -1,3 +1,4 @@
+import { isGraphInterrupt } from "@langchain/langgraph";
 import {
   AIMessage,
   HumanMessage,
@@ -9,7 +10,7 @@ import { z } from "zod";
 import { canonicalJson } from "../package/contract.js";
 import { SessionError } from "./session-store.js";
 
-type FailedCall = {
+export type FailedCall = {
   id: string;
   name: string;
   args: unknown;
@@ -21,12 +22,14 @@ type FailedCall = {
 /** One bounded correction path for the formal host; never stacked with validation-host repair. */
 export function sessionFeedback(options: {
   schemas: Map<string, z.ZodType>;
+  initialPending?: FailedCall;
+  savePending?: (pending: FailedCall | undefined) => Promise<void>;
   facts: () => Promise<unknown>;
   guard: () => Promise<void>;
   observe: (kind: string, detail: unknown) => Promise<void>;
   callModel: <T>(call: () => Promise<T> | T) => Promise<T> | T;
 }) {
-  let pending: FailedCall | undefined;
+  let pending: FailedCall | undefined = options.initialPending;
   const maxCorrections = 2;
   const scrub = (value: unknown, paths: string[][]): unknown => {
     const copy = structuredClone(value);
@@ -121,6 +124,7 @@ export function sessionFeedback(options: {
             : [],
         ),
     };
+    await options.savePending?.(pending);
     const detail = {
       originalCallId: pending.id,
       callId: id,
@@ -202,6 +206,7 @@ export function sessionFeedback(options: {
           unparsed: true,
           attempts: (pending?.attempts ?? 0) + 1,
         };
+        await options.savePending?.(pending);
         await options.observe("parameter_feedback", {
           originalCallId: pending.id,
           name: call.name,
@@ -250,8 +255,15 @@ export function sessionFeedback(options: {
         });
         await options.observe("tool_result", { id, name: call.name, result });
         pending = undefined;
+        await options.savePending?.(pending);
         return result;
       } catch (error) {
+        if (
+          isGraphInterrupt(error) ||
+          (error instanceof SessionError &&
+            ["no_progress", "runtime_interrupted"].includes(error.code))
+        )
+          throw error;
         const failure = error as {
           code?: string;
           status?: number;
@@ -279,6 +291,7 @@ export function sessionFeedback(options: {
           paths: [],
           attempts: (pending?.attempts ?? 0) + 1,
         };
+        await options.savePending?.(pending);
         return new ToolMessage({
           tool_call_id: id,
           name: call.name,

@@ -148,7 +148,10 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       await root.end();
     }
     await migrate(databaseUrl);
-    app = await buildApp(config, { disableLegacyTestBootstrap: true });
+    app = await buildApp(config, {
+      disableLegacyTestBootstrap: true,
+      disableAssistantRuntimeDispatch: true,
+    });
     host = new FormalSessionHost(db, config);
     for (const who of ["admin", "editor", "viewer"]) {
       const payload = {

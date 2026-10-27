@@ -204,7 +204,7 @@ export class SessionStore {
           replayed: true,
         };
       }
-      if (session.status !== "idle")
+      if (!["idle", "paused"].includes(session.status))
         throw new SessionError("conversation_busy");
       if (session.revision !== payload.expectedRevision)
         throw new SessionError("conversation_revision_conflict");
@@ -291,7 +291,7 @@ export class SessionStore {
     await this.get(proof, proof.sessionId, client, lock);
     const row = (
       await client.query(
-        "SELECT payload FROM assistant_runtime_turn WHERE id=$1 AND session_id=$2 AND runner_token=$3 AND status='running'" +
+        "SELECT payload FROM assistant_runtime_turn WHERE id=$1 AND session_id=$2 AND runner_token=$3 AND status='running' AND NOT EXISTS(SELECT 1 FROM assistant_runtime_execution e WHERE e.session_id=$2 AND (e.turn_id<>$1 OR e.status<>'running' OR e.lease_until<=now()))" +
           (lock ? " FOR UPDATE" : ""),
         [proof.turnId, proof.sessionId, proof.token],
       )
@@ -307,13 +307,25 @@ export class SessionStore {
     key?: string,
   ) {
     await client.query(
-      "INSERT INTO assistant_runtime_event(session_id,turn_id,kind,detail,operation_key) VALUES($1,$2,$3,$4,$5)",
+      "INSERT INTO assistant_runtime_event(session_id,turn_id,kind,detail,operation_key,category) VALUES($1,$2,$3,$4,$5,$6)",
       [
         proof.sessionId,
         proof.turnId,
         kind,
         JSON.stringify(detail),
         key ?? null,
+        kind === "parameter_feedback"
+          ? "parameter_failure"
+          : kind === "tool_error"
+            ? "business_conflict"
+            : kind === "execution_error"
+              ? (detail as { code?: string }).code?.startsWith("parameter")
+                ? "parameter_failure"
+                : "execution_failure"
+              : kind === "model_response" &&
+                  (detail as { error?: string }).error
+                ? "transport_error"
+                : "lifecycle",
       ],
     );
   }
@@ -342,6 +354,15 @@ export class SessionStore {
       await client.query(
         "INSERT INTO assistant_runtime_message(session_id,turn_id,role,content) VALUES($1,$2,'assistant',$3) ON CONFLICT(turn_id,role) DO NOTHING",
         [proof.sessionId, proof.turnId, content],
+      );
+      await client.query(
+        "UPDATE assistant_runtime_execution SET status=$3,reason=$4,lease_until=NULL WHERE session_id=$1 AND turn_id=$2",
+        [
+          proof.sessionId,
+          proof.turnId,
+          errorCode ? "failed" : "completed",
+          errorCode,
+        ],
       );
       await client.query(
         "UPDATE assistant_runtime_turn SET status=$3,error_code=$4,runner_token=NULL,finished_at=now() WHERE id=$1 AND runner_token=$2",
@@ -504,6 +525,16 @@ export class SessionStore {
           "UPDATE assistant_runtime_session SET requirements=$2,requirements_revision=$3,revision=revision+1,updated_at=now() WHERE id=$1",
           [proof.sessionId, JSON.stringify(next), revision],
         );
+      if (!unchanged) {
+        await client.query(
+          "UPDATE assistant_runtime_confirmation SET status='expired' WHERE session_id=$1 AND status IN('pending','executing') AND requirements_revision<>$2",
+          [proof.sessionId, revision],
+        );
+        await client.query(
+          "UPDATE assistant_runtime_execution SET no_progress=0,seen='[]',progress_revision=$2,progress_version=progress_version+1 WHERE session_id=$1",
+          [proof.sessionId, revision],
+        );
+      }
       await this.event(
         proof,
         "requirements_saved",

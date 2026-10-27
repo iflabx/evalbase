@@ -24,6 +24,8 @@ export interface AppDependencies {
   now?: () => Date;
   artifacts?: ArtifactRepository;
   disableLegacyTestBootstrap?: boolean;
+  /** Controlled executor tests only; normal server startup dispatches accepted formal turns. */
+  disableAssistantRuntimeDispatch?: boolean;
 }
 
 export interface AuthenticatedRequest extends FastifyRequest {

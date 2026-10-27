@@ -1,3 +1,4 @@
+import { formalWorkerFetch } from "../assistant-rebuild/worker-fetch.js";
 import { processingCost } from "../assistant-rebuild/budget.js";
 import {
   modelFailure,
@@ -553,7 +554,7 @@ export async function runProcessing(
       run.model_revision,
       false,
       undefined,
-      undefined,
+      formalWorkerFetch(db, run.id),
       { projectId: job.project_id, runId: run.id },
     );
   let output = 0,

@@ -1,3 +1,4 @@
+import { executionSchema } from "../assistant-rebuild/execution-schema.js";
 import { assistantSessionSchema } from "../assistant-rebuild/session-schema.js";
 import { loadConfig } from "../config.js";
 import { createPool } from "./pool.js";
@@ -1987,6 +1988,10 @@ export async function migrate(
     }
     await client.query(
       "INSERT INTO schema_migration(id) VALUES('assistant-task-boundaries-v2') ON CONFLICT DO NOTHING",
+    );
+    await client.query(executionSchema);
+    await client.query(
+      "INSERT INTO schema_migration(id) VALUES('assistant-runtime-execution-v1') ON CONFLICT DO NOTHING",
     );
     await client.query("COMMIT");
   } catch (error) {
