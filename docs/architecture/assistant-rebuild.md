@@ -48,7 +48,7 @@
 
 本表依据基线代码的实际调用，不是要求重写整个业务系统。类型引用也应移到正确归属，但不能将类型导入误报为运行时故障。
 
-REBUILD-01 已在 `6f97cd9` 将草稿、选取、处理/采用和发布的共享提交保护迁入 `src/operations/commit.ts`，纯处理约束/背景合同迁入 `src/processing/`；旧 `assistant/fence` 仅保留兼容适配，新运行时使用独立可信上下文。下表继续保留原耦合清单作为后续领域接线的依据，不表示全部退出项已完成。实际迁出调用者、保留的历史引用、回归及基线失败见[REBUILD-01 验证记录](../../.scratch/assistant-rebuild/r01-verification.md)；正式会话、持久执行和领域能力仍由后续票交付。
+REBUILD-01 已在 `6f97cd9` 将草稿、选取、处理/采用和发布的共享提交保护迁入 `src/operations/commit.ts`，纯处理约束/背景合同迁入 `src/processing/`；旧 `assistant/fence` 仅保留兼容适配，新运行时使用独立可信上下文。下表继续保留原耦合清单作为后续领域接线的依据，不表示全部退出项已完成。实际迁出调用者、保留的历史引用、回归及基线失败见[REBUILD-01 验证记录](../../.scratch/assistant-rebuild/r01-verification.md)；REBUILD-02 已在 `21038e7` 增量交付正式会话/原子消息受理、唯一当前要求与交付、受限 Deep Agents 工具宿主和检查点；HTTP 只受理持久待执行引用，受控执行器验证真实 SDK。当前开放项目/资料读取及要求记录，持久派发、确认/暂停恢复和领域写工具仍由后续票接通，详见[REBUILD-02 验证记录](../../.scratch/assistant-rebuild/r02-verification.md)。
 
 | 当前耦合与证据 | 目标 Interface 及归属 | 保留的不变量与退出条件 |
 | --- | --- | --- |
@@ -167,7 +167,7 @@ Provider 传输重试和参数纠正各有职责但共用实际请求预算；�
 
 ## 9. 后续实施顺序与完成边界
 
-完整能力与原型决策的实施分工见[范围核对与票据拆分建议](../assistant-rebuild-scope-and-batches.md)：三批十张票已落为[REBUILD-01～10](../../.scratch/assistant-rebuild/spec.md)，尚未实施；不改变本架构的事实归属、保护和切换约束。
+完整能力与原型决策的实施分工见[范围核对与票据拆分建议](../assistant-rebuild-scope-and-batches.md)：三批十张票已落为[REBUILD-01～10](../../.scratch/assistant-rebuild/spec.md)，实施进度以 Spec 唯一进度表为准；不改变本架构的事实归属、保护和切换约束。
 
 最小纵向适配已完成；仍需把有限验证接入整理为正式产品能力。收口保留项及处理时点统一见[采用审查 §5](../research/assistant-rebuild-adoption-review-20261027.md#5-保留事项与正式接入条件)，不另建平行任务清单。
 

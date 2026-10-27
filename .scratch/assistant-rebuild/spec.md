@@ -6,7 +6,7 @@ Validation: partial
 Blocked by: 无未决范围问题；各票执行依赖见下表
 
 - 日期：2026-10-27；建立基线：`420c22e`；工作分支：`codex/assistant-rebuild`。
-- Owner 已确认完整范围，并要求创建正式票据；2026-10-27 按审查补强消息提交防重、无进展判定和取消交付验收。本次仍只修改票据/Spec，不开始开发、运行模型/CU、创建预算或部署。
+- Owner 已确认完整范围，并要求创建正式票据；2026-10-27 按审查补强消息提交防重、无进展判定和取消交付验收。创建时仅修改票据/Spec；后续已授权实施进度与验证以本页进度表和对应记录为准，不据此扩大模型/CU预算或部署授权。
 - 正式编号为 **REBUILD-01～REBUILD-10**，分别对应范围文档 R01～R10；`RB01～RB15` 仍是验收条款编号，历史 OPT 票及其状态不改变。
 
 ## 1. 合同与范围
@@ -24,7 +24,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | Ticket | 批次 | 依赖 | Implementation | Validation | 实现提交 / 证据 |
 | --- | --- | --- | --- | --- | --- |
 | [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
-| [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | not-started | not-run | — |
+| [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | `21038e7` / [验证记录](r02-verification.md) |
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | not-started | not-run | — |
 | [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | not-started | not-run | — |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | not-started | not-run | — |
@@ -52,7 +52,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 4. **必要结构调整允许。** 以真实调用者和根因选修改范围；抽取共享业务合同、移出旧反向依赖、替代旧重复机制均在范围内。不为每个按钮建工具或多层包装。
 5. **保留与退出分开。** 旧执行/计划/纠错/续步退出新路径；旧会话、成果、账本及删除保护保留。处理 Worker 内部 AI SDK 可继续使用。新旧执行器不共同推进同一任务，不失败自动回落。
 6. **验证材料与业务数据隔离。** 只读核验既有验收数据/旧预算及关闭时间；新写入、删除和故障测试使用独立合成对象/隔离库。新迁移增量实施，不能为测试重建或清空验收数据库/对象卷。
-7. **授权和部署。** 当前只开票；后续明确开发/验收授权覆盖的步骤按票执行，不另加流程性审批。新增真实活动在执行前登记上限；超出范围或上限不能自动追加。更新 4217、正式部署、合并、推送仍按实际授权范围处理。
+7. **授权和部署。** 按明确开发/验收授权覆盖的步骤与进度表执行，不另加流程性审批。新增真实活动在执行前登记上限；超出范围或上限不能自动追加。更新 4217、正式部署、合并、推送仍按实际授权范围处理。
 8. **文档与检查适度。** 各票只读受影响合同，复用未改变的证据；定向检查和一次适用关闭审阅按 AGENTS.md，不机械重跑全库。不引入多智能体平台、工作流编辑器、向量库、额外判断模型、任意网络/电脑操作或第二套会话后端。
 
 ### 3.1 消息提交防重与会话并发
