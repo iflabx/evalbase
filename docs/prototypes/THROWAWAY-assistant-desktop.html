@@ -229,8 +229,8 @@
       if(action==='search'){$('app').classList.remove('no-sidebar');$('searchWrap').hidden=false;$('search').focus()}
       if(action==='recent'){$('app').classList.remove('no-sidebar');$('search').value='';renderSidebar();toast('已显示全部最近会话')}
       if(['preview','document'].includes(action))openTab(action);
-      if(action==='attach'){state().attached=true;renderAttachment();toast('已添加内置示例文档');$('prompt').focus()}
-      if(action==='detach'){state().attached=false;renderAttachment()}
+      if(action==='attach'){state().attached=true;renderAttachment();renderWorkspace();toast('已添加内置示例文档');$('prompt').focus()}
+      if(action==='detach'){state().attached=false;renderAttachment();renderWorkspace()}
       if(action==='model'){$('modelMenu').hidden=!$('modelMenu').hidden;b.setAttribute('aria-expanded',!$('modelMenu').hidden)}
       if(action==='menu'){$('threadMenu').hidden=!$('threadMenu').hidden;b.setAttribute('aria-expanded',!$('threadMenu').hidden)}
       if(action==='bottom')bottom();
