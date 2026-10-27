@@ -1,3 +1,7 @@
+import {
+  assertInstructionsCurrent,
+  deliveryExecution,
+} from "./session-contract.js";
 import { cleanRecords } from "../processing/protocol.js";
 import { validateDeliveryResults } from "./session-contract.js";
 import {
@@ -116,7 +120,9 @@ export class ExecutionStore {
       )
         throw new SessionError("turn_not_pending");
       if (
-        task.status === "paused" &&
+        (task.status === "paused" ||
+          (task.status === "failed" &&
+            task.feedback?.kind === "requirements")) &&
         task.turn_id !== turnId &&
         !task.suspended
       ) {
@@ -183,6 +189,15 @@ export class ExecutionStore {
       new Date(task.lease_until).getTime() <= this.now()
     )
       throw new SessionError("runtime_interrupted");
+    return task;
+  }
+  async processingGuard(proof: TurnProof, db: Query = this.db, lock = false) {
+    const task = await this.guard(proof, db, lock);
+    if (
+      task.feedback?.kind === "requirements" ||
+      task.suspended?.feedback?.kind === "requirements"
+    )
+      throw new SessionError("requirements_amendment_pending", 422);
     return task;
   }
   async renew(proof: TurnProof) {
@@ -713,7 +728,8 @@ export class ExecutionStore {
         origin: "runtime",
         sessionId: proof.sessionId,
         guard: async (db, action) => {
-          await this.guard(fixed, db, true);
+          if (action === "cancel") await this.guard(fixed, db, true);
+          else await this.processingGuard(fixed, db, true);
           const s = await this.sessions.get(fixed, fixed.sessionId, db);
           if (s.requirements_revision !== op.requirements_revision)
             throw new SessionError("requirements_revision_conflict");
@@ -749,7 +765,7 @@ export class ExecutionStore {
             throw new SessionError("operation_payload_conflict");
         },
         background: async (db, request) => {
-          await this.guard(fixed, db);
+          await this.processingGuard(fixed, db);
           const session = await this.sessions.get(fixed, fixed.sessionId, db);
           if (session.requirements_revision !== op.requirements_revision)
             throw new SessionError("requirements_revision_conflict");
@@ -760,6 +776,7 @@ export class ExecutionStore {
             throw new SessionError("single_delivery_required", 422);
           const delivery = active[0];
           if (delivery) {
+            assertInstructionsCurrent(delivery);
             if (
               delivery.count !== request.records.length ||
               canonicalJson(delivery.source) !==
@@ -802,6 +819,7 @@ export class ExecutionStore {
             contentReviewPolicy: "manual-v1",
             currentRequirements: true,
             requirements: normalizedRequirements([
+              ...(delivery ? [deliveryExecution(delivery).summary] : []),
               session.requirements.objective,
               request.options.instructions,
             ]),

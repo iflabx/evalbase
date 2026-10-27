@@ -1816,6 +1816,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         )
       ).toString("utf8"),
     );
+    expect(frozen.background.requirements.join(" ")).toContain("处理 3 条");
     expect(frozen.background.requirements).toContain(
       original.changes.objective,
     );
@@ -2291,5 +2292,394 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     expect(result.execution.turn_id).toBe(p.proof.turnId);
     await host.execution.resume(scope(), id);
     await host.stop(scope(), id);
+  });
+  it("amends scoped rules before execution and freezes only the current context through unique save", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      }),
+      before = await effects();
+    let state = await run(id, "先给前三条方案，不执行", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          objective: "不得出现姓名和电话号码；原目标是前三条",
+          mode: "plan",
+          deliveries: [
+            {
+              patch: {
+                name: "整理",
+                operation: "clean",
+                count: 3,
+                source: fixed.source,
+                allowedFields: ["question"],
+                instructions: "清洗前3条：去除空白。",
+                saveTarget: { kind: "newDraft", name: "整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id,
+      source = {
+        ...fixed.source,
+        recordIds: fixed.source.recordIds.slice(0, 2),
+      };
+    state = await run(id, "改成前两条，存为两条版，现在执行", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              deliveryId,
+              patch: {
+                count: 2,
+                source,
+                saveTarget: { kind: "newDraft", name: "两条版" },
+              },
+            },
+          ],
+        },
+      }),
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            {
+              deliveryId,
+              patch: { instructions: "去除问题首尾空白，保留标签和Metadata。" },
+            },
+          ],
+        },
+      }),
+      call("submit_processing", {}),
+      call("wait_processing", {}),
+    ]);
+    const runId = state.results[0].run_id,
+      row = (
+        await db.query(
+          "SELECT input_ref,options FROM processing_run WHERE id=$1",
+          [runId],
+        )
+      ).rows[0],
+      frozen = JSON.parse(
+        (await artifacts.readBytes(row.input_ref, 1000000)).toString("utf8"),
+      );
+    expect(frozen.records).toHaveLength(2);
+    expect(row.options.instructions).not.toContain("前3条");
+    expect(frozen.background.requirements.join(" ")).toContain(
+      "不得出现姓名和电话号码",
+    );
+    expect(frozen.background.requirements.join(" ")).toContain("处理 2 条");
+    expect(state.session.requirements.deliveries[0].executionSummary).toContain(
+      "处理 2 条",
+    );
+    await completeRun(runId);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {}), call("wait_confirmation", {})];
+    const turn = (await host.execution.projection(scope(), id)).execution
+      .turn_id;
+    state = await host.runPending(scope(), id, turn);
+    const card = state.confirmations.find((c: any) => c.status === "pending");
+    const accepted = await api(
+      "POST",
+      route(id) + "/confirmations/" + card.id,
+      { accept: true },
+    );
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().receipt.adopted).toBe(2);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).json().replayed,
+    ).toBe(true);
+    const after = await effects();
+    expect(after.runs - before.runs).toBe(1);
+    expect(after.drafts - before.drafts).toBe(1);
+  });
+
+  it("cannot bypass pending amendment rules with submit_processing against the old executable plan", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      }),
+      before = await effects();
+    const state = await run(id, "仅记录可执行要求", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "整理",
+                operation: "clean",
+                count: 3,
+                source: fixed.source,
+                allowedFields: ["question"],
+                instructions: "清洗前3条，保持标签。",
+                saveTarget: { kind: "newDraft", name: "整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    await expect(
+      run(id, "只改成前两条", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: {
+                  count: 2,
+                  source: {
+                    ...fixed.source,
+                    recordIds: fixed.source.recordIds.slice(0, 2),
+                  },
+                },
+              },
+            ],
+          },
+        }),
+        call("submit_processing", {}),
+      ]),
+    ).rejects.toMatchObject({ code: "correction_intent_changed" });
+    expect((await host.store.get(scope(), id)).requirements_revision).toBe(1);
+    expect(await effects()).toEqual(before);
+  });
+
+  it("preserves pending rule refresh and budget through pause and original-checkpoint continuation", async () => {
+    const id = await fresh();
+    let state = await run(id, "规划", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            { patch: { name: "整理", count: 5, instructions: "清洗前5条" } },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id,
+      a = await submit(id, "改成3条");
+    let entered = false,
+      release!: () => void;
+    outputs = [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: { deliveries: [{ deliveryId, patch: { count: 3 } }] },
+      }),
+      async () => {
+        entered = true;
+        await new Promise<void>((r) => (release = r));
+        return call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: { instructions: "整理问题空白，保留原意。" },
+              },
+            ],
+          },
+        });
+      },
+    ];
+    const running = host.runPending(scope(), id, a.json().turnId);
+    await until(async () => entered);
+    await host.stop(scope(), id);
+    release();
+    await running;
+    const paused = (
+      await db.query(
+        "SELECT feedback,requests FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0];
+    expect(paused.feedback).toMatchObject({
+      kind: "requirements",
+      attempts: 1,
+    });
+    expect((await host.store.get(scope(), id)).requirements_revision).toBe(1);
+    await host.continue(scope(), id);
+    outputs = [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            { deliveryId, patch: { instructions: "整理问题空白，保留原意。" } },
+          ],
+        },
+      }),
+    ];
+    state = await host.runPending(scope(), id, a.json().turnId);
+    expect(state.session.requirements.deliveries[0].count).toBe(3);
+    expect(state.execution.requests).toBeGreaterThan(paused.requests);
+    expect(state.execution.turn_id).toBe(a.json().turnId);
+  });
+  it("retains a failed quantity amendment after classification validation and blocks old-plan continuation", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      }),
+      before = await effects();
+    const state = await run(id, "先保存计划", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "整理",
+                operation: "clean",
+                count: 3,
+                source: fixed.source,
+                allowedFields: ["question"],
+                instructions: "整理问题空白。",
+                classifications: [
+                  {
+                    field: "expectedOutput",
+                    quotas: [
+                      { value: "答案1", count: 1 },
+                      { value: "答案2", count: 1 },
+                      { value: "答案3", count: 1 },
+                    ],
+                  },
+                ],
+                saveTarget: { kind: "newDraft", name: "整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    await expect(
+      run(id, "改成两条", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: {
+                  count: 2,
+                  source: {
+                    ...fixed.source,
+                    recordIds: fixed.source.recordIds.slice(0, 2),
+                  },
+                  instructions: "仅整理问题首尾空白。",
+                },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).rejects.toMatchObject({ status: 422 });
+    const task = (
+      await db.query(
+        "SELECT feedback,turn_id FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0];
+    expect(task.feedback).toMatchObject({ kind: "requirements" });
+    expect(task.feedback.workingArgs.changes.deliveries[0].patch.count).toBe(2);
+    expect((await host.store.get(scope(), id)).requirements_revision).toBe(1);
+    await host.continue(scope(), id);
+    outputs = [call("submit_processing", {})];
+    await expect(
+      host.runPending(scope(), id, task.turn_id),
+    ).rejects.toMatchObject({ code: "assistant_plan_count_conflict" });
+    expect(await effects()).toEqual(before);
+  });
+  it("ordinary new-message continue cannot drop a failed requirement amendment", async () => {
+    const id = await fresh(),
+      fixed = await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      }),
+      before = await effects();
+    const state = await run(id, "规划", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "整理",
+                operation: "clean",
+                count: 3,
+                source: fixed.source,
+                allowedFields: ["question"],
+                instructions: "整理空白",
+                classifications: [
+                  {
+                    field: "expectedOutput",
+                    quotas: [
+                      { value: "答案1", count: 1 },
+                      { value: "答案2", count: 1 },
+                      { value: "答案3", count: 1 },
+                    ],
+                  },
+                ],
+                saveTarget: { kind: "newDraft", name: "整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    await expect(
+      run(id, "改成2条", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: {
+                  count: 2,
+                  source: {
+                    ...fixed.source,
+                    recordIds: fixed.source.recordIds.slice(0, 2),
+                  },
+                  instructions: "仅整理问题空白，保留答案。",
+                },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "assistant_plan_count_conflict" });
+    await expect(
+      run(id, "继续", [call("submit_processing", {})]),
+    ).rejects.toMatchObject({ code: "requirements_amendment_pending" });
+    const task = (
+      await db.query(
+        "SELECT suspended,feedback,turn_id FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0];
+    expect(task.feedback ?? task.suspended?.feedback).toMatchObject({
+      kind: "requirements",
+    });
+    expect(task.feedback?.workingArgs.changes.deliveries[0].patch.count).toBe(
+      2,
+    );
+    expect(await effects()).toEqual(before);
   });
 });

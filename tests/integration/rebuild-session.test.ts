@@ -1798,4 +1798,204 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     );
     expect((await host.present(scope(), id)).receipts).toEqual([]);
   });
+  it("refreshes dependent rules after a partial 5-to-3 amendment through the real SDK", async () => {
+    const id = await fresh(),
+      before = await effects();
+    let state = await run(id, "先规划5条", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "plan",
+          deliveries: [
+            {
+              patch: {
+                name: "整理",
+                operation: "clean",
+                count: 5,
+                instructions: "清洗前5条：去除首尾空白，保留原意。",
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    const amend = {
+      expectedRevision: 1,
+      changes: {
+        mode: "plan",
+        deliveries: [{ deliveryId, patch: { count: 3 } }],
+      },
+    };
+    let forced = false;
+    state = await run(id, "改成3条，其他规则不变", [
+      call("update_requirements", amend),
+      (request: any) => {
+        forced = request.tool_choice?.function?.name === "update_requirements";
+        return call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: { instructions: "去除首尾空白，保留原意。" },
+              },
+            ],
+          },
+        });
+      },
+    ]);
+    expect(forced).toBe(true);
+    expect(state.session.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      count: 3,
+      instructions: "去除首尾空白，保留原意。",
+    });
+    expect(state.session.requirements_revision).toBe(2);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(
+      events.filter((e) => e.kind === "requirements_feedback"),
+    ).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "requirements_saved")).toHaveLength(
+      2,
+    );
+    expect(await effects()).toEqual(before);
+  });
+
+  it("does not grant a changed count during semantic instruction repair", async () => {
+    const id = await fresh();
+    let state = await run(id, "规划", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                name: "整理",
+                operation: "clean",
+                count: 5,
+                instructions: "只清洗前5条，保留标签。",
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    await expect(
+      run(id, "改成3条", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: { deliveries: [{ deliveryId, patch: { count: 3 } }] },
+        }),
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: { count: 4, instructions: "保留标签，整理空白。" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "correction_intent_changed" });
+    state = await host.present(scope(), id);
+    expect(state.session.requirements.deliveries[0].count).toBe(5);
+    expect(state.session.requirements_revision).toBe(1);
+    expect(state.turns[0].error_code).toBe("correction_intent_changed");
+  });
+
+  it("bounds repeated stale instructions and preserves the original revision", async () => {
+    const id = await fresh(),
+      before = await effects();
+    let state = await run(id, "规划", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            { patch: { name: "整理", count: 5, instructions: "清洗前5条" } },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    const broken = {
+      expectedRevision: 1,
+      changes: {
+        deliveries: [
+          { deliveryId, patch: { count: 3, instructions: "清洗前5条" } },
+        ],
+      },
+    };
+    state = await run(id, "改成3条", [
+      call("update_requirements", broken),
+      call("update_requirements", broken),
+      call("update_requirements", broken),
+    ]);
+    expect(state.session.requirements_revision).toBe(1);
+    expect(state.session.requirements.deliveries[0].count).toBe(5);
+    expect(state.execution.reason).toBe("no_progress");
+    expect(await effects()).toEqual(before);
+  });
+  it("retains the semantic repair context across a truncated correction", async () => {
+    const id = await fresh();
+    let state = await run(id, "规划5条", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                name: "清洗",
+                count: 5,
+                instructions: "清洗前5条，保留原意。",
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "改成3条", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: { deliveries: [{ deliveryId, patch: { count: 3 } }] },
+      }),
+      call("update_requirements", "{"),
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            { deliveryId, patch: { instructions: "整理空白，保留原意。" } },
+          ],
+        },
+      }),
+    ]);
+    expect(state.session.requirements.deliveries[0]).toMatchObject({
+      count: 3,
+      instructions: "整理空白，保留原意。",
+    });
+    expect(state.session.requirements_revision).toBe(2);
+    const events = (
+      await db.query(
+        "SELECT kind FROM assistant_runtime_event WHERE session_id=$1",
+        [id],
+      )
+    ).rows;
+    expect(
+      events.filter((e) => e.kind === "requirements_feedback"),
+    ).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "parameter_feedback")).toHaveLength(
+      1,
+    );
+  });
 });

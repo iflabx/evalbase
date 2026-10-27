@@ -1,3 +1,4 @@
+import { InstructionRefreshError } from "./session-contract.js";
 import { isGraphInterrupt } from "@langchain/langgraph";
 import {
   AIMessage,
@@ -25,6 +26,9 @@ export type FailedCall = {
   unparsed?: boolean;
   version?: 2;
   schemaHash?: string;
+  kind?: "requirements";
+  blockedReason?: string;
+  contexts?: { deliveryId: string; before: string; after: string }[];
 };
 type Issue = {
   path: PropertyKey[];
@@ -137,6 +141,7 @@ export function sessionFeedback(options: {
     if (pending && pending.attempts >= maxCorrections)
       throw new SessionError("parameter_correction_exhausted", 422);
     pending = {
+      ...pending,
       id: pending?.id ?? id,
       name,
       args: pending ? pending.args : args,
@@ -206,7 +211,12 @@ export function sessionFeedback(options: {
                 workingArguments: pending.workingArgs ?? pending.args,
                 invalidPaths: pending.paths,
                 unparsed: pending.unparsed ?? false,
-                rule: "只修复原错误，不能新增或猜测ID、改变来源/记录范围/数量/分类/保存目标。一次只提交一个工具调用。",
+                rule:
+                  pending.kind === "requirements"
+                    ? "本次用户变更已固定。仅重新整理列明交付的加工规则instructions，不能改变新数量、范围、目标或其他有效字段；规则不得重复处理范围/总数/目标，保留原加工含义。"
+                    : "只修复原错误，不能新增或猜测ID、改变来源/记录范围/数量/分类/保存目标。一次只提交一个工具调用。",
+                contexts: pending.contexts,
+                blockedReason: pending.blockedReason,
               })
             : ""),
       );
@@ -433,6 +443,51 @@ export function sessionFeedback(options: {
             ["no_progress", "runtime_interrupted"].includes(error.code))
         )
           throw error;
+        if (error instanceof InstructionRefreshError) {
+          await options.observe("tool_error", {
+            id,
+            name: call.name,
+            code: error.code,
+          });
+          if (pending && pending.attempts >= maxCorrections)
+            throw new SessionError("parameter_correction_exhausted", 422);
+          pending = {
+            ...pending,
+            id: pending?.id ?? id,
+            name: call.name,
+            args: pending?.args ?? parsed.data,
+            workingArgs: parsed.data,
+            paths: error.paths,
+            removablePaths: unique([
+              ...(pending?.removablePaths ?? []),
+              ...error.paths,
+            ]),
+            attempts: (pending?.attempts ?? 0) + 1,
+            version: 2,
+            schemaHash: schemaHash(call.name),
+            kind: "requirements",
+            contexts: error.contexts,
+          };
+          await options.savePending?.(pending);
+          const detail = {
+            originalCallId: pending.id,
+            callId: id,
+            name: call.name,
+            attempt: pending.attempts,
+            code: error.code,
+            paths: error.paths,
+            contexts: error.contexts,
+          };
+          await options.observe("requirements_feedback", detail);
+          return new ToolMessage({
+            tool_call_id: id,
+            name: call.name,
+            status: "error",
+            content: JSON.stringify({
+              error: { ...detail, message: error.hint },
+            }),
+          });
+        }
         const failure = error as {
           code?: string;
           status?: number;
@@ -449,7 +504,27 @@ export function sessionFeedback(options: {
           failure.status < 500 &&
           typeof failure.code === "string"
         ) {
-          await clear();
+          if (call.name === "update_requirements") {
+            pending = {
+              ...pending,
+              id: pending?.id ?? id,
+              name: call.name,
+              args: pending?.args ?? parsed.data,
+              workingArgs: parsed.data,
+              paths: pending?.paths ?? [],
+              removablePaths: pending?.removablePaths ?? [],
+              attempts: (pending?.attempts ?? 0) + 1,
+              version: 2,
+              schemaHash: schemaHash(call.name),
+              kind: "requirements",
+              blockedReason: failure.code,
+            };
+            await options.savePending?.(pending);
+            await options.observe("requirements_blocked", {
+              originalCallId: pending.id,
+              code: failure.code,
+            });
+          } else await clear();
           throw error instanceof BusinessError
             ? error
             : new BusinessError(

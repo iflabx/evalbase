@@ -38,7 +38,7 @@ export async function restoreSuspended(
   );
   if (row.resume_suspended)
     await db.query(
-      "UPDATE assistant_runtime_turn SET status='pending',runner_token=NULL,error_code=NULL WHERE id=$1 AND session_id=$2 AND status='paused'",
+      "UPDATE assistant_runtime_turn SET status='pending',runner_token=NULL,error_code=NULL WHERE id=$1 AND session_id=$2 AND status IN('paused','failed')",
       [saved.turnId, sessionId],
     );
   await db.query("UPDATE assistant_runtime_session SET status=$2 WHERE id=$1", [

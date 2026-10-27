@@ -364,7 +364,7 @@ export class FormalSessionHost {
       ).rows[0]?.feedback;
       correctionOf = persisted?.id ?? null;
       const observe = async (kind: string, detail: unknown) => {
-        if (kind === "parameter_feedback")
+        if (kind === "parameter_feedback" || kind === "requirements_feedback")
           correctionOf = (detail as { originalCallId: string }).originalCallId;
         if (kind === "tool_result") correctionOf = null;
         await this.store.event(proof, kind, detail);

@@ -151,7 +151,7 @@ export function sessionTools(
             name: "update_requirements",
             readOnly: false,
             description:
-              "仅保存唯一当前要求，不创建业务草稿或处理作业。expectedRevision取当前requirementsRevision。新交付不填deliveryId，由服务端分配；修改/取消已有交付必须用其真实ID，仅提供要改的字段，未给字段保留。取消用status:cancelled。交付结构为changes.deliveries:[{deliveryId?,patch:{name,count,source,allowedFields,instructions,saveTarget}}]，业务字段放在patch中。分类与保存目标各自独立。当前支持单份清洗/改写，新草稿采用必须由用户确认；生成/多交付执行/发布尚未开放。",
+              "仅保存唯一当前要求，不创建业务草稿或处理作业。expectedRevision取当前requirementsRevision。新交付不填deliveryId，由服务端分配；修改/取消已有交付必须用其真实ID，仅提供要改的字段，独立字段未给时保留；但数量、来源范围、操作、字段保护或分类改变时须一并重新提供instructions。instructions只写加工规则，不重复范围、总数量或保存目标；不能照抄含旧范围的说明。取消用status:cancelled。交付结构为changes.deliveries:[{deliveryId?,patch:{name,count,source,allowedFields,instructions,saveTarget}}]，业务字段放在patch中。分类与保存目标各自独立。当前支持单份清洗/改写，新草稿采用必须由用户确认；生成/多交付执行/发布尚未开放。",
             schema: requirementChangeSchema,
             run: async (args: Record<string, unknown>) =>
               store.change(proof, args),

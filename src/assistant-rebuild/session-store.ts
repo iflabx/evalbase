@@ -10,6 +10,9 @@ import {
   processingSourceRows,
 } from "../processing/store.js";
 import {
+  instructionContext,
+  deliveryExecution,
+  InstructionRefreshError,
   emptyRequirements,
   messageSubmissionSchema,
   requirementChangeSchema,
@@ -153,7 +156,13 @@ export class SessionStore {
         revision: session.revision,
         title: session.title,
         requirements_revision: session.requirements_revision,
-        requirements: session.requirements,
+        requirements: {
+          ...session.requirements,
+          deliveries: session.requirements.deliveries.map((d) => ({
+            ...d,
+            executionSummary: deliveryExecution(d).summary,
+          })),
+        },
         status: session.status,
       },
       messages: messages.map((m) => ({
@@ -466,12 +475,30 @@ export class SessionStore {
       key = "requirements:" + sha256(canonicalJson(request));
     await this.guard(proof, true);
     const before = await this.get(proof, proof.sessionId);
+    if (before.requirements_revision !== request.expectedRevision) {
+      const replay = (
+        await this.db.query(
+          "SELECT detail FROM assistant_runtime_event WHERE turn_id=$1 AND operation_key=$2",
+          [proof.turnId, key],
+        )
+      ).rows[0];
+      if (replay) return replay.detail.receipt;
+      throw new SessionError("requirements_revision_conflict");
+    }
     const next = structuredClone(before.requirements ?? emptyRequirements());
+    const refreshPaths: string[][] = [];
+    const refreshContexts: {
+      deliveryId: string;
+      before: string;
+      after: string;
+    }[] = [];
     if (request.changes.objective !== undefined)
       next.objective = request.changes.objective;
     if (request.changes.mode !== undefined) next.mode = request.changes.mode;
     const changedIds: string[] = [];
-    for (const item of request.changes.deliveries ?? []) {
+    for (const [changeIndex, item] of (
+      request.changes.deliveries ?? []
+    ).entries()) {
       let value: Delivery;
       if (item.deliveryId) {
         const existing = next.deliveries.find((d) => d.id === item.deliveryId);
@@ -495,11 +522,44 @@ export class SessionStore {
         if (value.source)
           Object.assign(value, await this.freezeSource(proof, value.source));
       }
+      const prior = before.requirements.deliveries.find(
+        (d) => d.id === value.id,
+      );
+      const changedContext =
+        prior && instructionContext(prior) !== instructionContext(value);
+      const rulesProvided = Object.hasOwn(item.patch, "instructions");
+      const requiresRefresh =
+        value.status !== "cancelled" &&
+        prior?.instructions?.trim() &&
+        (changedContext || (rulesProvided && !prior?.instructionsContext));
+      if (
+        requiresRefresh &&
+        (!rulesProvided ||
+          !value.instructions?.trim() ||
+          value.instructions.trim() === prior?.instructions?.trim())
+      ) {
+        refreshPaths.push([
+          "changes",
+          "deliveries",
+          String(changeIndex),
+          "patch",
+          "instructions",
+        ]);
+        refreshContexts.push({
+          deliveryId: value.id,
+          before: deliveryExecution(prior!).summary,
+          after: deliveryExecution(value).summary,
+        });
+      } else if (rulesProvided || !prior) {
+        value.instructionsContext = instructionContext(value);
+      }
       validateDelivery(value);
       const index = next.deliveries.findIndex((d) => d.id === value.id);
       next.deliveries[index] = value;
       changedIds.push(value.id);
     }
+    if (refreshPaths.length)
+      throw new InstructionRefreshError(refreshPaths, refreshContexts);
     const client = await this.db.connect();
     try {
       await client.query("BEGIN");

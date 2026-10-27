@@ -1,5 +1,8 @@
 import { BusinessError } from "../operations/errors.js";
-import { validateDeliveryResults } from "./session-contract.js";
+import {
+  assertInstructionsCurrent,
+  validateDeliveryResults,
+} from "./session-contract.js";
 import { tool } from "langchain";
 import { z } from "zod";
 import { createProcessingRun, readProcessingRun } from "../processing/store.js";
@@ -17,7 +20,7 @@ export function workspaceTools(
 ) {
   const schema = z.object({}).strict();
   const current = async () => {
-    const task = await execution.guard(proof);
+    const task = await execution.processingGuard(proof);
     if (task.suspended) throw new SessionError("task_paused");
     const session = await store.get(proof, proof.sessionId);
     const active = session.requirements.deliveries.filter(
@@ -41,6 +44,7 @@ export function workspaceTools(
         "metadata_fields_required",
         "已选择修改Metadata，但没有允许修改的字段；请指定字段或保持Metadata不变。",
       );
+    assertInstructionsCurrent(d);
     const snapshot = await store.freezeSource(proof, d.source);
     if (snapshot.sourceSnapshot.hash !== d.sourceSnapshot?.hash)
       throw new SessionError("source_revision_conflict");

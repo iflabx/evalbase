@@ -273,6 +273,11 @@ describe("R04 canonical correction combinations", () => {
       code: "assistant_plan_count_conflict",
       hint: "配额合计4条，目标3条",
     });
-    expect(r.saved).toBeUndefined();
+    expect(r.saved).toMatchObject({
+      kind: "requirements",
+      blockedReason: "assistant_plan_count_conflict",
+      args: expect.objectContaining({ expectedRevision: 0 }),
+    });
+    expect(r.events.some((e) => e.kind === "parameter_feedback")).toBe(false);
   });
 });

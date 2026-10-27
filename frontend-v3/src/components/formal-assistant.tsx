@@ -111,7 +111,7 @@ export function FormalAssistant({
   actorId,
   canWrite,
   canExport,
-  canConfigureModels,
+  canConfigureModels: _canConfigureModels,
   sessionId,
   pageContext,
   selectionMissing,
@@ -937,6 +937,9 @@ export function FormalAssistant({
                                         )[String(d["operation"])] ?? "待确认操作"}
                                       </p>
                                       <p className="mt-1 text-xs text-muted-foreground">
+                                        {d["executionSummary"] ? (
+                                          <span>{String(d["executionSummary"])} · </span>
+                                        ) : null}
                                         {d["status"] === "cancelled"
                                           ? "已取消"
                                           : snapshot.session.requirements.mode === "plan"
