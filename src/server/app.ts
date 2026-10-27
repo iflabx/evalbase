@@ -1,3 +1,4 @@
+import { registerAssistantRuntime } from "./modules/assistant-runtime.js";
 import { BusinessError } from "../operations/errors.js";
 import { RuntimeMetrics } from "../observability/runtime.js";
 import { createHash, randomBytes } from "node:crypto";
@@ -1249,6 +1250,7 @@ export async function buildApp(
   registerUploads({ db, artifacts, app, authenticate, writeAllowed });
   registerMaterialMapping({ db, app, authenticate, writeAllowed });
   registerProcessing({ db, app, artifacts, authenticate, writeAllowed });
+  registerAssistantRuntime({ db, app, config, authenticate, writeAllowed });
   if (process.env.REBUILD_VALIDATION_ENABLED === "true") {
     const { registerRebuild } = await import("./modules/assistant-rebuild.js");
     await registerRebuild({

@@ -26,6 +26,7 @@ export function createHarness(options: {
   complete?: () => Promise<string | null>;
   middleware?: AgentMiddleware[];
   operationScope?: OperationScope;
+  boundary?: AgentMiddleware;
 }) {
   const allowed = new Set(options.tools.map((t) => t.name));
   const backend = new StateBackend();
@@ -205,7 +206,7 @@ export function createHarness(options: {
             }),
           ]
         : []),
-      boundary,
+      options.boundary ?? boundary,
       ...(options.middleware ?? []),
     ],
   });

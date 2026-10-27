@@ -1,3 +1,4 @@
+import { assistantSessionSchema } from "../assistant-rebuild/session-schema.js";
 import { loadConfig } from "../config.js";
 import { createPool } from "./pool.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -1624,6 +1625,10 @@ export async function migrate(
   try {
     await client.query("BEGIN");
     await client.query(migrationSql);
+    await client.query(assistantSessionSchema);
+    await client.query(
+      "INSERT INTO schema_migration(id) VALUES('assistant-runtime-session-v1') ON CONFLICT DO NOTHING",
+    );
     await client.query(`CREATE TABLE IF NOT EXISTS model_connection (
       revision integer PRIMARY KEY CHECK(revision>0), name text NOT NULL, endpoint text NOT NULL,
       model text NOT NULL, enabled boolean NOT NULL, credential jsonb NOT NULL,
