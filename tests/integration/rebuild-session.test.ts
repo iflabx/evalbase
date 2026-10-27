@@ -120,6 +120,10 @@ async function run(
   expect(accepted.statusCode, accepted.body).toBe(202);
   return host.runPending(scope(), id, accepted.json().turnId, options);
 }
+const wireText = (message: any): string =>
+  typeof message.content === "string"
+    ? message.content
+    : message.content.map((part: any) => part.text ?? "").join("");
 const plan = (count = 400) => ({
   expectedRevision: 0,
   changes: {
@@ -278,7 +282,8 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
           return;
         }
         await sendFormalCompletion(res, body, message, omitUsage);
-      } catch {
+      } catch (error) {
+        console.error(error);
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: { message: "invalid_test_request" } }));
       }
@@ -685,6 +690,215 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       ).toBe(true);
     },
   );
+
+  it("normalizes JSON object strings through SDK without a correction request or changed scope", async () => {
+    const id = await fresh(),
+      start = requests.length;
+    await run(id, "读取前三条", [
+      {
+        ...call(
+          "read_records",
+          {
+            source: JSON.stringify({ kind: "assets", assetIds: [assetId] }),
+            offset: 0,
+            limit: 3,
+          },
+          "encoded-source",
+        ),
+        toolArgumentChunkSize: 3,
+      },
+      { role: "assistant", content: "已读取三条，未处理或保存。" },
+    ]);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "parameter_feedback")).toHaveLength(
+      0,
+    );
+    expect(
+      events.find((e) => e.kind === "parameter_normalized")?.detail.paths,
+    ).toEqual([["source"]]);
+    expect(events.find((e) => e.kind === "tool_call")?.detail.args).toEqual({
+      source: { kind: "assets", assetIds: [assetId] },
+      offset: 0,
+      limit: 3,
+    });
+    expect(requests.slice(start)).toHaveLength(2);
+    expect(await effects()).toEqual({ drafts: 0, runs: 0 });
+  });
+  it("binds SDK correction to its original tool, schema and invalid fields, then restores tools", async () => {
+    const id = await fresh();
+    await run(id, "读取前三条", [
+      call(
+        "read_records",
+        {
+          source: JSON.stringify({ kind: "assets", assetIds: [assetId] }),
+          offset: 0,
+          limit: 3,
+          extra: true,
+        },
+        "locked-read",
+      ),
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "read_records",
+        ]);
+        expect(body.tool_choice).toEqual({
+          type: "function",
+          function: { name: "read_records" },
+        });
+        expect(wireText(body.messages[0])).toContain(
+          '"originalCallId":"locked-read"',
+        );
+        expect(wireText(body.messages[0])).toContain(
+          '"invalidPaths":[["extra"]]',
+        );
+        return {
+          ...call(
+            "read_records",
+            {
+              source: { kind: "assets", assetIds: [assetId] },
+              offset: 0,
+              limit: 3,
+            },
+            "fixed-read",
+          ),
+          toolArgumentChunkSize: 1,
+        };
+      },
+      (body: any) => {
+        expect(body.tools.length).toBeGreaterThan(1);
+        expect(body.tool_choice).not.toEqual({
+          type: "function",
+          function: { name: "read_records" },
+        });
+        return { role: "assistant", content: "已读取，未处理。" };
+      },
+    ]);
+    expect(await effects()).toEqual({ drafts: 0, runs: 0 });
+  });
+  it("retains truncated invocation identity in the actual SDK correction request", async () => {
+    const id = await fresh();
+    await run(id, "先看项目", [
+      {
+        ...call("read_project", "{", "truncated-project"),
+        toolArgumentChunkSize: 1,
+      },
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "read_project",
+        ]);
+        expect(body.tool_choice).toEqual({
+          type: "function",
+          function: { name: "read_project" },
+        });
+        expect(wireText(body.messages[0])).toContain('"name":"read_project"');
+        expect(
+          body.messages.some(
+            (m: any) =>
+              m.role === "user" && wireText(m).includes("read_project"),
+          ),
+        ).toBe(true);
+        return call("read_project", {}, "fixed-project");
+      },
+      { role: "assistant", content: "项目已读取。" },
+    ]);
+    const pending = (
+      await db.query(
+        "SELECT feedback FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0];
+    expect(pending.feedback).toBeNull();
+  });
+
+  it("does not invent a missing original source during SDK correction", async () => {
+    const id = await fresh();
+    await expect(
+      run(id, "读资料", [
+        call(
+          "read_records",
+          { source: { kind: "assets" }, offset: 0, limit: 1 },
+          "missing-source",
+        ),
+        call(
+          "read_records",
+          {
+            source: { kind: "assets", assetIds: [assetId] },
+            offset: 0,
+            limit: 1,
+          },
+          "guessed-source",
+        ),
+      ]),
+    ).rejects.toMatchObject({ code: "correction_intent_changed" });
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1",
+        [id],
+      )
+    ).rows;
+    expect(events.some((e) => e.kind === "source_read")).toBe(false);
+    expect(
+      events.find((e) => e.kind === "correction_rejected").detail.changedPaths,
+    ).toContainEqual(["source", "assetIds"]);
+  });
+  it("preserves the original semantic snapshot if an SDK correction is itself truncated", async () => {
+    const id = await fresh(),
+      valid = plan(50),
+      broken = structuredClone(valid) as any;
+    broken.changes.deliveries[0].patch.count = "50";
+    await run(id, "两份方案", [
+      call("update_requirements", broken, "first-readable"),
+      {
+        ...call(
+          "update_requirements",
+          '{"expectedRevision":0,"changes":',
+          "truncated-correction",
+        ),
+        toolArgumentChunkSize: 2,
+      },
+      (body: any) => {
+        const context = wireText(body.messages[0]);
+        expect(context).toContain('"originalCallId":"first-readable"');
+        expect(context).toContain('"count":"50"');
+        expect(context).toContain('"unparsed":false');
+        expect(body.tools.map((t: any) => t.function.name)).toEqual([
+          "update_requirements",
+        ]);
+        return call("update_requirements", valid, "second-correction");
+      },
+    ]).catch(async (error) => {
+      console.error(
+        JSON.stringify(
+          (
+            await db.query(
+              "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 AND kind IN ('parameter_feedback','correction_rejected') ORDER BY id",
+              [id],
+            )
+          ).rows,
+        ),
+      );
+      throw error;
+    });
+    expect(
+      (await host.store.get(scope(), id)).requirements.deliveries[0].count,
+    ).toBe(50);
+    const events = (
+      await db.query(
+        "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='parameter_feedback' ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.map((e) => e.detail.originalCallId)).toEqual([
+      "first-readable",
+      "first-readable",
+    ]);
+  });
+
   it("rejects semantic source/count/save-target changes disguised as correction", async () => {
     const id = await fresh(),
       bad = plan(50) as any;

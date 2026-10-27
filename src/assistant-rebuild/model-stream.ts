@@ -3,7 +3,6 @@ export function observeModelStream(
   response: Response,
   onText: (text: string) => Promise<void>,
   finish: (usage: unknown, error: string | null) => Promise<void>,
-  onTool?: (call: { id: string; name: string; args: string }) => void,
 ): Response {
   const reader = response.body!.getReader(),
     decoder = new TextDecoder();
@@ -11,7 +10,6 @@ export function observeModelStream(
     pending = "",
     usage: unknown = null,
     done = false;
-  const tools = new Map<number, { id: string; name: string; args: string }>();
   const flush = async () => {
     if (pending) {
       const text = pending;
@@ -22,7 +20,6 @@ export function observeModelStream(
   const complete = async (error: string | null) => {
     if (done) return;
     done = true;
-    for (const call of tools.values()) onTool?.(call);
     try {
       await flush();
     } finally {
@@ -45,17 +42,6 @@ export function observeModelStream(
       for (const choice of data.choices ?? []) {
         if (typeof choice.delta?.content === "string")
           pending += choice.delta.content;
-        for (const t of choice.delta?.tool_calls ?? []) {
-          const current = tools.get(t.index) ?? { id: "", name: "", args: "" };
-          if (t.id) {
-            if (current.id && current.id !== t.id)
-              throw Error("provider_tool_identity_changed");
-            current.id = t.id;
-          }
-          if (t.function?.name) current.name += t.function.name;
-          if (t.function?.arguments) current.args += t.function.arguments;
-          tools.set(t.index, current);
-        }
       }
       if (pending.length >= 80) await flush();
     }

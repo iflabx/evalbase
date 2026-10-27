@@ -227,7 +227,6 @@ export class FormalSessionHost {
     let requestFailure: string | null = null;
     let toolAttempts = 0;
     const toolArgs = new Map<string, unknown>();
-    const wireToolArgs = new Map<string, string>();
     let correctionOf: string | null = null;
     const modelContext = new AsyncLocalStorage<"assistant">();
     try {
@@ -454,7 +453,6 @@ export class FormalSessionHost {
                     });
                 },
                 finishStream,
-                (call) => wireToolArgs.set(call.id, call.args),
               );
             }
             const body = (await response.clone().json()) as {
@@ -497,7 +495,6 @@ export class FormalSessionHost {
         });
       const feedback = sessionFeedback({
         schemas: registry.schemas,
-        rawArguments: (id) => wireToolArgs.get(id),
         initialPending: persisted ?? undefined,
         savePending: async (pending) => {
           await this.execution.guard(proof);
@@ -642,7 +639,15 @@ export class FormalSessionHost {
       await this.store.event(proof, "execution_error", { code });
       await this.store.finish(
         proof,
-        "本轮未完成，输入和已记录的要求已保留。请核对当前要求后重试。",
+        code === "correction_intent_changed"
+          ? "本轮未完成：无法确认自动纠正仍符合原操作和处理范围，已停止该步骤。输入和已记录要求已保留，已完成操作请查看执行记录。"
+          : [
+                "tool_arguments_invalid",
+                "parameter_correction_exhausted",
+                "parameter_correction_incomplete",
+              ].includes(code)
+            ? "本轮未完成：工具参数未能完成自动纠正，已停止该步骤。输入和已记录要求已保留，已完成操作请查看执行记录。"
+            : "本轮未完成，输入和已记录的要求已保留。请核对当前要求后重试。",
         code,
       );
       throw failure instanceof BusinessError ? failure : error;

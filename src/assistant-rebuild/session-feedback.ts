@@ -9,6 +9,7 @@ import { createMiddleware } from "langchain";
 import { z } from "zod";
 import { canonicalJson } from "../package/contract.js";
 import { SessionError } from "./session-store.js";
+import { normalizeToolArguments } from "./tool-arguments.js";
 
 export type FailedCall = {
   id: string;
@@ -23,7 +24,6 @@ export type FailedCall = {
 export function sessionFeedback(options: {
   schemas: Map<string, z.ZodType>;
   initialPending?: FailedCall;
-  rawArguments?: (id: string) => string | undefined;
   savePending?: (pending: FailedCall | undefined) => Promise<void>;
   facts: () => Promise<unknown>;
   guard: () => Promise<void>;
@@ -45,14 +45,39 @@ export function sessionFeedback(options: {
     }
     return copy;
   };
+  const changedPaths = (before: unknown, after: unknown) => {
+    const paths: string[][] = [];
+    const visit = (a: unknown, b: unknown, path: string[]) => {
+      if (paths.length >= 12 || JSON.stringify(a) === JSON.stringify(b)) return;
+      if (
+        a !== null &&
+        b !== null &&
+        typeof a === "object" &&
+        typeof b === "object" &&
+        path.length < 12
+      ) {
+        for (const key of new Set([...Object.keys(a), ...Object.keys(b)]))
+          visit(
+            (a as Record<string, unknown>)[key],
+            (b as Record<string, unknown>)[key],
+            [...path, key],
+          );
+      } else paths.push(path);
+    };
+    visit(before, after, []);
+    return paths;
+  };
   const sameIntent = (name: string, args: unknown) => {
     if (!pending) return true;
     if (name !== pending.name) return false;
     // Truncated write arguments have no trustworthy semantic snapshot. Fail closed rather than invent intent.
     if (pending.unparsed) return name === "read_project";
+    const schema = options.schemas.get(name)!;
+    args = normalizeToolArguments(schema, args).args;
+    const original = normalizeToolArguments(schema, pending.args).args;
     if (
       canonicalJson(scrub(args, pending.paths)) !==
-      canonicalJson(scrub(pending.args, pending.paths))
+      canonicalJson(scrub(original, pending.paths))
     )
       return false;
     const read = (value: unknown, path: string[]) =>
@@ -64,11 +89,15 @@ export function sessionFeedback(options: {
         value,
       );
     return pending.paths.every((path) => {
-      const before = read(pending!.args, path),
+      const before = read(original, path),
         after = read(args, path);
       if (
-        before === undefined ||
-        JSON.stringify(before) === JSON.stringify(after)
+        JSON.stringify(before) === JSON.stringify(after) ||
+        (before !== null &&
+          after !== null &&
+          typeof before === "object" &&
+          typeof after === "object" &&
+          canonicalJson(before) === canonicalJson(after))
       )
         return true;
       if (after === undefined)
@@ -146,7 +175,7 @@ export function sessionFeedback(options: {
         error: {
           code: "tool_arguments_invalid",
           message:
-            "本次未执行。仅修正这些字段并重试同一操作，不改其他要求或范围。",
+            "本次未执行。仅修正这些字段并重试同一工具；对象和数组必须使用JSON结构，不添加记录ID，不改来源、数量或保存目标。",
           ...detail,
         },
       }),
@@ -159,7 +188,10 @@ export function sessionFeedback(options: {
       if (pending && pending.attempts > maxCorrections)
         throw new SessionError("parameter_correction_exhausted", 422);
       const tools = request.tools.filter(
-        (t) => "name" in t && options.schemas.has(String(t.name)),
+        (t) =>
+          "name" in t &&
+          options.schemas.has(String(t.name)) &&
+          (!pending || t.name === pending.name),
       );
       await options.observe(
         "visible_tools",
@@ -168,7 +200,18 @@ export function sessionFeedback(options: {
       // Inject current authoritative facts after any framework summary; summary prose never replaces them.
       const current = new SystemMessage(
         "当前服务端事实（历史或摘要不能覆盖）：" +
-          JSON.stringify(await options.facts()),
+          JSON.stringify(await options.facts()) +
+          (pending
+            ? "\n当前待纠正调用（仅修复该工具的格式，工具声明提供完整参数结构）：" +
+              JSON.stringify({
+                originalCallId: pending.id,
+                name: pending.name,
+                originalArguments: pending.args,
+                invalidPaths: pending.paths,
+                unparsed: pending.unparsed ?? false,
+                rule: "保持来源、记录范围、数量、分类和保存目标；不能新增或猜测ID。",
+              })
+            : ""),
       );
       // Some OpenAI-compatible chat templates reject any System message after the first user.
       // Keep authority in one leading System message, without changing user/tool chronology.
@@ -188,6 +231,14 @@ export function sessionFeedback(options: {
         handler({
           ...request,
           tools,
+          ...(pending
+            ? {
+                toolChoice: {
+                  type: "function" as const,
+                  function: { name: pending.name },
+                },
+              }
+            : {}),
           systemMessage: new SystemMessage({ content }),
           messages: request.messages.filter(
             (m) => !(m instanceof SystemMessage),
@@ -208,7 +259,10 @@ export function sessionFeedback(options: {
           throw new SessionError("multiple_requirement_updates", 422);
         const invalid = [...(last.invalid_tool_calls ?? [])];
         for (const call of last.tool_calls ?? []) {
-          const raw = call.id ? options.rawArguments?.(call.id) : undefined;
+          // SDK raw arguments precede its tolerant partial-JSON parser; do not race transport EOF.
+          const raw = last.additional_kwargs.tool_calls?.find(
+            (t) => t.id === call.id,
+          )?.function.arguments;
           if (raw !== undefined) {
             try {
               JSON.parse(raw);
@@ -234,9 +288,12 @@ export function sessionFeedback(options: {
         pending = {
           id: pending?.id ?? call.id ?? last.id,
           name: call.name,
-          args: null,
-          paths: [],
-          unparsed: true,
+          args: pending ? pending.args : null,
+          paths: pending?.paths ?? [],
+          unparsed: pending?.unparsed ?? !pending,
+          ...(pending?.removablePaths
+            ? { removablePaths: pending.removablePaths }
+            : {}),
           attempts: (pending?.attempts ?? 0) + 1,
         };
         await options.savePending?.(pending);
@@ -251,12 +308,17 @@ export function sessionFeedback(options: {
           messages: [
             new AIMessage({
               id: last.id,
-              content: "工具参数不完整，本次未执行。",
+              content:
+                "工具 " + pending.name + " 的参数JSON不完整，本次未执行。",
               tool_calls: [],
             }),
             new HumanMessage({
               content:
-                "上一工具调用未执行。仅重试同一工具并提供完整JSON；不能改变来源、数量、分类或保存目标。",
+                "上一工具 " +
+                pending.name +
+                "（原调用 " +
+                pending.id +
+                "）未执行。仅重试该工具并按其声明提供完整JSON；不能改变来源、数量、分类或保存目标。",
               additional_kwargs: { evalbaseCorrectionOf: pending.id },
             }),
           ],
@@ -270,11 +332,46 @@ export function sessionFeedback(options: {
       if (!id || !options.schemas.has(call.name))
         throw new SessionError("tool_not_allowed", 422);
       await options.guard();
-      if (!sameIntent(call.name, call.args))
+      const normalized = normalizeToolArguments(
+        options.schemas.get(call.name)!,
+        call.args,
+      );
+      if (normalized.paths.length)
+        await options.observe("parameter_normalized", {
+          id,
+          name: call.name,
+          paths: normalized.paths,
+          correctionOf: pending?.id ?? null,
+        });
+      if (!sameIntent(call.name, normalized.args)) {
+        await options.observe("correction_rejected", {
+          originalCallId: pending?.id,
+          callId: id,
+          name: call.name,
+          expectedTool: pending?.name,
+          reason:
+            call.name !== pending?.name
+              ? "tool_changed"
+              : pending?.unparsed
+                ? "original_arguments_unverifiable"
+                : "protected_arguments_changed",
+          invalidPaths: pending?.paths ?? [],
+          changedPaths:
+            pending && !pending.unparsed
+              ? changedPaths(
+                  normalizeToolArguments(
+                    options.schemas.get(pending.name)!,
+                    pending.args,
+                  ).args,
+                  normalized.args,
+                )
+              : [],
+        });
         throw new SessionError("correction_intent_changed", 422);
-      const parsed = options.schemas.get(call.name)!.safeParse(call.args);
+      }
+      const parsed = options.schemas.get(call.name)!.safeParse(normalized.args);
       if (!parsed.success)
-        return feedback(id, call.name, call.args, parsed.error.issues);
+        return feedback(id, call.name, normalized.args, parsed.error.issues);
       await options.observe("tool_call", {
         id,
         name: call.name,

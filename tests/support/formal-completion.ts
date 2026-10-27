@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ServerResponse } from "node:http";
 /** Controlled provider uses the same OpenAI wire contract as the real SDK. */
 export async function sendFormalCompletion(
@@ -23,7 +24,7 @@ export async function sendFormalCompletion(
     );
     return;
   }
-  const id = "controlled_response";
+  const id = "controlled_response_" + randomUUID();
   const usage = omitUsage
     ? undefined
     : { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 };
@@ -67,7 +68,38 @@ export async function sendFormalCompletion(
   if (message.content)
     for (let i = 0; i < message.content.length; i += 3)
       emit({ content: message.content.slice(i, i + 3) });
-  if (message.tool_calls)
+  if (message.tool_calls && message.toolArgumentChunkSize) {
+    for (const [index, call] of message.tool_calls.entries()) {
+      emit({
+        tool_calls: [
+          {
+            id: call.id,
+            type: call.type,
+            index,
+            function: { name: call.function.name, arguments: "" },
+          },
+        ],
+      });
+      for (
+        let i = 0;
+        i < call.function.arguments.length;
+        i += message.toolArgumentChunkSize
+      )
+        emit({
+          tool_calls: [
+            {
+              index,
+              function: {
+                arguments: call.function.arguments.slice(
+                  i,
+                  i + message.toolArgumentChunkSize,
+                ),
+              },
+            },
+          ],
+        });
+    }
+  } else if (message.tool_calls)
     emit({
       tool_calls: message.tool_calls.map((call: any, index: number) => ({
         ...call,
