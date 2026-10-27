@@ -1,0 +1,193 @@
+{
+  "original": {
+    "storedBytesSha256": "b021ad4ae247a2082fc1a75e2d03225485972d9145228d18d3238752753f748f",
+    "fixtureSha256": "b021ad4ae247a2082fc1a75e2d03225485972d9145228d18d3238752753f748f",
+    "databaseSha256": "b021ad4ae247a2082fc1a75e2d03225485972d9145228d18d3238752753f748f",
+    "unchanged": true,
+    "sourceRecordsUnchanged": true
+  },
+  "cases": [
+    {
+      "sessionId": "rebuild_ff833c06a60640a5a784c7dd0c1f8ea3",
+      "receiptCount": 1,
+      "draft": {
+        "id": "collabdraft_4f50fc350b574307aad3a753f2fe70b7",
+        "name": "暂停恢复复验"
+      },
+      "rows": [
+        {
+          "question": "我想订明天下午的自习室座位，该怎么做？",
+          "expected_output": "新建预约",
+          "metadata": [
+            {
+              "key": "fixtureId",
+              "value": "r01"
+            },
+            {
+              "key": "channel",
+              "value": "网页"
+            },
+            {
+              "key": "note",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "已预约的自习时间需要调整，请问如何操作？",
+          "expected_output": "修改预约",
+          "metadata": [
+            {
+              "key": "fixtureId",
+              "value": "r02"
+            },
+            {
+              "key": "channel",
+              "value": "移动端"
+            },
+            {
+              "key": "note",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "请问怎么撤销之前提交的自习预约？",
+          "expected_output": "取消预约",
+          "metadata": [
+            {
+              "key": "fixtureId",
+              "value": "r03"
+            },
+            {
+              "key": "channel",
+              "value": "网页"
+            },
+            {
+              "key": "note",
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "protectedFields": true,
+      "whitespace": null
+    },
+    {
+      "sessionId": "rebuild_c3a0ff31bad94881b93d351a02009136",
+      "receiptCount": 1,
+      "draft": {
+        "id": "collabdraft_33a1a988a7754c70be5b3d5b9abcdd69",
+        "name": "来源链接复测"
+      },
+      "rows": [
+        {
+          "question": "我想订一个明天下午两点的自习座位，能操作吗？",
+          "expected_output": "预约操作",
+          "metadata": [
+            {
+              "key": "category",
+              "value": "预约操作"
+            },
+            {
+              "key": "scenario",
+              "value": "新建预约"
+            }
+          ]
+        },
+        {
+          "question": "麻烦把我今天已经定好的那个座位预约给取消掉。",
+          "expected_output": "预约操作",
+          "metadata": [
+            {
+              "key": "category",
+              "value": "预约操作"
+            },
+            {
+              "key": "scenario",
+              "value": "取消预约"
+            }
+          ]
+        },
+        {
+          "question": "图书馆的自习座位每天最早几点可以开始预约？",
+          "expected_output": "规则咨询",
+          "metadata": [
+            {
+              "key": "category",
+              "value": "规则咨询"
+            },
+            {
+              "key": "scenario",
+              "value": "可预约时间"
+            }
+          ]
+        },
+        {
+          "question": "我能不能同时保留两个有效的自习座位预约？",
+          "expected_output": "规则咨询",
+          "metadata": [
+            {
+              "key": "category",
+              "value": "规则咨询"
+            },
+            {
+              "key": "scenario",
+              "value": "同时预约数量"
+            }
+          ]
+        }
+      ],
+      "protectedFields": null,
+      "whitespace": null
+    },
+    {
+      "sessionId": "rebuild_bde30d6156f84721a782b9b3836ca6db",
+      "receiptCount": 1,
+      "draft": {
+        "id": "collabdraft_b8bab3dfba754ba7960156b1b6853c51",
+        "name": "唯一回执复测"
+      },
+      "rows": [
+        {
+          "question": "怎样预约明天下午的自习座位？？",
+          "expected_output": "新建预约",
+          "metadata": [
+            {
+              "key": "fixtureId",
+              "value": "r01"
+            },
+            {
+              "key": "channel",
+              "value": "网页"
+            },
+            {
+              "key": "note",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "question": "我已经预约了，怎么改时间？？",
+          "expected_output": "修改预约",
+          "metadata": [
+            {
+              "key": "fixtureId",
+              "value": "r02"
+            },
+            {
+              "key": "channel",
+              "value": "移动端"
+            },
+            {
+              "key": "note",
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "protectedFields": true,
+      "whitespace": true
+    }
+  ]
+}

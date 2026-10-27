@@ -1,0 +1,16 @@
+{
+  "uniqueDirectedTestsWithPassEvidence": 81,
+  "postLiveRepair": "R1 stricter real SDK test red then green",
+  "serverTypecheck": "passed",
+  "frontendBuild": "passed",
+  "dockerFixedBuilds": [
+    "d2854b9874c7ccceecf2e8f40ff2d6512981a676",
+    "f47659130c419a4b4af9ed7dc346818a42d1a3c9"
+  ],
+  "standardsReview": "P2 historical provenance closed; retry wait follow-up closed",
+  "specReview": "P2 historical provenance closed; retry wait follow-up closed",
+  "docsCheck": "passed",
+  "markdownLinksFencesTables": "passed",
+  "jsonFiles": 13,
+  "auditSecretScan": false
+}

@@ -310,3 +310,8 @@ F01的纠正响应由夹具预先给出，只能证明参数传输与执行链�
 - [NVIDIA生成与全局去重实践](https://developer.nvidia.com/blog/synthetic-data-generation-for-financial-ai-research-with-nvidia-nemo/)：借鉴分配范围、累计集合比较和补缺的方向；不照搬其规模、阈值或引入整套NVIDIA流水线。
 
 以上为2026-10-26查阅的设计依据，不是本项目框架验收结果。
+
+
+### 2026-10-27 三项缺口修复复验
+
+Owner 另行授权的暂停恢复、来源链接与重复回执修复及有限额复测见[追加报告](research/assistant-rebuild-repair-validation-20261027.md)。原 campaign 与原结论冻结保留；新活动已在 30 请求/20 行次/4 生成/45 分钟上限内关闭，不据此自动扩大正式重建或重跑通过项。

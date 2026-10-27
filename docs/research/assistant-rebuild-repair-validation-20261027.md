@@ -36,4 +36,26 @@ P1 首次尝试使用 `d2854b9`：实际在 Worker 执行中停止；首次开�
 
 ## 最终结果
 
-待后续有界复测汇总；保留首次失败。
+本轮三个目标缺口最终复测通过；有一次首次失败，经同范围修复后在原总限额内新会话复验成功，不计为首次直过。最终运行代码：`f47659130c419a4b4af9ed7dc346818a42d1a3c9`（首尝试代码 `d2854b9`）。
+
+| 用例 | 最终结果 | 真实证据 |
+| --- | --- | --- |
+| P1 首尝试 | 失败、保留 | 恢复同一 Worker 成功 3 条，但过早消费图中断，3 次读取触发 no_progress，未采用；9 请求 |
+| P1 修复后复验 | 通过 | 执行中停止，首次开始超过 68 秒后继续，同一 run 累计两次 Worker 调用、保存 3 条；7 请求 |
+| P2 来源链接 | 通过 | 上传原合成说明生成 4 条，确认保存后从草稿“查看来源”回到同一背景会话；旧 closed campaign 的原 8 条产物也能打开原会话且明确只读；5 请求 |
+| P3 重复回执 | 通过 | 旧卡 expired，新卡 committed，共用原操作 ID；刷新界面只有一份回执，DB 一份采用、一个草稿、2 条记录；7 请求 |
+
+- 总消耗：28/30 次实际 HTTP、18/20 行次处理、4/4 条生成；连续墙钟约 13.93 分钟/45 分钟。输入 62,737 tokens、输出 4,071 tokens，28 次均有 usage，无未知计量。未追加、重置或退还额度。
+- 本轮没有自然参数错误或参数自动纠正；LangGraph 正常 interrupt 在旧事件名 tool_error 下记录，不能计作参数失败。唯一真实执行错误是已保留的首尝试 no_progress。
+- 原件 MinIO 字节、fixture 与 DB 哈希一致；6 条 source_record 值未变。改写 3 条及清洗 2 条的 expectedOutput、Metadata 值与顺序均保持；清洗问题与原文 trim 结果一致。
+- 旧活动 50 请求、37 行次、8 生成及关闭时间保持原值；旧会话、原 7 份草稿及其记录摘要逐一相同，旧语义预算哨兵 SHA256 未变。
+- campaign 已关闭，无在途请求；专用普通 Worker、模型 Worker 和 builder 已停止；Web/PG/MinIO 及全部数据、首败、截图和账本保留。未改 main、未推送、未更新 4217、未创建开发 tickets。
+- 证据：[manifest](../../.scratch/assistant-rebuild/validation/runs/rebuild-repair-20261027/manifest.json)、[真实请求与事件](../../.scratch/assistant-rebuild/validation/runs/rebuild-repair-20261027/audit.json)、[业务一致性核对](../../.scratch/assistant-rebuild/validation/runs/rebuild-repair-20261027/business-checks.json)、[暂停复验保存](../../.scratch/assistant-rebuild/validation/runs/rebuild-repair-20261027/screenshots/P1-recheck-saved.png)、[刷新后的唯一回执](../../.scratch/assistant-rebuild/validation/runs/rebuild-repair-20261027/screenshots/P3-one-receipt-refreshed.png)。
+
+### 保留的观察与结论边界
+
+暂停查询仍可能把 remaining_budget 误解为“预算不足”，或用“已保存”开头指代要求已保存，容易与业务采用混淆；需要后续收紧事实投影和提示措辞。正常 interrupt 的事件分类也仍需区分。本轮没有为这些文案/指标问题扩大业务改动。
+
+临时验证页切换新会话时观察到旧轮询结果短暂回填上一会话快照，下一次读取纠正；实际新会话、请求和业务写入均按正确 ID 隔离。作为验证页展示问题记录，未扩展为正式助手 UI 重建。
+
+本轮证明的是三个具体接入缺口的修复与有限样本闭环；不把原 L02 的基础设施干预改记为直过，也不代表 85 项正式能力或任意长任务已经验收。
