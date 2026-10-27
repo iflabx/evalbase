@@ -6,7 +6,7 @@ Validation: partial-pass
 Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md)
 
 - 批次：1；对应原范围建议：R04。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；R04-6尚未通过。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02已通过，C01说明残留旧数量，R04-6尚未全闭合。
 - 能力：A01、A02、A13、U01；文件/确认/下载/未保存输入的公共前端桥，领域完成归后续票。
 - 缺口：G05、G09、G10、G12；验收合同：RB04、RB09、RB13；第一批 RB06～10 页面证据。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -70,3 +70,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-28：Owner另开有界复测，电脑操作委派GPT-6.1 Terra/high；两项各独立新会话，首次工具参数错误均自动纠正1次后以correction_intent_changed失败，合计4请求/0行次，无业务作业或保存。旧预算/原件哈希保持，活动均封存；未进入C02在途停止窗口，R04-6仍未通过。详见[同一验证记录的第二轮](../r04-verification.md#2026-10-28-另行授权的有界-computer-use-复测第二轮)。
 
 - 2026-10-28：参数纠错机制修复`c63943e`更新独立4240；86项受控定向验证通过，双轴审阅发现已修复复审。Terra/high第三轮CU的C01/C02仍因交付包装结构比较及纠正遗漏要求失败，8请求/0行次，无业务作业或保存，未覆盖在途暂停，活动已封存；R04-6仍未通过。详情见[第三轮记录](../r04-verification.md#2026-10-28-参数纠错机制修复及第三轮有界复测)。
+
+- 2026-10-28：完整参数合同修复`646ab8b`更新独立4240，111项受控定向检查及双轴针对性复审通过。Terra/high第四轮两个独立CU会话均唯一保存3条，C02真实在途暂停78.557秒后同run恢复通过；C01当前处理说明仍残留“前5条”，故R04-6继续未勾选，Implementation/Validation仍为in-progress/partial-pass。23请求/6行次，旧数据和旧预算哈希不变；详见[完整修复与第四轮记录](../r04-verification.md#r04-contract-round4)。
