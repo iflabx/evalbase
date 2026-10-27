@@ -1,0 +1,7 @@
+{
+  "status": 400,
+  "type": null,
+  "code": "400",
+  "param": null,
+  "message": "litellm.BadRequestError: Hosted_vllmException - {\"error\":{\"message\":\"System message must be at the beginning.\",\"type\":\"BadRequestError\",\"param\":null,\"code\":400}}. Received Model Group=qwen-new\nAvailable Model Group Fallbacks=None"
+}

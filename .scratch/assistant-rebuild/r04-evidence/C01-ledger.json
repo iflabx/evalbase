@@ -1,0 +1,33 @@
+{
+  "activity": {
+    "id": "r04-20261028-C01",
+    "request_limit": 18,
+    "requests": 1,
+    "max_ms": "1500000",
+    "started_at": "2026-10-27T17:32:08.219Z",
+    "closed_at": "2026-10-27T17:32:51.979Z",
+    "row_limit": 9,
+    "rows_used": 0
+  },
+  "task": {
+    "session_id": "assistant_6a968d6d7fe846c985fb998f272f33aa",
+    "turn_id": "turn_7a1031f38ab64a2a9d4d7bfbe80516bd",
+    "status": "failed",
+    "reason": "runtime_request_failed",
+    "requests": 1,
+    "worker_requests": 0,
+    "active_ms": "293",
+    "worker_ms": "0"
+  },
+  "requests": [
+    {
+      "id": "request_7515c08b-4e1d-4065-929e-74a78545c06b",
+      "purpose": "assistant",
+      "status": 400,
+      "error_code": "provider_rejected",
+      "usage": null,
+      "elapsed_ms": "293"
+    }
+  ],
+  "effects": []
+}
