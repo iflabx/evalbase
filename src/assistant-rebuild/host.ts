@@ -1017,6 +1017,12 @@ export class RebuildHost {
           const ps = this.scope(s);
           ps.runtimeGuard!.operationId = op?.id;
           await controlProcessingRun(this.db, ps, run.id, "retry");
+          // Retrying submits background work; consume the graph interrupt only after its terminal event.
+          await this.db.query(
+            "UPDATE rebuild_session SET status='waiting' WHERE id=$1 AND token=$2 AND revision=$3",
+            [id, token, s.revision],
+          );
+          return;
         } catch (e) {
           await this.db.query(
             "UPDATE rebuild_session SET status='failed',error_code='processing_retry_unavailable' WHERE id=$1 AND token=$2",

@@ -1551,11 +1551,14 @@ it("R1 paused Worker: SDK stop/query/resume retains attempts and completed work 
       )
     ).rows[0].n,
   ).toBe(workerCalls);
-  outputs = [call("submit_processing", {})];
+  outputs = [];
+  const callsBeforeResume = requests.length;
   expect((await api("POST", url(id, "/continue"))).statusCode).toBe(200);
   expect((await wait(id, ["waiting", "failed"])).session.status).toBe(
     "waiting",
   );
+  await delay(200);
+  expect(requests.length).toBe(callsBeforeResume); // A queued/running Worker must not wake the model.
   outputs = [
     { role: "assistant", content: JSON.stringify({ records: rows }) },
     call("prepare_adoption", {}),
