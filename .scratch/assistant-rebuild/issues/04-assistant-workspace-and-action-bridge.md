@@ -66,3 +66,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-27：按审查补强发送重发、输入保留与服务端状态展示，依据 Spec §3.1/§3.2；依赖、实施/验证状态和实际预算保持，未开始业务开发或验收。
 
 - 2026-10-28：主体实现`3ab4e13`、协议修复`ada7cf7`；85项受控定向验证通过，C01/C02实模首请求HTTP400后按规则封存。修复已通过真实SDK受控回归并更新独立4240预览；尚未重新实模验收，R04-6未通过，Implementation保持in-progress。详见[本票验证记录](../r04-verification.md)。
+
+- 2026-10-28：Owner另开有界复测，电脑操作委派GPT-6.1 Terra/high；两项各独立新会话，首次工具参数错误均自动纠正1次后以correction_intent_changed失败，合计4请求/0行次，无业务作业或保存。旧预算/原件哈希保持，活动均封存；未进入C02在途停止窗口，R04-6仍未通过。详见[同一验证记录的第二轮](../r04-verification.md#2026-10-28-另行授权的有界-computer-use-复测第二轮)。
