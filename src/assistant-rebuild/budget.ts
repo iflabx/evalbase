@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { applyRegisteredFault } from "./fault.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Database } from "../db/pool.js";
@@ -156,6 +157,34 @@ export function validationFetch(
         "UPDATE rebuild_request SET response=$2,status=$3,ended_at=now() WHERE id=$1",
         [id, JSON.stringify(payload), response.status],
       );
+      const barrierMs = Math.min(
+        15000,
+        Math.max(
+          0,
+          Number(process.env.REBUILD_VALIDATION_WORKER_BARRIER_MS) || 0,
+        ),
+      );
+      if (
+        owner &&
+        context.kind === "worker" &&
+        barrierMs &&
+        context.runId &&
+        Number(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM rebuild_request WHERE campaign_id=$1 AND run_id=$2 AND kind='worker'",
+              [campaignId, context.runId],
+            )
+          ).rows[0].n,
+        ) === 1
+      ) {
+        // Validation only: a visible, bounded first-response window, never a modified business result.
+        await event(db, owner, "worker_boundary_delay", {
+          requestId: id,
+          durationMs: barrierMs,
+        });
+        await delay(barrierMs, undefined, { signal });
+      }
       const sdkPayload = await applyRegisteredFault(db, owner, id, payload);
       const sdkText =
         sdkPayload === payload ? text : JSON.stringify(sdkPayload);

@@ -97,7 +97,7 @@ async function reserveModelCall(
       SELECT $1,$2,1,now() WHERE EXISTS(SELECT 1 FROM job WHERE id=$3 AND lease_owner=$4 AND attempt=$5 AND status='running' AND lease_expires_at>now())
       ON CONFLICT(run_id,ordinal) DO UPDATE SET model_attempts=processing_batch.model_attempts+1,
         model_started_at=coalesce(processing_batch.model_started_at,now())
-      WHERE processing_batch.model_attempts<$6 AND (processing_batch.model_started_at IS NULL OR processing_batch.model_started_at>now()-($7::int * interval '1 millisecond')) RETURNING ordinal`,
+      WHERE processing_batch.model_attempts<$6 AND ($8 OR processing_batch.model_started_at IS NULL OR processing_batch.model_started_at>now()-($7::int * interval '1 millisecond')) RETURNING ordinal`,
       [
         run.id,
         ordinal,
@@ -106,6 +106,7 @@ async function reserveModelCall(
         job.attempt,
         run.execution_config.maxAttempts,
         run.execution_config.batchTimeoutMs,
+        run.execution_config.timeoutScope === "request",
       ],
     );
     if (client) await client.query("COMMIT");
@@ -495,7 +496,11 @@ export async function runProcessing(
     CONTENT_RECIPE,
     GENERATION_RECIPE,
   ].includes(run.execution_config.recipeVersion);
+  const { timeoutScope, ...recipeConfig } = run.execution_config;
   if (
+    (timeoutScope !== undefined &&
+      (timeoutScope !== "request" ||
+        input.background?.contentReviewPolicy !== "manual-v1")) ||
     ![
       "processing-v1",
       "processing-v2",
@@ -510,7 +515,7 @@ export async function runProcessing(
       GENERATION_RECIPE,
     ].includes(run.execution_config.recipeVersion) ||
     canonicalJson({
-      ...run.execution_config,
+      ...recipeConfig,
       recipeVersion: PROCESSING_EXECUTION.recipeVersion,
     }) !== canonicalJson(PROCESSING_EXECUTION)
   )
@@ -640,8 +645,8 @@ export async function runProcessing(
           deduplication && prior?.model_started_at
             ? new Date(prior.model_started_at).getTime()
             : Date.now();
-        const deadline = started + run.execution_config.batchTimeoutMs;
-        const batchSignal = AbortSignal.timeout(
+        let deadline = started + run.execution_config.batchTimeoutMs;
+        let batchSignal = AbortSignal.timeout(
           Math.max(1, deadline - Date.now()),
         );
         const expected = input.refinement ? modelInputs.length : group.count;
@@ -704,6 +709,13 @@ export async function runProcessing(
               ) <= 1
             )
               break;
+          }
+          if (run.execution_config.timeoutScope === "request") {
+            // A resumed request has its own deadline. Attempts and the outer campaign remain cumulative.
+            deadline = Date.now() + run.execution_config.batchTimeoutMs;
+            batchSignal = AbortSignal.timeout(
+              run.execution_config.batchTimeoutMs,
+            );
           }
           const remainingMs = deadline - Date.now();
           if (remainingMs <= 0) break;
@@ -1122,7 +1134,9 @@ export async function runProcessing(
             )
           ).rows[0];
           const deadline = Math.min(
-            new Date(batch.model_started_at).getTime() +
+            (run.execution_config.timeoutScope === "request"
+              ? Date.now()
+              : new Date(batch.model_started_at).getTime()) +
               run.execution_config.batchTimeoutMs,
             reserved.deadline ?? Infinity,
           );

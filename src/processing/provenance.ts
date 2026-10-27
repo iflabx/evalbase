@@ -89,7 +89,22 @@ export async function processingReferences(
     const input = JSON.parse(
       (await artifacts.readBytes(run.input_ref!, 100000000)).toString("utf8"),
     ) as InputSnapshot;
-    if (run.options.operation === "generate")
+    if (run.options.operation === "generate") {
+      const sessionId = run.source.kind === "background" ? run.source.id : "";
+      const hasRebuild = (
+        await db.query("SELECT to_regclass('rebuild_session') AS relation")
+      ).rows[0]?.relation;
+      const owned =
+        hasRebuild &&
+        (
+          await db.query(
+            "SELECT id FROM rebuild_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
+            [sessionId, scope.projectId, scope.actorId],
+          )
+        ).rowCount;
+      const href = owned
+        ? `/projects/${encodeURIComponent(scope.projectId)}/assistant-validation?session=${encodeURIComponent(sessionId)}`
+        : `/projects/${encodeURIComponent(scope.projectId)}/assistant/${encodeURIComponent(sessionId)}`;
       return {
         label: "依据背景文档生成",
         badges: [],
@@ -97,11 +112,12 @@ export async function processingReferences(
         steps: (input.background?.documents ?? []).flatMap((document) =>
           document.fragments.map((fragment) => ({
             label: `${document.fileName} · ${fragment.page ? `第 ${fragment.page} 页` : `第 ${fragment.startLine ?? fragment.index}–${fragment.endLine ?? fragment.index} 行`}`,
-            href: `/projects/${encodeURIComponent(scope.projectId)}/assistant/${encodeURIComponent(run.source.kind === "background" ? run.source.id : "")}`,
+            href,
             kind: "reference" as const,
           })),
         ),
       };
+    }
     if (run.options.operation === "augment") {
       const sources = new Map<string, unknown>();
       let missing = false;

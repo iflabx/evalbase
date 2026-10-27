@@ -10,6 +10,7 @@ type Snapshot = {
   session: {
     id: string;
     status: string;
+    readonly: boolean;
     revision: number;
     requirements: {
       name: string;
@@ -99,7 +100,7 @@ function ValidationPage() {
           <h1 className="text-2xl font-semibold">项目助手 · 适配验证</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {snapshot
-              ? (status[snapshot.session.status] ?? snapshot.session.status)
+              ? (snapshot.session.readonly ? "历史验证会话 · 只读" : (status[snapshot.session.status] ?? snapshot.session.status))
               : "创建新会话开始"}
           </p>
         </div>
@@ -107,7 +108,7 @@ function ValidationPage() {
           <Button variant="outline" onClick={() => void create()} disabled={sending}>
             新会话
           </Button>
-          {id && (
+          {id && !snapshot?.session.readonly && (
             <Button variant="outline" onClick={() => void act(() => post("/stop"))}>
               停止任务
             </Button>
@@ -155,7 +156,7 @@ function ValidationPage() {
                   aria-label="上传背景文档"
                   type="file"
                   accept=".md,.txt,.pdf"
-                  disabled={sending || ["running", "waiting"].includes(snapshot.session.status)}
+                  disabled={snapshot.session.readonly || sending || ["running", "waiting"].includes(snapshot.session.status)}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f)
@@ -194,7 +195,7 @@ function ValidationPage() {
                     </p>
                     <Button
                       disabled={
-                        sending ||
+                        snapshot.session.readonly || sending ||
                         snapshot.session.status !== "confirmation" ||
                         Date.parse(c.expires_at) <= Date.now()
                       }
@@ -254,6 +255,7 @@ function ValidationPage() {
           >
             <Textarea
               aria-label="给项目助手发送消息"
+              disabled={snapshot.session.readonly}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="描述你想处理的数据和要求…"
@@ -262,7 +264,7 @@ function ValidationPage() {
             <div className="flex justify-end">
               <Button
                 type="submit"
-                disabled={sending || !text.trim() || snapshot.session.status === "running"}
+                disabled={snapshot.session.readonly || sending || !text.trim() || snapshot.session.status === "running"}
               >
                 发送
               </Button>

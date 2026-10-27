@@ -118,7 +118,7 @@ export async function generationBudget(
 ) {
   const row = (
     await db.query(
-      `SELECT root.id,root.options,
+      `SELECT root.id,root.options,root.execution_config,
       coalesce(sum(pb.model_attempts),0)::int AS used,min(pb.model_started_at) AS started,
       coalesce(bool_or(pb.diagnostics->>'stopReason'='provider_rejected'),false) AS blocked
     FROM processing_run cur JOIN processing_task t ON t.id=cur.task_id
@@ -134,10 +134,12 @@ export async function generationBudget(
   const targetCount = Number(row.options.outputCount);
   const batches = Math.ceil(targetCount / (targetCount > 20 ? 10 : 20));
   const limit = batches * PROCESSING_EXECUTION.maxAttempts;
-  const deadline = row.started
-    ? new Date(row.started).getTime() +
-      batches * PROCESSING_EXECUTION.batchTimeoutMs
-    : null;
+  // Request-scoped runs bound each call and total attempts; their campaign still bounds wall-clock time.
+  const deadline =
+    row.started && row.execution_config.timeoutScope !== "request"
+      ? new Date(row.started).getTime() +
+        batches * PROCESSING_EXECUTION.batchTimeoutMs
+      : null;
   return {
     rootRunId: row.id as string,
     targetCount,

@@ -96,7 +96,8 @@ export async function processingRecovery(
       b.diagnostics?.stopReason !== "provider_rejected" &&
       (!bounded ||
         (Number(b.model_attempts) < run.execution_config.maxAttempts &&
-          (!b.model_started_at ||
+          (run.execution_config.timeoutScope === "request" ||
+            !b.model_started_at ||
             new Date(b.model_started_at).getTime() +
               run.execution_config.batchTimeoutMs >
               Date.now()))),

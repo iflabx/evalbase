@@ -129,8 +129,8 @@ export class RebuildHost {
     await this.access(scope, write);
     const row = (
       await this.db.query(
-        "SELECT * FROM rebuild_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND campaign_id=$4",
-        [id, scope.projectId, scope.actorId, this.campaignId],
+        "SELECT * FROM rebuild_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND (campaign_id=$4 OR NOT $5)",
+        [id, scope.projectId, scope.actorId, this.campaignId, write],
       )
     ).rows[0];
     if (!row) throw new RuntimeCommitError("conversation_not_found", 404);
@@ -154,10 +154,11 @@ export class RebuildHost {
   }
   async present(scope: Scope, id: string) {
     const s = await this.session(scope, id);
-    await this.db.query(
-      "UPDATE rebuild_confirmation c SET status='committed',receipt=a.receipt FROM processing_acceptance a WHERE c.session_id=$1 AND a.project_id=$2 AND a.actor_id=$3 AND a.run_id=c.run_id AND a.idempotency_key=c.operation_id AND c.receipt IS NULL",
-      [id, scope.projectId, scope.actorId],
-    );
+    if (s.campaign_id === this.campaignId)
+      await this.db.query(
+        "UPDATE rebuild_confirmation c SET status='committed',receipt=a.receipt FROM processing_acceptance a WHERE c.session_id=$1 AND a.project_id=$2 AND a.actor_id=$3 AND a.run_id=c.run_id AND a.idempotency_key=c.operation_id AND c.receipt IS NULL AND c.status='executing'",
+        [id, scope.projectId, scope.actorId],
+      );
     const messages = (
       await this.db.query(
         "SELECT id,role,content,created_at FROM rebuild_message WHERE session_id=$1 ORDER BY id",
@@ -177,8 +178,12 @@ export class RebuildHost {
       )
     ).rows;
     const receipts = [];
+    const shownReceipts = new Set<string>();
     for (const c of confirmations) {
       if (!c.receipt) continue;
+      const identity = c.receipt.acceptanceId;
+      if (shownReceipts.has(identity)) continue;
+      shownReceipts.add(identity);
       const draftId = c.receipt.draftId;
       const draft = draftId
         ? (
@@ -209,6 +214,7 @@ export class RebuildHost {
       session: {
         id: s.id,
         status: s.status,
+        readonly: s.campaign_id !== this.campaignId,
         revision: s.revision,
         requirements: s.requirements,
         error_code: s.error_code,

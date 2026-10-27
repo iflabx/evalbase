@@ -16,6 +16,9 @@ import {
   readProcessingRun,
   previewProcessingInput,
 } from "../../src/processing/store.js";
+import { processingRecovery } from "../../src/processing/recovery.js";
+import { generationBudget } from "../../src/processing/generation.js";
+import { processingReferences } from "../../src/processing/provenance.js";
 import { runProcessing } from "../../src/processing/execute.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
 import { canonicalJson, sha256 } from "../../src/package/contract.js";
@@ -238,7 +241,11 @@ async function submit(id: string, operation = "clean", count = 3) {
             "迟到规则",
           ],
         }
-      : { operation, instructions: "", allowedFields: ["question"] };
+      : {
+          operation,
+          instructions: operation === "rewrite" ? "保留原意换种说法" : "",
+          allowedFields: ["question"],
+        };
   return createProcessingRun(
     db,
     artifacts,
@@ -1431,4 +1438,371 @@ it("F05 pending cancellation: stopping after replacement commit still finds the 
     await host.close();
     app = await buildApp(config, { disableLegacyTestBootstrap: true });
   }
+});
+
+it("R1 paused Worker: SDK stop/query/resume retains attempts and completed work after the original deadline", async () => {
+  const id = await session();
+  outputs = [
+    call("set_requirements", {
+      mode: "execute",
+      operation: "rewrite",
+      count: 2,
+      name: "暂停恢复",
+      instructions: "保留原意，换种自然说法",
+      assetId,
+      allowedFields: ["question"],
+      scenarios: [],
+    }),
+    call("submit_processing", {}),
+  ];
+  await send(id, "改写前两条并保存草稿");
+  const waiting = await wait(id, ["waiting", "failed"]);
+  expect(waiting.session.status).toBe("waiting");
+  const runId = waiting.session.waiting_run_id;
+  const run = await getProcessingRun(db, { projectId, actorId }, runId);
+  let entered!: () => void, releaseWorker!: () => void;
+  const started = new Promise<void>((r) => (entered = r));
+  const gate = new Promise<void>((r) => (releaseWorker = r));
+  onProviderRequest = async () => {
+    entered();
+    await gate;
+  };
+  const rows = (
+    await previewProcessingInput(
+      db,
+      { projectId, actorId },
+      { source: { kind: "assets", assetIds: [assetId] }, limit: 2 },
+    )
+  ).records.map((r) => ({
+    sourceId: r.id,
+    question: "自然改写：" + r.question.trim(),
+    expectedOutput: r.expectedOutput,
+    metadata: r.metadata,
+  }));
+  outputs = [{ role: "assistant", content: JSON.stringify({ records: rows }) }];
+  const interrupted = complete(runId).then(
+    () => "unexpected_success",
+    () => "cancelled",
+  );
+  try {
+    await started;
+    expect((await api("POST", url(id, "/stop"))).statusCode).toBe(200);
+  } finally {
+    onProviderRequest = undefined;
+    releaseWorker();
+  }
+  expect(await interrupted).toBe("cancelled");
+  await db.query(
+    "UPDATE job SET status='cancelled',stage='cancelled',lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1",
+    [run.job_id],
+  );
+  // Persisted-clock fixture: the user waited longer than the original single-call deadline.
+  await db.query(
+    "UPDATE processing_batch SET model_started_at=now()-interval '2 minutes' WHERE run_id=$1",
+    [runId],
+  );
+  const before = (
+    await db.query(
+      "SELECT model_attempts,model_started_at FROM processing_batch WHERE run_id=$1",
+      [runId],
+    )
+  ).rows[0];
+  expect(before.model_attempts).toBe(1);
+  const paused = await readProcessingRun(
+    db,
+    artifacts,
+    { projectId, actorId },
+    runId,
+    { limit: "100" },
+  );
+  expect(paused.recovery.canRetry).toBe(true);
+  const workerCalls = (
+    await db.query(
+      "SELECT count(*)::int n FROM rebuild_request WHERE run_id=$1",
+      [runId],
+    )
+  ).rows[0].n;
+  outputs = [
+    call("read_processing", {}),
+    { role: "assistant", content: "任务暂停，尚未保存；继续后处理剩余内容。" },
+  ];
+  await send(id, "先别继续，现在做到哪了？");
+  for (let i = 0; i < 100; i++) {
+    if (
+      (await state(id)).messages.some(
+        (m: any) =>
+          m.role === "assistant" && m.content.includes("任务暂停，尚未保存"),
+      )
+    )
+      break;
+    await delay(25);
+  }
+  expect(
+    (await state(id)).messages.some((m: any) =>
+      m.content.includes("任务暂停，尚未保存"),
+    ),
+  ).toBe(true);
+  expect((await state(id)).session.status).toBe("paused");
+  expect(
+    (
+      await db.query(
+        "SELECT count(*)::int n FROM rebuild_request WHERE run_id=$1",
+        [runId],
+      )
+    ).rows[0].n,
+  ).toBe(workerCalls);
+  outputs = [call("submit_processing", {})];
+  expect((await api("POST", url(id, "/continue"))).statusCode).toBe(200);
+  expect((await wait(id, ["waiting", "failed"])).session.status).toBe(
+    "waiting",
+  );
+  outputs = [
+    { role: "assistant", content: JSON.stringify({ records: rows }) },
+    call("prepare_adoption", {}),
+  ];
+  await complete(runId);
+  const ready = await wait(id, ["confirmation", "failed"]);
+  expect(ready.session.status).toBe("confirmation");
+  const after = (
+    await db.query(
+      "SELECT model_attempts,model_started_at FROM processing_batch WHERE run_id=$1",
+      [runId],
+    )
+  ).rows[0];
+  expect(after.model_attempts).toBe(2);
+  expect(after.model_started_at).toEqual(before.model_started_at);
+  const card = ready.confirmations.find((c: any) => c.status === "pending");
+  expect(
+    (await api("POST", url(id, "/confirmations/" + card.id))).statusCode,
+  ).toBe(200);
+  const saved = await wait(id, ["idle", "failed"]);
+  expect(saved.receipts).toHaveLength(1);
+  expect(saved.receipts[0].adopted).toBe(2);
+  await complete(runId);
+  expect(
+    (
+      await db.query(
+        "SELECT model_attempts FROM processing_batch WHERE run_id=$1",
+        [runId],
+      )
+    ).rows[0].model_attempts,
+  ).toBe(2);
+});
+
+it("R2 provenance: generated output links to its owned validation session", async () => {
+  const id = await session();
+  expect(
+    (
+      await api("POST", url(id, "/documents"), {
+        name: "预约背景.md",
+        content: Buffer.from("预约可新建或取消。").toString("base64"),
+      })
+    ).statusCode,
+  ).toBe(200);
+  const made = await submit(id, "generate", 2);
+  outputs = [
+    {
+      role: "assistant",
+      content: JSON.stringify({
+        records: [
+          {
+            question: "明天上午还有可以预约的时段吗？",
+            expectedOutput: "查询可用时段",
+            metadata: [],
+          },
+          {
+            question: "我临时有事，怎么取消明天的预约？",
+            expectedOutput: "说明取消方式",
+            metadata: [],
+          },
+        ],
+      }),
+    },
+  ];
+  await complete(made.run.id);
+  const source = await processingReferences(
+    db,
+    artifacts,
+    { projectId, actorId },
+    made.run.id,
+  );
+  expect(source?.steps.length).toBeGreaterThan(0);
+  expect(
+    source?.steps.every(
+      (s) =>
+        s.href ===
+        "/projects/" + projectId + "/assistant-validation?session=" + id,
+    ),
+  ).toBe(true);
+  expect((await api("GET", url(id))).statusCode).toBe(200);
+  const oldCampaign = "closed-" + id;
+  await db.query(
+    "INSERT INTO rebuild_campaign(id,max_requests,max_rows,max_generated,max_minutes,closed_at) VALUES($1,1,1,1,1,now())",
+    [oldCampaign],
+  );
+  await db.query("UPDATE rebuild_session SET campaign_id=$2 WHERE id=$1", [
+    id,
+    oldCampaign,
+  ]);
+  const old = await api("GET", url(id));
+  expect(old.statusCode).toBe(200);
+  expect(old.json().session.readonly).toBe(true);
+  expect(old.json().documents[0].name).toBe("预约背景.md");
+  for (const suffix of [
+    "/continue",
+    "/stop",
+    "/messages",
+    "/documents",
+    "/confirmations/missing",
+  ]) {
+    expect(
+      (
+        await api(
+          "POST",
+          url(id, suffix),
+          suffix === "/documents"
+            ? {
+                name: "新背景.md",
+                content: Buffer.from("不应写入").toString("base64"),
+              }
+            : { text: "继续" },
+        )
+      ).statusCode,
+    ).toBe(404);
+  }
+  expect(
+    (
+      await db.query("SELECT requests FROM rebuild_campaign WHERE id=$1", [
+        oldCampaign,
+      ])
+    ).rows[0].requests,
+  ).toBe(0);
+});
+
+it("R3 confirmation renewal: expired cards stay expired; unknown commits reconcile once and receipts are unique", async () => {
+  const id = await session();
+  outputs = [
+    call("set_requirements", {
+      mode: "execute",
+      operation: "clean",
+      count: 2,
+      name: "唯一回执",
+      instructions: "",
+      assetId,
+      allowedFields: ["question"],
+      scenarios: [],
+    }),
+    call("submit_processing", {}),
+  ];
+  await send(id, "清洗前两条并保存为唯一回执");
+  const waiting = await wait(id, ["waiting", "failed"]);
+  outputs = [call("prepare_adoption", {})];
+  await complete(waiting.session.waiting_run_id);
+  const ready = await wait(id, ["confirmation", "failed"]);
+  const oldCard = ready.confirmations.find((c: any) => c.status === "pending");
+  await delay(250); // Let the confirmation checkpoint finish before the next control action.
+  await api("POST", url(id, "/stop"));
+  outputs = [call("prepare_adoption", {})];
+  await api("POST", url(id, "/continue"));
+  const renewed = await wait(id, ["confirmation", "failed"]);
+  const fresh = renewed.confirmations.find((c: any) => c.status === "pending");
+  expect(fresh.id).not.toBe(oldCard.id);
+  expect(
+    (await api("POST", url(id, "/confirmations/" + oldCard.id))).statusCode,
+  ).toBe(409);
+  expect(
+    (await api("POST", url(id, "/confirmations/" + fresh.id))).statusCode,
+  ).toBe(200);
+  await wait(id, ["idle", "failed"]);
+  await db.query(
+    "UPDATE rebuild_confirmation SET receipt=NULL,status='executing' WHERE id=$1",
+    [fresh.id],
+  );
+  const reconciled = await state(id);
+  expect(
+    reconciled.confirmations.find((c: any) => c.id === oldCard.id).status,
+  ).toBe("expired");
+  expect(
+    reconciled.confirmations.find((c: any) => c.id === oldCard.id).receipt,
+  ).toBeNull();
+  expect(reconciled.receipts).toHaveLength(1);
+  expect(reconciled.receipts[0].adopted).toBe(2);
+  expect((await state(id)).receipts).toHaveLength(1);
+  expect(
+    (
+      await db.query(
+        "SELECT count(*)::int n FROM processing_acceptance WHERE run_id=$1",
+        [waiting.session.waiting_run_id],
+      )
+    ).rows[0].n,
+  ).toBe(1);
+});
+
+it("R4 timeout policy: exhausted attempts still block; historical deadlines and shared generation limits stay bounded", async () => {
+  const id = await session();
+  const made = await submit(id, "rewrite", 1);
+  const scope = { projectId, actorId };
+  await db.query("UPDATE job SET status='cancelled' WHERE id=$1", [
+    made.run.jobId,
+  ]);
+  await db.query(
+    "INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at) VALUES($1,0,1,now()-interval '2 minutes')",
+    [made.run.id],
+  );
+  let run = await getProcessingRun(db, scope, made.run.id);
+  expect((await processingRecovery(db, run)).canRetry).toBe(true);
+  await db.query(
+    "UPDATE processing_batch SET model_attempts=3 WHERE run_id=$1",
+    [run.id],
+  );
+  expect((await processingRecovery(db, run)).canRetry).toBe(false);
+  await db.query(
+    "UPDATE processing_batch SET model_attempts=1 WHERE run_id=$1",
+    [run.id],
+  );
+  await db.query(
+    "UPDATE processing_run SET execution_config=execution_config-'timeoutScope' WHERE id=$1",
+    [run.id],
+  );
+  run = await getProcessingRun(db, scope, run.id);
+  expect((await processingRecovery(db, run)).canRetry).toBe(false);
+
+  const genId = await session();
+  await api("POST", url(genId, "/documents"), {
+    name: "背景.md",
+    content: Buffer.from("预约可查询和取消。").toString("base64"),
+  });
+  const gen = await submit(genId, "generate", 2);
+  await db.query(
+    "INSERT INTO processing_batch(run_id,ordinal,model_attempts,model_started_at) VALUES($1,0,1,now()-interval '2 minutes')",
+    [gen.run.id],
+  );
+  const budget = await generationBudget(db, gen.run.id);
+  expect(budget).toMatchObject({
+    used: 1,
+    remaining: 2,
+    exhausted: false,
+    deadline: null,
+  });
+  await db.query(
+    "UPDATE processing_batch SET model_attempts=3 WHERE run_id=$1",
+    [gen.run.id],
+  );
+  expect(await generationBudget(db, gen.run.id)).toMatchObject({
+    used: 3,
+    remaining: 0,
+    exhausted: true,
+  });
+  await db.query(
+    "UPDATE processing_batch SET model_attempts=1 WHERE run_id=$1",
+    [gen.run.id],
+  );
+  await db.query(
+    "UPDATE processing_run SET execution_config=execution_config-'timeoutScope' WHERE id=$1",
+    [gen.run.id],
+  );
+  expect(await generationBudget(db, gen.run.id)).toMatchObject({
+    used: 1,
+    exhausted: true,
+  });
 });

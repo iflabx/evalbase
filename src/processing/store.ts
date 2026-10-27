@@ -142,6 +142,8 @@ export type ProcessingRun = {
   input_count: number;
   execution_config: Omit<typeof PROCESSING_EXECUTION, "recipeVersion"> & {
     recipeVersion: string;
+    /** Frozen for new validation runs only; historical batch deadlines stay unchanged. */
+    timeoutScope?: "request";
   };
   output_count?: number;
   issue_count?: number;
@@ -717,6 +719,7 @@ export async function createProcessingRun(
         target,
         {
           ...PROCESSING_EXECUTION,
+          ...(scope.runtimeGuard ? { timeoutScope: "request" } : {}),
           recipeVersion:
             options.operation === "generate"
               ? GENERATION_RECIPE
