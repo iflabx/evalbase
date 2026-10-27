@@ -96,6 +96,7 @@ const reasonNames: Record<string, string> = {
   activity_budget_exhausted: "本次验证额度已用完，已停止。",
   task_budget_exhausted: "任务额度已用完，请核对后申请追加。",
   model_request_timeout: "模型响应超时，已有进度已保留。",
+  provider_rejected: "模型服务未能处理本次请求，输入和已有进度已保留。",
   user_stopped: "任务已暂停，可以查看进度或继续。",
 };
 function readLocal<T>(key: string, fallback: T): T {
@@ -980,7 +981,9 @@ export function FormalAssistant({
                             {snapshot.execution?.reason && (
                               <p className="mt-3 text-sm text-muted-foreground">
                                 {reasonNames[snapshot.execution.reason] ??
-                                  "任务已暂停，已有输入和进度已保留，请核对后继续。"}
+                                  (snapshot.execution.status === "paused"
+                                    ? "任务已暂停，已有输入和进度已保留，请核对后继续。"
+                                    : "本轮未完成，输入和已有进度已保留。请核对当前要求后重试。")}
                               </p>
                             )}
                             {snapshot.confirmations

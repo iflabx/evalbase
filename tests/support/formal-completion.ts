@@ -2,10 +2,27 @@ import type { ServerResponse } from "node:http";
 /** Controlled provider uses the same OpenAI wire contract as the real SDK. */
 export async function sendFormalCompletion(
   res: ServerResponse,
-  body: { stream?: boolean },
+  body: { stream?: boolean; messages?: { role: string }[] },
   message: any,
   omitUsage = false,
 ) {
+  if (
+    body.messages?.some(
+      (message, index) => index > 0 && message.role === "system",
+    )
+  ) {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        error: {
+          message: "System message must be at the beginning.",
+          type: "BadRequestError",
+          code: 400,
+        },
+      }),
+    );
+    return;
+  }
   const id = "controlled_response";
   const usage = omitUsage
     ? undefined

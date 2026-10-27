@@ -810,14 +810,20 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     ).rows;
     expect(known).toHaveLength(attempts.length);
     const lastRequests = requests.filter((r) => r.tools?.length).at(-1);
+    expect(lastRequests.messages[0].role).toBe("system");
+    const currentSystem = lastRequests.messages[0].content;
+    const systemText =
+      typeof currentSystem === "string"
+        ? currentSystem
+        : currentSystem
+            .filter((part: any) => part.type === "text")
+            .map((part: any) => part.text)
+            .join("\n");
+    expect(systemText).toContain('"count":50');
+    expect(systemText).toContain("当前服务端事实");
     expect(
-      lastRequests.messages.some(
-        (m: any) =>
-          typeof m.content === "string" &&
-          m.content.includes('"count":50') &&
-          m.content.includes("当前服务端事实"),
-      ),
-    ).toBe(true);
+      lastRequests.messages.slice(1).some((m: any) => m.role === "system"),
+    ).toBe(false);
     omitUsage = true;
     try {
       await run(id, "只解释当前状态", [], { hooks });
@@ -1309,5 +1315,30 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     expect(listed.items.map((v: { id: string }) => v.id)).toContain(target);
     expect((await host.store.change(proof, change)).saved).toBe(true);
     await host.store.finish(proof, "合法父版本目标已核对");
+  });
+  it("R04 sends exactly one leading System message through the real SDK while retaining current authority and tool chronology", async () => {
+    const id = await fresh(),
+      start = requests.length;
+    await run(id, "查看当前项目", [
+      call("read_project", {}),
+      { role: "assistant", content: "项目已读取。" },
+    ]);
+    const observed = requests.slice(start);
+    expect(observed).toHaveLength(2);
+    for (const request of observed) {
+      expect(request.messages[0].role).toBe("system");
+      expect(
+        request.messages.slice(1).every((m: any) => m.role !== "system"),
+      ).toBe(true);
+      expect(JSON.stringify(request.messages[0].content)).toContain(
+        "当前服务端事实",
+      );
+      expect(JSON.stringify(request.messages[0].content)).toContain(id);
+    }
+    const final = observed[1].messages;
+    expect(final.findIndex((m: any) => m.role === "tool")).toBeGreaterThan(
+      final.findIndex((m: any) => m.role === "assistant"),
+    );
+    expect((await host.present(scope(), id)).receipts).toEqual([]);
   });
 });

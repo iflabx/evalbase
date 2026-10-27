@@ -170,11 +170,28 @@ export function sessionFeedback(options: {
         "当前服务端事实（历史或摘要不能覆盖）：" +
           JSON.stringify(await options.facts()),
       );
+      // Some OpenAI-compatible chat templates reject any System message after the first user.
+      // Keep authority in one leading System message, without changing user/tool chronology.
+      const systemMessages = [
+        ...(request.systemMessage ? [request.systemMessage] : []),
+        ...request.messages.filter((m) => m instanceof SystemMessage),
+        current,
+      ];
+      const content = systemMessages.every((m) => typeof m.content === "string")
+        ? systemMessages.map((m) => m.content).join("\n\n")
+        : systemMessages.flatMap((m) =>
+            typeof m.content === "string"
+              ? [{ type: "text" as const, text: m.content }]
+              : m.content,
+          );
       return options.callModel(() =>
         handler({
           ...request,
           tools,
-          messages: [...request.messages, current],
+          systemMessage: new SystemMessage({ content }),
+          messages: request.messages.filter(
+            (m) => !(m instanceof SystemMessage),
+          ),
         }),
       );
     },

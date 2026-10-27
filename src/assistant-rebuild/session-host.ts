@@ -434,6 +434,7 @@ export class FormalSessionHost {
               ]),
             });
             outcome.status = response.status;
+            if (!response.ok) requestFailure = "provider_rejected";
             if (
               response.ok &&
               response.headers
