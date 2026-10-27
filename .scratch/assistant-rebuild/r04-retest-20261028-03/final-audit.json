@@ -1,0 +1,114 @@
+{
+  "at": "2026-10-27T18:56:15.396Z",
+  "oldBudgetUnchanged": true,
+  "sourceUnchanged": true,
+  "modelAndKeyRestored": true,
+  "model": "qwen-new",
+  "externalRequestsDuringAudit": 0,
+  "newActivities": [
+    {
+      "id": "r04-20261028-retest3-C01",
+      "request_limit": 18,
+      "requests": 3,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T18:52:34.058Z",
+      "closed_at": "2026-10-27T18:53:10.703Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-retest3-C02",
+      "request_limit": 18,
+      "requests": 5,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T18:55:05.493Z",
+      "closed_at": "2026-10-27T18:56:01.723Z",
+      "row_limit": 9,
+      "rows_used": 0
+    }
+  ],
+  "requests": [
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3737,
+        "prompt_tokens": 3645,
+        "completion_tokens": 92
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5429,
+        "prompt_tokens": 5028,
+        "completion_tokens": 401
+      }
+    },
+    {
+      "purpose": "correction",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5025,
+        "prompt_tokens": 4687,
+        "completion_tokens": 338
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3667,
+        "prompt_tokens": 3653,
+        "completion_tokens": 14
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3772,
+        "prompt_tokens": 3734,
+        "completion_tokens": 38
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3934,
+        "prompt_tokens": 3841,
+        "completion_tokens": 93
+      }
+    },
+    {
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5900,
+        "prompt_tokens": 5373,
+        "completion_tokens": 527
+      }
+    },
+    {
+      "purpose": "correction",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5629,
+        "prompt_tokens": 5242,
+        "completion_tokens": 387
+      }
+    }
+  ],
+  "operationCount": 0,
+  "usageTotal": 37093
+}

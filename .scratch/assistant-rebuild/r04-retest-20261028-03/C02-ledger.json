@@ -1,0 +1,85 @@
+{
+  "activity": {
+    "id": "r04-20261028-retest3-C02",
+    "request_limit": 18,
+    "requests": 5,
+    "max_ms": "1500000",
+    "started_at": "2026-10-27T18:55:05.493Z",
+    "closed_at": "2026-10-27T18:56:01.723Z",
+    "row_limit": 9,
+    "rows_used": 0
+  },
+  "task": {
+    "session_id": "assistant_1fe961eb88044b339125dd666c0cc2f3",
+    "turn_id": "turn_6ffb548a2b1641b3abfd726a7bf5321b",
+    "status": "failed",
+    "reason": "correction_intent_changed",
+    "requests": 5,
+    "worker_requests": 0,
+    "active_ms": "5414",
+    "worker_ms": "0"
+  },
+  "requests": [
+    {
+      "id": "request_80d2d174-f38a-404d-b424-16d9600a7c60",
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3667,
+        "prompt_tokens": 3653,
+        "completion_tokens": 14
+      },
+      "elapsed_ms": "385"
+    },
+    {
+      "id": "request_e6e2a431-42a9-4d42-8a72-af27c5778b69",
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3772,
+        "prompt_tokens": 3734,
+        "completion_tokens": 38
+      },
+      "elapsed_ms": "421"
+    },
+    {
+      "id": "request_ded77155-b840-43b6-b2cf-496568004559",
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 3934,
+        "prompt_tokens": 3841,
+        "completion_tokens": 93
+      },
+      "elapsed_ms": "559"
+    },
+    {
+      "id": "request_d8b1ce8a-0058-4f57-9321-930229c85389",
+      "purpose": "assistant",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5900,
+        "prompt_tokens": 5373,
+        "completion_tokens": 527
+      },
+      "elapsed_ms": "2227"
+    },
+    {
+      "id": "request_9504c690-687a-4dc7-87df-7b2798bd6dd4",
+      "purpose": "correction",
+      "status": 200,
+      "error_code": null,
+      "usage": {
+        "total_tokens": 5629,
+        "prompt_tokens": 5242,
+        "completion_tokens": 387
+      },
+      "elapsed_ms": "1822"
+    }
+  ],
+  "effects": []
+}

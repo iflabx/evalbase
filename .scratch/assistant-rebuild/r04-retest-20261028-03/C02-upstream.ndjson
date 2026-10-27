@@ -1,0 +1,10 @@
+{"seq":1,"worker":false,"startedAt":"2026-10-27T18:55:05.503Z"}
+{"seq":1,"status":200,"finishedAt":"2026-10-27T18:55:05.846Z"}
+{"seq":2,"worker":false,"startedAt":"2026-10-27T18:55:05.958Z"}
+{"seq":2,"status":200,"finishedAt":"2026-10-27T18:55:06.349Z"}
+{"seq":3,"worker":false,"startedAt":"2026-10-27T18:55:06.437Z"}
+{"seq":3,"status":200,"finishedAt":"2026-10-27T18:55:06.959Z"}
+{"seq":4,"worker":false,"startedAt":"2026-10-27T18:55:07.071Z"}
+{"seq":4,"status":200,"finishedAt":"2026-10-27T18:55:09.268Z"}
+{"seq":5,"worker":false,"startedAt":"2026-10-27T18:55:09.375Z"}
+{"seq":5,"status":200,"finishedAt":"2026-10-27T18:55:11.142Z"}
