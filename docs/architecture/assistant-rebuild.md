@@ -48,6 +48,8 @@
 
 本表依据基线代码的实际调用，不是要求重写整个业务系统。类型引用也应移到正确归属，但不能将类型导入误报为运行时故障。
 
+REBUILD-01 已在 `6f97cd9` 将草稿、选取、处理/采用和发布的共享提交保护迁入 `src/operations/commit.ts`，纯处理约束/背景合同迁入 `src/processing/`；旧 `assistant/fence` 仅保留兼容适配，新运行时使用独立可信上下文。下表继续保留原耦合清单作为后续领域接线的依据，不表示全部退出项已完成。实际迁出调用者、保留的历史引用、回归及基线失败见[REBUILD-01 验证记录](../../.scratch/assistant-rebuild/r01-verification.md)；正式会话、持久执行和领域能力仍由后续票交付。
+
 | 当前耦合与证据 | 目标 Interface 及归属 | 保留的不变量与退出条件 |
 | --- | --- | --- |
 | [assistant/fence](../../src/assistant/fence.ts) 的 guardAssistantCommit 被 drafts/create、selection/store、processing/store/accept/refine、version/publish-sparse 与版本路由调用 | 中立的事务提交保护；服务端可信上下文区分人工、旧兼容、新运行时来源；各入口提供合法授权证明 | 权限、任务撤销、修订、预算与确认提交仍在事务内复检。新助手不得通过省略 assistantGuard 冒充人工调用 |

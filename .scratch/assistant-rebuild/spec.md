@@ -1,8 +1,8 @@
 # 项目助手独立重建 Implementation Spec
 
 Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
+Implementation: in-progress
+Validation: partial
 Blocked by: 无未决范围问题；各票执行依赖见下表
 
 - 日期：2026-10-27；建立基线：`420c22e`；工作分支：`codex/assistant-rebuild`。
@@ -23,7 +23,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 
 | Ticket | 批次 | 依赖 | Implementation | Validation | 实现提交 / 证据 |
 | --- | --- | --- | --- | --- | --- |
-| [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | not-started | not-run | — |
+| [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | not-started | not-run | — |
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | not-started | not-run | — |
 | [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | not-started | not-run | — |
@@ -137,3 +137,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 
 - 2026-10-27：按 Owner 指令创建本 Spec 与 REBUILD-01～10。85 项能力、12 项已知缺口和 RB01～15 均沿既有范围/架构映射；所有票 Implementation not-started、Validation not-run。当前未执行上述测试活动，也未改变旧数据、预算或运行环境。
 - 2026-10-27：按 Owner 确认的审查意见补强消息提交防重、有效进展与取消交付验收；责任归02/03/04/07/10，依赖边与 C01～C08 上限不变。本次仅文档，Implementation/Validation 不变；未运行模型/CU、创建活动或修改验收数据及旧预算。
+
+- 2026-10-27：Owner单票授权完成REBUILD-01，代码 `6f97cd9`。定向验证与双轴审阅见[唯一记录](r01-verification.md)；扩大回归14项基线已有失败保留。02～10仍未开始；后续真实活动的依赖与预算不变，未运行CU或更新4217。
