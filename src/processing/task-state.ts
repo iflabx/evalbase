@@ -1,3 +1,4 @@
+import { legacySession } from "../operations/commit.js";
 import type { Database } from "../db/pool.js";
 import {
   ProcessingError,
@@ -121,7 +122,7 @@ export async function attachProcessingRound(
       await db.query(
         `SELECT t.id FROM processing_task t JOIN processing_run r ON r.task_id=t.id
       WHERE r.id=$1 AND t.latest_run_id=$1 AND t.project_id=$2 AND t.assistant_session_id IS NOT DISTINCT FROM $3::text FOR UPDATE OF t`,
-        [parentId, scope.projectId, scope.assistantGuard?.sessionId ?? null],
+        [parentId, scope.projectId, legacySession(scope)],
       )
     ).rows[0];
     taskId = parent?.id;
@@ -129,7 +130,7 @@ export async function attachProcessingRound(
   if (!taskId) {
     await db.query(
       "INSERT INTO processing_task(id,project_id,root_run_id,latest_run_id,assistant_session_id) VALUES($1,$2,$1,$1,$3)",
-      [runId, scope.projectId, scope.assistantGuard?.sessionId ?? null],
+      [runId, scope.projectId, legacySession(scope)],
     );
     await db.query(
       "UPDATE processing_run SET task_id=$1,round_number=1 WHERE id=$1",

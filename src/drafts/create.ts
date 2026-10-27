@@ -1,8 +1,8 @@
 import type { RuntimeGuard } from "../operations/runtime-guard.js";
 import {
-  guardAssistantCommit,
+  guardOperationCommit,
   type AssistantGuard,
-} from "../assistant/fence.js";
+} from "../operations/commit.js";
 import type { Database } from "../db/pool.js";
 import { writeBatches } from "../db/batch.js";
 import { canonicalJson, sha256 } from "../package/contract.js";
@@ -82,6 +82,7 @@ export async function createSharedDraft(
     actorId: string;
     assistantGuard?: AssistantGuard;
     runtimeGuard?: RuntimeGuard;
+    operation?: object;
   },
   body: unknown,
   key: unknown,
@@ -184,7 +185,7 @@ export async function createSharedDraft(
       name = String(parent.rows[0].name);
       purpose = String(parent.rows[0].purpose);
     }
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(client, scope);
     const draftId = stableId ?? opaqueId("collabdraft");
     const inserted = await client.query(
       `INSERT INTO collaborative_draft
@@ -263,7 +264,7 @@ export async function createSharedDraft(
     const draft = await client.query(`${draftSelect} WHERE d.id=$1`, [
       actualId,
     ]);
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(client, scope);
     await client.query("COMMIT");
     return {
       statusCode: inserted.rowCount ? 201 : 200,

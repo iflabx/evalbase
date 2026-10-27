@@ -1,3 +1,4 @@
+import { BusinessError } from "../operations/errors.js";
 import { RuntimeMetrics } from "../observability/runtime.js";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -335,6 +336,12 @@ export async function buildApp(
     );
   });
   app.setErrorHandler(async (error: FastifyError, request, reply) => {
+    if (
+      error instanceof BusinessError &&
+      error.status >= 400 &&
+      error.status < 500
+    )
+      return reply.code(error.status).send({ error: { code: error.code } });
     const statusCode = error.statusCode ?? 500;
     const startedAt = (request as { startedAt?: number }).startedAt;
     let errorCode = "http_error";

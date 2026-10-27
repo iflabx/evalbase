@@ -1,3 +1,5 @@
+import { BusinessError as AssistantError } from "../operations/errors.js";
+export { BusinessError as AssistantError } from "../operations/errors.js";
 import {
   budgetAllowance,
   createBudgetLedger,
@@ -295,15 +297,6 @@ export async function assistantRecovery(
     reservedModelStep,
     requestEstimateMs: options.requestEstimateMs,
   });
-}
-export class AssistantError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    public hint?: string,
-  ) {
-    super(code);
-  }
 }
 export async function assistantAccess(
   db: Pick<Database, "query">,

@@ -3,12 +3,13 @@ import { reviewBackgroundHash } from "./content-review.js";
 import { generatesRecords } from "./protocol.js";
 import { isGenerationRecipe, generationBudget } from "./generation.js";
 import {
-  guardAssistantCommit,
-  linkAssistantProcessing,
-} from "../assistant/fence.js";
+  guardOperationCommit,
+  linkOperationProcessing,
+  freezeOperationBackground,
+  operationOrigin,
+} from "../operations/commit.js";
 import type { Database } from "../db/pool.js";
 import { deduplicate } from "./deduplication.js";
-import { freezeBackground } from "../assistant/background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import { adoptedCandidateKeys, candidateKey } from "./adoption.js";
 import {
@@ -338,7 +339,7 @@ export async function createRefinementRun(
       !model?.enabled
     )
       throw new ProcessingError(409, "model_connection_unavailable");
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(client, scope);
     const rootOperation = generatesRecords(options.operation)
       ? options.operation
       : generatesRecords(inputRootOperation)
@@ -362,15 +363,16 @@ export async function createRefinementRun(
             rootOperation,
             adoptionFields: refinement.adoptionFields,
           };
-    let background = scope.assistantGuard
-      ? await freezeBackground(client, scope, scope.assistantGuard.sessionId, {
-          options,
-          records,
-          source: parent.source,
-          rootOperation: refinement.rootOperation,
-          parentRunId: parentId,
-        })
-      : input.background;
+    let background =
+      operationOrigin(scope) !== "manual"
+        ? await freezeOperationBackground(client, scope, {
+            options,
+            records,
+            source: parent.source,
+            rootOperation: refinement.rootOperation,
+            parentRunId: parentId,
+          })
+        : input.background;
     if (model?.enabled) {
       // A partial edit keeps its frozen native review policy, including legacy absence.
       const inheritedPolicy =
@@ -395,7 +397,7 @@ export async function createRefinementRun(
       const questionPolicy =
         scope.taskRound?.kind === "complete"
           ? input.background?.questionPolicy
-          : scope.assistantGuard
+          : operationOrigin(scope) === "legacy"
             ? background?.questionPolicy
             : newQuestionPolicy(options.operation, [options.instructions]);
       if (questionPolicy)
@@ -556,7 +558,7 @@ export async function createRefinementRun(
         background?.documents.map((document) => document.id) ?? [],
       ],
     );
-    await linkAssistantProcessing(client, scope, runId);
+    await linkOperationProcessing(client, scope, runId);
     await attachProcessingRound(client, scope, runId, parentId);
     if (transaction)
       return {

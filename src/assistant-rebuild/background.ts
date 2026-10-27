@@ -1,6 +1,6 @@
 import type { Database } from "../db/pool.js";
 import type { ProcessingScope } from "../processing/store.js";
-import type { BackgroundSnapshot } from "../assistant/background.js";
+import type { BackgroundSnapshot } from "../processing/background.js";
 import { guardRuntimeCommit } from "../operations/runtime-guard.js";
 /** Explicit evidence, never derived from a legacy plan or assistant task JSON. */
 export async function freezeRuntimeBackground(

@@ -1,7 +1,7 @@
 import {
-  guardAssistantCommit,
+  guardOperationCommit,
   type AssistantGuard,
-} from "../assistant/fence.js";
+} from "../operations/commit.js";
 import type { PoolClient } from "pg";
 import type { Database } from "../db/pool.js";
 import { writeBatches } from "../db/batch.js";
@@ -29,6 +29,7 @@ export type SelectionScope = {
   draftId: string;
   actorId: string;
   assistantGuard?: AssistantGuard;
+  operation?: object;
 };
 
 async function inDraft<T>(
@@ -95,7 +96,7 @@ async function inDraft<T>(
     if (!editing && !(allowPublished && published))
       throw new SelectionError(409, "draft_not_editable");
     const result = await action(client, Number(row.revision), editing);
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(client, scope);
     await client.query("COMMIT");
     return result;
   } catch (error) {
@@ -408,7 +409,7 @@ export async function applySelectionPreview(
             ? 1
             : a.ordinal - b.ordinal,
       );
-      await guardAssistantCommit(client, scope);
+      await guardOperationCommit(client, scope, "selection");
       const added = await writeBatches(
         client,
         `INSERT INTO collaborative_draft_record

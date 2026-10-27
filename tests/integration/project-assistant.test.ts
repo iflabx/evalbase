@@ -8,7 +8,7 @@ import * as processingStoreModule from "../../src/processing/store.js";
 import * as contextModule from "../../src/assistant/context.js";
 import * as draftCreateModule from "../../src/drafts/create.js";
 import * as taskModule from "../../src/assistant/tasks.js";
-import * as fenceModule from "../../src/assistant/fence.js";
+import * as fenceModule from "../../src/operations/commit.js";
 import * as refineModule from "../../src/processing/refine.js";
 import * as presentationModule from "../../src/processing/presentation.js";
 import * as reviewModule from "../../src/assistant/review.js";
@@ -13974,7 +13974,7 @@ describe("project assistant public contract", () => {
           (resolve) => (releasePublish = resolve),
         );
       const update = taskModule.updateTask,
-        publish = fenceModule.guardAssistantCommit;
+        publish = fenceModule.guardOperationCommit;
       const pausePlan = vi
         .spyOn(taskModule, "updateTask")
         .mockImplementation(async (...args) => {
@@ -13985,7 +13985,7 @@ describe("project assistant public contract", () => {
           return update(...args);
         });
       const pausePublish = vi
-        .spyOn(fenceModule, "guardAssistantCommit")
+        .spyOn(fenceModule, "guardOperationCommit")
         .mockImplementation(async (...args) => {
           if (!committed && args[1].assistantGuard?.proposalId) {
             enteredPublish();

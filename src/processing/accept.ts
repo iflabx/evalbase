@@ -5,7 +5,11 @@ import {
   reviewBackgroundHash,
 } from "./content-review.js";
 import { contentKey, deduplicate } from "./deduplication.js";
-import { guardAssistantCommit } from "../assistant/fence.js";
+import {
+  guardOperationCommit,
+  guardOperationResults,
+  operationOrigin,
+} from "../operations/commit.js";
 import { adoptedCandidateKeys } from "./adoption.js";
 import { guardProcessingTask } from "./task-state.js";
 import { processingResultName } from "./names.js";
@@ -349,7 +353,7 @@ export async function acceptProcessingResults(
     if (adopted) {
       await getProcessingRun(client, scope, runId);
       await processingAccess(client, scope, true);
-      await guardAssistantCommit(client, scope);
+      await guardOperationCommit(client, scope, "processing");
       await client.query(
         `INSERT INTO processing_acceptance(id,run_id,project_id,actor_id,idempotency_key,request_hash,result_ids,asset_id,draft_id,receipt)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
@@ -397,7 +401,7 @@ export async function acceptProcessingResults(
     }
     await guardProcessingTask(client, scope);
     const activeTask =
-      !scope.assistantGuard &&
+      operationOrigin(scope) !== "legacy" &&
       (
         await client.query(
           `SELECT t.id FROM processing_task t JOIN processing_run latest ON latest.id=t.latest_run_id JOIN job j ON j.id=latest.job_id
@@ -407,39 +411,11 @@ export async function acceptProcessingResults(
       ).rowCount;
     if (activeTask) throw new ProcessingError(409, "processing_still_running");
     if (groups.length > 1 && !scope.taskSave) {
-      await guardAssistantCommit(client, scope);
-      const task = (
-        await client.query("SELECT task FROM assistant_session WHERE id=$1", [
-          scope.assistantGuard?.sessionId,
-        ])
-      ).rows[0]?.task;
-      const anchors = (
-        await client.query(
-          "SELECT DISTINCT task_id FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[])",
-          [scope.projectId, task?.runIds ?? []],
-        )
-      ).rows.map((row) => row.task_id);
-      const members = scope.assistantResultsGuard
-        ? (
-            await client.query(
-              "SELECT id FROM processing_run WHERE project_id=$1 AND task_id=ANY($2::text[]) AND task_id=ANY($3::text[])",
-              [
-                scope.projectId,
-                anchors,
-                scope.assistantResultsGuard.states.map((state) => state.id),
-              ],
-            )
-          ).rows.map((row) => row.id)
-        : [];
-      if (
-        !task ||
-        loaded.some(
-          (item) =>
-            !task.runIds?.includes(item.run.id) &&
-            !members.includes(item.run.id),
-        )
-      )
-        throw new ProcessingError(409, "assistant_processing_context_changed");
+      await guardOperationResults(
+        client,
+        scope,
+        loaded.map((item) => item.run.id),
+      );
       const sourceAssets = new Set(
         loaded.flatMap((item) =>
           item.run.source.kind === "assets"
@@ -663,7 +639,7 @@ export async function acceptProcessingResults(
         throw new ProcessingError(409, "processing_already_adopted");
     }
 
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(client, scope, "processing");
     if (target.kind === "newDraft") {
       draftId = opaqueId("collabdraft");
       await client.query(
@@ -912,7 +888,7 @@ export async function acceptProcessingResults(
           receipt,
         ],
       );
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(client, scope, "processing");
     if (scope.taskSave) {
       const removedRefs = removingRows.map(
         (row) => `${row.runId}\u001f${row.id}`,

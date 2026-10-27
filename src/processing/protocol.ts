@@ -364,7 +364,7 @@ export function processingPrompt(
   inputs: ProcessingInput[],
   options: ProcessingOptions,
   count: number,
-  background?: import("../assistant/background.js").BackgroundSnapshot,
+  background?: import("./background.js").BackgroundSnapshot,
   batch?: {
     offset: number;
     total: number;

@@ -646,7 +646,7 @@ export function registerDeletion(
           db,
           request.params.projectId,
           actor.id,
-          "read",
+          "manage",
         ))
       )
         return reply.code(404).send({ error: { code: "project_not_found" } });

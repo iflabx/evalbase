@@ -1,3 +1,4 @@
+import type { CommitAction } from "./commit.js";
 import type { Database } from "../db/pool.js";
 import { hasProjectCapability } from "../security/project-access.js";
 
@@ -21,6 +22,7 @@ export class RuntimeCommitError extends Error {
 export async function guardRuntimeCommit(
   db: Pick<Database, "query">,
   scope: { projectId: string; actorId: string; runtimeGuard?: RuntimeGuard },
+  action?: CommitAction,
 ) {
   const proof = scope.runtimeGuard;
   if (!proof) return;
@@ -55,6 +57,8 @@ export async function guardRuntimeCommit(
         Date.now() >= new Date(s.started_at).getTime() + s.max_minutes * 60000))
   )
     throw new RuntimeCommitError("validation_budget_exhausted");
+  if (action && (action !== "processing" || !proof.confirmationId))
+    throw new RuntimeCommitError("confirmation_required");
   if (proof.confirmationId) {
     const confirmation = (
       await db.query(

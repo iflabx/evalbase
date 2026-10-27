@@ -1,3 +1,5 @@
+import { guardOperationCommit } from "../operations/commit.js";
+import { processingOptions } from "../processing/protocol.js";
 import { newQuestionPolicy } from "../processing/deduplication.js";
 import {
   deliveryGoals,
@@ -17,7 +19,6 @@ import {
   type AssistantScope,
 } from "./store.js";
 import type { BackgroundFragment } from "./extract-background.js";
-import type { CandidateGoal } from "../processing/review.js";
 import {
   backgroundSections,
   matchingSections,
@@ -38,26 +39,14 @@ import type {
 } from "../processing/protocol.js";
 import {
   processingSourceAvailable,
+  processingAccess,
+  ProcessingError,
+  type ProcessingScope,
   type ProcessingSource,
 } from "../processing/store.js";
 
-export type BackgroundSnapshot = {
-  /** New runs freeze evidence review; missing preserves the original review contract. */
-  contentReviewPolicy?: "evidence-v1" | "manual-v1";
-  /** Frozen new-question policy; absence preserves legacy processing semantics. */
-  questionPolicy?: import("../processing/deduplication.js").QuestionPolicy;
-  requirements: string[];
-  currentRequirements?: true;
-  userRequests?: string[];
-  classifications?: CandidateGoal["classifications"];
-  documents: {
-    id: string;
-    fileName: string;
-    sha256: string;
-    extractorVersion: string;
-    fragments: BackgroundFragment[];
-  }[];
-};
+import type { BackgroundSnapshot } from "../processing/background.js";
+export type { BackgroundSnapshot } from "../processing/background.js";
 
 type DefinitionDocument = {
   id: string;
@@ -1279,5 +1268,53 @@ export async function removeBackground(
     throw error;
   } finally {
     client.release();
+  }
+}
+
+export async function preflightDocumentGeneration(
+  db: Pick<Database, "query">,
+  scope: ProcessingScope,
+  options?: ProcessingOptions,
+) {
+  if (options) {
+    try {
+      options = processingOptions(options);
+    } catch {
+      throw new ProcessingError(422, "processing_configuration_invalid");
+    }
+  }
+  await processingAccess(db, scope);
+  if (!scope.assistantGuard)
+    throw new ProcessingError(422, "processing_scope_invalid");
+  await guardOperationCommit(db, scope);
+  const documents = await db.query(
+    `SELECT d.id FROM assistant_background_document d JOIN assistant_session s ON s.id=d.session_id WHERE s.id=$1 AND s.project_id=$2 AND s.actor_id=$3`,
+    [scope.assistantGuard.sessionId, scope.projectId, scope.actorId],
+  );
+  if (!documents.rowCount)
+    throw new ProcessingError(422, "assistant_background_required");
+  const model = await db.query(
+    "SELECT enabled FROM model_connection ORDER BY revision DESC LIMIT 1",
+  );
+  if (!model.rows[0]?.enabled)
+    throw new ProcessingError(409, "model_connection_unavailable");
+  if (options) {
+    const frozen = await freezeBackground(
+      db,
+      scope,
+      scope.assistantGuard.sessionId,
+      {
+        options,
+        records: [],
+        source: {
+          kind: "background",
+          id: scope.assistantGuard.sessionId,
+          recordIds: [],
+        },
+      },
+    );
+    if (!frozen?.documents.length)
+      throw new ProcessingError(422, "assistant_background_required");
+    return frozen;
   }
 }

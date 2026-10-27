@@ -1,3 +1,6 @@
+import { preflightDocumentGeneration } from "./background.js";
+import { legacyOperationScope } from "./fence.js";
+import { withOperationScope } from "../operations/commit.js";
 import {
   planningStageContract,
   unwrapPlanningArguments,
@@ -221,7 +224,6 @@ import {
 } from "../selection/store.js";
 import {
   createProcessingRun,
-  preflightDocumentGeneration,
   ProcessingError,
   controlProcessingRun,
   previewProcessingInput,
@@ -502,7 +504,22 @@ function smallReview(review: Record<string, any> | null | undefined) {
   };
 }
 
-export async function executeAssistantTurn(
+export function executeAssistantTurn(
+  ...args: Parameters<typeof executeLegacyAssistantTurn>
+) {
+  const scope = legacyOperationScope({
+    ...args[3],
+    assistantGuard: {
+      sessionId: args[4].session_id,
+      revision: args[4].task_revision,
+      turnId: args[4].id,
+      token: args[4].execution_token,
+    },
+  });
+  return withOperationScope(scope, () => executeLegacyAssistantTurn(...args));
+}
+
+async function executeLegacyAssistantTurn(
   db: Database,
   artifacts: ArtifactRepository,
   config: Config,

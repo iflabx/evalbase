@@ -1,4 +1,8 @@
 import {
+  withOperationScope,
+  type OperationScope,
+} from "../operations/commit.js";
+import {
   createDeepAgent,
   createFilesystemMiddleware,
   createSubAgentMiddleware,
@@ -21,6 +25,7 @@ export function createHarness(options: {
   summaryTokens?: number;
   complete?: () => Promise<string | null>;
   middleware?: AgentMiddleware[];
+  operationScope?: OperationScope;
 }) {
   const allowed = new Set(options.tools.map((t) => t.name));
   const backend = new StateBackend();
@@ -128,7 +133,11 @@ export function createHarness(options: {
       });
       let result;
       try {
-        result = await handler(request);
+        result = options.operationScope
+          ? await withOperationScope(options.operationScope, () =>
+              handler(request),
+            )
+          : await handler(request);
       } catch (error) {
         const failure = error as {
           code?: string;

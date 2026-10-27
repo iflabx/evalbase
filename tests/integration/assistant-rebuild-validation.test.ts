@@ -1,3 +1,4 @@
+import { runtimeOperationScope } from "../../src/assistant-rebuild/operation-scope.js";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -160,7 +161,9 @@ async function restartChild() {
             resolve();
             return;
           }
-        } catch {}
+        } catch {
+          // The child also emits ordinary non-JSON diagnostics.
+        }
       }
     });
   });
@@ -210,11 +213,11 @@ async function running(id: string) {
       [id, token],
     )
   ).rows[0];
-  return {
+  return runtimeOperationScope({
     projectId,
     actorId,
     runtimeGuard: { sessionId: id, revision: s.revision, token },
-  };
+  });
 }
 async function submit(id: string, operation = "clean", count = 3) {
   const scope = await running(id);
@@ -250,7 +253,10 @@ async function submit(id: string, operation = "clean", count = 3) {
   return createProcessingRun(
     db,
     artifacts,
-    { ...scope, runtimeGuard: { ...scope.runtimeGuard, operationId: op } },
+    runtimeOperationScope({
+      ...scope,
+      runtimeGuard: { ...scope.runtimeGuard, operationId: op },
+    }),
     op,
     {
       source:
@@ -727,7 +733,15 @@ it("F07: runs the real summarization middleware and retains explicit current req
       { role: "assistant", content: "方案已保存。" },
     ];
     await send(id, "改为" + count + "条的方案，暂不执行");
-    expect((await wait(id, ["idle", "failed"])).session.status).toBe("idle");
+    // Read-only amendment turns intentionally keep the idle status while the SDK runs.
+    await expect
+      .poll(async () => (await state(id)).session.requirements?.count, {
+        timeout: 5000,
+      })
+      .toBe(count);
+    expect(
+      (await wait(id, ["idle", "paused", "failed"])).session.status,
+    ).not.toBe("failed");
   }
   const current = (await state(id)).session.requirements;
   expect(current.count).toBe(2);

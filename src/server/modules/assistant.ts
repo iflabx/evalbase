@@ -1,3 +1,5 @@
+import { legacyOperationScope } from "../../assistant/fence.js";
+import { withOperationScope } from "../../operations/commit.js";
 import { isPauseRequest } from "../../shared/assistant-control.js";
 import { recoveryReason } from "../../assistant/feedback.js";
 import type { registerDrafts } from "./drafts.js";
@@ -651,7 +653,7 @@ export function registerAssistant({
         }
         try {
           const p = proposal.parameters;
-          const effectScope = {
+          const effectScope = legacyOperationScope({
             ...context,
             assistantGuard: {
               sessionId: proposal.session_id,
@@ -659,7 +661,7 @@ export function registerAssistant({
               proposalId: proposal.id,
               leaseToken,
             },
-          };
+          });
           let receipt: unknown;
           const task = (
             await db.query("SELECT task FROM assistant_session WHERE id=$1", [
@@ -784,13 +786,15 @@ export function registerAssistant({
                 return this;
               },
             } as FastifyReply;
-            const returned = await publishDraft(
-              Object.assign(Object.create(request), {
-                params: { projectId: context.projectId, draftId: p.draftId },
-                body: { revision: p.revision },
-              }),
-              output,
-              effectScope.assistantGuard,
+            const returned = await withOperationScope(effectScope, () =>
+              publishDraft(
+                Object.assign(Object.create(request), {
+                  params: { projectId: context.projectId, draftId: p.draftId },
+                  body: { revision: p.revision },
+                }),
+                output,
+                effectScope.assistantGuard,
+              ),
             );
             receipt = payload ?? returned;
             if (status >= 400)

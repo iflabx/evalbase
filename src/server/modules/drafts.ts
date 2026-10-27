@@ -1,4 +1,4 @@
-import type { AssistantGuard } from "../../assistant/fence.js";
+import type { AssistantGuard } from "../../operations/commit.js";
 import { presentSources } from "../../processing/provenance.js";
 import {
   createSharedDraft,

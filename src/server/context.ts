@@ -1,4 +1,4 @@
-import type { AssistantGuard } from "../assistant/fence.js";
+import type { AssistantGuard } from "../operations/commit.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Database } from "../db/pool.js";
 import type { Config } from "../config.js";

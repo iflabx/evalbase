@@ -3,30 +3,10 @@ import { contentHash } from "./content-review.js";
 import { contentKey } from "./deduplication.js";
 import type { readProcessingRun } from "./store.js";
 import type { ProcessingInput } from "./protocol.js";
-import { effectiveRules } from "../assistant/requirements.js";
+import { effectiveRules } from "./requirements.js";
 
-export type CandidateGoal = {
-  requirements?: string[];
-  countUnverified?: boolean;
-  targetCount?: number | null;
-  countKind?: "new" | "final";
-  allowedLabels?: string[];
-  allowedFields?: string[];
-  metadataKeys?: string[];
-  classifications?: {
-    field: "expectedOutput" | "metadata";
-    basis?: "background" | "user";
-    definitions?: {
-      value: string;
-      text: string;
-      basis?: "background" | "user";
-    }[];
-    key?: string;
-    allowedValues?: string[];
-    requiredValues?: string[];
-    quotas?: { value: string; count: number }[];
-  }[];
-};
+export type { CandidateGoal } from "./requirements.js";
+import type { CandidateGoal } from "./requirements.js";
 
 /** Full-result diagnostics; semantic correctness still belongs to the reviewer. */
 export function reviewCandidates(

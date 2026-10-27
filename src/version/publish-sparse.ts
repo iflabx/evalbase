@@ -1,7 +1,7 @@
 import {
-  guardAssistantCommit,
+  guardOperationCommit,
   type AssistantGuard,
-} from "../assistant/fence.js";
+} from "../operations/commit.js";
 import { encodeDeltaManifest } from "./delta-manifest.js";
 export { encodeDeltaManifest } from "./delta-manifest.js";
 import { writeBatches } from "../db/batch.js";
@@ -49,6 +49,7 @@ type PublishRequest = {
   draftId?: string;
   draftRevision?: number;
   assistantGuard?: AssistantGuard;
+  operation?: object;
 };
 
 type Member = {
@@ -845,13 +846,7 @@ export async function publishSparseVersion(
         [request.draftId, versionId, request.actorId],
       );
     }
-    await guardAssistantCommit(client, {
-      projectId: request.projectId,
-      actorId: request.actorId,
-      ...(request.assistantGuard
-        ? { assistantGuard: request.assistantGuard }
-        : {}),
-    });
+    await guardOperationCommit(client, request, "publish");
     commitAttempted = true;
     await client.query("COMMIT");
     return { id: versionId, label, replayed: false };

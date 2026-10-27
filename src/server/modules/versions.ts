@@ -1,7 +1,7 @@
 import {
-  guardAssistantCommit,
+  guardOperationCommit,
   type AssistantGuard,
-} from "../../assistant/fence.js";
+} from "../../operations/commit.js";
 import {
   presentSources,
   type SourcePresentation,
@@ -731,11 +731,15 @@ export function registerVersions(
           [collaborativeDraftId, testSetId, versionId, actor.id],
         );
       }
-      await guardAssistantCommit(client, {
-        projectId: request.params.projectId,
-        actorId: actor.id,
-        ...(assistantGuard ? { assistantGuard } : {}),
-      });
+      await guardOperationCommit(
+        client,
+        {
+          projectId: request.params.projectId,
+          actorId: actor.id,
+          ...(assistantGuard ? { assistantGuard } : {}),
+        },
+        "publish",
+      );
       commitAttempted = true;
       await client.query("COMMIT");
       return reply.code(201).send({

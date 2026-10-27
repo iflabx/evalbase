@@ -1,4 +1,3 @@
-import { freezeRuntimeBackground } from "../assistant-rebuild/background.js";
 import type { RuntimeGuard } from "../operations/runtime-guard.js";
 import { newQuestionPolicy } from "./deduplication.js";
 import {
@@ -8,15 +7,15 @@ import {
 } from "./content-review.js";
 import { processingRecovery } from "./recovery.js";
 import {
-  guardAssistantCommit,
-  linkAssistantProcessing,
+  guardOperationCommit,
+  linkOperationProcessing,
+  freezeOperationBackground,
+  operationOrigin,
+  operationSession,
   type AssistantGuard,
-} from "../assistant/fence.js";
+} from "../operations/commit.js";
 import type { PoolClient } from "pg";
-import {
-  freezeBackground,
-  type BackgroundSnapshot,
-} from "../assistant/background.js";
+import { type BackgroundSnapshot } from "./background.js";
 import { cleanupProcessingObjects } from "./cleanup.js";
 import { deduplicate } from "./deduplication.js";
 import { attachProcessingRound, guardProcessingTask } from "./task-state.js";
@@ -65,6 +64,7 @@ export type ProcessingScope = {
   actorId: string;
   assistantGuard?: AssistantGuard;
   runtimeGuard?: RuntimeGuard;
+  operation?: object;
   expectedInputHash?: string;
   /** Frozen by the assistant confirmation; never accepted from a public processing body. */
   acceptanceGroups?: { runId: string; resultIds: string[] }[];
@@ -536,9 +536,7 @@ export async function createProcessingRun(
   const source = parseSource(input.source, options.operation === "generate");
   if (
     (options.operation === "generate") !== (source.kind === "background") ||
-    (source.kind === "background" &&
-      source.id !==
-        (scope.runtimeGuard?.sessionId ?? scope.assistantGuard?.sessionId))
+    (source.kind === "background" && source.id !== operationSession(scope))
   )
     throw new ProcessingError(422, "processing_scope_invalid");
   const target =
@@ -644,31 +642,23 @@ export async function createProcessingRun(
       modelRevision = Number(model.rows[0].revision);
     } else if (data.records.some((row) => row.raw !== undefined))
       throw new ProcessingError(422, "processing_mapping_required");
-    await guardAssistantCommit(client, scope);
-    if (scope.runtimeGuard) {
-      data.background = await freezeRuntimeBackground(
-        client,
-        scope,
-        options.instructions,
-      );
-    } else if (scope.assistantGuard) {
-      const background = await freezeBackground(
-        client,
-        scope,
-        scope.assistantGuard.sessionId,
-        { options, records: data.records, source: data.source },
-      );
-      if (background) data.background = background;
-    }
+    await guardOperationCommit(client, scope);
+    const frozenBackground = await freezeOperationBackground(client, scope, {
+      options,
+      records: data.records,
+      source: data.source,
+    });
+    if (frozenBackground) data.background = frozenBackground;
     if (
       options.operation === "generate" &&
       !data.background?.documents.length
     ) {
       throw new ProcessingError(422, "assistant_background_required");
     }
-    const questionPolicy = scope.assistantGuard
-      ? data.background?.questionPolicy
-      : newQuestionPolicy(options.operation, [options.instructions]);
+    const questionPolicy =
+      operationOrigin(scope) === "legacy"
+        ? data.background?.questionPolicy
+        : newQuestionPolicy(options.operation, [options.instructions]);
     if (questionPolicy)
       data.background = {
         requirements: [],
@@ -676,7 +666,7 @@ export async function createProcessingRun(
         ...data.background,
         questionPolicy,
       };
-    if (modelRevision !== null && !scope.runtimeGuard)
+    if (modelRevision !== null && operationOrigin(scope) !== "runtime")
       data.background = {
         requirements: [],
         documents: [],
@@ -688,7 +678,7 @@ export async function createProcessingRun(
     if (options.operation === "generate")
       data.generation = {
         ...createGenerationPlan(runId, options.outputCount!, options.scenarios),
-        ...(scope.runtimeGuard ? { batchSize: 4 } : {}),
+        ...(operationOrigin(scope) === "runtime" ? { batchSize: 4 } : {}),
       };
     const inputBytes = Buffer.from(canonicalJson(data));
     if (inputBytes.byteLength > 100000000)
@@ -719,7 +709,9 @@ export async function createProcessingRun(
         target,
         {
           ...PROCESSING_EXECUTION,
-          ...(scope.runtimeGuard ? { timeoutScope: "request" } : {}),
+          ...(operationOrigin(scope) === "runtime"
+            ? { timeoutScope: "request" }
+            : {}),
           recipeVersion:
             options.operation === "generate"
               ? GENERATION_RECIPE
@@ -731,7 +723,7 @@ export async function createProcessingRun(
     const run = (
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])
     ).rows[0];
-    await linkAssistantProcessing(client, scope, runId);
+    await linkOperationProcessing(client, scope, runId);
     await attachProcessingRound(client, scope, runId);
     await client.query("COMMIT");
     return { run: summary(run), replayed: false };
@@ -1181,7 +1173,11 @@ export async function controlProcessingRun(
     if (workspace && workspace.latest_run_id !== runId)
       throw new ProcessingError(409, "processing_task_changed");
     await processingAccess(client, scope, true);
-    await guardAssistantCommit(client, scope);
+    await guardOperationCommit(
+      client,
+      scope,
+      action === "cancel" ? "cancel" : undefined,
+    );
     if (action === "cancel")
       await client.query(
         "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=$1 AND status IN('queued','running','retry_wait')",
@@ -1201,8 +1197,13 @@ export async function controlProcessingRun(
       await client.query<ProcessingRun>(`${selectRun} WHERE r.id=$1`, [runId])
     ).rows[0];
     if (action === "retry" && updated.status === "queued")
-      await linkAssistantProcessing(client, scope, runId);
-    else await guardAssistantCommit(client, scope);
+      await linkOperationProcessing(client, scope, runId);
+    else
+      await guardOperationCommit(
+        client,
+        scope,
+        action === "cancel" ? "cancel" : undefined,
+      );
     await client.query("COMMIT");
     return { run: summary(updated) };
   } catch (error) {
@@ -1378,53 +1379,5 @@ export async function previewProcessingInput(
     throw error;
   } finally {
     client.release();
-  }
-}
-
-export async function preflightDocumentGeneration(
-  db: Pick<Database, "query">,
-  scope: ProcessingScope,
-  options?: ProcessingOptions,
-) {
-  if (options) {
-    try {
-      options = processingOptions(options);
-    } catch {
-      throw new ProcessingError(422, "processing_configuration_invalid");
-    }
-  }
-  await processingAccess(db, scope);
-  if (!scope.assistantGuard)
-    throw new ProcessingError(422, "processing_scope_invalid");
-  await guardAssistantCommit(db, scope);
-  const documents = await db.query(
-    `SELECT d.id FROM assistant_background_document d JOIN assistant_session s ON s.id=d.session_id WHERE s.id=$1 AND s.project_id=$2 AND s.actor_id=$3`,
-    [scope.assistantGuard.sessionId, scope.projectId, scope.actorId],
-  );
-  if (!documents.rowCount)
-    throw new ProcessingError(422, "assistant_background_required");
-  const model = await db.query(
-    "SELECT enabled FROM model_connection ORDER BY revision DESC LIMIT 1",
-  );
-  if (!model.rows[0]?.enabled)
-    throw new ProcessingError(409, "model_connection_unavailable");
-  if (options) {
-    const frozen = await freezeBackground(
-      db,
-      scope,
-      scope.assistantGuard.sessionId,
-      {
-        options,
-        records: [],
-        source: {
-          kind: "background",
-          id: scope.assistantGuard.sessionId,
-          recordIds: [],
-        },
-      },
-    );
-    if (!frozen?.documents.length)
-      throw new ProcessingError(422, "assistant_background_required");
-    return frozen;
   }
 }

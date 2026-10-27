@@ -1,3 +1,5 @@
+import { runtimeOperationScope } from "./operation-scope.js";
+import { withOperationScope } from "../operations/commit.js";
 import { randomUUID } from "node:crypto";
 import { ChatOpenAI } from "@langchain/openai";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
@@ -19,11 +21,10 @@ import {
   type ProcessingScope,
 } from "../processing/store.js";
 import { acceptProcessingResults } from "../processing/accept.js";
-import { extractBackground } from "../assistant/extract-background.js";
+import { extractBackground } from "../processing/extract-background.js";
 import {
   RuntimeCommitError,
   guardRuntimeCommit,
-  type RuntimeGuard,
 } from "../operations/runtime-guard.js";
 import { taskStatusReply } from "./status.js";
 import { event, validationFetch, validationBudgetBlock } from "./budget.js";
@@ -271,12 +272,17 @@ export class RebuildHost {
     }
     return this.present(scope, id);
   }
-  private scope(s: RuntimeSession): ProcessingScope {
-    return {
+  private scope(s: RuntimeSession, control = false): ProcessingScope {
+    return runtimeOperationScope({
       projectId: s.project_id,
       actorId: s.actor_id,
-      runtimeGuard: { sessionId: s.id, revision: s.revision, token: s.token! },
-    };
+      runtimeGuard: {
+        sessionId: s.id,
+        revision: s.revision,
+        token: s.token!,
+        ...(control ? { control: true as const } : {}),
+      },
+    });
   }
   private async operation(s: RuntimeSession, action: string, input: unknown) {
     const hash = sha256(canonicalJson(input));
@@ -690,6 +696,7 @@ export class RebuildHost {
         ]
       : [read, background, status, requirements, submit, readRun, adoption];
     return createHarness({
+      operationScope: scope,
       model,
       tools,
       systemPrompt: prompt,
@@ -791,8 +798,7 @@ export class RebuildHost {
     }
     this.active.get(prior.id)?.abort();
     if (prior.waiting_run_id) {
-      const scope = this.scope(changed);
-      scope.runtimeGuard!.control = true;
+      const scope = this.scope(changed, true);
       const job = await getProcessingRun(this.db, scope, prior.waiting_run_id);
       if (!terminal.has(job.status))
         await controlProcessingRun(this.db, scope, job.id, "cancel");
@@ -1047,13 +1053,7 @@ export class RebuildHost {
       if (!terminal.has(run.status))
         await controlProcessingRun(
           this.db,
-          {
-            ...this.scope(paused),
-            runtimeGuard: {
-              ...this.scope(paused).runtimeGuard!,
-              control: true,
-            },
-          },
+          this.scope(paused, true),
           run.id,
           "cancel",
         );
@@ -1170,7 +1170,7 @@ export class RebuildHost {
       "UPDATE rebuild_confirmation SET status='executing' WHERE id=$1 AND status='pending'",
       [confirmationId],
     );
-    const ps: ProcessingScope = {
+    const ps = runtimeOperationScope({
       ...scope,
       runtimeGuard: {
         sessionId: id,
@@ -1178,7 +1178,7 @@ export class RebuildHost {
         token,
         confirmationId,
       },
-    };
+    });
     try {
       const current = await getProcessingRun(this.db, ps, c.run_id);
       const frozen = await readProcessingRun(
@@ -1198,13 +1198,15 @@ export class RebuildHost {
       );
       if (hash !== c.input_hash)
         throw new RuntimeCommitError("confirmation_changed");
-      const saved = await acceptProcessingResults(
-        this.db,
-        this.artifacts,
-        ps,
-        c.run_id,
-        c.operation_id,
-        c.payload,
+      const saved = await withOperationScope(ps, () =>
+        acceptProcessingResults(
+          this.db,
+          this.artifacts,
+          ps,
+          c.run_id,
+          c.operation_id,
+          c.payload,
+        ),
       );
       await this.db.query(
         "UPDATE rebuild_confirmation SET status='committed',receipt=$2 WHERE id=$1",

@@ -1,10 +1,102 @@
 import {
-  guardRuntimeCommit,
-  linkRuntimeProcessing,
-  type RuntimeGuard,
-} from "../operations/runtime-guard.js";
+  operationScope,
+  guardOperationCommit,
+  linkOperationProcessing,
+  type AssistantGuard,
+  type CommitAction,
+  type OperationScope,
+} from "../operations/commit.js";
+import { freezeBackground } from "./background.js";
+import type { ProcessingScope } from "../processing/store.js";
+export type { AssistantGuard } from "../operations/commit.js";
+
+/** Only the legacy controller calls this adapter; shared business never reads a legacy plan. */
+export function legacyOperationScope<
+  T extends OperationScope & { assistantGuard: AssistantGuard },
+>(scope: T) {
+  const guard = { ...scope.assistantGuard };
+  const fixed = { ...scope, assistantGuard: guard };
+  return operationScope(scope, {
+    origin: "legacy",
+    sessionId: guard.sessionId,
+    guard: (db, action) =>
+      guardLegacyCommit(db, fixed, action === "cancel" ? undefined : action),
+    link: (db, runId) => linkLegacyProcessing(db, fixed, runId),
+    background: (db, request) =>
+      freezeBackground(db, fixed, guard.sessionId, request),
+    results: (db, runIds, actual) =>
+      guardLegacyResults(
+        db,
+        {
+          ...fixed,
+          assistantResultsGuard: (actual as ProcessingScope)
+            .assistantResultsGuard,
+        },
+        runIds,
+      ),
+  });
+}
+export async function guardAssistantCommit(
+  db: Pick<Database, "query">,
+  scope: OperationScope,
+) {
+  return guardOperationCommit(
+    db,
+    scope.assistantGuard && !scope.operation
+      ? legacyOperationScope({ ...scope, assistantGuard: scope.assistantGuard })
+      : scope,
+  );
+}
+export async function linkAssistantProcessing(
+  db: Pick<Database, "query">,
+  scope: OperationScope,
+  runId: string,
+) {
+  return linkOperationProcessing(
+    db,
+    scope.assistantGuard && !scope.operation
+      ? legacyOperationScope({ ...scope, assistantGuard: scope.assistantGuard })
+      : scope,
+    runId,
+  );
+}
+async function guardLegacyResults(
+  db: Pick<Database, "query">,
+  scope: ProcessingScope,
+  runIds: string[],
+) {
+  const task = (
+    await db.query(
+      "SELECT task FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3",
+      [scope.assistantGuard!.sessionId, scope.projectId, scope.actorId],
+    )
+  ).rows[0]?.task;
+  const anchors = (
+    await db.query(
+      "SELECT DISTINCT task_id FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[])",
+      [scope.projectId, task?.runIds ?? []],
+    )
+  ).rows.map((row) => row.task_id);
+  const members = scope.assistantResultsGuard
+    ? (
+        await db.query(
+          "SELECT id FROM processing_run WHERE project_id=$1 AND task_id=ANY($2::text[]) AND task_id=ANY($3::text[])",
+          [
+            scope.projectId,
+            anchors,
+            scope.assistantResultsGuard.states.map((state) => state.id),
+          ],
+        )
+      ).rows.map((row) => row.id)
+    : [];
+  if (
+    !task ||
+    runIds.some((id) => !task.runIds?.includes(id) && !members.includes(id))
+  )
+    throw new AssistantError(409, "assistant_processing_context_changed");
+}
 import type { Database } from "../db/pool.js";
-import { AssistantError, assistantAccess } from "./store.js";
+import { AssistantError } from "./store.js";
 import { carryCandidateScope } from "./candidates.js";
 import {
   settleExecutionPlan,
@@ -12,35 +104,17 @@ import {
   planRequirementsKey,
 } from "./plan.js";
 
-/** Supplied only by server-side assistant callers, after locking domain sources. */
-export type AssistantGuard = {
-  sessionId: string;
-  revision: number;
-  turnId?: string;
-  token?: string;
-  proposalId?: string;
-  leaseToken?: string;
-};
-export async function guardAssistantCommit(
+async function guardLegacyCommit(
   db: Pick<Database, "query">,
   scope: {
     projectId: string;
     actorId: string;
     assistantGuard?: AssistantGuard;
-    runtimeGuard?: RuntimeGuard;
   },
+  action?: CommitAction,
 ) {
-  if (scope.runtimeGuard) return guardRuntimeCommit(db, scope);
   const guard = scope.assistantGuard;
   if (!guard) return;
-  await db.query("SELECT id FROM app_user WHERE id=$1 FOR SHARE", [
-    scope.actorId,
-  ]);
-  await db.query(
-    "SELECT user_id FROM project_member WHERE project_id=$1 AND user_id=$2 FOR SHARE",
-    [scope.projectId, scope.actorId],
-  );
-  await assistantAccess(db, scope, true);
   const session = (
     await db.query(
       "SELECT task_revision,task->'turnBudget' AS budget FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 FOR SHARE",
@@ -65,31 +139,37 @@ export async function guardAssistantCommit(
     ).rowCount
   )
     throw new AssistantError(409, "assistant_interrupted");
+  if (action && !guard.proposalId)
+    throw new AssistantError(422, "assistant_confirmation_required");
   if (
     guard.proposalId &&
     !(
       await db.query(
-        "SELECT id FROM assistant_proposal WHERE id=$1 AND session_id=$2 AND task_revision=$3 AND lease_token=$4 AND status='executing' AND lease_until>now() FOR SHARE",
-        [guard.proposalId, guard.sessionId, guard.revision, guard.leaseToken],
+        "SELECT id FROM assistant_proposal WHERE id=$1 AND session_id=$2 AND task_revision=$3 AND lease_token=$4 AND status='executing' AND lease_until>now() AND ($5::text IS NULL OR action=$5) FOR SHARE",
+        [
+          guard.proposalId,
+          guard.sessionId,
+          guard.revision,
+          guard.leaseToken,
+          action ?? null,
+        ],
       )
     ).rowCount
   )
     throw new AssistantError(409, "assistant_confirmation_expired");
 }
 /** Bind the actual processing receipt in the same transaction as its job. */
-export async function linkAssistantProcessing(
+async function linkLegacyProcessing(
   db: Pick<Database, "query">,
   scope: {
     projectId: string;
     actorId: string;
     assistantGuard?: AssistantGuard;
-    runtimeGuard?: RuntimeGuard;
   },
   runId: string,
 ) {
-  if (scope.runtimeGuard) return linkRuntimeProcessing(db, scope, runId);
   if (!scope.assistantGuard) return;
-  await guardAssistantCommit(db, scope);
+  await guardLegacyCommit(db, scope);
   const state = (
     await db.query("SELECT task FROM assistant_session WHERE id=$1", [
       scope.assistantGuard.sessionId,

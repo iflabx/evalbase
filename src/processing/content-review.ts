@@ -5,7 +5,7 @@ import {
   type ProcessingOptions,
   type ProcessingOutput,
 } from "./protocol.js";
-import type { BackgroundSnapshot } from "../assistant/background.js";
+import type { BackgroundSnapshot } from "./background.js";
 
 export type ContentVerdict =
   | "conforms"
