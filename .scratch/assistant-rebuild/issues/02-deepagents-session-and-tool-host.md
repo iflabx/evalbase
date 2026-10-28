@@ -1,15 +1,17 @@
 # REBUILD-02 正式会话与 Deep Agents 工具宿主
 
 Status: ready-for-agent
-Implementation: completed
-Validation: targeted-pass
+Implementation: in-progress
+Validation: partial-pass
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md)
 
 - 批次：1；对应原范围建议：R02。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：A06；为 A01/A02、A07/A08 及各领域工具提供会话、要求和交付身份合同。
 - 缺口：G02、G07、G08；验收合同：RB01、RB05、RB13；RB10 的摘要请求钩子。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
+
+原范围及对应定向验收已完成，原 AC 勾选与历史提交/验证记录保留。本轮新增 R02-A1～A3 合同尚未闭合；已有满足的子项沿用有效证据，受改动失效部分定向补验，故整票重新打开；不撤销旧通过记录，也不据此要求重跑已通过的 C01/C02。补强完成前不得把整票视为可直接新增领域接线的完成依赖。
 
 ## 问题与目标
 
@@ -27,11 +29,13 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md)
 6. 明确工具允许清单及当前阶段开放能力；普通解释与可核对业务状态分开输出。状态断言交给 REBUILD-03 的事实投影，不另加意图分类模型或旧正则规划链。
 7. 实现[Spec 消息提交合同](../spec.md#message-submission)：稳定提交标识/载荷摘要、原子消息及待执行引用、同标识结果重放、不同提交的修订/独占受理。持久受理先于启动执行；本票用受控执行器验证接口，03 接实际宿主恢复，04 接客户端重发，不新增依赖或独立消息队列。
 
+8. 按[Spec 职责边界](../spec.md#runtime-responsibilities)补强模型创建与单次调用上下文，将具体模型组装移出宿主的执行协调逻辑；使用现有 BaseChatModel/ChatOpenAI、流式与传输钩子，不新建平行模型接口。每次模型调用/纠错准备读取当前要求、范围和可见引用；执行前仍复检权限/修订/令牌。计量只接03的既有账本，工具只走权威 Schema 与同一反馈路径。
+
 ## 主要修改位置
 
-- src/assistant-rebuild/host.ts、harness.ts、checkpointer.ts、schema.ts。
+- src/assistant-rebuild/session-host.ts、harness.ts、session-contract.ts、session-tools.ts、model-stream.ts 及实际上下文/反馈调用点。
 - src/server/modules/assistant-rebuild.ts 与正式会话入口。
-- src/model/connection.ts、正式增量迁移及共享工具 Schema。
+- 既有模型连接/配置、检查点及共享工具 Schema；模型组装和上下文边界可在现有模块抽取。
 
 以上为实际调用点导向，不是强制目录设计；已有清晰函数直接复用。未列出的受影响调用者可一并调整并在验证记录说明，不增加无真实调用者的通用层。
 
@@ -48,11 +52,19 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md)
 
 - [x] **R02-9** 覆盖旧 combined field requirements 失败场景：已明确同一资料全部记录后，仅补充“清洗问题首尾空白，期望输出和 Metadata 不变”，应保留原固定来源/范围并更新字段要求；纠正不能把它变成无范围或扩大范围。只规划仍无业务副作用，实际执行证据由 R07-8 补齐。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R02-A1** 集中模型组装可同时服务正式供应方和受控 HTTP Provider；正常、摘要、纠错及传输重试走真实 SDK，实际尝试各记一次到既有账本，未知 usage 不记为0。没有工具内自建客户端或第二计数器。
+- [ ] **R02-A2** 同轮工具改要求后、摘要后和暂停继续后，下一次模型输入取当前要求/交付/固定范围/可见引用；构建途中修订变化则重新读取或中止，不能拼接新旧要求/范围；旧历史/摘要中的5条不能覆盖新3条，旧取消项不复活。并发修订或撤权发生于上下文构建之后时，执行仍拒绝失效写入，而非缓存旧授权。
+- [ ] **R02-A3** 模型组装、单次上下文、工具 Schema/反馈边界有实际调用者并由宿主协调；字符串包装归一、纠正遗漏有效字段及改范围组合通过真实 SDK 回归，不以修改提示词替代合同。与03的接口提供调用身份及当前事实，不在本票等待完整后台派发才完成基础接口验收。
+
 ## 定向验证
 
 1. 真实 SDK、本地可控模型 HTTP、真实数据库/业务服务组成定向测试；保留原响应→解析→校验→回执对应证据。
 2. 覆盖只规划、修改要求、同义重复、两份交付身份、摘要后修改和故障恢复接口；另测公开消息入口的同标识重放、载荷冲突、双标签并发及事务前后故障。本票不实现 REBUILD-03 的完整授权执行。
 3. 服务端类型检查，依赖保持已验证版本起点；无关包不自动升级。
+
+4. 追加验证按[真实入口合同](../spec.md#real-entry-validation)：02在真实SDK边界覆盖模型组装、每次上下文更新及参数组合，03接完整公开入口自动派发；对现有共享逻辑只补受影响回归，不重跑C01/C02或新建真实模型活动。
 
 预算与执行边界：本票受控 SDK 测试外部模型请求为 0；普通提示真实接线在 REBUILD-04 的 C01/C02 及最终 C07 补证据。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -72,3 +84,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md)
 - 2026-10-27：按 Owner 指令将 REBUILD-01 扩大回归中旧助手的对应失败场景纳入上述新 AC；本票仍未开发/验收，不把旧失败改记通过。使用受控 SDK/隔离数据补证据，不新增真实模型/CU活动或调整旧预算，依赖关系不变。
 
 - 2026-10-27：完成 21038e780b1d474318a6763ce811d385be3871e8。正式会话、原子消息受理、唯一要求/交付及 Deep Agents 工具宿主通过定向验证；正式 HTTP 仅持久受理，03 接执行恢复，04 接页面。实施、AC、首错、复审及后续边界统一见[REBUILD-02 验证记录](../r02-verification.md)。旧验收数据/预算保留，未部署、合并或推送。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原范围证据保留，新增必做项待完成，整票重新打开为in-progress/partial-pass。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。

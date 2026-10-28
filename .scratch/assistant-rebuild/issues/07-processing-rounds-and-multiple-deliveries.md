@@ -6,7 +6,7 @@ Validation: not-run
 Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-06](06-draft-selection-publication-and-versions.md)
 
 - 批次：2；对应原范围建议：R07。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：W01～W16、A07～A08。
 - 缺口：G02、G03、G04、G08；验收合同：RB02、RB05、RB06、RB07、RB08、RB09、RB10、RB13。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -24,6 +24,8 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 3. 接背景驱动从零生成，不伪造种子或强要原始记录。以 REBUILD-02 的稳定交付身份处理多份目标、分类/配额、改数量、改名、另存和取消；总数从当前明细计算，旧同义数量不参与执行。
 4. 保存回原草稿、另存原始数据/新草稿/已有草稿均使用固定目标与确认；清洗改写更新对应行，扩充追加，未知保存查原回执，冲突不换目标。
 5. 保留批次参考与逐条来源的真实差别；按任务/轮次输出真实保存名称、对象、链接。复用结构检查与人工内容审核，不增设模型语义质量门禁或另一轮次状态机。
+
+6. 按[Spec 职责边界](../spec.md#runtime-responsibilities)将当前task/run/round、交付和回执提供给02上下文，异步等待/终态唤醒接03；不新增处理专用执行循环。参数归一/纠错沿共同路径，处理服务仍负责字段保护、冻结输入和保存事务；原始任务范围、当前处理范围与成果保存目标明确区分。
 
 ## 主要修改位置
 
@@ -45,11 +47,17 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - [ ] **R07-7** 将旧 reduced scope、only refund、exclude refund 三个失败场景分别覆盖：缩小为一条、仅退款类、排除退款类时，原全部记录授权不可继续沿用。能确定新范围则冻结真实记录后执行，不能确定则澄清；明确“先不执行”或范围未解决期间作业/成果/保存回执均不得增加，普通“继续”也不能绕过。
 - [ ] **R07-8** 承接 R02-9、R05-7/8 的固定要求和来源，实际清洗提交成功且仅处理授权记录；受保护字段不变，不出现错误的 processing_scope_invalid。结合本票轮次回归验证修改、澄清、继续及最终保存，不能只用要求层 Helper 通过代替闭环。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R07-A1** 普通消息经自动派发、真实SDK和受控Worker完整提交/等待/恢复/确认保存；同轮修改3＋2、缩小范围、取消或改名另存后，下一次模型输入和提交均指向当前交付，旧数量/处理说明/确认不能参与执行；重复终态通知和保存后响应丢失不重复处理或保存，等待不调用助手模型轮询。
+
 ## 定向验证
 
 1. 真实 SDK、实际 Worker/处理服务的模式矩阵与多交付增量/取消/恢复回归；取消第二份、取消与执行竞争及其他轮次/失败组合仍由受控链路覆盖，与 C05 普通提示取消相互补充，不直接重跑旧业务成果。
 2. 来源文档/输入、字段修订、当前成果及保存回执逐项对应；内容仅小样本人工检查，结构正确不声称语义合格。
 3. C05 记录取消前后交付身份、要求/确认状态与剩余成果；只有两份保留目标生成/保存一次，后续处理限定所选。取消并入原修改轮次，不增加真实会话或生成量；超过外层额度保留结果并停止，不跳过取消或更换会话救场。
+
+4. 复用[真实入口合同](../spec.md#real-entry-validation)贯通多交付与至少一次轮次保存，Worker模型使用受控HTTP；分别断言模型上下文、领域冻结范围和最终回执，不能只检查展示总数或直接运行单个工具。原C05预算和取消页面验收保持。
 
 预算与执行边界：Spec C05：最多 24 次实际请求、32 处理行次、12 新增生成槽位、25 分钟；计入第二批共享上限。补强后仍计划生成3＋2＋2＝7条，第三份只规划后取消，规划/取消模型请求如实计量；上限不增加，具体核算见 Spec。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -67,3 +75,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-27：按审查补强C05 普通提示取消及剩余交付验收，依据 Spec C05；依赖、实施/验证状态和实际预算保持，未开始业务开发或验收。
 
 - 2026-10-27：按 Owner 指令将 REBUILD-01 扩大回归中旧助手的对应失败场景纳入上述新 AC；本票仍未开发/验收，不把旧失败改记通过。使用受控 SDK/隔离数据补证据，不新增真实模型/CU活动或调整旧预算，依赖关系不变。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。

@@ -6,7 +6,7 @@ Validation: not-run
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-06](06-draft-selection-publication-and-versions.md), [REBUILD-07](07-processing-rounds-and-multiple-deliveries.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md), [REBUILD-09](09-accounts-settings-and-recycle-bin.md)
 
 - 批次：3；对应原范围建议：R10。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：85 项能力及 RB01～RB15 的整体验收收口；不代替前票实现。
 - 缺口：G01～G12 的责任证据收口，重点 G06、G08、G11；验收合同：RB01～RB15。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -25,6 +25,8 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 4. 实现/核对运行时唯一所有者、停止旧新增派发、在途有界收尾/暂停、真实回执对账和旧令牌失效。新任务不能在失败时自动回落旧引擎。
 5. 在隔离环境演练切换和回退：关闭新派发、结算在途、不降级数据库、不让旧引擎消费新检查点，保留兼容人工页面。记录可复核步骤与影响，不自动更新 4217/正式部署或合并推送。
 
+6. 核对[Spec 架构补强](../spec.md#runtime-responsibilities)和[真实入口证据](../spec.md#real-entry-validation)已由02/03及各领域票闭合，包含05原生CSV映射确认缺口；不把宿主/模型/上下文/调度未完成实现转移到本票。只实现本票已有的跨票组合、退出及切换责任，任何领域缺口退回原票。
+
 ## 主要修改位置
 
 - 新旧助手路由/派发开关与运行时归属、必要迁移。
@@ -42,11 +44,17 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [ ] **R10-5** 切换/回退演练保留历史数据、预算和成功成果；在途结果/检查点可对账，无双写、无旧格式误恢复或危险级联。
 - [ ] **R10-6** 输出明确的完成/未完成、固定版本、风险和实际授权范围。实现与演练通过不等于已部署，也不宣称模型零错误或全面优于旧架构。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R10-A1** 02/03追加AC及05～09新增领域链证据均有效；能从公开消息关联自动派发、真实SDK、业务结果/回执和页面，摘要/恢复也无旧事实回灌。无未关闭原生CSV映射证据缺口、无第二套预算/派发/纠错引擎；发现基础缺失退回责任票，不用C07/C08预算补做前票。
+
 ## 定向验证
 
 1. 先做依赖、能力、RB 与证据索引核对；复用02/03/04消息防重及无进展受控证据、07的C05取消页面记录，仅证据失效处补受影响组合/故障回归。缺失交付退回责任票，不占用 C07/C08 偷补，也不机械重跑全库或旧20项。
 2. C07/C08 各一独立新会话，普通提示和新登记限额；必要在途延迟只延迟交付，不改模型参数/结果，必须在记录中标注。
 3. 隔离切换、回退及旧数据/预算前后摘要核对；本票完成后可交付待切换版本，环境切换按明确授权执行。
+
+4. 结构证据仅复核各票已有记录及受变更影响的组合，不新增第九个CU场景、不重跑旧20项或已通过C01/C02；全范围结论必须同时说明仍未覆盖的情况，不承诺参数零错误。
 
 预算与执行边界：Spec 第三批 C07/C08：最多 34 次实际请求、24 处理行次、0 新增生成槽位、累计验收时间 60 分钟（单项连续不超过25分钟）；不得借用前批余额或已关闭预算。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -62,3 +70,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 
 - 2026-10-27：Owner 要求依据完整重建范围创建票据。创建本票，尚未实施；当前未运行模型/CU、未新建预算、未更改环境和业务数据。
 - 2026-10-27：按审查补强消息防重、无进展及取消页面证据的收口条件，依据 Spec §3.1/§3.2 与 C05；依赖、实施/验证状态和实际预算保持，未开始业务开发或验收。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。

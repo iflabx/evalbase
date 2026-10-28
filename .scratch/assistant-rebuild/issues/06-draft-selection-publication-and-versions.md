@@ -6,7 +6,7 @@ Validation: not-run
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md)
 
 - 批次：2；对应原范围建议：R06。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：D01～D13、S01～S05、V01～V04。
 - 缺口：G03、G04、G05；验收合同：RB02、RB04、RB06、RB09、RB13、RB14。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -25,6 +25,8 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 4. 接草稿发布固定确认、版本图/只读正式记录/来源与修改、CSV/数据溯源下载；普通业务编辑不多加确认，正式版本不可原地改写。
 5. 从草稿进入数据处理传递已保存来源、所选记录与原草稿保存目标；复用已有处理上下文接口，完整轮次操作留 REBUILD-07，不在此建第二套处理入口。
 
+6. 新草稿/选取/版本工具按[Spec 职责边界](../spec.md#runtime-responsibilities)接同源领域Schema、02上下文和03确认/回执，不复制业务规则或保存恢复引擎。当前来源、选中身份、目标和修订进入下一次调用上下文，写入前仍由共享事务复检；新引用登记08清理。
+
 ## 主要修改位置
 
 - src/drafts/、selection/、version/、相关 server modules。
@@ -42,11 +44,17 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [ ] **R06-5** 来源、名称、版本、下载文件和保存链接对应同一真实对象；草稿处理上下文保留原草稿目标，正式版本及原件不变。
 - [ ] **R06-6** 完成 C04：普通提示基于当前资料建立两条草稿、修改其中一条并按固定确认发布/下载，刷新核对字段与唯一版本。只使用新合成对象。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R06-A1** 经公开消息自动派发的真实SDK链至少覆盖草稿写入并核对真实回执/页面投影；接手未保存字段、修订冲突、写入后响应丢失使用同一业务服务和操作身份，旧上下文/确认不能覆盖新输入或产生重复草稿/版本。
+
 ## 定向验证
 
 1. 公共入口并发/修订、固定选取、未知写入及发布原子性定向回归；复用原人工调用者测试。
 2. 浏览器实际未保存字段与助手交接、Metadata 内部切换、下载和失效确认。
 3. C04 不依赖 REBUILD-07 新生成；删除等破坏性回归仅用本轮合成对象。
+
+4. 依[真实入口合同](../spec.md#real-entry-validation)验证一次自动派发到领域写入/回执；复用该链覆盖当前来源/保存目标及失效确认，选择/发布其余边界走对应公共入口，不逐工具复制完整框架矩阵。
 
 预算与执行边界：Spec C04：最多 18 次实际请求，0 模型处理/生成，25 分钟；计入第二批共享上限。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -61,3 +69,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 ## Comments
 
 - 2026-10-27：Owner 要求依据完整重建范围创建票据。创建本票，尚未实施；当前未运行模型/CU、未新建预算、未更改环境和业务数据。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。

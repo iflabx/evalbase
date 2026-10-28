@@ -6,7 +6,7 @@ Validation: not-run
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-06](06-draft-selection-publication-and-versions.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md)
 
 - 批次：2；对应原范围建议：R09。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：U02～U12、V05～V09。
 - 缺口：G03、G05、G06、G12；验收合同：RB02、RB03、RB09、RB12、RB13。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -25,6 +25,8 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 4. 接整套/版本分支回收、墓碑、恢复及永久删除；复用现有删除闭包和来源依赖，保持管理员权限、影响确认及用户输入名称/版本号。
 5. 复用 REBUILD-03 固定确认与 REBUILD-08 清理；仅在隔离合成账号/项目/配置中验证敏感操作，不发额外消息或修改现有验收连接。
 
+6. 模型设置复用02集中组装和现有配置服务，工具只提供当前权限可见的非敏感状态；原生密钥经服务端组装，不进入通用上下文或纠错数据。调用03的固定确认/计量与08清理，不新建管理专用审批、模型客户端或恢复机制；按[Spec 职责边界](../spec.md#runtime-responsibilities)验收。
+
 ## 主要修改位置
 
 - src/server/modules/accounts.ts、模型配置及 deletion.ts 背后的业务服务。
@@ -41,11 +43,17 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [ ] **R09-4** 回收站仅管理员可读写；整套、分支、墓碑、恢复及永久删除保持原业务语义和清理，用户未输入正确名称/版本号不能永久删除。
 - [ ] **R09-5** 完成 C06：新合成项目中普通提示邀请/调整成员与回收恢复新测试集，查看账号被正确拒绝敏感操作；必要确认由操作者点击。模型配置密钥链用隔离假供应方及浏览器验证，不动现有真实连接。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R09-A1** 隔离假供应方的真实SDK链核对配置修订、连接目标、单次实际尝试与账本一致；成员/回收操作至少一条经自动派发至共享服务及唯一回执，跨项目/撤权/确认过期被拒绝。敏感字段不出现在模型上下文、工具反馈、日志或录制证据中，模型不能自批。
+
 ## 定向验证
 
 1. 真实公共入口角色/跨项目/确认过期/并发修订/未知结果防重矩阵，复用同一共享校验。
 2. 浏览器原生凭据输入、确认和删除影响说明；无真实秘密出现在录制产物。
 3. C06 每个角色只操作新合成对象；无额外邮件/通讯发送，不以真实旧资料做删除实验。
+
+4. 依[真实入口合同](../spec.md#real-entry-validation)验证管理业务的自动派发与受控配置入口；复用同一权限/确认服务，不调用现有验收模型连接做探测，不新增真实预算。
 
 预算与执行边界：Spec C06：最多 16 次实际请求，0 处理/生成，25 分钟；计入第二批上限。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -60,3 +68,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 ## Comments
 
 - 2026-10-27：Owner 要求依据完整重建范围创建票据。创建本票，尚未实施；当前未运行模型/CU、未新建预算、未更改环境和业务数据。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。

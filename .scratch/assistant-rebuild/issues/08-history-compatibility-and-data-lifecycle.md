@@ -6,7 +6,7 @@ Validation: not-run
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md)
 
 - 批次：2；对应原范围建议：R08。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：A03、A05、A11；全部新业务引用的历史/清理公共合同。
 - 缺口：G06、G08；验收合同：RB03、RB11、RB12；RB08 的撤权/删除竞争。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -25,6 +25,8 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 4. 按原业务依赖保留已独立保存成果、预算累计和必要无正文审计；不能危险级联删除资产，也不能以历史保留为由继续展示已删除正文。
 5. 建立各领域引用登记/清理接点并适配已有背景、来源和产物；R05～R07 在其交付时登记新增引用。本票可先行，不等待全领域写能力完成才开始清理。
 
+6. 将02的单次调用上下文与03的恢复入口纳入同一生命周期合同：已删除/撤权的正文不能被历史摘要、纠错快照或检查点恢复重新拼回模型输入；保留允许的无正文审计及独立成果。复用既有存储与引用登记，必要清理按业务依赖实施，不为分层另建通用Repository或第二历史后端。
+
 ## 主要修改位置
 
 - 旧会话只读适配、新会话历史管理入口。
@@ -42,11 +44,17 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [ ] **R08-5** 执行中删除/撤权与迟到结果并发，写入保护生效；已成功提交事实与删除规则可对账，不把停止标完成。
 - [ ] **R08-6** 本票公开历史/删除入口通过定向浏览器检查；REBUILD-06/09 的破坏性能力只有在清理合同接通后开放。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R08-A1** 历史摘要/纠错快照包含背景引用时，删除或撤权后经公开入口自动派发的恢复链不得向受控Provider发送禁止正文；流重连/来源链接亦不可返回。有效的同运行时恢复仍沿原身份/预算；跨运行时承接必须关联新会话和新授权，旧账/确认不重放。
+
 ## 定向验证
 
 1. 隔离库中复制/构造旧格式记录与预算哨兵，验证读取、承接、删除和权限变更；不删除真实验收记录。
 2. 真实 SDK/公开入口的检查点正文、缓存、在途停止与回执竞争回归；只读浏览器检查历史链接和失效说明。
 3. 本票外部模型请求 0；跨运行时承接/追加在可控链路验证，不重开任何旧预算。
+
+4. 在合成历史和可控HTTP中记录删除/撤权前后模型实际收到的上下文，覆盖查询、纠错、继续及迟到结果；禁止正文在调用前被拦截的负例应断言零模型请求，不为凑SDK链强行调用。正常同版本恢复链仍需经自动派发，08不反向依赖06/07。
 
 预算与执行边界：受控/只读验证；不新增真实模型 campaign。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -61,3 +69,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 ## Comments
 
 - 2026-10-27：Owner 要求依据完整重建范围创建票据。创建本票，尚未实施；当前未运行模型/CU、未新建预算、未更改环境和业务数据。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。

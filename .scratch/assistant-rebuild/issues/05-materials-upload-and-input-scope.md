@@ -6,7 +6,7 @@ Validation: partial-pass
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md)
 
 - 批次：2；对应原范围建议：R05。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。当前仅创建票据，未开始实现或验收。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。创建基线仅记录创建时点；当前实施状态与证据见页头和完成记录。
 - 能力：P01～P05、M01～M12、A04。
 - 缺口：G03、G05；验收合同：RB02、RB03、RB04、RB05、RB13。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -24,6 +24,8 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 3. 接列表当前页/全部匹配/已选记录的范围交接，服务端固定真实 ID、来源身份和修订；来源失效/改动必须重新核对，不能默默改成整文件。
 4. 接背景 PDF/MD/TXT 上传、私有文档目录、真实片段/页行/引用；沿用既有大小和数量上限，背景不是测试记录。文档指令不能授予权限，不能为 GB 或某个文件名写专门流程。
 5. 读取使用有界原文/分页，准确标明截断；到处理/助手的入口只传合法上下文，不伪称已提交。A05 背景删除与检查点清理由 REBUILD-08 接入。
+
+6. 使用02的单次调用上下文入口提供可见资料、固定选择和私有背景引用，不重写权限规则，保留服务端可信 actor/project/proof 传递，由共享服务在写事务内复检权限与执行令牌；不另建来源纠错状态机。新增引用登记到08清理接点，按[Spec 职责边界](../spec.md#runtime-responsibilities)落实。
 
 ## 主要修改位置
 
@@ -45,11 +47,21 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [ ] **R05-7** 覆盖旧 failed discovery→continue 场景：发现失败并经历普通继续后，用户明确给出可见文件名时，应重新核对并绑定该真实来源；不得一直返回旧候选列表。既有预算/纠正记录保留，来源未确定前不创建作业。
 - [ ] **R05-8** 覆盖旧 explicit new filename 场景：页面当前对象 A 与用户明确要求的对象 B 不同，按可见目录核对并绑定 B，旧候选/页面上下文不能覆盖新要求；同名歧义才澄清，跨项目或不可见对象仍拒绝。以真实业务引用和受控 SDK 证明范围正确，不要求用户提供内部 ID。
 
+### 追加架构验收（2026-10-28，待核对闭合）
+
+- [ ] **R05-A1** 上传/映射、集合移动及选择交接使用与人工页面同源合同；至少一条公开消息→自动派发→真实SDK→资料服务→回执/投影链验证精确范围，纠正后仍不能扩大为空选/全部文件。执行过程中来源修订失效或撤权由业务边界拒绝。
+
+### 现有证据与收口缺口
+
+C03辅助组合已通过：集合创建/移动、真实两条选择读取、原生MD上传/分类引用；原CSV由人工辅助先行上传，完整原生CSV选择/映射/确认流程未在该CU记录中观察。R05-6的勾选仅代表其列明的组合终点，不代表R05-2或整票完成。原未勾选AC保留，后续按已有记录逐项核对；本次不以文档修改新添通过结论。
+
 ## 定向验证
 
 1. 真实上传/映射/确认公共入口测试；对象存储哈希、字段映射、容量/角色/过期范围负例。
 2. 可控 SDK 检查领域参数声明与执行一致；浏览器实际文件选择和勾选交接，不能只用后端预填范围。
 3. C03 仅验证本票能力，不提前运行后续处理/发布场景。
+
+4. R05-2单独补原生CSV选择→映射预览→确认/取消浏览器证据，记录人工辅助步骤。已有C03组合的集合创建、移动、两条读取、MD上传引用通过记录沿用；不用重跑已通过部分来填上传缺口。其余未勾选AC逐项关联有效受控证据后才关闭，不能仅凭本次补票追认。
 
 预算与执行边界：Spec C03：最多 16 次实际请求，0 处理行次/生成，25 分钟；计入第二批共享上限。 普通提示、逐项上限、停止条件和证据口径以[Spec 验证安排](../spec.md#verification)为准。此处记录未来执行约束，不表示已创建活动或批准本次运行。
 
@@ -76,3 +88,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-28：按Owner方案补修派发与后台恢复版本过滤，代码40e930d已更新4240。定向5项通过；Terra high新会话完成集合创建/移动及精确两条读取，4请求，保留旧数据预算。完整C03覆盖及限制见[独立复测证据](../r05-c03-dispatch-retest-20261028/verification.md)，未覆盖项不记通过。
 
 - 2026-10-28：C03补修组合场景通过（人工CSV材料复用）：原生MD选择并读取、真实行引用分类亦完成，合计6/16请求，两段活动各4/2请求均关闭；1次无损参数归一，无工具报错/纠错失败。原始CSV全自动选择/映射/确认未重测，R05-2的浏览器证据限制保留；票据不以C03覆盖代替所有验收项。
+
+- 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。
