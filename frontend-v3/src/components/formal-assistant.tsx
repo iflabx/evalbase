@@ -73,7 +73,8 @@ const toolNames: Record<string, string> = {
   list_sources: "查找资料",
   read_records: "读取记录",
   read_attachment: "读取文档",
-  update_requirements: "保存要求",
+  create_requirements: "新增交付要求",
+  update_requirements: "修改交付要求",
   submit_processing: "提交处理",
   wait_processing: "等待处理",
   prepare_adoption: "准备保存确认",
@@ -150,6 +151,7 @@ export function FormalAssistant({
   useEffect(() => {
     if (narrow) setListOpen(false);
   }, [narrow]);
+  const readOnlyHistory = snapshot?.session.runtime_version === "deepagents-v1";
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]),
     [active, setActive] = useState("");
   const draftKey = "evalbase:assistant:" + actorId + ":" + projectId + ":" + (sessionId ?? "new");
@@ -362,6 +364,10 @@ export function FormalAssistant({
     }
   };
   const send = async () => {
+    if (readOnlyHistory) {
+      setError("旧会话只读保留，请新建会话继续；原成果与预算不变。");
+      return;
+    }
     if (
       !sessionId ||
       !snapshot ||
@@ -820,7 +826,12 @@ export function FormalAssistant({
             </Button>
           )}
           {inFlight && (
-            <Button variant="ghost" size="sm" onClick={() => void action("stop")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={readOnlyHistory}
+              onClick={() => void action("stop")}
+            >
               <Square className="size-3" />
               停止
             </Button>
@@ -829,7 +840,7 @@ export function FormalAssistant({
             <Button
               variant="outline"
               size="sm"
-              disabled={busy}
+              disabled={readOnlyHistory || busy}
               onClick={() => void action("continue")}
             >
               继续
@@ -843,7 +854,7 @@ export function FormalAssistant({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                disabled={!snapshot}
+                disabled={!snapshot || readOnlyHistory}
                 onSelect={() => {
                   setTitle(snapshot?.session.title ?? "");
                   setRename(true);
@@ -944,7 +955,9 @@ export function FormalAssistant({
                                           ? "已取消"
                                           : snapshot.session.requirements.mode === "plan"
                                             ? "仅方案，尚未执行"
-                                            : "按当前要求执行"}{" "}
+                                            : snapshot.executionReadiness?.ready
+                                              ? "要求完整，可执行"
+                                              : "要求待补充"}{" "}
                                         · {String(d["instructions"] ?? "")}
                                       </p>
                                     </div>
@@ -1019,6 +1032,7 @@ export function FormalAssistant({
                                   )}
                                   <Button
                                     disabled={
+                                      readOnlyHistory ||
                                       !canWrite ||
                                       busy ||
                                       new Date(c.expires_at).getTime() <= Date.now()
@@ -1029,7 +1043,7 @@ export function FormalAssistant({
                                   </Button>
                                   <Button
                                     variant="ghost"
-                                    disabled={busy}
+                                    disabled={readOnlyHistory || busy}
                                     onClick={() => void confirm(c.id, false)}
                                   >
                                     取消
@@ -1134,6 +1148,11 @@ export function FormalAssistant({
                       核对最新状态并重新提交
                     </Button>
                   )}
+                  {readOnlyHistory && (
+                    <p className="mb-2 text-sm text-muted-foreground">
+                      旧会话只读保留；请点“新会话”继续，原成果与预算不变。
+                    </p>
+                  )}
                   <div className="formal-composer">
                     <div className="flex flex-wrap gap-2">
                       {snapshot?.workspace.attachments.map((a) => (
@@ -1143,7 +1162,7 @@ export function FormalAssistant({
                           </button>
                           {attachmentIds.includes(a.id) && (
                             <button
-                              disabled={busy || !!pending}
+                              disabled={readOnlyHistory || busy || !!pending}
                               aria-label={"移除 " + a.name}
                               onClick={() => void removeAttachment(a.id)}
                             >
@@ -1179,7 +1198,7 @@ export function FormalAssistant({
                       <Button
                         size="icon"
                         variant="ghost"
-                        disabled={busy || !!pending}
+                        disabled={readOnlyHistory || busy || !!pending}
                         aria-label="添加背景文档"
                         onClick={() => file.current?.click()}
                       >
@@ -1189,7 +1208,14 @@ export function FormalAssistant({
                       <Button
                         className="ml-auto"
                         aria-label={pending ? "重试原提交" : "发送"}
-                        disabled={busy || !draft.trim() || selectionMissing || inFlight || conflict}
+                        disabled={
+                          readOnlyHistory ||
+                          busy ||
+                          !draft.trim() ||
+                          selectionMissing ||
+                          inFlight ||
+                          conflict
+                        }
                         onClick={() => void send()}
                       >
                         <Send className="size-4" />
@@ -1234,7 +1260,10 @@ export function FormalAssistant({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
-          <Button disabled={!title.trim() || busy} onClick={() => void renameCurrent()}>
+          <Button
+            disabled={readOnlyHistory || !title.trim() || busy}
+            onClick={() => void renameCurrent()}
+          >
             保存名称
           </Button>
         </DialogContent>

@@ -1,4 +1,4 @@
-import { InstructionRefreshError } from "./session-contract.js";
+import { RequirementRepairError } from "./session-contract.js";
 import { isGraphInterrupt } from "@langchain/langgraph";
 import {
   AIMessage,
@@ -28,7 +28,21 @@ export type FailedCall = {
   schemaHash?: string;
   kind?: "requirements";
   blockedReason?: string;
+  targetBindings?: { index: number; deliveryId: string }[];
   contexts?: { deliveryId: string; before: string; after: string }[];
+};
+const bindRecordedTargets = (
+  value: unknown,
+  bindings: { index: number; deliveryId: string }[] = [],
+) => {
+  const args = structuredClone(value) as {
+    changes?: { deliveries?: { deliveryId?: string }[] };
+  } | null;
+  for (const binding of bindings) {
+    const item = args?.changes?.deliveries?.[binding.index];
+    if (item && !item.deliveryId) item.deliveryId = binding.deliveryId;
+  }
+  return args;
 };
 type Issue = {
   path: PropertyKey[];
@@ -213,7 +227,7 @@ export function sessionFeedback(options: {
                 unparsed: pending.unparsed ?? false,
                 rule:
                   pending.kind === "requirements"
-                    ? "本次用户变更已固定。仅重新整理列明交付的加工规则instructions，不能改变新数量、范围、目标或其他有效字段；规则不得重复处理范围/总数/目标，保留原加工含义。"
+                    ? "本次用户变更已固定。仅修正列明的字段路径，遵循工具错误给出的业务要求；不能改变已明确的新数量、范围、目标、交付身份或其他有效字段。加工规则不重复范围/总数/目标。"
                     : "只修复原错误，不能新增或猜测ID、改变来源/记录范围/数量/分类/保存目标。一次只提交一个工具调用。",
                 contexts: pending.contexts,
                 blockedReason: pending.blockedReason,
@@ -401,8 +415,12 @@ export function sessionFeedback(options: {
         } else {
           const base = normalize(
             call.name,
-            pending.workingArgs ?? pending.args,
+            bindRecordedTargets(
+              pending.workingArgs ?? pending.args,
+              pending.targetBindings,
+            ),
           ).args;
+          args = bindRecordedTargets(args, pending.targetBindings);
           const merged = mergeToolCorrection(
             base,
             args,
@@ -443,7 +461,7 @@ export function sessionFeedback(options: {
             ["no_progress", "runtime_interrupted"].includes(error.code))
         )
           throw error;
-        if (error instanceof InstructionRefreshError) {
+        if (error instanceof RequirementRepairError) {
           await options.observe("tool_error", {
             id,
             name: call.name,
@@ -467,6 +485,18 @@ export function sessionFeedback(options: {
             schemaHash: schemaHash(call.name),
             kind: "requirements",
             contexts: error.contexts,
+            targetBindings:
+              pending?.targetBindings ??
+              (error.targetBindings.length
+                ? error.targetBindings
+                : call.name === "update_requirements"
+                  ? error.contexts
+                      .map((context, index) => ({
+                        index: Number(error.paths[index]?.[2]),
+                        deliveryId: context.deliveryId,
+                      }))
+                      .filter((binding) => Number.isInteger(binding.index))
+                  : []),
           };
           await options.savePending?.(pending);
           const detail = {
@@ -504,7 +534,9 @@ export function sessionFeedback(options: {
           failure.status < 500 &&
           typeof failure.code === "string"
         ) {
-          if (call.name === "update_requirements") {
+          if (
+            ["create_requirements", "update_requirements"].includes(call.name)
+          ) {
             pending = {
               ...pending,
               id: pending?.id ?? id,

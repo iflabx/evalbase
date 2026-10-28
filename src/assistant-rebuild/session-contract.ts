@@ -10,6 +10,7 @@ import {
   validateRules,
 } from "../processing/requirements.js";
 
+export const FORMAL_RUNTIME_VERSION = "deepagents-v2";
 const id = z.string().min(1).max(250);
 const fields = z
   .array(z.enum(["question", "expectedOutput", "metadata"]))
@@ -120,6 +121,27 @@ export const requirementChangeSchema = z
       .refine((v) => Object.keys(v).length > 0, "修改内容不能为空"),
   })
   .strict();
+/** Creation never derives its meaning from an omitted target identity. */
+export const requirementCreationSchema = requirementChangeSchema
+  .safeExtend({
+    changes: requirementChangeSchema.shape.changes.safeExtend({
+      deliveries: z
+        .array(
+          z
+            .object({
+              patch: deliveryPatchSchema.refine(
+                (p) => p.status !== "cancelled",
+                "新增不能同时取消",
+              ),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(100),
+    }),
+  })
+  .describe("创建新交付 v2；不用于修改既有交付");
+export type RequirementCommand = "create" | "update";
 export const messageSubmissionSchema = z
   .object({
     submissionId: z
@@ -243,13 +265,25 @@ export function deliveryExecution(delivery: Delivery) {
     rules: delivery.instructions ?? "",
   };
 }
-export class InstructionRefreshError extends BusinessError {
+export class RequirementRepairError extends BusinessError {
   constructor(
     readonly paths: string[][],
     readonly contexts: { deliveryId: string; before: string; after: string }[],
+    code: string,
+    hint: string,
+    readonly targetBindings: { index: number; deliveryId: string }[] = [],
+  ) {
+    super(422, code, hint);
+  }
+}
+export class InstructionRefreshError extends RequirementRepairError {
+  constructor(
+    paths: string[][],
+    contexts: { deliveryId: string; before: string; after: string }[],
   ) {
     super(
-      422,
+      paths,
+      contexts,
       "processing_instructions_refresh_required",
       "处理范围或规则已变化，请按当前要求重新整理加工规则，勿在规则中重复记录范围、总数量或保存目标；原方案未被覆盖。保持本次已明确的范围、数量与目标，只补齐受影响的instructions。",
     );
@@ -265,4 +299,86 @@ export function assertInstructionsCurrent(delivery: Delivery) {
       "processing_instructions_stale",
       "加工规则尚未按当前要求核对，本步骤未执行；请先更新要求，原记录与成果保留。",
     );
+}
+
+export type ReadinessIssue = {
+  code: string;
+  message: string;
+  deliveryId?: string;
+  field?: string;
+};
+/** The single current execution contract; plan drafts may intentionally remain incomplete. */
+export function executionReadiness(
+  requirements: SessionRequirements,
+  pending = false,
+) {
+  const active = requirements.deliveries.filter((d) => d.status === "active"),
+    issues: ReadinessIssue[] = [];
+  if (pending)
+    issues.push({
+      code: "requirements_amendment_pending",
+      message: "本次修改尚未完整生效",
+    });
+  if (active.length !== 1)
+    issues.push({
+      code: "single_delivery_required",
+      message: "当前执行能力要求一份活动交付",
+    });
+  for (const d of active) {
+    const missing = (field: string, message: string) =>
+      issues.push({
+        code: "execution_requirements_incomplete",
+        deliveryId: d.id,
+        field,
+        message,
+      });
+    if (!["clean", "rewrite"].includes(d.operation ?? ""))
+      missing("operation", "需要明确清洗或改写操作");
+    if (!d.source?.recordIds?.length) missing("source", "需要固定实际输入记录");
+    if (d.count === undefined || d.count !== d.source?.recordIds?.length)
+      missing("count", "数量须与固定输入范围一致");
+    if (!d.allowedFields?.length)
+      missing("allowedFields", "需要明确允许修改的字段");
+    if (d.allowedFields?.includes("metadata") && d.metadataKeys?.length === 0)
+      missing("metadataKeys", "未指定允许修改的Metadata字段");
+    if (d.saveTarget?.kind !== "newDraft")
+      missing("saveTarget", "当前保存能力需要新草稿目标");
+    if (
+      d.instructions?.trim() &&
+      d.instructionsContext !== instructionContext(d)
+    )
+      issues.push({
+        code: "processing_instructions_stale",
+        deliveryId: d.id,
+        field: "instructions",
+        message: "加工规则需要按当前上下文核对",
+      });
+  }
+  return {
+    ready: requirements.mode === "execute" && issues.length === 0,
+    complete: issues.length === 0,
+    issues,
+  };
+}
+export function assertExecutionReady(
+  requirements: SessionRequirements,
+  pending = false,
+) {
+  const readiness = executionReadiness(requirements, pending);
+  if (!readiness.ready)
+    throw new BusinessError(
+      422,
+      readiness.issues[0]?.code ?? "execution_not_authorized",
+      readiness.issues.map((i) => i.message).join("；") ||
+        "当前仅保存方案，未授权执行",
+    );
+  return requirements.deliveries.find(
+    (d) => d.status === "active",
+  )! as Delivery & {
+    source: Source & { recordIds: string[] };
+    count: number;
+    operation: "clean" | "rewrite";
+    allowedFields: NonNullable<Delivery["allowedFields"]>;
+    saveTarget: { kind: "newDraft"; name: string; purpose?: string };
+  };
 }

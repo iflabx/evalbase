@@ -15,6 +15,7 @@ export type Attachment = { id: string; name: string };
 export type Snapshot = {
   session: {
     id: string;
+    runtime_version?: string;
     title: string;
     revision: number;
     requirements_revision: number;
@@ -30,6 +31,11 @@ export type Snapshot = {
     turn_id: string;
     requests: number;
     request_limit: number;
+  };
+  executionReadiness?: {
+    ready: boolean;
+    complete: boolean;
+    issues: { code: string; message: string; deliveryId?: string; field?: string }[];
   };
   confirmations: {
     id: string;

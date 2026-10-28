@@ -56,7 +56,14 @@ const call = (name: string, args: unknown, id = "call_" + randomUUID()) => ({
       id,
       type: "function",
       function: {
-        name,
+        name:
+          name === "update_requirements" &&
+          args &&
+          typeof args === "object" &&
+          (args as any).expectedRevision === 0 &&
+          (args as any).changes?.deliveries?.some((d: any) => !d.deliveryId)
+            ? "create_requirements"
+            : name,
         arguments: typeof args === "string" ? args : JSON.stringify(args),
       },
     },
@@ -135,6 +142,16 @@ const plan = (count = 400) => ({
     ],
   },
 });
+
+// Compatibility for pre-v2 trusted fixtures; new identity tests exercise explicit model commands.
+const changeRequirements = (proof: any, input: any) =>
+  host.store.change(
+    proof,
+    input,
+    input.changes?.deliveries?.some((d: any) => !d.deliveryId)
+      ? "create"
+      : "update",
+  );
 async function effects() {
   return (
     await db.query(
@@ -346,7 +363,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     ).toBe(0);
     const id = await fresh();
     expect((await api("GET", route(id))).json().session.runtime_version).toBe(
-      "deepagents-v1",
+      "deepagents-v2",
     );
     expect(process.env.REBUILD_VALIDATION_CAMPAIGN_ID).toBeUndefined();
   });
@@ -379,7 +396,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       ).json().error.code,
     ).toBe("conversation_busy");
     const proof = await host.store.claim(scope(), id, first.json().turnId);
-    await host.store.change(proof, plan());
+    await changeRequirements(proof, plan());
     await host.store.finish(proof, "已记录");
     const replay = await api("POST", route(id) + "/messages", payload);
     expect(replay.statusCode).toBe(200);
@@ -526,6 +543,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       ),
     ).toBe(true);
     const allowed = [
+      "create_requirements",
       "read_project",
       "list_sources",
       "read_records",
@@ -638,16 +656,16 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     const id = await fresh(),
       accepted = await submit(id, "方案");
     const proof = await host.store.claim(scope(), id, accepted.json().turnId);
-    const first = await host.store.change(proof, plan());
-    expect(await host.store.change(proof, plan())).toEqual(first);
-    const noChange = await host.store.change(proof, {
+    const first = await changeRequirements(proof, plan());
+    expect(await changeRequirements(proof, plan())).toEqual(first);
+    const noChange = await changeRequirements(proof, {
       expectedRevision: 1,
       changes: { mode: "plan" },
     });
     expect(noChange.unchanged).toBe(true);
     expect(noChange.revision).toBe(1);
     await expect(
-      host.store.change(proof, {
+      changeRequirements(proof, {
         expectedRevision: 0,
         changes: { objective: "不能覆盖" },
       }),
@@ -774,7 +792,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       call("update_requirements", first, "flat-c02"),
       (body: any) => {
         expect(body.tools.map((t: any) => t.function.name)).toEqual([
-          "update_requirements",
+          "create_requirements",
         ]);
         expect(wireText(body.messages[0])).toContain("workingArguments");
         return {
@@ -873,7 +891,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       batch,
       (body: any) => {
         expect(body.tools.map((t: any) => t.function.name)).toEqual([
-          "update_requirements",
+          "create_requirements",
         ]);
         return call("update_requirements", plan(3));
       },
@@ -1084,7 +1102,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       call("update_requirements", broken, "first-readable"),
       {
         ...call(
-          "update_requirements",
+          "create_requirements",
           '{"expectedRevision":0,"changes":',
           "truncated-correction",
         ),
@@ -1096,7 +1114,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
         expect(context).toContain('"count":50');
         expect(context).toContain('"unparsed":false');
         expect(body.tools.map((t: any) => t.function.name)).toEqual([
-          "update_requirements",
+          "create_requirements",
         ]);
         return call("update_requirements", valid, "second-correction");
       },
@@ -1412,10 +1430,10 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       accepted = await submit(id, "一份方案"),
       proof = await host.store.claim(scope(), id, accepted.json().turnId);
     await expect(
-      host.store.change({ ...proof, token: "forged" }, plan()),
+      changeRequirements({ ...proof, token: "forged" }, plan()),
     ).rejects.toMatchObject({ code: "runtime_interrupted" });
     await host.store.finish(proof, "无需更改");
-    await expect(host.store.change(proof, plan())).rejects.toMatchObject({
+    await expect(changeRequirements(proof, plan())).rejects.toMatchObject({
       code: "runtime_interrupted",
     });
     const second = await fresh();
@@ -1425,7 +1443,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       multi,
       (body: any) => {
         expect(body.tools.map((t: any) => t.function.name)).toEqual([
-          "update_requirements",
+          "create_requirements",
         ]);
         return call("update_requirements", plan());
       },
@@ -1610,7 +1628,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       proof = await host.store.claim(scope(), id, accepted.json().turnId);
     for (const target of ["not-a-real-draft", other, discarded, locked]) {
       await expect(
-        host.store.change(proof, {
+        changeRequirements(proof, {
           expectedRevision: 0,
           changes: {
             deliveries: [
@@ -1627,7 +1645,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       expect((await host.store.get(scope(), id)).requirements_revision).toBe(0);
     }
     const before = await effects();
-    const receipt = await host.store.change(proof, {
+    const receipt = await changeRequirements(proof, {
       expectedRevision: 0,
       changes: {
         deliveries: [
@@ -1646,7 +1664,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       "UPDATE collaborative_draft SET status='discarded' WHERE id=$1",
       [valid],
     );
-    const cancelled = await host.store.change(proof, {
+    const cancelled = await changeRequirements(proof, {
       expectedRevision: 1,
       changes: {
         deliveries: [
@@ -1723,7 +1741,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       (t) => t.name === "list_sources",
     )!;
     const assertUnavailable = async () => {
-      await expect(host.store.change(proof, change)).rejects.toMatchObject({
+      await expect(changeRequirements(proof, change)).rejects.toMatchObject({
         code: "save_target_unavailable",
       });
       expect((await host.store.get(scope(), id)).requirements_revision).toBe(0);
@@ -1770,7 +1788,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     }
     const listed = await directory.invoke({ kind: "drafts", offset: 0 });
     expect(listed.items.map((v: { id: string }) => v.id)).toContain(target);
-    expect((await host.store.change(proof, change)).saved).toBe(true);
+    expect((await changeRequirements(proof, change)).saved).toBe(true);
     await host.store.finish(proof, "合法父版本目标已核对");
   });
   it("R04 sends exactly one leading System message through the real SDK while retaining current authority and tool chronology", async () => {
@@ -1997,5 +2015,385 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     expect(events.filter((e) => e.kind === "parameter_feedback")).toHaveLength(
       1,
     );
+  });
+  it("amends the unique delivery when the captured C01 amendment omits its identity and operation", async () => {
+    const id = await fresh();
+    let state = await run(id, "前5条先规划", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "plan",
+          deliveries: [
+            {
+              patch: {
+                name: "前5条",
+                operation: "clean",
+                count: 5,
+                instructions: "",
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "旧版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const originalId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "改成前3条，保存成三条整理版，现在执行", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "三条整理版",
+                count: 3,
+                source: { kind: "assets", assetIds: [assetId] },
+                saveTarget: { kind: "newDraft", name: "三条整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements.deliveries[0]).toMatchObject({
+      id: originalId,
+      count: 3,
+      operation: "clean",
+    });
+    expect(state.executionReadiness.ready).toBe(true);
+    expect(await effects()).toMatchObject({ runs: 0 });
+  });
+  it("does not save executable creation with an omitted operation", async () => {
+    const id = await fresh();
+    await run(id, "创建三条清洗任务", [
+      call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "三条",
+                count: 3,
+                source: { kind: "assets", assetIds: [assetId] },
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "三条" },
+              },
+            },
+          ],
+        },
+      }),
+    ]).catch(() => undefined);
+    expect((await host.store.get(scope(), id)).requirements_revision).toBe(0);
+  });
+  it("does not reinterpret a targetless update on an empty session as creation", async () => {
+    const id = await fresh(),
+      message = call("update_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [{ patch: { name: "不能偷偷新增", count: 3 } }],
+        },
+      });
+    message.tool_calls[0]!.function.name = "update_requirements";
+    await expect(run(id, "修改已有方案", [message])).rejects.toMatchObject({
+      code: "delivery_target_required",
+    });
+    expect((await host.store.get(scope(), id)).requirements.deliveries).toEqual(
+      [],
+    );
+  });
+  it("retains explicit additional planning and rejects unsupported executable additions atomically", async () => {
+    const id = await fresh();
+    let state = await run(id, "规划第一份", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "plan",
+          deliveries: [{ patch: { name: "第一份", count: 3 } }],
+        },
+      }),
+    ]);
+    const firstId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "另加一份方案", [
+      call("create_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "plan",
+          deliveries: [{ patch: { name: "第二份", count: 2 } }],
+        },
+      }),
+    ]);
+    expect(state.session.requirements.deliveries.map((d) => d.id)).toContain(
+      firstId,
+    );
+    expect(state.session.requirements.deliveries).toHaveLength(2);
+    await expect(
+      run(id, "现在执行", [
+        call("update_requirements", {
+          expectedRevision: 2,
+          changes: { mode: "execute" },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "single_delivery_required" });
+    const after = await host.store.get(scope(), id);
+    expect(after.requirements.mode).toBe("plan");
+    expect(after.requirements_revision).toBe(2);
+  });
+  it("rejects duplicate mutations of the same bound delivery in one command", async () => {
+    const id = await fresh();
+    let state = await run(id, "规划", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: { deliveries: [{ patch: { name: "第一份", count: 3 } }] },
+      }),
+    ]);
+    const target = state.session.requirements.deliveries[0].id;
+    await expect(
+      run(id, "修改并取消", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              { deliveryId: target, patch: { name: "新版" } },
+              { deliveryId: target, patch: { status: "cancelled" } },
+            ],
+          },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "delivery_change_conflict" });
+    state = await host.present(scope(), id);
+    expect(state.session.requirements_revision).toBe(1);
+    expect(state.session.requirements.deliveries[0].name).toBe("第一份");
+  });
+  it("repairs a missing new execution operation with the real SDK without changing its scope", async () => {
+    const id = await fresh();
+    const state = await run(id, "清洗前三条，现在执行", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "清洗",
+                count: 3,
+                source: { kind: "assets", assetIds: [assetId] },
+                allowedFields: ["question"],
+                instructions: "",
+                saveTarget: { kind: "newDraft", name: "整理" },
+              },
+            },
+          ],
+        },
+      }),
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: { deliveries: [{ patch: { operation: "clean" } }] },
+      }),
+    ]);
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements_revision).toBe(1);
+    expect(state.executionReadiness.ready).toBe(true);
+  });
+  it("keeps v1 history readable without reinterpreting its checkpoint as a v2 command", async () => {
+    const id = await fresh();
+    await db.query(
+      "UPDATE assistant_runtime_session SET runtime_version='deepagents-v1' WHERE id=$1",
+      [id],
+    );
+    const read = await api("GET", route(id));
+    expect(read.statusCode).toBe(200);
+    const before = read.json().session.revision;
+    const submission = await submit(id, "继续");
+    expect(submission.statusCode).toBe(409);
+    expect(submission.json().code ?? submission.json().error?.code).toBe(
+      "runtime_contract_changed",
+    );
+    expect((await host.store.get(scope(), id)).revision).toBe(before);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS n FROM assistant_runtime_turn WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
+  it("keeps the bound delivery identity when semantic correction supplies its previously omitted ID", async () => {
+    const id = await fresh();
+    let state = await run(id, "先规划5条", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                name: "清洗",
+                count: 5,
+                instructions: "只清洗前5条，其他不变。",
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "改成3条", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: { deliveries: [{ patch: { count: 3 } }] },
+      }),
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            { deliveryId, patch: { instructions: "整理所选记录，其他不变。" } },
+          ],
+        },
+      }),
+    ]);
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      count: 3,
+      instructions: "整理所选记录，其他不变。",
+    });
+    expect(state.session.requirements_revision).toBe(2);
+  });
+  it("replays a committed partial correction receipt without another mutation and rejects changed protected fields", async () => {
+    const id = await fresh(),
+      accepted = await submit(id, "先规划"),
+      proof = await host.store.claim(scope(), id, accepted.json().turnId);
+    const created = await host.store.change(
+      proof,
+      {
+        expectedRevision: 0,
+        changes: { deliveries: [{ patch: { name: "清洗", count: 5 } }] },
+      },
+      "create",
+    );
+    const deliveryId = created.requirements.deliveries[0].id;
+    const request = {
+      expectedRevision: 1,
+      changes: { deliveries: [{ patch: { count: 3, name: "三条整理版" } }] },
+    };
+    const saved = await host.store.change(proof, request, "update");
+    const replay = await host.store.change(
+      proof,
+      {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [{ deliveryId, patch: { name: "三条整理版" } }],
+        },
+      },
+      "update",
+    );
+    expect(replay).toEqual(saved);
+    await expect(
+      host.store.change(
+        proof,
+        {
+          expectedRevision: 1,
+          changes: { deliveries: [{ deliveryId, patch: { count: 4 } }] },
+        },
+        "update",
+      ),
+    ).rejects.toMatchObject({ code: "requirements_revision_conflict" });
+    expect((await host.store.get(scope(), id)).requirements_revision).toBe(2);
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM assistant_runtime_event WHERE session_id=$1 AND kind='requirements_saved'",
+          [id],
+        )
+      ).rows,
+    ).toHaveLength(2);
+    await host.store.finish(proof, "已保存");
+  });
+  it("binds a missing operation correction to the already existing target even when its first amendment omitted ID", async () => {
+    const id = await fresh();
+    let s = await run(id, "先规划三条", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                name: "清洗",
+                count: 3,
+                source: { kind: "assets", assetIds: [assetId] },
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "整理" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = s.session.requirements.deliveries[0].id;
+    s = await run(id, "现在执行", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "execute",
+          deliveries: [{ patch: { name: "整理版" } }],
+        },
+      }),
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [{ deliveryId, patch: { operation: "clean" } }],
+        },
+      }),
+    ]);
+    expect(s.session.requirements.deliveries).toHaveLength(1);
+    expect(s.session.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      count: 3,
+      operation: "clean",
+      name: "整理版",
+    });
+    expect(s.executionReadiness.ready).toBe(true);
+  });
+  it("saves cancellation of the sole executable delivery as non-executing without another write", async () => {
+    const id = await fresh();
+    let s = await run(id, "准备清洗三条", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                name: "清洗",
+                operation: "clean",
+                count: 3,
+                source: { kind: "assets", assetIds: [assetId] },
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "整理" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = s.session.requirements.deliveries[0].id;
+    s = await run(id, "这份不要了", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: { deliveries: [{ patch: { status: "cancelled" } }] },
+      }),
+    ]);
+    expect(s.session.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      status: "cancelled",
+    });
+    expect(s.session.requirements.mode).toBe("plan");
+    expect(s.executionReadiness.ready).toBe(false);
+    expect(await effects()).toMatchObject({ runs: 0 });
   });
 });

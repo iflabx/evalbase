@@ -136,7 +136,9 @@ export function normalizeToolArguments(
     }
     if (object(value)) {
       if (
-        toolName === "update_requirements" &&
+        ["create_requirements", "update_requirements"].includes(
+          toolName ?? "",
+        ) &&
         path.length === 3 &&
         path[0] === "changes" &&
         path[1] === "deliveries"
@@ -182,7 +184,9 @@ export function normalizeToolArguments(
         }),
       );
       if (
-        toolName === "update_requirements" &&
+        ["create_requirements", "update_requirements"].includes(
+          toolName ?? "",
+        ) &&
         path.length === 4 &&
         path[0] === "changes" &&
         path[1] === "deliveries" &&

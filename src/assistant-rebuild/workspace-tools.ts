@@ -1,6 +1,5 @@
-import { BusinessError } from "../operations/errors.js";
 import {
-  assertInstructionsCurrent,
+  assertExecutionReady,
   validateDeliveryResults,
 } from "./session-contract.js";
 import { tool } from "langchain";
@@ -23,28 +22,7 @@ export function workspaceTools(
     const task = await execution.processingGuard(proof);
     if (task.suspended) throw new SessionError("task_paused");
     const session = await store.get(proof, proof.sessionId);
-    const active = session.requirements.deliveries.filter(
-      (d) => d.status === "active",
-    );
-    if (active.length !== 1)
-      throw new SessionError("single_delivery_required", 422);
-    const d = active[0]!;
-    if (
-      session.requirements.mode !== "execute" ||
-      !d.source?.recordIds?.length ||
-      !["clean", "rewrite"].includes(d.operation ?? "") ||
-      d.count !== d.source.recordIds.length ||
-      !d.allowedFields?.length ||
-      d.saveTarget?.kind !== "newDraft"
-    )
-      throw new SessionError("execution_requirements_incomplete", 422);
-    if (d.allowedFields.includes("metadata") && d.metadataKeys?.length === 0)
-      throw new BusinessError(
-        422,
-        "metadata_fields_required",
-        "已选择修改Metadata，但没有允许修改的字段；请指定字段或保持Metadata不变。",
-      );
-    assertInstructionsCurrent(d);
+    const d = assertExecutionReady(session.requirements);
     const snapshot = await store.freezeSource(proof, d.source);
     if (snapshot.sourceSnapshot.hash !== d.sourceSnapshot?.hash)
       throw new SessionError("source_revision_conflict");

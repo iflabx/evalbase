@@ -1,3 +1,4 @@
+import { mergeToolCorrection } from "./tool-arguments.js";
 import { restoreSuspended } from "./suspension.js";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../db/pool.js";
@@ -10,6 +11,13 @@ import {
   processingSourceRows,
 } from "../processing/store.js";
 import {
+  FORMAL_RUNTIME_VERSION,
+  requirementCreationSchema,
+  assertExecutionReady,
+  executionReadiness,
+  RequirementRepairError,
+  type RequirementCommand,
+  type RequirementChange,
   instructionContext,
   deliveryExecution,
   InstructionRefreshError,
@@ -77,7 +85,9 @@ export class SessionStore {
       )
     ).rows[0];
     if (!row) throw new SessionError("conversation_not_found", 404);
-    if (row.runtime_version !== "deepagents-v1")
+    if (
+      !["deepagents-v1", FORMAL_RUNTIME_VERSION].includes(row.runtime_version)
+    )
       throw new SessionError("runtime_version_not_supported");
     // Deny cached history when a read source is no longer visible. Full lifecycle cleanup belongs to R08.
     const refs = (
@@ -114,8 +124,8 @@ export class SessionStore {
       await this.access(scope, false, client, true);
       const id = opaque("assistant");
       await client.query(
-        "INSERT INTO assistant_runtime_session(id,project_id,actor_id) VALUES($1,$2,$3)",
-        [id, scope.projectId, scope.actorId],
+        "INSERT INTO assistant_runtime_session(id,project_id,actor_id,runtime_version) VALUES($1,$2,$3,$4)",
+        [id, scope.projectId, scope.actorId, FORMAL_RUNTIME_VERSION],
       );
       await client.query("COMMIT");
       return this.present(scope, id);
@@ -181,7 +191,9 @@ export class SessionStore {
           scope.actorId,
           "write",
         ))
-          ? ["update_requirements"]
+          ? session.runtime_version === FORMAL_RUNTIME_VERSION
+            ? ["create_requirements", "update_requirements"]
+            : []
           : []),
       ],
       execution: "pending-executor-integration",
@@ -215,6 +227,12 @@ export class SessionStore {
           replayed: true,
         };
       }
+      if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
+        throw new BusinessError(
+          409,
+          "runtime_contract_changed",
+          "旧会话按原合同只读保留，请新建会话使用新的交付命令；原成果与预算不变。",
+        );
       if (payload.attachments?.length) {
         const valid = await client.query(
           "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1 AND id=ANY($2::text[]) AND removed_at IS NULL FOR SHARE",
@@ -332,7 +350,13 @@ export class SessionStore {
     lock = false,
   ) {
     await this.access(proof, write, client, lock);
-    await this.get(proof, proof.sessionId, client, lock);
+    const session = await this.get(proof, proof.sessionId, client, lock);
+    if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
+      throw new BusinessError(
+        409,
+        "runtime_contract_changed",
+        "旧会话和检查点按原合同保留，请新建会话继续。",
+      );
     const row = (
       await client.query(
         "SELECT payload FROM assistant_runtime_turn WHERE id=$1 AND session_id=$2 AND runner_token=$3 AND status='running' AND NOT EXISTS(SELECT 1 FROM assistant_runtime_execution e WHERE e.session_id=$2 AND (e.turn_id<>$1 OR e.status<>'running' OR e.lease_until<=now()))" +
@@ -468,11 +492,15 @@ export class SessionStore {
       },
     };
   }
-  async change(proof: TurnProof, input: unknown) {
-    const parsed = requirementChangeSchema.safeParse(input);
+  async change(proof: TurnProof, input: unknown, command: RequirementCommand) {
+    if (!["create", "update"].includes(command))
+      throw new SessionError("requirements_command_required", 422);
+    const parsed = (
+      command === "create" ? requirementCreationSchema : requirementChangeSchema
+    ).safeParse(input);
     if (!parsed.success) throw new SessionError("requirements_invalid", 422);
-    const request = parsed.data,
-      key = "requirements:" + sha256(canonicalJson(request));
+    const request: RequirementChange = parsed.data,
+      key = "requirements:" + command + ":" + sha256(canonicalJson(request));
     await this.guard(proof, true);
     const before = await this.get(proof, proof.sessionId);
     if (before.requirements_revision !== request.expectedRevision) {
@@ -483,6 +511,24 @@ export class SessionStore {
         )
       ).rows[0];
       if (replay) return replay.detail.receipt;
+      // A corrected SDK call may replay only its supplied fields after commit and checkpoint loss.
+      const committed = (
+        await this.db.query(
+          "SELECT detail FROM assistant_runtime_event WHERE turn_id=$1 AND kind='requirements_saved' AND detail->>'command'=$2 AND detail->'request'->>'expectedRevision'=$3 ORDER BY id DESC LIMIT 2",
+          [proof.turnId, command, String(request.expectedRevision)],
+        )
+      ).rows;
+      for (const event of committed) {
+        const baseline = structuredClone(
+          event.detail.request,
+        ) as RequirementChange;
+        if (command === "update")
+          baseline.changes.deliveries?.forEach((item, index) => {
+            item.deliveryId ??= event.detail.receipt.changedDeliveryIds[index];
+          });
+        if (mergeToolCorrection(baseline, request).changedPaths.length === 0)
+          return event.detail.receipt;
+      }
       throw new SessionError("requirements_revision_conflict");
     }
     const next = structuredClone(before.requirements ?? emptyRequirements());
@@ -496,12 +542,28 @@ export class SessionStore {
       next.objective = request.changes.objective;
     if (request.changes.mode !== undefined) next.mode = request.changes.mode;
     const changedIds: string[] = [];
+    const resolved = new Set<string>();
     for (const [changeIndex, item] of (
       request.changes.deliveries ?? []
     ).entries()) {
       let value: Delivery;
-      if (item.deliveryId) {
-        const existing = next.deliveries.find((d) => d.id === item.deliveryId);
+      if (command === "update") {
+        const currentIds = before.requirements.deliveries
+          .filter((d) => d.status === "active")
+          .map((d) => d.id);
+        const targetId =
+          item.deliveryId ??
+          (currentIds.length === 1 ? currentIds[0] : undefined);
+        if (!targetId)
+          throw new BusinessError(
+            422,
+            "delivery_target_required",
+            "修改需要指定既有交付；当前不是唯一活动交付，请从当前真实交付选择，不能新增代替修改。",
+          );
+        if (resolved.has(targetId))
+          throw new SessionError("delivery_change_conflict", 422);
+        resolved.add(targetId);
+        const existing = next.deliveries.find((d) => d.id === targetId);
         if (!existing) throw new SessionError("delivery_not_found", 404);
         value = { ...existing, ...item.patch };
         if (
@@ -560,6 +622,31 @@ export class SessionStore {
     }
     if (refreshPaths.length)
       throw new InstructionRefreshError(refreshPaths, refreshContexts);
+    if (
+      command === "update" &&
+      request.changes.deliveries?.some((d) => d.patch.status === "cancelled") &&
+      !next.deliveries.some((d) => d.status === "active")
+    )
+      next.mode = "plan";
+    if (next.mode === "execute") {
+      const readiness = executionReadiness(next);
+      if (
+        !readiness.complete &&
+        readiness.issues.every((i) => i.field === "operation") &&
+        changedIds.length === 1
+      ) {
+        throw new RequirementRepairError(
+          [["changes", "deliveries", "0", "patch", "operation"]],
+          [],
+          "execution_operation_required",
+          "当前执行交付缺少清洗/改写操作，方案尚未保存。仅按用户已明确的加工意图补齐operation，保留原数量、来源、字段、目标；不要改成另一次新增或修改其他交付。",
+          command === "update"
+            ? [{ index: 0, deliveryId: changedIds[0]! }]
+            : [],
+        );
+      }
+      assertExecutionReady(next);
+    }
     const client = await this.db.connect();
     try {
       await client.query("BEGIN");
@@ -648,7 +735,7 @@ export class SessionStore {
       await this.event(
         proof,
         "requirements_saved",
-        { request, receipt },
+        { command, request, receipt },
         client,
         key,
       );

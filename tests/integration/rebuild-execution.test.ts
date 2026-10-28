@@ -60,7 +60,14 @@ const call = (name: string, args: unknown, id = "call_" + randomUUID()) => ({
       id,
       type: "function",
       function: {
-        name,
+        name:
+          name === "update_requirements" &&
+          args &&
+          typeof args === "object" &&
+          (args as any).expectedRevision === 0 &&
+          (args as any).changes?.deliveries?.some((d: any) => !d.deliveryId)
+            ? "create_requirements"
+            : name,
         arguments: typeof args === "string" ? args : JSON.stringify(args),
       },
     },
@@ -135,6 +142,16 @@ const plan = (count = 400) => ({
     ],
   },
 });
+
+// Compatibility for pre-v2 trusted fixtures; new identity tests exercise explicit model commands.
+const changeRequirements = (proof: any, input: any) =>
+  host.store.change(
+    proof,
+    input,
+    input.changes?.deliveries?.some((d: any) => !d.deliveryId)
+      ? "create"
+      : "update",
+  );
 async function effects() {
   return (
     await db.query(
@@ -494,7 +511,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       ).toBe(200);
       release();
       await running;
-      await expect(host.store.change(proof, plan())).rejects.toMatchObject({
+      await expect(changeRequirements(proof, plan())).rejects.toMatchObject({
         code: "runtime_interrupted",
       });
       const count = requests.length;
@@ -2334,7 +2351,6 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           mode: "execute",
           deliveries: [
             {
-              deliveryId,
               patch: {
                 count: 2,
                 source,
@@ -2358,6 +2374,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       call("submit_processing", {}),
       call("wait_processing", {}),
     ]);
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements.deliveries[0].id).toBe(deliveryId);
     const runId = state.results[0].run_id,
       row = (
         await db.query(
@@ -2681,5 +2699,37 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       2,
     );
     expect(await effects()).toEqual(before);
+  });
+  it("keeps legacy v1 history and attachment reads but rejects every workspace mutation", async () => {
+    const id = await fresh(),
+      body = {
+        fileName: "需求.md",
+        contentBase64: Buffer.from("保留标签").toString("base64"),
+      };
+    const attachment = (
+      await api("POST", route(id) + "/attachments", body)
+    ).json();
+    await db.query(
+      "UPDATE assistant_runtime_session SET runtime_version='deepagents-v1' WHERE id=$1",
+      [id],
+    );
+    const before = await host.store.get(scope(), id);
+    for (const response of [
+      await api("PATCH", route(id), {
+        title: "不能改",
+        expectedRevision: before.revision,
+      }),
+      await api("POST", route(id) + "/attachments", body),
+      await api("DELETE", route(id) + "/attachments/" + attachment.id),
+    ])
+      expect(response.json().error.code).toBe("runtime_contract_changed");
+    expect(
+      (await api("GET", route(id) + "/attachments/" + attachment.id))
+        .statusCode,
+    ).toBe(200);
+    expect((await host.store.get(scope(), id)).revision).toBe(before.revision);
+    expect(
+      (await host.present(scope(), id)).workspace.attachments,
+    ).toHaveLength(1);
   });
 });

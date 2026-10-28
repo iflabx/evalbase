@@ -1,3 +1,4 @@
+import { FORMAL_RUNTIME_VERSION } from "./session-contract.js";
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -23,6 +24,17 @@ export class WorkspaceStore {
     readonly sessions: SessionStore,
     readonly artifacts: ArtifactRepository,
   ) {}
+  private async writable(
+    scope: SessionScope,
+    id: string,
+    client?: PoolClient,
+    lock = false,
+  ) {
+    const session = await this.sessions.get(scope, id, client, lock);
+    if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
+      throw new SessionError("runtime_contract_changed");
+    return session;
+  }
   private async write<T>(
     scope: SessionScope,
     id: string,
@@ -31,7 +43,7 @@ export class WorkspaceStore {
     const client = await this.sessions.db.connect();
     try {
       await client.query("BEGIN");
-      await this.sessions.get(scope, id, client, true);
+      await this.writable(scope, id, client, true);
       const result = await action(client);
       await client.query("COMMIT");
       return result;
@@ -95,13 +107,13 @@ export class WorkspaceStore {
     ).rows;
   }
   async attach(scope: SessionScope, id: string, name: string, bytes: Buffer) {
-    await this.sessions.get(scope, id);
+    await this.writable(scope, id);
     const extracted = await extractBackground(name, bytes);
     const stored = await this.artifacts.storeImmutable(bytes);
     const c = await this.sessions.db.connect();
     try {
       await c.query("BEGIN");
-      await this.sessions.get(scope, id, c, true);
+      await this.writable(scope, id, c, true);
       const n = await c.query(
         "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1 AND removed_at IS NULL",
         [id],

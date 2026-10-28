@@ -5,7 +5,11 @@ import {
   previewProcessingInput,
   processingSourceRows,
 } from "../processing/store.js";
-import { sourceSchema, requirementChangeSchema } from "./session-contract.js";
+import {
+  sourceSchema,
+  requirementChangeSchema,
+  requirementCreationSchema,
+} from "./session-contract.js";
 import { SessionStore, SessionError, type TurnProof } from "./session-store.js";
 
 export function sessionTools(
@@ -148,13 +152,22 @@ export function sessionTools(
     ...(canWrite
       ? [
           {
+            name: "create_requirements",
+            readOnly: false,
+            description:
+              "明确新增交付，只在用户要新建时使用；不用于改数量、改名、另存或修改现有交付。新ID由服务端生成，不填写deliveryId。changes.deliveries:[{patch:{name,operation,count,source,allowedFields,instructions,saveTarget}}]。只规划用mode:plan，可记录待补充项；mode:execute必须完整且符合当前单份清洗/改写能力。instructions只写加工规则，不重复范围/总数/保存目标。",
+            schema: requirementCreationSchema,
+            run: async (args: Record<string, unknown>) =>
+              store.change(proof, args, "create"),
+          },
+          {
             name: "update_requirements",
             readOnly: false,
             description:
-              "仅保存唯一当前要求，不创建业务草稿或处理作业。expectedRevision取当前requirementsRevision。新交付不填deliveryId，由服务端分配；修改/取消已有交付必须用其真实ID，仅提供要改的字段，独立字段未给时保留；但数量、来源范围、操作、字段保护或分类改变时须一并重新提供instructions。instructions只写加工规则，不重复范围、总数量或保存目标；不能照抄含旧范围的说明。取消用status:cancelled。交付结构为changes.deliveries:[{deliveryId?,patch:{name,count,source,allowedFields,instructions,saveTarget}}]，业务字段放在patch中。分类与保存目标各自独立。当前支持单份清洗/改写，新草稿采用必须由用户确认；生成/多交付执行/发布尚未开放。",
+              "修改或取消既有交付，绝不新增。当前只有一份活动交付时服务端绑定该目标，deliveryId可省略；多份时必须使用其真实ID。expectedRevision取当前requirementsRevision。changes.deliveries:[{deliveryId?,patch:{name,count,source,operation,allowedFields,instructions,saveTarget,status}}]。只提供变更字段，缺省继承。改成前N条须同步source.recordIds和count；范围/数量/字段/分类变化须刷新加工规则，保留其余语义。取消用status:cancelled。仅规划不创建作业；mode:execute须通过完整性校验，随后submit_processing。",
             schema: requirementChangeSchema,
             run: async (args: Record<string, unknown>) =>
-              store.change(proof, args),
+              store.change(proof, args, "update"),
           },
         ]
       : []),

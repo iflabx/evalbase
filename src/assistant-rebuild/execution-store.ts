@@ -1,4 +1,8 @@
 import {
+  FORMAL_RUNTIME_VERSION,
+  executionReadiness,
+} from "./session-contract.js";
+import {
   assertInstructionsCurrent,
   deliveryExecution,
 } from "./session-contract.js";
@@ -61,7 +65,7 @@ export class ExecutionStore {
         )
       ).rows[0];
       if (!s) throw new SessionError("conversation_not_found", 404);
-      if (s.runtime_version !== "deepagents-v1")
+      if (s.runtime_version !== FORMAL_RUNTIME_VERSION)
         throw new SessionError("runtime_version_not_supported");
       const value = await work(c, s);
       await c.query("COMMIT");
@@ -575,7 +579,9 @@ export class ExecutionStore {
       const advances =
         kind === "tool_result" &&
         !(
-          detail.name === "update_requirements" && result?.unchanged === true
+          ["create_requirements", "update_requirements"].includes(
+            detail.name,
+          ) && result?.unchanged === true
         ) &&
         fingerprints.some((f: string) => !seen.includes(f));
       if (advances) {
@@ -1225,7 +1231,7 @@ export class ExecutionStore {
     const task =
       (
         await this.db.query(
-          "SELECT turn_id,status,reason,requests,request_limit,worker_requests,worker_ms,active_ms,active_limit_ms,no_progress,progress_version,activity_id FROM assistant_runtime_execution WHERE session_id=$1",
+          "SELECT turn_id,status,reason,requests,request_limit,worker_requests,worker_ms,active_ms,active_limit_ms,no_progress,progress_version,activity_id,coalesce(feedback->>'kind'='requirements',false) OR coalesce(suspended->'feedback'->>'kind'='requirements',false) AS amendment_pending FROM assistant_runtime_execution WHERE session_id=$1",
           [sessionId],
         )
       ).rows[0] ?? null;
@@ -1273,6 +1279,10 @@ export class ExecutionStore {
     ).rows;
     return {
       execution: task,
+      executionReadiness: executionReadiness(
+        current.requirements,
+        !!task?.amendment_pending,
+      ),
       confirmations: cards,
       receipts,
       results,
