@@ -37,3 +37,14 @@
 R05新增真实SDK4项、原生action投影复验通过；旧v2的控制和额度入口均拒绝写入。编辑者在对象存储阶段被降权后，真实附件事务拒绝提交。前端types、10项单测和7项受控浏览器通过，选择loading/空态稳定挂载P1已关闭；工具中文名与合计容量提示已同步。查看权限背景上传UI对齐补验进行中。
 
 开发最终检查：前后端类型通过；前端10单测和8受控浏览器场景通过。Standards/Spec两轴已针对最终差异复核，无剩余阻断。权限降级、选择生命周期、中文工具名和合计容量提示补修均已验证。C03仍待新活动执行。
+
+## 隔离预览与C03真实尝试
+
+- 代码提交1e2fb65a1854722922c00756df563f8d3c7c4d14；4240前端/后端已按固定提交构建，health/ready的PostgreSQL与MinIO均ok。
+- 操控模型GPT-6.1 Terra high。新项目project_776c4cdee030445b9b085c007de3fac7，真实CSV/MD材料已在本机准备，未由后端预填。
+- C03当前blocked/not-run：真实选择文件按钮及input触发filechooser多次超时；Owner开启Chrome扩展Allow access to file URLs后刷新重试仍超时。浏览器URL安全策略禁止核对扩展内部页，未绕过。
+- 未上传CSV、未创建助手会话、未登记C03活动、实际模型请求0，处理/生成0。未消耗或重置旧预算，第二批74请求共享额度本项消耗0。
+- 上传对话框已保留。此为Computer Use外部能力阻断，不将受控浏览器或SDK通过替代C03，R05-6未勾选、Implementation保持in-progress。
+- 16张受保护表既有行逐行比对无变化，见r05-c03-20261028/pre-cu-audit.json。
+- 本机阻断截图：D:/AgentBench_v2/.scratch/assistant-rebuild/r05-c03-upload-blocked-20261028.jpg。
+- 下一步：恢复文件选择能力，或Owner在当前原生对话框选择本机客服预约.csv后由Terra继续映射与其余C03；若有人工辅助，必须在最终证据中注明，不能宣称全自动原生选择通过。

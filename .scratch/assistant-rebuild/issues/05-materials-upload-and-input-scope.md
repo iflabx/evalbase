@@ -68,3 +68,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-27：按 Owner 指令将 REBUILD-01 扩大回归中旧助手的对应失败场景纳入上述新 AC；本票仍未开发/验收，不把旧失败改记通过。使用受控 SDK/隔离数据补证据，不新增真实模型/CU活动或调整旧预算，依赖关系不变。
 
 - 2026-10-28：Owner授权实施；已完成领域服务/工具与原生桥接、选择范围固定、背景引用、deepagents-v3及旧版本只读接线，定向测试和复审见[唯一记录](../r05-verification.md)。隔离预览和C03待本轮执行，未扩大后续票范围。
+
+- 2026-10-28：代码1e2fb65已更新4240；定向验证及双轴复审通过。C03由GPT-6.1 Terra high真实尝试，因Computer Use文件选择事件超时尚未上传，Owner开启扩展权限后仍阻断；0模型请求/0处理生成，旧数据与旧预算不变。R05-6仍未通过，票保持in-progress，详见[唯一记录](../r05-verification.md)。
