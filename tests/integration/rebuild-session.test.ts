@@ -345,6 +345,137 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       await root.end();
     }
   });
+  it("automatically dispatches current HTTP turns once while preserving legacy and paused work", async () => {
+    const old = await fresh(),
+      paused = await fresh(),
+      current = await fresh();
+    const oldTurn = await submit(old, "legacy must remain pending");
+    await db.query(
+      "UPDATE assistant_runtime_session SET runtime_version='deepagents-v2' WHERE id=$1",
+      [old],
+    );
+    const pausedTurn = await submit(paused, "do not resume without consent");
+    await host.stop(scope(), paused);
+    const legacyWaiting = await fresh(),
+      legacyConfirmation = await fresh();
+    for (const [id, status] of [
+      [legacyWaiting, "waiting"],
+      [legacyConfirmation, "confirmation"],
+    ]) {
+      const accepted = await submit(id, "legacy recovery sentinel");
+      await host.execution.claim(scope(), id, accepted.json().turnId);
+      await db.query(
+        "UPDATE assistant_runtime_execution SET status=$2,lease_until=now()-interval '1 second' WHERE session_id=$1",
+        [id, status],
+      );
+      if (status === "confirmation")
+        await db.query(
+          "INSERT INTO assistant_runtime_confirmation(id,session_id,actor_id,action,payload,requirements_revision,status,expires_at) VALUES($1,$2,$3,'save','{}',0,'executing',now()+interval '1 hour')",
+          ["legacy-card-" + id, id, scope().actorId],
+        );
+      await db.query(
+        "UPDATE assistant_runtime_session SET runtime_version='deepagents-v2' WHERE id=$1",
+        [id],
+      );
+    }
+    const legacyIds = [legacyWaiting, legacyConfirmation];
+    const legacySnapshot = async () => ({
+      execution: (
+        await db.query(
+          "SELECT * FROM assistant_runtime_execution WHERE session_id=ANY($1::text[]) ORDER BY session_id",
+          [legacyIds],
+        )
+      ).rows,
+      cards: (
+        await db.query(
+          "SELECT * FROM assistant_runtime_confirmation WHERE session_id=ANY($1::text[]) ORDER BY id",
+          [legacyIds],
+        )
+      ).rows,
+    });
+    const legacyBefore = await legacySnapshot();
+    const before = (
+      await db.query(
+        "SELECT * FROM assistant_runtime_turn WHERE id=ANY($1::text[])",
+        [[oldTurn.json().turnId, pausedTurn.json().turnId]],
+      )
+    ).rows;
+    const budget = (
+      await db.query(
+        "SELECT * FROM rebuild_campaign WHERE id='old-r02-sentinel'",
+      )
+    ).rows;
+    requests.length = 0;
+    outputs = [
+      async () => {
+        await Promise.all([worker.dispatch(), host.dispatch()]);
+        return call("read_project", {});
+      },
+      { role: "assistant", content: "项目已读取" },
+    ];
+    const accepted = await submit(current, "查看当前项目");
+    expect(accepted.statusCode).toBe(202);
+    const worker = new FormalSessionHost(db, config);
+    try {
+      worker.start();
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+                [accepted.json().turnId],
+              )
+            ).rows[0].status,
+          { timeout: 10000 },
+        )
+        .toBe("succeeded");
+      await Promise.all([worker.dispatch(), host.dispatch()]);
+      expect(requests).toHaveLength(2);
+      const recovery = await fresh(),
+        retry = await submit(recovery, "查看当前项目");
+      await host.execution.claim(scope(), recovery, retry.json().turnId);
+      await db.query(
+        "UPDATE assistant_runtime_execution SET lease_until=now()-interval '1 second' WHERE session_id=$1",
+        [recovery],
+      );
+      outputs = [
+        call("read_project", {}),
+        { role: "assistant", content: "恢复后已读取" },
+      ];
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+                [retry.json().turnId],
+              )
+            ).rows[0].status,
+          { timeout: 10000 },
+        )
+        .toBe("succeeded");
+      expect(requests).toHaveLength(4);
+      expect(await legacySnapshot()).toEqual(legacyBefore);
+      expect(
+        (
+          await db.query(
+            "SELECT * FROM assistant_runtime_turn WHERE id=ANY($1::text[]) ORDER BY id",
+            [[oldTurn.json().turnId, pausedTurn.json().turnId]],
+          )
+        ).rows,
+      ).toEqual([...before].sort((a, b) => a.id.localeCompare(b.id)));
+      expect(
+        (
+          await db.query(
+            "SELECT * FROM rebuild_campaign WHERE id='old-r02-sentinel'",
+          )
+        ).rows,
+      ).toEqual(budget);
+    } finally {
+      await worker.close();
+    }
+  });
   it("migrates additively without campaigns and preserves old budgets on repeat", async () => {
     const before = (
       await db.query(

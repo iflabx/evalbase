@@ -1,4 +1,7 @@
-import { deliveryExecution } from "./session-contract.js";
+import {
+  FORMAL_RUNTIME_VERSION,
+  deliveryExecution,
+} from "./session-contract.js";
 import { WorkspaceStore } from "./workspace-store.js";
 import { observeModelStream } from "./model-stream.js";
 import { materialsTools } from "./materials-tools.js";
@@ -122,7 +125,11 @@ export class FormalSessionHost {
   }
   start() {
     this.timer = setInterval(() => {
-      void this.dispatch().catch(() => undefined);
+      void this.dispatch().catch((error: unknown) => {
+        console.error("assistant_dispatch_failed", {
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+      });
     }, 500);
     this.timer.unref();
   }
@@ -132,7 +139,8 @@ export class FormalSessionHost {
     await this.execution.wake();
     const rows = (
       await this.db.query(
-        "SELECT t.id,t.session_id,s.project_id,s.actor_id FROM assistant_runtime_turn t JOIN assistant_runtime_session s ON s.id=t.session_id LEFT JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE s.runtime_version='deepagents-v2' AND (t.status='pending' OR t.status='running' AND e.lease_until<=now()) ORDER BY t.created_at LIMIT 10",
+        "SELECT t.id,t.session_id,s.project_id,s.actor_id FROM assistant_runtime_turn t JOIN assistant_runtime_session s ON s.id=t.session_id LEFT JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE s.runtime_version=$1 AND (t.status='pending' OR t.status='running' AND e.lease_until<=now()) ORDER BY t.created_at LIMIT 10",
+        [FORMAL_RUNTIME_VERSION],
       )
     ).rows;
     for (const t of rows) {
@@ -141,7 +149,12 @@ export class FormalSessionHost {
         { projectId: t.project_id, actorId: t.actor_id },
         t.session_id,
         t.id,
-      ).catch(() => undefined);
+      ).catch((error: unknown) => {
+        console.error("assistant_execution_dispatch_failed", {
+          errorType: error instanceof Error ? error.name : "unknown",
+          code: error instanceof SessionError ? error.message : undefined,
+        });
+      });
       this.work.add(run);
       void run.finally(() => this.work.delete(run));
     }
