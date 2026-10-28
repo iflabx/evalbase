@@ -5,7 +5,6 @@ export type {
   ModelOutcome,
   SessionModelHooks,
 } from "./session-model.js";
-import { FORMAL_RUNTIME_VERSION } from "./session-contract.js";
 import { WorkspaceStore } from "./workspace-store.js";
 import { materialsTools } from "./materials-tools.js";
 import { workspaceTools } from "./workspace-tools.js";
@@ -43,8 +42,8 @@ export class FormalSessionHost {
   readonly execution: ExecutionStore;
   private active = new Map<string, AbortController>();
   private work = new Set<Promise<unknown>>();
-  private timer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
+  private closing: Promise<void> | undefined;
   private checkpointPool: Database;
   private saver: PostgresSaver;
   private initialized: Promise<void> | undefined;
@@ -103,42 +102,6 @@ export class FormalSessionHost {
     this.saver.putWrites = (...args: Parameters<typeof writes>) =>
       fence(args[0], () => writes(...args));
   }
-  start() {
-    this.timer = setInterval(() => {
-      void this.dispatch().catch((error: unknown) => {
-        console.error("assistant_dispatch_failed", {
-          errorType: error instanceof Error ? error.name : "unknown",
-        });
-      });
-    }, 500);
-    this.timer.unref();
-  }
-  async dispatch() {
-    if (this.closed) return;
-    await this.execution.recoverConfirmations();
-    await this.execution.wake();
-    const rows = (
-      await this.db.query(
-        "SELECT t.id,t.session_id,s.project_id,s.actor_id FROM assistant_runtime_turn t JOIN assistant_runtime_session s ON s.id=t.session_id LEFT JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE s.runtime_version=$1 AND (t.status='pending' OR t.status='running' AND e.lease_until<=now()) ORDER BY t.created_at LIMIT 10",
-        [FORMAL_RUNTIME_VERSION],
-      )
-    ).rows;
-    for (const t of rows) {
-      if (this.active.has(t.id)) continue;
-      const run = this.runPending(
-        { projectId: t.project_id, actorId: t.actor_id },
-        t.session_id,
-        t.id,
-      ).catch((error: unknown) => {
-        console.error("assistant_execution_dispatch_failed", {
-          errorType: error instanceof Error ? error.name : "unknown",
-          code: error instanceof SessionError ? error.message : undefined,
-        });
-      });
-      this.work.add(run);
-      void run.finally(() => this.work.delete(run));
-    }
-  }
   async present(scope: SessionScope, id: string) {
     return {
       ...(await this.store.present(scope, id)),
@@ -166,15 +129,34 @@ export class FormalSessionHost {
     await this.execution.resume(scope, id);
     return this.present(scope, id);
   }
-  async close() {
+  close() {
+    return (this.closing ??= this.shutdown());
+  }
+  private async shutdown() {
     this.closed = true;
-    if (this.timer) clearInterval(this.timer);
     for (const ctl of this.active.values()) ctl.abort();
     await Promise.allSettled([...this.work]);
     await this.checkpointPool.end();
   }
   /** Called only by a server executor. HTTP acceptance never runs a model or restarts old work. */
-  async runPending(
+  runPending(
+    scope: SessionScope,
+    sessionId: string,
+    turnId: string,
+    options: {
+      hooks?: SessionModelHooks;
+      summaryTokens?: number;
+      graphSteps?: number;
+    } = {},
+  ) {
+    if (this.closed)
+      return Promise.reject(new SessionError("runtime_host_closed"));
+    const run = this.executePending(scope, sessionId, turnId, options);
+    this.work.add(run);
+    void run.finally(() => this.work.delete(run)).catch(() => undefined);
+    return run;
+  }
+  private async executePending(
     scope: SessionScope,
     sessionId: string,
     turnId: string,
@@ -187,6 +169,7 @@ export class FormalSessionHost {
     const proof = await this.execution.claim(scope, sessionId, turnId);
     const ctl = new AbortController();
     this.active.set(turnId, ctl);
+    if (this.closed) ctl.abort();
     const heartbeat = setInterval(
       () => {
         void this.execution.renew(proof).then((ok) => {
@@ -201,6 +184,7 @@ export class FormalSessionHost {
     const toolArgs = new Map<string, unknown>();
     let correctionOf: string | null = null;
     try {
+      if (ctl.signal.aborted) throw new SessionError("runtime_interrupted");
       await (this.initialized ??= this.saver.setup());
       const input = await this.store.guard(proof),
         connection = await configuredChatConnection(this.db, this.config);

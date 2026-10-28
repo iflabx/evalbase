@@ -1,3 +1,4 @@
+import { SessionDispatcher } from "../../assistant-rebuild/session-dispatcher.js";
 import { FORMAL_RUNTIME_VERSION } from "../../assistant-rebuild/session-contract.js";
 import { fixedMaterialInput } from "../../assistant-rebuild/input-scope.js";
 import { sessionHash } from "../support.js";
@@ -26,11 +27,18 @@ export function registerAssistantRuntime({
   "app" | "db" | "config" | "authenticate" | "writeAllowed" | "artifacts"
 > & { dispatch?: boolean }) {
   const host = new FormalSessionHost(db, config, { artifacts });
+  const dispatcher = new SessionDispatcher(
+    host.execution,
+    host.runPending.bind(host),
+  );
   if (dispatch)
     app.addHook("onReady", async () => {
-      host.start();
+      dispatcher.start();
     });
-  app.addHook("onClose", () => host.close());
+  app.addHook("onClose", async () => {
+    await dispatcher.close();
+    await host.close();
+  });
   const workspace = new WorkspaceStore(host.store, artifacts);
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/assistant-runtime/input-scope",

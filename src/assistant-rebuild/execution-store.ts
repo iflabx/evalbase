@@ -97,6 +97,19 @@ export class ExecutionStore {
         ],
       );
   }
+  async pending() {
+    return (
+      await this.db.query<{
+        id: string;
+        session_id: string;
+        project_id: string;
+        actor_id: string;
+      }>(
+        "SELECT t.id,t.session_id,s.project_id,s.actor_id FROM assistant_runtime_turn t JOIN assistant_runtime_session s ON s.id=t.session_id LEFT JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE s.runtime_version=$1 AND (t.status='pending' OR t.status='running' AND e.lease_until<=now()) ORDER BY t.created_at LIMIT 10",
+        [FORMAL_RUNTIME_VERSION],
+      )
+    ).rows;
+  }
   async claim(scope: SessionScope, sessionId: string, turnId: string) {
     await this.sessions.get(scope, sessionId);
     return this.transaction(scope, sessionId, async (c, s) => {

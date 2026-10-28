@@ -4292,4 +4292,51 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await other.close();
     }
   });
+  it("R03-A rejects new claims after executor shutdown without spending", async () => {
+    const id = await fresh(),
+      accepted = await submit(id, "查看项目");
+    const closed = new FormalSessionHost(db, config);
+    await closed.close();
+    await expect(
+      closed.runPending(scope(), id, accepted.json().turnId),
+    ).rejects.toMatchObject({ code: "runtime_host_closed" });
+    expect(
+      (
+        await db.query(
+          "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+          [accepted.json().turnId],
+        )
+      ).rows[0].status,
+    ).toBe("pending");
+    await host.stop(scope(), id);
+  });
+
+  it("R03-A drains a claim already in progress when shutdown starts without sending a model request", async () => {
+    const id = await fresh(),
+      accepted = await submit(id, "查看项目"),
+      start = requests.length;
+    const delayed = new FormalSessionHost(db, config);
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>((r) => {
+        release = r;
+      }),
+      claimed = new Promise<void>((r) => {
+        entered = r;
+      });
+    const claim = delayed.execution.claim.bind(delayed.execution);
+    vi.spyOn(delayed.execution, "claim").mockImplementation(async (...args) => {
+      entered();
+      await gate;
+      return claim(...args);
+    });
+    const running = delayed.runPending(scope(), id, accepted.json().turnId);
+    await claimed;
+    const closing = delayed.close();
+    release();
+    await Promise.all([running, closing]);
+    expect(requests.length).toBe(start);
+    const state = await host.present(scope(), id);
+    expect(state.execution).toMatchObject({ status: "paused", requests: 0 });
+    await delayed.close();
+  });
 });

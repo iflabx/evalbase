@@ -1,3 +1,4 @@
+import { SessionDispatcher } from "../../src/assistant-rebuild/session-dispatcher.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
 import { WorkspaceStore } from "../../src/assistant-rebuild/workspace-store.js";
 import { sendFormalCompletion } from "../support/formal-completion.js";
@@ -356,6 +357,10 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     );
     const pausedTurn = await submit(paused, "do not resume without consent");
     await host.stop(scope(), paused);
+    await db.query(
+      "UPDATE assistant_runtime_session SET runtime_version='deepagents-v1' WHERE id=$1",
+      [paused],
+    );
     const legacyWaiting = await fresh(),
       legacyConfirmation = await fresh();
     for (const [id, status] of [
@@ -378,7 +383,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
         [id],
       );
     }
-    const legacyIds = [legacyWaiting, legacyConfirmation];
+    const legacyIds = [old, paused, legacyWaiting, legacyConfirmation];
     const legacySnapshot = async () => ({
       execution: (
         await db.query(
@@ -408,16 +413,31 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     requests.length = 0;
     outputs = [
       async () => {
-        await Promise.all([worker.dispatch(), host.dispatch()]);
+        await hostDispatch.dispatch();
         return call("read_project", {});
       },
-      { role: "assistant", content: "项目已读取" },
+      call("create_collection", {
+        name: "R03 automatic " + current,
+        description: "公开入口真实写入",
+      }),
+      { role: "assistant", content: "项目已读取，集合已创建" },
     ];
-    const accepted = await submit(current, "查看当前项目");
+    const accepted = await submit(
+      current,
+      "查看当前项目并创建一个验收资料集合",
+    );
     expect(accepted.statusCode).toBe(202);
-    const worker = new FormalSessionHost(db, config);
+    const worker = await buildApp(config, { disableLegacyTestBootstrap: true });
+    const recoveryDispatch = new SessionDispatcher(
+      host.execution,
+      host.runPending.bind(host),
+    );
+    const hostDispatch = new SessionDispatcher(
+      host.execution,
+      host.runPending.bind(host),
+    );
     try {
-      worker.start();
+      await worker.ready();
       await expect
         .poll(
           async () =>
@@ -430,8 +450,29 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
           { timeout: 10000 },
         )
         .toBe("succeeded");
-      await Promise.all([worker.dispatch(), host.dispatch()]);
-      expect(requests).toHaveLength(2);
+      await hostDispatch.dispatch();
+      expect(requests).toHaveLength(3);
+      const receipts = (
+        await db.query(
+          "SELECT turn_id,operation_key,detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='material_receipt'",
+          [current],
+        )
+      ).rows;
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0].turn_id).toBe(accepted.json().turnId);
+      expect(receipts[0].operation_key).toBeTruthy();
+      expect(receipts[0].detail.name).toBe("create_collection");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM raw_material_collection WHERE project_id=$1 AND name=$2",
+            [projectId, "R03 automatic " + current],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect((await host.present(scope(), current)).workspace).toBeDefined();
+      await worker.close();
+
       const recovery = await fresh(),
         retry = await submit(recovery, "查看当前项目");
       await host.execution.claim(scope(), recovery, retry.json().turnId);
@@ -439,6 +480,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
         "UPDATE assistant_runtime_execution SET lease_until=now()-interval '1 second' WHERE session_id=$1",
         [recovery],
       );
+      recoveryDispatch.start();
       outputs = [
         call("read_project", {}),
         { role: "assistant", content: "恢复后已读取" },
@@ -455,7 +497,8 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
           { timeout: 10000 },
         )
         .toBe("succeeded");
-      expect(requests).toHaveLength(4);
+      expect(requests).toHaveLength(5);
+      await recoveryDispatch.close();
       expect(await legacySnapshot()).toEqual(legacyBefore);
       expect(
         (
@@ -473,6 +516,8 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
         ).rows,
       ).toEqual(budget);
     } finally {
+      await recoveryDispatch.close();
+      await hostDispatch.close();
       await worker.close();
     }
   });
