@@ -1,8 +1,8 @@
 # REBUILD-03 持久执行、确认、恢复与分层预算
 
 Status: ready-for-agent
-Implementation: in-progress
-Validation: partial-pass
+Implementation: completed
+Validation: targeted-pass
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-02](02-deepagents-session-and-tool-host.md)
 
 - 批次：1；对应原范围建议：R03。
@@ -11,7 +11,7 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 缺口：G01、G02、G04、G07、G08；验收合同：RB06、RB07、RB08、RB09、RB10。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
 
-原范围及对应定向验收已完成，原 AC 勾选与历史提交/验证记录保留。本轮新增 R03-A1～A3 合同尚未闭合；已有满足的子项沿用有效证据，受改动失效部分定向补验，故整票重新打开；不撤销旧通过记录，也不据此要求重跑已通过的 C01/C02。补强完成前不得把整票视为可直接新增领域接线的完成依赖。
+原范围和既有定向证据保留；追加 R03-A1～A3 已在代码 cfa0120 完成，并通过受控真实SDK/公开入口、关闭竞争、版本隔离及针对性复审，详见[追加验证记录](../r03-followup-20261028/verification.md)。未重跑已通过C01/C02或修改旧预算。
 
 ## 问题与目标
 
@@ -50,11 +50,11 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [x] **R03-7** 按 Spec 默认连续3个无进展观察点暂停；重复读取/失败及仅事件编号前移不能续命，跨分段、摘要、重启和普通继续保留计数。正常分页/新范围/真实业务终态能推进，等待不计无进展；旧预算和实际请求计数保持。
 - [x] **R03-8** 已受理但尚未派发时崩溃恢复，以及同消息重发与恢复并发，只启动一个执行；原消息、业务操作键、账本与回执可关联核对。受理重复不产生第二轮模型调用；实际已发请求包括未知结果仍入账。
 
-### 追加架构验收（2026-10-28，待核对闭合）
+### 追加架构验收（2026-10-28，已闭合）
 
-- [ ] **R03-A1** 自动派发职责与宿主执行协调可分别验证；租约、令牌、确认、进展与预算仍只由既有 ExecutionStore 控制。启动/关闭不重复注册派发；关闭后停止新领取，在途沿原停止/租约规则收尾，不产生第二执行者。
-- [ ] **R03-A2** 公开HTTP受理后由真实后台派发器驱动受控Provider的真实SDK→业务服务→持久回执→投影，测试不直接runPending()救场；消息提交与派发间退出、两个派发器竞争及租约到期恢复都沿同一执行/操作身份，已提交业务最多写一次。记录消息、执行、修订、操作和回执关联。
-- [ ] **R03-A3** 当前版本任务正常派发/恢复；旧版本pending、paused、等待结果或确认等记录在各恢复入口均不推进，旧预算不变。模型调用中的暂停→查询→继续保留原状态和账本；计量、查询及业务回执不依赖旧上下文，后台异常可定位且不泄漏正文。
+- [x] **R03-A1** 自动派发职责与宿主执行协调可分别验证；租约、令牌、确认、进展与预算仍只由既有 ExecutionStore 控制。启动/关闭不重复注册派发；关闭后停止新领取，在途沿原停止/租约规则收尾，不产生第二执行者。
+- [x] **R03-A2** 公开HTTP受理后由真实后台派发器驱动受控Provider的真实SDK→业务服务→持久回执→投影，测试不直接runPending()救场；消息提交与派发间退出、两个派发器竞争及租约到期恢复都沿同一执行/操作身份，已提交业务最多写一次。记录消息、执行、修订、操作和回执关联。
+- [x] **R03-A3** 当前版本任务正常派发/恢复；旧版本pending、paused、等待结果或确认等记录在各恢复入口均不推进，旧预算不变。模型调用中的暂停→查询→继续保留原状态和账本；计量、查询及业务回执不依赖旧上下文，后台异常可定位且不泄漏正文。
 
 ## 定向验证
 
@@ -82,3 +82,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-27：完成 `bb10a16`。正式消息持久派发、令牌/租约、框架中断恢复、固定确认/采用回执、分层账本和有效进展观察通过定向验证；审阅问题均已关闭。实现 SHA、AC、命令、首错及后续边界统一见[REBUILD-03 验证记录](../r03-verification.md)。未更新4217、合并或推送；验收数据和旧预算保留。
 
 - 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原范围证据保留，新增必做项待完成，整票重新打开为in-progress/partial-pass。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。
+
+- 2026-10-28：Owner授权完成03追加补强，代码cfa0120；调度与执行职责分离、关闭/领取竞争和公开HTTP→自动派发→SDK→真实集合/回执通过定向验证。R03-A1～A3闭合，恢复completed/targeted-pass；首错、环境补验及复审结论见[追加记录](../r03-followup-20261028/verification.md)。未部署、运行实模/CU或重置旧预算。

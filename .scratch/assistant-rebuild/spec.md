@@ -25,7 +25,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | --- | --- | --- | --- | --- | --- |
 | [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | 原范围 `21038e7`；追加 `3c06d84` / [原记录](r02-verification.md)、[追加验证](r02-followup-20261028/verification.md) |
-| [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | in-progress | partial-pass | 原范围 `bb10a16` / [验证记录](r03-verification.md) |
+| [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | 原范围 `bb10a16`；追加 `cfa0120` / [原记录](r03-verification.md)、[追加验证](r03-followup-20261028/verification.md) |
 | [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | completed | targeted-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round7)；C01业务闭环通过，C02沿用第四轮；自动标题观察已修复 |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | in-progress | partial-pass | [验证记录](r05-verification.md) |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
@@ -46,15 +46,15 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 
 ### 2.1 本次架构补强的进度口径
 
-本次只调整实现责任与验收入口，不扩张产品能力。REBUILD-01～04 原范围的完成记录和已通过证据保留；02追加补强已完成；03因新增必做项重新打开，其 in-progress / partial-pass 表示“原范围已完成，追加结构合同尚未闭合”，不是原验收被改判失败。原 AC 保留勾选，追加 AC 按各票实际证据勾选；其中已有满足的子项沿用有效证据，受改动失效部分定向补验，不从零重做已有机制。01、04 的既有状态不变；如后续改动使证据失效，只补对应定向回归。
+本次只调整实现责任与验收入口，不扩张产品能力。REBUILD-01～04 原范围的完成记录和已通过证据保留；02、03追加补强均已完成，原范围及新增结构合同均有对应证据；此前重新打开的状态不改判原验收结论。原 AC 保留勾选，追加 AC 按各票实际证据勾选；其中已有满足的子项沿用有效证据，受改动失效部分定向补验，不从零重做已有机制。01、04 的既有状态不变；如后续改动使证据失效，只补对应定向回归。
 
 | 补强归属 | 新增待完成项 | 本次状态 | 进入后续开发的条件 |
 | --- | --- | --- | --- |
 | REBUILD-02 | R02-A1～A3：模型组装、单次调用上下文、同源参数反馈 | 已完成 / targeted-pass，见[追加记录](r02-followup-20261028/verification.md) | 02接口已闭合；03接通自动派发链路 |
-| REBUILD-03 | R03-A1～A3：调度与执行权威分离、运行时版本过滤、公开入口恢复测试 | 待核对并闭合追加合同 | 与02补强一起作为后续新增领域接线的基础 |
+| REBUILD-03 | R03-A1～A3：调度与执行权威分离、运行时版本过滤、公开入口恢复测试 | 已完成 / targeted-pass，见[追加记录](r03-followup-20261028/verification.md) | 与02补强一起作为后续新增领域接线的基础 |
 | REBUILD-05 | R05-2 原生 CSV 映射/确认的浏览器证据及原有未关闭 AC | 原实施进行中 / 部分通过 | 已有 C03 辅助组合证据保留，不替代整票完成 |
 
-02追加补强已完成，下一步补03；之后关闭05缺口并推进08，再进入06、07/09、10。05的既有上传证据核对可独立进行，05与08互不阻塞。基础补强不要求已通过的 C01/C02 重跑，不要求领域票提前完成，也不增加新的依赖边；后续新增接线不得绕过补强或在各票另建替代机制。
+02、03追加补强已完成，下一步关闭05缺口并推进08，再进入06、07/09、10。05的既有上传证据核对可独立进行，05与08互不阻塞。基础补强不要求已通过的 C01/C02 重跑，不要求领域票提前完成，也不增加新的依赖边；后续新增接线不得绕过补强或在各票另建替代机制。
 
 ## 3. 共用实施约束
 
@@ -209,3 +209,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-28：按 Owner 批准的架构调整补强职责归属和真实 SDK 自动派发验证。02/03原范围证据保留，因追加未完成项重新打开为in-progress/partial-pass；05维持部分通过，06～10未开始。依赖边、C01～C08及批次上限不变；未改业务代码、运行测试活动、更新环境或变更旧数据/预算。
 
 - 2026-10-28：Owner授权完成02追加补强，代码3c06d84，受控SDK/静态检查与双轴复审通过，02恢复completed/targeted-pass；03保持in-progress，05缺口及06～10状态不变。证据见[追加记录](r02-followup-20261028/verification.md)。无新增实模活动、部署或旧预算变动。
+
+- 2026-10-28：Owner授权完成03追加补强，代码cfa0120，03恢复completed/targeted-pass，详见[追加记录](r03-followup-20261028/verification.md)。02保持完成，05部分通过与06～10未开始状态不变；依赖边、验收数据及旧预算保持，无新实模/CU活动或环境部署。
