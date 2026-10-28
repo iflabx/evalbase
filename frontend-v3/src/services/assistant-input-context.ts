@@ -1,9 +1,11 @@
 import { createRequestId } from "@/lib/request-id";
 import type { QueryClient } from "@tanstack/react-query";
+import type { Source } from "./formal-assistant";
 export type InputSelection = { recordIds: string[]; sourceRevision: string; total: number };
 export type InputContext = {
   kind: "asset" | "draft" | "version";
   id: string;
+  source?: Source;
   inputSelection?: InputSelection;
 };
 export const inputContextKey = (projectId: string, actorId: string) => [
@@ -28,7 +30,18 @@ export function readInputContext(token: string | undefined, projectId: string, a
     if (
       value?.projectId === projectId &&
       value?.actorId === actorId &&
-      value.expiresAt > Date.now()
+      value.expiresAt > Date.now() &&
+      value.context &&
+      typeof value.context.id === "string" &&
+      ["asset", "draft", "version"].includes(value.context.kind) &&
+      (!value.context.inputSelection ||
+        (Array.isArray(value.context.inputSelection.recordIds) &&
+          value.context.inputSelection.recordIds.length > 0 &&
+          value.context.inputSelection.recordIds.every(
+            (id: unknown) => typeof id === "string" && id.length > 0,
+          ) &&
+          typeof value.context.inputSelection.sourceRevision === "string" &&
+          value.context.inputSelection.sourceRevision.length > 0))
     )
       return value.context as InputContext;
   } catch {

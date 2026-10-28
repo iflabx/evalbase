@@ -12,9 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { MaterialRecordTable } from "@/components/material-record-table";
+import { MaterialRecordSelection } from "@/components/material-record-selection";
 import { RecordDensityControl } from "@/components/record-density";
-import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
+import { PageHeader } from "@/components/state-view";
 import { getMaterialFile, getMaterialRawPreview, listUnifiedRecords } from "@/services/workspace";
 import { Pagination } from "@/routes/index";
 import { MaterialPreparation } from "@/components/material-preparation";
@@ -119,22 +119,18 @@ function FileRecordsPage() {
             </div>
             <RecordDensityControl />
           </div>
-          <StateView
+          <MaterialRecordSelection
+            key={assetId}
+            projectId={projectId}
+            collectionId={collectionId}
+            records={records.data?.items ?? []}
+            search={search}
+            total={total}
+            assetId={assetId}
             isLoading={records.isLoading}
             error={records.error}
-            data={records.data}
-            isEmpty={(data) => data.items.length === 0}
             onRetry={() => void records.refetch()}
-            empty={<EmptyBlock title="没有可浏览的记录" />}
-          >
-            {(data) => (
-              <MaterialRecordTable
-                projectId={projectId}
-                collectionId={collectionId}
-                records={data.items}
-              />
-            )}
-          </StateView>
+          />
           {total > 0 && (
             <Pagination
               total={total}

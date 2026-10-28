@@ -24,7 +24,7 @@ import {
 import { EmptyBlock, PageHeader, StateView } from "@/components/state-view";
 import { ConfirmedUploadDialog } from "@/components/confirmed-upload-dialog";
 import { useProjectAccess } from "@/hooks/use-project-access";
-import { MaterialRecordTable } from "@/components/material-record-table";
+import { MaterialRecordSelection } from "@/components/material-record-selection";
 import { RecordDensityControl } from "@/components/record-density";
 import {
   listCollections,
@@ -153,23 +153,18 @@ function CollectionBrowser() {
           )}
         </StateView>
       ) : (
-        <StateView
+        <MaterialRecordSelection
+          key={collectionId}
+          projectId={projectId}
+          collectionId={collectionId}
+          records={records.data?.items ?? []}
+          search={search}
+          total={total}
+          includeSourceFile
           isLoading={records.isLoading}
           error={records.error}
-          data={records.data}
-          isEmpty={(data) => data.items.length === 0}
           onRetry={() => void records.refetch()}
-          empty={<EmptyBlock title="没有记录" />}
-        >
-          {(data) => (
-            <MaterialRecordTable
-              projectId={projectId}
-              collectionId={collectionId}
-              records={data.items}
-              includeSourceFile
-            />
-          )}
-        </StateView>
+        />
       )}
       {total > 0 && (
         <Pagination

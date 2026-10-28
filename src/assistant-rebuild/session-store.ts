@@ -103,7 +103,9 @@ export class SessionStore {
     ).rows[0];
     if (!row) throw new SessionError("conversation_not_found", 404);
     if (
-      !["deepagents-v1", FORMAL_RUNTIME_VERSION].includes(row.runtime_version)
+      !["deepagents-v1", "deepagents-v2", FORMAL_RUNTIME_VERSION].includes(
+        row.runtime_version,
+      )
     )
       throw new SessionError("runtime_version_not_supported");
     // Deny cached history when a read source is no longer visible. Full lifecycle cleanup belongs to R08.
@@ -199,8 +201,19 @@ export class SessionStore {
         isBusinessReceipt: false,
       })),
       turns,
+      currentRuntime: FORMAL_RUNTIME_VERSION,
+      canWrite:
+        session.runtime_version === FORMAL_RUNTIME_VERSION &&
+        (await hasProjectCapability(
+          this.db,
+          scope.projectId,
+          scope.actorId,
+          "write",
+        )),
       capabilities: [
         "read_project",
+        "list_attachments",
+        "read_attachment",
         "list_sources",
         "read_records",
         ...((await hasProjectCapability(

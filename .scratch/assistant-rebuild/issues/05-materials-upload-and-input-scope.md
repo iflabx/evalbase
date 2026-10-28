@@ -1,8 +1,8 @@
 # REBUILD-05 项目资料、上传映射与页面范围交接
 
 Status: ready-for-agent
-Implementation: not-started
-Validation: not-run
+Implementation: in-progress
+Validation: targeted-pass
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md)
 
 - 批次：2；对应原范围建议：R05。
@@ -66,3 +66,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-27：Owner 要求依据完整重建范围创建票据。创建本票，尚未实施；当前未运行模型/CU、未新建预算、未更改环境和业务数据。
 
 - 2026-10-27：按 Owner 指令将 REBUILD-01 扩大回归中旧助手的对应失败场景纳入上述新 AC；本票仍未开发/验收，不把旧失败改记通过。使用受控 SDK/隔离数据补证据，不新增真实模型/CU活动或调整旧预算，依赖关系不变。
+
+- 2026-10-28：Owner授权实施；已完成领域服务/工具与原生桥接、选择范围固定、背景引用、deepagents-v3及旧版本只读接线，定向测试和复审见[唯一记录](../r05-verification.md)。隔离预览和C03待本轮执行，未扩大后续票范围。

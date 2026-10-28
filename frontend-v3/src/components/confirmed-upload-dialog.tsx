@@ -55,7 +55,11 @@ export function ConfirmedUploadDialog({
   collections: Array<{ id: string; name: string }>;
   defaultCollectionId: string;
   onOpenChange: (open: boolean) => void;
-  onConfirmed: () => Promise<void>;
+  onConfirmed: (
+    assets: Array<{ id: string; fileName: string }>,
+    collectionId: string,
+    mode: "mapped" | "raw",
+  ) => Promise<void>;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [collectionId, setCollectionId] = useState(defaultCollectionId);
@@ -169,14 +173,14 @@ export function ConfirmedUploadDialog({
     setPending(true);
     setError("");
     try {
-      await confirmPendingUploads(
+      const confirmed = await confirmPendingUploads(
         projectId,
         collectionId,
         queue.map((item) => item.pending.id),
         `${confirmationKey}:${mode}`,
         mode,
       );
-      await onConfirmed();
+      await onConfirmed(confirmed.assets, collectionId, mode);
       setFiles([]);
       setQueue([]);
       setConfirmationKey(createRequestId());

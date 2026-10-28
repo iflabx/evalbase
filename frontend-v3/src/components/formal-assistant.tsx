@@ -22,6 +22,7 @@ import {
   FileText,
   ArrowDown,
   ChevronRight,
+  FileUp,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -36,6 +37,7 @@ import {
 } from "./ui/dropdown-menu";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./ui/resizable";
 import { AssistantMarkdown } from "./assistant-markdown";
+import { AssistantMaterialBridge } from "./assistant-material-bridge";
 import {
   api,
   base,
@@ -53,6 +55,7 @@ import {
   type Envelope,
   type Source,
   type WorkspaceTab,
+  type NativeAction,
 } from "@/services/formal-assistant";
 import type { InputContext } from "@/services/assistant-input-context";
 import "./formal-assistant.css";
@@ -75,6 +78,21 @@ const toolNames: Record<string, string> = {
   list_sources: "查找资料",
   read_records: "读取记录",
   read_attachment: "读取文档",
+  list_attachments: "查看背景文档",
+  create_collection: "创建资料集合",
+  list_projects: "查找项目",
+  read_project_access: "读取项目权限",
+  list_collections: "查找资料集合",
+  list_material_files: "查找原始文件",
+  read_material_records: "读取资料记录",
+  read_material_record: "读取完整记录",
+  read_material_raw: "查看原始内容",
+  create_project: "创建项目",
+  move_material_file: "移动文件",
+  list_pending_uploads: "查看待确认上传",
+  open_material_upload: "选择上传文件",
+  open_material_mapping: "整理文件字段",
+  navigate_project: "打开项目页面",
   create_requirements: "新增交付要求",
   update_requirements: "修改交付要求",
   submit_processing: "提交处理",
@@ -153,7 +171,14 @@ export function FormalAssistant({
   useEffect(() => {
     if (narrow) setListOpen(false);
   }, [narrow]);
-  const readOnlyHistory = snapshot?.session.runtime_version === "deepagents-v1";
+  const readOnlyHistory =
+    !!snapshot?.currentRuntime && snapshot.session.runtime_version !== snapshot.currentRuntime;
+  const [materialAction, setMaterialAction] = useState<NativeAction | null>(null);
+  const [nativeSource, setNativeSource] = useState<{
+    source: Source;
+    names: string[];
+    unmapped: { id: string; fileName: string; collectionId: string }[];
+  } | null>(null);
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]),
     [active, setActive] = useState("");
   const draftKey = "evalbase:assistant:" + actorId + ":" + projectId + ":" + (sessionId ?? "new");
@@ -301,6 +326,8 @@ export function FormalAssistant({
     setDraft(saved.draft);
     setPending(saved.pending);
     setAttachmentIds(saved.attachments);
+    setNativeSource(readLocal(draftKey + ":materials", null));
+    setMaterialAction(null);
     setConflict(false);
     setRename(false);
     setProgressOpen(false);
@@ -401,14 +428,16 @@ export function FormalAssistant({
     } else setNewContent(true);
   }, [snapshot, sessionId]);
   const context = useMemo<Source | undefined>(() => {
+    if (nativeSource) return nativeSource.source;
     if (!pageContext) return;
+    if ("source" in pageContext && pageContext.source) return pageContext.source;
     const ids = "inputSelection" in pageContext ? pageContext.inputSelection?.recordIds : undefined;
     return pageContext.kind === "asset"
       ? { kind: "assets", assetIds: [pageContext.id], ...(ids ? { recordIds: ids } : {}) }
       : pageContext.kind === "draft" || pageContext.kind === "version"
         ? { kind: pageContext.kind, id: pageContext.id, ...(ids ? { recordIds: ids } : {}) }
         : undefined;
-  }, [pageContext]);
+  }, [pageContext, nativeSource]);
   const openSession = (id: string, carry = false) => {
     void navigate({
       to: "/projects/$projectId/assistant/$sessionId",
@@ -464,7 +493,7 @@ export function FormalAssistant({
           draft,
           attachmentIds,
           context,
-          pageContext && "inputSelection" in pageContext
+          !nativeSource && pageContext && "inputSelection" in pageContext
             ? pageContext.inputSelection?.sourceRevision
             : undefined,
         );
@@ -483,6 +512,8 @@ export function FormalAssistant({
         const text = acceptedDraft(draftRef.current, envelope);
         setPending(null);
         setAttachmentIds([]);
+        setNativeSource(null);
+        sessionStorage.removeItem(key + ":materials");
         setDraft(text);
         sessionStorage.setItem(
           key,
@@ -526,28 +557,46 @@ export function FormalAssistant({
     setWorkOpen(true);
     if (narrow) setListOpen(false);
   };
-  const document = async (id: string) => {
+  const document = async (id: string, offset = 0) => {
     if (!sessionId) return;
     const selected = sessionId;
     try {
       const d = await api<{
         id: string;
         name: string;
-        extracted: { fragments: { text: string }[] };
-      }>(endpoint(projectId, selected) + "/attachments/" + encodeURIComponent(id));
+        extracted: {
+          fragments: { text: string; page?: number; startLine?: number; endLine?: number }[];
+        };
+        offset?: number;
+        nextOffset?: number | null;
+        total?: number;
+        truncated?: boolean;
+      }>(
+        endpoint(projectId, selected) +
+          "/attachments/" +
+          encodeURIComponent(id) +
+          "?offset=" +
+          offset,
+      );
       if (activeSession(selected))
         showTab({
           id: d.id,
           name: d.name,
           kind: "document",
-          content: d.extracted.fragments.map((f) => f.text).join("\n\n"),
+          document: {
+            fragments: d.extracted.fragments,
+            offset: d.offset ?? offset,
+            nextOffset: d.nextOffset ?? null,
+            total: d.total ?? d.extracted.fragments.length,
+            truncated: d.truncated ?? false,
+          },
         });
     } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
     }
   };
   const upload = async (files: FileList | null) => {
-    if (!files || !sessionId) return;
+    if (!files || !sessionId || !canWrite || readOnlyHistory) return;
     const selected = sessionId;
     const busyToken = beginBusy();
     try {
@@ -613,6 +662,8 @@ export function FormalAssistant({
     setPending(null);
     setDraft(text);
     setAttachmentIds([]);
+    setNativeSource(null);
+    sessionStorage.removeItem(draftKey + ":materials");
     setConflict(false);
     setError("");
     sessionStorage.setItem(
@@ -824,6 +875,54 @@ export function FormalAssistant({
           <>
             <h2 className="mb-4 break-words font-semibold">{tab.name}</h2>
             {tab.content && <AssistantMarkdown text={tab.content} />}
+            {tab.document && (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  背景文档 · 片段 {tab.document.offset + 1}–
+                  {tab.document.offset + tab.document.fragments.length} / {tab.document.total}
+                </p>
+                {tab.document.fragments.map((fragment, index) => (
+                  <section
+                    key={`${tab.document!.offset}:${index}`}
+                    className="space-y-2 border-b pb-4 last:border-0"
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      {fragment.page
+                        ? `第 ${fragment.page} 页`
+                        : fragment.startLine
+                          ? `第 ${fragment.startLine}–${fragment.endLine ?? fragment.startLine} 行`
+                          : `片段 ${tab.document!.offset + index + 1}`}
+                    </p>
+                    <AssistantMarkdown text={fragment.text} />
+                  </section>
+                ))}
+                {tab.document.truncated && (
+                  <p className="text-xs text-muted-foreground">
+                    当前显示部分原文，未展示完整文档。
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    aria-label="文档上一页"
+                    variant="outline"
+                    size="sm"
+                    disabled={!tab.document.offset}
+                    onClick={() => void document(tab.id, Math.max(0, tab.document!.offset - 5))}
+                  >
+                    上一页
+                  </Button>
+                  <Button
+                    aria-label="文档下一页"
+                    variant="outline"
+                    size="sm"
+                    disabled={tab.document.nextOffset === null}
+                    onClick={() => void document(tab.id, tab.document!.nextOffset!)}
+                  >
+                    下一页
+                  </Button>
+                </div>
+              </div>
+            )}
             {tab.rows && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1334,6 +1433,79 @@ export function FormalAssistant({
                     </p>
                   )}
                   <div className="formal-composer">
+                    {!nativeSource &&
+                      pageContext &&
+                      "inputSelection" in pageContext &&
+                      pageContext.inputSelection && (
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          页面已选 {pageContext.inputSelection.recordIds.length} 条记录
+                        </p>
+                      )}
+                    {snapshot?.workspace.nativeActions?.map((a) => (
+                      <div key={a.id} className="mb-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            readOnlyHistory || busy || (a.kind !== "navigation" && !canWrite)
+                          }
+                          onClick={() => {
+                            if (a.kind === "navigation") {
+                              if (a.href?.startsWith("/projects/") && !a.href.startsWith("//"))
+                                window.location.assign(a.href);
+                            } else setMaterialAction(a);
+                          }}
+                        >
+                          {a.name ??
+                            (a.kind === "upload"
+                              ? "选择上传文件"
+                              : a.kind === "mapping"
+                                ? "整理文件字段"
+                                : "打开页面")}
+                        </Button>
+                      </div>
+                    ))}
+                    {nativeSource && (
+                      <div className="mb-3 rounded-md border bg-muted/30 p-3 text-sm">
+                        <div className="flex items-start gap-2">
+                          <p className="min-w-0 flex-1 break-words">
+                            本条消息的资料：{nativeSource.names.join("、")}
+                          </p>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-6"
+                            aria-label="移除本条消息的资料"
+                            disabled={busy || !!pending}
+                            onClick={() => {
+                              setNativeSource(null);
+                              sessionStorage.removeItem(draftKey + ":materials");
+                            }}
+                          >
+                            <X className="size-3" />
+                          </Button>
+                        </div>
+                        {nativeSource.unmapped.map((a) => (
+                          <Button
+                            key={a.id}
+                            variant="link"
+                            size="sm"
+                            disabled={busy || readOnlyHistory}
+                            onClick={() =>
+                              setMaterialAction({
+                                id: a.id,
+                                kind: "mapping",
+                                assetId: a.id,
+                                collectionId: a.collectionId,
+                                name: a.fileName,
+                              })
+                            }
+                          >
+                            整理 {a.fileName} 的字段
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       {snapshot?.workspace.attachments.map((a) => (
                         <div key={a.id} className="formal-attachment">
@@ -1378,13 +1550,26 @@ export function FormalAssistant({
                       <Button
                         size="icon"
                         variant="ghost"
-                        disabled={readOnlyHistory || busy || !!pending}
+                        disabled={!canWrite || readOnlyHistory || busy || !!pending}
                         aria-label="添加背景文档"
                         onClick={() => file.current?.click()}
                       >
                         <Paperclip className="size-4" />
                       </Button>
                       <span className="text-xs text-muted-foreground">Ctrl / ⌘ + Enter</span>
+                      {canWrite && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label="上传原始数据"
+                          disabled={readOnlyHistory || busy || !!pending}
+                          onClick={() =>
+                            setMaterialAction({ id: "upload-" + Date.now(), kind: "upload" })
+                          }
+                        >
+                          <FileUp className="size-4" />
+                        </Button>
+                      )}
                       <Button
                         className="ml-auto"
                         aria-label={pending ? "重试原提交" : "发送"}
@@ -1448,6 +1633,28 @@ export function FormalAssistant({
           </Button>
         </DialogContent>
       </Dialog>
+      <AssistantMaterialBridge
+        projectId={projectId}
+        canWrite={canWrite && !readOnlyHistory}
+        action={materialAction}
+        onClose={() => setMaterialAction(null)}
+        onUploaded={(source, names, unmapped) => {
+          if (!activeSession(sessionId)) return;
+          const mappedId = materialAction?.kind === "mapping" ? materialAction.assetId : undefined;
+          const next =
+            mappedId &&
+            nativeSource?.source.kind === "assets" &&
+            nativeSource.source.assetIds.includes(mappedId)
+              ? {
+                  ...nativeSource,
+                  unmapped: nativeSource.unmapped.filter((item) => item.id !== mappedId),
+                }
+              : { source, names, unmapped };
+          setNativeSource(next);
+          sessionStorage.setItem(draftKey + ":materials", JSON.stringify(next));
+          setMaterialAction(null);
+        }}
+      />
       <Dialog open={progressOpen} onOpenChange={setProgressOpen}>
         <DialogContent>
           <DialogHeader>

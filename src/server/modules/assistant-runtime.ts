@@ -1,3 +1,5 @@
+import { FORMAL_RUNTIME_VERSION } from "../../assistant-rebuild/session-contract.js";
+import { fixedMaterialInput } from "../../assistant-rebuild/input-scope.js";
 import { sessionHash } from "../support.js";
 import { WorkspaceStore } from "../../assistant-rebuild/workspace-store.js";
 import { BusinessError } from "../../operations/errors.js";
@@ -30,6 +32,14 @@ export function registerAssistantRuntime({
     });
   app.addHook("onClose", () => host.close());
   const workspace = new WorkspaceStore(host.store, artifacts);
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/assistant-runtime/input-scope",
+    { preHandler: authenticate },
+    (req, reply) =>
+      invoke(req, reply, true, (scope) =>
+        fixedMaterialInput(host.store, scope, req.body),
+      ),
+  );
   const base = "/api/projects/:projectId/assistant-runtime/sessions";
   type Params = { projectId: string; sessionId: string };
   const invoke = async (
@@ -42,10 +52,13 @@ export function registerAssistantRuntime({
     if (write && !writeAllowed(req, req.actor))
       return reply.code(403).send({ error: { code: "csrf_rejected" } });
     try {
-      return await run({
-        projectId: req.params.projectId,
-        actorId: req.actor.id,
-      });
+      const scope = { projectId: req.params.projectId, actorId: req.actor.id };
+      if (write && req.params.sessionId) {
+        const session = await host.store.get(scope, req.params.sessionId);
+        if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
+          throw new SessionError("runtime_contract_changed");
+      }
+      return await run(scope);
     } catch (error) {
       if (
         error instanceof BusinessError ||
@@ -190,6 +203,7 @@ export function registerAssistantRuntime({
           scope,
           req.params.sessionId,
           req.params.attachmentId,
+          Number((req.query as { offset?: string }).offset ?? 0),
         ),
       ),
   );

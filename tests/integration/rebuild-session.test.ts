@@ -1,3 +1,5 @@
+import { ArtifactRepository } from "../../src/storage/artifacts.js";
+import { WorkspaceStore } from "../../src/assistant-rebuild/workspace-store.js";
 import { sendFormalCompletion } from "../support/formal-completion.js";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -363,7 +365,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     ).toBe(0);
     const id = await fresh();
     expect((await api("GET", route(id))).json().session.runtime_version).toBe(
-      "deepagents-v2",
+      "deepagents-v3",
     );
     expect(process.env.REBUILD_VALIDATION_CAMPAIGN_ID).toBeUndefined();
   });
@@ -543,6 +545,21 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       ),
     ).toBe(true);
     const allowed = [
+      "create_collection",
+      "create_project",
+      "list_attachments",
+      "list_collections",
+      "list_material_files",
+      "list_pending_uploads",
+      "list_projects",
+      "move_material_file",
+      "navigate_project",
+      "open_material_mapping",
+      "open_material_upload",
+      "read_material_raw",
+      "read_material_record",
+      "read_material_records",
+      "read_project_access",
       "create_requirements",
       "read_project",
       "list_sources",
@@ -2926,5 +2943,234 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     expect(state.session.requirements_revision).toBe(1);
     expect(state.session.requirements.deliveries).toHaveLength(1);
     expect(state.session.requirements.objective).toBe("三条问题");
+  });
+  async function r05Source(name: string) {
+    const cid = (
+      await api("GET", "/api/projects/" + projectId + "/collections")
+    ).json().collections[0].id;
+    const upload = await app.inject({
+      method: "POST",
+      url: "/api/projects/" + projectId + "/pending-uploads",
+      headers: {
+        origin,
+        ...identities.get("admin"),
+        "content-type": "application/octet-stream",
+        "x-file-name": name,
+      },
+      payload:
+        JSON.stringify({
+          question: "B文件唯一问题 " + randomUUID(),
+          answer: "B答案",
+        }) + "\n",
+    });
+    expect(upload.statusCode, upload.body).toBe(201);
+    const confirm = await api(
+      "POST",
+      "/api/projects/" + projectId + "/pending-upload-batches/confirm",
+      {
+        collectionId: cid,
+        pendingUploadIds: [upload.json().pendingUpload.id],
+        mode: "raw",
+      },
+    );
+    const bid = confirm.json().assets[0].id;
+    const m = (
+      await api(
+        "GET",
+        "/api/projects/" + projectId + "/assets/" + bid + "/mapping",
+      )
+    ).json();
+    const mapped = await api(
+      "PUT",
+      "/api/projects/" + projectId + "/assets/" + bid + "/mapping",
+      {
+        parsedViewId: m.parsedViewId,
+        expectedRevision: 0,
+        mapping: {
+          question: "/question",
+          expectedOutput: "/answer",
+          metadata: [],
+        },
+      },
+    );
+    expect(mapped.statusCode, mapped.body).toBe(200);
+    return { cid, bid };
+  }
+  it("R05 SDK explicit new filename supersedes page A and create/move use real business results", async () => {
+    const id = await fresh(),
+      { cid, bid } = await r05Source("r05-explicit-b.jsonl");
+    outputs = [
+      call("open_material_upload", { collectionId: cid }),
+      call("list_material_files", { collectionId: cid }),
+      call("read_records", {
+        source: { kind: "assets", assetIds: [bid] },
+        limit: 1,
+      }),
+      call("create_collection", {
+        name: "SDK R05 " + id,
+        description: "真实材料集合",
+      }),
+      async () => {
+        const target = (
+          await db.query(
+            "SELECT id FROM raw_material_collection WHERE project_id=$1 AND name=$2",
+            [projectId, "SDK R05 " + id],
+          )
+        ).rows[0].id;
+        return call("move_material_file", {
+          assetId: bid,
+          collectionId: target,
+        });
+      },
+      {
+        role: "assistant",
+        content: "已读取B文件并移动到新资料集合，未处理或生成。",
+      },
+    ];
+    const accepted = await submit(
+      id,
+      "当前页面是A，但请读取 r05-explicit-b.jsonl，建一个资料集合并移进去。",
+      {
+        context: {
+          kind: "assets",
+          assetIds: [assetId],
+          recordIds: [assetId + ":1"],
+        },
+      },
+    );
+    expect(accepted.statusCode, accepted.body).toBe(202);
+    const done = await host.runPending(scope(), id, accepted.json().turnId);
+    expect(done.execution.status).toBe("completed");
+    expect(done.results).toEqual([]);
+    expect(done.workspace.nativeActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "upload", collectionId: cid }),
+      ]),
+    );
+    const read = (
+      await db.query(
+        "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read' ORDER BY id DESC LIMIT 1",
+        [id],
+      )
+    ).rows[0].detail;
+    expect(read.source.assetIds).toEqual([bid]);
+    const receipts = (
+      await db.query(
+        "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='material_receipt' ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(receipts.map((x) => x.detail.name)).toEqual([
+      "create_collection",
+      "move_material_file",
+    ]);
+  });
+  it("R05 SDK discovery failure and ordinary continue do not pin a stale candidate over a later explicit file", async () => {
+    const id = await fresh(),
+      { cid, bid } = await r05Source("r05-after-failure-b.jsonl");
+    await expect(
+      run(id, "看看不存在的集合", [
+        call("list_material_files", { collectionId: "not-visible" }),
+      ]),
+    ).rejects.toBeDefined();
+    await run(id, "继续", [
+      call("list_collections", {}),
+      { role: "assistant", content: "目录已核对，请说明文件。" },
+    ]);
+    const done = await run(
+      id,
+      "读取 r05-after-failure-b.jsonl 即可，不用旧候选。",
+      [
+        call("list_material_files", { collectionId: cid }),
+        call("read_records", {
+          source: { kind: "assets", assetIds: [bid] },
+          limit: 1,
+        }),
+        { role: "assistant", content: "已按真实引用读取B文件。" },
+      ],
+    );
+    expect(done.execution.status).toBe("completed");
+    expect(done.results).toEqual([]);
+    const refs = (
+      await db.query(
+        "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read'",
+        [id],
+      )
+    ).rows;
+    expect(refs.at(-1).detail.source.assetIds).toEqual([bid]);
+  });
+  it("R05 keeps v2 history read-only and denies a viewer background upload", async () => {
+    const old = await fresh();
+    await db.query(
+      "UPDATE assistant_runtime_session SET runtime_version='deepagents-v2' WHERE id=$1",
+      [old],
+    );
+    const snap = await host.present(scope(), old);
+    expect(snap.currentRuntime).toBe("deepagents-v3");
+    expect(snap.canWrite).toBe(false);
+    expect((await submit(old, "继续")).statusCode).toBe(409);
+    for (const action of ["stop", "continue"]) {
+      expect(
+        (await api("POST", route(old) + "/control", { action })).statusCode,
+      ).toBe(409);
+    }
+    expect(
+      (await api("POST", route(old) + "/budget-offer", {})).statusCode,
+    ).toBe(409);
+    const viewer = await fresh("viewer");
+    const attach = await api(
+      "POST",
+      route(viewer) + "/attachments",
+      {
+        fileName: "rules.md",
+        contentBase64: Buffer.from("private background").toString("base64"),
+      },
+      "viewer",
+    );
+    expect(attach.statusCode).toBeGreaterThanOrEqual(400);
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1",
+          [viewer],
+        )
+      ).rowCount,
+    ).toBe(0);
+  });
+  it("R05 rejects an editor downgrade before the background transaction commits", async () => {
+    const id = await fresh("editor");
+    const artifacts = new ArtifactRepository(config.minio);
+    const guarded = Object.create(artifacts);
+    guarded.storeImmutable = async (bytes: Buffer) => {
+      const result = await artifacts.storeImmutable(bytes);
+      await db.query(
+        "UPDATE project_member SET role='viewer' WHERE project_id=$1 AND user_id=$2",
+        [projectId, actors.get("editor")],
+      );
+      return result;
+    };
+    try {
+      await expect(
+        new WorkspaceStore(host.store, guarded).attach(
+          scope("editor"),
+          id,
+          "rules.md",
+          Buffer.from("example rules"),
+        ),
+      ).rejects.toBeDefined();
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1",
+            [id],
+          )
+        ).rowCount,
+      ).toBe(0);
+    } finally {
+      await db.query(
+        "UPDATE project_member SET role='editor' WHERE project_id=$1 AND user_id=$2",
+        [projectId, actors.get("editor")],
+      );
+    }
   });
 });

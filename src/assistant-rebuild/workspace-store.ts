@@ -108,18 +108,27 @@ export class WorkspaceStore {
     ).rows;
   }
   async attach(scope: SessionScope, id: string, name: string, bytes: Buffer) {
+    await this.sessions.access(scope, true);
     await this.writable(scope, id);
     const extracted = await extractBackground(name, bytes);
     const stored = await this.artifacts.storeImmutable(bytes);
     const c = await this.sessions.db.connect();
     try {
       await c.query("BEGIN");
+      await this.sessions.access(scope, true, c, true);
       await this.writable(scope, id, c, true);
       const n = await c.query(
-        "SELECT id FROM assistant_runtime_attachment WHERE session_id=$1 AND removed_at IS NULL",
+        "SELECT id,object_ref FROM assistant_runtime_attachment WHERE session_id=$1 AND removed_at IS NULL",
         [id],
       );
       if ((n.rowCount ?? 0) >= BACKGROUND_LIMITS.files)
+        throw new SessionError("attachment_capacity", 413);
+      const existingBytes = (
+        await Promise.all(
+          n.rows.map((row) => this.artifacts.size(row.object_ref)),
+        )
+      ).reduce((sum, size) => sum + size, 0);
+      if (existingBytes + bytes.byteLength > BACKGROUND_LIMITS.bytes)
         throw new SessionError("attachment_capacity", 413);
       const attachmentId = "attachment_" + randomUUID();
       await c.query(
@@ -135,7 +144,12 @@ export class WorkspaceStore {
       c.release();
     }
   }
-  async document(scope: SessionScope, id: string, attachmentId: string) {
+  async document(
+    scope: SessionScope,
+    id: string,
+    attachmentId: string,
+    offset = 0,
+  ) {
     await this.sessions.get(scope, id);
     const row = (
       await this.sessions.db.query(
@@ -144,7 +158,20 @@ export class WorkspaceStore {
       )
     ).rows[0];
     if (!row) throw new SessionError("attachment_not_found", 404);
-    return row;
+    if (!Number.isInteger(offset) || offset < 0 || offset > 100000)
+      throw new SessionError("query_invalid", 422);
+    const fragments = row.extracted.fragments;
+    return {
+      ...row,
+      extracted: {
+        ...row.extracted,
+        fragments: fragments.slice(offset, offset + 5),
+      },
+      offset,
+      total: fragments.length,
+      nextOffset: offset + 5 < fragments.length ? offset + 5 : null,
+      truncated: offset > 0 || offset + 5 < fragments.length,
+    };
   }
   async detach(scope: SessionScope, id: string, attachmentId: string) {
     return this.write(scope, id, async (client) => {
@@ -194,6 +221,54 @@ export class WorkspaceStore {
       process,
       streams: textRows.reverse(),
       attachments: await this.attachments(scope, id),
+      nativeActions: events
+        .filter(
+          (e) =>
+            e.kind === "tool_result" &&
+            [
+              "open_material_upload",
+              "open_material_mapping",
+              "navigate_project",
+            ].includes(e.detail?.name),
+        )
+        .flatMap((e) => {
+          const r = e.detail?.result;
+          let value: any = r;
+          try {
+            const content = r?.kwargs?.content ?? r?.content;
+            if (typeof content === "string") value = JSON.parse(content);
+          } catch {
+            return [];
+          }
+          const action = value?.nativeAction;
+          if (
+            !action ||
+            !["upload", "mapping", "navigation"].includes(action.kind)
+          )
+            return [];
+          if (
+            action.kind === "navigation" &&
+            (typeof action.href !== "string" ||
+              !/^\/projects\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_/?=&%.-]*)?$/.test(
+                action.href,
+              ))
+          )
+            return [];
+          return [
+            {
+              id: String(e.id),
+              kind: action.kind,
+              ...(typeof action.assetId === "string"
+                ? { assetId: action.assetId }
+                : {}),
+              ...(typeof action.collectionId === "string"
+                ? { collectionId: action.collectionId }
+                : {}),
+              ...(typeof action.href === "string" ? { href: action.href } : {}),
+              ...(typeof action.name === "string" ? { name: action.name } : {}),
+            },
+          ];
+        }),
     };
   }
 }

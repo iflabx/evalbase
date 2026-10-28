@@ -1,3 +1,4 @@
+import { MaterialsStore } from "../materials/store.js";
 import { registerAssistantRuntime } from "./modules/assistant-runtime.js";
 import { BusinessError } from "../operations/errors.js";
 import { RuntimeMetrics } from "../observability/runtime.js";
@@ -134,6 +135,7 @@ export async function buildApp(
   const artifacts =
     dependencies.artifacts ?? new ArtifactRepository(config.minio);
   const now = dependencies.now ?? (() => new Date());
+  const materials = new MaterialsStore(db, artifacts);
   const app = Fastify({
     logger: false,
     bodyLimit: CAPACITY_LIMITS.dataAssetBytes,
@@ -468,58 +470,16 @@ export async function buildApp(
         return reply
           .code(403)
           .send({ error: { code: "administrator_required" } });
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        Object.keys(body).some(
-          (key) => !["name", "description"].includes(key),
-        ) ||
-        typeof body.name !== "string" ||
-        body.name.trim().length < 1 ||
-        body.name.trim().length > 200 ||
-        (body.description !== undefined &&
-          (typeof body.description !== "string" ||
-            body.description.length > 1_000))
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "project_payload_invalid" } });
-      const id = opaqueId("project");
-      const client = await db.connect();
-      try {
-        await client.query("BEGIN");
-        const project = await client.query(
-          `INSERT INTO project (id, name, description, owner_id)
-           VALUES ($1, $2, $3, $4)
-           RETURNING id, name, description, updated_at`,
-          [id, body.name.trim(), body.description ?? "", actor.id],
+      return reply
+        .code(201)
+        .send(
+          await materials.createProject(
+            actor.id,
+            request.body,
+            undefined,
+            legacyTestBootstrap,
+          ),
         );
-        if (legacyTestBootstrap && actor.role === "owner")
-          await client.query(
-            `INSERT INTO project_member (project_id, user_id, role)
-             VALUES ($1, $2, 'owner')`,
-            [id, actor.id],
-          );
-        await client.query(
-          `INSERT INTO audit_event
-             (project_id, actor_id, action, object_type, object_id, details)
-           VALUES ($1, $2, 'project_created', 'project', $1, $3)`,
-          [id, actor.id, { name: body.name.trim() }],
-        );
-        await client.query("COMMIT");
-        return reply.code(201).send({
-          project: projectResponse({
-            ...project.rows[0],
-            dataset_count: 1,
-            test_set_count: 0,
-          }),
-        });
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
-      }
     },
   );
 
@@ -1001,46 +961,16 @@ export async function buildApp(
         return reply
           .code(404)
           .send({ error: { code: "collection_not_found" } });
-      const rows = await db.query(
-        `SELECT da.id AS asset_id, da.file_name, pv.display_mapping, sr.ordinal, sr.value
-         FROM raw_material_collection c
-         JOIN data_asset da ON da.collection_id = c.id AND da.project_id = c.project_id
-         JOIN parsed_view pv ON pv.asset_id = da.id AND pv.is_current AND pv.status = 'ready' AND pv.mapping_ready
-         JOIN source_record sr ON sr.parsed_view_id = pv.id AND sr.parse_status = 'valid'
-         WHERE c.project_id = $1 AND c.id = $2
-           AND da.status NOT IN ('deletion_pending', 'tombstoned')
-           AND ($3::text IS NULL OR da.id = $3)
-         ORDER BY da.uploaded_at DESC, da.id DESC, sr.ordinal`,
-        [
-          request.params.projectId,
-          request.params.collectionId,
-          request.query.assetId ?? null,
-        ],
+      return materials.records(
+        { projectId: request.params.projectId, actorId: actor.id },
+        {
+          collectionId: request.params.collectionId,
+          assetId: request.query.assetId,
+          search: request.query.search,
+          offset,
+          limit,
+        },
       );
-      const search = request.query.search?.trim().toLowerCase();
-      const records = rows.rows
-        .map((row) => ({
-          assetId: row.asset_id,
-          ordinal: Number(row.ordinal),
-          sourceFile: row.file_name,
-          ...mapMaterialRecord(
-            row.value,
-            normalizeDisplayMapping(row.display_mapping) ?? { metadata: [] },
-          ),
-        }))
-        .filter(
-          (row) =>
-            !search ||
-            [
-              row.question,
-              row.expectedOutput,
-              ...row.metadata.flatMap(({ key, value }) => [key, value]),
-            ].some((value) => value.toLowerCase().includes(search)),
-        );
-      return {
-        records: records.slice(offset, offset + limit),
-        pagination: { total: records.length, limit, offset },
-      };
     },
   );
 
@@ -1131,39 +1061,12 @@ export async function buildApp(
         return reply
           .code(404)
           .send({ error: { code: "asset_or_collection_not_found" } });
-      const client = await db.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-          `agentbench:controlled-deletion-project:${request.params.projectId}`,
-        ]);
-        const moved = await client.query(
-          `UPDATE data_asset da SET collection_id = $3
-         WHERE da.id = $2 AND da.project_id = $1
-           AND da.status NOT IN ('deletion_pending', 'tombstoned')
-           AND EXISTS (SELECT 1 FROM raw_material_collection c WHERE c.id = $3 AND c.project_id = $1)
-         RETURNING da.id`,
-          [request.params.projectId, request.params.assetId, collectionId],
-        );
-        if (!moved.rowCount) {
-          await client.query("ROLLBACK");
-          return reply
-            .code(404)
-            .send({ error: { code: "asset_or_collection_not_found" } });
-        }
-        await client.query(
-          `DELETE FROM version_export_cache c USING test_set_version v,test_set ts
-            WHERE c.version_id=v.id AND v.test_set_id=ts.id AND ts.project_id=$1`,
-          [request.params.projectId],
-        );
-        await client.query("COMMIT");
-        return reply.code(204).send();
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
-      }
+      await materials.move(
+        { projectId: request.params.projectId, actorId: actor.id },
+        request.params.assetId,
+        collectionId,
+      );
+      return reply.code(204).send();
     },
   );
 
@@ -1186,64 +1089,14 @@ export async function buildApp(
         ))
       )
         return reply.code(404).send({ error: { code: "project_not_found" } });
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        Object.keys(body).some(
-          (key) => !["name", "description"].includes(key),
-        ) ||
-        typeof body.name !== "string" ||
-        body.name.trim().length < 1 ||
-        body.name.trim().length > 200 ||
-        (body.description !== undefined &&
-          (typeof body.description !== "string" ||
-            body.description.length > 1_000))
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "collection_payload_invalid" } });
-      const name = body.name.trim();
-      if (name === "未整理")
-        return reply
-          .code(409)
-          .send({ error: { code: "unfiled_collection_reserved" } });
-      const id = opaqueId("collection");
-      const client = await db.connect();
-      try {
-        await client.query("BEGIN");
-        const inserted = await client.query(
-          `INSERT INTO raw_material_collection
-             (id, project_id, name, description, is_unfiled)
-           VALUES ($1, $2, $3, $4, false)
-           RETURNING id, project_id, name, description, is_unfiled,
-                     created_at, updated_at`,
-          [id, request.params.projectId, name, body.description ?? ""],
+      return reply
+        .code(201)
+        .send(
+          await materials.createCollection(
+            { projectId: request.params.projectId, actorId: actor.id },
+            request.body,
+          ),
         );
-        await client.query(
-          `INSERT INTO audit_event
-             (project_id, actor_id, action, object_type, object_id, details)
-           VALUES ($1, $2, 'raw_material_collection_created',
-                   'raw_material_collection', $3, $4)`,
-          [request.params.projectId, actor.id, id, { name }],
-        );
-        await client.query("COMMIT");
-        return reply.code(201).send({
-          collection: collectionResponse({
-            ...inserted.rows[0],
-            file_count: 0,
-            unified_record_count: 0,
-          }),
-        });
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        if ((error as { code?: string }).code === "23505")
-          return reply
-            .code(409)
-            .send({ error: { code: "collection_name_conflict" } });
-        throw error;
-      } finally {
-        client.release();
-      }
     },
   );
 

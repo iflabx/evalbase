@@ -26,3 +26,28 @@ it("hands off selected records over HTTP without widening their project or actor
   expect(readInputContext(result.token, "another-project", "actor-http")).toBeUndefined();
   expect(readInputContext(result.token, "project-http", "another-actor")).toBeUndefined();
 });
+
+it("preserves the server-fixed multi-file source and refuses expired or empty selections", () => {
+  const saved = new Map<string, string>();
+  vi.stubGlobal("sessionStorage", {
+    setItem: (k: string, v: string) => saved.set(k, v),
+    getItem: (k: string) => saved.get(k) ?? null,
+  });
+  const context = {
+    kind: "asset",
+    id: "a",
+    source: { kind: "assets", assetIds: ["a", "b"], recordIds: ["r1", "r2"] },
+    inputSelection: { recordIds: ["r1", "r2"], sourceRevision: "fixed", total: 2 },
+  };
+  const write = (value: unknown, expiresAt = Date.now() + 10000) =>
+    saved.set(
+      "assistant-input:token",
+      JSON.stringify({ projectId: "p", actorId: "u", expiresAt, context: value }),
+    );
+  write(context);
+  expect(readInputContext("token", "p", "u")).toEqual(context);
+  write({ ...context, inputSelection: { ...context.inputSelection, recordIds: [] } });
+  expect(readInputContext("token", "p", "u")).toBeUndefined();
+  write(context, Date.now() - 1);
+  expect(readInputContext("token", "p", "u")).toBeUndefined();
+});

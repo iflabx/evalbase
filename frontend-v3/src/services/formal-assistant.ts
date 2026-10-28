@@ -13,6 +13,8 @@ export type Envelope = {
 };
 export type Attachment = { id: string; name: string };
 export type Snapshot = {
+  currentRuntime?: string;
+  canWrite?: boolean;
   canResumeCompleted?: boolean;
   session: {
     id: string;
@@ -60,11 +62,20 @@ export type Snapshot = {
   }[];
   results: { id: string; run_id: string; status: string; output_count: number }[];
   workspace: {
+    nativeActions?: NativeAction[];
     cursor: string;
     attachments: Attachment[];
     streams: { id: string; turnId: string; text: string }[];
     process: { id: string; turnId: string; kind: string; name?: string; code?: string }[];
   };
+};
+export type NativeAction = {
+  id: string;
+  kind: "upload" | "mapping" | "navigation";
+  assetId?: string;
+  collectionId?: string;
+  name?: string;
+  href?: string;
 };
 export type SessionItem = { id: string; title: string; status: string };
 export const base = (project: string) =>
@@ -101,6 +112,13 @@ export type WorkspaceTab = {
   kind: "document" | "result" | "draft";
   name: string;
   content?: string;
+  document?: {
+    fragments: { text: string; page?: number; startLine?: number; endLine?: number }[];
+    offset: number;
+    nextOffset: number | null;
+    total: number;
+    truncated: boolean;
+  };
   href?: string;
   downloadHref?: string;
   rows?: {
@@ -129,7 +147,7 @@ export function errorText(error: unknown) {
         budget_offer_unavailable: "当前任务无需追加额度，请核对任务状态。",
         confirmation_expired: "这张确认卡已失效，请核对最新要求。",
         conversation_not_found: "会话不存在或无权访问。",
-        attachment_capacity: "最多上传5份文档，每份不超过10MB。",
+        attachment_capacity: "最多上传 5 份背景文档，合计不超过 10MB。",
         assistant_document_format: "支持 TXT、Markdown 和 PDF 文档。",
       } as Record<string, string>
     )[code ?? ""] ?? "连接或操作未完成，输入已保留。请重试。"

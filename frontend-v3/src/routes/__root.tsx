@@ -197,9 +197,7 @@ function AuthenticatedApp() {
                   aria-label="打开项目助手"
                   onClick={async () => {
                     if (!(await flushAssistantInput(projectId, actor.id))) return;
-                    const handoff = location.pathname.endsWith("/processing")
-                      ? handoffInputContext(queryClient, projectId, actor.id)
-                      : undefined;
+                    const handoff = handoffInputContext(queryClient, projectId, actor.id);
                     const context = handoff?.context ?? pageContext;
                     void navigate({
                       to: "/projects/$projectId/assistant",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -19,11 +20,17 @@ export function MaterialRecordTable({
   collectionId,
   records,
   includeSourceFile = false,
+  selection,
 }: {
   projectId: string;
   collectionId: string;
   records: UnifiedRecord[];
   includeSourceFile?: boolean;
+  selection?: {
+    has: (record: UnifiedRecord) => boolean;
+    toggle: (record: UnifiedRecord) => void;
+    disabled?: boolean;
+  };
 }) {
   const { density } = useRecordDensity();
   const [detailTarget, setDetailTarget] = useState<Pick<UnifiedRecord, "assetId" | "ordinal">>();
@@ -47,6 +54,11 @@ export function MaterialRecordTable({
           <table className={`material-record-table record-table-density-${density} w-full text-sm`}>
             <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
               <tr>
+                {selection && (
+                  <th className="w-10 px-4 py-2">
+                    <span className="sr-only">选择记录</span>
+                  </th>
+                )}
                 <th className="px-4 py-2 font-medium">序号</th>
                 {includeSourceFile && <th className="px-4 py-2 font-medium">来源文件</th>}
                 {["问题", "期望输出", "Metadata"].map((heading) => (
@@ -59,6 +71,16 @@ export function MaterialRecordTable({
             <tbody>
               {records.map((record) => (
                 <tr key={`${record.assetId}-${record.ordinal}`} className="border-t border-border">
+                  {selection && (
+                    <td className="px-4 py-2">
+                      <Checkbox
+                        aria-label={`选择 ${record.sourceFile} 第 ${record.ordinal} 条`}
+                        checked={selection.has(record)}
+                        disabled={selection.disabled}
+                        onCheckedChange={() => selection.toggle(record)}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-2">
                     <Button
                       variant="link"
