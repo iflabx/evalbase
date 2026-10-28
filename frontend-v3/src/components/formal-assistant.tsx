@@ -1068,7 +1068,11 @@ export function FormalAssistant({
                               <div className="mt-3 space-y-2">
                                 {snapshot.workspace.process.map((p) => (
                                   <div className="rounded-md border px-3 py-2 text-sm" key={p.id}>
-                                    {toolNames[p.name ?? ""] ??
+                                    {(p.kind === "parameter_feedback"
+                                      ? "正在自动纠正参数"
+                                      : p.kind === "correction_rejected"
+                                        ? "参数纠正未通过"
+                                        : toolNames[p.name ?? ""]) ??
                                       (
                                         {
                                           requirements_saved: "保存当前要求",
@@ -1079,13 +1083,19 @@ export function FormalAssistant({
                                       )[p.kind] ??
                                       "执行记录"}{" "}
                                     ·{" "}
-                                    {p.kind === "tool_error"
+                                    {[
+                                      "tool_error",
+                                      "correction_rejected",
+                                      "execution_error",
+                                    ].includes(p.kind)
                                       ? "未完成"
                                       : p.kind === "tool_call"
                                         ? "已调用"
                                         : p.kind === "tool_result"
                                           ? "已完成"
-                                          : "已记录"}
+                                          : p.kind === "parameter_feedback"
+                                            ? "要求尚未保存"
+                                            : "已记录"}
                                   </div>
                                 ))}
                               </div>

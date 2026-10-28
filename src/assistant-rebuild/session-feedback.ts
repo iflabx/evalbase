@@ -88,6 +88,12 @@ export function sessionFeedback(options: {
       name,
       { applyDefaults: !preserveMissing },
     );
+    if (result.unrecoverablePaths?.length)
+      throw new BusinessError(
+        422,
+        "tool_arguments_invalid",
+        "模型返回的参数结构不完整，无法安全恢复。本步骤未执行，请重试；已保存内容不受影响。",
+      );
     if (result.conflicts?.length)
       throw new BusinessError(
         422,

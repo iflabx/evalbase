@@ -716,6 +716,75 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     },
   );
 
+  it.each([false, true])(
+    "NESTED root closure and omitted valid fields through SDK (%s)",
+    async (correction) => {
+      const id = await fresh(),
+        fixed = await host.store.freezeSource(scope(), {
+          kind: "assets",
+          assetIds: [assetId],
+        });
+      const changes = {
+        mode: "plan",
+        objective: "问法自然，答案和标签保持",
+        deliveries: [
+          {
+            patch: {
+              name: "自然问法",
+              operation: "rewrite",
+              count: 3,
+              source: fixed.source,
+              allowedFields: ["question"],
+              instructions: "保持原意，问法自然",
+              saveTarget: { kind: "newDraft", name: "自然问法" },
+            },
+          },
+        ],
+      };
+      const first = {
+        expectedRevision: 0,
+        changes: JSON.stringify(changes).slice(0, -1),
+        ...(correction ? { steps: [] } : {}),
+      };
+      const state = await run(id, "先给前三条改写方案，不执行", [
+        { ...call("create_requirements", first), toolArgumentChunkSize: 1 },
+        ...(correction
+          ? [
+              call("create_requirements", {
+                expectedRevision: 0,
+                changes: { mode: "plan", deliveries: changes.deliveries },
+              }),
+            ]
+          : []),
+      ]);
+      expect(state.session.requirements.objective).toBe(changes.objective);
+      expect(state.session.requirements.deliveries).toHaveLength(1);
+      expect(state.session.requirements.deliveries[0].source).toEqual(
+        fixed.source,
+      );
+      expect(state.session.requirements.deliveries[0].count).toBe(3);
+      expect(await effects()).toEqual({ drafts: 0, runs: 0 });
+    },
+  );
+  it("NESTED unrecoverable structures stop without a correction request", async () => {
+    const id = await fresh();
+    await expect(
+      run(id, "先给方案", [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: '{"mode":"pla',
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "tool_arguments_invalid" });
+    const rows = (
+      await db.query(
+        "SELECT count(*)::int n FROM assistant_runtime_request WHERE session_id=$1 AND purpose='correction'",
+        [id],
+      )
+    ).rows;
+    expect(rows[0].n).toBe(0);
+    expect(await effects()).toEqual({ drafts: 0, runs: 0 });
+  });
   it("C01 captured wrapper and encoded source normalize before the SDK tool executes", async () => {
     const id = await fresh(),
       fixed = await host.store.freezeSource(scope(), {

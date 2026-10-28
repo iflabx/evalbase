@@ -51,6 +51,7 @@ export function normalizeToolArguments(
   options: { applyDefaults?: boolean } = {},
 ) {
   const applyDefaults = options.applyDefaults !== false;
+  const unrecoverablePaths: string[][] = [];
   const paths: string[][] = [],
     conflicts: string[][] = [];
   const variants = (s: Shape): Shape[] => [
@@ -77,20 +78,39 @@ export function normalizeToolArguments(
       }
     }
     if (typeof value === "string") {
-      if (value.length <= 65536 && /^\s*[[{]/.test(value)) {
+      if (
+        !has("string") &&
+        (has("object") || has("array")) &&
+        value.length <= 65536 &&
+        /^\s*[[{]/.test(value)
+      ) {
         try {
-          const decoded: unknown = JSON.parse(value),
-            type = Array.isArray(decoded)
-              ? "array"
-              : object(decoded)
-                ? "object"
-                : null;
+          const text = value.trim();
+          let decoded: unknown;
+          try {
+            decoded = JSON.parse(text);
+          } catch {
+            // Only close a root object after a complete container or quoted value.
+            // Never synthesize a key, value, comma, quote or partial primitive.
+            if (
+              !has("object") ||
+              !text.startsWith("{") ||
+              !/[}\]\"]$/.test(text)
+            )
+              throw Error("incomplete_structure");
+            decoded = JSON.parse(text + "}");
+          }
+          const type = Array.isArray(decoded)
+            ? "array"
+            : object(decoded)
+              ? "object"
+              : null;
           if (type && has(type)) {
             value = decoded;
             paths.push(path);
           }
         } catch {
-          /* Keep malformed JSON for validation. */
+          /* Classification below also covers oversized and non-JSON structures. */
         }
       } else if (
         !has("string") &&
@@ -124,6 +144,12 @@ export function normalizeToolArguments(
         paths.push(path);
       }
     }
+    if (
+      typeof value === "string" &&
+      !has("string") &&
+      (has("object") || has("array"))
+    )
+      unrecoverablePaths.push(path);
     if (Array.isArray(value)) {
       const items = choices
         .filter((s) => s.type === "array" && s.items)
@@ -222,6 +248,7 @@ export function normalizeToolArguments(
   return {
     args: parsed.success && applyDefaults ? parsed.data : value,
     paths,
+    ...(unrecoverablePaths.length ? { unrecoverablePaths } : {}),
     ...(conflicts.length ? { conflicts } : {}),
   };
 }
