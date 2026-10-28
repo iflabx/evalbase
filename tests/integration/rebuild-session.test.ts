@@ -2485,7 +2485,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
                   name: "前五条",
                   operation: "clean",
                   count: 5,
-                  instructions: "整理空白，保留原意。",
+                  instructions: "整理前5条空白，保留原意。",
                   allowedFields: ["question"],
                   metadataKeys: ["标签"],
                   saveTarget: { kind: "newDraft", name: "旧版" },
@@ -2560,7 +2560,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
                 name: "前五条",
                 operation: "clean",
                 count: 5,
-                instructions: "整理空白，保留原意。",
+                instructions: "整理前5条空白，保留原意。",
                 allowedFields: ["question"],
                 saveTarget: { kind: "newDraft", name: "旧版" },
               },
@@ -2644,7 +2644,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
                   name: "第一份",
                   operation: "clean",
                   count: 5,
-                  instructions: "整理首份空白。",
+                  instructions: "整理前5条空白。",
                 },
               },
               {
@@ -2652,7 +2652,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
                   name: "第二份",
                   operation: "rewrite",
                   count: 4,
-                  instructions: "改写第二份表达。",
+                  instructions: "改写前4条表达。",
                 },
               },
             ],
@@ -2775,4 +2775,156 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       }
     },
   );
+  it.each([true, false])(
+    "keeps applicable rules unchanged across five to three: explicit=%s",
+    async (explicit) => {
+      const id = await fresh();
+      const rule = "问法自然，保持原意；答案和标签不变，控制在5个字以内。";
+      let state = await run(id, "先给5条方案，不执行", [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: {
+            deliveries: [
+              {
+                patch: {
+                  name: "前五条",
+                  operation: "rewrite",
+                  count: 5,
+                  instructions: rule,
+                  allowedFields: ["question"],
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      const deliveryId = state.session.requirements.deliveries[0].id;
+      state = await run(id, "改成3条，保存名三条自然问法", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: {
+                  count: 3,
+                  name: "三条自然问法",
+                  saveTarget: { kind: "newDraft", name: "三条自然问法" },
+                  ...(explicit ? { instructions: rule } : {}),
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      expect(state.session.requirements_revision).toBe(2);
+      expect(state.session.requirements.deliveries).toHaveLength(1);
+      expect(state.session.requirements.deliveries[0]).toMatchObject({
+        id: deliveryId,
+        count: 3,
+        instructions: rule,
+      });
+      const events = (
+        await db.query(
+          "SELECT kind FROM assistant_runtime_event WHERE session_id=$1",
+          [id],
+        )
+      ).rows;
+      expect(events.some((e) => e.kind === "requirements_feedback")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("keeps a generic rule through a fixed-source amendment and executable mode in SDK", async () => {
+    const id = await fresh();
+    const rule = "保持原意，问法自然，答案和标签不变。";
+    let state = await run(id, "先规划前三条", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "plan",
+          deliveries: [
+            {
+              patch: {
+                name: "三条",
+                operation: "rewrite",
+                count: 3,
+                source: {
+                  kind: "assets",
+                  assetIds: [assetId],
+                  recordIds: [1, 2, 3].map((i) => assetId + ":" + i),
+                },
+                allowedFields: ["question"],
+                instructions: rule,
+                saveTarget: { kind: "newDraft", name: "三条" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "改前两条并执行", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              deliveryId,
+              patch: {
+                name: "两条自然问法",
+                count: 2,
+                source: {
+                  kind: "assets",
+                  assetIds: [assetId],
+                  recordIds: [1, 2].map((i) => assetId + ":" + i),
+                },
+                instructions: rule,
+                saveTarget: { kind: "newDraft", name: "两条自然问法" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    expect(state.session.requirements_revision).toBe(2);
+    expect(state.session.requirements.mode).toBe("execute");
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      count: 2,
+      instructions: rule,
+      allowedFields: ["question"],
+    });
+  });
+  it("repairs a creation scope conflict without binding a nonexistent delivery", async () => {
+    const id = await fresh();
+    const args = {
+      expectedRevision: 0,
+      changes: {
+        objective: "三条问题",
+        deliveries: [
+          {
+            patch: {
+              name: "三条",
+              operation: "rewrite",
+              count: 3,
+              instructions: "只改写前5条。",
+            },
+          },
+        ],
+      },
+    };
+    const good = structuredClone(args);
+    good.changes.deliveries[0].patch.instructions = "保持原意，问法自然。";
+    const state = await run(id, "规划三条", [
+      call("create_requirements", args),
+      call("create_requirements", good),
+    ]);
+    expect(state.session.requirements_revision).toBe(1);
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements.objective).toBe("三条问题");
+  });
 });

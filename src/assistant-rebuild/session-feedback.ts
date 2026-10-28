@@ -51,7 +51,11 @@ const bindRecordedTargets = (
         : binding;
       if (!target) continue;
       item.deliveryId ??= target.deliveryId;
-      if (target.patch) item.patch = { ...target.patch, ...item.patch };
+      if (target.patch) {
+        const { instructions: _inheritedInstructions, ...inheritedFields } =
+          target.patch;
+        item.patch = { ...inheritedFields, ...item.patch };
+      }
     }
   }
   return args;

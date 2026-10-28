@@ -206,6 +206,75 @@ export function validateDeliveryResults(
 }
 
 /** Scope/field semantics bind rules; labels and save destinations do not change processing. */
+export function instructionRuleContext(delivery: Delivery) {
+  const source = delivery.source;
+  return canonicalJson({
+    operation: delivery.operation ?? null,
+    allowedFields: [...(delivery.allowedFields ?? [])].sort(),
+    metadataKeys: delivery.allowedFields?.includes("metadata")
+      ? [...(delivery.metadataKeys ?? [])].sort()
+      : null,
+    classifications: delivery.classifications ?? [],
+    source:
+      source?.kind === "assets"
+        ? { kind: source.kind, assetIds: [...source.assetIds].sort() }
+        : source
+          ? { kind: source.kind, id: source.id }
+          : null,
+  });
+}
+// Only explicit record-scope expressions are checked; arbitrary prose is not parsed.
+export function instructionScopeConflict(
+  delivery: Delivery,
+): string | undefined {
+  if (delivery.count === undefined || !delivery.instructions) return;
+  if (["augment", "generate"].includes(delivery.operation ?? "")) return;
+  const text = delivery.instructions;
+  // Ambiguous subgroups, examples and negations are not evidence of a whole-task scope conflict.
+
+  const number = (text: string): number => {
+    if (/^\d+$/.test(text)) return Number(text);
+    const digits: Record<string, number> = {
+      零: 0,
+      一: 1,
+      二: 2,
+      两: 2,
+      三: 3,
+      四: 4,
+      五: 5,
+      六: 6,
+      七: 7,
+      八: 8,
+      九: 9,
+    };
+    const units: Record<string, number> = { 十: 10, 百: 100, 千: 1000 };
+    let total = 0,
+      current = 0;
+    for (const ch of text) {
+      if (ch in digits) current = digits[ch];
+      else if (ch in units) {
+        total += (current || 1) * units[ch];
+        current = 0;
+      } else return NaN;
+    }
+    return total + current;
+  };
+  for (const clause of text.split(/[，。；;\n]/)) {
+    if (/(?:每|分批|不要|不能|并非|例如|比如|示例)/.test(clause)) continue;
+    const expressions = clause.matchAll(
+      /^\s*(?:只|仅)?(?:处理|清洗|改写|整理)\s*(?:前\s*|共\s*|总共\s*|全部\s*)?([0-9零一二两三四五六七八九十百千]+)\s*[条行]/g,
+    );
+    for (const match of expressions)
+      if (number(match[1]) !== delivery.count)
+        return (
+          "加工说明中的「" +
+          match[0] +
+          "」与当前结构化数量 " +
+          delivery.count +
+          " 条冲突；只修正该范围表述，保留其他加工规则。"
+        );
+  }
+}
 export function instructionContext(delivery: Delivery) {
   return sha256(
     canonicalJson({
@@ -286,12 +355,14 @@ export class InstructionRefreshError extends RequirementRepairError {
     paths: string[][],
     contexts: { deliveryId: string; before: string; after: string }[],
     targetBindings: RequirementTargetBinding[] = [],
+    conflict?: string,
   ) {
     super(
       paths,
       contexts,
       "processing_instructions_refresh_required",
-      "处理范围或规则已变化，请按当前要求重新整理加工规则，勿在规则中重复记录范围、总数量或保存目标；原方案未被覆盖。保持本次已明确的范围、数量与目标，只补齐受影响的instructions。",
+      conflict ??
+        "加工方式、字段或来源身份已变化，请重新核对并显式提供适用的加工规则；仍适用时可以保留原文，无需更换同义词。保持本次数量、范围、目标和交付身份不变。",
       targetBindings,
     );
   }

@@ -19,6 +19,8 @@ import {
   type RequirementCommand,
   type RequirementChange,
   instructionContext,
+  instructionRuleContext,
+  instructionScopeConflict,
   deliveryExecution,
   InstructionRefreshError,
   emptyRequirements,
@@ -549,6 +551,7 @@ export class SessionStore {
     }
     const next = structuredClone(before.requirements ?? emptyRequirements());
     const refreshPaths: string[][] = [];
+    const conflicts: string[] = [];
     const refreshContexts: {
       deliveryId: string;
       before: string;
@@ -603,19 +606,22 @@ export class SessionStore {
       const prior = before.requirements.deliveries.find(
         (d) => d.id === value.id,
       );
-      const changedContext =
-        prior && instructionContext(prior) !== instructionContext(value);
       const rulesProvided = Object.hasOwn(item.patch, "instructions");
-      const requiresRefresh =
+      const semanticChange =
+        prior &&
+        instructionRuleContext(prior) !== instructionRuleContext(value);
+      const conflict =
+        value.status === "cancelled"
+          ? undefined
+          : instructionScopeConflict(value);
+      const requiresReview =
         value.status !== "cancelled" &&
         prior?.instructions?.trim() &&
-        (changedContext || (rulesProvided && !prior?.instructionsContext));
-      if (
-        requiresRefresh &&
-        (!rulesProvided ||
-          !value.instructions?.trim() ||
-          value.instructions.trim() === prior?.instructions?.trim())
-      ) {
+        ((semanticChange && !rulesProvided) ||
+          (rulesProvided &&
+            !value.instructions?.trim() &&
+            instructionContext(prior) !== instructionContext(value)));
+      if (conflict || requiresReview) {
         refreshPaths.push([
           "changes",
           "deliveries",
@@ -625,10 +631,11 @@ export class SessionStore {
         ]);
         refreshContexts.push({
           deliveryId: value.id,
-          before: deliveryExecution(prior!).summary,
+          before: prior ? deliveryExecution(prior).summary : "新交付",
           after: deliveryExecution(value).summary,
         });
-      } else if (rulesProvided || !prior) {
+        if (conflict) conflicts.push(conflict);
+      } else {
         value.instructionsContext = instructionContext(value);
       }
       validateDelivery(value);
@@ -656,6 +663,7 @@ export class SessionStore {
         refreshPaths,
         refreshContexts,
         targetBindings,
+        conflicts.length ? conflicts.join("；") : undefined,
       );
     if (
       command === "update" &&
