@@ -30,7 +30,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | completed | targeted-pass | [验证记录](r05-verification.md)、[Owner收口](r05-owner-acceptance-20261028.md)；CSV页面补验获豁免 |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | not-started | not-run | — |
-| [REBUILD-08 历史兼容、任务恢复与数据生命周期](issues/08-history-compatibility-and-data-lifecycle.md) | 2 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04 | not-started | not-run | — |
+| [REBUILD-08 历史兼容、任务恢复与数据生命周期](issues/08-history-compatibility-and-data-lifecycle.md) | 2 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04 | completed | targeted-pass | `47bf8d0` / [验证记录](r08-verification.md) |
 | [REBUILD-09 账号成员、模型设置与回收站操作](issues/09-accounts-settings-and-recycle-bin.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-06、REBUILD-08 | not-started | not-run | — |
 | [REBUILD-10 全范围验收、旧运行时退出与受控切换](issues/10-integrated-acceptance-and-runtime-cutover.md) | 3 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06、REBUILD-07、REBUILD-08、REBUILD-09 | not-started | not-run | — |
 
@@ -83,7 +83,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 - 方案模式可保存不完整或多交付安排；切换执行前按唯一当前执行合同原子校验操作、固定输入、数量、字段、目标和加工规则依赖。投影、工具提交和页面使用同一就绪结果。明确取消最后交付转为非执行状态，保留取消身份并失效旧确认。
 - 语义修复携带服务端已解析目标及有效领域字段快照，按显式交付ID匹配；补回该ID或同值继承字段不构成改变意图，其他ID及实际改变的受保护字段仍拒绝。每次业务校验重新固定当前可纠正字段，已修好的字段不能因旧路径残留被再次修改。同轮提交成功后的部分纠正重放只能核对原已提交事实并返回原回执，不产生第二次要求写入。
 - 会话自动标题是当前交付的只读投影，页头、会话列表及标题搜索同源；非空手动命名始终优先。自动标题不写入手动title，不回写或删改初始目标叙述，不增加模型调用。
-- 工具合同改变固定运行时版本。当前新会话为`deepagents-v3`；既有`deepagents-v1`/`deepagents-v2`会话/检查点保留只读及原成果入口，不用新工具重解释或唤醒旧检查点，不变更旧预算。完整历史管理/承接仍归REBUILD-08。
+- 工具合同改变固定运行时版本。当前新会话为`deepagents-v3`；既有`deepagents-v1`/`deepagents-v2`会话/检查点保留只读及原成果入口，不用新工具重解释或唤醒旧检查点，不变更旧预算。历史管理/明确新授权承接及清理已由REBUILD-08接通，见[验证记录](r08-verification.md)。
 
 ### 3.2 有效进展与无进展暂停
 
@@ -215,3 +215,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-28：05原生CSV上传映射补验因Computer Use文件选择/原生窗口网址识别阻断未完成，0模型请求、无上传；18表981条原行保持。05状态和原预算不变，证据见[补验记录](r05-upload-gap-20261028/verification.md)，不追加通过结论。
 
 - 2026-10-28：Owner明确豁免05上传映射页面补验并通过，05更新completed/targeted-pass；其余AC已有证据核对见[收口记录](r05-owner-acceptance-20261028.md)。原未完成事实保留，06仍等待08；无新请求、测试、代码、部署或预算变动。
+
+- 2026-10-28：REBUILD-08 完成并通过定向验证，实现 `47bf8d0`；旧历史、独立新授权承接及生命周期清理证据见[验证记录](r08-verification.md)。不改变旧预算、数据、既有验收结论或环境；06/07/09 的领域能力仍按各票依赖推进。
