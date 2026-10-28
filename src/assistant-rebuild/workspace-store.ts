@@ -32,6 +32,7 @@ export class WorkspaceStore {
     lock = false,
   ) {
     const session = await this.sessions.get(scope, id, client, lock);
+    if (session.invalidated_at) throw new SessionError("context_deleted");
     if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
       throw new SessionError("runtime_contract_changed");
     return session;
@@ -55,12 +56,31 @@ export class WorkspaceStore {
       client.release();
     }
   }
+  private async manage<T>(
+    scope: SessionScope,
+    id: string,
+    action: (client: PoolClient) => Promise<T>,
+  ) {
+    const client = await this.sessions.db.connect();
+    try {
+      await client.query("BEGIN");
+      await this.sessions.get(scope, id, client, true);
+      const result = await action(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
   async list(scope: SessionScope, input: unknown) {
     const q = workspaceQuery.safeParse(input);
     if (!q.success) throw new SessionError("query_invalid", 422);
     await this.sessions.access(scope);
     const rows = await this.sessions.db.query(
-      `SELECT id,revision,status,${sessionTitleSql} AS title,updated_at FROM assistant_runtime_session WHERE project_id=$1 AND actor_id=$2 AND (${sessionTitleSql} ILIKE $3 OR requirements->>'objective' ILIKE $3) ORDER BY updated_at DESC,id LIMIT 21 OFFSET $4`,
+      `SELECT id,revision,status,${sessionTitleSql} AS title,updated_at FROM assistant_runtime_session WHERE project_id=$1 AND actor_id=$2 AND deleted_at IS NULL AND (${sessionTitleSql} ILIKE $3 OR requirements->>'objective' ILIKE $3) ORDER BY updated_at DESC,id LIMIT 21 OFFSET $4`,
       [
         scope.projectId,
         scope.actorId,
@@ -82,7 +102,7 @@ export class WorkspaceStore {
       .strict()
       .safeParse(input);
     if (!v.success) throw new SessionError("rename_invalid", 422);
-    return this.write(scope, id, async (client) => {
+    return this.manage(scope, id, async (client) => {
       const result = await client.query(
         "UPDATE assistant_runtime_session SET title=$4,revision=revision+1,updated_at=now() WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND revision=$5 RETURNING revision,title",
         [
@@ -150,7 +170,7 @@ export class WorkspaceStore {
     attachmentId: string,
     offset = 0,
   ) {
-    await this.sessions.get(scope, id);
+    const before = await this.sessions.get(scope, id);
     const row = (
       await this.sessions.db.query(
         "SELECT id,name,extracted FROM assistant_runtime_attachment WHERE id=$1 AND session_id=$2 AND removed_at IS NULL",
@@ -160,6 +180,9 @@ export class WorkspaceStore {
     if (!row) throw new SessionError("attachment_not_found", 404);
     if (!Number.isInteger(offset) || offset < 0 || offset > 100000)
       throw new SessionError("query_invalid", 422);
+    const after = await this.sessions.get(scope, id);
+    if (after.revision !== before.revision)
+      throw new SessionError("snapshot_revision_conflict");
     const fragments = row.extracted.fragments;
     return {
       ...row,
@@ -174,10 +197,22 @@ export class WorkspaceStore {
     };
   }
   async detach(scope: SessionScope, id: string, attachmentId: string) {
-    return this.write(scope, id, async (client) => {
+    return this.manage(scope, id, async (client) => {
+      const prior = (
+        await client.query(
+          "SELECT removed_at FROM assistant_runtime_attachment WHERE session_id=$1 AND id=$2 FOR UPDATE",
+          [id, attachmentId],
+        )
+      ).rows[0];
+      if (!prior) throw new SessionError("attachment_not_found", 404);
+      if (prior.removed_at) return { removed: true };
       await client.query(
         "UPDATE assistant_runtime_attachment SET removed_at=now() WHERE session_id=$1 AND id=$2 AND removed_at IS NULL",
         [id, attachmentId],
+      );
+      await client.query(
+        "SELECT purge_runtime_content($1,'background_deleted')",
+        [id],
       );
       return { removed: true };
     });
@@ -212,7 +247,7 @@ export class WorkspaceStore {
       }));
     const textRows = (
       await this.sessions.db.query(
-        "SELECT detail->>'requestId' AS id,turn_id AS \"turnId\",string_agg(detail->>'text','' ORDER BY id) AS text FROM assistant_runtime_event WHERE session_id=$1 AND kind='message_delta' GROUP BY detail->>'requestId',turn_id ORDER BY min(id) DESC LIMIT 50",
+        "SELECT detail->>'requestId' AS id,turn_id AS \"turnId\",string_agg(detail->>'text','' ORDER BY id) AS text FROM assistant_runtime_event WHERE session_id=$1 AND kind='message_delta' AND detail ? 'text' GROUP BY detail->>'requestId',turn_id ORDER BY min(id) DESC LIMIT 50",
         [id],
       )
     ).rows;

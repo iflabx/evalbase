@@ -13,6 +13,9 @@ export type Envelope = {
 };
 export type Attachment = { id: string; name: string };
 export type Snapshot = {
+  contentInvalidated?: boolean;
+  invalidationReason?: string | null;
+  history?: { runtime: string; budget: unknown; invalidated: boolean };
   currentRuntime?: string;
   canWrite?: boolean;
   canResumeCompleted?: boolean;
@@ -77,7 +80,7 @@ export type NativeAction = {
   name?: string;
   href?: string;
 };
-export type SessionItem = { id: string; title: string; status: string };
+export type SessionItem = { id: string; title: string; status: string; runtime_version?: string };
 export const base = (project: string) =>
   "/api/projects/" + encodeURIComponent(project) + "/assistant-runtime/sessions";
 export const endpoint = (project: string, session: string) =>
@@ -139,6 +142,7 @@ export function errorText(error: unknown) {
     (
       {
         source_revision_conflict: "来源数据或字段映射已变化。输入已保留，请返回来源重新选择。",
+        snapshot_revision_conflict: "会话已在其他页面更新。输入已保留，请重试读取。",
         conversation_revision_conflict: "会话已在其他页面更新。输入已保留，请核对后重新提交。",
         submission_conflict: "这次提交与已接收内容不一致。输入已保留，请核对。",
         conversation_busy: "任务仍在进行，请先停止或等待完成。",
@@ -183,6 +187,8 @@ export function mergeMessages(
   );
 }
 export function mergeSnapshot(old: Snapshot | null, incoming: Snapshot): Snapshot {
+  if (incoming.contentInvalidated) return incoming;
+  if (old?.session.id === incoming.session.id && old.contentInvalidated) return old;
   return old?.session.id === incoming.session.id
     ? { ...incoming, messages: mergeMessages(old.messages, incoming.messages) }
     : incoming;

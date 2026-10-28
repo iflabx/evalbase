@@ -103,7 +103,8 @@ export class FormalSessionHost {
       fence(args[0], () => writes(...args));
   }
   async present(scope: SessionScope, id: string) {
-    return {
+    const before = await this.store.get(scope, id);
+    const snapshot = {
       ...(await this.store.present(scope, id)),
       ...(await this.execution.projection(scope, id)),
       workspace: await new WorkspaceStore(
@@ -111,6 +112,13 @@ export class FormalSessionHost {
         this.options.artifacts ?? new ArtifactRepository(this.config.minio),
       ).view(scope, id),
     };
+    const after = await this.store.get(scope, id);
+    if (
+      before.revision !== after.revision ||
+      before.requirements_revision !== after.requirements_revision
+    )
+      throw new SessionError("snapshot_revision_conflict");
+    return snapshot;
   }
   async stop(scope: SessionScope, id: string) {
     await this.execution.stopped(scope, id);

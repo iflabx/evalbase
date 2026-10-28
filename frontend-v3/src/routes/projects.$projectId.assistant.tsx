@@ -37,7 +37,10 @@ function AssistantPage() {
     access = useProjectAccess(projectId);
   const actor = useQueryClient().getQueryData<{ actor: { role: string } }>(["session"])?.actor;
   const sessionId = useRouterState({
-    select: (state) => state.location.pathname.match(/\/assistant\/([^/]+)\/?$/)?.[1],
+    select: (state) =>
+      state.location.pathname.match(/\/assistant\/([^/]+)\/?$/)?.[1]
+        ? decodeURIComponent(state.location.pathname.match(/\/assistant\/([^/]+)\/?$/)![1]!)
+        : undefined,
   });
   return (
     <FormalAssistant

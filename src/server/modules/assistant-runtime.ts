@@ -1,3 +1,8 @@
+import { cleanupProcessingObjects } from "../../processing/cleanup.js";
+import {
+  HistoryStore,
+  isLegacyHistory,
+} from "../../assistant-rebuild/history-store.js";
 import { SessionDispatcher } from "../../assistant-rebuild/session-dispatcher.js";
 import { FORMAL_RUNTIME_VERSION } from "../../assistant-rebuild/session-contract.js";
 import { fixedMaterialInput } from "../../assistant-rebuild/input-scope.js";
@@ -40,6 +45,13 @@ export function registerAssistantRuntime({
     await host.close();
   });
   const workspace = new WorkspaceStore(host.store, artifacts);
+  const history = new HistoryStore(host.store, host.execution);
+  const present = (scope: SessionScope, id: string) =>
+    isLegacyHistory(id) ? history.present(scope, id) : host.present(scope, id);
+  const validateHistory = async (scope: SessionScope, id: string) => {
+    if (isLegacyHistory(id)) await history.present(scope, id);
+    else await host.store.get(scope, id);
+  };
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/assistant-runtime/input-scope",
     { preHandler: authenticate },
@@ -55,19 +67,26 @@ export function registerAssistantRuntime({
     reply: any,
     write: boolean,
     run: (scope: SessionScope) => Promise<unknown>,
+    management = false,
   ) => {
+    reply.header("Cache-Control", "no-store");
     const req = request as AuthenticatedRequest & { params: Params };
     if (write && !writeAllowed(req, req.actor))
       return reply.code(403).send({ error: { code: "csrf_rejected" } });
     try {
       const scope = { projectId: req.params.projectId, actorId: req.actor.id };
-      if (write && req.params.sessionId) {
+      if (write && req.params.sessionId && !management) {
+        if (isLegacyHistory(req.params.sessionId))
+          throw new SessionError("runtime_contract_changed");
         const session = await host.store.get(scope, req.params.sessionId);
+        if (session.invalidated_at) throw new SessionError("context_deleted");
         if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
           throw new SessionError("runtime_contract_changed");
       }
       return await run(scope);
     } catch (error) {
+      if (error instanceof z.ZodError)
+        return reply.code(422).send({ error: { code: "request_invalid" } });
       if (
         error instanceof BusinessError ||
         error instanceof SessionError ||
@@ -88,7 +107,7 @@ export function registerAssistantRuntime({
     { preHandler: authenticate },
     (req, reply) =>
       invoke(req, reply, false, async (scope) => ({
-        ...(await workspace.list(scope, req.query)),
+        ...(await history.list(scope, req.query)),
       })),
   );
   app.get<{ Params: Params }>(
@@ -96,7 +115,7 @@ export function registerAssistantRuntime({
     { preHandler: authenticate },
     (req, reply) =>
       invoke(req, reply, false, (scope) =>
-        host.present(scope, req.params.sessionId),
+        present(scope, req.params.sessionId),
       ),
   );
   app.post<{ Params: Params }>(
@@ -160,15 +179,56 @@ export function registerAssistantRuntime({
           req.params.sessionId,
           confirmationId,
         );
-        return host.present(scope, req.params.sessionId);
+        return present(scope, req.params.sessionId);
       }),
   );
   app.patch<{ Params: Params }>(
     base + "/:sessionId",
     { preHandler: authenticate },
     (req, reply) =>
-      invoke(req, reply, true, (scope) =>
-        workspace.rename(scope, req.params.sessionId, req.body),
+      invoke(
+        req,
+        reply,
+        true,
+        (scope) =>
+          isLegacyHistory(req.params.sessionId)
+            ? history.rename(scope, req.params.sessionId, req.body)
+            : workspace.rename(scope, req.params.sessionId, req.body),
+        true,
+      ),
+  );
+  app.delete<{ Params: Params }>(
+    base + "/:sessionId",
+    { preHandler: authenticate },
+    (req, reply) =>
+      invoke(
+        req,
+        reply,
+        true,
+        async (scope) => {
+          const result = await history.remove(
+            scope,
+            req.params.sessionId,
+            req.body,
+          );
+          await cleanupProcessingObjects(db, artifacts, scope.projectId).catch(
+            () => undefined,
+          );
+          return result;
+        },
+        true,
+      ),
+  );
+  app.post<{ Params: Params }>(
+    base + "/:sessionId/handoff",
+    { preHandler: authenticate },
+    (req, reply) =>
+      invoke(
+        req,
+        reply,
+        true,
+        (scope) => history.handoff(scope, req.params.sessionId, req.body),
+        true,
       ),
   );
   app.post<{ Params: Params }>(
@@ -207,7 +267,7 @@ export function registerAssistantRuntime({
     { preHandler: authenticate },
     (req, reply) =>
       invoke(req, reply, false, (scope) =>
-        workspace.document(
+        (isLegacyHistory(req.params.sessionId) ? history : workspace).document(
           scope,
           req.params.sessionId,
           req.params.attachmentId,
@@ -219,8 +279,22 @@ export function registerAssistantRuntime({
     base + "/:sessionId/attachments/:attachmentId",
     { preHandler: authenticate },
     (req, reply) =>
-      invoke(req, reply, true, (scope) =>
-        workspace.detach(scope, req.params.sessionId, req.params.attachmentId),
+      invoke(
+        req,
+        reply,
+        true,
+        (scope) =>
+          workspace
+            .detach(scope, req.params.sessionId, req.params.attachmentId)
+            .then(async (result) => {
+              await cleanupProcessingObjects(
+                db,
+                artifacts,
+                scope.projectId,
+              ).catch(() => undefined);
+              return result;
+            }),
+        true,
       ),
   );
   app.get<{ Params: Params }>(
@@ -232,7 +306,7 @@ export function registerAssistantRuntime({
         actorId: (req as unknown as AuthenticatedRequest).actor.id,
       };
       try {
-        await host.store.get(scope, req.params.sessionId);
+        await validateHistory(scope, req.params.sessionId);
       } catch (error) {
         if (error instanceof BusinessError)
           return reply.code(error.status).send({ error: { code: error.code } });
@@ -241,7 +315,7 @@ export function registerAssistantRuntime({
       reply.hijack();
       reply.raw.writeHead(200, {
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
+        "Cache-Control": "no-store, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
@@ -269,7 +343,7 @@ export function registerAssistantRuntime({
           );
           if (!valid.rowCount)
             throw new SessionError("authentication_required", 401);
-          const snapshot = await host.present(scope, req.params.sessionId);
+          const snapshot = await present(scope, req.params.sessionId);
           const data = JSON.stringify(snapshot);
           if (data !== last) {
             last = data;
@@ -283,7 +357,13 @@ export function registerAssistantRuntime({
                 "\n\n",
             );
           }
-        } catch {
+        } catch (error) {
+          // A concurrent revision is retried by the next poll, never presented as lost authorization.
+          if (
+            error instanceof SessionError &&
+            error.code === "snapshot_revision_conflict"
+          )
+            return;
           reply.raw.write("event: access_lost\ndata: {}\n\n");
           close();
         } finally {
@@ -298,20 +378,44 @@ export function registerAssistantRuntime({
     { preHandler: authenticate },
     (req, reply) =>
       invoke(req, reply, false, async (scope) => {
-        await host.store.get(scope, req.params.sessionId);
-        if (
-          !(
-            await db.query(
-              "SELECT id FROM assistant_runtime_operation WHERE session_id=$1 AND run_id=$2",
-              [req.params.sessionId, req.params.runId],
-            )
-          ).rowCount
-        )
-          throw new SessionError("processing_run_not_found", 404);
+        if (isLegacyHistory(req.params.sessionId))
+          await history.resultAllowed(
+            scope,
+            req.params.sessionId,
+            req.params.runId,
+          );
+        else {
+          const session = await host.store.get(scope, req.params.sessionId);
+          if (session.invalidated_at) throw new SessionError("context_deleted");
+          if (
+            !(
+              await db.query(
+                "SELECT id FROM assistant_runtime_operation WHERE session_id=$1 AND run_id=$2",
+                [req.params.sessionId, req.params.runId],
+              )
+            ).rowCount
+          )
+            throw new SessionError("processing_run_not_found", 404);
+        }
         const { readProcessingRun } = await import("../../processing/store.js");
-        return readProcessingRun(db, artifacts, scope, req.params.runId, {
-          limit: "100",
-        });
+        const result = await readProcessingRun(
+          db,
+          artifacts,
+          scope,
+          req.params.runId,
+          { limit: "100" },
+        );
+        if (isLegacyHistory(req.params.sessionId))
+          await history.resultAllowed(
+            scope,
+            req.params.sessionId,
+            req.params.runId,
+          );
+        else if (
+          (await host.store.get(scope, req.params.sessionId)).invalidated_at
+        )
+          throw new SessionError("context_deleted");
+        return result;
       }),
   );
   app.get<{ Params: Params }>(
@@ -319,18 +423,24 @@ export function registerAssistantRuntime({
     { preHandler: authenticate },
     (req, reply) =>
       invoke(req, reply, false, async (scope) => {
-        await host.store.get(scope, req.params.sessionId);
+        await validateHistory(scope, req.params.sessionId);
         const q = z
           .object({ before: z.string().regex(/^[0-9]+$/) })
           .strict()
           .safeParse(req.query);
         if (!q.success) throw new SessionError("query_invalid", 422);
+        if (isLegacyHistory(req.params.sessionId))
+          return history.messages(scope, req.params.sessionId, q.data.before);
+        const before = await host.store.get(scope, req.params.sessionId);
         const rows = (
           await db.query(
             "SELECT id,turn_id,role,content,created_at FROM assistant_runtime_message WHERE session_id=$1 AND id<$2 ORDER BY id DESC LIMIT 101",
             [req.params.sessionId, q.data.before],
           )
         ).rows;
+        const after = await host.store.get(scope, req.params.sessionId);
+        if (after.revision !== before.revision)
+          throw new SessionError("snapshot_revision_conflict");
         return {
           messages: rows.slice(0, 100).reverse(),
           hasEarlier: rows.length > 100,

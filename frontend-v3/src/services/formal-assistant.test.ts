@@ -86,3 +86,15 @@ describe("BATCH1 long history", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("R08 erased content boundaries", () => {
+  it("erasure removes loaded history and rejects a late pre-erasure snapshot", () => {
+    const old = {
+      session: { id: "s" },
+      messages: [{ id: "1", turn_id: "t", role: "assistant", content: "SECRET" }],
+    } as Snapshot;
+    const erased = { ...old, contentInvalidated: true, messages: [] };
+    expect(mergeSnapshot(old, erased).messages).toEqual([]);
+    expect(mergeSnapshot(erased, old).messages).toEqual([]);
+  });
+});

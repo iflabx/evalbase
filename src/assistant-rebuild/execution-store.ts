@@ -64,7 +64,9 @@ export class ExecutionStore {
           [sessionId, scope.projectId, scope.actorId],
         )
       ).rows[0];
-      if (!s) throw new SessionError("conversation_not_found", 404);
+      if (!s || s.deleted_at)
+        throw new SessionError("conversation_not_found", 404);
+      if (s.invalidated_at) throw new SessionError("context_deleted");
       if (s.runtime_version !== FORMAL_RUNTIME_VERSION)
         throw new SessionError("runtime_version_not_supported");
       const value = await work(c, s);
@@ -105,7 +107,7 @@ export class ExecutionStore {
         project_id: string;
         actor_id: string;
       }>(
-        "SELECT t.id,t.session_id,s.project_id,s.actor_id FROM assistant_runtime_turn t JOIN assistant_runtime_session s ON s.id=t.session_id LEFT JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE s.runtime_version=$1 AND (t.status='pending' OR t.status='running' AND e.lease_until<=now()) ORDER BY t.created_at LIMIT 10",
+        "SELECT t.id,t.session_id,s.project_id,s.actor_id FROM assistant_runtime_turn t JOIN assistant_runtime_session s ON s.id=t.session_id LEFT JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE s.runtime_version=$1 AND s.deleted_at IS NULL AND s.invalidated_at IS NULL AND (t.status='pending' OR t.status='running' AND e.lease_until<=now()) ORDER BY t.created_at LIMIT 10",
         [FORMAL_RUNTIME_VERSION],
       )
     ).rows;
@@ -1201,7 +1203,7 @@ export class ExecutionStore {
   async recoverConfirmations() {
     const rows = (
       await this.db.query(
-        "SELECT c.id,c.session_id,s.project_id,s.actor_id FROM assistant_runtime_confirmation c JOIN assistant_runtime_execution e ON e.session_id=c.session_id JOIN assistant_runtime_session s ON s.id=c.session_id WHERE s.runtime_version=$1 AND c.status='executing' AND (e.lease_until IS NULL OR e.lease_until<=now()) LIMIT 50",
+        "SELECT c.id,c.session_id,s.project_id,s.actor_id FROM assistant_runtime_confirmation c JOIN assistant_runtime_execution e ON e.session_id=c.session_id JOIN assistant_runtime_session s ON s.id=c.session_id WHERE s.runtime_version=$1 AND s.deleted_at IS NULL AND s.invalidated_at IS NULL AND c.status='executing' AND (e.lease_until IS NULL OR e.lease_until<=now()) LIMIT 50",
         [FORMAL_RUNTIME_VERSION],
       )
     ).rows;
@@ -1270,7 +1272,7 @@ export class ExecutionStore {
     // Reconcile durable business terminal states. No model polling and no event-sequence progress heuristic.
     const waiting = (
       await this.db.query(
-        "SELECT e.session_id,e.turn_id,s.project_id,s.actor_id FROM assistant_runtime_execution e JOIN assistant_runtime_session s ON s.id=e.session_id WHERE s.runtime_version=$1 AND e.status='waiting' LIMIT 50",
+        "SELECT e.session_id,e.turn_id,s.project_id,s.actor_id FROM assistant_runtime_execution e JOIN assistant_runtime_session s ON s.id=e.session_id WHERE s.runtime_version=$1 AND s.deleted_at IS NULL AND s.invalidated_at IS NULL AND e.status='waiting' LIMIT 50",
         [FORMAL_RUNTIME_VERSION],
       )
     ).rows;

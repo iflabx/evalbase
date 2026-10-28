@@ -162,6 +162,9 @@ export function FormalAssistant({
     [connected, setConnected] = useState(false),
     [busy, setBusy] = useState(false),
     [rename, setRename] = useState(false),
+    [deleteOpen, setDeleteOpen] = useState(false),
+    [handoffOpen, setHandoffOpen] = useState(false),
+    [remainingGoal, setRemainingGoal] = useState(""),
     [title, setTitle] = useState(""),
     [progressOpen, setProgressOpen] = useState(false),
     [hasEarlier, setHasEarlier] = useState(false);
@@ -172,7 +175,8 @@ export function FormalAssistant({
     if (narrow) setListOpen(false);
   }, [narrow]);
   const readOnlyHistory =
-    !!snapshot?.currentRuntime && snapshot.session.runtime_version !== snapshot.currentRuntime;
+    !!snapshot?.contentInvalidated ||
+    (!!snapshot?.currentRuntime && snapshot.session.runtime_version !== snapshot.currentRuntime);
   const [materialAction, setMaterialAction] = useState<NativeAction | null>(null);
   const [nativeSource, setNativeSource] = useState<{
     source: Source;
@@ -225,6 +229,10 @@ export function FormalAssistant({
   const historyGaps = useRef<Array<{ before: string; floor: string }>>([]);
   const historyFlight = useRef<AbortController | null>(null);
   const [historyFailed, setHistoryFailed] = useState(false);
+  const activeContent = (selected: string | undefined, epoch: number) =>
+    activeSession(selected) &&
+    historyEpoch.current === epoch &&
+    !latestSnapshot.current?.contentInvalidated;
   const fillHistory = async (selected: string) => {
     if (historyFlight.current || !activeSession(selected)) return;
     const epoch = historyEpoch.current,
@@ -274,6 +282,25 @@ export function FormalAssistant({
       return;
     }
     if (!activeSession(incoming.session.id)) return;
+    if (latestSnapshot.current?.contentInvalidated && !incoming.contentInvalidated) return;
+    if (incoming.contentInvalidated) {
+      historyEpoch.current++;
+      historyFlight.current?.abort();
+      historyFlight.current = null;
+      historyGaps.current = [];
+      loadedMessages.current = [];
+      setTabs([]);
+      setActive("");
+      setAttachmentIds([]);
+      setDraft("");
+      setPending(null);
+      setNativeSource(null);
+      setHasEarlier(false);
+      sessionStorage.removeItem(draftKey);
+      sessionStorage.removeItem(draftKey + ":materials");
+      rawSetSnapshot(incoming);
+      return;
+    }
     const previous = loadedMessages.current;
     if (!historyInitialized.current) {
       setHasEarlier(incoming.messages.length === 100);
@@ -378,6 +405,14 @@ export function FormalAssistant({
         source.addEventListener("access_lost", () => {
           if (live) {
             setSnapshot(null);
+            setTabs([]);
+            setActive("");
+            setDraft("");
+            setPending(null);
+            setAttachmentIds([]);
+            setNativeSource(null);
+            sessionStorage.removeItem(draftKey);
+            sessionStorage.removeItem(draftKey + ":materials");
             setError("会话访问已失效，请重新登录或核对权限。");
             source?.close();
           }
@@ -471,6 +506,7 @@ export function FormalAssistant({
     }
   };
   const send = async () => {
+    const contentEpoch = historyEpoch.current;
     if (readOnlyHistory) {
       setError("旧会话只读保留，请新建会话继续；原成果与预算不变。");
       return;
@@ -508,7 +544,7 @@ export function FormalAssistant({
         ...json("POST", envelope),
         signal: controller.signal,
       });
-      if (activeSession(selected)) {
+      if (activeContent(selected, contentEpoch)) {
         const text = acceptedDraft(draftRef.current, envelope);
         setPending(null);
         setAttachmentIds([]);
@@ -523,7 +559,7 @@ export function FormalAssistant({
       }
     } catch (e) {
       if (
-        activeSession(selected) &&
+        activeContent(selected, contentEpoch) &&
         !latestSnapshot.current?.turns.some((t) => t.submission_id === envelope.submissionId)
       ) {
         setError(errorText(e));
@@ -532,10 +568,11 @@ export function FormalAssistant({
         );
       }
     } finally {
-      if (activeSession(selected)) endBusy(busyToken);
+      if (activeContent(selected, contentEpoch)) endBusy(busyToken);
     }
   };
   const action = async (action: "stop" | "continue") => {
+    const contentEpoch = historyEpoch.current;
     if (!sessionId) return;
     const selected = sessionId;
     const busyToken = beginBusy();
@@ -544,11 +581,11 @@ export function FormalAssistant({
         endpoint(projectId, selected) + "/control",
         json("POST", { action }),
       );
-      if (activeSession(selected)) setSnapshot(s);
+      if (activeContent(selected, contentEpoch)) setSnapshot(s);
     } catch (e) {
-      if (activeSession(selected)) setError(errorText(e));
+      if (activeContent(selected, contentEpoch)) setError(errorText(e));
     } finally {
-      if (activeSession(selected)) endBusy(busyToken);
+      if (activeContent(selected, contentEpoch)) endBusy(busyToken);
     }
   };
   const showTab = (tab: WorkspaceTab) => {
@@ -558,6 +595,7 @@ export function FormalAssistant({
     if (narrow) setListOpen(false);
   };
   const document = async (id: string, offset = 0) => {
+    const contentEpoch = historyEpoch.current;
     if (!sessionId) return;
     const selected = sessionId;
     try {
@@ -578,7 +616,7 @@ export function FormalAssistant({
           "?offset=" +
           offset,
       );
-      if (activeSession(selected))
+      if (activeContent(selected, contentEpoch))
         showTab({
           id: d.id,
           name: d.name,
@@ -592,16 +630,17 @@ export function FormalAssistant({
           },
         });
     } catch (e) {
-      if (activeSession(selected)) setError(errorText(e));
+      if (activeContent(selected, contentEpoch)) setError(errorText(e));
     }
   };
   const upload = async (files: FileList | null) => {
+    const contentEpoch = historyEpoch.current;
     if (!files || !sessionId || !canWrite || readOnlyHistory) return;
     const selected = sessionId;
     const busyToken = beginBusy();
     try {
       for (const f of files) {
-        if (!activeSession(selected)) break;
+        if (!activeContent(selected, contentEpoch)) break;
         if (f.size > 10 * 1024 * 1024) throw Error("attachment_capacity");
         const contentBase64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -609,11 +648,12 @@ export function FormalAssistant({
           reader.onerror = reject;
           reader.readAsDataURL(f);
         });
+        if (!activeContent(selected, contentEpoch)) break;
         const a = await api<{ id: string; name: string }>(
           endpoint(projectId, selected) + "/attachments",
           json("POST", { fileName: f.name, contentBase64 }),
         );
-        if (activeSession(selected))
+        if (activeContent(selected, contentEpoch))
           setAttachmentIds((old) => {
             const ids = [...old, a.id];
             sessionStorage.setItem(
@@ -624,28 +664,28 @@ export function FormalAssistant({
           });
       }
       const updated = await api<Snapshot>(endpoint(projectId, selected));
-      if (activeSession(selected)) setSnapshot(updated);
+      if (activeContent(selected, contentEpoch)) setSnapshot(updated);
     } catch (e) {
-      if (activeSession(selected)) setError(errorText(e));
+      if (activeContent(selected, contentEpoch)) setError(errorText(e));
     } finally {
-      if (activeSession(selected)) {
+      if (activeContent(selected, contentEpoch)) {
         if (file.current) file.current.value = "";
         endBusy(busyToken);
       }
     }
   };
   const removeAttachment = async (id: string) => {
+    const contentEpoch = historyEpoch.current;
     if (!sessionId) return;
     const selected = sessionId;
+    if (!window.confirm("移除背景文档将清理本会话消息和检查点；已独立保存的成果及累计用量保留。"))
+      return;
     try {
       await api(endpoint(projectId, sessionId) + "/attachments/" + encodeURIComponent(id), {
         method: "DELETE",
       });
-      if (!activeSession(selected)) return;
-      const ids = attachmentIds.filter((a) => a !== id);
-      setAttachmentIds(ids);
-      saveDraft(draftRef.current, pending, ids);
-      setTabs((old) => old.filter((t) => t.id !== id));
+      if (!activeContent(selected, contentEpoch)) return;
+      setSnapshot(await api<Snapshot>(endpoint(projectId, selected)));
     } catch (e) {
       setError(errorText(e));
     }
@@ -672,13 +712,14 @@ export function FormalAssistant({
     );
   }, [snapshot, pending, draftKey]);
   const previewResult = async (runId: string) => {
+    const contentEpoch = historyEpoch.current;
     if (!sessionId) return;
     const selected = sessionId;
     try {
       const data = await api<{ records: NonNullable<WorkspaceTab["rows"]>; total: number }>(
         endpoint(projectId, selected) + "/results/" + encodeURIComponent(runId),
       );
-      if (activeSession(selected))
+      if (activeContent(selected, contentEpoch))
         showTab({
           id: runId,
           kind: "result",
@@ -687,7 +728,7 @@ export function FormalAssistant({
           href: "/projects/" + projectId + "/processing?run=" + runId,
         });
     } catch (e) {
-      if (activeSession(selected)) setError(errorText(e));
+      if (activeContent(selected, contentEpoch)) setError(errorText(e));
     }
   };
   const offerBudget = async () => {
@@ -731,6 +772,50 @@ export function FormalAssistant({
       }
     } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
+    }
+  };
+  const deleteCurrent = async () => {
+    if (!snapshot || !sessionId) return;
+    try {
+      await api(
+        endpoint(projectId, sessionId),
+        json("DELETE", { expectedRevision: snapshot.session.revision }),
+      );
+      sessionStorage.removeItem(draftKey);
+      sessionStorage.removeItem(draftKey + ":materials");
+      setSnapshot(null);
+      setTabs([]);
+      setDeleteOpen(false);
+      refreshList();
+      void navigate({
+        to: "/projects/$projectId/assistant",
+        search: { sourceKind: undefined, sourceId: undefined, selection: undefined },
+        params: { projectId },
+      });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+  const handoffCurrent = async () => {
+    if (!snapshot || !sessionId) return;
+    try {
+      const result = await api<{ sessionId: string }>(
+        endpoint(projectId, sessionId) + "/handoff",
+        json("POST", {
+          expectedRevision: snapshot.session.revision,
+          remainingGoal,
+          authorizeNewBudget: true,
+        }),
+      );
+      setHandoffOpen(false);
+      refreshList();
+      void navigate({
+        to: "/projects/$projectId/assistant/$sessionId",
+        search: { sourceKind: undefined, sourceId: undefined, selection: undefined },
+        params: { projectId, sessionId: result.sessionId },
+      });
+    } catch (e) {
+      setError(errorText(e));
     }
   };
   const renameCurrent = async () => {
@@ -1049,7 +1134,7 @@ export function FormalAssistant({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                disabled={!snapshot || readOnlyHistory}
+                disabled={!snapshot}
                 onSelect={() => {
                   setTitle(snapshot?.session.title ?? "");
                   setRename(true);
@@ -1057,6 +1142,19 @@ export function FormalAssistant({
               >
                 重命名会话
               </DropdownMenuItem>
+              <DropdownMenuItem disabled={!snapshot} onSelect={() => setDeleteOpen(true)}>
+                删除会话
+              </DropdownMenuItem>
+              {readOnlyHistory && !snapshot?.contentInvalidated && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setRemainingGoal("");
+                    setHandoffOpen(true);
+                  }}
+                >
+                  在新会话承接
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
@@ -1073,6 +1171,23 @@ export function FormalAssistant({
           </Button>
         </div>
       </div>
+      {snapshot?.contentInvalidated && (
+        <p className="px-4 text-sm text-muted-foreground" role="status">
+          相关内容已清理，旧任务不能继续；已独立保存的成果和累计用量保留。
+        </p>
+      )}
+      {readOnlyHistory && !snapshot?.contentInvalidated && (
+        <p className="px-4 text-sm text-muted-foreground">
+          历史会话 · {snapshot?.session.runtime_version} ·
+          仅供查看和管理，继续未完成目标请在新会话承接。
+        </p>
+      )}
+      {!!snapshot?.history?.budget && (
+        <details className="px-4 text-sm text-muted-foreground">
+          <summary>历史累计用量</summary>
+          <pre>{JSON.stringify(snapshot.history.budget, null, 2)}</pre>
+        </details>
+      )}
       <div className="formal-body">
         {!narrow && listOpen && <aside className="formal-history">{list}</aside>}
         <ResizablePanelGroup orientation="horizontal">
@@ -1526,6 +1641,7 @@ export function FormalAssistant({
                     </div>
                     <Textarea
                       ref={input}
+                      disabled={readOnlyHistory}
                       aria-label="描述你的需求"
                       placeholder="描述你想处理的数据和要求…"
                       value={draft}
@@ -1614,6 +1730,41 @@ export function FormalAssistant({
           {workspace}
         </SheetContent>
       </Sheet>
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除会话</DialogTitle>
+          </DialogHeader>
+          <p>会话消息、背景文档和检查点将清理。已独立保存的成果及累计用量保留。</p>
+          <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+            取消
+          </Button>
+          <Button variant="destructive" onClick={() => void deleteCurrent()}>
+            确认删除会话
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={handoffOpen} onOpenChange={setHandoffOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>在新会话承接</DialogTitle>
+          </DialogHeader>
+          <p>
+            请先核对已有成果，仅填写尚未完成的目标。新会话使用独立的默认任务额度，旧用量、余额和确认不转移；此操作不会运行模型或重做成果。
+          </p>
+          <Textarea
+            aria-label="尚未完成的目标"
+            value={remainingGoal}
+            onChange={(e) => setRemainingGoal(e.target.value)}
+          />
+          <Button variant="outline" onClick={() => setHandoffOpen(false)}>
+            取消
+          </Button>
+          <Button disabled={!remainingGoal.trim()} onClick={() => void handoffCurrent()}>
+            确认新授权并承接
+          </Button>
+        </DialogContent>
+      </Dialog>
       <Dialog open={rename} onOpenChange={setRename}>
         <DialogContent>
           <DialogHeader>
@@ -1625,10 +1776,7 @@ export function FormalAssistant({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
-          <Button
-            disabled={readOnlyHistory || !title.trim() || busy}
-            onClick={() => void renameCurrent()}
-          >
+          <Button disabled={!title.trim() || busy} onClick={() => void renameCurrent()}>
             保存名称
           </Button>
         </DialogContent>

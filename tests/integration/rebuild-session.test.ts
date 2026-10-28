@@ -1,3 +1,4 @@
+import pg from "pg";
 import { SessionDispatcher } from "../../src/assistant-rebuild/session-dispatcher.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
 import { WorkspaceStore } from "../../src/assistant-rebuild/workspace-store.js";
@@ -344,6 +345,125 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       );
     } finally {
       await root.end();
+    }
+  });
+  it("R08 automatic HTTP dispatch reads background once, then deletion blocks correction and resume at the provider boundary", async () => {
+    const id = await fresh();
+    const doc = (
+      await api("POST", route(id) + "/attachments", {
+        fileName: "自动说明.md",
+        contentBase64: Buffer.from("R08_AUTOMATIC_SECRET").toString("base64"),
+      })
+    ).json();
+    outputs = [
+      call("read_attachment", { attachmentId: doc.id }),
+      { role: "assistant", content: "已按文档读取" },
+    ];
+    const accepted = await submit(id, "读取背景");
+    const worker = await buildApp(config, { disableLegacyTestBootstrap: true });
+    try {
+      await worker.ready();
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+                [accepted.json().turnId],
+              )
+            ).rows[0].status,
+          { timeout: 10000 },
+        )
+        .toBe("succeeded");
+
+      let entered = false,
+        release!: () => void;
+      outputs = [
+        async () => {
+          entered = true;
+          await new Promise<void>((r) => (release = r));
+          return { role: "assistant", content: "迟到的暂停结果" };
+        },
+      ];
+      const next = await submit(id, "再看一下处理进度");
+      await expect.poll(() => entered, { timeout: 10000 }).toBe(true);
+      const grants = (
+        await db.query(
+          "SELECT * FROM assistant_runtime_grant WHERE session_id=$1 ORDER BY id",
+          [id],
+        )
+      ).rows;
+      const ledger = (
+        await db.query(
+          "SELECT request_limit,active_limit_ms,requests FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0];
+      expect(
+        (await api("POST", route(id) + "/control", { action: "stop" }))
+          .statusCode,
+      ).toBe(200);
+      release();
+      outputs = [{ role: "assistant", content: "同一任务继续完成" }];
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+                [next.json().turnId],
+              )
+            ).rows[0].status,
+          { timeout: 10000 },
+        )
+        .toBe("succeeded");
+      expect(
+        (
+          await db.query(
+            "SELECT * FROM assistant_runtime_grant WHERE session_id=$1 ORDER BY id",
+            [id],
+          )
+        ).rows,
+      ).toEqual(grants);
+      const resumed = (
+        await db.query(
+          "SELECT request_limit,active_limit_ms,requests FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0];
+      expect(resumed).toMatchObject({
+        request_limit: ledger.request_limit,
+        active_limit_ms: ledger.active_limit_ms,
+      });
+      expect(resumed.requests).toBeGreaterThan(ledger.requests);
+      const oldCount = requests.length;
+      expect(JSON.stringify(requests)).toContain("R08_AUTOMATIC_SECRET");
+      await db.query(
+        "UPDATE assistant_runtime_execution SET feedback=$2 WHERE session_id=$1",
+        [id, JSON.stringify({ args: { secret: "R08_AUTOMATIC_SECRET" } })],
+      );
+      expect(
+        (await api("DELETE", route(id) + "/attachments/" + doc.id)).statusCode,
+      ).toBe(200);
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await db.query(
+            "SELECT feedback FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].feedback,
+      ).toBeNull();
+      expect(requests.length).toBe(oldCount);
+    } finally {
+      await worker.close();
     }
   });
   it("automatically dispatches current HTTP turns once while preserving legacy and paused work", async () => {
@@ -3381,4 +3501,518 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       spy.mockRestore();
     }
   });
+  it("R08 allows owner management of old formal history without waking it", async () => {
+    const id = await fresh();
+    await db.query(
+      "UPDATE assistant_runtime_session SET runtime_version='deepagents-v2' WHERE id=$1",
+      [id],
+    );
+    const before = requests.length;
+    const renamed = await api("PATCH", route(id), {
+      title: "旧会话保留",
+      expectedRevision: 1,
+    });
+    expect(renamed.statusCode, renamed.body).toBe(200);
+    const view = (await api("GET", route(id))).json();
+    expect(view.session.title).toBe("旧会话保留");
+    expect(
+      (await api("POST", route(id) + "/control", { action: "continue" }))
+        .statusCode,
+    ).toBe(409);
+    const removed = await api("DELETE", route(id), {
+      expectedRevision: view.session.revision,
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
+    expect((await api("GET", route(id))).statusCode).toBe(404);
+    expect(requests.length).toBe(before);
+  });
+  it("R08 erases detached background from history and graph checkpoints but preserves the ledger", async () => {
+    const id = await fresh();
+    const uploaded = await api("POST", route(id) + "/attachments", {
+      fileName: "删除说明.md",
+      contentBase64: Buffer.from("R08_PRIVATE_BACKGROUND").toString("base64"),
+    });
+    expect(uploaded.statusCode, uploaded.body).toBe(200);
+    const documentId = uploaded.json().id;
+    await run(id, "读取这份说明", [
+      call("read_attachment", { attachmentId: documentId }),
+    ]);
+    const before = (
+      await db.query(
+        "SELECT requests,request_limit FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows;
+    const saved = (
+      await api(
+        "POST",
+        "/api/projects/" + projectId + "/collaborative-drafts",
+        {},
+      )
+    ).json().draft.id;
+    const beforeDraft = (
+      await db.query("SELECT * FROM collaborative_draft WHERE id=$1", [saved])
+    ).rows;
+    const removed = await api(
+      "DELETE",
+      route(id) + "/attachments/" + documentId,
+    );
+    expect(removed.statusCode, removed.body).toBe(200);
+    const view = (await api("GET", route(id))).json();
+    expect(view.messages).toEqual([]);
+    expect(view.workspace.streams).toEqual([]);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_session_checkpoints.checkpoints WHERE thread_id IN(SELECT id FROM assistant_runtime_turn WHERE session_id=$1)",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await db.query(
+          "SELECT requests,request_limit FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows,
+    ).toEqual(before);
+    expect(
+      (await db.query("SELECT * FROM collaborative_draft WHERE id=$1", [saved]))
+        .rows,
+    ).toEqual(beforeDraft);
+  });
+  it("R08 lists old AI SDK conversations without executing or copying their budgets", async () => {
+    const rawId = "r08_legacy_" + randomUUID();
+    const budget = { version: "1", totals: { requests: 7 } };
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,title,task) VALUES($1,$2,$3,'旧助手',$4)",
+      [
+        rawId,
+        projectId,
+        scope().actorId,
+        JSON.stringify({ goal: "旧的目标", budgetLedger: budget }),
+      ],
+    );
+    const before = requests.length,
+      id = "legacy:" + rawId;
+    const listed = (await api("GET", route())).json().sessions;
+    expect(listed.some((s: any) => s.id === id)).toBe(true);
+    const view = await api("GET", route(id));
+    expect(view.statusCode, view.body).toBe(200);
+    expect(view.json().session.runtime_version).toBe("legacy-ai-sdk");
+    const carry = await api("POST", route(id) + "/handoff", {
+      expectedRevision: 1,
+      remainingGoal: "仅继续未完成的部分",
+      authorizeNewBudget: true,
+    });
+    expect(carry.statusCode, carry.body).toBe(200);
+    const repeat = await api("POST", route(id) + "/handoff", {
+      expectedRevision: 1,
+      remainingGoal: "仅继续未完成的部分",
+      authorizeNewBudget: true,
+    });
+    expect(repeat.json().sessionId).toBe(carry.json().sessionId);
+    expect(
+      (
+        await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+          rawId,
+        ])
+      ).rows[0].task.budgetLedger,
+    ).toEqual(budget);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_turn WHERE session_id=$1",
+          [carry.json().sessionId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(requests.length).toBe(before);
+  });
+
+  it("R08 prevents a late model response after revocation from rehydrating checkpoint content", async () => {
+    const id = await fresh("editor"),
+      accepted = await submit(id, "读取项目", {}, "editor");
+    let entered!: () => void, release!: () => void;
+    const gate = new Promise<void>((r) => {
+        release = r;
+      }),
+      started = new Promise<void>((r) => {
+        entered = r;
+      });
+    outputs = [
+      async () => {
+        entered();
+        await gate;
+        return { role: "assistant", content: "R08_LATE_PRIVATE_TEXT" };
+      },
+    ];
+    const running = host.runPending(
+      scope("editor"),
+      id,
+      accepted.json().turnId,
+    );
+    await started;
+    const sent = requests.length;
+    try {
+      await db.query(
+        "DELETE FROM project_member WHERE project_id=$1 AND user_id=$2",
+        [projectId, scope("editor").actorId],
+      );
+      release();
+      await running.catch(() => undefined);
+      expect(
+        (await api("GET", route(id), undefined, "editor")).statusCode,
+      ).toBe(404);
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'editor') ON CONFLICT(project_id,user_id) DO UPDATE SET role='editor'",
+        [projectId, scope("editor").actorId],
+      );
+      const current = (await api("GET", route(id), undefined, "editor")).json();
+      expect(current.contentInvalidated).toBe(true);
+      expect(JSON.stringify(current)).not.toContain("R08_LATE_PRIVATE_TEXT");
+      expect(current.messages).toEqual([]);
+      expect(
+        (
+          await api(
+            "POST",
+            route(id) + "/control",
+            { action: "continue" },
+            "editor",
+          )
+        ).statusCode,
+      ).toBe(409);
+      expect(requests.length).toBe(sent);
+    } finally {
+      release();
+      await running.catch(() => undefined);
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'editor') ON CONFLICT(project_id,user_id) DO UPDATE SET role='editor'",
+        [projectId, scope("editor").actorId],
+      );
+    }
+  });
+
+  it("R08 retains old checkpoint budgets when a legacy conversation is explicitly deleted", async () => {
+    const id = "r08_old_" + randomUUID(),
+      ledger = { version: "1", totals: { requests: 9 } };
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,task) VALUES($1,$2,$3,$4)",
+      [
+        id,
+        projectId,
+        scope().actorId,
+        JSON.stringify({ budgetLedger: ledger }),
+      ],
+    );
+    await db.query(
+      "INSERT INTO assistant_task_checkpoint(session_id,id,task,revision,dependencies,requires_write) VALUES($1,$2,$3,1,'[]',false)",
+      [
+        id,
+        "old_task",
+        JSON.stringify({ budgetLedger: ledger, goal: "R08_OLD_SECRET" }),
+      ],
+    );
+    const removed = await api("DELETE", route("legacy:" + id), {
+      expectedRevision: 1,
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
+    const state = (
+      await db.query(
+        "SELECT task FROM assistant_task_checkpoint WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0].task;
+    expect(state.budgetLedger).toEqual(ledger);
+    expect(JSON.stringify(state)).not.toContain("R08_OLD_SECRET");
+    expect((await api("GET", route("legacy:" + id))).statusCode).toBe(404);
+  });
+
+  it("R08 source invalidation erases material raw copies and denies new model work", async () => {
+    const id = await fresh(),
+      collection = (
+        await api("GET", "/api/projects/" + projectId + "/collections")
+      ).json().collections[0].id;
+    // Binary upload is exercised through the genuine route, not an inserted asset.
+    const payload = await app.inject({
+      method: "POST",
+      url: "/api/projects/" + projectId + "/pending-uploads",
+      headers: {
+        origin,
+        ...identities.get("admin"),
+        "idempotency-key": randomUUID(),
+        "content-type": "application/octet-stream",
+        "x-file-name": "r08-source.jsonl",
+      },
+      payload: '{"question":"R08_SOURCE_SECRET","answer":"fixture"}\n',
+    });
+    expect(payload.statusCode, payload.body).toBe(201);
+    const confirmed = await api(
+      "POST",
+      "/api/projects/" + projectId + "/pending-upload-batches/confirm",
+      {
+        collectionId: collection,
+        pendingUploadIds: [payload.json().pendingUpload.id],
+        mode: "raw",
+      },
+    );
+    expect(confirmed.statusCode, confirmed.body).toBe(201);
+    const asset = confirmed.json().assets[0].id;
+    await run(id, "查看原文", [call("read_material_raw", { assetId: asset })]);
+    const before = requests.length;
+    await db.query("UPDATE data_asset SET status='tombstoned' WHERE id=$1", [
+      asset,
+    ]);
+    const view = (await api("GET", route(id))).json();
+    expect(view.contentInvalidated).toBe(true);
+    expect(JSON.stringify(view)).not.toContain("R08_SOURCE_SECRET");
+    expect(
+      (await api("POST", route(id) + "/control", { action: "continue" }))
+        .statusCode,
+    ).toBe(409);
+    expect(requests.length).toBe(before);
+  });
+  it("R08 rejects foreign management and unknown document deletion without clearing history", async () => {
+    const id = await fresh();
+    await run(id, "保留消息", [
+      { role: "assistant", content: "R08_KEEP_MESSAGE" },
+    ]);
+    const before = (await api("GET", route(id))).json();
+    expect(
+      (
+        await api(
+          "DELETE",
+          route(id),
+          { expectedRevision: before.session.revision },
+          "editor",
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await api("DELETE", route(id) + "/attachments/not-a-document"))
+        .statusCode,
+    ).toBe(404);
+    expect((await api("GET", route(id))).json().messages).toEqual(
+      before.messages,
+    );
+  });
+  it("R08 serializes a late event with erasure before allowing its body to commit", async () => {
+    const id = await fresh(),
+      accepted = await submit(id, "删除竞争夹具"),
+      eraser = await db.connect(),
+      late = await db.connect();
+    let pending: Promise<unknown> | undefined;
+    try {
+      await eraser.query("BEGIN");
+      await eraser.query(
+        "SELECT purge_runtime_content($1,'conversation_deleted')",
+        [id],
+      );
+      const pid = (await late.query("SELECT pg_backend_pid() pid")).rows[0].pid;
+      pending = late.query(
+        "INSERT INTO assistant_runtime_event(session_id,turn_id,kind,detail) VALUES($1,$2,'text',$3)",
+        [
+          id,
+          accepted.json().turnId,
+          JSON.stringify({ text: "R08_LATE_EVENT_SECRET" }),
+        ],
+      );
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",
+                [pid],
+              )
+            ).rows[0]?.wait_event_type,
+        )
+        .toBe("Lock");
+      await eraser.query("COMMIT");
+      await pending;
+      const rows = (
+        await db.query(
+          "SELECT detail FROM assistant_runtime_event WHERE session_id=$1",
+          [id],
+        )
+      ).rows;
+      expect(JSON.stringify(rows)).not.toContain("R08_LATE_EVENT_SECRET");
+    } finally {
+      await eraser.query("ROLLBACK");
+      await pending?.catch(() => {});
+      eraser.release();
+      late.release();
+    }
+  });
+
+  it.each(["document", "history"])(
+    "R08 fences %s bytes already read when erasure commits before response",
+    async (kind) => {
+      const id = await fresh(),
+        attached = (
+          await api("POST", route(id) + "/attachments", {
+            fileName: "竞争背景.md",
+            contentBase64: Buffer.from("R08_READ_RACE_SECRET").toString(
+              "base64",
+            ),
+          })
+        ).json();
+      await run(id, "R08_READ_RACE_SECRET", [
+        { role: "assistant", content: "已读取" },
+      ]);
+      let release!: () => void, entered!: () => void;
+      const gate = new Promise<void>((r) => (release = r)),
+        held = new Promise<void>((r) => (entered = r));
+      const original = pg.Pool.prototype.query,
+        spy = vi
+          .spyOn(pg.Pool.prototype, "query")
+          .mockImplementation(async function (this: pg.Pool, ...args: any[]) {
+            const result = await (original as any).apply(this, args),
+              sql = String(args[0]);
+            if (
+              (kind === "document" &&
+                sql.startsWith(
+                  "SELECT id,name,extracted FROM assistant_runtime_attachment",
+                )) ||
+              (kind === "history" &&
+                sql.startsWith(
+                  "SELECT id,turn_id,role,content,created_at FROM assistant_runtime_message WHERE session_id=$1 AND id<$2",
+                ))
+            ) {
+              entered();
+              await gate;
+            }
+            return result;
+          } as any);
+      try {
+        const pending = api(
+          "GET",
+          kind === "document"
+            ? route(id) + "/attachments/" + attached.id
+            : route(id) + "/history?before=999999",
+        );
+        await held;
+        expect(
+          (await api("DELETE", route(id) + "/attachments/" + attached.id))
+            .statusCode,
+        ).toBe(200);
+        release();
+        const response = await pending;
+        expect(response.statusCode, response.body).toBe(409);
+        expect(response.body).not.toContain("R08_READ_RACE_SECRET");
+      } finally {
+        release();
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it("R08 legacy background erasure preserves committed receipts and older frozen budget formats", async () => {
+    const id = "r08_old_docs_" + randomUUID(),
+      turn = randomUUID(),
+      proposal = randomUUID(),
+      doc = randomUUID(),
+      budget = {
+        maxRequests: 12,
+        requests: 4,
+        closedAt: "2026-10-27T00:00:00Z",
+      },
+      receipt = { draftId: "historical-result", adopted: 2 };
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,task) VALUES($1,$2,$3,$4)",
+      [
+        id,
+        projectId,
+        scope().actorId,
+        JSON.stringify({ executionBudget: budget }),
+      ],
+    );
+    await db.query(
+      "INSERT INTO assistant_task_checkpoint(session_id,id,task,revision,dependencies,requires_write) VALUES($1,'old-task',$2,1,'[]',false)",
+      [
+        id,
+        JSON.stringify({ executionBudget: budget, goal: "R08_OLD_DOC_SECRET" }),
+      ],
+    );
+    await db.query(
+      "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,expires_at) VALUES($1,$2,$1,$1,'R08_OLD_DOC_SECRET','succeeded',now()+interval '1 hour')",
+      [turn, id],
+    );
+    await db.query(
+      "INSERT INTO assistant_proposal(id,turn_id,session_id,project_id,actor_id,action,parameters,digest,summary,status,expires_at,receipt) VALUES($1,$2,$3,$4,$5,'processing','{}','fixture','{}','succeeded',now()+interval '1 hour',$6)",
+      [proposal, turn, id, projectId, scope().actorId, JSON.stringify(receipt)],
+    );
+    await db.query(
+      "INSERT INTO assistant_background_document(id,session_id,project_id,actor_id,file_name,format,sha256,file_size,extractor_version,units,characters,fragments) VALUES($1,$2,$3,$4,'旧背景.md','md',$1,10,'fixture',1,10,$5)",
+      [
+        doc,
+        id,
+        projectId,
+        scope().actorId,
+        JSON.stringify([{ text: "R08_OLD_DOC_SECRET" }]),
+      ],
+    );
+    expect(
+      (await api("DELETE", route("legacy:" + id), { expectedRevision: 1 }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await db.query(
+          "SELECT receipt,status FROM assistant_proposal WHERE id=$1",
+          [proposal],
+        )
+      ).rows[0],
+    ).toEqual({ receipt, status: "succeeded" });
+    const checkpoint = (
+      await db.query(
+        "SELECT task FROM assistant_task_checkpoint WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0].task;
+    expect(checkpoint.executionBudget).toEqual(budget);
+    expect(JSON.stringify(checkpoint)).not.toContain("R08_OLD_DOC_SECRET");
+    expect(
+      (
+        await db.query(
+          "SELECT task->'executionBudget' AS budget FROM assistant_session WHERE id=$1",
+          [id],
+        )
+      ).rows[0].budget,
+    ).toEqual(budget);
+  });
+
+  it.each(["owner", "editor"])(
+    "R08 clears private history when project %s permission is downgraded",
+    async (role) => {
+      const actor = scope("editor").actorId;
+      await db.query(
+        "UPDATE project_member SET role=$3 WHERE project_id=$1 AND user_id=$2",
+        [projectId, actor, role],
+      );
+      try {
+        const id = await fresh("editor"),
+          accepted = await submit(id, "R08_ROLE_SECRET", {}, "editor"),
+          proof = await host.store.claim(
+            scope("editor"),
+            id,
+            accepted.json().turnId,
+          );
+        await host.store.finish(proof, "R08_ROLE_SECRET");
+        await db.query(
+          "UPDATE project_member SET role='viewer' WHERE project_id=$1 AND user_id=$2",
+          [projectId, actor],
+        );
+        const view = (await api("GET", route(id), undefined, "editor")).json();
+        expect(view.contentInvalidated).toBe(true);
+        expect(JSON.stringify(view)).not.toContain("R08_ROLE_SECRET");
+      } finally {
+        await db.query(
+          "UPDATE project_member SET role='editor' WHERE project_id=$1 AND user_id=$2",
+          [projectId, actor],
+        );
+      }
+    },
+  );
 });

@@ -22,6 +22,7 @@ export async function cleanupProcessingObjects(
         `SELECT 1 FROM (
       SELECT input_ref AS ref FROM processing_run UNION ALL SELECT result_ref FROM processing_batch
       UNION ALL SELECT object_ref FROM data_asset WHERE status<>'tombstoned'
+      UNION ALL SELECT object_ref FROM assistant_runtime_attachment WHERE removed_at IS NULL
       UNION ALL SELECT object_ref FROM pending_upload WHERE status IN('previewable','confirmed')
       UNION ALL SELECT object_ref FROM candidate_snapshot WHERE status<>'tombstoned'
       UNION ALL SELECT evidence_object_ref FROM candidate_snapshot WHERE status<>'tombstoned'

@@ -322,7 +322,7 @@ export async function sessionRow(
   await assistantAccess(db, scope);
   const row = (
     await db.query(
-      `SELECT * FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 ${lock ? "FOR UPDATE" : ""}`,
+      `SELECT * FROM assistant_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND history_deleted_at IS NULL ${lock ? "FOR UPDATE" : ""}`,
       [id, scope.projectId, scope.actorId],
     )
   ).rows[0];
@@ -711,7 +711,7 @@ export async function listSessions(
     (row_number() OVER(ORDER BY s.created_at,s.id))::int AS ordinal,
     coalesce((SELECT bool_or(t.requires_write) FROM assistant_turn t WHERE t.session_id=s.id AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id)),false) AS requires_write,
     coalesce((SELECT jsonb_agg(t.dependencies) FROM assistant_turn t WHERE t.session_id=s.id AND coalesce(t.task_id,'legacy:'||t.session_id)=coalesce(s.task->>'taskId','legacy:'||s.id)),'[]'::jsonb) AS dependencies
-    FROM assistant_session s WHERE project_id=$1 AND actor_id=$2 ORDER BY updated_at DESC,id DESC ${page ? "" : "LIMIT 50"}`,
+    FROM assistant_session s WHERE project_id=$1 AND actor_id=$2 AND history_deleted_at IS NULL ORDER BY updated_at DESC,id DESC ${page ? "" : "LIMIT 50"}`,
       [scope.projectId, scope.actorId, Boolean(page)],
     )
   ).rows;

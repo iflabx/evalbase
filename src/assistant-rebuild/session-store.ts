@@ -96,7 +96,7 @@ export class SessionStore {
     await this.access(scope, false, client, lock);
     const row = (
       await client.query(
-        `SELECT *, ${sessionTitleSql} AS display_title FROM assistant_runtime_session WHERE id=$1 AND project_id=$2 AND actor_id=$3` +
+        `SELECT *, ${sessionTitleSql} AS display_title FROM assistant_runtime_session WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND deleted_at IS NULL` +
           (lock ? " FOR UPDATE" : ""),
         [id, scope.projectId, scope.actorId],
       )
@@ -111,7 +111,7 @@ export class SessionStore {
     // Deny cached history when a read source is no longer visible. Full lifecycle cleanup belongs to R08.
     const refs = (
       await client.query(
-        "SELECT DISTINCT detail->'source' AS source FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read'",
+        "SELECT DISTINCT detail->'source' AS source FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read' AND detail ? 'source'",
         [id],
       )
     ).rows;
@@ -127,6 +127,9 @@ export class SessionStore {
     return row as {
       id: string;
       runtime_version: string;
+      deleted_at: string | null;
+      invalidated_at: string | null;
+      invalidation_reason: string | null;
       revision: number;
       requirements_revision: number;
       requirements: SessionRequirements;
@@ -184,7 +187,9 @@ export class SessionStore {
         id: session.id,
         runtime_version: session.runtime_version,
         revision: session.revision,
-        title: session.display_title,
+        title: session.invalidated_at
+          ? session.title || "内容已清理的会话"
+          : session.display_title,
         requirements_revision: session.requirements_revision,
         requirements: {
           ...session.requirements,
@@ -201,8 +206,11 @@ export class SessionStore {
         isBusinessReceipt: false,
       })),
       turns,
+      contentInvalidated: !!session.invalidated_at,
+      invalidationReason: session.invalidation_reason,
       currentRuntime: FORMAL_RUNTIME_VERSION,
       canWrite:
+        !session.invalidated_at &&
         session.runtime_version === FORMAL_RUNTIME_VERSION &&
         (await hasProjectCapability(
           this.db,
@@ -222,7 +230,8 @@ export class SessionStore {
           scope.actorId,
           "write",
         ))
-          ? session.runtime_version === FORMAL_RUNTIME_VERSION
+          ? !session.invalidated_at &&
+            session.runtime_version === FORMAL_RUNTIME_VERSION
             ? ["create_requirements", "update_requirements"]
             : []
           : []),
@@ -240,6 +249,7 @@ export class SessionStore {
     try {
       await client.query("BEGIN");
       const session = await this.get(scope, id, client, true);
+      if (session.invalidated_at) throw new SessionError("context_deleted");
       // Check a known submission before busy/revision checks: HTTP retries return the original acceptance.
       const old = (
         await client.query(
@@ -258,6 +268,7 @@ export class SessionStore {
           replayed: true,
         };
       }
+      if (session.invalidated_at) throw new SessionError("context_deleted");
       if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
         throw new BusinessError(
           409,
@@ -409,6 +420,29 @@ export class SessionStore {
     client: Query = this.db,
     key?: string,
   ) {
+    if (kind === "source_read") {
+      if (client === this.db) {
+        const connection = await this.db.connect();
+        try {
+          await connection.query("BEGIN");
+          await this.guard(proof, false, connection, true);
+          await this.event(proof, kind, detail, connection, key);
+          await connection.query("COMMIT");
+          return;
+        } catch (error) {
+          await connection.query("ROLLBACK");
+          throw error;
+        } finally {
+          connection.release();
+        }
+      }
+      await processingSourceAvailable(
+        client,
+        proof.projectId,
+        (detail as any).source,
+        true,
+      );
+    }
     await client.query(
       "INSERT INTO assistant_runtime_event(session_id,turn_id,kind,detail,operation_key,category) VALUES($1,$2,$3,$4,$5,$6)",
       [

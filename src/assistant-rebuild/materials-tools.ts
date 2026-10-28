@@ -250,7 +250,24 @@ export function materialsTools(
       tool(
         async (args) => {
           await sessions.guard(proof, !d.readOnly);
-          return d.run(args);
+          const result: any = await d.run(args);
+          if (
+            [
+              "read_material_raw",
+              "read_material_record",
+              "read_material_records",
+            ].includes(d.name)
+          ) {
+            const input = args as { assetId?: string };
+            const assetIds = input.assetId
+              ? [input.assetId]
+              : [...new Set((result.records ?? []).map((r: any) => r.assetId))];
+            if (assetIds.length)
+              await sessions.event(proof, "source_read", {
+                source: { kind: "assets", assetIds },
+              });
+          }
+          return result;
         },
         { name: d.name, description: d.description, schema: d.schema },
       ),

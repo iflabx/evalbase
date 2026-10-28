@@ -1,3 +1,4 @@
+import { lifecycleSchema } from "../assistant-rebuild/lifecycle-schema.js";
 import { workspaceSchema } from "../assistant-rebuild/workspace-schema.js";
 import { executionSchema } from "../assistant-rebuild/execution-schema.js";
 import { assistantSessionSchema } from "../assistant-rebuild/session-schema.js";
@@ -1992,6 +1993,7 @@ export async function migrate(
     );
     await client.query(executionSchema);
     await client.query(workspaceSchema);
+    await client.query(lifecycleSchema);
     await client.query(
       "INSERT INTO schema_migration(id) VALUES('assistant-runtime-execution-v1') ON CONFLICT DO NOTHING",
     );

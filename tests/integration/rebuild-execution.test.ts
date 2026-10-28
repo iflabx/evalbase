@@ -2706,13 +2706,13 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     );
     expect(await effects()).toEqual(before);
   });
-  it("keeps legacy v1 history and attachment reads but rejects every workspace mutation", async () => {
+  it("R08 manages legacy v1 history without enabling old execution tools", async () => {
     const id = await fresh(),
       body = {
         fileName: "需求.md",
         contentBase64: Buffer.from("保留标签").toString("base64"),
       };
-    const attachment = (
+    const attached = (
       await api("POST", route(id) + "/attachments", body)
     ).json();
     await db.query(
@@ -2720,24 +2720,30 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       [id],
     );
     const before = await host.store.get(scope(), id);
-    for (const response of [
-      await api("PATCH", route(id), {
-        title: "不能改",
-        expectedRevision: before.revision,
-      }),
-      await api("POST", route(id) + "/attachments", body),
-      await api("DELETE", route(id) + "/attachments/" + attachment.id),
-    ])
-      expect(response.json().error.code).toBe("runtime_contract_changed");
     expect(
-      (await api("GET", route(id) + "/attachments/" + attachment.id))
+      (await api("GET", route(id) + "/attachments/" + attached.id)).statusCode,
+    ).toBe(200);
+    expect(
+      (await api("POST", route(id) + "/attachments", body)).json().error.code,
+    ).toBe("runtime_contract_changed");
+    expect(
+      (
+        await api("PATCH", route(id), {
+          title: "管理旧会话",
+          expectedRevision: before.revision,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await api("DELETE", route(id) + "/attachments/" + attached.id))
         .statusCode,
     ).toBe(200);
-    expect((await host.store.get(scope(), id)).revision).toBe(before.revision);
     expect(
-      (await host.present(scope(), id)).workspace.attachments,
-    ).toHaveLength(1);
+      (await api("GET", route(id) + "/attachments/" + attached.id)).statusCode,
+    ).toBe(404);
+    expect((await host.present(scope(), id)).contentInvalidated).toBe(true);
   });
+
   it("automatic session titles follow saved requirements while preserving manual names and original narrative", async () => {
     const id = await fresh(),
       beforeEffects = await effects(),
@@ -4338,5 +4344,404 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     const state = await host.present(scope(), id);
     expect(state.execution).toMatchObject({ status: "paused", requests: 0 });
     await delayed.close();
+  });
+  it("R08 PAGE clears cached conversation after background removal and confirms deletion", async () => {
+    const id = await fresh(),
+      address = await webAddress(),
+      before = requests.length;
+    const attached = (
+      await api("POST", route(id) + "/attachments", {
+        fileName: "页面说明.md",
+        contentBase64: Buffer.from("R08_BROWSER_SECRET").toString("base64"),
+      })
+    ).json();
+    const a = await submit(id, "R08_BROWSER_SECRET"),
+      proof = await host.store.claim(scope(), id, a.json().turnId);
+    await host.store.finish(proof, "R08_BROWSER_SECRET");
+    const browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        extraHTTPHeaders: { origin },
+        viewport: { width: 1440, height: 900 },
+      });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    try {
+      const page = await context.newPage();
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await browserExpect(
+        page.getByText("R08_BROWSER_SECRET", { exact: true }).first(),
+      ).toBeVisible();
+      const removed = await api(
+        "DELETE",
+        route(id) + "/attachments/" + attached.id,
+      );
+      expect(removed.statusCode, removed.body).toBe(200);
+      await browserExpect(
+        page.getByText("相关内容已清理", { exact: false }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByText("R08_BROWSER_SECRET", { exact: true }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "会话选项", exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "删除会话", exact: true })
+        .click();
+      await browserExpect(page.getByRole("dialog")).toContainText(
+        "累计用量保留",
+      );
+      await page
+        .getByRole("button", { name: "确认删除会话", exact: true })
+        .click();
+      await browserExpect(page).toHaveURL(new RegExp("/assistant$"));
+      expect((await api("GET", route(id))).statusCode).toBe(404);
+      expect(requests.length).toBe(before);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  });
+  it("R08 PAGE manages legacy history and explicitly authorizes a fresh remainder without executing", async () => {
+    const raw = "r08_page_" + randomUUID(),
+      id = "legacy:" + raw,
+      address = await webAddress(),
+      before = requests.length;
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,title,task) VALUES($1,$2,$3,'历史页面',$4)",
+      [
+        raw,
+        projectId,
+        scope().actorId,
+        JSON.stringify({
+          goal: "旧任务",
+          budgetLedger: { version: "1", totals: { requests: 5 } },
+        }),
+      ],
+    );
+    const browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        extraHTTPHeaders: { origin },
+        viewport: { width: 1024, height: 800 },
+      });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        address +
+          "/projects/" +
+          projectId +
+          "/assistant/" +
+          encodeURIComponent(id),
+      );
+      await browserExpect(
+        page.getByText("仅供查看和管理", { exact: false }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "会话选项", exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "重命名会话", exact: true })
+        .click();
+      await page.getByRole("dialog").getByRole("textbox").fill("历史改名确认");
+      await page.getByRole("button", { name: "保存名称", exact: true }).click();
+      await browserExpect(
+        page.getByRole("heading", { name: "历史改名确认", exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "会话选项", exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "在新会话承接", exact: true })
+        .click();
+      await page
+        .getByLabel("尚未完成的目标", { exact: true })
+        .fill("只处理尚未完成的资料，不重做已保存成果");
+      await page
+        .getByRole("button", { name: "确认新授权并承接", exact: true })
+        .click();
+      await browserExpect(page).not.toHaveURL(
+        new RegExp(encodeURIComponent(id)),
+      );
+      expect(requests.length).toBe(before);
+      expect(
+        (
+          await db.query(
+            "SELECT task->'budgetLedger' AS budget FROM assistant_session WHERE id=$1",
+            [raw],
+          )
+        ).rows[0].budget.totals.requests,
+      ).toBe(5);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  });
+  it("R08 reads only associated legacy processing results and fences deleted history", async () => {
+    const id = await fresh(),
+      p = await processing(id);
+    await completeRun(p.runId);
+    const raw = "r08_results_" + randomUUID(),
+      legacy = "legacy:" + raw;
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,title) VALUES($1,$2,$3,'旧成果')",
+      [raw, projectId, scope().actorId],
+    );
+    await db.query(
+      "UPDATE processing_task SET assistant_session_id=$1 WHERE id=(SELECT task_id FROM processing_run WHERE id=$2)",
+      [raw, p.runId],
+    );
+    const before = requests.length,
+      view = (await api("GET", route(legacy))).json();
+    expect(
+      view.results.some(
+        (r: any) => r.run_id === p.runId && r.output_count === 3,
+      ),
+    ).toBe(true);
+    const result = await api("GET", route(legacy) + "/results/" + p.runId);
+    expect(result.statusCode, result.body).toBe(200);
+    expect(result.json().records).toHaveLength(3);
+    expect(
+      (await api("GET", route(legacy) + "/results/not-associated")).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await api("DELETE", route(legacy), {
+          expectedRevision: view.session.revision,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await api("GET", route(legacy) + "/results/" + p.runId)).statusCode,
+    ).toBe(404);
+    expect(requests.length).toBe(before);
+  });
+  it("R08 erases a saved conversation without deleting its adopted draft or resetting accounting", async () => {
+    const { id, p, card } = await adoptionCard();
+    const confirmed = await api(
+      "POST",
+      route(id) + "/confirmations/" + card.id,
+      { accept: true },
+    );
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+    const receipt = confirmed.json().receipt;
+    expect(receipt.adopted).toBe(3);
+    const draftUrl =
+      "/api/projects/" + projectId + "/collaborative-drafts/" + receipt.draftId;
+    const beforeDraft = await api("GET", draftUrl);
+    expect(beforeDraft.statusCode, beforeDraft.body).toBe(200);
+    const ledgerSql =
+      "SELECT requests,request_limit,worker_requests,worker_ms,active_ms,active_limit_ms,activity_id FROM assistant_runtime_execution WHERE session_id=$1";
+    const ledger = (await db.query(ledgerSql, [id])).rows;
+    const grants = (
+      await db.query(
+        "SELECT * FROM assistant_runtime_grant WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    const view = (await api("GET", route(id))).json();
+    expect(
+      (
+        await api("DELETE", route(id), {
+          expectedRevision: view.session.revision,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const afterDraft = (await api("GET", draftUrl)).json();
+    const stable = (value: any) => ({
+      ...value,
+      records: value.records.map(
+        ({ sourcePresentation: _presentation, ...record }: any) => record,
+      ),
+    });
+    expect(stable(afterDraft)).toEqual(stable(beforeDraft.json()));
+    expect(afterDraft.records).toHaveLength(3);
+    expect(
+      afterDraft.records.every((r: any) =>
+        r.sourcePresentation.steps.every(
+          (step: any) => step.kind !== "processing",
+        ),
+      ),
+    ).toBe(true);
+    expect((await db.query(ledgerSql, [id])).rows).toEqual(ledger);
+    expect(
+      (
+        await db.query(
+          "SELECT * FROM assistant_runtime_grant WHERE session_id=$1 ORDER BY id",
+          [id],
+        )
+      ).rows,
+    ).toEqual(grants);
+    expect(
+      (
+        await db.query(
+          "SELECT receipt FROM assistant_runtime_operation WHERE id=$1",
+          [p.operation.id],
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await api("GET", route(id) + "/results/" + p.runId)).statusCode,
+    ).toBe(404);
+  });
+  it("R08 PAGE discards real document and result responses delivered after erasure", async () => {
+    const id = await fresh(),
+      address = await webAddress();
+    const doc = (
+      await api("POST", route(id) + "/attachments", {
+        fileName: "迟到资料.md",
+        contentBase64: Buffer.from("R08_DELAYED_DOC_SECRET").toString("base64"),
+      })
+    ).json();
+    const p = await processing(id);
+    await completeRun(p.runId);
+    const browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        extraHTTPHeaders: { origin },
+        viewport: { width: 1440, height: 900 },
+      });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held = 0,
+      delivered = 0;
+    try {
+      const page = await context.newPage();
+      const hold = async (r: import("@playwright/test").Route) => {
+        const response = await r.fetch();
+        expect(response.status()).toBe(200);
+        held++;
+        await gate;
+        await r.fulfill({ response });
+        delivered++;
+      };
+      await page.route(
+        "**/assistant-runtime/sessions/" + id + "/attachments/" + doc.id + "?*",
+        hold,
+      );
+      await page.route(
+        "**/assistant-runtime/sessions/" + id + "/results/" + p.runId,
+        hold,
+      );
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await page
+        .getByRole("button", { name: "切换工作区", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "迟到资料.md", exact: true })
+        .first()
+        .click();
+      await page
+        .getByRole("button", { name: "查看处理结果", exact: true })
+        .first()
+        .click();
+      await expect.poll(() => held).toBe(2);
+      expect(
+        (await api("DELETE", route(id) + "/attachments/" + doc.id)).statusCode,
+      ).toBe(200);
+      await browserExpect(
+        page.getByText("相关内容已清理", { exact: false }),
+      ).toBeVisible();
+      release();
+      await expect.poll(() => delivered).toBe(2);
+      await browserExpect(
+        page.getByText("R08_DELAYED_DOC_SECRET", { exact: false }),
+      ).toHaveCount(0);
+      await browserExpect(
+        page.getByRole("tab", { name: "迟到资料.md", exact: false }),
+      ).toHaveCount(0);
+      await browserExpect(
+        page.getByRole("tab", { name: /处理结果/ }),
+      ).toHaveCount(0);
+    } finally {
+      release();
+      await context.close();
+      await browser.close();
+    }
+  });
+  it("R08 PAGE clears already loaded legacy text and document tabs when write access is revoked", async () => {
+    const raw = "r08_revoked_" + randomUUID(),
+      id = "legacy:" + raw,
+      doc = "r08_background_" + randomUUID(),
+      actor = scope("editor").actorId,
+      address = await webAddress();
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,title) VALUES($1,$2,$3,'历史清理')",
+      [raw, projectId, actor],
+    );
+    await db.query(
+      "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,assistant_text,status,expires_at) VALUES($1,$2,$1,$1,'R08_LEGACY_MESSAGE_SECRET','历史回复','succeeded',now()+interval '1 hour')",
+      [randomUUID(), raw],
+    );
+    await db.query(
+      "INSERT INTO assistant_background_document(id,session_id,project_id,actor_id,file_name,format,sha256,file_size,extractor_version,units,characters,fragments) VALUES($1,$2,$3,$4,'历史背景.md','md',$1,30,'fixture',1,30,$5)",
+      [
+        doc,
+        raw,
+        projectId,
+        actor,
+        JSON.stringify([{ text: "R08_LEGACY_DOC_SECRET" }]),
+      ],
+    );
+    const browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        extraHTTPHeaders: { origin },
+        viewport: { width: 1440, height: 900 },
+      }),
+      before = requests.length;
+    const cookie = identities.get("editor")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        address +
+          "/projects/" +
+          projectId +
+          "/assistant/" +
+          encodeURIComponent(id),
+      );
+      await browserExpect(
+        page.getByText("R08_LEGACY_MESSAGE_SECRET", { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "历史背景.md", exact: true })
+        .first()
+        .click();
+      await browserExpect(
+        page.getByText("R08_LEGACY_DOC_SECRET", { exact: true }),
+      ).toBeVisible();
+      await db.query(
+        "UPDATE project_member SET role='viewer' WHERE project_id=$1 AND user_id=$2",
+        [projectId, actor],
+      );
+      await browserExpect(
+        page.getByText("相关内容已清理", { exact: false }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByText("R08_LEGACY_MESSAGE_SECRET", { exact: true }),
+      ).toHaveCount(0);
+      await browserExpect(
+        page.getByText("R08_LEGACY_DOC_SECRET", { exact: true }),
+      ).toHaveCount(0);
+      expect(requests.length).toBe(before);
+    } finally {
+      await db.query(
+        "UPDATE project_member SET role='editor' WHERE project_id=$1 AND user_id=$2",
+        [projectId, actor],
+      );
+      await context.close();
+      await browser.close();
+    }
   });
 });
