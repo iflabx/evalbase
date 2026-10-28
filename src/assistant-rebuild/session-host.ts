@@ -1,15 +1,15 @@
-import {
-  FORMAL_RUNTIME_VERSION,
-  deliveryExecution,
-} from "./session-contract.js";
+import { createSessionModel, type SessionModelHooks } from "./session-model.js";
+import { sessionModelFacts } from "./session-context.js";
+export type {
+  ModelAttempt,
+  ModelOutcome,
+  SessionModelHooks,
+} from "./session-model.js";
+import { FORMAL_RUNTIME_VERSION } from "./session-contract.js";
 import { WorkspaceStore } from "./workspace-store.js";
-import { observeModelStream } from "./model-stream.js";
 import { materialsTools } from "./materials-tools.js";
 import { workspaceTools } from "./workspace-tools.js";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { BusinessError } from "../operations/errors.js";
-import { randomUUID } from "node:crypto";
-import { ChatOpenAI } from "@langchain/openai";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { Command, interrupt, type StateSnapshot } from "@langchain/langgraph";
 import { tool } from "langchain";
@@ -28,8 +28,7 @@ import {
 import { HumanMessage } from "@langchain/core/messages";
 import { createPool, type Database } from "../db/pool.js";
 import type { Config } from "../config.js";
-import { configuredChatConnection, modelFetch } from "../model/connection.js";
-import { sha256 } from "../package/contract.js";
+import { configuredChatConnection } from "../model/connection.js";
 import { createHarness } from "./harness.js";
 import { sessionTools } from "./session-tools.js";
 import { sessionFeedback, explicitResumeRequest } from "./session-feedback.js";
@@ -37,27 +36,8 @@ import {
   SessionStore,
   SessionError,
   type SessionScope,
-  type TurnProof,
 } from "./session-store.js";
 
-export type ModelAttempt = {
-  id: string;
-  sessionId: string;
-  turnId: string;
-  purpose: "assistant" | "correction" | "summary";
-  correctionOf: string | null;
-  requestHash: string;
-};
-export type ModelOutcome = {
-  id: string;
-  status: number | null;
-  usage: unknown;
-  error: string | null;
-};
-export type SessionModelHooks = {
-  beforeRequest?: (attempt: ModelAttempt) => Promise<void>;
-  afterResponse?: (result: ModelOutcome) => Promise<void>;
-};
 export class FormalSessionHost {
   readonly store: SessionStore;
   readonly execution: ExecutionStore;
@@ -193,37 +173,6 @@ export class FormalSessionHost {
     await Promise.allSettled([...this.work]);
     await this.checkpointPool.end();
   }
-  private async facts(proof: TurnProof) {
-    const session = await this.store.get(proof, proof.sessionId);
-    const input = await this.store.guard(proof);
-    return {
-      sessionId: session.id,
-      requirementsRevision: session.requirements_revision,
-      requirements: session.requirements,
-      inputContext: input.context ?? null,
-      status: session.status,
-      ...(await this.execution.projection(proof, proof.sessionId)),
-      pausedTask: (await this.execution.guard(proof)).suspended
-        ? {
-            status: "paused",
-            turnId: (await this.execution.guard(proof)).suspended.turnId,
-          }
-        : null,
-      businessExecutionAvailable: true,
-      currentExecution: {
-        mode: session.requirements.mode,
-        summaries: session.requirements.deliveries
-          .filter((d) => d.status === "active")
-          .map((d) => ({ id: d.id, ...deliveryExecution(d) })),
-        goalTextRole:
-          "原始目标叙述保留语义约束；范围、数量和执行授权由结构事实决定，勿从旧叙述恢复过时控制条件。",
-      },
-      attachments: await new WorkspaceStore(
-        this.store,
-        this.options.artifacts ?? new ArtifactRepository(this.config.minio),
-      ).attachments(proof, proof.sessionId),
-    };
-  }
   /** Called only by a server executor. HTTP acceptance never runs a model or restarts old work. */
   async runPending(
     scope: SessionScope,
@@ -247,11 +196,10 @@ export class FormalSessionHost {
       Math.max(20, this.execution.policy.leaseMs / 4),
     );
     heartbeat.unref();
-    let requestFailure: string | null = null;
+    let sessionModel: ReturnType<typeof createSessionModel> | undefined;
     let toolAttempts = 0;
     const toolArgs = new Map<string, unknown>();
     let correctionOf: string | null = null;
-    const modelContext = new AsyncLocalStorage<"assistant">();
     try {
       await (this.initialized ??= this.saver.setup());
       const input = await this.store.guard(proof),
@@ -430,122 +378,15 @@ export class FormalSessionHost {
           });
         }
       };
-      const fetchFor =
-        () =>
-        async (
-          url: Parameters<typeof fetch>[0],
-          init?: Parameters<typeof fetch>[1],
-        ) => {
-          await this.execution.guard(proof);
-          const id = "request_" + randomUUID();
-          const attempt: ModelAttempt = {
-            id,
-            sessionId,
-            turnId,
-            purpose:
-              modelContext.getStore() === "assistant"
-                ? correctionOf
-                  ? "correction"
-                  : "assistant"
-                : "summary",
-            correctionOf:
-              modelContext.getStore() === "assistant" ? correctionOf : null,
-            requestHash: sha256(String(init?.body ?? "")),
-          };
-          await options.hooks?.beforeRequest?.(attempt);
-          const admittedMs = await this.execution.reserve(proof, attempt);
-          await this.store.event(proof, "model_request", attempt);
-          let outcome: ModelOutcome = {
-            id,
-            status: null,
-            usage: null,
-            error: null,
-          };
-          requestFailure = null;
-          const requestTimeout = AbortSignal.timeout(admittedMs);
-          let streamingResponse = false;
-          const finishStream = async (usage: unknown, error: string | null) => {
-            if (error && !ctl.signal.aborted && requestTimeout.aborted) {
-              error = "model_request_timeout";
-              requestFailure =
-                (await this.execution.blocked(sessionId)) ?? error;
-            }
-            outcome.usage = usage;
-            outcome.error = error;
-            await this.execution.outcome(outcome);
-            await this.store.event(proof, "model_response", outcome);
-            await options.hooks?.afterResponse?.(outcome);
-          };
-          try {
-            const response = await modelFetch(url, {
-              ...init,
-              signal: AbortSignal.any([
-                ctl.signal,
-                requestTimeout,
-                ...(init?.signal ? [init.signal] : []),
-              ]),
-            });
-            outcome.status = response.status;
-            if (!response.ok) requestFailure = "provider_rejected";
-            if (
-              response.ok &&
-              response.headers
-                .get("content-type")
-                ?.includes("text/event-stream") &&
-              response.body
-            ) {
-              streamingResponse = true;
-              return observeModelStream(
-                response,
-                async (text) => {
-                  await this.store.guard(proof);
-                  if (attempt.purpose !== "summary")
-                    await this.store.event(proof, "message_delta", {
-                      requestId: id,
-                      text,
-                    });
-                },
-                finishStream,
-              );
-            }
-            const body = (await response.clone().json()) as {
-              usage?: unknown;
-            } | null;
-            outcome = {
-              id,
-              status: response.status,
-              usage: body?.usage ?? null,
-              error: response.ok ? null : "provider_rejected",
-            };
-            return response;
-          } catch (e) {
-            outcome.error =
-              !ctl.signal.aborted && requestTimeout.aborted
-                ? "model_request_timeout"
-                : "transport_failure";
-            requestFailure =
-              outcome.error === "model_request_timeout"
-                ? ((await this.execution.blocked(sessionId)) ?? outcome.error)
-                : outcome.error;
-            if (outcome.error === "model_request_timeout")
-              throw new SessionError(requestFailure ?? "model_request_timeout");
-            throw e;
-          } finally {
-            if (!streamingResponse)
-              await finishStream(outcome.usage, outcome.error);
-          }
-        };
-      const model = () =>
-        new ChatOpenAI({
-          model: connection.model,
-          apiKey: connection.apiKey,
-          temperature: 0,
-          maxTokens: 8192,
-          maxRetries: 0,
-          streaming: true,
-          modelKwargs: { parallel_tool_calls: false },
-          configuration: { baseURL: connection.baseURL, fetch: fetchFor() },
-        });
+      sessionModel = createSessionModel({
+        connection,
+        execution: this.execution,
+        store: this.store,
+        proof,
+        signal: ctl.signal,
+        hooks: options.hooks,
+        correctionOf: () => correctionOf,
+      });
       const feedback = sessionFeedback({
         schemas: registry.schemas,
         executionControl: async () => {
@@ -577,12 +418,22 @@ export class FormalSessionHost {
           );
         },
         guard: () => this.execution.guard(proof).then(() => undefined),
-        facts: () => this.facts(proof),
+        facts: () =>
+          sessionModelFacts(
+            this.store,
+            this.execution,
+            new WorkspaceStore(
+              this.store,
+              this.options.artifacts ??
+                new ArtifactRepository(this.config.minio),
+            ),
+            proof,
+          ),
         observe,
-        callModel: (call) => modelContext.run("assistant", call),
+        callModel: sessionModel.callModel,
       });
       const agent = createHarness({
-        model: model(),
+        model: sessionModel.model,
         summaryTokens: options.summaryTokens ?? 24000,
         checkpointer: this.saver,
         tools: registry.tools,
@@ -764,7 +615,7 @@ export class FormalSessionHost {
       const code =
         failure instanceof BusinessError
           ? failure.code
-          : (requestFailure ?? "runtime_request_failed");
+          : (sessionModel?.failure() ?? "runtime_request_failed");
       if (
         code === "runtime_interrupted" ||
         code === "checkpoint_execution_required"

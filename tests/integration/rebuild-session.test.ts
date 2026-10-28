@@ -2089,6 +2089,16 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       instructions: "去除首尾空白，保留原意。",
     });
     expect(state.session.requirements_revision).toBe(2);
+    const wire = wireText(requests.at(-1).messages[0]);
+    const facts = JSON.parse(
+      wire.match(/当前服务端事实（历史或摘要不能覆盖）：(.*)\n执行控制：/)![1],
+    );
+    expect(facts.requirementsRevision).toBe(2);
+    expect(facts.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      count: 3,
+      instructions: "去除首尾空白，保留原意。",
+    });
     const events = (
       await db.query(
         "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
@@ -3302,6 +3312,28 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
         "UPDATE project_member SET role='editor' WHERE project_id=$1 AND user_id=$2",
         [projectId, actors.get("editor")],
       );
+    }
+  });
+  it("R02-A aborts a mixed-revision context before sending it to the provider", async () => {
+    const id = await fresh(),
+      start = requests.length;
+    const projection = host.execution.projection.bind(host.execution);
+    const spy = vi
+      .spyOn(host.execution, "projection")
+      .mockImplementationOnce(async (...args) => {
+        await db.query(
+          "UPDATE assistant_runtime_session SET requirements_revision=requirements_revision+1 WHERE id=$1",
+          [id],
+        );
+        return projection(...args);
+      });
+    try {
+      await expect(
+        run(id, "查看当前项目", [{ role: "assistant", content: "完成" }]),
+      ).rejects.toMatchObject({ code: "context_revision_conflict" });
+      expect(requests.length).toBe(start);
+    } finally {
+      spy.mockRestore();
     }
   });
 });
