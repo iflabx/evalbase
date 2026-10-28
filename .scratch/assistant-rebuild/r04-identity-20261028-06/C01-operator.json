@@ -1,0 +1,15 @@
+{
+  "case": "C01",
+  "sessionId": "assistant_5f0f48c34c2c4410bb44296db8b4ad16",
+  "result": "fail",
+  "prompt1": "先给我前5条的清洗方案，不执行。",
+  "prompt1Result": "已保存前5条清洗方案（不执行）；来源第1–5条；清洗question空白；expectedOutput保持原标签；metadata保留序号、来源；目标六条客服问题-前5条清洗。",
+  "prompt2": "改成前3条，其他字段不变，保存成三条整理版。现在执行。",
+  "prompt2Result": "本轮未完成：无法确认自动纠正仍符合原操作和处理范围，已停止该步骤。输入和已记录要求已保留，已完成操作请查看执行记录。",
+  "currentRequirements": "六条客服问题-前5条清洗 · 5条 · 清洗；仅方案，尚未执行",
+  "executionRecord": "修改交付要求 · 已调用；修改交付要求 · 未完成；本轮未完成 · 已记录",
+  "confirmationClicked": false,
+  "retry": false,
+  "screenshot": "C01-failure.jpg",
+  "observedAt": "2026-10-28T08:26:45+08:00"
+}

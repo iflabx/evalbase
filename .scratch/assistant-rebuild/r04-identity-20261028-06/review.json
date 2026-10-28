@@ -1,0 +1,32 @@
+{
+  "baseline": "1c5c14af05a645506128a577abfebb9e9be61006",
+  "code": "483f35e94eba53537ba38acfa9c45d6296d0e6b6",
+  "standards": {
+    "initialFindings": [
+      "v1 workspace writes not fenced",
+      "sole delivery cancellation rejected"
+    ],
+    "targetedReReview": "pass"
+  },
+  "spec": {
+    "initialFindings": [
+      "sole delivery cancellation rejected",
+      "existing incomplete plan missing operation correction target binding"
+    ],
+    "targetedReReview": "pass"
+  },
+  "method": "parallel static review; all three unique reported gaps fixed and re-reviewed; real SDK and combination regression 135 passed; review itself did not run model or Computer Use",
+  "postComputerUse": {
+    "testedCode": "483f35e94eba53537ba38acfa9c45d6296d0e6b6",
+    "result": "failed",
+    "cause": "correction supplements equal inherited active status; original argument omission compared as new protected field",
+    "followupCode": "3fd1a5f6a2a57baa76a981065cb1aa88af62ba1c",
+    "reviewFindingsFixed": [
+      "identity-based binding for subset and reordered deliveries",
+      "replace mutable fields and trusted snapshot at each business validation"
+    ],
+    "targetedReReview": "pass",
+    "finalSdkTests": 144,
+    "liveFollowup": "not-run; activity sealed; no C02 rerun"
+  }
+}

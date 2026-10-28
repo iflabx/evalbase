@@ -6,7 +6,7 @@ Validation: partial-pass
 Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md)
 
 - 批次：1；对应原范围建议：R04。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02已通过；C01第五轮因修改被保存为新增交付失败，R04-6尚未全闭合。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02已通过；C01第六轮仍因等值继承字段纠正被拒而失败，后续补强已通过受控验证、尚待实模，R04-6未全闭合。
 - 能力：A01、A02、A13、U01；文件/确认/下载/未保存输入的公共前端桥，领域完成归后续票。
 - 缺口：G05、G09、G10、G12；验收合同：RB04、RB09、RB13；第一批 RB06～10 页面证据。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -74,3 +74,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-28：完整参数合同修复`646ab8b`更新独立4240，111项受控定向检查及双轴针对性复审通过。Terra/high第四轮两个独立CU会话均唯一保存3条，C02真实在途暂停78.557秒后同run恢复通过；C01当前处理说明仍残留“前5条”，故R04-6继续未勾选，Implementation/Validation仍为in-progress/partial-pass。23请求/6行次，旧数据和旧预算哈希不变；详见[完整修复与第四轮记录](../r04-verification.md#r04-contract-round4)。
 
 - 2026-10-28：依赖加工规则修复`f2e5f20`及138项定向验证通过，更新独立4240。Terra/high仅C01新会话第五轮实耗5请求/0行次，第二轮修改未引用原交付身份，保存出旧5条与新3条两项，single_delivery_required保护性停止，无业务作业/保存；活动封存，旧数据/预算保持。本轮不重跑C02。R04-6与整票仍in-progress/partial-pass，详见[最新记录](../r04-verification.md#r04-amendment-round5)。
+
+- 2026-10-28：身份合同修复483f35e完成第六轮C01有界CU，Terra/high新会话普通提示仍因纠正补写同值active被拒失败，6请求/0行次，未新增第二交付或产生业务副作用，活动已封存。后续有效继承值/多交付身份匹配/连续纠正锁定补强3fd1a5f通过144项定向验证并更新独立4240，未另开实模；C02不重跑，旧数据/预算保持，R04-6保持未勾选。见[第六轮记录](../r04-verification.md#r04-identity-round6)。

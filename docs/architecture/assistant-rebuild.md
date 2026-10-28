@@ -189,4 +189,6 @@ frontend-v3保留项目壳，assistant-ui ExternalStore仅作展示；正式会�
 
 供应方兼容层将框架系统说明及当前权威事实合成为唯一前置System，保留user/assistant/tool顺序；使用实际SDK请求断言验证，不只检查内部消息对象。当前有限接线、前端兼容对照及尚未通过的实模门槛见[REBUILD-04验证记录](../../.scratch/assistant-rebuild/r04-verification.md)，完整领域能力和切换仍归后续票。
 
-2026-10-28依赖加工规则机制已在`f2e5f20`实现，SDK与组合证据见[REBUILD-04第五轮记录](../../.scratch/assistant-rebuild/r04-verification.md#r04-amendment-round5)。C01实模仍暴露修改被当成新增交付的身份/候选完整性缺口，整票未通过；该缺口不能通过放宽执行保护或回写历史掩盖。
+2026-10-28依赖加工规则机制已在`f2e5f20`实现，SDK与组合证据见[REBUILD-04第五轮记录](../../.scratch/assistant-rebuild/r04-verification.md#r04-amendment-round5)。第五轮C01实模暴露修改被当成新增交付的身份/候选完整性缺口；后续修复及页面结果继续在同一记录保留，不能通过放宽执行保护或回写历史掩盖。
+
+2026-10-28正式工具合同升级为`deepagents-v2`：创建和修改使用独立工具，未给ID的修改仅能绑定当前唯一活动交付；执行完整性采用共享合同，取消最后交付合法转为非执行状态。纠正沿用已解析目标和同轮已提交回执，不新增第二套纠错/规划状态机。首批`deepagents-v1`检查点只读保留（包括附件和改名写入口），完整历史管理仍归REBUILD-08；旧业务成果和账本不迁移、不重置。具体约束统一见[Spec §3.1.1](../../.scratch/assistant-rebuild/spec.md#311-交付创建修改与当前执行合同)。

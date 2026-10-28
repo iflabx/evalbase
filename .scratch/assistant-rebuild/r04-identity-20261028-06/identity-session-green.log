@@ -1,0 +1,563 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/bistu/EvalBase/.worktrees/assistant-rebuild[39m
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-1","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":92,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-2","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":73,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-3","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":72,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-4","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":64,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-5","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":69,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-6","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":66,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-7","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":17,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-8","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-a","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":81,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-b","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":27,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-d","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"asset_a3aad8b255a64804a7a6d60d40f79c40","stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-e","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":20,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmigrates additively without campaigns and preserves old budgets on repeat
+[22m[39m{"correlation_id":"req-f","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":38,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2matomically accepts messages and replays before busy or advanced-revision checks
+[22m[39m{"correlation_id":"req-h","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2matomically accepts messages and replays before busy or advanced-revision checks
+[22m[39m{"correlation_id":"req-i","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_93a6a79e7db34cf6985d5374d389d6cf","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2matomically accepts messages and replays before busy or advanced-revision checks
+[22m[39m{"correlation_id":"req-j","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_93a6a79e7db34cf6985d5374d389d6cf","stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2matomically accepts messages and replays before busy or advanced-revision checks
+[22m[39m{"correlation_id":"req-k","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_93a6a79e7db34cf6985d5374d389d6cf","stage":"http:response","duration_ms":4,"error_code":"submission_conflict","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2matomically accepts messages and replays before busy or advanced-revision checks
+[22m[39m{"correlation_id":"req-l","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_93a6a79e7db34cf6985d5374d389d6cf","stage":"http:response","duration_ms":4,"error_code":"conversation_busy","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2matomically accepts messages and replays before busy or advanced-revision checks
+[22m[39m{"correlation_id":"req-m","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_93a6a79e7db34cf6985d5374d389d6cf","stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mserializes two-tab acceptance and does not deduplicate a later explicit same-text request
+[22m[39m{"correlation_id":"req-n","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mserializes two-tab acceptance and does not deduplicate a later explicit same-text request
+[22m[39m{"correlation_id":"req-o","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_196d9ac483de4f6db8de5ee4aab6acc3","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mserializes two-tab acceptance and does not deduplicate a later explicit same-text request
+[22m[39m{"correlation_id":"req-p","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_196d9ac483de4f6db8de5ee4aab6acc3","stage":"http:response","duration_ms":10,"error_code":"conversation_busy","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mserializes two-tab acceptance and does not deduplicate a later explicit same-text request
+[22m[39m{"correlation_id":"req-q","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_196d9ac483de4f6db8de5ee4aab6acc3","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrolls back submission, message and busy state together on precommit failure
+[22m[39m{"correlation_id":"req-r","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstderr[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrolls back submission, message and busy state together on precommit failure
+[22m[39m{"correlation_id":"req-s","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_095ff2b3860745308590d7c099af9330","method":"POST","route":"/api/projects/:projectId/assistant-runtime/sessions/:sessionId/messages","stage":"http:error","duration_ms":8,"status_code":500,"error_code":"http_error"}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrolls back submission, message and busy state together on precommit failure
+[22m[39m{"correlation_id":"req-t","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_095ff2b3860745308590d7c099af9330","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps an accepted pending turn recoverable before dispatch and claims it once
+[22m[39m{"correlation_id":"req-u","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps an accepted pending turn recoverable before dispatch and claims it once
+[22m[39m{"correlation_id":"req-v","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_53a2b2da66574eaab68d16eb53a1fd0c","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-w","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-x","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_e0dc3f3040dc477ab64bba90a805f3f1","stage":"http:response","duration_ms":4,"error_code":"conversation_not_found","status_code":404}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-y","job_id":null,"project_id":"project_840432af20f44872b42381a6981b0288","object_id":"assistant_e0dc3f3040dc477ab64bba90a805f3f1","stage":"http:response","duration_ms":2,"error_code":"project_not_found","status_code":404}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-z","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_e0dc3f3040dc477ab64bba90a805f3f1","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-10","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-11","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_91520347e9a649a38117950c64b12e58","stage":"http:response","duration_ms":4,"error_code":"submission_conflict","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds private sessions and submission identities to their real actor and project
+[22m[39m{"correlation_id":"req-12","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_e0dc3f3040dc477ab64bba90a805f3f1","stage":"http:response","duration_ms":1,"error_code":"project_not_found","status_code":404}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mruns an ordinary real SDK query without creating a plan or calling legacy execution
+[22m[39m{"correlation_id":"req-13","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mruns an ordinary real SDK query without creating a plan or calling legacy execution
+[22m[39m{"correlation_id":"req-14","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_67b639bc9cbd408db71fef5e60500bb9","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mpersists multiple stable delivery identities, partial edits and cancellation without creating business assets
+[22m[39m{"correlation_id":"req-15","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":15,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mpersists multiple stable delivery identities, partial edits and cancellation without creating business assets
+[22m[39m{"correlation_id":"req-16","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_4a7a7988827340e6a1fe89e39287e61e","stage":"http:response","duration_ms":11,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mpersists multiple stable delivery identities, partial edits and cancellation without creating business assets
+[22m[39m{"correlation_id":"req-17","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_4a7a7988827340e6a1fe89e39287e61e","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mR02-9 preserves a fixed source, classification and save target during field-only amendment
+[22m[39m{"correlation_id":"req-19","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mR02-9 preserves a fixed source, classification and save target during field-only amendment
+[22m[39m{"correlation_id":"req-1a","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_5b48f14803784b239ca84c6ad69afd9a","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mR02-9 preserves a fixed source, classification and save target during field-only amendment
+[22m[39m{"correlation_id":"req-1b","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_5b48f14803784b239ca84c6ad69afd9a","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not increment requirements revision for an unchanged amendment and replays its receipt
+[22m[39m{"correlation_id":"req-1c","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not increment requirements revision for an unchanged amendment and replays its receipt
+[22m[39m{"correlation_id":"req-1d","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_53ec513a541f4e3bbc728310178eb2e1","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mnormalizes or corrects wrong-type through the actual SDK
+[22m[39m{"correlation_id":"req-1e","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":15,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mnormalizes or corrects wrong-type through the actual SDK
+[22m[39m{"correlation_id":"req-1f","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_d12da4fd93d946c69658f1e4514a95fa","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mnormalizes or corrects unknown-field through the actual SDK
+[22m[39m{"correlation_id":"req-1g","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mnormalizes or corrects unknown-field through the actual SDK
+[22m[39m{"correlation_id":"req-1h","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_bf2d7f8f135844f58dd91c5cdeee74e0","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mC01 captured wrapper and encoded source normalize before the SDK tool executes
+[22m[39m{"correlation_id":"req-1i","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mC01 captured wrapper and encoded source normalize before the SDK tool executes
+[22m[39m{"correlation_id":"req-1j","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_48bbfffbd83b488f87d7ebcb286db6c8","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mC02 actual SDK repair retains omitted goal and unchanged fields from the first canonical invocation
+[22m[39m{"correlation_id":"req-1k","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mC02 actual SDK repair retains omitted goal and unchanged fields from the first canonical invocation
+[22m[39m{"correlation_id":"req-1l","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_6d0a0f4c6adb4ff3855bb9facf947b87","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mclassifies a business quota conflict without spending a second SDK correction request
+[22m[39m{"correlation_id":"req-1m","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mclassifies a business quota conflict without spending a second SDK correction request
+[22m[39m{"correlation_id":"req-1n","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_3211f24dc8b24d50b238fecc2b3c7113","stage":"http:response","duration_ms":11,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate invocation IDs from the real SDK with zero requirement writes
+[22m[39m{"correlation_id":"req-1o","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate invocation IDs from the real SDK with zero requirement writes
+[22m[39m{"correlation_id":"req-1p","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_8a4fe8d57bc44bd4b0ce200cb596ada6","stage":"http:response","duration_ms":9,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs a mixed batch with an unknown field before any SDK mutation
+[22m[39m{"correlation_id":"req-1q","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs a mixed batch with an unknown field before any SDK mutation
+[22m[39m{"correlation_id":"req-1r","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_1bb60a90c5724864945f94dfc36ce54d","stage":"http:response","duration_ms":9,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrecovers a truncated read-only progress call through the actual SDK
+[22m[39m{"correlation_id":"req-1s","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrecovers a truncated read-only progress call through the actual SDK
+[22m[39m{"correlation_id":"req-1t","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_249c748a2bc449dc875cd8252c933eb3","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mnormalizes JSON object strings through SDK without a correction request or changed scope
+[22m[39m{"correlation_id":"req-1u","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mnormalizes JSON object strings through SDK without a correction request or changed scope
+[22m[39m{"correlation_id":"req-1v","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_0f8a05248efe4957a93154fcf4878322","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds SDK correction to its original tool, schema and invalid fields, then restores tools
+[22m[39m{"correlation_id":"req-1w","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbinds SDK correction to its original tool, schema and invalid fields, then restores tools
+[22m[39m{"correlation_id":"req-1x","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_67d5c7d57e6d429db5cb257c3c243588","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains truncated invocation identity in the actual SDK correction request
+[22m[39m{"correlation_id":"req-1y","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains truncated invocation identity in the actual SDK correction request
+[22m[39m{"correlation_id":"req-1z","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_a9ed46faa2a24b83b548b69aed2129e4","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not invent a missing original source during SDK correction
+[22m[39m{"correlation_id":"req-20","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not invent a missing original source during SDK correction
+[22m[39m{"correlation_id":"req-21","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_09a388c0fb2243a0b3ec5b31d281720d","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mpreserves the original semantic snapshot if an SDK correction is itself truncated
+[22m[39m{"correlation_id":"req-22","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mpreserves the original semantic snapshot if an SDK correction is itself truncated
+[22m[39m{"correlation_id":"req-23","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_f4c47f90ef344b01b655613ebfd8c5f4","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects semantic source/count/save-target changes disguised as correction
+[22m[39m{"correlation_id":"req-24","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects semantic source/count/save-target changes disguised as correction
+[22m[39m{"correlation_id":"req-25","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_07ee7124d8784f109b09b165015a4f1f","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated invalid parameters and refuses an oral-success substitute
+[22m[39m{"correlation_id":"req-26","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated invalid parameters and refuses an oral-success substitute
+[22m[39m{"correlation_id":"req-27","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_5b1a632206394fe7b55815c0eac14e76","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated invalid parameters and refuses an oral-success substitute
+[22m[39m{"correlation_id":"req-28","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated invalid parameters and refuses an oral-success substitute
+[22m[39m{"correlation_id":"req-29","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_a62d962bea1447a7ae1cf50d9bb934d9","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs truncated read-only JSON but fails closed for unparseable mutations
+[22m[39m{"correlation_id":"req-2a","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs truncated read-only JSON but fails closed for unparseable mutations
+[22m[39m{"correlation_id":"req-2b","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_5b209295590f445fbe139e3cc60c79bc","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs truncated read-only JSON but fails closed for unparseable mutations
+[22m[39m{"correlation_id":"req-2c","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs truncated read-only JSON but fails closed for unparseable mutations
+[22m[39m{"correlation_id":"req-2d","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_6f2848732ea7446ca8aeb05aca1ab83a","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects unavailable tools and forged delivery IDs without invoking a wider runtime
+[22m[39m{"correlation_id":"req-2e","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects unavailable tools and forged delivery IDs without invoking a wider runtime
+[22m[39m{"correlation_id":"req-2f","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_366c3064b12b47d9aedd3b1143030fd6","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects unavailable tools and forged delivery IDs without invoking a wider runtime
+[22m[39m{"correlation_id":"req-2g","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects unavailable tools and forged delivery IDs without invoking a wider runtime
+[22m[39m{"correlation_id":"req-2h","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_94ab1243bad2425c943fb00151500d42","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmeters actual summary/correction/ordinary HTTP attempts and marks unknown usage
+[22m[39m{"correlation_id":"req-2i","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmeters actual summary/correction/ordinary HTTP attempts and marks unknown usage
+[22m[39m{"correlation_id":"req-2j","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_301a60a5cb2245feafac7c96263844f9","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmeters actual summary/correction/ordinary HTTP attempts and marks unknown usage
+[22m[39m{"correlation_id":"req-2k","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_301a60a5cb2245feafac7c96263844f9","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmeters actual summary/correction/ordinary HTTP attempts and marks unknown usage
+[22m[39m{"correlation_id":"req-2l","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_301a60a5cb2245feafac7c96263844f9","stage":"http:response","duration_ms":9,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects caller authority, invalid selected records and text-changing submission replay
+[22m[39m{"correlation_id":"req-2n","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects caller authority, invalid selected records and text-changing submission replay
+[22m[39m{"correlation_id":"req-2o","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_02430dc00dad4150b9f7250539fd7d73","stage":"http:response","duration_ms":2,"error_code":"message_invalid","status_code":422}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects caller authority, invalid selected records and text-changing submission replay
+[22m[39m{"correlation_id":"req-2p","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_02430dc00dad4150b9f7250539fd7d73","stage":"http:response","duration_ms":12,"error_code":"processing_scope_invalid","status_code":422}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects caller authority, invalid selected records and text-changing submission replay
+[22m[39m{"correlation_id":"req-2q","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_02430dc00dad4150b9f7250539fd7d73","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects caller authority, invalid selected records and text-changing submission replay
+[22m[39m{"correlation_id":"req-2r","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_02430dc00dad4150b9f7250539fd7d73","stage":"http:response","duration_ms":6,"error_code":"submission_conflict","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mreturns actual directory/record data and enforces viewer-only tool permissions
+[22m[39m{"correlation_id":"req-2s","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mreturns actual directory/record data and enforces viewer-only tool permissions
+[22m[39m{"correlation_id":"req-2t","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_de5d7b06232d41d1bd3c5b6e175e9a87","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mreturns actual directory/record data and enforces viewer-only tool permissions
+[22m[39m{"correlation_id":"req-2u","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mreturns actual directory/record data and enforces viewer-only tool permissions
+[22m[39m{"correlation_id":"req-2v","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_90fd46d5e16e4ec7a015995a8ff1def9","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing an invalid numeric representation to a different quantity during correction
+[22m[39m{"correlation_id":"req-2x","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing an invalid numeric representation to a different quantity during correction
+[22m[39m{"correlation_id":"req-2y","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_c4e051ccef6f423ab77ee6915d2657bd","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrevocation during a provider request prevents late requirement writes and terminates the turn
+[22m[39m{"correlation_id":"req-2z","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrevocation during a provider request prevents late requirement writes and terminates the turn
+[22m[39m{"correlation_id":"req-30","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_2a43b473550b4f5f88f4c254d36a1a26","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects stale runner/checkpoint identities and multiple simultaneous requirement mutations
+[22m[39m{"correlation_id":"req-31","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects stale runner/checkpoint identities and multiple simultaneous requirement mutations
+[22m[39m{"correlation_id":"req-32","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_7a0d4544c53a449cb72f81528f7d1a16","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects stale runner/checkpoint identities and multiple simultaneous requirement mutations
+[22m[39m{"correlation_id":"req-33","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":13,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects stale runner/checkpoint identities and multiple simultaneous requirement mutations
+[22m[39m{"correlation_id":"req-34","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_2f254b6e555b4e46bb44291c543790ec","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains omitted known quantities without accepting an invalid original object
+[22m[39m{"correlation_id":"req-35","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains omitted known quantities without accepting an invalid original object
+[22m[39m{"correlation_id":"req-36","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_efcafdb157b5457bb48da4aeb108856a","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains omitted known quantities without accepting an invalid original object
+[22m[39m{"correlation_id":"req-37","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains omitted known quantities without accepting an invalid original object
+[22m[39m{"correlation_id":"req-38","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_7b575209b9a44547aad94c1f79864f67","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstderr[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains omitted known quantities without accepting an invalid original object
+[22m[39mNew LangChain packages are available that more efficiently handle tool calling.
+
+Please upgrade your packages to versions that set message tool calls. e.g., `pnpm install @langchain/anthropic`, pnpm install @langchain/openai`, etc.
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not expose or execute ambient tool read_file
+[22m[39m{"correlation_id":"req-39","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not expose or execute ambient tool read_file
+[22m[39m{"correlation_id":"req-3a","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_44c971ff858b4f4a8d5848b46dda9f8a","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not expose or execute ambient tool write_file
+[22m[39m{"correlation_id":"req-3b","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not expose or execute ambient tool write_file
+[22m[39m{"correlation_id":"req-3c","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_e18b870799874b3db936d3a70fd74775","stage":"http:response","duration_ms":4,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not expose or execute ambient tool task
+[22m[39m{"correlation_id":"req-3d","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not expose or execute ambient tool task
+[22m[39m{"correlation_id":"req-3e","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_63705a19501a4b798b5a48d8965f8a78","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing source under unknown-field correction
+[22m[39m{"correlation_id":"req-3f","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing source under unknown-field correction
+[22m[39m{"correlation_id":"req-3g","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_6bcade4e41e94b0f8459b4c0e588e7b5","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing classifications under unknown-field correction
+[22m[39m{"correlation_id":"req-3h","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing classifications under unknown-field correction
+[22m[39m{"correlation_id":"req-3i","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_1258a81644a14642a7fb1750c5a0aaa5","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing saveTarget under unknown-field correction
+[22m[39m{"correlation_id":"req-3j","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects changing saveTarget under unknown-field correction
+[22m[39m{"correlation_id":"req-3k","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_6ef1ee6eb42d49ec9ad69bbf04a371d6","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrecords a rejected HTTP attempt once and preserves current requirements
+[22m[39m{"correlation_id":"req-3l","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrecords a rejected HTTP attempt once and preserves current requirements
+[22m[39m{"correlation_id":"req-3m","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_910f08f936f1450fb8c4b1effe4d6ae8","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrecords a rejected HTTP attempt once and preserves current requirements
+[22m[39m{"correlation_id":"req-3n","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_910f08f936f1450fb8c4b1effe4d6ae8","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmarks model prose as explanation instead of a business receipt
+[22m[39m{"correlation_id":"req-3o","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":13,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mmarks model prose as explanation instead of a business receipt
+[22m[39m{"correlation_id":"req-3p","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_39cd2026a370454aae19ef43a0abdcca","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not execute a session owned by an unsupported runtime version
+[22m[39m{"correlation_id":"req-3q","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not execute a session owned by an unsupported runtime version
+[22m[39m{"correlation_id":"req-3r","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_b8967489b81a495ab76dd79510dd1649","stage":"http:response","duration_ms":4,"error_code":"runtime_version_not_supported","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mvalidates existing draft save targets in the requirements commit
+[22m[39m{"correlation_id":"req-3s","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":27,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mvalidates existing draft save targets in the requirements commit
+[22m[39m{"correlation_id":"req-3t","job_id":null,"project_id":"project_840432af20f44872b42381a6981b0288","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mvalidates existing draft save targets in the requirements commit
+[22m[39m{"correlation_id":"req-3u","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mvalidates existing draft save targets in the requirements commit
+[22m[39m{"correlation_id":"req-3v","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":23,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mvalidates existing draft save targets in the requirements commit
+[22m[39m{"correlation_id":"req-3w","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mvalidates existing draft save targets in the requirements commit
+[22m[39m{"correlation_id":"req-3x","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_91288226e36f42bea924ea1aebe7fbee","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mapplies shared parent availability to draft save targets and directory
+[22m[39m{"correlation_id":"req-3y","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mapplies shared parent availability to draft save targets and directory
+[22m[39m{"correlation_id":"req-3z","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mapplies shared parent availability to draft save targets and directory
+[22m[39m{"correlation_id":"req-40","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_4ca2f7c5f92d492c859cab06c6f84f8b","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mR04 sends exactly one leading System message through the real SDK while retaining current authority and tool chronology
+[22m[39m{"correlation_id":"req-41","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mR04 sends exactly one leading System message through the real SDK while retaining current authority and tool chronology
+[22m[39m{"correlation_id":"req-42","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_76dc8be03893497293534afb43105964","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrefreshes dependent rules after a partial 5-to-3 amendment through the real SDK
+[22m[39m{"correlation_id":"req-43","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrefreshes dependent rules after a partial 5-to-3 amendment through the real SDK
+[22m[39m{"correlation_id":"req-44","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_c06b364a22fa4fb4b282bbc34e140d14","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrefreshes dependent rules after a partial 5-to-3 amendment through the real SDK
+[22m[39m{"correlation_id":"req-45","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_c06b364a22fa4fb4b282bbc34e140d14","stage":"http:response","duration_ms":9,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not grant a changed count during semantic instruction repair
+[22m[39m{"correlation_id":"req-46","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not grant a changed count during semantic instruction repair
+[22m[39m{"correlation_id":"req-47","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_95a482da7f064f93afb30bf0443f81e1","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not grant a changed count during semantic instruction repair
+[22m[39m{"correlation_id":"req-48","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_95a482da7f064f93afb30bf0443f81e1","stage":"http:response","duration_ms":9,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated stale instructions and preserves the original revision
+[22m[39m{"correlation_id":"req-49","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated stale instructions and preserves the original revision
+[22m[39m{"correlation_id":"req-4a","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_fad722c604e8416c8f1b9b5131b419a8","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mbounds repeated stale instructions and preserves the original revision
+[22m[39m{"correlation_id":"req-4b","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_fad722c604e8416c8f1b9b5131b419a8","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains the semantic repair context across a truncated correction
+[22m[39m{"correlation_id":"req-4c","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains the semantic repair context across a truncated correction
+[22m[39m{"correlation_id":"req-4d","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_6981d3f6097d481c9decb8a940968641","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains the semantic repair context across a truncated correction
+[22m[39m{"correlation_id":"req-4e","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_6981d3f6097d481c9decb8a940968641","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mamends the unique delivery when the captured C01 amendment omits its identity and operation
+[22m[39m{"correlation_id":"req-4f","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":13,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mamends the unique delivery when the captured C01 amendment omits its identity and operation
+[22m[39m{"correlation_id":"req-4g","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_a2b10d2de96e4716a66bd4147d1991f1","stage":"http:response","duration_ms":9,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mamends the unique delivery when the captured C01 amendment omits its identity and operation
+[22m[39m{"correlation_id":"req-4h","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_a2b10d2de96e4716a66bd4147d1991f1","stage":"http:response","duration_ms":4,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not save executable creation with an omitted operation
+[22m[39m{"correlation_id":"req-4i","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not save executable creation with an omitted operation
+[22m[39m{"correlation_id":"req-4j","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_65698a18eb2f44cdb41ff42efa2a7db5","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not reinterpret a targetless update on an empty session as creation
+[22m[39m{"correlation_id":"req-4k","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not reinterpret a targetless update on an empty session as creation
+[22m[39m{"correlation_id":"req-4l","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_ff5c6cf1964049c7a99702b85a54dffd","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-4m","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-4n","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_9f294f342f1d478f87c6d2833ba74628","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-4o","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_9f294f342f1d478f87c6d2833ba74628","stage":"http:response","duration_ms":11,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-4p","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_9f294f342f1d478f87c6d2833ba74628","stage":"http:response","duration_ms":11,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate mutations of the same bound delivery in one command
+[22m[39m{"correlation_id":"req-4q","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate mutations of the same bound delivery in one command
+[22m[39m{"correlation_id":"req-4r","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_13be9ed7751f4b2baf1d821d2fe074d1","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate mutations of the same bound delivery in one command
+[22m[39m{"correlation_id":"req-4s","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_13be9ed7751f4b2baf1d821d2fe074d1","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs a missing new execution operation with the real SDK without changing its scope
+[22m[39m{"correlation_id":"req-4t","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs a missing new execution operation with the real SDK without changing its scope
+[22m[39m{"correlation_id":"req-4u","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_c77170f0d11c417ea8526e4123fc6c99","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps v1 history readable without reinterpreting its checkpoint as a v2 command
+[22m[39m{"correlation_id":"req-4v","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":13,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps v1 history readable without reinterpreting its checkpoint as a v2 command
+[22m[39m{"correlation_id":"req-4x","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_994731e86914481ebc7cea660d22f4a9","stage":"http:response","duration_ms":3,"error_code":"runtime_contract_changed","status_code":409}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps the bound delivery identity when semantic correction supplies its previously omitted ID
+[22m[39m{"correlation_id":"req-4y","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps the bound delivery identity when semantic correction supplies its previously omitted ID
+[22m[39m{"correlation_id":"req-4z","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_e646f4260cb548b793dc3a8006366b62","stage":"http:response","duration_ms":25,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps the bound delivery identity when semantic correction supplies its previously omitted ID
+[22m[39m{"correlation_id":"req-50","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_e646f4260cb548b793dc3a8006366b62","stage":"http:response","duration_ms":13,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mreplays a committed partial correction receipt without another mutation and rejects changed protected fields
+[22m[39m{"correlation_id":"req-51","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mreplays a committed partial correction receipt without another mutation and rejects changed protected fields
+[22m[39m{"correlation_id":"req-52","job_id":null,"project_id":"project_4ba2e13c14b640f4b6e94e0f39fce383","object_id":"assistant_8821ce616846498a83f5cdd2445499cd","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+ [32m✓[39m tests/integration/rebuild-session.test.ts [2m([22m[2m59 tests[22m[2m)[22m[33m 18681[2mms[22m[39m
+     [33m[2m✓[22m[39m runs an ordinary real SDK query without creating a plan or calling legacy execution [33m 917[2mms[22m[39m
+     [33m[2m✓[22m[39m persists multiple stable delivery identities, partial edits and cancellation without creating business assets [33m 524[2mms[22m[39m
+     [33m[2m✓[22m[39m R02-9 preserves a fixed source, classification and save target during field-only amendment [33m 469[2mms[22m[39m
+     [33m[2m✓[22m[39m normalizes or corrects unknown-field through the actual SDK [33m 307[2mms[22m[39m
+     [33m[2m✓[22m[39m C02 actual SDK repair retains omitted goal and unchanged fields from the first canonical invocation [33m 330[2mms[22m[39m
+     [33m[2m✓[22m[39m repairs a mixed batch with an unknown field before any SDK mutation [33m 304[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves the original semantic snapshot if an SDK correction is itself truncated [33m 376[2mms[22m[39m
+     [33m[2m✓[22m[39m bounds repeated invalid parameters and refuses an oral-success substitute [33m 462[2mms[22m[39m
+     [33m[2m✓[22m[39m repairs truncated read-only JSON but fails closed for unparseable mutations [33m 368[2mms[22m[39m
+     [33m[2m✓[22m[39m meters actual summary/correction/ordinary HTTP attempts and marks unknown usage [33m 795[2mms[22m[39m
+     [33m[2m✓[22m[39m returns actual directory/record data and enforces viewer-only tool permissions [33m 579[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects stale runner/checkpoint identities and multiple simultaneous requirement mutations [33m 350[2mms[22m[39m
+     [33m[2m✓[22m[39m retains omitted known quantities without accepting an invalid original object [33m 411[2mms[22m[39m
+     [33m[2m✓[22m[39m records a rejected HTTP attempt once and preserves current requirements [33m 323[2mms[22m[39m
+     [33m[2m✓[22m[39m refreshes dependent rules after a partial 5-to-3 amendment through the real SDK [33m 545[2mms[22m[39m
+     [33m[2m✓[22m[39m does not grant a changed count during semantic instruction repair [33m 424[2mms[22m[39m
+     [33m[2m✓[22m[39m bounds repeated stale instructions and preserves the original revision [33m 514[2mms[22m[39m
+     [33m[2m✓[22m[39m retains the semantic repair context across a truncated correction [33m 594[2mms[22m[39m
+     [33m[2m✓[22m[39m amends the unique delivery when the captured C01 amendment omits its identity and operation [33m 424[2mms[22m[39m
+     [33m[2m✓[22m[39m retains explicit additional planning and rejects unsupported executable additions atomically [33m 542[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects duplicate mutations of the same bound delivery in one command [33m 348[2mms[22m[39m
+     [33m[2m✓[22m[39m repairs a missing new execution operation with the real SDK without changing its scope [33m 309[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the bound delivery identity when semantic correction supplies its previously omitted ID [33m 1123[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m59 passed[39m[22m[90m (59)[39m
+[2m   Start at [22m 00:19:18
+[2m   Duration [22m 22.94s[2m (transform 2.17s, setup 50ms, import 3.87s, tests 18.68s, environment 0ms)[22m
+

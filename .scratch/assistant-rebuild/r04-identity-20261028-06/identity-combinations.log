@@ -1,0 +1,105 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/bistu/EvalBase/.worktrees/assistant-rebuild[39m
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-1","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":83,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-2","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":63,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-3","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":65,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-4","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":69,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-5","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":67,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-6","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":67,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-7","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-8","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-a","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":80,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-b","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":23,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-d","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"asset_0519cf55f1ed4e46826448b88bcd9297","stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-e","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mamends the unique delivery when the captured C01 amendment omits its identity and operation
+[22m[39m{"correlation_id":"req-f","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":34,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mamends the unique delivery when the captured C01 amendment omits its identity and operation
+[22m[39m{"correlation_id":"req-g","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_6cafac753de44f40b3d9804cb0bb8288","stage":"http:response","duration_ms":11,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mamends the unique delivery when the captured C01 amendment omits its identity and operation
+[22m[39m{"correlation_id":"req-h","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_6cafac753de44f40b3d9804cb0bb8288","stage":"http:response","duration_ms":8,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not save executable creation with an omitted operation
+[22m[39m{"correlation_id":"req-i","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":12,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not save executable creation with an omitted operation
+[22m[39m{"correlation_id":"req-j","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_2d578e6ad4274d78a6e02b5fddccae1a","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not reinterpret a targetless update on an empty session as creation
+[22m[39m{"correlation_id":"req-k","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mdoes not reinterpret a targetless update on an empty session as creation
+[22m[39m{"correlation_id":"req-l","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_fa066c487cb84639a69aae14aa7c7459","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-m","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-n","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_2ef334c9e4514ca7a5b19ea60aa575e4","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-o","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_2ef334c9e4514ca7a5b19ea60aa575e4","stage":"http:response","duration_ms":13,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mretains explicit additional planning and rejects unsupported executable additions atomically
+[22m[39m{"correlation_id":"req-p","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_2ef334c9e4514ca7a5b19ea60aa575e4","stage":"http:response","duration_ms":10,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate mutations of the same bound delivery in one command
+[22m[39m{"correlation_id":"req-q","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":9,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate mutations of the same bound delivery in one command
+[22m[39m{"correlation_id":"req-r","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_7c63a1e7d9d24a549e3e3d326ac27c5b","stage":"http:response","duration_ms":13,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrejects duplicate mutations of the same bound delivery in one command
+[22m[39m{"correlation_id":"req-s","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_7c63a1e7d9d24a549e3e3d326ac27c5b","stage":"http:response","duration_ms":6,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs a missing new execution operation with the real SDK without changing its scope
+[22m[39m{"correlation_id":"req-t","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mrepairs a missing new execution operation with the real SDK without changing its scope
+[22m[39m{"correlation_id":"req-u","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_0747e9fb0066417c9da2a80738456d09","stage":"http:response","duration_ms":7,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps v1 history readable without reinterpreting its checkpoint as a v2 command
+[22m[39m{"correlation_id":"req-v","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":null,"stage":"http:response","duration_ms":10,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-session.test.ts[2m > [22m[2mREBUILD-02 formal session and Deep Agents host[2m > [22m[2mkeeps v1 history readable without reinterpreting its checkpoint as a v2 command
+[22m[39m{"correlation_id":"req-x","job_id":null,"project_id":"project_48b2b8d00a914e26b87d596d56dd1029","object_id":"assistant_080790be85814d51a5b86f1742686412","stage":"http:response","duration_ms":3,"error_code":"runtime_contract_changed","status_code":409}
+
+ [32m✓[39m tests/integration/rebuild-session.test.ts [2m([22m[2m57 tests[22m[2m | [22m[33m50 skipped[39m[2m)[22m[33m 5316[2mms[22m[39m
+     [33m[2m✓[22m[39m amends the unique delivery when the captured C01 amendment omits its identity and operation [33m 1502[2mms[22m[39m
+     [33m[2m✓[22m[39m retains explicit additional planning and rejects unsupported executable additions atomically [33m 621[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects duplicate mutations of the same bound delivery in one command [33m 344[2mms[22m[39m
+     [33m[2m✓[22m[39m repairs a missing new execution operation with the real SDK without changing its scope [33m 362[2mms[22m[39m
+ [32m✓[39m tests/unit/rebuild-execution-readiness.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m15 passed[39m[22m[2m | [22m[33m50 skipped[39m[90m (65)[39m
+[2m   Start at [22m 00:09:00
+[2m   Duration [22m 9.53s[2m (transform 2.04s, setup 37ms, import 3.82s, tests 5.33s, environment 0ms)[22m
+

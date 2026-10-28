@@ -1,0 +1,72 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/bistu/EvalBase/.worktrees/assistant-rebuild[39m
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-1","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":99,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-2","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":75,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-3","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":72,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-4","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":63,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-5","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":65,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-6","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":60,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-7","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":14,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-8","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":5,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-a","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":null,"stage":"http:response","duration_ms":235,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-b","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":null,"stage":"http:response","duration_ms":100,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-d","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"asset_07ab943a9471403492e66d10bee2e134","stage":"http:response","duration_ms":204,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-e","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mamends scoped rules before execution and freezes only the current context through unique save
+[22m[39m{"correlation_id":"req-f","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":null,"stage":"http:response","duration_ms":17,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mamends scoped rules before execution and freezes only the current context through unique save
+[22m[39m{"correlation_id":"req-g","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"assistant_6cb27774d7b945d69291df96fd5a67d2","stage":"http:response","duration_ms":14,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mamends scoped rules before execution and freezes only the current context through unique save
+[22m[39m{"correlation_id":"req-h","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"assistant_6cb27774d7b945d69291df96fd5a67d2","stage":"http:response","duration_ms":14,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mamends scoped rules before execution and freezes only the current context through unique save
+[22m[39m{"correlation_id":"req-i","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"assistant_6cb27774d7b945d69291df96fd5a67d2","stage":"http:response","duration_ms":88,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mamends scoped rules before execution and freezes only the current context through unique save
+[22m[39m{"correlation_id":"req-j","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"assistant_6cb27774d7b945d69291df96fd5a67d2","stage":"http:response","duration_ms":7,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mpreserves pending rule refresh and budget through pause and original-checkpoint continuation
+[22m[39m{"correlation_id":"req-k","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":null,"stage":"http:response","duration_ms":8,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mpreserves pending rule refresh and budget through pause and original-checkpoint continuation
+[22m[39m{"correlation_id":"req-l","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"assistant_b8c25d4b31954a24881f413dc0d15373","stage":"http:response","duration_ms":5,"error_code":null,"status_code":202}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mpreserves pending rule refresh and budget through pause and original-checkpoint continuation
+[22m[39m{"correlation_id":"req-m","job_id":null,"project_id":"project_bbbcc9bda4d646b8b34c85c1fa6c39e0","object_id":"assistant_b8c25d4b31954a24881f413dc0d15373","stage":"http:response","duration_ms":11,"error_code":null,"status_code":202}
+
+ [32m✓[39m tests/integration/rebuild-execution.test.ts [2m([22m[2m49 tests[22m[2m | [22m[33m47 skipped[39m[2m)[22m[33m 5228[2mms[22m[39m
+     [33m[2m✓[22m[39m amends scoped rules before execution and freezes only the current context through unique save [33m 2190[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves pending rule refresh and budget through pause and original-checkpoint continuation [33m 653[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[2m | [22m[33m47 skipped[39m[90m (49)[39m
+[2m   Start at [22m 00:20:04
+[2m   Duration [22m 9.67s[2m (transform 2.15s, setup 26ms, import 4.22s, tests 5.23s, environment 0ms)[22m
+
