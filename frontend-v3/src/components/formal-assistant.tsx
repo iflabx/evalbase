@@ -46,6 +46,8 @@ import {
   openTab,
   errorText,
   visibleMessages,
+  mergeSnapshot,
+  mergeMessages,
   type Snapshot,
   type SessionItem,
   type Envelope,
@@ -95,6 +97,7 @@ const reasonNames: Record<string, string> = {
   no_progress: "连续操作没有取得新进展，请核对要求后继续。",
   segment_without_progress: "本轮未取得新进展，要求与已有结果已保留。",
   activity_budget_exhausted: "本次验证额度已用完，已停止。",
+  processing_not_complete: "处理任务未完成，已有结果已保留。请核对处理结果后继续。",
   task_budget_exhausted: "任务额度已用完，请核对后申请追加。",
   model_request_timeout: "模型响应超时，已有进度已保留。",
   provider_rejected: "模型服务未能处理本次请求，输入和已有进度已保留。",
@@ -136,14 +139,13 @@ export function FormalAssistant({
     [listOpen, setListOpen] = useState(() => window.innerWidth >= 1100),
     [workOpen, setWorkOpen] = useState(false),
     [narrow, setNarrow] = useState(() => window.innerWidth < 1100),
-    [snapshot, setSnapshot] = useState<Snapshot | null>(null),
+    [snapshot, rawSetSnapshot] = useState<Snapshot | null>(null),
     [error, setError] = useState(""),
     [connected, setConnected] = useState(false),
     [busy, setBusy] = useState(false),
     [rename, setRename] = useState(false),
     [title, setTitle] = useState(""),
     [progressOpen, setProgressOpen] = useState(false),
-    [earlier, setEarlier] = useState<Snapshot["messages"]>([]),
     [hasEarlier, setHasEarlier] = useState(false);
   useEffect(() => {
     if (narrow && workOpen) setListOpen(false);
@@ -192,6 +194,53 @@ export function FormalAssistant({
   }, []);
   const activeSession = (selected: string | undefined) =>
     mounted.current && current.current === selected && generationRef.current === generation;
+  const historyInitialized = useRef(false);
+  const loadedMessages = useRef<Snapshot["messages"]>([]);
+  const setSnapshot = (incoming: Snapshot | null) => {
+    if (!incoming) {
+      loadedMessages.current = [];
+      rawSetSnapshot(null);
+      return;
+    }
+    if (!activeSession(incoming.session.id)) return;
+    const previous = loadedMessages.current;
+    if (!historyInitialized.current) {
+      setHasEarlier(incoming.messages.length === 100);
+      historyInitialized.current = true;
+    }
+    loadedMessages.current = mergeMessages(previous, incoming.messages);
+    rawSetSnapshot((old) => mergeSnapshot(old, incoming));
+    if (
+      previous.length &&
+      incoming.messages.length === 100 &&
+      BigInt(incoming.messages[0]!.id) > BigInt(previous[previous.length - 1]!.id)
+    ) {
+      void (async () => {
+        let cursor = incoming.messages[0]!.id;
+        while (activeSession(incoming.session.id)) {
+          const page = await api<{ messages: Snapshot["messages"]; hasEarlier: boolean }>(
+            endpoint(projectId, incoming.session.id) + "/history?before=" + cursor,
+          );
+          if (!activeSession(incoming.session.id)) return;
+          loadedMessages.current = mergeMessages(loadedMessages.current, page.messages);
+          rawSetSnapshot((old) =>
+            old?.session.id === incoming.session.id
+              ? { ...old, messages: mergeMessages(old.messages, page.messages) }
+              : old,
+          );
+          if (
+            !page.messages.length ||
+            BigInt(page.messages[0]!.id) <= BigInt(previous[previous.length - 1]!.id) ||
+            !page.hasEarlier
+          )
+            break;
+          cursor = page.messages[0]!.id;
+        }
+      })().catch((e) => {
+        if (activeSession(incoming.session.id)) setError(errorText(e));
+      });
+    }
+  };
   const [listVersion, setListVersion] = useState(0);
   const refreshList = () => setListVersion((v) => v + 1);
   useEffect(() => {
@@ -232,8 +281,8 @@ export function FormalAssistant({
     busyOwner.current++;
     setBusy(false);
     setError("");
+    historyInitialized.current = false;
     setSnapshot(null);
-    setEarlier([]);
     setHasEarlier(false);
     setTabs([]);
     setActive("");
@@ -245,7 +294,6 @@ export function FormalAssistant({
     const apply = (s: Snapshot) => {
       if (!live || current.current !== selected || s.session.id !== selected) return;
       setSnapshot(s);
-      if (s.messages.length === 100) setHasEarlier(true);
       setConnected(true);
       setTabs((old) =>
         old.map((t) =>
@@ -561,6 +609,20 @@ export function FormalAssistant({
       if (activeSession(selected)) setError(errorText(e));
     }
   };
+  const offerBudget = async () => {
+    if (!sessionId) return;
+    const selected = sessionId,
+      token = beginBusy();
+    try {
+      await api(endpoint(projectId, selected) + "/budget-offer", json("POST", {}));
+      const updated = await api<Snapshot>(endpoint(projectId, selected));
+      if (activeSession(selected)) setSnapshot(updated);
+    } catch (e) {
+      if (activeSession(selected)) setError(errorText(e));
+    } finally {
+      if (activeSession(selected)) endBusy(token);
+    }
+  };
   const confirm = async (id: string, accept: boolean) => {
     if (!sessionId) return;
     const selected = sessionId;
@@ -613,8 +675,8 @@ export function FormalAssistant({
     ["pending", "running", "waiting", "confirmation"].includes(snapshot?.execution?.status ?? "") ||
     snapshot?.session.status === "busy";
   const rendered = useMemo<ThreadMessageLike[]>(
-    () => (snapshot ? visibleMessages(snapshot, earlier) : []),
-    [snapshot, earlier],
+    () => (snapshot ? visibleMessages(snapshot) : []),
+    [snapshot],
   );
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages: rendered,
@@ -623,13 +685,16 @@ export function FormalAssistant({
     hasEarlier,
     onLoadEarlier: async () => {
       if (!sessionId || !snapshot) return;
-      const before = earlier[0]?.id ?? snapshot.messages[0]?.id;
+      const before = snapshot.messages[0]?.id;
       if (!before) return;
       const older = await api<{ messages: Snapshot["messages"]; hasEarlier: boolean }>(
         endpoint(projectId, sessionId) + "/history?before=" + before,
       );
       if (!activeSession(sessionId)) return;
-      setEarlier((old) => [...older.messages, ...old]);
+      loadedMessages.current = mergeMessages(loadedMessages.current, older.messages);
+      rawSetSnapshot((old) =>
+        old ? { ...old, messages: mergeMessages(old.messages, older.messages) } : old,
+      );
       setHasEarlier(older.hasEarlier);
     },
     onNew: async () => {
@@ -1002,6 +1067,68 @@ export function FormalAssistant({
                                     : "本轮未完成，输入和已有进度已保留。请核对当前要求后重试。")}
                               </p>
                             )}
+                            {snapshot.execution?.status === "paused" &&
+                              snapshot.execution.reason === "task_budget_exhausted" &&
+                              !snapshot.confirmations.some(
+                                (c) =>
+                                  c.action === "budget" &&
+                                  c.status === "pending" &&
+                                  new Date(c.expires_at).getTime() > Date.now(),
+                              ) && (
+                                <Button
+                                  variant="outline"
+                                  className="mt-3"
+                                  disabled={busy || !canWrite || readOnlyHistory}
+                                  onClick={() => void offerBudget()}
+                                >
+                                  申请追加额度
+                                </Button>
+                              )}
+                            {snapshot.confirmations
+                              .filter(
+                                (c) =>
+                                  c.action === "budget" &&
+                                  c.status === "pending" &&
+                                  snapshot.execution?.status === "paused",
+                              )
+                              .map((c) => (
+                                <div key={c.id} className="mt-4 rounded-xl border bg-card p-4">
+                                  <h2 className="font-semibold">确认追加任务额度</h2>
+                                  <p className="my-3 text-sm text-muted-foreground">
+                                    已用 {snapshot.execution?.requests} /{" "}
+                                    {snapshot.execution?.request_limit} 次请求；本次追加{" "}
+                                    {Number(c.payload["requests"])} 次请求、
+                                    {Number(c.payload["activeMs"]) / 1000}{" "}
+                                    秒运行时间。确认后可继续原任务。
+                                  </p>
+                                  <Button
+                                    disabled={
+                                      busy ||
+                                      !canWrite ||
+                                      readOnlyHistory ||
+                                      new Date(c.expires_at).getTime() <= Date.now()
+                                    }
+                                    onClick={() => void confirm(c.id, true)}
+                                  >
+                                    确认追加
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    disabled={busy || readOnlyHistory}
+                                    onClick={() => void confirm(c.id, false)}
+                                  >
+                                    取消
+                                  </Button>
+                                </div>
+                              ))}
+                            {snapshot.receipts
+                              .filter((r) => r.grantId)
+                              .map((r) => (
+                                <p key={r.grantId} className="mt-3 text-sm text-muted-foreground">
+                                  已追加 {r.addedRequests} 次请求、{Number(r.addedActiveMs) / 1000}{" "}
+                                  秒运行时间 · 服务端已确认
+                                </p>
+                              ))}
                             {snapshot.confirmations
                               .filter(
                                 (c) =>

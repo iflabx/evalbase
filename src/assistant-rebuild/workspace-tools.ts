@@ -16,6 +16,10 @@ export function workspaceTools(
   proof: TurnProof,
   artifacts: ArtifactRepository,
   canWrite: boolean,
+  waits: {
+    processing: () => Promise<unknown>;
+    confirmation: () => Promise<unknown>;
+  },
 ) {
   const schema = z.object({}).strict();
   const current = async () => {
@@ -59,7 +63,7 @@ export function workspaceTools(
           name: "submit_processing",
           readOnly: false,
           description:
-            "执行已经保存的单份清洗或改写方案，无参数。必须mode:execute，固定source.recordIds与count一致，allowedFields明确，saveTarget:newDraft。会创建真实后台作业，后续只用wait_processing等待，禁止重复提交。",
+            "执行已经保存的单份清洗或改写方案，无参数。必须mode:execute，固定source.recordIds与count一致，allowedFields明确，saveTarget:newDraft。会创建真实后台作业，并由服务端自动等待；禁止重复提交。",
           run: async () => {
             const { session, d } = await current();
             const payload = {
@@ -93,6 +97,7 @@ export function workspaceTools(
               op.id,
               payload,
             );
+            await waits.processing();
             return result;
           },
         },
@@ -100,7 +105,7 @@ export function workspaceTools(
           name: "prepare_adoption",
           readOnly: false,
           description:
-            "为本次已完成的处理结果准备固定的保存确认卡，无参数。不会保存或代用户确认；必须随后wait_confirmation。保存目标从当前已保存要求取得。",
+            "为本次已完成的处理结果准备固定的保存确认卡，无参数。不会保存或代用户确认；服务端自动等待用户确认。保存目标从当前已保存要求取得。",
           run: async () => {
             const { session, d } = await current();
             const op = (
@@ -150,7 +155,9 @@ export function workspaceTools(
                 },
               },
             );
-            return execution.prepare(proof, adoption);
+            const card = await execution.prepare(proof, adoption);
+            await waits.confirmation();
+            return card;
           },
         },
       ]

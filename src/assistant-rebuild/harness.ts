@@ -1,3 +1,4 @@
+import { isGraphInterrupt } from "@langchain/langgraph";
 import {
   withOperationScope,
   type OperationScope,
@@ -140,6 +141,7 @@ export function createHarness(options: {
             )
           : await handler(request);
       } catch (error) {
+        if (isGraphInterrupt(error)) throw error;
         const failure = error as {
           code?: string;
           status?: number;

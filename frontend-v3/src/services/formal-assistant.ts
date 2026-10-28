@@ -31,6 +31,8 @@ export type Snapshot = {
     turn_id: string;
     requests: number;
     request_limit: number;
+    active_ms?: number;
+    active_limit_ms?: number;
   };
   executionReadiness?: {
     ready: boolean;
@@ -45,6 +47,9 @@ export type Snapshot = {
     payload: Record<string, unknown>;
   }[];
   receipts: {
+    grantId?: string;
+    addedRequests?: number;
+    addedActiveMs?: number;
     acceptanceId?: string;
     draftId?: string;
     assetId?: string;
@@ -118,6 +123,9 @@ export function errorText(error: unknown) {
         conversation_revision_conflict: "会话已在其他页面更新。输入已保留，请核对后重新提交。",
         submission_conflict: "这次提交与已接收内容不一致。输入已保留，请核对。",
         conversation_busy: "任务仍在进行，请先停止或等待完成。",
+        activity_budget_exhausted: "本次验证活动额度已用完或已关闭，不能追加任务额度。",
+        budget_offer_changed: "任务用量已变化，请核对后重新申请追加。",
+        budget_offer_unavailable: "当前任务无需追加额度，请核对任务状态。",
         confirmation_expired: "这张确认卡已失效，请核对最新要求。",
         conversation_not_found: "会话不存在或无权访问。",
         attachment_capacity: "最多上传5份文档，每份不超过10MB。",
@@ -128,14 +136,13 @@ export function errorText(error: unknown) {
 }
 
 export function visibleMessages(snapshot: Snapshot, earlier: Snapshot["messages"] = []) {
-  const messages = [...earlier, ...snapshot.messages].map((m) => ({
+  const all = mergeMessages(earlier, snapshot.messages);
+  const messages = all.map((m) => ({
     id: m.role === "assistant" ? "assistant:" + m.turn_id : "user:" + m.turn_id,
     role: m.role,
     content: m.content,
   }));
-  const done = new Set(
-    snapshot.messages.filter((m) => m.role === "assistant").map((m) => m.turn_id),
-  );
+  const done = new Set(all.filter((m) => m.role === "assistant").map((m) => m.turn_id));
   const streaming = new Map<string, { id: string; role: "assistant"; content: string }>();
   for (const part of snapshot.workspace.streams)
     if (!done.has(part.turnId))
@@ -145,4 +152,19 @@ export function visibleMessages(snapshot: Snapshot, earlier: Snapshot["messages"
         content: part.text,
       });
   return [...messages, ...streaming.values()];
+}
+
+export function mergeMessages(
+  old: Snapshot["messages"],
+  incoming: Snapshot["messages"],
+): Snapshot["messages"] {
+  const byId = new Map([...old, ...incoming].map((m) => [m.id, m]));
+  return [...byId.values()].sort((a, b) =>
+    BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0,
+  );
+}
+export function mergeSnapshot(old: Snapshot | null, incoming: Snapshot): Snapshot {
+  return old?.session.id === incoming.session.id
+    ? { ...incoming, messages: mergeMessages(old.messages, incoming.messages) }
+    : incoming;
 }

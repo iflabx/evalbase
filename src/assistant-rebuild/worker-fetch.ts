@@ -1,3 +1,4 @@
+import { processingCost } from "./budget.js";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../db/pool.js";
 import { sha256 } from "../package/contract.js";
@@ -14,6 +15,7 @@ export function formalWorkerFetch(
       runId,
       id,
       sha256(String(init?.body ?? "")),
+      processingCost.getStore(),
     );
     if (!admitted) return request(url, init);
     let outcome = {

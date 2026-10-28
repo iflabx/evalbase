@@ -28,7 +28,10 @@ const base = () => ({
 });
 function rig(initialPending?: any) {
   const registry = sessionTools({} as any, {} as any, true),
-    work = workspaceTools({} as any, {} as any, {} as any, {} as any, true);
+    work = workspaceTools({} as any, {} as any, {} as any, {} as any, true, {
+      processing: async () => {},
+      confirmation: async () => {},
+    });
   let saved = initialPending;
   const events: any[] = [];
   return {

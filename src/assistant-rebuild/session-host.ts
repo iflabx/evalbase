@@ -257,6 +257,10 @@ export class FormalSessionHost {
         proof,
         this.options.artifacts ?? new ArtifactRepository(this.config.minio),
         canWrite,
+        {
+          processing: () => waits[0].invoke({}),
+          confirmation: () => waits[1].invoke({}),
+        },
       );
       registry.tools.push(...business.tools);
       for (const name of business.readOnly) registry.readOnly.add(name);
@@ -559,12 +563,80 @@ export class FormalSessionHost {
               new HumanMessage(input.text),
             ],
           };
+      const recoveryInput = async () => {
+        const facts = await this.execution.projection(scope, sessionId);
+        if ((await this.execution.guard(proof)).suspended) return null;
+        if (facts.businessStatus === "confirmation")
+          return {
+            messages: [
+              new HumanMessage(
+                "系统恢复：已有固定保存确认卡，只调用wait_confirmation等待实际确认，不创建新操作。",
+              ),
+            ],
+          };
+        if (
+          facts.results.some(
+            (r) =>
+              r.isCurrent &&
+              !["succeeded", "failed", "cancelled"].includes(r.status),
+          )
+        )
+          return {
+            messages: [
+              new HumanMessage(
+                "系统恢复：已有处理中任务，只调用wait_processing等待原任务，不重新提交。",
+              ),
+            ],
+          };
+        const failed = facts.results.some(
+          (r) => r.isCurrent && ["failed", "cancelled"].includes(r.status),
+        );
+        if (failed) {
+          if ((await this.execution.guard(proof)).resume_requested)
+            return {
+              messages: [
+                new HumanMessage(
+                  "系统恢复：原处理失败，只调用wait_processing核对并按既有恢复规则重试原任务，不重新提交。",
+                ),
+              ],
+            };
+          throw new SessionError("processing_not_complete");
+        }
+        if (
+          facts.businessStatus === "generated" &&
+          facts.executionReadiness.ready
+        )
+          return {
+            messages: [
+              new HumanMessage(
+                "系统恢复：原处理已完成，尚未准备固定保存确认。只调用prepare_adoption，不重做处理。",
+              ),
+            ],
+          };
+        return null;
+      };
+      if (
+        checkpoint.values?.messages?.length &&
+        !checkpoint.tasks.some((t) => t.interrupts?.length) &&
+        !checkpoint.next?.length
+      )
+        graphInput = (await recoveryInput()) ?? graphInput;
       let result: any;
       for (;;) {
         const progress = (await this.execution.guard(proof)).progress_version;
         const attemptsAtStart = toolAttempts;
         try {
           result = await agent.invoke(graphInput, graphConfig);
+          const ended = (await agent.getState(graphConfig)) as StateSnapshot;
+          if (!ended.tasks.some((t) => t.interrupts?.length)) {
+            const recovery = await recoveryInput();
+            if (recovery) {
+              if (toolAttempts === attemptsAtStart)
+                await this.execution.observe(proof, "segment_empty", {});
+              graphInput = recovery;
+              continue;
+            }
+          }
           break;
         } catch (error) {
           if (!(error instanceof Error) || error.name !== "GraphRecursionError")
@@ -635,9 +707,28 @@ export class FormalSessionHost {
         return this.present(scope, sessionId);
       }
       if (
+        !ctl.signal.aborted &&
+        [
+          "transport_failure",
+          "provider_rejected",
+          "model_request_timeout",
+          "runtime_request_failed",
+        ].includes(code)
+      ) {
+        const facts = await this.execution.projection(scope, sessionId);
+        if (facts.receipts.some((r) => r.isCurrent && r.acceptanceId)) {
+          await this.store.finish(
+            proof,
+            "处理结果已保存，服务端已确认。总结未完成，可查看保存结果。",
+          );
+          return this.present(scope, sessionId);
+        }
+      }
+      if (
         [
           "no_progress",
           "segment_without_progress",
+          "processing_not_complete",
           "task_budget_exhausted",
           "activity_budget_exhausted",
           "model_request_timeout",

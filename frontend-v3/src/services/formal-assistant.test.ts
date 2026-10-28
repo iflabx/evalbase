@@ -4,6 +4,8 @@ import {
   acceptedDraft,
   openTab,
   visibleMessages,
+  mergeMessages,
+  mergeSnapshot,
   type Snapshot,
 } from "./formal-assistant";
 describe("formal assistant state boundaries", () => {
@@ -45,5 +47,42 @@ describe("formal assistant state boundaries", () => {
     expect(after).toHaveLength(1);
     expect(after[0]!.id).toBe(before[0]!.id);
     expect(after[0]!.content).toBe("读取完成");
+  });
+});
+
+describe("BATCH1 long history", () => {
+  const msg = (id: number | string, role: "user" | "assistant" = "user") => ({
+    id: String(id),
+    turn_id: "t" + id,
+    role,
+    content: "message" + id,
+  });
+  it("retains the middle row as the latest 100 window slides, including loaded history", () => {
+    const old = {
+      session: { id: "s" },
+      messages: Array.from({ length: 200 }, (_, i) => msg(i + 1)),
+    } as Snapshot;
+    const next = { ...old, messages: Array.from({ length: 100 }, (_, i) => msg(i + 102)) };
+    const merged = mergeSnapshot(old, next);
+    expect(merged.messages).toHaveLength(201);
+    expect(merged.messages[100]!.id).toBe("101");
+    expect(mergeSnapshot(merged, next).messages).toEqual(merged.messages);
+  });
+  it("preserves precision, ordering, late history, session boundaries and final stream replacement", () => {
+    expect(
+      mergeMessages([msg("9007199254740993")], [msg("9007199254740992")]).map((m) => m.id),
+    ).toEqual(["9007199254740992", "9007199254740993"]);
+    const snapshot = {
+      session: { id: "s" },
+      messages: [msg(2)],
+      workspace: { streams: [{ turnId: "t1", text: "old" }] },
+    } as Snapshot;
+    const loaded = mergeSnapshot(snapshot, { ...snapshot, messages: [msg(1, "assistant")] });
+    expect(visibleMessages(loaded)).toHaveLength(2);
+    expect(visibleMessages(loaded)[0]!.content).toBe("message1");
+    expect(
+      mergeSnapshot(loaded, { ...snapshot, session: { ...snapshot.session, id: "other" } })
+        .messages,
+    ).toHaveLength(1);
   });
 });

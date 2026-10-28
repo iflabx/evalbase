@@ -1,3 +1,4 @@
+import { processingCost } from "../../src/assistant-rebuild/budget.js";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { sendFormalCompletion } from "../support/formal-completion.js";
 import { randomUUID } from "node:crypto";
@@ -1043,7 +1044,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     const { formalWorkerFetch } =
       await import("../../src/assistant-rebuild/worker-fetch.js");
     let invoked = 0;
-    const request = formalWorkerFetch(
+    const rawRequest = formalWorkerFetch(
       db,
       p.runId,
     )(async () => {
@@ -1053,6 +1054,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         { status: 200 },
       );
     });
+    const request: typeof fetch = (...args) =>
+      processingCost.run({ rows: 3, generated: 0 }, () => rawRequest(...args));
     await request("http://synthetic.invalid", { body: "{}" });
     await expect(
       request("http://synthetic.invalid", { body: "{}" }),
@@ -1440,7 +1443,9 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     ];
     const { formalWorkerFetch } =
       await import("../../src/assistant-rebuild/worker-fetch.js");
-    const send = formalWorkerFetch(db, p.runId)(fetch);
+    const rawSend = formalWorkerFetch(db, p.runId)(fetch);
+    const send: typeof fetch = (...args) =>
+      processingCost.run({ rows: 3, generated: 0 }, () => rawSend(...args));
     await expect(
       send(
         "http://127.0.0.1:" +
@@ -1525,9 +1530,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     await host.execution.approve(scope(), f.id, f.card.id, artifacts);
     const before = await effects();
     outputs = [{ httpStatus: 503 }];
-    await expect(
-      host.runPending(scope(), f.id, f.p.proof.turnId),
-    ).rejects.toBeDefined();
+    await host.runPending(scope(), f.id, f.p.proof.turnId);
     const result = await host.present(scope(), f.id);
     expect(result.businessStatus).toBe("saved");
     expect(
@@ -2918,4 +2921,537 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await browser.close();
     }
   }, 30000);
+  it("BATCH1 REVIEW repeated progress query must pause on stable business facts", async () => {
+    const id = await fresh();
+    const state = await run(id, "查询目前进度", [
+      ...Array.from({ length: 5 }, () => call("read_task_progress", {})),
+      { role: "assistant", content: "进度说明完毕" },
+    ]);
+    console.log(
+      "REVIEW_PROGRESS",
+      JSON.stringify({
+        status: state.execution.status,
+        reason: state.execution.reason,
+        noProgress: state.execution.no_progress,
+        progressVersion: state.execution.progress_version,
+        requests: state.execution.requests,
+      }),
+    );
+    expect(state.execution.status).toBe("paused");
+    expect(state.execution.reason).toBe("no_progress");
+  });
+  const reviewCreate = async () => {
+    const id = await fresh();
+    const fixed = await host.store.freezeSource(scope(), {
+      kind: "assets",
+      assetIds: [assetId],
+    });
+    return {
+      id,
+      plan: call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              patch: {
+                operation: "clean",
+                source: fixed.source,
+                count: 3,
+                allowedFields: ["question"],
+                instructions: "",
+                saveTarget: { kind: "newDraft", name: "Review synthetic only" },
+              },
+            },
+          ],
+        },
+      }),
+    };
+  };
+  it("BATCH1 REVIEW submitted job remains resumable if model omits wait tool", async () => {
+    const { id, plan } = await reviewCreate();
+    const state = await run(id, "清洗这3条，确认后保存", [
+      plan,
+      call("submit_processing", {}),
+      { role: "assistant", content: "已提交处理，请等待。" },
+    ]);
+    await host.execution.wake();
+    const resume = await api("POST", route(id) + "/control", {
+      action: "continue",
+    });
+    console.log(
+      "REVIEW_SUBMIT",
+      JSON.stringify({
+        execution: state.execution.status,
+        results: state.results,
+        resumeStatus: resume.statusCode,
+        resumeError: resume.json().error?.code,
+      }),
+    );
+    expect(state.execution.status).toBe("waiting");
+  });
+  it("BATCH1 REVIEW prepared save card works if model omits wait confirmation tool", async () => {
+    const { id, plan } = await reviewCreate();
+    const initial = await run(id, "清洗这3条，确认后保存", [
+      plan,
+      call("submit_processing", {}),
+      call("wait_processing", {}),
+    ]);
+    await completeRun(initial.results[0].run_id);
+    await host.execution.wake();
+    outputs = [
+      call("prepare_adoption", {}),
+      { role: "assistant", content: "请点击确认保存。" },
+    ];
+    const state = await host.runPending(scope(), id, initial.execution.turn_id);
+    const card = state.confirmations.find(
+      (c: any) => c.status === "pending" && c.action === "adopt",
+    );
+    const approval = await api(
+      "POST",
+      route(id) + "/confirmations/" + card.id,
+      { accept: true },
+    );
+    console.log(
+      "REVIEW_CONFIRM",
+      JSON.stringify({
+        execution: state.execution.status,
+        cardStatus: card.status,
+        approvalStatus: approval.statusCode,
+        error: approval.json().error?.code,
+      }),
+    );
+    expect(approval.statusCode, approval.body).toBe(200);
+  });
+
+  it("BATCH1 EXTRA prior results must not make a revised plan look generated", async () => {
+    const id = await fresh();
+    const p = await processing(id);
+    await completeRun(p.runId);
+    await host.store.finish(p.proof, "上一轮已生成");
+    await run(id, "重新规划另一份，只给方案，不执行", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "plan",
+          deliveries: [
+            { patch: { name: "新方案", operation: "generate", count: 2 } },
+          ],
+        },
+      }),
+      { role: "assistant", content: "新的方案已记录，未执行。" },
+    ]);
+    const state = await host.present(scope(), id);
+    console.log(
+      "REVIEW_STALE_STATUS",
+      JSON.stringify({
+        mode: state.session.requirements.mode,
+        revision: state.session.requirements_revision,
+        businessStatus: state.businessStatus,
+        results: state.results,
+      }),
+    );
+    expect(state.businessStatus).toBe("not_saved");
+  });
+  it("BATCH1 EXTRA worker counts actual batch input rather than entire run per request", async () => {
+    const originalAsset = assetId;
+    const collectionId = (
+      await api("GET", "/api/projects/" + projectId + "/collections")
+    ).json().collections[0].id;
+    const uploaded = await app.inject({
+      method: "POST",
+      url: "/api/projects/" + projectId + "/pending-uploads",
+      headers: {
+        origin,
+        ...identities.get("admin"),
+        "content-type": "application/octet-stream",
+        "x-file-name": "r03-source.jsonl",
+      },
+      payload:
+        Array.from({ length: 21 }, (_, i) => i + 1)
+          .map((n) =>
+            JSON.stringify({ question: " 问题" + n + " ", answer: "答案" + n }),
+          )
+          .join("\n") + "\n",
+    });
+    const confirmed = await api(
+      "POST",
+      "/api/projects/" + projectId + "/pending-upload-batches/confirm",
+      {
+        collectionId,
+        pendingUploadIds: [uploaded.json().pendingUpload.id],
+        mode: "raw",
+      },
+    );
+    expect(confirmed.statusCode, confirmed.body).toBe(201);
+    assetId = confirmed.json().assets[0].id;
+    const mapping = (
+      await api(
+        "GET",
+        "/api/projects/" + projectId + "/assets/" + assetId + "/mapping",
+      )
+    ).json();
+    expect(
+      (
+        await api(
+          "PUT",
+          "/api/projects/" + projectId + "/assets/" + assetId + "/mapping",
+          {
+            parsedViewId: mapping.parsedViewId,
+            expectedRevision: 0,
+            mapping: {
+              question: "/question",
+              expectedOutput: "/answer",
+              metadata: [],
+            },
+          },
+        )
+      ).statusCode,
+    ).toBe(200);
+
+    const id = await fresh();
+    const p = await processing(id, "rewrite");
+    assetId = originalAsset;
+    const activity = "review-rows-" + randomUUID();
+    await db.query(
+      "INSERT INTO assistant_runtime_activity(id,request_limit,row_limit,max_ms) VALUES($1,10,30,300000)",
+      [activity],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+      [id, activity],
+    );
+    let failure = null;
+    try {
+      await completeRun(p.runId);
+    } catch (e) {
+      failure = (e as Error).message;
+    }
+    const activityRow = (
+      await db.query(
+        "SELECT requests,rows_used,row_limit FROM assistant_runtime_activity WHERE id=$1",
+        [activity],
+      )
+    ).rows[0];
+    const batches = (
+      await db.query(
+        "SELECT ordinal,output_count,error_code FROM processing_batch WHERE run_id=$1 ORDER BY ordinal",
+        [p.runId],
+      )
+    ).rows;
+    console.log(
+      "REVIEW_BATCH_ROWS",
+      JSON.stringify({ failure, activity: activityRow, batches }),
+    );
+    expect(activityRow.rows_used).toBe(21);
+    expect(activityRow.requests).toBe(2);
+    expect(batches.every((b: any) => b.output_count > 0 && !b.error_code)).toBe(
+      true,
+    );
+  });
+
+  it("BATCH1 COMBO confirmation replay and explanation failure retain unique saved truth", async () => {
+    const { id, plan } = await reviewCreate();
+    const start = await run(id, "清洗这三条，确认后保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    expect(start.execution.status).toBe("waiting");
+    await api("POST", route(id) + "/control", { action: "stop" });
+    await completeRun(start.results[0].run_id).catch(() => {});
+    expect((await jobState(id)).status).toBe("paused");
+    await api("POST", route(id) + "/control", { action: "continue" });
+    await completeRun(start.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    const ready = await host.runPending(scope(), id, start.execution.turn_id);
+    const card = ready.confirmations.find(
+      (c: any) => c.action === "adopt" && c.status === "pending",
+    );
+    expect(ready.execution.status).toBe("confirmation");
+    const first = await api("POST", route(id) + "/confirmations/" + card.id, {
+      accept: true,
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const replay = await api("POST", route(id) + "/confirmations/" + card.id, {
+      accept: true,
+    });
+    expect(replay.json().replayed).toBe(true);
+    outputs = [{ httpStatus: 503 }];
+    const final = await host.runPending(scope(), id, start.execution.turn_id);
+    expect(final.businessStatus).toBe("saved");
+    expect(final.execution.status).toBe("completed");
+    expect(final.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(1);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_operation WHERE session_id=$1 AND kind='processing'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_event WHERE session_id=$1 AND kind='tool_error' AND detail->>'code' LIKE '%interrupt%'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("BATCH1 BUDGET refuses offers and first approval after outer activity closes", async () => {
+    const id = await fresh();
+    await host.execution.ensure(db, scope(), id);
+    await db.query(
+      "UPDATE assistant_runtime_execution SET request_limit=1 WHERE session_id=$1",
+      [id],
+    );
+    await run(id, "查询项目", [call("read_project", {})]);
+    const activity = "fix-activity-" + randomUUID();
+    await db.query(
+      "INSERT INTO assistant_runtime_activity(id,request_limit,row_limit,max_ms) VALUES($1,10,30,300000)",
+      [activity],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+      [id, activity],
+    );
+    const offer = (await api("POST", route(id) + "/budget-offer", {})).json();
+    await db.query(
+      "UPDATE assistant_runtime_activity SET closed_at=now() WHERE id=$1",
+      [activity],
+    );
+    const before = await jobState(id);
+    expect(
+      (await api("POST", route(id) + "/budget-offer", {})).json().error.code,
+    ).toBe("activity_budget_exhausted");
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + offer.id, {
+          accept: true,
+        })
+      ).json().error.code,
+    ).toBe("activity_budget_exhausted");
+    const after = await jobState(id);
+    expect(after.requests).toBe(before.requests);
+    expect(after.request_limit).toBe(before.request_limit);
+  });
+  it("BATCH1 PAGE budget offer confirmation and refresh keep a single grant", async () => {
+    const id = await fresh();
+    await host.execution.ensure(db, scope(), id);
+    await db.query(
+      "UPDATE assistant_runtime_execution SET request_limit=1 WHERE session_id=$1",
+      [id],
+    );
+    await run(id, "查看项目", [call("read_project", {})]);
+    const address = await webAddress(),
+      browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        extraHTTPHeaders: { origin },
+      });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    try {
+      const page = await context.newPage();
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await page
+        .getByRole("button", { name: "申请追加额度", exact: true })
+        .click();
+      await browserExpect(
+        page.getByRole("heading", { name: "确认追加任务额度", exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "确认追加", exact: true }).click();
+      await browserExpect(
+        page.getByText("已追加 12 次请求、80 秒运行时间 · 服务端已确认", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.reload();
+      await browserExpect(
+        page.getByText("已追加 12 次请求、80 秒运行时间 · 服务端已确认", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect((await jobState(id)).requests).toBe(1);
+      expect((await jobState(id)).request_limit).toBe(13);
+      await page.setViewportSize({ width: 720, height: 900 });
+      await browserExpect(
+        page.getByLabel("描述你的需求", { exact: true }),
+      ).toBeVisible();
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  }, 30000);
+  it("BATCH1 END failed Worker cannot become completed through natural text", async () => {
+    const { id, plan } = await reviewCreate();
+    const started = await run(id, "清洗三条后确认保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await db.query(
+      "UPDATE job SET status='failed' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+      [started.results[0].run_id],
+    );
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "处理已经结束" }];
+    const ended = await host.runPending(scope(), id, started.execution.turn_id);
+    expect(ended.execution.status).toBe("paused");
+    expect(ended.execution.reason).toBe("processing_not_complete");
+  });
+  it("BATCH1 END completed result requires its save confirmation even if model omits preparation", async () => {
+    const { id, plan } = await reviewCreate();
+    const started = await run(id, "清洗三条后确认保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(started.results[0].run_id);
+    await host.execution.wake();
+    outputs = [
+      { role: "assistant", content: "处理完成" },
+      call("prepare_adoption", {}),
+    ];
+    const ended = await host.runPending(scope(), id, started.execution.turn_id);
+    expect(ended.execution.status).toBe("confirmation");
+    expect(
+      ended.confirmations.filter((c: any) => c.status === "pending"),
+    ).toHaveLength(1);
+  });
+  it.each(["processing", "confirmation"])(
+    "BATCH1 LEGACY explicit continue recovers completed orphan %s with original budget",
+    async (kind) => {
+      let id: string, turn: string;
+      if (kind === "processing") {
+        id = await fresh();
+        const p = await processing(id);
+        turn = p.proof.turnId;
+        await host.store.finish(p.proof, "旧版误结束");
+      } else {
+        const f = await adoptionCard();
+        id = f.id;
+        turn = f.p.proof.turnId;
+        await db.query(
+          "UPDATE assistant_runtime_turn SET status='succeeded',runner_token=NULL WHERE id=$1",
+          [turn],
+        );
+        await db.query(
+          "UPDATE assistant_runtime_execution SET status='completed' WHERE session_id=$1",
+          [id],
+        );
+      }
+      const before = await jobState(id);
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(200);
+      expect((await jobState(id)).requests).toBe(before.requests);
+      expect((await jobState(id)).request_limit).toBe(before.request_limit);
+      outputs = [
+        call(
+          kind === "processing" ? "wait_processing" : "wait_confirmation",
+          {},
+        ),
+      ];
+      const resumed = await host.runPending(scope(), id, turn);
+      expect(resumed.execution.status).toBe(
+        kind === "processing" ? "waiting" : "confirmation",
+      );
+    },
+  );
+  it("BATCH1 PAGE loaded history survives a sliding SSE window without a middle gap", async () => {
+    const id = await fresh(),
+      address = await webAddress(),
+      browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        extraHTTPHeaders: { origin },
+      });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    const page = await context.newPage(),
+      state = await host.present(scope(), id);
+    const msg = (n: number) => ({
+      id: String(n),
+      turn_id: "synthetic-" + n,
+      role: "assistant",
+      content: "历史核对消息" + n,
+    });
+    const snapshot = {
+      ...state,
+      messages: Array.from({ length: 100 }, (_, i) => msg(i + 101)),
+    };
+    let release!: () => void;
+    const update = new Promise<void>((r) => (release = r));
+    await page.route("**" + route(id), (r) => r.fulfill({ json: snapshot }));
+    await page.route("**" + route(id) + "/history?*", (r) =>
+      r.fulfill({
+        json: {
+          messages: Array.from({ length: 100 }, (_, i) => msg(i + 1)),
+          hasEarlier: false,
+        },
+      }),
+    );
+    await page.route("**" + route(id) + "/events", async (r) => {
+      await update;
+      await r
+        .fulfill({
+          contentType: "text/event-stream",
+          body:
+            "event: snapshot\ndata: " +
+            JSON.stringify({
+              ...snapshot,
+              messages: Array.from({ length: 100 }, (_, i) => msg(i + 102)),
+            }) +
+            "\n\n",
+        })
+        .catch(() => {});
+    });
+    try {
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await page
+        .getByRole("button", { name: "加载更早消息", exact: true })
+        .click();
+      await browserExpect(
+        page.getByText("历史核对消息1", { exact: true }),
+      ).toBeVisible();
+      release();
+      await browserExpect(
+        page.getByText("历史核对消息201", { exact: true }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByText("历史核对消息101", { exact: true }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByRole("button", { name: "加载更早消息", exact: true }),
+      ).toHaveCount(0);
+    } finally {
+      release();
+      await context.close();
+      await browser.close();
+    }
+  }, 30000);
+  it("BATCH1 FINAL recovery text without tools reaches no-progress before exhausting request budget", async () => {
+    const { id, plan } = await reviewCreate();
+    const started = await run(id, "清洗三条后保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(started.results[0].run_id);
+    await host.execution.wake();
+    outputs = Array.from({ length: 10 }, () => ({
+      role: "assistant",
+      content: "我知道了，稍后处理。",
+    }));
+    const ended = await host.runPending(scope(), id, started.execution.turn_id);
+    expect(ended.execution.status).toBe("paused");
+    expect(ended.execution.reason).toBe("no_progress");
+    expect(ended.execution.requests).toBeLessThan(
+      ended.execution.request_limit,
+    );
+  });
 });
