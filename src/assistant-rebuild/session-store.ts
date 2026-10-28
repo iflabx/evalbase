@@ -23,6 +23,7 @@ import {
   InstructionRefreshError,
   emptyRequirements,
   messageSubmissionSchema,
+  deliveryPatchSchema,
   requirementChangeSchema,
   validateDelivery,
   type Source,
@@ -620,8 +621,27 @@ export class SessionStore {
       next.deliveries[index] = value;
       changedIds.push(value.id);
     }
+    // Capture the effective mutation, including inherited domain fields, before bounded repair.
+    const targetBindings =
+      command === "update"
+        ? changedIds.map((deliveryId, index) => {
+            const delivery = next.deliveries.find((d) => d.id === deliveryId)!;
+            const patch = deliveryPatchSchema.parse(
+              Object.fromEntries(
+                Object.keys(deliveryPatchSchema.shape)
+                  .filter((key) => Object.hasOwn(delivery, key))
+                  .map((key) => [key, delivery[key as keyof Delivery]]),
+              ),
+            );
+            return { index, deliveryId, patch };
+          })
+        : [];
     if (refreshPaths.length)
-      throw new InstructionRefreshError(refreshPaths, refreshContexts);
+      throw new InstructionRefreshError(
+        refreshPaths,
+        refreshContexts,
+        targetBindings,
+      );
     if (
       command === "update" &&
       request.changes.deliveries?.some((d) => d.patch.status === "cancelled") &&
@@ -640,9 +660,7 @@ export class SessionStore {
           [],
           "execution_operation_required",
           "当前执行交付缺少清洗/改写操作，方案尚未保存。仅按用户已明确的加工意图补齐operation，保留原数量、来源、字段、目标；不要改成另一次新增或修改其他交付。",
-          command === "update"
-            ? [{ index: 0, deliveryId: changedIds[0]! }]
-            : [],
+          targetBindings,
         );
       }
       assertExecutionReady(next);

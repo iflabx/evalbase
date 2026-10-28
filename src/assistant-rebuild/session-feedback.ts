@@ -1,4 +1,7 @@
-import { RequirementRepairError } from "./session-contract.js";
+import {
+  RequirementRepairError,
+  type RequirementTargetBinding,
+} from "./session-contract.js";
 import { isGraphInterrupt } from "@langchain/langgraph";
 import {
   AIMessage,
@@ -28,19 +31,28 @@ export type FailedCall = {
   schemaHash?: string;
   kind?: "requirements";
   blockedReason?: string;
-  targetBindings?: { index: number; deliveryId: string }[];
+  targetBindings?: RequirementTargetBinding[];
   contexts?: { deliveryId: string; before: string; after: string }[];
 };
 const bindRecordedTargets = (
   value: unknown,
-  bindings: { index: number; deliveryId: string }[] = [],
+  bindings: RequirementTargetBinding[] = [],
 ) => {
   const args = structuredClone(value) as {
-    changes?: { deliveries?: { deliveryId?: string }[] };
+    changes?: {
+      deliveries?: { deliveryId?: string; patch?: Record<string, unknown> }[];
+    };
   } | null;
   for (const binding of bindings) {
     const item = args?.changes?.deliveries?.[binding.index];
-    if (item && !item.deliveryId) item.deliveryId = binding.deliveryId;
+    if (item) {
+      const target = item.deliveryId
+        ? bindings.find((b) => b.deliveryId === item.deliveryId)
+        : binding;
+      if (!target) continue;
+      item.deliveryId ??= target.deliveryId;
+      if (target.patch) item.patch = { ...target.patch, ...item.patch };
+    }
   }
   return args;
 };
@@ -476,27 +488,22 @@ export function sessionFeedback(options: {
             args: pending?.args ?? parsed.data,
             workingArgs: parsed.data,
             paths: error.paths,
-            removablePaths: unique([
-              ...(pending?.removablePaths ?? []),
-              ...error.paths,
-            ]),
+            removablePaths: error.paths,
             attempts: (pending?.attempts ?? 0) + 1,
             version: 2,
             schemaHash: schemaHash(call.name),
             kind: "requirements",
             contexts: error.contexts,
-            targetBindings:
-              pending?.targetBindings ??
-              (error.targetBindings.length
-                ? error.targetBindings
-                : call.name === "update_requirements"
-                  ? error.contexts
-                      .map((context, index) => ({
-                        index: Number(error.paths[index]?.[2]),
-                        deliveryId: context.deliveryId,
-                      }))
-                      .filter((binding) => Number.isInteger(binding.index))
-                  : []),
+            targetBindings: error.targetBindings.length
+              ? error.targetBindings
+              : call.name === "update_requirements"
+                ? error.contexts
+                    .map((context, index) => ({
+                      index: Number(error.paths[index]?.[2]),
+                      deliveryId: context.deliveryId,
+                    }))
+                    .filter((binding) => Number.isInteger(binding.index))
+                : [],
           };
           await options.savePending?.(pending);
           const detail = {

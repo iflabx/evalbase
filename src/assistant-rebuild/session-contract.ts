@@ -265,13 +265,18 @@ export function deliveryExecution(delivery: Delivery) {
     rules: delivery.instructions ?? "",
   };
 }
+export type RequirementTargetBinding = {
+  index: number;
+  deliveryId: string;
+  patch?: z.infer<typeof deliveryPatchSchema>;
+};
 export class RequirementRepairError extends BusinessError {
   constructor(
     readonly paths: string[][],
     readonly contexts: { deliveryId: string; before: string; after: string }[],
     code: string,
     hint: string,
-    readonly targetBindings: { index: number; deliveryId: string }[] = [],
+    readonly targetBindings: RequirementTargetBinding[] = [],
   ) {
     super(422, code, hint);
   }
@@ -280,12 +285,14 @@ export class InstructionRefreshError extends RequirementRepairError {
   constructor(
     paths: string[][],
     contexts: { deliveryId: string; before: string; after: string }[],
+    targetBindings: RequirementTargetBinding[] = [],
   ) {
     super(
       paths,
       contexts,
       "processing_instructions_refresh_required",
       "处理范围或规则已变化，请按当前要求重新整理加工规则，勿在规则中重复记录范围、总数量或保存目标；原方案未被覆盖。保持本次已明确的范围、数量与目标，只补齐受影响的instructions。",
+      targetBindings,
     );
   }
 }

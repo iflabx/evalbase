@@ -2396,4 +2396,314 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     expect(s.executionReadiness.ready).toBe(false);
     expect(await effects()).toMatchObject({ runs: 0 });
   });
+
+  it.each([
+    "same-status",
+    "same-inherited-fields",
+    "changed-status",
+    "changed-inherited-field",
+  ])(
+    "compares captured correction against effective inherited values: %s",
+    async (kind) => {
+      const id = await fresh();
+      let state = await run(id, "先规划5条", [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: {
+            deliveries: [
+              {
+                patch: {
+                  name: "前五条",
+                  operation: "clean",
+                  count: 5,
+                  instructions: "整理空白，保留原意。",
+                  allowedFields: ["question"],
+                  metadataKeys: ["标签"],
+                  saveTarget: { kind: "newDraft", name: "旧版" },
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      const deliveryId = state.session.requirements.deliveries[0].id;
+      const correctedPatch: any = {
+        instructions: "对当前所选记录整理空白并保留原意。",
+        status: kind === "changed-status" ? "cancelled" : "active",
+      };
+      if (kind.includes("inherited"))
+        Object.assign(correctedPatch, {
+          name: kind === "changed-inherited-field" ? "另外一份" : "前五条",
+          operation: "clean",
+          allowedFields: ["question"],
+          metadataKeys: ["标签"],
+        });
+      const attempt = run(id, "改成三条，其他不变", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                patch: {
+                  count: 3,
+                  saveTarget: { kind: "newDraft", name: "三条整理版" },
+                },
+              },
+            ],
+          },
+        }),
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: { deliveries: [{ deliveryId, patch: correctedPatch }] },
+        }),
+      ]);
+      if (kind.startsWith("changed")) {
+        await expect(attempt).rejects.toMatchObject({
+          code: "correction_intent_changed",
+        });
+        state = await host.present(scope(), id);
+        expect(state.session.requirements_revision).toBe(1);
+      } else {
+        state = await attempt;
+        expect(state.session.requirements_revision).toBe(2);
+        expect(state.session.requirements.deliveries).toHaveLength(1);
+        expect(state.session.requirements.deliveries[0]).toMatchObject({
+          id: deliveryId,
+          status: "active",
+          count: 3,
+          operation: "clean",
+          name: "前五条",
+          saveTarget: { kind: "newDraft", name: "三条整理版" },
+        });
+      }
+    },
+  );
+
+  it("retains the semantic repair obligation when captured correction adds active status but omits instructions", async () => {
+    const id = await fresh();
+    let state = await run(id, "先规划5条", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                name: "前五条",
+                operation: "clean",
+                count: 5,
+                instructions: "整理空白，保留原意。",
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "旧版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "改成三条", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                count: 3,
+                saveTarget: { kind: "newDraft", name: "三条整理版" },
+              },
+            },
+          ],
+        },
+      }),
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            {
+              patch: {
+                count: 3,
+                status: "active",
+                saveTarget: { kind: "newDraft", name: "三条整理版" },
+              },
+            },
+          ],
+        },
+      }),
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [
+            {
+              deliveryId,
+              patch: { instructions: "整理当前记录的空白，保留原意。" },
+            },
+          ],
+        },
+      }),
+    ]);
+    expect(state.session.requirements.deliveries).toHaveLength(1);
+    expect(state.session.requirements.deliveries[0]).toMatchObject({
+      id: deliveryId,
+      count: 3,
+      instructions: "整理当前记录的空白，保留原意。",
+    });
+    const events = (
+      await db.query(
+        "SELECT kind FROM assistant_runtime_event WHERE session_id=$1",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "correction_rejected")).toHaveLength(
+      0,
+    );
+    expect(
+      events.filter((e) => e.kind === "requirements_feedback"),
+    ).toHaveLength(2);
+  });
+
+  it.each(["subset", "reordered"])(
+    "aligns effective inherited fields by identity during multi-delivery semantic repair: %s",
+    async (kind) => {
+      const id = await fresh();
+      let state = await run(id, "规划两份", [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: {
+            deliveries: [
+              {
+                patch: {
+                  name: "第一份",
+                  operation: "clean",
+                  count: 5,
+                  instructions: "整理首份空白。",
+                },
+              },
+              {
+                patch: {
+                  name: "第二份",
+                  operation: "rewrite",
+                  count: 4,
+                  instructions: "改写第二份表达。",
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      const [a, b] = state.session.requirements.deliveries;
+      const fixA = {
+          deliveryId: a.id,
+          patch: { instructions: "只整理当前首份记录。", status: "active" },
+        },
+        fixB = {
+          deliveryId: b.id,
+          patch: { instructions: "只改写当前第二份记录。", status: "active" },
+        };
+      const outputs = [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              { deliveryId: a.id, patch: { count: 3 } },
+              { deliveryId: b.id, patch: { count: 2 } },
+            ],
+          },
+        }),
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: { deliveries: kind === "subset" ? [fixB] : [fixB, fixA] },
+        }),
+        ...(kind === "subset"
+          ? [
+              call("update_requirements", {
+                expectedRevision: 1,
+                changes: { deliveries: [fixA] },
+              }),
+            ]
+          : []),
+      ];
+      state = await run(id, "分别改为3条和2条", outputs);
+      expect(state.session.requirements_revision).toBe(2);
+      expect(
+        state.session.requirements.deliveries.map((d) => [
+          d.id,
+          d.name,
+          d.count,
+          d.operation,
+        ]),
+      ).toEqual([
+        [a.id, "第一份", 3, "clean"],
+        [b.id, "第二份", 2, "rewrite"],
+      ]);
+    },
+  );
+  it.each([false, true])(
+    "locks a repaired operation when the next business check requires instructions: changed=%s",
+    async (changeOperation) => {
+      const id = await fresh();
+      let state = await run(id, "先规划", [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: {
+            deliveries: [
+              {
+                patch: {
+                  name: "清洗",
+                  count: 3,
+                  source: { kind: "assets", assetIds: [assetId] },
+                  allowedFields: ["question"],
+                  instructions: "整理空白。",
+                  saveTarget: { kind: "newDraft", name: "整理版" },
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      const deliveryId = state.session.requirements.deliveries[0].id;
+      const attempt = run(id, "现在执行清洗", [
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            mode: "execute",
+            deliveries: [{ patch: { name: "清洗" } }],
+          },
+        }),
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [{ deliveryId, patch: { operation: "clean" } }],
+          },
+        }),
+        call("update_requirements", {
+          expectedRevision: 1,
+          changes: {
+            deliveries: [
+              {
+                deliveryId,
+                patch: {
+                  operation: changeOperation ? "rewrite" : "clean",
+                  instructions: "只整理当前所选记录的空白。",
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      if (changeOperation) {
+        await expect(attempt).rejects.toMatchObject({
+          code: "correction_intent_changed",
+        });
+        expect((await host.store.get(scope(), id)).requirements_revision).toBe(
+          1,
+        );
+      } else {
+        state = await attempt;
+        expect(state.executionReadiness.ready).toBe(true);
+        expect(state.session.requirements.deliveries[0].operation).toBe(
+          "clean",
+        );
+      }
+    },
+  );
 });
