@@ -1,5 +1,7 @@
 # REBUILD-05 原生CSV上传映射补验（2026-10-28）
 
+后续决定：Owner明确不再补验、直接通过；该缺口已按[Owner豁免记录](../r05-owner-acceptance-20261028.md)关闭。下面的blocked、未上传及0请求为当轮实际结果，保持原样；不据豁免改写测试结果。
+
 - 本次目标仅为R05-2尚缺的原生选择→映射预览→取消→确认/刷新证据，已通过的C03集合/移动/选择/背景链未重跑。
 - 结果：blocked / 未完成。Implementation保持in-progress，Validation保持partial-pass；R05-2未勾选，不能据此关闭整票。
 - 服务器分支codex/assistant-rebuild，HEAD d4b3e6c；既有4240预览未重建。操控为GPT-6.1 Terra high，复用已登录合成验收项目project_776c4cdee030445b9b085c007de3fac7，不发助手提示。

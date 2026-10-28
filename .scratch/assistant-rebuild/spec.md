@@ -27,7 +27,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | 原范围 `21038e7`；追加 `3c06d84` / [原记录](r02-verification.md)、[追加验证](r02-followup-20261028/verification.md) |
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | 原范围 `bb10a16`；追加 `cfa0120` / [原记录](r03-verification.md)、[追加验证](r03-followup-20261028/verification.md) |
 | [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | completed | targeted-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round7)；C01业务闭环通过，C02沿用第四轮；自动标题观察已修复 |
-| [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | in-progress | partial-pass | [验证记录](r05-verification.md) |
+| [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | completed | targeted-pass | [验证记录](r05-verification.md)、[Owner收口](r05-owner-acceptance-20261028.md)；CSV页面补验获豁免 |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | not-started | not-run | — |
 | [REBUILD-08 历史兼容、任务恢复与数据生命周期](issues/08-history-compatibility-and-data-lifecycle.md) | 2 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04 | not-started | not-run | — |
@@ -52,9 +52,9 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | --- | --- | --- | --- |
 | REBUILD-02 | R02-A1～A3：模型组装、单次调用上下文、同源参数反馈 | 已完成 / targeted-pass，见[追加记录](r02-followup-20261028/verification.md) | 02接口已闭合；03接通自动派发链路 |
 | REBUILD-03 | R03-A1～A3：调度与执行权威分离、运行时版本过滤、公开入口恢复测试 | 已完成 / targeted-pass，见[追加记录](r03-followup-20261028/verification.md) | 与02补强一起作为后续新增领域接线的基础 |
-| REBUILD-05 | R05-2 原生 CSV 映射/确认的浏览器证据及原有未关闭 AC | 原实施进行中 / 部分通过 | 已有 C03 辅助组合证据保留，不替代整票完成 |
+| REBUILD-05 | R05-2 原生 CSV 映射/确认页面证据及其余AC | completed / targeted-pass；Owner豁免页面补验 | 其余AC按既有证据闭合，见[收口记录](r05-owner-acceptance-20261028.md) |
 
-02、03追加补强已完成，下一步关闭05缺口并推进08，再进入06、07/09、10。05的既有上传证据核对可独立进行，05与08互不阻塞。基础补强不要求已通过的 C01/C02 重跑，不要求领域票提前完成，也不增加新的依赖边；后续新增接线不得绕过补强或在各票另建替代机制。
+02、03追加补强已完成，05已按Owner豁免与既有证据收口，下一步推进08，再进入06、07/09、10。05的既有上传证据核对可独立进行，05与08互不阻塞。基础补强不要求已通过的 C01/C02 重跑，不要求领域票提前完成，也不增加新的依赖边；后续新增接线不得绕过补强或在各票另建替代机制。
 
 ## 3. 共用实施约束
 
@@ -131,7 +131,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 - 02 用真实 SDK 验证构造/上下文/反馈接口，03 负责上述完整派发基线；05～09 在各自公开流程上复用。避免02反向依赖03验收，避免10才发现未启动派发器。外部真实模型请求均为0，仍保留受控 Provider 的真实 HTTP 尝试及账本断言。
 - 按改动覆盖组合：调度涉及消息已受理未派发、竞争领取、租约到期及版本隔离；上下文涉及同轮工具后变化、摘要后改数量/范围、纠错保留有效字段；写入涉及提交后响应/检查点丢失、修订冲突、过期确认和撤权；生命周期涉及删除后的重连、读取和恢复。共用同一夹具即可，不为每个工具复制全部故障矩阵。
 - 每份验证记录关联消息、执行、要求修订、操作/作业及回执身份，区分受理、执行和保存成功；原始参数/SDK解析/归一/纠正/业务校验有可对照证据且脱敏。未改变的有效证据沿用，受结构调整影响的自动回归必须重验。
-- 本次补强只改变证据要求，不新增实模活动、不扩大 C01～C08 或批次预算。已通过 CU 不自动重跑；05的原生 CSV 映射/确认缺口单独补证，不重复已通过的创建/移动/背景查询。实际补验沿原活动封存规则和已有授权执行，不能开启旧活动或自动追加预算。
+- 本次补强只改变证据要求，不新增实模活动、不扩大 C01～C08 或批次预算。已通过 CU 不自动重跑；05的原生 CSV 映射/确认页面缺口已获Owner豁免，详见[收口记录](r05-owner-acceptance-20261028.md)，不重复已通过的创建/移动/背景查询。实际补验沿原活动封存规则和已有授权执行，不能开启旧活动或自动追加预算。
 
 ### 4.2 样本、终点和逐项上限
 
@@ -177,7 +177,7 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 ## 5. 完成与切换门槛
 
 - 每票 AC 闭合后按现有关闭协议记录实现提交、定向证据和审阅结论，更新本表及票据；前置合同缺失、必要CU失败或未覆盖则不能标整票完成。验证延后者准确区分 targeted-pass 与完整验收。
-- 02/03 的追加架构 AC 闭合后才能据其补强合同新增领域接线；10只核对跨票/切换证据，不承接未完成的基础实现。05原生CSV映射/确认缺口及其余未关闭AC必须明确闭合，C03辅助组合通过不能代替。
+- 02/03 的追加架构 AC 闭合后才能据其补强合同新增领域接线；10只核对跨票/切换证据，不承接未完成的基础实现。05原生CSV映射/确认页面缺口按[Owner豁免](r05-owner-acceptance-20261028.md)关闭，其余AC按既有证据闭合；豁免不等同页面实测成功，C03辅助组合不替代其他证据。
 - REBUILD-02/03/04 的消息受理→唯一执行→页面回执和无进展受控证据必须闭合；RB13 的取消交付必须包含 C05 普通提示的真实页面证据，只有 SDK 通过或跳过取消的 C05 不得标整体通过。
 - 各能力的主责任沿[范围 §4](../../docs/assistant-rebuild-scope-and-batches.md#4-全能力覆盖到实施批次)，逐编号补真实工具/桥/原生入口和证据；共用一个测试可证明多个编号，不复制长需求文本。RB01～RB15 仍由[测试计划](../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)定义。
 - 旧机制退出责任沿范围 §5；新路径不能仍依赖旧执行器，旧表、成功业务、失败证据、预算和清理保护不能为退出而删除。
@@ -213,3 +213,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-28：Owner授权完成03追加补强，代码cfa0120，03恢复completed/targeted-pass，详见[追加记录](r03-followup-20261028/verification.md)。02保持完成，05部分通过与06～10未开始状态不变；依赖边、验收数据及旧预算保持，无新实模/CU活动或环境部署。
 
 - 2026-10-28：05原生CSV上传映射补验因Computer Use文件选择/原生窗口网址识别阻断未完成，0模型请求、无上传；18表981条原行保持。05状态和原预算不变，证据见[补验记录](r05-upload-gap-20261028/verification.md)，不追加通过结论。
+
+- 2026-10-28：Owner明确豁免05上传映射页面补验并通过，05更新completed/targeted-pass；其余AC已有证据核对见[收口记录](r05-owner-acceptance-20261028.md)。原未完成事实保留，06仍等待08；无新请求、测试、代码、部署或预算变动。
