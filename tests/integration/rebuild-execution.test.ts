@@ -2732,4 +2732,190 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       (await host.present(scope(), id)).workspace.attachments,
     ).toHaveLength(1);
   });
+  it("automatic session titles follow saved requirements while preserving manual names and original narrative", async () => {
+    const id = await fresh(),
+      objective = "前5条仅做方案，不执行。";
+    const title = async (expected: string) => {
+      expect((await api("GET", route(id))).json().session.title).toBe(expected);
+      expect(
+        (await api("GET", route() + "?search=" + encodeURIComponent(expected)))
+          .json()
+          .sessions.find((s: any) => s.id === id)?.title,
+      ).toBe(expected);
+    };
+    await title("新会话");
+    let state = await run(id, "标题规划", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          objective,
+          mode: "plan",
+          deliveries: [
+            { patch: { name: "旧5条名称", operation: "clean", count: 5 } },
+          ],
+        },
+      }),
+    ]);
+    await title("清洗 · 5 条 · 仅方案");
+    const deliveryId = state.session.requirements.deliveries[0].id;
+    state = await run(id, "调整当前范围", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              deliveryId,
+              patch: {
+                count: 3,
+                source: { kind: "assets", assetIds: [assetId] },
+                allowedFields: ["question"],
+                saveTarget: { kind: "newDraft", name: "三条整理版" },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    await title("清洗 · 3 条");
+    expect(state.session.requirements.objective).toBe(objective);
+    expect((await host.store.get(scope(), id)).title).toBe("");
+    const renamed = await api("PATCH", route(id), {
+      title: "我的固定标题",
+      expectedRevision: state.session.revision,
+    });
+    expect(renamed.statusCode).toBe(200);
+    await run(id, "仅修改操作", [
+      call("update_requirements", {
+        expectedRevision: 2,
+        changes: {
+          deliveries: [{ deliveryId, patch: { operation: "rewrite" } }],
+        },
+      }),
+    ]);
+    await title("我的固定标题");
+    expect((await host.store.get(scope(), id)).title).toBe("我的固定标题");
+    expect(await effects()).toMatchObject({ runs: 0 });
+  });
+  it("automatic title projection handles incomplete, multiple and cancelled plans without changing stored titles", async () => {
+    const id = await fresh();
+    const cases = [
+      {
+        deliveries: [],
+        objective: "只查询资料",
+        mode: "plan",
+        title: "只查询资料",
+      },
+      {
+        deliveries: [{ id: "one", status: "active", count: 2 }],
+        objective: "旧叙述",
+        mode: "plan",
+        title: "待确认任务 · 2 条 · 仅方案",
+      },
+      {
+        deliveries: [
+          { id: "one", status: "active" },
+          { id: "two", status: "active" },
+        ],
+        objective: "旧叙述",
+        mode: "plan",
+        title: "2 项交付 · 仅方案",
+      },
+      {
+        deliveries: [{ id: "one", status: "cancelled" }],
+        objective: "旧叙述",
+        mode: "plan",
+        title: "已取消的任务",
+      },
+    ];
+    for (const c of cases) {
+      const { title, ...requirements } = c;
+      await db.query(
+        "UPDATE assistant_runtime_session SET requirements=$2 WHERE id=$1",
+        [id, JSON.stringify(requirements)],
+      );
+      expect((await api("GET", route(id))).json().session.title).toBe(title);
+      expect(
+        (await api("GET", route()))
+          .json()
+          .sessions.find((s: any) => s.id === id)?.title,
+      ).toBe(title);
+    }
+    expect((await host.store.get(scope(), id)).title).toBe("");
+  });
+  it("automatic titles stay synchronized in the real page and manual rename survives later snapshots and refresh", async () => {
+    const start = requests.length,
+      id = await fresh(),
+      address = await webAddress(),
+      browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        extraHTTPHeaders: { origin },
+      });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    const page = await context.newPage();
+    const seed = async (count: number, mode: string) =>
+      db.query(
+        "UPDATE assistant_runtime_session SET requirements=$2,requirements_revision=requirements_revision+1,revision=revision+1 WHERE id=$1",
+        [
+          id,
+          JSON.stringify({
+            objective: "前5条仅方案，不执行",
+            mode,
+            deliveries: [
+              {
+                id: "title-fixture",
+                name: "旧5条名称",
+                status: "active",
+                operation: "clean",
+                count,
+              },
+            ],
+          }),
+        ],
+      );
+    try {
+      await seed(5, "plan");
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await browserExpect(
+        page.getByRole("heading", {
+          name: "清洗 · 5 条 · 仅方案",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await seed(3, "execute");
+      await browserExpect(
+        page.getByRole("heading", { name: "清洗 · 3 条", exact: true }),
+      ).toBeVisible();
+      await browserExpect(
+        page.locator('button[aria-current="page"]'),
+      ).toHaveText("清洗 · 3 条");
+      await page.getByRole("button", { name: "会话选项", exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "重命名会话", exact: true })
+        .click();
+      await page
+        .getByLabel("会话名称", { exact: true })
+        .fill("手动标题保持不变");
+      await page.getByRole("button", { name: "保存名称", exact: true }).click();
+      await browserExpect(
+        page.getByRole("heading", { name: "手动标题保持不变", exact: true }),
+      ).toBeVisible();
+      await seed(2, "plan");
+      await browserExpect(
+        page.locator('button[aria-current="page"]'),
+      ).toHaveText("手动标题保持不变");
+      await page.reload();
+      await browserExpect(
+        page.getByRole("heading", { name: "手动标题保持不变", exact: true }),
+      ).toBeVisible();
+      expect(requests.length - start).toBe(0);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  }, 30000);
 });

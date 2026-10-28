@@ -43,6 +43,20 @@ export class SessionError extends BusinessError {
   }
 }
 const opaque = (kind: string) => kind + "_" + randomUUID().replaceAll("-", "");
+
+/** One read projection for snapshot, list and search; title itself stores only manual names. */
+export const sessionTitleSql = `coalesce(nullif(title,''),(
+  SELECT CASE
+    WHEN count(*)=1 THEN concat_ws(' · ',
+      CASE max(d->>'operation') WHEN 'clean' THEN '清洗' WHEN 'rewrite' THEN '改写' WHEN 'augment' THEN '扩充' WHEN 'generate' THEN '生成' ELSE '待确认任务' END,
+      nullif(max(d->>'count'),'') || ' 条',
+      CASE WHEN requirements->>'mode'='plan' THEN '仅方案' END)
+    WHEN count(*)>1 THEN concat_ws(' · ',count(*)::text || ' 项交付',CASE WHEN requirements->>'mode'='plan' THEN '仅方案' END)
+    WHEN jsonb_array_length(coalesce(requirements->'deliveries','[]'::jsonb))>0 THEN '已取消的任务'
+    ELSE nullif(requirements->>'objective','')
+  END FROM jsonb_array_elements(coalesce(requirements->'deliveries','[]'::jsonb)) d WHERE d->>'status'='active'
+),'新会话')`;
+
 type Query = Pick<Database, "query">;
 export class SessionStore {
   constructor(readonly db: Database) {}
@@ -80,7 +94,7 @@ export class SessionStore {
     await this.access(scope, false, client, lock);
     const row = (
       await client.query(
-        "SELECT * FROM assistant_runtime_session WHERE id=$1 AND project_id=$2 AND actor_id=$3" +
+        `SELECT *, ${sessionTitleSql} AS display_title FROM assistant_runtime_session WHERE id=$1 AND project_id=$2 AND actor_id=$3` +
           (lock ? " FOR UPDATE" : ""),
         [id, scope.projectId, scope.actorId],
       )
@@ -114,6 +128,7 @@ export class SessionStore {
       requirements: SessionRequirements;
       status: string;
       title: string;
+      display_title: string;
       project_id: string;
       actor_id: string;
     };
@@ -165,7 +180,7 @@ export class SessionStore {
         id: session.id,
         runtime_version: session.runtime_version,
         revision: session.revision,
-        title: session.title,
+        title: session.display_title,
         requirements_revision: session.requirements_revision,
         requirements: {
           ...session.requirements,

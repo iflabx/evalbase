@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   SessionStore,
   SessionError,
+  sessionTitleSql,
   type SessionScope,
 } from "./session-store.js";
 import {
@@ -59,7 +60,7 @@ export class WorkspaceStore {
     if (!q.success) throw new SessionError("query_invalid", 422);
     await this.sessions.access(scope);
     const rows = await this.sessions.db.query(
-      "SELECT id,revision,status,coalesce(nullif(title,''),nullif(requirements->>'objective',''),'新会话') AS title,updated_at FROM assistant_runtime_session WHERE project_id=$1 AND actor_id=$2 AND (title ILIKE $3 OR requirements->>'objective' ILIKE $3) ORDER BY updated_at DESC,id LIMIT 21 OFFSET $4",
+      `SELECT id,revision,status,${sessionTitleSql} AS title,updated_at FROM assistant_runtime_session WHERE project_id=$1 AND actor_id=$2 AND (${sessionTitleSql} ILIKE $3 OR requirements->>'objective' ILIKE $3) ORDER BY updated_at DESC,id LIMIT 21 OFFSET $4`,
       [
         scope.projectId,
         scope.actorId,
