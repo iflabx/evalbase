@@ -6,7 +6,7 @@ Validation: targeted-pass
 Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md)
 
 - 批次：1；对应原范围建议：R04。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02第四轮已通过；C01第七轮完整业务闭环通过，R04-6按两项现有证据闭合。保留自动标题旧叙述的显示观察。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02第四轮已通过；C01第七轮完整业务闭环通过，R04-6按两项现有证据闭合。自动标题旧叙述观察已于ada5b0d修复。
 - 能力：A01、A02、A13、U01；文件/确认/下载/未保存输入的公共前端桥，领域完成归后续票。
 - 缺口：G05、G09、G10、G12；验收合同：RB04、RB09、RB13；第一批 RB06～10 页面证据。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -78,3 +78,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-28：身份合同修复483f35e完成第六轮C01有界CU，Terra/high新会话普通提示仍因纠正补写同值active被拒失败，6请求/0行次，未新增第二交付或产生业务副作用，活动已封存。后续有效继承值/多交付身份匹配/连续纠正锁定补强3fd1a5f通过144项定向验证并更新独立4240，未另开实模；C02不重跑，旧数据/预算保持，R04-6保持未勾选。见[第六轮记录](../r04-verification.md#r04-identity-round6)。
 
 - 2026-10-28：Owner授权补强后仅C01第七轮有界复测，固定3fd1a5f，Terra/high一个新会话和两个普通提示。13请求/3行次，2次规则刷新反馈自行恢复；同一交付5→3、一次处理/保存、打开刷新和保护字段审计通过。C02不重跑，旧数据/预算保持；R04-6与整票业务闭环闭合为completed/targeted-pass，仍保留自动会话标题旧5条/不执行文案的待优化观察，未改业务代码。详见[最新证据](../r04-verification.md#r04-identity-round7)。
+
+- 2026-10-28：按Owner授权修复自动标题同步，代码ada5b0d。默认标题按当前交付只读派生，快照/列表同源，手动命名优先；五项API/SDK/真实页面回归及类型/Lint、针对性双轴审阅通过。仅更新独立4240后端，原会话只读核验标题正确，16表及原资料哈希不变。没有重跑C01/C02或增加模型消耗；标题显示观察关闭，既有业务验收结论保持。见[修复记录](../r04-verification.md#r04-title-sync)。

@@ -1,0 +1,13 @@
+{
+  "code": "ada5b0d7806a9396ee8494aec01f9f2fb140d60e",
+  "sessionId": "assistant_0a4f9488387d45b68b6c1cf6e06d0c84",
+  "snapshotTitle": "清洗 · 3 条",
+  "listTitle": "清洗 · 3 条",
+  "currentCount": 3,
+  "objective": "对《六条客服问题.jsonl》前5条做清洗，仅保存方案，不执行。",
+  "executionStatus": "completed",
+  "readOnlyBusinessProbe": true,
+  "C01Rerun": false,
+  "C02Rerun": false,
+  "modelRequests": 0
+}

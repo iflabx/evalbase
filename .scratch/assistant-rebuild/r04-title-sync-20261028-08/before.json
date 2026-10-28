@@ -1,0 +1,71 @@
+{
+  "at": "2026-10-28T01:38:07.637Z",
+  "tables": {
+    "assistant_runtime_session": {
+      "rows": 12,
+      "hash": "3c4a0e9d57e5775632450218379ff3535d4ec6d2069739c3bd929ae442845834"
+    },
+    "assistant_runtime_turn": {
+      "rows": 17,
+      "hash": "984fec8cac11dacfe95cd30d3d6d7e2f7ea4b341f23a1a00b56f0d6cf66e9d06"
+    },
+    "assistant_runtime_message": {
+      "rows": 34,
+      "hash": "b4d1a697f465a829efbed554364b14daa0c0c4e0f0a349855420fe1a7ab486c3"
+    },
+    "assistant_runtime_event": {
+      "rows": 340,
+      "hash": "63f2f77070d3b649e562bc5359afa41eb93695bc630721e458db4ee8803eefaf"
+    },
+    "assistant_runtime_execution": {
+      "rows": 11,
+      "hash": "242d17b71f9924def93018e8ae56a0b874e3e4475a0ef5743c76b19139b84865"
+    },
+    "assistant_runtime_request": {
+      "rows": 61,
+      "hash": "7f5b21386d7ade50b60e4900852caa93244bd672d0ef70ff3ceb46041a61c75b"
+    },
+    "assistant_runtime_activity": {
+      "rows": 11,
+      "hash": "eaaeec714c42286e2f486f838bc16a98a0327b3094524a25ae4063132bba55bd"
+    },
+    "assistant_runtime_operation": {
+      "rows": 6,
+      "hash": "42263a4836427872d40a935335d8cc0a52a6009d22d0d7d9f88a711ad26b97f8"
+    },
+    "assistant_runtime_confirmation": {
+      "rows": 3,
+      "hash": "e213c3b728bc5de9e0475add0f7c8c0a52aa66f0b03bdf2358300b9e900a302d"
+    },
+    "assistant_runtime_attachment": {
+      "rows": 2,
+      "hash": "a98afaae438e7291202fa9f913c479e5c338ad42676944248c0325ec09939673"
+    },
+    "collaborative_draft": {
+      "rows": 3,
+      "hash": "f76990065d2fc8fac1fee4dbe79c9b5e57e30ba176ebee35e7804b5fedd2180c"
+    },
+    "collaborative_draft_record": {
+      "rows": 9,
+      "hash": "da2b58e4ad76ee4fc039cbcffb2ce00370983ba38ea4e2eb49b7478109a01134"
+    },
+    "processing_run": {
+      "rows": 3,
+      "hash": "18ad3f2e9e88fba5ffd48bc1735586df7b9db680205cb8a1fc252d94b5e92465"
+    },
+    "processing_batch": {
+      "rows": 3,
+      "hash": "245697bb3b67cc78586ec91380dc5d5012f186bd57ea225929a74fe0472f8330"
+    },
+    "processing_acceptance": {
+      "rows": 3,
+      "hash": "7b67c71c60883794137c833767740535cfb20797b66654bb8d16014ee14e9194"
+    },
+    "model_connection": {
+      "rows": 9,
+      "hash": "bc1940f04fec76c1666621966806bb4d09d261830c4448cea93f65696d505c8d"
+    }
+  },
+  "sourceHash": "64665a42d8219f18fbb5fbf8ce84d8b9a3f78b8bb9d8466e091ebe3e7b91c880",
+  "externalRequests": 0
+}

@@ -26,7 +26,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | `21038e7` / [验证记录](r02-verification.md) |
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | `bb10a16` / [验证记录](r03-verification.md) |
-| [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | completed | targeted-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round7)；C01业务闭环通过，C02沿用第四轮；自动标题文案保留观察 |
+| [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | completed | targeted-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round7)；C01业务闭环通过，C02沿用第四轮；自动标题观察已修复 |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | not-started | not-run | — |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | not-started | not-run | — |
@@ -70,6 +70,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 - 新增与修改使用明确命令：`create_requirements`只创建，`update_requirements`只修改或取消既有交付；服务端不以缺少交付ID解释为新增。修改未给ID时只允许绑定当前唯一活动交付；零份、多份或未知ID不得猜测。一个批次不能重复修改同一目标。
 - 方案模式可保存不完整或多交付安排；切换执行前按唯一当前执行合同原子校验操作、固定输入、数量、字段、目标和加工规则依赖。投影、工具提交和页面使用同一就绪结果。明确取消最后交付转为非执行状态，保留取消身份并失效旧确认。
 - 语义修复携带服务端已解析目标及有效领域字段快照，按显式交付ID匹配；补回该ID或同值继承字段不构成改变意图，其他ID及实际改变的受保护字段仍拒绝。每次业务校验重新固定当前可纠正字段，已修好的字段不能因旧路径残留被再次修改。同轮提交成功后的部分纠正重放只能核对原已提交事实并返回原回执，不产生第二次要求写入。
+- 会话自动标题是当前交付的只读投影，页头、会话列表及标题搜索同源；非空手动命名始终优先。自动标题不写入手动title，不回写或删改初始目标叙述，不增加模型调用。
 - 工具合同改变固定运行时版本。当前新会话为`deepagents-v2`；首批`deepagents-v1`会话/检查点保留只读及原成果入口，不用新工具重解释或唤醒旧检查点，不变更旧预算。完整历史管理/承接仍归REBUILD-08。
 
 ### 3.2 有效进展与无进展暂停
@@ -158,3 +159,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-28：交付身份与执行完整性合同修复483f35e完成C01第六轮实模，未误新增，但同值active纠正误判导致失败；活动6请求/0行次已封存。后续3fd1a5f补齐有效继承值比较、多交付按ID匹配及连续业务纠正锁定，144项受控验证通过，未再次实模。04仍in-progress/partial-pass，C02未重跑，旧数据/预算保留；见[唯一记录](r04-verification.md#r04-identity-round6)。
 
 - 2026-10-28：补强后C01第七轮单独有界CU业务闭环通过（Terra/high、13请求/3行次、2次规则刷新自动恢复），旧数据/预算均保持。R04-6采用本轮C01与第四轮已通过C02现有证据；04 completed/targeted-pass，C02未重跑。自动标题仍沿用初始旧叙述，单独记录待优化；未改代码或启动05～10。见[唯一记录](r04-verification.md#r04-identity-round7)。
+
+- 2026-10-28：自动标题只读投影修复ada5b0d完成五项定向验证和独立4240更新；手动命名保留，旧会话及预算不变。关闭第七轮标题显示观察；C01/C02均未重跑，业务验证结论沿用。详见[对应记录](r04-verification.md#r04-title-sync)。

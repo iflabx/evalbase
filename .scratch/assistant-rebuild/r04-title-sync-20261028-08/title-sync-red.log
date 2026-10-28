@@ -1,0 +1,140 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/bistu/EvalBase/.worktrees/assistant-rebuild[39m
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-1","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":93,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-2","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":63,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-3","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":63,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-4","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":58,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-5","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":77,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-6","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":71,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-7","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":13,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-8","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":7,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-a","job_id":null,"project_id":"project_5b405fcf29b14b989cb08edef77de3e2","object_id":null,"stage":"http:response","duration_ms":75,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-b","job_id":null,"project_id":"project_5b405fcf29b14b989cb08edef77de3e2","object_id":null,"stage":"http:response","duration_ms":22,"error_code":null,"status_code":201}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-d","job_id":null,"project_id":"project_5b405fcf29b14b989cb08edef77de3e2","object_id":"asset_c1de627bce7d44408dfd87711aa88879","stage":"http:response","duration_ms":11,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host
+[22m[39m{"correlation_id":"req-e","job_id":null,"project_id":null,"object_id":null,"stage":"http:response","duration_ms":6,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mautomatic session titles follow saved requirements while preserving manual names and original narrative
+[22m[39m{"correlation_id":"req-f","job_id":null,"project_id":"project_5b405fcf29b14b989cb08edef77de3e2","object_id":null,"stage":"http:response","duration_ms":31,"error_code":null,"status_code":200}
+
+[90mstdout[2m | tests/integration/rebuild-execution.test.ts[2m > [22m[2mREBUILD-03 formal session and Deep Agents host[2m > [22m[2mautomatic title projection handles incomplete, multiple and cancelled plans without changing stored titles
+[22m[39m{"correlation_id":"req-h","job_id":null,"project_id":"project_5b405fcf29b14b989cb08edef77de3e2","object_id":null,"stage":"http:response","duration_ms":27,"error_code":null,"status_code":200}
+
+ [31m❯[39m tests/integration/rebuild-execution.test.ts [2m([22m[2m53 tests[22m[2m | [22m[31m2 failed[39m[2m | [22m[33m51 skipped[39m[2m)[22m[33m 2060[2mms[22m[39m
+     [2m[90m↓[39m[22m stops accepted work through the priority control endpoint
+     [2m[90m↓[39m[22m recovers accepted work once across competing hosts and same-message replay
+     [2m[90m↓[39m[22m pauses a real in-flight request, queries without spending, and resumes after the old request timeout
+     [2m[90m↓[39m[22m pauses on task budget and appends only a fixed user-confirmed offer
+     [2m[90m↓[39m[22m persists three no-progress observations across restart and refuses ordinary continue
+     [2m[90m↓[39m[22m advances across graph segments with actual new page coverage
+     [2m[90m↓[39m[22m waits durably for a real processing job with no model polling and one wake
+     [2m[90m↓[39m[22m requires a fixed confirmation and reconciles real adoption after a lost business response
+     [2m[90m↓[39m[22m rejects expired, changed-requirement, foreign-owner and revoked confirmations
+     [2m[90m↓[39m[22m guards adopted target revision inside the actual business transaction
+     [2m[90m↓[39m[22m returns one pending or committed identity on concurrent double confirmation
+     [2m[90m↓[39m[22m recovers an executing confirmation from a real receipt after restart without adopting again
+     [2m[90m↓[39m[22m does not auto-wake a paused or changed job owner
+     [2m[90m↓[39m[22m accounts a timed-out actual SDK request without refund and resumes on the same task
+     [2m[90m↓[39m[22m counts worker attempts separately and respects a closed external activity without spending old budgets
+     [2m[90m↓[39m[22m preserves correction intent and the attempt limit across a stopped SDK continuation
+     [2m[90m↓[39m[22m records an actual AI SDK Worker HTTP attempt without consuming the assistant allowance
+     [2m[90m↓[39m[22m reclaims an expired owner, preserves its unknown sent request, and fences its late response
+     [2m[90m↓[39m[22m resumes completed processing after a pause without re-running a successful batch
+     [2m[90m↓[39m[22m does not turn historical receipts into current success after requirements change
+     [2m[90m↓[39m[22m allows real requirement amendments after no-progress without resetting spent budget
+     [2m[90m↓[39m[22m rolls back all terminal facts on failure between execution and turn updates
+     [2m[90m↓[39m[22m keeps a new owner lease when an old adoption receipt arrives after stop and continue
+     [2m[90m↓[39m[22m records a response-body timeout as unknown rather than a successful 200 result
+     [2m[90m↓[39m[22m enforces the first assistant and worker request against a short external activity deadline
+     [2m[90m↓[39m[22m uses execution-before-request lock order while another owner holds the execution row
+     [2m[90m↓[39m[22m preserves saved business success when an optional subsequent model explanation fails
+     [2m[90m↓[39m[22m keeps no-progress and actual request accounting across a real framework summary
+     [2m[90m↓[39m[22m treats the same selected record as the same fact even with an extra unused asset in scope
+     [2m[90m↓[39m[22m starts a new explicit user intent after paused parameter correction without inheriting the old constraint
+     [2m[90m↓[39m[22m starts the public durable dispatcher on application startup for already accepted work
+     [2m[90m↓[39m[22m R04 lists, searches and renames only the current actor private sessions with revision checks
+     [2m[90m↓[39m[22m R04 validates private attachments and keeps upload bytes out of public events
+     [2m[90m↓[39m[22m R04 streams actual SDK text and reconciles the persisted final message
+     [2m[90m↓[39m[22m R04 runs the real clean → durable wait → fixed confirmation → unique saved draft SDK chain
+     [2m[90m↓[39m[22m R04 refuses impossible deterministic classification with fields "question" before creating a job
+     [2m[90m↓[39m[22m R04 refuses impossible deterministic classification with fields "question" before creating a job
+     [2m[90m↓[39m[22m R04 validates actual rewritten output constraints before a save confirmation
+     [2m[90m↓[39m[22m R04 ordinary progress queries preserve the suspended turn and ordinary continue queues the same work
+     [2m[90m↓[39m[22m R04 rejects stale UI source revisions before accepting a message
+     [2m[90m↓[39m[22m R04 never projects internal summary requests as public assistant text
+     [2m[90m↓[39m[22m R04 browser faults: lost acceptance, refresh/reconnect, stale tab, late confirmation and narrow panels
+     [2m[90m↓[39m[22m R04 SSE remains open for new snapshots and closes when its login session is revoked
+     [2m[90m↓[39m[22m R04 read-only progress in flight never admits a queued or retrying suspended Worker request
+     [2m[90m↓[39m[22m amends scoped rules before execution and freezes only the current context through unique save
+     [2m[90m↓[39m[22m cannot bypass pending amendment rules with submit_processing against the old executable plan
+     [2m[90m↓[39m[22m preserves pending rule refresh and budget through pause and original-checkpoint continuation
+     [2m[90m↓[39m[22m retains a failed quantity amendment after classification validation and blocks old-plan continuation
+     [2m[90m↓[39m[22m ordinary new-message continue cannot drop a failed requirement amendment
+     [2m[90m↓[39m[22m keeps legacy v1 history and attachment reads but rejects every workspace mutation
+[31m     [31m×[31m automatic session titles follow saved requirements while preserving manual names and original narrative[39m[32m 67[2mms[22m[39m
+[31m     [31m×[31m automatic title projection handles incomplete, multiple and cancelled plans without changing stored titles[39m[32m 48[2mms[22m[39m
+     [2m[90m↓[39m[22m automatic titles stay synchronized in the real page and manual rename survives later snapshots and refresh
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/integration/rebuild-execution.test.ts[2m > [22mREBUILD-03 formal session and Deep Agents host[2m > [22mautomatic session titles follow saved requirements while preserving manual names and original narrative
+[31m[1mAssertionError[22m: expected '' to be '新会话' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 新会话[39m
+
+[36m [2m❯[22m title tests/integration/rebuild-execution.test.ts:[2m2738:65[22m[39m
+    [90m2736|[39m     [35mconst[39m id[33m=[39m[35mawait[39m [34mfresh[39m()[33m,[39mobjective[33m=[39m[32m"前5条仅做方案，不执行。"[39m[33m;[39m
+    [90m2737|[39m     [35mconst[39m title[33m=[39m[35masync[39m(expected[33m:[39mstring)[33m=>[39m{
+    [90m2738|[39m       expect((await api("GET",route(id))).json().session.title).toBe(e…
+    [90m   |[39m                                                                 [31m^[39m
+    [90m2739|[39m       expect((await api("GET",route()+"?search="+encodeURIComponent(ex…
+    [90m2740|[39m     }[33m;[39m
+[90m [2m❯[22m tests/integration/rebuild-execution.test.ts:[2m2741:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m tests/integration/rebuild-execution.test.ts[2m > [22mREBUILD-03 formal session and Deep Agents host[2m > [22mautomatic title projection handles incomplete, multiple and cancelled plans without changing stored titles
+[31m[1mAssertionError[22m: expected '' to be '只查询资料' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 只查询资料[39m
+
+[36m [2m❯[22m tests/integration/rebuild-execution.test.ts:[2m2759:234[22m[39m
+
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[33m51 skipped[39m[90m (53)[39m
+[2m   Start at [22m 01:34:05
+[2m   Duration [22m 6.69s[2m (transform 2.14s, setup 28ms, import 4.43s, tests 2.06s, environment 0ms)[22m
+
