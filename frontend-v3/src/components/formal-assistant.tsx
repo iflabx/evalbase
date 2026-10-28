@@ -196,8 +196,54 @@ export function FormalAssistant({
     mounted.current && current.current === selected && generationRef.current === generation;
   const historyInitialized = useRef(false);
   const loadedMessages = useRef<Snapshot["messages"]>([]);
+  const historyEpoch = useRef(0);
+  const historyGaps = useRef<Array<{ before: string; floor: string }>>([]);
+  const historyFlight = useRef<AbortController | null>(null);
+  const [historyFailed, setHistoryFailed] = useState(false);
+  const fillHistory = async (selected: string) => {
+    if (historyFlight.current || !activeSession(selected)) return;
+    const epoch = historyEpoch.current,
+      controller = new AbortController();
+    historyFlight.current = controller;
+    setHistoryFailed(false);
+    try {
+      while (
+        historyGaps.current.length &&
+        activeSession(selected) &&
+        historyEpoch.current === epoch
+      ) {
+        const gap = historyGaps.current[0]!;
+        const page = await api<{ messages: Snapshot["messages"]; hasEarlier: boolean }>(
+          endpoint(projectId, selected) + "/history?before=" + gap.before,
+          { signal: controller.signal },
+        );
+        if (!activeSession(selected) || historyEpoch.current !== epoch) return;
+        loadedMessages.current = mergeMessages(loadedMessages.current, page.messages);
+        rawSetSnapshot((old) =>
+          old?.session.id === selected
+            ? { ...old, messages: mergeMessages(old.messages, page.messages) }
+            : old,
+        );
+        const first = page.messages[0]?.id;
+        if (!first || BigInt(first) <= BigInt(gap.floor) || !page.hasEarlier)
+          historyGaps.current.shift();
+        else if (BigInt(first) < BigInt(gap.before)) gap.before = first;
+        else throw new Error("历史分页未推进，请重试加载。");
+      }
+    } catch (e) {
+      if (activeSession(selected) && historyEpoch.current === epoch && !controller.signal.aborted)
+        setHistoryFailed(true);
+    } finally {
+      if (historyFlight.current === controller) historyFlight.current = null;
+    }
+  };
   const setSnapshot = (incoming: Snapshot | null) => {
     if (!incoming) {
+      historyEpoch.current++;
+      historyFlight.current?.abort();
+      historyFlight.current = null;
+      historyGaps.current = [];
+      setHistoryFailed(false);
       loadedMessages.current = [];
       rawSetSnapshot(null);
       return;
@@ -215,31 +261,12 @@ export function FormalAssistant({
       incoming.messages.length === 100 &&
       BigInt(incoming.messages[0]!.id) > BigInt(previous[previous.length - 1]!.id)
     ) {
-      void (async () => {
-        let cursor = incoming.messages[0]!.id;
-        while (activeSession(incoming.session.id)) {
-          const page = await api<{ messages: Snapshot["messages"]; hasEarlier: boolean }>(
-            endpoint(projectId, incoming.session.id) + "/history?before=" + cursor,
-          );
-          if (!activeSession(incoming.session.id)) return;
-          loadedMessages.current = mergeMessages(loadedMessages.current, page.messages);
-          rawSetSnapshot((old) =>
-            old?.session.id === incoming.session.id
-              ? { ...old, messages: mergeMessages(old.messages, page.messages) }
-              : old,
-          );
-          if (
-            !page.messages.length ||
-            BigInt(page.messages[0]!.id) <= BigInt(previous[previous.length - 1]!.id) ||
-            !page.hasEarlier
-          )
-            break;
-          cursor = page.messages[0]!.id;
-        }
-      })().catch((e) => {
-        if (activeSession(incoming.session.id)) setError(errorText(e));
+      historyGaps.current.push({
+        before: incoming.messages[0]!.id,
+        floor: previous[previous.length - 1]!.id,
       });
     }
+    void fillHistory(incoming.session.id);
   };
   const [listVersion, setListVersion] = useState(0);
   const refreshList = () => setListVersion((v) => v + 1);
@@ -336,6 +363,9 @@ export function FormalAssistant({
     return () => {
       live = false;
       source?.close();
+      historyEpoch.current++;
+      historyFlight.current?.abort();
+      historyFlight.current = null;
     };
   }, [draftKey, projectId, sessionId]);
   const requirementsRevision = snapshot?.session.requirements_revision;
@@ -687,10 +717,11 @@ export function FormalAssistant({
       if (!sessionId || !snapshot) return;
       const before = snapshot.messages[0]?.id;
       if (!before) return;
+      const historyRequestEpoch = historyEpoch.current;
       const older = await api<{ messages: Snapshot["messages"]; hasEarlier: boolean }>(
         endpoint(projectId, sessionId) + "/history?before=" + before,
       );
-      if (!activeSession(sessionId)) return;
+      if (!activeSession(sessionId) || historyRequestEpoch !== historyEpoch.current) return;
       loadedMessages.current = mergeMessages(loadedMessages.current, older.messages);
       rawSetSnapshot((old) =>
         old ? { ...old, messages: mergeMessages(old.messages, older.messages) } : old,
@@ -901,14 +932,14 @@ export function FormalAssistant({
               停止
             </Button>
           )}
-          {snapshot?.execution?.status === "paused" && (
+          {(snapshot?.execution?.status === "paused" || snapshot?.canResumeCompleted) && (
             <Button
               variant="outline"
               size="sm"
-              disabled={readOnlyHistory || busy}
+              disabled={readOnlyHistory || busy || !canWrite}
               onClick={() => void action("continue")}
             >
-              继续
+              {snapshot?.canResumeCompleted ? "继续完成保存" : "继续"}
             </Button>
           )}
           <DropdownMenu>
@@ -1259,6 +1290,18 @@ export function FormalAssistant({
                     <p role="alert" className="mb-2 text-sm text-destructive">
                       所选记录范围已失效，请返回来源重新选择。
                     </p>
+                  )}
+                  {historyFailed && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>部分历史消息未加载。</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => sessionId && void fillHistory(sessionId)}
+                      >
+                        重试加载
+                      </Button>
+                    </div>
                   )}
                   {error && (
                     <p role="alert" className="mb-2 text-sm text-destructive">

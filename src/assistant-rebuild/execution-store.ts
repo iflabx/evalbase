@@ -449,6 +449,48 @@ export class ExecutionStore {
     return null;
   }
 
+  async completedRecovery(
+    db: Query,
+    scope: SessionScope,
+    session: any,
+    task: any,
+  ) {
+    if (task?.status !== "completed") return false;
+    const deliveries = session.requirements?.deliveries ?? [];
+    const active = new Set(
+      deliveries
+        .filter((d: any) => d.status === "active")
+        .map(
+          (d: any) =>
+            "processing:" + d.id + ":" + session.requirements_revision,
+        ),
+    );
+    const rows = (
+      await db.query(
+        "SELECT o.*,j.status AS job_status FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.turn_id=$2 AND o.requirements_revision=$3 AND o.kind='processing'",
+        [session.id, task.turn_id, session.requirements_revision],
+      )
+    ).rows;
+    for (const op of rows) {
+      if (
+        !active.has(op.operation_key) &&
+        !(session.requirements_revision === 0 && !deliveries.length)
+      )
+        continue;
+      if (["failed", "cancelled"].includes(op.job_status)) continue;
+      const saves = (
+        await db.query(
+          "SELECT id FROM assistant_runtime_operation WHERE session_id=$1 AND kind='adopt' AND run_id=$2",
+          [session.id, op.run_id],
+        )
+      ).rows;
+      let saved = false;
+      for (const save of saves)
+        if (await this.receipt(scope, session.id, save.id, db)) saved = true;
+      if (!saved) return true;
+    }
+    return false;
+  }
   async resume(scope: SessionScope, sessionId: string) {
     await this.sessions.get(scope, sessionId);
     const blocked = await this.blocked(sessionId);
@@ -474,20 +516,11 @@ export class ExecutionStore {
       }
       if (task?.status === "completed") {
         await this.sessions.access(scope, true, c);
-        const unresolved = (
-          await c.query(
-            "SELECT 1 FROM assistant_runtime_operation o LEFT JOIN processing_run r ON r.id=o.run_id LEFT JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.turn_id=$2 AND o.requirements_revision=$3 AND ((o.kind='processing' AND j.status NOT IN ('succeeded','failed','cancelled')) OR EXISTS(SELECT 1 FROM assistant_runtime_confirmation x WHERE x.operation_id=o.id AND x.action='adopt' AND x.status='pending' AND x.expires_at>$4)) LIMIT 1",
-            [
-              sessionId,
-              task.turn_id,
-              s.requirements_revision,
-              new Date(this.now()),
-            ],
-          )
-        ).rowCount;
+        const unresolved = await this.completedRecovery(c, scope, s, task);
         if (!unresolved) throw new SessionError("task_not_paused");
       } else if (!task || !["paused", "failed"].includes(task.status))
         throw new SessionError("task_not_paused");
+      await this.assertActivityAvailable(c, task);
       if (
         task.no_progress >= 3 &&
         task.progress_revision === s.requirements_revision
@@ -1331,6 +1364,7 @@ export class ExecutionStore {
           keys.add(key);
           receipts.push({
             ...receipt,
+            executionTurnId: card.turn_id,
             isCurrent:
               currentRuns.has(card.payload?.runId) &&
               card.requirements_revision === current.requirements_revision,
@@ -1346,12 +1380,18 @@ export class ExecutionStore {
     }
     const results = (
       await this.db.query(
-        "SELECT DISTINCT ON (r.id) o.id,o.run_id,o.requirements_revision,j.status,(SELECT coalesce(sum(b.output_count),0)::int FROM processing_batch b WHERE b.run_id=r.id) AS output_count FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.kind='processing' ORDER BY r.id,o.id",
+        "SELECT DISTINCT ON (r.id) o.id,o.run_id,o.turn_id,o.requirements_revision,j.status,(SELECT coalesce(sum(b.output_count),0)::int FROM processing_batch b WHERE b.run_id=r.id) AS output_count FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.kind='processing' ORDER BY r.id,o.id",
         [sessionId],
       )
     ).rows.map((r) => ({ ...r, isCurrent: currentRuns.has(r.run_id) }));
     return {
       execution: task,
+      canResumeCompleted: await this.completedRecovery(
+        this.db,
+        scope,
+        current,
+        task,
+      ),
       executionReadiness: executionReadiness(
         current.requirements,
         !!task?.amendment_pending,
@@ -1367,6 +1407,7 @@ export class ExecutionStore {
                 (c) =>
                   c.action === "adopt" &&
                   c.status === "pending" &&
+                  new Date(c.expires_at).getTime() > this.now() &&
                   currentRuns.has(c.payload?.runId) &&
                   c.requirements_revision === current.requirements_revision,
               )

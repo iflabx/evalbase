@@ -3454,4 +3454,499 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       ended.execution.request_limit,
     );
   });
+  it("POSTFIX saved receipt cannot hide a different new turn provider failure", async () => {
+    const { id, plan } = await reviewCreate();
+    const started = await run(id, "清洗三条后保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(started.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    const ready = await host.runPending(scope(), id, started.execution.turn_id);
+    const card = ready.confirmations.find(
+      (c: any) => c.action === "adopt" && c.status === "pending",
+    );
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(200);
+    outputs = [{ role: "assistant", content: "保存完成" }];
+    const saved = await host.runPending(scope(), id, started.execution.turn_id);
+    expect(saved.execution.status).toBe("completed");
+    await expect(
+      run(id, "现在帮我查看这个项目还有哪些原始资料", [{ httpStatus: 503 }]),
+    ).rejects.toThrow();
+    const next = await host.present(scope(), id);
+    const latest = (
+      await db.query(
+        "SELECT status,error_code FROM assistant_runtime_turn WHERE id=$1",
+        [next.execution.turn_id],
+      )
+    ).rows[0];
+    expect(latest.status).toBe("failed");
+    expect(next.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(1);
+    console.log(
+      "POSTFIX_UNRELATED_QUERY",
+      JSON.stringify({
+        status: next.execution.status,
+        reason: next.execution.reason,
+        last: next.messages.slice(-1),
+        receipt: next.receipts,
+      }),
+    );
+    expect(next.execution.status).not.toBe("completed");
+  });
+  it("POSTFIX legacy completed successful job without confirmation remains resumable", async () => {
+    const id = await fresh();
+    const p = await processing(id);
+    await completeRun(p.runId);
+    await host.store.finish(p.proof, "旧版漏等待而结束");
+    const before = await host.present(scope(), id);
+    const response = await api("POST", route(id) + "/control", {
+      action: "continue",
+    });
+    console.log(
+      "POSTFIX_ORPHAN_SUCCESS",
+      JSON.stringify({
+        before: before.execution.status,
+        results: before.results,
+        confirmation: before.confirmations,
+        status: response.statusCode,
+        response: response.json(),
+      }),
+    );
+    expect(response.statusCode).toBe(200);
+  });
+
+  it.each(["automatic", "manual"])(
+    "POSTFIX PAGE retries an incomplete middle history gap %s",
+    async (mode) => {
+      const id = await fresh(),
+        address = await webAddress(),
+        browser = await chromium.launch({ headless: true }),
+        context = await browser.newContext({
+          viewport: { width: 1440, height: 900 },
+          extraHTTPHeaders: { origin },
+        });
+      const cookie = identities.get("admin")!.cookie!.split("=");
+      await context.addCookies([
+        { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+      ]);
+      const page = await context.newPage(),
+        state = await host.present(scope(), id);
+      const msg = (n: number) => ({
+        id: String(n),
+        turn_id: "gap-" + n,
+        role: "assistant",
+        content: "Gap review " + n,
+      });
+      const snap = {
+        ...state,
+        messages: Array.from({ length: 100 }, (_, i) => msg(i + 101)),
+      };
+      let gapRequests = 0;
+      await page.addInitScript(() => {
+        (window as any).EventSource = class {
+          listeners: any = {};
+          onerror: any;
+          constructor() {
+            (window as any).__gapSource = this;
+          }
+          addEventListener(name: string, fn: any) {
+            this.listeners[name] = fn;
+          }
+          close() {}
+        };
+      });
+      await page.route("**" + route(id), (r) => r.fulfill({ json: snap }));
+      await page.route("**" + route(id) + "/history?*", (r) => {
+        const before = new URL(r.request().url()).searchParams.get("before");
+        if (before === "101")
+          return r.fulfill({
+            json: {
+              messages: Array.from({ length: 100 }, (_, i) => msg(i + 1)),
+              hasEarlier: false,
+            },
+          });
+        gapRequests++;
+        if (gapRequests === 1)
+          return r.fulfill({
+            status: 503,
+            json: { error: { code: "temporarily_unavailable" } },
+          });
+        return r.fulfill({
+          json: {
+            messages: Array.from({ length: 100 }, (_, i) =>
+              msg(Number(before) - 100 + i),
+            ),
+            hasEarlier: true,
+          },
+        });
+      });
+      try {
+        await page.goto(
+          address + "/projects/" + projectId + "/assistant/" + id,
+        );
+        await page
+          .getByRole("button", { name: "加载更早消息", exact: true })
+          .click();
+        await browserExpect(
+          page.getByText("Gap review 1", { exact: true }),
+        ).toBeVisible();
+        await page.evaluate(
+          (s) =>
+            (window as any).__gapSource.listeners.snapshot({
+              data: JSON.stringify(s),
+            }),
+          {
+            ...snap,
+            messages: Array.from({ length: 100 }, (_, i) => msg(i + 401)),
+          },
+        );
+        await browserExpect.poll(() => gapRequests).toBe(1);
+        if (mode === "manual")
+          await page
+            .getByRole("button", { name: "重试加载", exact: true })
+            .click();
+        await page.evaluate(
+          (s) =>
+            (window as any).__gapSource.listeners.snapshot({
+              data: JSON.stringify(s),
+            }),
+          {
+            ...snap,
+            messages: Array.from({ length: 100 }, (_, i) => msg(i + 402)),
+          },
+        );
+        await browserExpect(
+          page.getByText("Gap review 501", { exact: true }),
+        ).toBeVisible();
+        console.log(
+          "POSTFIX_HISTORY_GAP",
+          JSON.stringify({
+            gapRequests,
+            missing301:
+              (await page
+                .getByText("Gap review 301", { exact: true })
+                .count()) === 0,
+            historyButton: await page
+              .getByRole("button", { name: "加载更早消息", exact: true })
+              .count(),
+          }),
+        );
+        await browserExpect(
+          page.getByText("Gap review 301", { exact: true }),
+        ).toBeVisible({ timeout: 1500 });
+      } finally {
+        await context.close();
+        await browser.close();
+      }
+    },
+    30000,
+  );
+
+  it.each(["missing", "expired"])(
+    "POSTFIX recover successful orphan %s confirmation to unique save",
+    async (kind) => {
+      const { id, plan } = await reviewCreate();
+      const start = await run(id, "清洗三条后保存", [
+        plan,
+        call("submit_processing", {}),
+      ]);
+      await completeRun(start.results[0].run_id);
+      await host.execution.wake();
+      let oldCard: any;
+      if (kind === "expired") {
+        outputs = [call("prepare_adoption", {})];
+        const ready = await host.runPending(
+          scope(),
+          id,
+          start.execution.turn_id,
+        );
+        oldCard = ready.confirmations.find((c: any) => c.action === "adopt");
+        await db.query(
+          "UPDATE assistant_runtime_confirmation SET expires_at=now()-interval '1 minute' WHERE id=$1",
+          [oldCard.id],
+        );
+      }
+      await db.query(
+        "UPDATE assistant_runtime_turn SET status='succeeded',runner_token=NULL WHERE id=$1",
+        [start.execution.turn_id],
+      );
+      await db.query(
+        "UPDATE assistant_runtime_execution SET status='completed' WHERE session_id=$1",
+        [id],
+      );
+      expect((await host.present(scope(), id)).canResumeCompleted).toBe(true);
+      const before = await jobState(id);
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(200);
+      outputs = [call("prepare_adoption", {})];
+      const ready = await host.runPending(scope(), id, start.execution.turn_id);
+      const card = ready.confirmations.find(
+        (c: any) =>
+          c.status === "pending" &&
+          new Date(c.expires_at).getTime() > Date.now(),
+      );
+      expect(card).toBeTruthy();
+      if (oldCard) {
+        expect(card.id).not.toBe(oldCard.id);
+        expect(
+          (
+            await api("POST", route(id) + "/confirmations/" + oldCard.id, {
+              accept: true,
+            })
+          ).statusCode,
+        ).toBe(409);
+      }
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + card.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + card.id, {
+            accept: true,
+          })
+        ).json().replayed,
+      ).toBe(true);
+      outputs = [{ role: "assistant", content: "保存完成" }];
+      await host.runPending(scope(), id, start.execution.turn_id);
+      const final = await host.present(scope(), id);
+      expect(final.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(1);
+      expect(final.canResumeCompleted).toBe(false);
+      expect(final.results).toHaveLength(1);
+      expect(final.results[0].run_id).toBe(start.results[0].run_id);
+      expect((await jobState(id)).request_limit).toBe(before.request_limit);
+    },
+  );
+
+  it("POSTFIX new read-only turn cannot adopt previous orphan results", async () => {
+    const { id, plan } = await reviewCreate();
+    const start = await run(id, "清洗三条", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(start.results[0].run_id);
+    await db.query(
+      "UPDATE assistant_runtime_turn SET status='succeeded',runner_token=NULL WHERE id=$1",
+      [start.execution.turn_id],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_execution SET status='completed' WHERE session_id=$1",
+      [id],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_session SET status='idle' WHERE id=$1",
+      [id],
+    );
+    const result = await run(id, "查看项目信息", [
+      call("read_project", {}),
+      { role: "assistant", content: "已查看项目" },
+    ]);
+    expect(result.execution.status).toBe("completed");
+    expect(result.confirmations).toHaveLength(0);
+    expect(result.receipts).toHaveLength(0);
+    expect(result.messages.at(-1).content).toBe("已查看项目");
+  });
+  it.each(["clock", "stored"])(
+    "POSTFIX standalone persisted wait renews expired card %s only on continue",
+    async (expiry) => {
+      const { id, p, card } = await adoptionCard();
+      await db.query(
+        "UPDATE assistant_runtime_turn SET status='pending' WHERE id=$1",
+        [p.proof.turnId],
+      );
+      await db.query(
+        "UPDATE assistant_runtime_execution SET status='pending' WHERE session_id=$1",
+        [id],
+      );
+      outputs = [call("wait_confirmation", {})];
+      expect(
+        (await host.runPending(scope(), id, p.proof.turnId)).execution.status,
+      ).toBe("confirmation");
+      await db.query(
+        "UPDATE assistant_runtime_confirmation SET expires_at=now()-interval '1 minute' WHERE id=$1",
+        [card.id],
+      );
+      await db.query(
+        "UPDATE assistant_runtime_turn SET status='succeeded' WHERE id=$1",
+        [p.proof.turnId],
+      );
+      await db.query(
+        "UPDATE assistant_runtime_execution SET status='completed' WHERE session_id=$1",
+        [id],
+      );
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(200);
+      if (expiry === "stored")
+        await db.query(
+          "UPDATE assistant_runtime_confirmation SET status='expired' WHERE id=$1",
+          [card.id],
+        );
+      outputs = [];
+      const resumed = await host.runPending(scope(), id, p.proof.turnId);
+      expect(resumed.execution.status).toBe("confirmation");
+      expect(
+        resumed.confirmations.some(
+          (c: any) => c.id !== card.id && c.status === "pending",
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("POSTFIX PAGE successful orphan exposes continue and preserves the original processing run", async () => {
+    const id = await fresh(),
+      p = await processing(id);
+    await completeRun(p.runId);
+    await host.store.finish(p.proof, "旧版结束");
+    const address = await webAddress(),
+      browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({ extraHTTPHeaders: { origin } }),
+      cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    try {
+      const page = await context.newPage();
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await page
+        .getByRole("button", { name: "继续完成保存", exact: true })
+        .click();
+      await browserExpect
+        .poll(async () => (await jobState(id)).status)
+        .toBe("pending");
+      expect((await host.present(scope(), id)).results[0].run_id).toBe(p.runId);
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(409);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  }, 30000);
+  it.each(["revision", "budget", "no_progress"])(
+    "POSTFIX orphan recovery keeps %s guard",
+    async (kind) => {
+      const id = await fresh(),
+        p = await processing(id);
+      await completeRun(p.runId);
+      await host.store.finish(p.proof, "旧版结束");
+      if (kind === "revision")
+        await db.query(
+          "UPDATE assistant_runtime_session SET requirements_revision=1 WHERE id=$1",
+          [id],
+        );
+      if (kind === "budget")
+        await db.query(
+          "UPDATE assistant_runtime_execution SET requests=request_limit WHERE session_id=$1",
+          [id],
+        );
+      if (kind === "no_progress")
+        await db.query(
+          "UPDATE assistant_runtime_execution SET no_progress=3,progress_revision=0 WHERE session_id=$1",
+          [id],
+        );
+      const before = await jobState(id);
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBeGreaterThanOrEqual(400);
+      expect((await jobState(id)).requests).toBe(before.requests);
+      expect((await jobState(id)).status).toBe("completed");
+    },
+  );
+
+  it("POSTFIX PAGE access loss discards a late manual history response", async () => {
+    const id = await fresh(),
+      address = await webAddress(),
+      browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({ extraHTTPHeaders: { origin } }),
+      cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    const page = await context.newPage(),
+      state = await host.present(scope(), id),
+      msg = (n: number) => ({
+        id: String(n),
+        turn_id: "late-" + n,
+        role: "assistant",
+        content: "Late history " + n,
+      });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let requested = false;
+    await page.addInitScript(() => {
+      (window as any).EventSource = class {
+        listeners: any = {};
+        onerror: any;
+        constructor() {
+          (window as any).__lateSource = this;
+        }
+        addEventListener(n: string, f: any) {
+          this.listeners[n] = f;
+        }
+        close() {}
+      };
+    });
+    await page.route("**" + route(id), (r) =>
+      r.fulfill({
+        json: {
+          ...state,
+          messages: Array.from({ length: 100 }, (_, i) => msg(i + 101)),
+        },
+      }),
+    );
+    await page.route("**" + route(id) + "/history?*", async (r) => {
+      requested = true;
+      await gate;
+      await r.fulfill({ json: { messages: [msg(1)], hasEarlier: true } });
+    });
+    try {
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      await page
+        .getByRole("button", { name: "加载更早消息", exact: true })
+        .click();
+      await browserExpect.poll(() => requested).toBe(true);
+      await page.evaluate(() =>
+        (window as any).__lateSource.listeners.access_lost(),
+      );
+      release();
+      await browserExpect(
+        page.getByText("会话访问已失效，请重新登录或核对权限。", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.evaluate(
+        (s) =>
+          (window as any).__lateSource.listeners.snapshot({
+            data: JSON.stringify(s),
+          }),
+        { ...state, messages: [msg(201)] },
+      );
+      await browserExpect(
+        page.getByText("Late history 201", { exact: true }),
+      ).toBeVisible();
+      expect(
+        await page.getByText("Late history 1", { exact: true }).count(),
+      ).toBe(0);
+    } finally {
+      release();
+      await context.close();
+      await browser.close();
+    }
+  }, 30000);
 });

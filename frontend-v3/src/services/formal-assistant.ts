@@ -13,6 +13,7 @@ export type Envelope = {
 };
 export type Attachment = { id: string; name: string };
 export type Snapshot = {
+  canResumeCompleted?: boolean;
   session: {
     id: string;
     runtime_version?: string;

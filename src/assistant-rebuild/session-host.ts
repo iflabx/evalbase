@@ -330,26 +330,41 @@ export class FormalSessionHost {
         tool(
           async () => {
             await this.execution.guard(proof);
-            const cards = (
-              await this.db.query(
-                "SELECT c.* FROM assistant_runtime_confirmation c JOIN assistant_runtime_operation o ON o.id=c.operation_id WHERE c.session_id=$1 AND o.turn_id=$2 AND c.action<>'budget' ORDER BY c.expires_at DESC",
-                [sessionId, turnId],
-              )
-            ).rows;
-            const current = await this.store.get(proof, sessionId);
-            const card = cards.find(
-              (c) =>
-                c.requirements_revision === current.requirements_revision &&
-                ["pending", "committed"].includes(c.status),
-            );
-            if (!card) throw new SessionError("confirmation_required", 422);
-            const receipt = await this.execution.receipt(
-              scope,
-              sessionId,
-              card.operation_id,
-            );
-            if (receipt) return { saved: true, receipt };
-            interrupt({ kind: "confirmation", confirmationId: card.id });
+            for (;;) {
+              const cards = (
+                await this.db.query(
+                  "SELECT c.* FROM assistant_runtime_confirmation c JOIN assistant_runtime_operation o ON o.id=c.operation_id WHERE c.session_id=$1 AND o.turn_id=$2 AND c.action<>'budget' ORDER BY c.expires_at DESC",
+                  [sessionId, turnId],
+                )
+              ).rows;
+              const current = await this.store.get(proof, sessionId);
+              const resuming = (await this.execution.guard(proof))
+                .resume_requested;
+              let card = cards.find(
+                (c) =>
+                  c.requirements_revision === current.requirements_revision &&
+                  (["pending", "committed"].includes(c.status) ||
+                    (resuming && c.status === "expired")),
+              );
+              if (!card) throw new SessionError("confirmation_required", 422);
+              const receipt = await this.execution.receipt(
+                scope,
+                sessionId,
+                card.operation_id,
+              );
+              if (receipt) return { saved: true, receipt };
+              if (
+                card.status === "expired" ||
+                new Date(card.expires_at).getTime() <= Date.now()
+              ) {
+                if (!(await this.execution.guard(proof)).resume_requested)
+                  throw new SessionError("confirmation_expired");
+                card = await this.execution.prepare(proof, {
+                  id: card.operation_id,
+                });
+              }
+              interrupt({ kind: "confirmation", confirmationId: card.id });
+            }
           },
           {
             name: "wait_confirmation",
@@ -566,7 +581,23 @@ export class FormalSessionHost {
       const recoveryInput = async () => {
         const facts = await this.execution.projection(scope, sessionId);
         if ((await this.execution.guard(proof)).suspended) return null;
-        if (facts.businessStatus === "confirmation")
+        const ownResults = facts.results.filter(
+          (r) => r.isCurrent && r.turn_id === proof.turnId,
+        );
+        const ownSaved = facts.receipts.some(
+          (r) =>
+            r.isCurrent && r.acceptanceId && r.executionTurnId === proof.turnId,
+        );
+        if (
+          !ownSaved &&
+          facts.confirmations.some(
+            (c) =>
+              c.action === "adopt" &&
+              c.status === "pending" &&
+              c.turn_id === proof.turnId &&
+              new Date(c.expires_at).getTime() > Date.now(),
+          )
+        )
           return {
             messages: [
               new HumanMessage(
@@ -575,7 +606,7 @@ export class FormalSessionHost {
             ],
           };
         if (
-          facts.results.some(
+          ownResults.some(
             (r) =>
               r.isCurrent &&
               !["succeeded", "failed", "cancelled"].includes(r.status),
@@ -588,7 +619,7 @@ export class FormalSessionHost {
               ),
             ],
           };
-        const failed = facts.results.some(
+        const failed = ownResults.some(
           (r) => r.isCurrent && ["failed", "cancelled"].includes(r.status),
         );
         if (failed) {
@@ -603,7 +634,8 @@ export class FormalSessionHost {
           throw new SessionError("processing_not_complete");
         }
         if (
-          facts.businessStatus === "generated" &&
+          !ownSaved &&
+          ownResults.some((r) => r.status === "succeeded") &&
           facts.executionReadiness.ready
         )
           return {
@@ -716,7 +748,14 @@ export class FormalSessionHost {
         ].includes(code)
       ) {
         const facts = await this.execution.projection(scope, sessionId);
-        if (facts.receipts.some((r) => r.isCurrent && r.acceptanceId)) {
+        if (
+          facts.receipts.some(
+            (r) =>
+              r.isCurrent &&
+              r.acceptanceId &&
+              r.executionTurnId === proof.turnId,
+          )
+        ) {
           await this.store.finish(
             proof,
             "处理结果已保存，服务端已确认。总结未完成，可查看保存结果。",
@@ -729,6 +768,7 @@ export class FormalSessionHost {
           "no_progress",
           "segment_without_progress",
           "processing_not_complete",
+          "confirmation_expired",
           "task_budget_exhausted",
           "activity_budget_exhausted",
           "model_request_timeout",
