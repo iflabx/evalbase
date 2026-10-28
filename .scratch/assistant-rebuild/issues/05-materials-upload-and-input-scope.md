@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Implementation: in-progress
-Validation: targeted-pass
+Validation: partial-pass
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md)
 
 - 批次：2；对应原范围建议：R05。
@@ -70,3 +70,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-28：Owner授权实施；已完成领域服务/工具与原生桥接、选择范围固定、背景引用、deepagents-v3及旧版本只读接线，定向测试和复审见[唯一记录](../r05-verification.md)。隔离预览和C03待本轮执行，未扩大后续票范围。
 
 - 2026-10-28：代码1e2fb65已更新4240；定向验证及双轴复审通过。C03由GPT-6.1 Terra high真实尝试，因Computer Use文件选择事件超时尚未上传，Owner开启扩展权限后仍阻断；0模型请求/0处理生成，旧数据与旧预算不变。R05-6仍未通过，票保持in-progress，详见[唯一记录](../r05-verification.md)。
+
+- 2026-10-28：Owner人工辅助后授权继续C03。真实两条范围交接通过；首提示卡pending，定位派发器硬编码v2遗漏v3，模型请求0。已通过UI停止、关闭新活动并保留现场，未修业务代码；C03未通过，Implementation in-progress / Validation partial-pass。完整记录见[证据](../r05-c03-20261028/verification.md)。
