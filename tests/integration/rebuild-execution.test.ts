@@ -175,14 +175,17 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     await new Promise<void>((resolve) =>
       portProbe.listen(0, "127.0.0.1", resolve),
     );
-    origin =
-      "http://127.0.0.1:" + (portProbe.address() as { port: number }).port;
+    const port = (portProbe.address() as { port: number }).port;
+    origin = "http://127.0.0.1:" + port;
     config.appOrigin = origin;
-    await new Promise<void>((resolve) => portProbe.close(() => resolve()));
     app = await buildApp(config, {
       disableLegacyTestBootstrap: true,
       disableAssistantRuntimeDispatch: true,
     });
+    // Bind immediately after releasing the probe, before the local provider or
+    // later browser fixtures can take the same ephemeral port.
+    await new Promise<void>((resolve) => portProbe.close(() => resolve()));
+    await app.listen({ host: "127.0.0.1", port });
     host = new FormalSessionHost(db, config);
     for (const who of ["admin", "editor", "viewer"]) {
       const payload = {
@@ -1996,7 +1999,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     ]);
     expect(resumed.execution.status).toBe("pending");
     expect(resumed.execution.turn_id).toBe(p.proof.turnId);
-    expect(resumed.execution.requests - before.execution.requests).toBe(4);
+    expect(resumed.execution.requests - before.execution.requests).toBe(3);
     expect(resumed.results).toHaveLength(1);
     await host.stop(scope(), id);
   });
@@ -2737,6 +2740,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
   });
   it("automatic session titles follow saved requirements while preserving manual names and original narrative", async () => {
     const id = await fresh(),
+      beforeEffects = await effects(),
       objective = "前5条仅做方案，不执行。";
     const title = async (expected: string) => {
       expect((await api("GET", route(id))).json().session.title).toBe(expected);
@@ -2798,7 +2802,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     ]);
     await title("我的固定标题");
     expect((await host.store.get(scope(), id)).title).toBe("我的固定标题");
-    expect(await effects()).toMatchObject({ runs: 0 });
+    expect(await effects()).toEqual(beforeEffects);
   });
   it("automatic title projection handles incomplete, multiple and cancelled plans without changing stored titles", async () => {
     const id = await fresh();
@@ -3949,4 +3953,343 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await browser.close();
     }
   }, 30000);
+  it("RESUME SDK paused query hides write tools and repairs a wrong prepare without resuming", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    const before = await host.present(scope(), id),
+      beforeEffects = await effects();
+    const checked: string[][] = [];
+    const wrongPrepare = (body: any) => {
+      checked.push(body.tools.map((t: any) => t.function.name));
+      return call("prepare_adoption", {});
+    };
+    const state = await run(id, "现在进度怎么样？不要继续", [
+      wrongPrepare,
+      (body: any) => {
+        checked.push(body.tools.map((t: any) => t.function.name));
+        return call("read_task_progress", {});
+      },
+      { role: "assistant", content: "原任务仍暂停，查看进度没有继续或保存。" },
+    ]);
+    for (const names of checked) {
+      expect(names).toContain("read_task_progress");
+      expect(names).not.toContain("continue_task");
+      expect(names).not.toEqual(expect.arrayContaining(["prepare_adoption"]));
+      for (const name of [
+        "submit_processing",
+        "prepare_adoption",
+        "wait_processing",
+        "wait_confirmation",
+      ])
+        expect(names).not.toContain(name);
+    }
+    expect(state.execution.status).toBe("paused");
+    expect(state.execution.turn_id).toBe(p.proof.turnId);
+    expect(state.execution.requests - before.execution.requests).toBe(3);
+    expect(state.results.map((r: any) => r.run_id)).toEqual([p.runId]);
+    expect(await effects()).toEqual(beforeEffects);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "state_feedback")).toHaveLength(1);
+    expect(
+      events.some(
+        (e) => e.kind === "tool_call" && e.detail.name === "continue_task",
+      ),
+    ).toBe(false);
+    expect(events.some((e) => e.kind === "execution_error")).toBe(false);
+  });
+
+  it("RESUME SDK a query correction cannot authorize continue after a wrong prepare", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    const before = await host.present(scope(), id),
+      beforeEffects = await effects();
+    await expect(
+      run(id, "现在进度怎么样？不要继续", [
+        call("prepare_adoption", {}),
+        (body: any) => {
+          expect(body.tools.map((t: any) => t.function.name)).not.toContain(
+            "continue_task",
+          );
+          return call("continue_task", {});
+        },
+        { role: "assistant", content: "不应再次调用模型。" },
+      ]),
+    ).rejects.toMatchObject({ code: "state_reselection_exhausted" });
+    const state = await host.present(scope(), id);
+    expect(state.execution.status).toBe("paused");
+    expect(state.execution.turn_id).toBe(p.proof.turnId);
+    expect(state.execution.requests - before.execution.requests).toBe(2);
+    expect(state.results.map((r: any) => r.run_id)).toEqual([p.runId]);
+    expect(await effects()).toEqual(beforeEffects);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "state_feedback")).toHaveLength(1);
+    expect(
+      events.some(
+        (e) => e.kind === "tool_call" && e.detail.name === "continue_task",
+      ),
+    ).toBe(false);
+    expect(state.confirmations.some((c: any) => c.status === "pending")).toBe(
+      false,
+    );
+  });
+
+  it("RESUME SDK rejects a direct query-time continue then permits read-only recovery", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    const before = await host.present(scope(), id),
+      beforeEffects = await effects();
+    const state = await run(id, "现在进度怎么样？不要继续", [
+      (body: any) => {
+        const names = body.tools.map((t: any) => t.function.name);
+        expect(names).toContain("read_task_progress");
+        expect(names).not.toContain("continue_task");
+        return call("continue_task", {});
+      },
+      call("read_task_progress", {}),
+      { role: "assistant", content: "任务仍暂停，没有继续或保存。" },
+    ]);
+    expect(state.execution.status).toBe("paused");
+    expect(state.execution.turn_id).toBe(p.proof.turnId);
+    expect(state.execution.requests - before.execution.requests).toBe(3);
+    expect(state.results.map((r: any) => r.run_id)).toEqual([p.runId]);
+    expect(await effects()).toEqual(beforeEffects);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "state_feedback")).toHaveLength(1);
+    expect(
+      events.some(
+        (e) => e.kind === "tool_call" && e.detail.name === "continue_task",
+      ),
+    ).toBe(false);
+    expect(events.some((e) => e.kind === "execution_error")).toBe(false);
+    expect(state.confirmations.some((c: any) => c.status === "pending")).toBe(
+      false,
+    );
+  });
+
+  it("RESUME SDK bounds repeated state mistakes without spending a third request or losing the pause", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    const before = await host.present(scope(), id),
+      beforeEffects = await effects();
+    await expect(
+      run(id, "继续", [
+        call("prepare_adoption", {}),
+        call("submit_processing", {}),
+        call("continue_task", {}),
+      ]),
+    ).rejects.toMatchObject({ code: "state_reselection_exhausted" });
+    const state = await host.present(scope(), id);
+    expect(state.execution.status).toBe("paused");
+    expect(state.execution.turn_id).toBe(p.proof.turnId);
+    expect(state.execution.requests - before.execution.requests).toBe(2);
+    expect(await effects()).toEqual(beforeEffects);
+    const events = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+        [id],
+      )
+    ).rows;
+    expect(events.filter((e) => e.kind === "state_feedback")).toHaveLength(1);
+    expect(
+      events.some(
+        (e) => e.kind === "tool_call" && e.detail.name === "continue_task",
+      ),
+    ).toBe(false);
+  });
+
+  it("RESUME SDK confirmation stop query ordinary continue repairs preparation and saves exactly once", async () => {
+    const { id, plan } = await reviewCreate();
+    const beforeEffects = await effects();
+    const start = await run(id, "清洗三条后保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    const runId = start.results[0].run_id,
+      originalTurn = start.execution.turn_id;
+    await completeRun(runId);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    const ready = await host.runPending(scope(), id, originalTurn);
+    const oldCard = ready.confirmations.find(
+      (c: any) => c.action === "adopt" && c.status === "pending",
+    );
+    expect(oldCard).toBeTruthy();
+    expect(ready.execution.status).toBe("confirmation");
+    const batchBefore = (
+      await db.query(
+        "SELECT * FROM processing_batch WHERE run_id=$1 ORDER BY ordinal",
+        [runId],
+      )
+    ).rows;
+    expect(
+      (await api("POST", route(id) + "/control", { action: "stop" }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await db.query(
+          "SELECT status FROM assistant_runtime_confirmation WHERE id=$1",
+          [oldCard.id],
+        )
+      ).rows[0].status,
+    ).toBe("expired");
+    const queried = await run(id, "现在做到哪了？", [
+      call("read_task_progress", {}),
+      { role: "assistant", content: "处理结果已经保留，任务暂停且尚未保存。" },
+    ]);
+    expect(queried.execution.status).toBe("paused");
+    expect(queried.execution.turn_id).toBe(originalTurn);
+    const requestBefore = queried.execution.requests;
+    const resumed = await run(id, "继续", [
+      call("prepare_adoption", {}),
+      (body: any) => {
+        expect(body.tools.map((t: any) => t.function.name)).not.toContain(
+          "prepare_adoption",
+        );
+        return call("continue_task", {});
+      },
+      { role: "assistant", content: "不应额外花费模型请求的总结" },
+    ]);
+    expect(resumed.execution.status).toBe("pending");
+    expect(resumed.execution.turn_id).toBe(originalTurn);
+    expect(resumed.execution.requests - requestBefore).toBe(2);
+    expect(resumed.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(0);
+    outputs = [call("prepare_adoption", {})];
+    const recovered = await host.runPending(scope(), id, originalTurn);
+    expect(recovered.execution.status).toBe("confirmation");
+    const currentCards = recovered.confirmations.filter(
+      (c: any) => c.status === "pending",
+    );
+    expect(currentCards).toHaveLength(1);
+    const card = currentCards[0];
+    expect(card.id).not.toBe(oldCard.id);
+    expect((await effects()).drafts).toBe(beforeEffects.drafts);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + oldCard.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).json().replayed,
+    ).toBe(true);
+    outputs = [{ role: "assistant", content: "已保存" }];
+    const saved = await host.runPending(scope(), id, originalTurn);
+    expect(saved.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(1);
+    expect(saved.results.map((r: any) => r.run_id)).toEqual([runId]);
+    expect(
+      (
+        await db.query(
+          "SELECT * FROM processing_batch WHERE run_id=$1 ORDER BY ordinal",
+          [runId],
+        )
+      ).rows,
+    ).toEqual(batchBefore);
+    const afterEffects = await effects();
+    expect(afterEffects.runs - beforeEffects.runs).toBe(1);
+    expect(afterEffects.drafts - beforeEffects.drafts).toBe(1);
+    const feedback = (
+      await db.query(
+        "SELECT kind FROM assistant_runtime_event WHERE session_id=$1 AND kind='state_feedback'",
+        [id],
+      )
+    ).rows;
+    expect(feedback).toHaveLength(1);
+  });
+  it("RESUME SDK keeps the one state correction limit across an expired-owner reentry", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.stop(scope(), id);
+    const before = await host.present(scope(), id),
+      beforeEffects = await effects();
+    const accepted = await submit(id, "继续");
+    expect(accepted.statusCode).toBe(202);
+    const followupTurn = accepted.json().turnId;
+    let release!: () => void,
+      entered = false,
+      attempts = 0;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    outputs = [call("prepare_adoption", {})];
+    const oldRun = host.runPending(scope(), id, followupTurn, {
+      hooks: {
+        beforeRequest: async () => {
+          if (++attempts === 2) {
+            entered = true;
+            await gate;
+          }
+        },
+      },
+    });
+    const other = new FormalSessionHost(db, config);
+    try {
+      await until(async () => entered);
+      const feedbackBefore = (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_event WHERE turn_id=$1 AND kind='state_feedback'",
+          [followupTurn],
+        )
+      ).rows[0].n;
+      expect(feedbackBefore).toBe(1);
+      await db.query(
+        "UPDATE assistant_runtime_execution SET lease_until=now()-interval '1 second' WHERE session_id=$1",
+        [id],
+      );
+      outputs = [call("submit_processing", {}), call("continue_task", {})];
+      await expect(
+        other.runPending(scope(), id, followupTurn),
+      ).rejects.toMatchObject({ code: "state_reselection_exhausted" });
+      release();
+      await oldRun;
+      const state = await other.present(scope(), id);
+      expect(state.execution.status).toBe("paused");
+      expect(state.execution.turn_id).toBe(p.proof.turnId);
+      expect(state.execution.requests - before.execution.requests).toBe(2);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_event WHERE turn_id=$1 AND kind='state_feedback'",
+            [followupTurn],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(await effects()).toEqual(beforeEffects);
+    } finally {
+      release();
+      await oldRun.catch(() => undefined);
+      await other.close();
+    }
+  });
 });

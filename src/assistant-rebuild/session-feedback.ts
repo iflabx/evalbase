@@ -18,6 +18,16 @@ import {
   normalizeToolArguments,
   mergeToolCorrection,
 } from "./tool-arguments.js";
+/** Conservative text authorization; ambiguous language can use the explicit Continue control. */
+export function explicitResumeRequest(text: string): boolean {
+  const value = text.trim().replace(/[。！.!\s]+$/u, "");
+  return (
+    /^(?:(?:好的|好|可以)[，,\s]*)?(?:请(?:你)?|麻烦(?:你)?)?(?:现在)?(?:继续|接着|恢复)(?:(?:执行|处理|完成|做))?(?:(?:原来|刚才|之前|当前|这个|上次|原)(?:的)?)?(?:任务|工作|处理)?(?:吧|一下)?$/u.test(
+      value,
+    ) ||
+    /^(?:please )?(?:continue|resume)(?: (?:the )?(?:task|work))?$/i.test(value)
+  );
+}
 export type FailedCall = {
   id: string;
   name: string;
@@ -73,11 +83,55 @@ export function sessionFeedback(options: {
   initialPending?: FailedCall;
   savePending?: (p: FailedCall | undefined) => Promise<void>;
   facts: () => Promise<unknown>;
+  executionControl?: () => Promise<{
+    paused: boolean;
+    resumeQueued: boolean;
+    amendmentPending?: boolean;
+    resumeAuthorized?: boolean;
+  }>;
+  initialStateRepairs?: number;
   guard: () => Promise<void>;
   observe: (kind: string, detail: unknown) => Promise<void>;
   callModel: <T>(call: () => Promise<T> | T) => Promise<T> | T;
 }) {
   let pending = options.initialPending;
+  let stateRepairs = options.initialStateRepairs ?? 0;
+  const executionTools = new Set([
+    "submit_processing",
+    "prepare_adoption",
+    "wait_processing",
+    "wait_confirmation",
+  ]);
+  const control = async () =>
+    options.executionControl?.() ?? {
+      paused: false,
+      resumeQueued: false,
+      amendmentPending: false,
+      resumeAuthorized: false,
+    };
+  const stateFeedback = async (id: string, name: string) => {
+    if (stateRepairs >= 1)
+      throw new SessionError("state_reselection_exhausted", 409);
+    stateRepairs++;
+    await options.observe("state_feedback", {
+      id,
+      name,
+      attempt: stateRepairs,
+      code: "task_paused",
+    });
+    return new ToolMessage({
+      tool_call_id: id,
+      name,
+      status: "error",
+      content: JSON.stringify({
+        error: {
+          code: "task_paused",
+          message:
+            "本步骤未执行。原任务仍暂停。用户只问进度时使用read_task_progress；用户明确要求继续时使用continue_task。不得直接处理或准备保存，不得把查询视为继续或保存授权。",
+        },
+      }),
+    });
+  };
   const maxCorrections = 2;
   const schemaHash = (name: string) =>
     sha256(
@@ -220,15 +274,32 @@ export function sessionFeedback(options: {
   };
   const middleware = createMiddleware({
     name: "EvalBaseFormalToolBoundary",
+    beforeModel: {
+      canJumpTo: ["end"],
+      hook: async () => {
+        await options.guard();
+        if ((await control()).resumeQueued)
+          return {
+            messages: [new AIMessage("已安排原任务继续。")],
+            jumpTo: "end",
+          };
+      },
+    },
     wrapModelCall: async (request, handler) => {
       await options.guard();
       checkContract();
       if (pending && pending.attempts > maxCorrections)
         throw new SessionError("parameter_correction_exhausted", 422);
+      const executionState = await control();
       const tools = request.tools.filter(
         (t) =>
           "name" in t &&
           options.schemas.has(String(t.name)) &&
+          !(
+            executionState.paused &&
+            (executionTools.has(String(t.name)) ||
+              (t.name === "continue_task" && !executionState.resumeAuthorized))
+          ) &&
           (!pending || t.name === pending.name),
       );
       await options.observe(
@@ -238,6 +309,9 @@ export function sessionFeedback(options: {
       const current = new SystemMessage(
         "当前服务端事实（历史或摘要不能覆盖）：" +
           JSON.stringify(await options.facts()) +
+          "\n执行控制：" +
+          JSON.stringify(executionState) +
+          "；resumeAuthorized为false时，不得恢复任务。需要继续时请用户明确发送继续或点击继续按钮。" +
           (pending
             ? "\n当前待纠正调用（工具声明给出完整结构，未提供的原有效字段由服务端保留）：" +
               JSON.stringify({
@@ -419,6 +493,16 @@ export function sessionFeedback(options: {
         throw new SessionError("tool_not_allowed", 422);
       await options.guard();
       checkContract();
+      const state = await control();
+      if (
+        state.paused &&
+        (executionTools.has(call.name) ||
+          (call.name === "continue_task" && !state.resumeAuthorized))
+      ) {
+        if (state.amendmentPending)
+          throw new SessionError("requirements_amendment_pending", 409);
+        return stateFeedback(id, call.name);
+      }
       const normalized = normalize(call.name, call.args, !!pending);
       if (normalized.paths.length)
         await options.observe("parameter_normalized", {
@@ -483,6 +567,12 @@ export function sessionFeedback(options: {
             ["no_progress", "runtime_interrupted"].includes(error.code))
         )
           throw error;
+        if (
+          error instanceof SessionError &&
+          error.code === "task_paused" &&
+          executionTools.has(call.name)
+        )
+          return stateFeedback(id, call.name);
         if (error instanceof RequirementRepairError) {
           await options.observe("tool_error", {
             id,

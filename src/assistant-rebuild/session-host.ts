@@ -28,7 +28,7 @@ import { configuredChatConnection, modelFetch } from "../model/connection.js";
 import { sha256 } from "../package/contract.js";
 import { createHarness } from "./harness.js";
 import { sessionTools } from "./session-tools.js";
-import { sessionFeedback } from "./session-feedback.js";
+import { sessionFeedback, explicitResumeRequest } from "./session-feedback.js";
 import {
   SessionStore,
   SessionError,
@@ -524,6 +524,25 @@ export class FormalSessionHost {
         });
       const feedback = sessionFeedback({
         schemas: registry.schemas,
+        executionControl: async () => {
+          const task = await this.execution.guard(proof);
+          return {
+            paused: !!task.suspended,
+            resumeAuthorized: explicitResumeRequest(input.text),
+            resumeQueued: !!task.resume_suspended,
+            amendmentPending:
+              task.feedback?.kind === "requirements" ||
+              task.suspended?.feedback?.kind === "requirements",
+          };
+        },
+        initialStateRepairs: Number(
+          (
+            await this.db.query(
+              "SELECT count(*) FROM assistant_runtime_event WHERE session_id=$1 AND turn_id=$2 AND kind='state_feedback'",
+              [sessionId, turnId],
+            )
+          ).rows[0].count,
+        ),
         readOnlyTools: registry.readOnly,
         initialPending: persisted ?? undefined,
         savePending: async (pending) => {
