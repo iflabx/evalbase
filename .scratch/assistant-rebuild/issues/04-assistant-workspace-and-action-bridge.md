@@ -1,12 +1,12 @@
 # REBUILD-04 正式助手工作区、流式消息与受控动作桥
 
 Status: ready-for-agent
-Implementation: in-progress
-Validation: partial-pass
+Implementation: completed
+Validation: targeted-pass
 Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md)
 
 - 批次：1；对应原范围建议：R04。
-- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02已通过；C01第六轮仍因等值继承字段纠正被拒而失败，后续补强已通过受控验证、尚待实模，R04-6未全闭合。
+- 创建基线：`420c22e`，分支 `codex/assistant-rebuild`。实现与验收进度见末尾验证记录；C02第四轮已通过；C01第七轮完整业务闭环通过，R04-6按两项现有证据闭合。保留自动标题旧叙述的显示观察。
 - 能力：A01、A02、A13、U01；文件/确认/下载/未保存输入的公共前端桥，领域完成归后续票。
 - 缺口：G05、G09、G10、G12；验收合同：RB04、RB09、RB13；第一批 RB06～10 页面证据。
 - 共同依据：[实施 Spec](../spec.md)、[产品边界](../../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[重建架构](../../../docs/architecture/assistant-rebuild.md)、[范围映射](../../../docs/assistant-rebuild-scope-and-batches.md)、[RB 验收](../../../docs/test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance)。
@@ -41,7 +41,7 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - [x] **R04-3** 流式正文来自真实事件；重连、刷新和重复事件不会重复展示业务回执，最终持久消息与页面一致；阅读旧消息不被强拉到底。正常等待/暂停不持续显示思考中。
 - [x] **R04-4** 固定确认触发应用控制 API；过期卡不可用，已保存以回执为准。真实密钥/密码不进入聊天消息、工具结果或日志。
 - [x] **R04-5** 模型切换示例不扩张现有权限：未支持的控件不显示；不能复制单文件原型的计时器、Mock 保存/导出或样例模型。
-- [ ] **R04-6** 完成 Spec 的 C01/C02：普通提示修改要求后保存正确结果、实际执行中停止→查询→继续→唯一保存及打开刷新；旧预算、数据不变。缺时序或失败不得写通过。
+- [x] **R04-6** 完成 Spec 的 C01/C02：普通提示修改要求后保存正确结果、实际执行中停止→查询→继续→唯一保存及打开刷新；旧预算、数据不变。缺时序或失败不得写通过。
 - [x] **R04-7** 浏览器故障注入覆盖受理后响应丢失、重连/刷新核对重发、双标签竞争和迟到响应；同一次发送仅一条消息/一个执行，失败输入及后来新输入不丢。显示“已受理”不冒充“已保存”；no_progress 状态与恢复入口直接使用03投影，不在客户端重判或自动发“继续”。
 
 ## 定向验证
@@ -76,3 +76,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-28：依赖加工规则修复`f2e5f20`及138项定向验证通过，更新独立4240。Terra/high仅C01新会话第五轮实耗5请求/0行次，第二轮修改未引用原交付身份，保存出旧5条与新3条两项，single_delivery_required保护性停止，无业务作业/保存；活动封存，旧数据/预算保持。本轮不重跑C02。R04-6与整票仍in-progress/partial-pass，详见[最新记录](../r04-verification.md#r04-amendment-round5)。
 
 - 2026-10-28：身份合同修复483f35e完成第六轮C01有界CU，Terra/high新会话普通提示仍因纠正补写同值active被拒失败，6请求/0行次，未新增第二交付或产生业务副作用，活动已封存。后续有效继承值/多交付身份匹配/连续纠正锁定补强3fd1a5f通过144项定向验证并更新独立4240，未另开实模；C02不重跑，旧数据/预算保持，R04-6保持未勾选。见[第六轮记录](../r04-verification.md#r04-identity-round6)。
+
+- 2026-10-28：Owner授权补强后仅C01第七轮有界复测，固定3fd1a5f，Terra/high一个新会话和两个普通提示。13请求/3行次，2次规则刷新反馈自行恢复；同一交付5→3、一次处理/保存、打开刷新和保护字段审计通过。C02不重跑，旧数据/预算保持；R04-6与整票业务闭环闭合为completed/targeted-pass，仍保留自动会话标题旧5条/不执行文案的待优化观察，未改业务代码。详见[最新证据](../r04-verification.md#r04-identity-round7)。

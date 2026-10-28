@@ -26,7 +26,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-01 共享业务合同与提交保护解耦](issues/01-business-contracts-and-commit-boundary.md) | 1 | 无 | completed | targeted-pass | `6f97cd9` / [验证记录](r01-verification.md) |
 | [REBUILD-02 正式会话与 Deep Agents 工具宿主](issues/02-deepagents-session-and-tool-host.md) | 1 | REBUILD-01 | completed | targeted-pass | `21038e7` / [验证记录](r02-verification.md) |
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | `bb10a16` / [验证记录](r03-verification.md) |
-| [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | in-progress | partial-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round6)；C02沿用通过，C01等值字段纠正失败后补强尚待实模 |
+| [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | completed | targeted-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round7)；C01业务闭环通过，C02沿用第四轮；自动标题文案保留观察 |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | not-started | not-run | — |
 | [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | not-started | not-run | — |
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | not-started | not-run | — |
@@ -156,3 +156,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-28：Owner授权加工规则依赖修复、单独C01有界复测；代码`f2e5f20`、138项受控验证通过。第五轮C01未引用原deliveryId，新增不完整交付后提交被拒，5请求/0行次/0生成，活动封存；04保持in-progress/partial-pass。C02未重跑，全部旧预算/成果保护通过，详见[唯一记录](r04-verification.md#r04-amendment-round5)。
 
 - 2026-10-28：交付身份与执行完整性合同修复483f35e完成C01第六轮实模，未误新增，但同值active纠正误判导致失败；活动6请求/0行次已封存。后续3fd1a5f补齐有效继承值比较、多交付按ID匹配及连续业务纠正锁定，144项受控验证通过，未再次实模。04仍in-progress/partial-pass，C02未重跑，旧数据/预算保留；见[唯一记录](r04-verification.md#r04-identity-round6)。
+
+- 2026-10-28：补强后C01第七轮单独有界CU业务闭环通过（Terra/high、13请求/3行次、2次规则刷新自动恢复），旧数据/预算均保持。R04-6采用本轮C01与第四轮已通过C02现有证据；04 completed/targeted-pass，C02未重跑。自动标题仍沿用初始旧叙述，单独记录待优化；未改代码或启动05～10。见[唯一记录](r04-verification.md#r04-identity-round7)。

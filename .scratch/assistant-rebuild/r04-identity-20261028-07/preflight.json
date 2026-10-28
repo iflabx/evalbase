@@ -1,0 +1,339 @@
+{
+  "oldBusiness": [
+    {
+      "table": "collaborative_draft",
+      "key": "id",
+      "ids": [
+        "collabdraft_7956e53132c548ecbd1e07c01de7e483",
+        "collabdraft_8ccecf66a8204c9bba5b880aae985e71"
+      ],
+      "hash": "6fcdabecff0d9ea5c4562678bb666d417116c3356109f283e36ef9cc5af533a6"
+    },
+    {
+      "table": "collaborative_draft_record",
+      "key": "draft_id",
+      "ids": [
+        "collabdraft_7956e53132c548ecbd1e07c01de7e483",
+        "collabdraft_8ccecf66a8204c9bba5b880aae985e71"
+      ],
+      "hash": "e237bf82176546dde35655bab0a8206275111d4f8da19a1b6fe562f7123f54c0"
+    },
+    {
+      "table": "processing_run",
+      "key": "id",
+      "ids": [
+        "processing_60d9e497440241dcaae5b8f40d6e81d1",
+        "processing_79ffc867ac0241c1846c0458dd53dd63"
+      ],
+      "hash": "8154436b61dc8deb7376971110fed1cc6fa680304a091de9934c344a7cd8bbfc"
+    },
+    {
+      "table": "processing_batch",
+      "key": "run_id",
+      "ids": [
+        "processing_60d9e497440241dcaae5b8f40d6e81d1",
+        "processing_79ffc867ac0241c1846c0458dd53dd63"
+      ],
+      "hash": "71bc7083920a7884d6ecff1500ca48863ed73f8a54d4883e6ee692004f993edb"
+    },
+    {
+      "table": "processing_acceptance",
+      "key": "id",
+      "ids": [
+        "adoption_3d245f6d6ec244cca1a13148a8832b8a",
+        "adoption_8cffebd920be421e978acc2fb5e5244c"
+      ],
+      "hash": "560c6f7ed018e93d19a536dea394b33f1282c77cc298188b48305704c453f3fe"
+    }
+  ],
+  "source": {
+    "records": [
+      {
+        "id": "asset_509468e50f354beab833c42ea57b6b80:1",
+        "question": "  怎么查询订单状态？  ",
+        "expectedOutput": "标签1",
+        "metadata": [
+          {
+            "key": "序号",
+            "value": "1"
+          },
+          {
+            "key": "来源",
+            "value": "R04合成资料"
+          }
+        ],
+        "source": {
+          "assetId": "asset_509468e50f354beab833c42ea57b6b80",
+          "parsedViewId": "view_fa0827134fcc4974b57cb2f1accf4742",
+          "ordinal": 1
+        }
+      },
+      {
+        "id": "asset_509468e50f354beab833c42ea57b6b80:2",
+        "question": "  可以申请退货吗？ ",
+        "expectedOutput": "标签2",
+        "metadata": [
+          {
+            "key": "序号",
+            "value": "2"
+          },
+          {
+            "key": "来源",
+            "value": "R04合成资料"
+          }
+        ],
+        "source": {
+          "assetId": "asset_509468e50f354beab833c42ea57b6b80",
+          "parsedViewId": "view_fa0827134fcc4974b57cb2f1accf4742",
+          "ordinal": 2
+        }
+      },
+      {
+        "id": "asset_509468e50f354beab833c42ea57b6b80:3",
+        "question": "  发票在哪里下载？  ",
+        "expectedOutput": "标签3",
+        "metadata": [
+          {
+            "key": "序号",
+            "value": "3"
+          },
+          {
+            "key": "来源",
+            "value": "R04合成资料"
+          }
+        ],
+        "source": {
+          "assetId": "asset_509468e50f354beab833c42ea57b6b80",
+          "parsedViewId": "view_fa0827134fcc4974b57cb2f1accf4742",
+          "ordinal": 3
+        }
+      },
+      {
+        "id": "asset_509468e50f354beab833c42ea57b6b80:4",
+        "question": "能修改收货地址吗？",
+        "expectedOutput": "标签4",
+        "metadata": [
+          {
+            "key": "序号",
+            "value": "4"
+          },
+          {
+            "key": "来源",
+            "value": "R04合成资料"
+          }
+        ],
+        "source": {
+          "assetId": "asset_509468e50f354beab833c42ea57b6b80",
+          "parsedViewId": "view_fa0827134fcc4974b57cb2f1accf4742",
+          "ordinal": 4
+        }
+      },
+      {
+        "id": "asset_509468e50f354beab833c42ea57b6b80:5",
+        "question": "配送一般需要几天？",
+        "expectedOutput": "标签5",
+        "metadata": [
+          {
+            "key": "序号",
+            "value": "5"
+          },
+          {
+            "key": "来源",
+            "value": "R04合成资料"
+          }
+        ],
+        "source": {
+          "assetId": "asset_509468e50f354beab833c42ea57b6b80",
+          "parsedViewId": "view_fa0827134fcc4974b57cb2f1accf4742",
+          "ordinal": 5
+        }
+      },
+      {
+        "id": "asset_509468e50f354beab833c42ea57b6b80:6",
+        "question": "哨兵：第六条不要处理",
+        "expectedOutput": "标签6",
+        "metadata": [
+          {
+            "key": "序号",
+            "value": "6"
+          },
+          {
+            "key": "来源",
+            "value": "R04合成资料"
+          }
+        ],
+        "source": {
+          "assetId": "asset_509468e50f354beab833c42ea57b6b80",
+          "parsedViewId": "view_fa0827134fcc4974b57cb2f1accf4742",
+          "ordinal": 6
+        }
+      }
+    ],
+    "allIds": [
+      "asset_509468e50f354beab833c42ea57b6b80:1",
+      "asset_509468e50f354beab833c42ea57b6b80:2",
+      "asset_509468e50f354beab833c42ea57b6b80:3",
+      "asset_509468e50f354beab833c42ea57b6b80:4",
+      "asset_509468e50f354beab833c42ea57b6b80:5",
+      "asset_509468e50f354beab833c42ea57b6b80:6"
+    ],
+    "total": 6,
+    "sourceTotal": 6,
+    "matchedTotal": 6,
+    "sourceRevision": "cdc5029bb3bfc91991128d8a547467a3f0cf0df7c4a1c80d56d8345bc5bef912",
+    "metadataKeys": [
+      "序号",
+      "来源"
+    ],
+    "hiddenSelected": 0,
+    "sourceSummary": {
+      "name": "六条客服问题.jsonl",
+      "kindLabel": "原始数据",
+      "files": [
+        {
+          "name": "六条客服问题.jsonl",
+          "href": "/projects/project_85aaa9e65f464b56b22eeeb1e45113db/datasets/collection_522f8a2326dd448ab611927ac26bf786/files/asset_509468e50f354beab833c42ea57b6b80"
+        }
+      ],
+      "href": "/projects/project_85aaa9e65f464b56b22eeeb1e45113db/datasets/collection_522f8a2326dd448ab611927ac26bf786/files/asset_509468e50f354beab833c42ea57b6b80"
+    },
+    "offset": 0,
+    "limit": 20
+  },
+  "sourceHash": "64665a42d8219f18fbb5fbf8ce84d8b9a3f78b8bb9d8466e091ebe3e7b91c880",
+  "protectedOldHash": "ac96c43a3d14c5da8278e1f7755414ff609a9c144074a75c209a757a1313f9fe",
+  "oldActivities": [
+    {
+      "id": "r04-20261028-amendment5-C01",
+      "request_limit": 18,
+      "requests": 5,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T23:40:15.868Z",
+      "closed_at": "2026-10-27T23:42:07.951Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-C01",
+      "request_limit": 18,
+      "requests": 1,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T17:32:08.219Z",
+      "closed_at": "2026-10-27T17:32:51.979Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-C02",
+      "request_limit": 18,
+      "requests": 1,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T17:39:08.744Z",
+      "closed_at": "2026-10-27T17:41:24.783Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-identity6-C01",
+      "request_limit": 18,
+      "requests": 6,
+      "max_ms": "1500000",
+      "started_at": "2026-10-28T00:24:55.786Z",
+      "closed_at": "2026-10-28T00:28:07.885Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-retest2-C01",
+      "request_limit": 18,
+      "requests": 2,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T18:06:17.792Z",
+      "closed_at": "2026-10-27T18:06:53.188Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-retest2-C02",
+      "request_limit": 18,
+      "requests": 2,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T18:08:11.751Z",
+      "closed_at": "2026-10-27T18:08:38.634Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-retest3-C01",
+      "request_limit": 18,
+      "requests": 3,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T18:52:34.058Z",
+      "closed_at": "2026-10-27T18:53:10.703Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-retest3-C02",
+      "request_limit": 18,
+      "requests": 5,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T18:55:05.493Z",
+      "closed_at": "2026-10-27T18:56:01.723Z",
+      "row_limit": 9,
+      "rows_used": 0
+    },
+    {
+      "id": "r04-20261028-retest4-C01",
+      "request_limit": 18,
+      "requests": 10,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T20:33:27.548Z",
+      "closed_at": "2026-10-27T20:36:41.003Z",
+      "row_limit": 9,
+      "rows_used": 3
+    },
+    {
+      "id": "r04-20261028-retest4-C02",
+      "request_limit": 18,
+      "requests": 13,
+      "max_ms": "1500000",
+      "started_at": "2026-10-27T20:36:54.566Z",
+      "closed_at": "2026-10-27T20:41:10.011Z",
+      "row_limit": 9,
+      "rows_used": 3
+    }
+  ],
+  "model": {
+    "revision": 10,
+    "name": "qwen-new",
+    "endpoint": "https://agent.bistu.edu.cn:18001/v1",
+    "model": "qwen-new",
+    "enabled": true
+  },
+  "hashes": {
+    "package-lock.json": "4a68edc8844dbf1dc15b4e1265eb72932f56596a8cb243cbdae4a596aee33c40",
+    "frontend-v3/package-lock.json": "7edcde09c5ce416e68406222a3a85ffbb472b8defef5b3c8b8c5cdec8db6f4e7",
+    "src/assistant-rebuild/session-contract.ts": "4c5454bf91d0268f7f605b6831dd4572d45cc6e73dcab52403e41b284b8c29b7",
+    "src/assistant-rebuild/workspace-tools.ts": "866c80b74b50afb2144877a0f71e61e56226b95260bc78bd3b4df39a96777ff7",
+    "src/assistant-rebuild/session-feedback.ts": "ac5cfe92702d5dfffc5c162883fb02947f465895fcb34c48d9290899055506b9",
+    "src/assistant-rebuild/tool-arguments.ts": "1131c011ad9206bce041499243870cfc0db8869e5e28d66aeb743636c29b50d7",
+    "src/assistant-rebuild/execution-store.ts": "aa661084e66dbc9d128cd4a26b310a45cdd60d3a7f264dec0addbf28ead85145"
+  },
+  "code": "3fd1a5f6a2a57baa76a981065cb1aa88af62ba1c",
+  "limits": {
+    "each": {
+      "requests": 18,
+      "rowTimes": 9,
+      "generation": 0,
+      "minutes": 25
+    },
+    "total": {
+      "requests": 18,
+      "rowTimes": 9,
+      "generation": 0,
+      "minutes": 25
+    }
+  },
+  "timestamp": "2026-10-28T00:53:41.334Z"
+}

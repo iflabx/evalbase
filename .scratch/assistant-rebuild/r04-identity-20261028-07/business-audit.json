@@ -1,0 +1,185 @@
+{
+  "at": "2026-10-28T00:57:57.177Z",
+  "cases": [
+    {
+      "label": "C01",
+      "sessionId": "assistant_0a4f9488387d45b68b6c1cf6e06d0c84",
+      "runId": "processing_a38bec442ef54b1793e016ce2c27bc65",
+      "acceptanceId": "adoption_e5360c960bef439ebc41bf5aef5cf62f",
+      "draft": {
+        "id": "collabdraft_1ae550a8b00540b587a4fad28fd870cb",
+        "name": "三条整理版",
+        "revision": "1"
+      },
+      "rowCount": 3,
+      "protectedFields": true,
+      "rows": [
+        {
+          "id": "draftrow_f668aca3b9824afe8071b94603f3ea09",
+          "position": "1",
+          "question": "怎么查询订单状态？",
+          "expected_output": "标签1",
+          "metadata": [
+            {
+              "key": "序号",
+              "value": "1"
+            },
+            {
+              "key": "来源",
+              "value": "R04合成资料"
+            }
+          ],
+          "source": {
+            "assetId": "asset_18756f485f3849dbb4eead8d9572b269",
+            "ordinal": 1
+          }
+        },
+        {
+          "id": "draftrow_eea6d1a143844fa6a4859ade3eff33a1",
+          "position": "2",
+          "question": "可以申请退货吗？",
+          "expected_output": "标签2",
+          "metadata": [
+            {
+              "key": "序号",
+              "value": "2"
+            },
+            {
+              "key": "来源",
+              "value": "R04合成资料"
+            }
+          ],
+          "source": {
+            "assetId": "asset_18756f485f3849dbb4eead8d9572b269",
+            "ordinal": 2
+          }
+        },
+        {
+          "id": "draftrow_9cec6cb01cc24a0f95a2b4b7bed42db4",
+          "position": "3",
+          "question": "发票在哪里下载？",
+          "expected_output": "标签3",
+          "metadata": [
+            {
+              "key": "序号",
+              "value": "3"
+            },
+            {
+              "key": "来源",
+              "value": "R04合成资料"
+            }
+          ],
+          "source": {
+            "assetId": "asset_18756f485f3849dbb4eead8d9572b269",
+            "ordinal": 3
+          }
+        }
+      ],
+      "processingOperations": 1,
+      "adoptionOperations": 1,
+      "acceptances": 1,
+      "workerRequests": [
+        {
+          "id": "worker_request_ffe9947d-8050-4580-bbf8-60a14f452741",
+          "status": 200,
+          "error_code": null,
+          "started_at": "2026-10-28T00:55:32.949Z",
+          "ended_at": "2026-10-28T00:55:34.737Z",
+          "elapsed_ms": "1788"
+        }
+      ],
+      "batches": [
+        {
+          "ordinal": 0,
+          "model_attempts": 1,
+          "output_count": 3,
+          "error_code": null
+        }
+      ],
+      "planningHadNoBusinessEffects": true,
+      "firstTurnId": "turn_95fdfa4fd6c1448bbfc9a9d8c3bd7f18",
+      "finalTaskTurnId": "turn_dd500f5b60a345c59132fdce9f3c9f80",
+      "pauseMs": null,
+      "providerWindow": null,
+      "pausedBeforeResponseRelease": null,
+      "queryOperations": 0,
+      "normalized": [
+        {
+          "at": "2026-10-28T00:54:47.807Z",
+          "id": "call_437eccdfebac41eb96a1007a",
+          "name": "read_records",
+          "paths": [
+            [
+              "source"
+            ]
+          ],
+          "correctionOf": null
+        }
+      ],
+      "correctionFailures": [
+        {
+          "id": "300",
+          "kind": "tool_error",
+          "operation_key": null,
+          "detail": {
+            "id": "call_71afde2ed46a4b55abc48387",
+            "code": "processing_instructions_refresh_required",
+            "name": "update_requirements"
+          },
+          "created_at": "2026-10-28T00:55:29.090Z"
+        },
+        {
+          "id": "306",
+          "kind": "tool_error",
+          "operation_key": null,
+          "detail": {
+            "id": "chatcmpl-tool-88b3cad1c61576ad",
+            "code": "processing_instructions_refresh_required",
+            "name": "update_requirements"
+          },
+          "created_at": "2026-10-28T00:55:30.409Z"
+        }
+      ],
+      "requirements": {
+        "mode": "execute",
+        "objective": "对《六条客服问题.jsonl》前5条做清洗，仅保存方案，不执行。",
+        "deliveries": [
+          {
+            "id": "delivery_325f66302ce84f4d9a81840031d570b1",
+            "name": "三条整理版",
+            "count": 3,
+            "source": {
+              "kind": "assets",
+              "assetIds": [
+                "asset_509468e50f354beab833c42ea57b6b80"
+              ],
+              "recordIds": [
+                "asset_509468e50f354beab833c42ea57b6b80:1",
+                "asset_509468e50f354beab833c42ea57b6b80:2",
+                "asset_509468e50f354beab833c42ea57b6b80:3"
+              ]
+            },
+            "status": "active",
+            "operation": "clean",
+            "saveTarget": {
+              "kind": "newDraft",
+              "name": "三条整理版"
+            },
+            "instructions": "对question去除首尾空白，并将连续空白合并为单个空格，不改变原意；expectedOutput保持原标签；metadata保留原有序号与来源字段。",
+            "allowedFields": [
+              "question",
+              "expectedOutput",
+              "metadata"
+            ],
+            "sourceSnapshot": {
+              "hash": "9f96e0796dd33510e8444c00598ea72cf67c181a3b82b601639c02d14f8ba3e7",
+              "revision": null
+            },
+            "instructionsContext": "0dedb321a03d7b3815a37e1615700b9b32f81bc0c6dfa8cf73340921faf141a1",
+            "executionSummary": "清洗 · 处理 3 条 · 允许修改：问题、期望输出、Metadata · 保存为「三条整理版」"
+          }
+        ]
+      }
+    }
+  ]
+}
