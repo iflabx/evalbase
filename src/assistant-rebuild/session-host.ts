@@ -1,3 +1,4 @@
+import { publicationCompletion } from "./publication-completion.js";
 import { draftTools } from "./draft-tools.js";
 import { createSessionModel, type SessionModelHooks } from "./session-model.js";
 import { sessionModelFacts } from "./session-context.js";
@@ -205,6 +206,15 @@ export class FormalSessionHost {
           "write",
         ),
       );
+      const publication = await publicationCompletion(
+        this.store,
+        this.execution,
+        proof,
+        input.text,
+        input.context,
+      );
+      let publicationMessage: string | undefined;
+      let requiredPublicationTool: string | undefined;
       const registry = sessionTools(this.store, proof, canWrite);
       const materials = materialsTools(
         this.store,
@@ -394,6 +404,7 @@ export class FormalSessionHost {
       });
       const feedback = sessionFeedback({
         schemas: registry.schemas,
+        requiredTool: () => requiredPublicationTool,
         executionControl: async () => {
           const task = await this.execution.guard(proof);
           return {
@@ -544,6 +555,12 @@ export class FormalSessionHost {
               ),
             ],
           };
+        const completion = await publication.check();
+        publicationMessage = completion.message;
+        if (completion.recover) {
+          requiredPublicationTool = "request_publish";
+          return { messages: [new HumanMessage(completion.recover)] };
+        }
         return null;
       };
       if (
@@ -596,11 +613,24 @@ export class FormalSessionHost {
         return this.present(scope, sessionId);
       }
       feedback.assertResolved();
+      const finalFacts = await this.execution.projection(scope, sessionId);
+      const selected = finalFacts.confirmations.find(
+        (c: any) =>
+          c.action === "selection" &&
+          c.turn_id === turnId &&
+          c.status === "committed" &&
+          c.receipt,
+      );
+      const selectionMessage = selected
+        ? `所选记录已加入草稿，服务端已确认。新增 ${selected.receipt.added} 条，跳过 ${selected.receipt.skipped} 条。`
+        : undefined;
       const last = result.messages.at(-1);
       const text =
-        typeof last?.content === "string"
+        publicationMessage ??
+        selectionMessage ??
+        (typeof last?.content === "string"
           ? last.content
-          : JSON.stringify(last?.content ?? "");
+          : JSON.stringify(last?.content ?? ""));
       await this.store.guard(proof);
       await this.store.finish(proof, text);
       return this.present(scope, sessionId);
@@ -667,6 +697,8 @@ export class FormalSessionHost {
           "no_progress",
           "segment_without_progress",
           "processing_not_complete",
+          "publication_not_complete",
+          "publication_target_required",
           "confirmation_expired",
           "task_budget_exhausted",
           "activity_budget_exhausted",

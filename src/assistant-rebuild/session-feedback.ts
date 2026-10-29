@@ -90,6 +90,7 @@ export function sessionFeedback(options: {
     resumeAuthorized?: boolean;
   }>;
   initialStateRepairs?: number;
+  requiredTool?: () => string | undefined;
   guard: () => Promise<void>;
   observe: (kind: string, detail: unknown) => Promise<void>;
   callModel: <T>(call: () => Promise<T> | T) => Promise<T> | T;
@@ -346,11 +347,15 @@ export function sessionFeedback(options: {
         handler({
           ...request,
           tools,
-          ...(pending
+          ...((pending?.name ?? options.requiredTool?.())
             ? {
                 toolChoice: {
                   type: "function" as const,
-                  function: { name: pending.name },
+                  function: {
+                    name: pending
+                      ? pending.name
+                      : String(options.requiredTool?.()),
+                  },
                 },
               }
             : {}),

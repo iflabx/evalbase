@@ -326,6 +326,114 @@ describe("REBUILD-06 draft/selection/version public flows", () => {
     }
   });
 
+  it("C04 text-only publish is recovered through the real SDK before completion", async () => {
+    const id = await fresh();
+    let state: any = await run(id, "建草稿", [
+      call("create_draft", { name: "C04缺卡" }),
+    ]);
+    const d = (
+      await db.query(
+        "SELECT * FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+        [projectId, "C04缺卡"],
+      )
+    ).rows[0];
+    await run(id, "加一条", [
+      call("add_draft_record", {
+        draftId: d.id,
+        question: "问题",
+        expectedOutput: "答案",
+        metadata: [],
+      }),
+    ]);
+    await run(id, "查看草稿", [call("read_draft", { draftId: d.id })]);
+    const current = (
+      await db.query("SELECT revision FROM collaborative_draft WHERE id=$1", [
+        d.id,
+      ])
+    ).rows[0];
+    state = await run(id, "就按现在的记录发布。", [
+      { role: "assistant", content: "已准备发布确认卡" },
+      call("request_publish", {
+        draftId: d.id,
+        revision: Number(current.revision),
+      }),
+    ]);
+    expect(
+      state.confirmations.filter(
+        (c: any) => c.action === "publish" && c.status === "pending",
+      ),
+    ).toHaveLength(1);
+    expect(state.execution.status).toBe("confirmation");
+    expect(
+      (
+        await db.query(
+          "SELECT count(*) n FROM assistant_runtime_event WHERE session_id=$1 AND kind='publication_recovery'",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe("1");
+  });
+
+  it("C04 repeated empty publish pauses and ordinary continue restores the same action", async () => {
+    const id = await fresh();
+    await run(id, "建草稿", [call("create_draft", { name: "C04继续" })]);
+    const d = (
+      await db.query(
+        "SELECT * FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+        [projectId, "C04继续"],
+      )
+    ).rows[0];
+    await run(id, "加一条", [
+      call("add_draft_record", {
+        draftId: d.id,
+        question: "问题",
+        expectedOutput: "答案",
+        metadata: [],
+      }),
+    ]);
+    await run(id, "查看草稿", [call("read_draft", { draftId: d.id })]);
+    const empty = { role: "assistant", content: "已准备发布确认卡" };
+    let state: any = await run(id, "发布当前草稿", [empty, empty, empty]);
+    expect(state.execution.status).toBe("paused");
+    expect(state.execution.reason).toBe("publication_not_complete");
+    expect(
+      state.confirmations.filter((c: any) => c.action === "publish"),
+    ).toHaveLength(0);
+    const rev = (
+      await db.query("SELECT revision FROM collaborative_draft WHERE id=$1", [
+        d.id,
+      ])
+    ).rows[0].revision;
+    state = await run(id, "请继续", [
+      call("request_publish", { draftId: d.id, revision: Number(rev) }),
+    ]);
+    expect(
+      state.confirmations.filter(
+        (c: any) => c.action === "publish" && c.status === "pending",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it.each(["先不要发布", "如何发布草稿？", "只写发布方案", "取消发布"])(
+    "C04 %s is not an execution request",
+    async (text) => {
+      const id = await fresh();
+      const state: any = await run(id, text, [
+        { role: "assistant", content: "已了解" },
+      ]);
+      expect(state.execution.status).toBe("completed");
+      expect(state.confirmations).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) n FROM assistant_runtime_event WHERE session_id=$1 AND kind='publication_recovery'",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe("0");
+    },
+  );
+
   it("R06 automatic HTTP dispatch creates, edits and publishes a real two-record draft with one fixed confirmation", async () => {
     const id = await fresh(),
       name = "R06自动闭环" + randomUUID(),

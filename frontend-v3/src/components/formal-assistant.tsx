@@ -116,6 +116,8 @@ const statusNames: Record<string, string> = {
   failed: "本轮未完成",
 };
 const reasonNames: Record<string, string> = {
+  publication_not_complete: "发布确认尚未创建，草稿已保留。可以继续。",
+  publication_target_required: "尚未确定要发布的草稿，请指定草稿后继续。",
   no_progress: "连续操作没有取得新进展，请核对要求后继续。",
   segment_without_progress: "本轮未取得新进展，要求与已有结果已保留。",
   activity_budget_exhausted: "本次验证额度已用完，已停止。",
