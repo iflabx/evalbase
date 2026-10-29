@@ -1,5 +1,6 @@
 import {
   guardOperationCommit,
+  writeOperationReceipt,
   type AssistantGuard,
 } from "../operations/commit.js";
 import { encodeDeltaManifest } from "./delta-manifest.js";
@@ -847,6 +848,14 @@ export async function publishSparseVersion(
       );
     }
     await guardOperationCommit(client, request, "publish");
+    await writeOperationReceipt(client, request, {
+      draftId: request.draftId,
+      versionId,
+      testSetId: request.testSetId,
+      label,
+      recordCount: fullRecords.length,
+      action: "publish",
+    });
     commitAttempted = true;
     await client.query("COMMIT");
     return { id: versionId, label, replayed: false };

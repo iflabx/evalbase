@@ -1,3 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { downloadVersionBundle } from "@/services/version-download";
+import { soloVersionDownloadUrl } from "@/services/workspace";
+import { handoffInputContext, inputContextKey } from "@/services/assistant-input-context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -149,6 +153,7 @@ export function FormalAssistant({
   selectionMissing: boolean;
   selectionToken?: string | undefined;
 }) {
+  const queryClient = useQueryClient();
   const navigate = useNavigate(),
     [sessions, setSessions] = useState<SessionItem[]>([]),
     [search, setSearch] = useState(""),
@@ -1387,6 +1392,99 @@ export function FormalAssistant({
                             {snapshot.confirmations
                               .filter(
                                 (c) =>
+                                  [
+                                    "publish",
+                                    "selection",
+                                    "remove_record",
+                                    "discard_draft",
+                                  ].includes(c.action) &&
+                                  c.status === "pending" &&
+                                  snapshot.execution?.status === "confirmation",
+                              )
+                              .map((c) => (
+                                <div
+                                  key={c.id}
+                                  className="mt-4 rounded-md border bg-background p-4"
+                                >
+                                  <h2 className="font-semibold">
+                                    {c.action === "publish"
+                                      ? "确认发布草稿"
+                                      : c.action === "selection"
+                                        ? "确认加入所选记录"
+                                        : c.action === "remove_record"
+                                          ? "确认移除记录"
+                                          : "确认删除未发布草稿"}
+                                  </h2>
+                                  <p className="my-2 text-sm text-muted-foreground">
+                                    {String(c.payload["draftName"] ?? "测试集草稿")} ·{" "}
+                                    {Number(c.payload["recordCount"] ?? 0)} 条 · 修订{" "}
+                                    {Number(c.payload["revision"])}
+                                  </p>
+                                  <Button
+                                    disabled={readOnlyHistory || busy}
+                                    onClick={() => void confirm(c.id, true)}
+                                  >
+                                    {c.action === "publish"
+                                      ? "确认发布"
+                                      : c.action === "selection"
+                                        ? "确认加入"
+                                        : "确认删除"}
+                                  </Button>
+                                  <Button
+                                    className="ml-2"
+                                    variant="outline"
+                                    disabled={readOnlyHistory || busy}
+                                    onClick={() => void confirm(c.id, false)}
+                                  >
+                                    取消
+                                  </Button>
+                                </div>
+                              ))}
+                            {snapshot.receipts
+                              .filter((r) => r.versionId && r.testSetId)
+                              .map((r) => (
+                                <div
+                                  key={r.versionId}
+                                  className="mt-4 rounded-md border bg-background p-4"
+                                >
+                                  <h2 className="font-semibold">
+                                    已发布 · {r.label} · {r.recordCount} 条
+                                  </h2>
+                                  <a
+                                    className="text-sm text-primary hover:underline"
+                                    href={`/projects/${projectId}/test-sets/${r.testSetId}?version=${r.versionId}`}
+                                  >
+                                    查看正式版本
+                                  </a>
+                                  <a
+                                    className="ml-3 text-sm text-primary hover:underline"
+                                    href={soloVersionDownloadUrl(
+                                      projectId,
+                                      r.testSetId!,
+                                      r.versionId!,
+                                      "data.csv",
+                                    )}
+                                  >
+                                    下载 CSV
+                                  </a>
+                                  <Button
+                                    className="ml-3"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      void downloadVersionBundle(projectId, r.testSetId!, {
+                                        id: r.versionId!,
+                                        label: r.label ?? "正式版本",
+                                      }).catch((e) => setError(errorText(e)))
+                                    }
+                                  >
+                                    下载数据与溯源
+                                  </Button>
+                                </div>
+                              ))}
+                            {snapshot.confirmations
+                              .filter(
+                                (c) =>
                                   c.action === "adopt" &&
                                   c.status === "pending" &&
                                   snapshot.execution?.status === "confirmation",
@@ -1562,12 +1660,60 @@ export function FormalAssistant({
                           variant="outline"
                           size="sm"
                           disabled={
-                            readOnlyHistory || busy || (a.kind !== "navigation" && !canWrite)
+                            readOnlyHistory ||
+                            busy ||
+                            (a.kind === "version_download"
+                              ? !canExport
+                              : a.kind !== "navigation" && !canWrite)
                           }
                           onClick={() => {
                             if (a.kind === "navigation") {
                               if (a.href?.startsWith("/projects/") && !a.href.startsWith("//"))
                                 window.location.assign(a.href);
+                            } else if (
+                              a.kind === "processing" &&
+                              a.draftId &&
+                              a.recordIds?.length
+                            ) {
+                              const source = {
+                                kind: "draft" as const,
+                                id: a.draftId,
+                                recordIds: a.recordIds,
+                              };
+                              queryClient.setQueryData(inputContextKey(projectId, actorId), {
+                                kind: "draft",
+                                id: a.draftId,
+                                source,
+                                inputSelection: {
+                                  recordIds: a.recordIds,
+                                  sourceRevision: a.sourceRevision ?? "",
+                                  total: a.recordIds.length,
+                                },
+                              });
+                              const handoff = handoffInputContext(queryClient, projectId, actorId);
+                              if (handoff)
+                                window.location.assign(
+                                  `/projects/${projectId}/processing?source=draft&sourceId=${encodeURIComponent(a.draftId)}&selection=${handoff.token}`,
+                                );
+                            } else if (
+                              a.kind === "version_download" &&
+                              a.testSetId &&
+                              a.versionId
+                            ) {
+                              if (a.format === "bundle")
+                                void downloadVersionBundle(projectId, a.testSetId, {
+                                  id: a.versionId,
+                                  label: "正式版本",
+                                }).catch((e) => setError(errorText(e)));
+                              else
+                                window.location.assign(
+                                  soloVersionDownloadUrl(
+                                    projectId,
+                                    a.testSetId,
+                                    a.versionId,
+                                    "data.csv",
+                                  ),
+                                );
                             } else setMaterialAction(a);
                           }}
                         >

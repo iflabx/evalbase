@@ -103,9 +103,12 @@ export class SessionStore {
     ).rows[0];
     if (!row) throw new SessionError("conversation_not_found", 404);
     if (
-      !["deepagents-v1", "deepagents-v2", FORMAL_RUNTIME_VERSION].includes(
-        row.runtime_version,
-      )
+      ![
+        "deepagents-v1",
+        "deepagents-v2",
+        "deepagents-v3",
+        FORMAL_RUNTIME_VERSION,
+      ].includes(row.runtime_version)
     )
       throw new SessionError("runtime_version_not_supported");
     // Deny cached history when a read source is no longer visible. Full lifecycle cleanup belongs to R08.
@@ -534,10 +537,14 @@ export class SessionStore {
     }
   }
   async freezeSource(scope: SessionScope, source: Source) {
+    const rootSource =
+      source.kind === "assets"
+        ? { kind: source.kind, assetIds: source.assetIds }
+        : { kind: source.kind, id: source.id };
     const preview = await previewProcessingInput(
       this.db,
       scope,
-      { source, limit: 10000 },
+      { source: rootSource, limit: 10000 },
       "read",
       true,
     );
@@ -549,6 +556,7 @@ export class SessionStore {
       throw new SessionError("processing_scope_invalid", 422);
     return {
       source: { ...source, recordIds: records.map((row) => row.id) },
+      sourceRevision: preview.sourceRevision,
       sourceSnapshot: {
         hash: sha256(
           canonicalJson({ records, revision: preview.revision ?? null }),

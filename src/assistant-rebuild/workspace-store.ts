@@ -264,6 +264,9 @@ export class WorkspaceStore {
               "open_material_upload",
               "open_material_mapping",
               "navigate_project",
+              "open_draft",
+              "open_draft_processing",
+              "download_version",
             ].includes(e.detail?.name),
         )
         .flatMap((e) => {
@@ -278,7 +281,13 @@ export class WorkspaceStore {
           const action = value?.nativeAction;
           if (
             !action ||
-            !["upload", "mapping", "navigation"].includes(action.kind)
+            ![
+              "upload",
+              "mapping",
+              "navigation",
+              "processing",
+              "version_download",
+            ].includes(action.kind)
           )
             return [];
           if (
@@ -293,6 +302,24 @@ export class WorkspaceStore {
             {
               id: String(e.id),
               kind: action.kind,
+              ...(typeof action.draftId === "string"
+                ? { draftId: action.draftId }
+                : {}),
+              ...(Array.isArray(action.recordIds)
+                ? { recordIds: action.recordIds }
+                : {}),
+              ...(typeof action.sourceRevision === "string"
+                ? { sourceRevision: action.sourceRevision }
+                : {}),
+              ...(typeof action.testSetId === "string"
+                ? { testSetId: action.testSetId }
+                : {}),
+              ...(typeof action.versionId === "string"
+                ? { versionId: action.versionId }
+                : {}),
+              ...(action.format === "bundle" || action.format === "csv"
+                ? { format: action.format }
+                : {}),
               ...(typeof action.assetId === "string"
                 ? { assetId: action.assetId }
                 : {}),

@@ -1,5 +1,7 @@
+import { BusinessError } from "../operations/errors.js";
 import {
   guardOperationCommit,
+  writeOperationReceipt,
   type AssistantGuard,
 } from "../operations/commit.js";
 import type { PoolClient } from "pg";
@@ -15,19 +17,20 @@ import {
 } from "../server/support.js";
 import { selectRecords, sourceIdentity } from "./index.js";
 
-export class SelectionError extends Error {
+export class SelectionError extends BusinessError {
   constructor(
     public status: number,
     public code: string,
     public details?: Record<string, unknown>,
   ) {
-    super(code);
+    super(status, code);
   }
 }
 export type SelectionScope = {
   projectId: string;
   draftId: string;
   actorId: string;
+  fixedInputIds?: readonly string[];
   assistantGuard?: AssistantGuard;
   operation?: object;
 };
@@ -96,6 +99,8 @@ async function inDraft<T>(
     if (!editing && !(allowPublished && published))
       throw new SelectionError(409, "draft_not_editable");
     const result = await action(client, Number(row.revision), editing);
+    if ((result as any)?.preview)
+      await writeOperationReceipt(client, scope, result);
     await guardOperationCommit(client, scope);
     await client.query("COMMIT");
     return result;
@@ -198,11 +203,17 @@ export async function createSelectionPreview(
   )
     throw new SelectionError(422, "selection_invalid");
   return inDraft(db, scope, async (client, revision) => {
-    const { records, snapshot } = await loadSources(
+    const { records: allRecords, snapshot } = await loadSources(
       client,
       scope.projectId,
       input.assetIds as string[],
     );
+    const fixed = scope.fixedInputIds ? new Set(scope.fixedInputIds) : null;
+    const records = fixed
+      ? allRecords.filter((r) => fixed.has(`${r.assetId}:${r.ordinal}`))
+      : allRecords;
+    if (fixed && records.length !== fixed.size)
+      throw new SelectionError(409, "selection_scope_changed");
     const selection = selectRecords(records, input);
     const configuration = {
       assetIds: input.assetIds,
@@ -352,6 +363,18 @@ export async function applySelectionPreview(
         throw new SelectionError(409, "draft_revision_conflict", {
           currentRevision: revision,
         });
+      const latest = (
+        await client.query(
+          "SELECT id,configuration FROM selection_preview WHERE draft_id=$1 AND creator_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+          [scope.draftId, row.creator_id],
+        )
+      ).rows[0];
+      if (
+        latest &&
+        latest.id !== id &&
+        canonicalJson(latest.configuration) !== canonicalJson(row.configuration)
+      )
+        throw new SelectionError(409, "selection_preview_expired");
       const candidates = new Set<string>(row.candidate_ids);
       if (selectedIds.some((value) => !candidates.has(value)))
         throw new SelectionError(422, "selection_invalid");
@@ -445,6 +468,10 @@ export async function applySelectionPreview(
         "UPDATE selection_preview SET applied_at=now(),applied_ids=$2,apply_digest=$3,receipt=$4,applied_by=$5 WHERE id=$1",
         [id, JSON.stringify(selectedIds), digest, receipt, scope.actorId],
       );
+      await writeOperationReceipt(client, scope, {
+        ...receipt,
+        action: "selection",
+      });
       return { ...receipt, replayed: false };
     },
     true,

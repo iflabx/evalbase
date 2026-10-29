@@ -10,7 +10,7 @@ import {
   validateRules,
 } from "../processing/requirements.js";
 
-export const FORMAL_RUNTIME_VERSION = "deepagents-v3";
+export const FORMAL_RUNTIME_VERSION = "deepagents-v4";
 const id = z.string().min(1).max(250);
 const fields = z
   .array(z.enum(["question", "expectedOutput", "metadata"]))

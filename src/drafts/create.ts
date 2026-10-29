@@ -1,6 +1,8 @@
+import { BusinessError } from "../operations/errors.js";
 import type { RuntimeGuard } from "../operations/runtime-guard.js";
 import {
   guardOperationCommit,
+  writeOperationReceipt,
   type AssistantGuard,
 } from "../operations/commit.js";
 import type { Database } from "../db/pool.js";
@@ -13,12 +15,12 @@ import {
   displayText,
   readMetadataEntries,
 } from "../server/support.js";
-export class DraftCreateError extends Error {
+export class DraftCreateError extends BusinessError {
   constructor(
     public status: number,
     public code: string,
   ) {
-    super(code);
+    super(status, code);
   }
 }
 export const draftSummary = (row: Record<string, unknown>) => ({
@@ -156,6 +158,11 @@ export async function createSharedDraft(
           await client.query("ROLLBACK");
           throw new DraftCreateError(409, "draft_not_editable");
         }
+        await guardOperationCommit(client, scope);
+        await writeOperationReceipt(client, scope, {
+          draftId: prior.rows[0].id,
+          completed: true,
+        });
         await client.query("COMMIT");
         return {
           draft: draftSummary(prior.rows[0]),
@@ -265,6 +272,10 @@ export async function createSharedDraft(
       actualId,
     ]);
     await guardOperationCommit(client, scope);
+    await writeOperationReceipt(client, scope, {
+      draftId: actualId,
+      completed: true,
+    });
     await client.query("COMMIT");
     return {
       statusCode: inserted.rowCount ? 201 : 200,

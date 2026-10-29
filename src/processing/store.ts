@@ -1238,7 +1238,8 @@ export async function previewProcessingInput(
     )
   )
     throw new ProcessingError(422, "processing_scope_invalid");
-  const source = parseSource({ ...input.source, recordIds: ["preview"] });
+  const fixedIds = input.source.recordIds;
+  const source = parseSource({ ...input.source, recordIds: fixedIds ?? ["preview"] });
   const requiredCapability = source.kind === "draft" ? "write" : capability;
   await processingAccess(db, scope, false, requiredCapability);
   const offset = Number(input.offset ?? 0),
@@ -1290,6 +1291,12 @@ export async function previewProcessingInput(
       ).rows.map((r) => r.id);
     if (allIds.length > 10000)
       throw new ProcessingError(422, "processing_capacity_exceeded");
+    const sourceIds = [...allIds];
+    if (fixedIds !== undefined) {
+      if (source.recordIds.some((id) => !allIds.includes(id))) throw new ProcessingError(409,"processing_scope_changed");
+      const fixed = new Set(source.recordIds);
+      allIds = allIds.filter(id => fixed.has(id));
+    }
     if (selectedIds.some((id) => !allIds.includes(id)))
       throw new ProcessingError(409, "processing_scope_changed");
     filterProcessingRecords([], input.search, input.conditions);
@@ -1353,7 +1360,7 @@ export async function previewProcessingInput(
         source.kind,
         source.kind === "assets" ? views : source.id,
         data.revision ?? null,
-        allIds,
+        sourceIds,
       ]),
     );
     const sourceSummary = await processingSourceSummary(client, scope, source);

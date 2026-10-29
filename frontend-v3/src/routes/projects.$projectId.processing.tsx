@@ -1,3 +1,4 @@
+import { readInputContext } from "@/services/assistant-input-context";
 import { createRequestId } from "@/lib/request-id";
 import { useState, useRef, useEffect } from "react";
 import { inputContextKey } from "@/services/assistant-input-context";
@@ -70,6 +71,7 @@ export const Route = createFileRoute("/projects/$projectId/processing")({
     value: Record<string, unknown>,
   ): {
     source?: "assets" | "draft" | "version" | undefined;
+    selection?: string | undefined;
     sourceId?: string | undefined;
     run?: string | undefined;
     parent?: string | undefined;
@@ -80,6 +82,7 @@ export const Route = createFileRoute("/projects/$projectId/processing")({
       ["assets", "draft", "version"].includes(value["source"])
         ? (value["source"] as "assets" | "draft" | "version")
         : undefined,
+    selection: typeof value["selection"] === "string" ? value["selection"] : undefined,
     sourceId: typeof value["sourceId"] === "string" ? value["sourceId"] : undefined,
     run: typeof value["run"] === "string" ? value["run"] : undefined,
     parent: typeof value["parent"] === "string" ? value["parent"] : undefined,
@@ -356,6 +359,7 @@ function ProcessingPage() {
     const pages = Math.max(1, Math.ceil(historyTotal / 20));
     if (runs.isSuccess && !runs.isPlaceholderData && historyPage > pages) setHistoryPage(pages);
   }, [runs.isSuccess, runs.isPlaceholderData, historyTotal, historyPage]);
+  const assistantSelection = readInputContext(search.selection, projectId, actorId);
   const source =
     search.parent && search.mode
       ? {
@@ -376,11 +380,25 @@ function ProcessingPage() {
       : search.source && search.sourceId
         ? {
             kind: search.source,
+            ...(assistantSelection?.inputSelection
+              ? { recordIds: assistantSelection.inputSelection.recordIds }
+              : {}),
             ...(search.source === "assets"
               ? { assetIds: [search.sourceId] }
               : { id: search.sourceId }),
           }
         : null;
+  if (
+    search.selection &&
+    (!assistantSelection?.inputSelection ||
+      assistantSelection.id !== search.sourceId ||
+      assistantSelection.kind !== search.source)
+  )
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        选中范围已失效，请返回草稿重新选择。
+      </p>
+    );
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {!(source && (!runId || search.mode)) && (
@@ -431,12 +449,14 @@ function ProcessingPage() {
               key={`${projectId}:${actorId}:${JSON.stringify(source)}`}
               projectId={projectId}
               source={source}
+              handoffRevision={assistantSelection?.inputSelection?.sourceRevision}
               actorId={actorId}
               onCreated={async (id) => {
                 await queryClient.invalidateQueries({ queryKey: ["processing-runs", projectId] });
                 await navigate({
                   search: {
                     source: undefined,
+                    selection: undefined,
                     sourceId: undefined,
                     parent: undefined,
                     mode: undefined,
@@ -460,6 +480,7 @@ function ProcessingPage() {
                 void navigate({
                   search: {
                     source: undefined,
+                    selection: undefined,
                     sourceId: undefined,
                     run: runId,
                     parent: runId,
@@ -684,6 +705,7 @@ function ProcessingPage() {
   );
 }
 function ProcessingForm({
+  handoffRevision,
   projectId,
   source,
   actorId,
@@ -692,6 +714,7 @@ function ProcessingForm({
   actorId: string;
   projectId: string;
   source: Record<string, unknown>;
+  handoffRevision?: string | undefined;
   onCreated: (id: string) => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -741,7 +764,7 @@ function ProcessingForm({
       pendingSubmission?: { key: string; body: unknown };
     }>(cacheKey),
   ).current;
-  const sourceRevision = useRef(saved?.sourceRevision);
+  const sourceRevision = useRef(saved?.sourceRevision ?? handoffRevision);
   const submittedConfig = useRef(false);
   const initialized = useRef(Boolean(saved));
   const pendingSubmission = useRef(saved?.pendingSubmission);
@@ -750,7 +773,9 @@ function ProcessingForm({
   const [operationHelp, setOperationHelp] = useState<keyof typeof labels | null>(null);
   const helpOpenOnPointerDown = useRef(false);
   const [page, setPage] = useState(saved?.page ?? 1),
-    [selected, setSelected] = useState<Set<string>>(new Set(saved?.selected)),
+    [selected, setSelected] = useState<Set<string>>(
+      new Set(saved?.selected ?? (source["recordIds"] as string[] | undefined)),
+    ),
     [operation, setOperation] = useState<"clean" | "rewrite" | "augment">(
       saved?.operation ?? "clean",
     );

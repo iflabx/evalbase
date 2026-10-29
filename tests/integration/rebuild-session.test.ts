@@ -1,3 +1,4 @@
+import { FORMAL_RUNTIME_VERSION } from "../../src/assistant-rebuild/session-contract.js";
 import pg from "pg";
 import { SessionDispatcher } from "../../src/assistant-rebuild/session-dispatcher.js";
 import { ArtifactRepository } from "../../src/storage/artifacts.js";
@@ -661,7 +662,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
     ).toBe(0);
     const id = await fresh();
     expect((await api("GET", route(id))).json().session.runtime_version).toBe(
-      "deepagents-v3",
+      FORMAL_RUNTIME_VERSION,
     );
     expect(process.env.REBUILD_VALIDATION_CAMPAIGN_ID).toBeUndefined();
   });
@@ -841,6 +842,26 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       ),
     ).toBe(true);
     const allowed = [
+      "list_test_sets",
+      "read_version",
+      "read_version_records",
+      "read_version_provenance",
+      "download_version",
+      "open_draft",
+      "create_draft",
+      "read_draft",
+      "update_draft",
+      "add_draft_record",
+      "update_draft_record",
+      "request_remove_record",
+      "request_discard_draft",
+      "request_publish",
+      "list_draft_source_files",
+      "preview_selection",
+      "read_selection_preview",
+      "request_selection_apply",
+      "read_selection_history",
+      "open_draft_processing",
       "create_collection",
       "create_project",
       "list_attachments",
@@ -3412,7 +3433,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       [old],
     );
     const snap = await host.present(scope(), old);
-    expect(snap.currentRuntime).toBe("deepagents-v3");
+    expect(snap.currentRuntime).toBe(FORMAL_RUNTIME_VERSION);
     expect(snap.canWrite).toBe(false);
     expect((await submit(old, "继续")).statusCode).toBe(409);
     for (const action of ["stop", "continue"]) {
@@ -4015,4 +4036,42 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       }
     },
   );
+  it("R06 SDK creates a real draft once and updates only the requested field", async () => {
+    const id = await fresh(),
+      name = "R06共享草稿" + randomUUID();
+    await run(id, "建一个草稿，叫" + name, [
+      call("create_draft", { name, purpose: "定向验证" }),
+    ]);
+    const rows = (
+      await db.query(
+        "SELECT * FROM collaborative_draft WHERE project_id=$1 AND name=$2",
+        [projectId, name],
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    const draft = rows[0];
+    const data = (
+      await api(
+        "GET",
+        "/api/projects/" + projectId + "/collaborative-drafts/" + draft.id,
+      )
+    ).json();
+    expect(data.draft.name).toBe(name);
+    await run(id, "用途改成字段编辑验收，名称不变", [
+      call("update_draft", {
+        draftId: draft.id,
+        field: "purpose",
+        value: "字段编辑验收",
+        expectedFieldRevision: draft.purpose_revision,
+      }),
+    ]);
+    const changed = (
+      await api(
+        "GET",
+        "/api/projects/" + projectId + "/collaborative-drafts/" + draft.id,
+      )
+    ).json();
+    expect(changed.draft.name).toBe(name);
+    expect(changed.draft.purpose).toBe("字段编辑验收");
+  });
 });

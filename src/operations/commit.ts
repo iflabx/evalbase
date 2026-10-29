@@ -33,9 +33,15 @@ export type BackgroundRequest = {
   rootOperation?: string;
   parentRunId?: string;
 };
-export type CommitAction = "processing" | "selection" | "publish" | "cancel";
+export type CommitAction =
+  | "processing"
+  | "selection"
+  | "publish"
+  | "cancel"
+  | "draft";
 type Query = Pick<Database, "query">;
 type Adapter = {
+  receipt?: (db: Query, result?: unknown) => Promise<unknown>;
   origin: "legacy" | "runtime";
   sessionId: string;
   guard: (db: Query, action?: CommitAction) => Promise<void>;
@@ -154,4 +160,16 @@ export async function guardOperationResults(
   if (!context?.results)
     throw new OperationCommitError("processing_result_scope_required");
   await context.results(db, runIds, scope);
+}
+
+/** The domain commits its business result with the existing caller's operation, in the same transaction. */
+export async function readOperationReceipt(db: Query, scope: OperationScope) {
+  return caller(scope)?.receipt?.(db);
+}
+export async function writeOperationReceipt(
+  db: Query,
+  scope: OperationScope,
+  result: unknown,
+) {
+  return caller(scope)?.receipt?.(db, result);
 }

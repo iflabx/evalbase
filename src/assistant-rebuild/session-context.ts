@@ -18,6 +18,39 @@ export async function sessionModelFacts(
     requirementsRevision: session.requirements_revision,
     requirements: session.requirements,
     inputContext: input.context ?? null,
+    draftContext: await (async () => {
+      const ref = (
+        await store.db.query(
+          "SELECT detail->'source'->>'id' AS id FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read' AND detail->'source'->>'kind'='draft' ORDER BY assistant_runtime_event.id DESC LIMIT 1",
+          [proof.sessionId],
+        )
+      ).rows[0];
+      if (!ref) return null;
+      const draft = (
+        await store.db.query(
+          "SELECT id,name,purpose,revision,name_revision,purpose_revision,status,published_version_id FROM collaborative_draft WHERE id=$1 AND project_id=$2",
+          [ref.id, proof.projectId],
+        )
+      ).rows[0];
+      const preview = (
+        await store.db.query(
+          "SELECT id,configuration,draft_revision,target_count,receipt FROM selection_preview WHERE draft_id=$1 AND creator_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+          [ref.id, proof.actorId],
+        )
+      ).rows[0];
+      if (draft)
+        for (const key of ["revision", "name_revision", "purpose_revision"])
+          draft[key] = Number(draft[key]);
+      return {
+        draft,
+        preview,
+        saveTarget: { kind: "sourceDraft", draftId: ref.id },
+        selectedRecordIds:
+          input.context?.kind === "draft" && input.context.id === ref.id
+            ? input.context.recordIds
+            : undefined,
+      };
+    })(),
     status: session.status,
     ...(await execution.projection(proof, proof.sessionId)),
     pausedTask: task.suspended

@@ -1,3 +1,6 @@
+import { draftOperations } from "../drafts/operations.js";
+import { applySelectionPreview } from "../selection/store.js";
+import { withOperationScope } from "../operations/commit.js";
 import {
   FORMAL_RUNTIME_VERSION,
   executionReadiness,
@@ -802,6 +805,43 @@ export class ExecutionStore {
           )
         ).rows[0]?.receipt ?? op.receipt
       );
+    if (op.kind === "publish") {
+      const row = (
+        await db.query(
+          `SELECT v.id,v.version_label,v.test_set_id,v.item_count FROM upload_idempotency i
+       JOIN test_set_version v ON (i.operation='sparse_version_publish' AND v.id=i.asset_id) OR (i.operation='solo_test_set_publish' AND v.test_set_id=i.asset_id AND v.sequence=1)
+       WHERE i.project_id=$1 AND i.actor_id=$2 AND i.idempotency_key=$3 AND i.status='committed'`,
+          [
+            scope.projectId,
+            scope.actorId,
+            `draft:${op.payload.draftId}:${op.payload.revision}`,
+          ],
+        )
+      ).rows[0];
+      if (row)
+        return {
+          draftId: op.payload.draftId,
+          versionId: row.id,
+          testSetId: row.test_set_id,
+          label: row.version_label,
+          recordCount: Number(row.item_count),
+          action: "publish",
+        };
+    }
+    if (op.kind === "selection") {
+      const row = (
+        await db.query(
+          "SELECT receipt,apply_digest FROM selection_preview WHERE id=$1 AND project_id=$2 AND draft_id=$3",
+          [op.payload.previewId, scope.projectId, op.payload.draftId],
+        )
+      ).rows[0];
+      if (
+        row?.receipt &&
+        row.apply_digest ===
+          sha256(canonicalJson([...op.payload.selectedIds].sort()))
+      )
+        return { ...row.receipt, action: "selection" };
+    }
     return op.receipt;
   }
   operationScope(proof: TurnProof, operation: any, confirmationId?: string) {
@@ -810,6 +850,21 @@ export class ExecutionStore {
     return operationScope(
       { projectId: proof.projectId, actorId: proof.actorId },
       {
+        receipt: async (db, result) => {
+          if (result === undefined) {
+            return (
+              await db.query(
+                "SELECT receipt FROM assistant_runtime_operation WHERE id=$1 AND session_id=$2",
+                [op.id, fixed.sessionId],
+              )
+            ).rows[0]?.receipt;
+          }
+          await db.query(
+            "UPDATE assistant_runtime_operation SET receipt=$2 WHERE id=$1 AND session_id=$3",
+            [op.id, JSON.stringify(result), fixed.sessionId],
+          );
+          return result;
+        },
         origin: "runtime",
         sessionId: proof.sessionId,
         guard: async (db, action) => {
@@ -956,6 +1011,15 @@ export class ExecutionStore {
           "UPDATE assistant_runtime_confirmation SET status='expired' WHERE id=$1 AND status='pending'",
           [prior.id],
         );
+      if (
+        ["publish", "selection", "remove_record", "discard_draft"].includes(
+          op.kind,
+        )
+      )
+        await c.query(
+          `UPDATE assistant_runtime_confirmation c SET status='expired' FROM assistant_runtime_operation other WHERE c.operation_id=other.id AND c.session_id=$1 AND c.status='pending' AND c.action=$2 AND other.payload->>'draftId'=$3 AND other.id<>$4`,
+          [proof.sessionId, op.kind, op.payload.draftId, op.id],
+        );
       return (
         await c.query(
           "INSERT INTO assistant_runtime_confirmation(id,session_id,actor_id,operation_id,action,payload,requirements_revision,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
@@ -1100,7 +1164,15 @@ export class ExecutionStore {
       }
       if (card.status === "executing")
         return { pending: true, operationId: card.operation_id };
-      if (card.action !== "adopt")
+      if (
+        ![
+          "adopt",
+          "publish",
+          "selection",
+          "remove_record",
+          "discard_draft",
+        ].includes(card.action)
+      )
         throw new SessionError("action_not_connected", 422);
       const task = (
         await c.query(
@@ -1142,15 +1214,62 @@ export class ExecutionStore {
     );
     heartbeat.unref();
     try {
-      const result = await acceptProcessingResults(
-        this.db,
-        artifacts,
-        this.operationScope(proof, op, card.id),
-        op.payload.runId,
-        op.id,
-        op.payload.input,
-      );
-      receipt = result.receipt;
+      if (op.kind === "adopt") {
+        const result = await acceptProcessingResults(
+          this.db,
+          artifacts,
+          this.operationScope(proof, op, card.id),
+          op.payload.runId,
+          op.id,
+          op.payload.input,
+        );
+        receipt = result.receipt;
+      } else {
+        const scope = this.operationScope(proof, op, card.id),
+          domain = draftOperations(this.db, artifacts),
+          payload = op.payload;
+        const result: any = await withOperationScope(scope, async () => {
+          if (op.kind === "publish")
+            return domain.publishDraft(
+              { ...scope, draftId: payload.draftId },
+              { revision: payload.revision },
+            );
+          if (op.kind === "selection")
+            return applySelectionPreview(
+              this.db,
+              { ...scope, draftId: payload.draftId },
+              payload.previewId,
+              {
+                selectedIds: payload.selectedIds,
+                expectedRevision: payload.expectedRevision,
+              },
+            );
+          if (op.kind === "remove_record")
+            return domain.removeRecord(
+              {
+                ...scope,
+                draftId: payload.draftId,
+                recordId: payload.recordId,
+              },
+              { expectedRowRevision: payload.expectedRowRevision },
+            );
+          return domain.discard(
+            { ...scope, draftId: payload.draftId },
+            { expectedRevision: payload.revision },
+          );
+        });
+        receipt =
+          op.kind === "publish"
+            ? {
+                draftId: payload.draftId,
+                versionId: result.version.id,
+                testSetId: result.testSet.id,
+                label: result.version.label,
+                recordCount: result.version.recordCount,
+                action: op.kind,
+              }
+            : { ...result, draftId: payload.draftId, action: op.kind };
+      }
     } catch (error) {
       receipt = await this.receipt(scope, sessionId, op.id);
       if (!receipt) {
@@ -1166,6 +1285,9 @@ export class ExecutionStore {
       }
     }
     clearInterval(heartbeat);
+    // Deleting a referenced object can intentionally invalidate this very session; its business receipt is still committed.
+    const lifecycle = await this.sessions.get(scope, sessionId);
+    if (lifecycle.invalidated_at) return { receipt, replayed: false };
     // This cache may be lost; processing_acceptance remains the transactionally committed authority.
     await this.transaction(scope, sessionId, async (c) => {
       await c.query(
@@ -1365,6 +1487,44 @@ export class ExecutionStore {
         [sessionId],
       )
     ).rows;
+    for (const card of cards) {
+      if (card.status !== "pending" || !card.payload?.draftId) continue;
+      const draft = (
+        await this.db.query(
+          "SELECT revision,status FROM collaborative_draft WHERE id=$1 AND project_id=$2",
+          [card.payload.draftId, scope.projectId],
+        )
+      ).rows[0];
+      if (
+        !draft ||
+        draft.status !== "editing" ||
+        Number(draft.revision) !== card.payload.revision
+      )
+        card.status = "expired";
+      if (card.status === "pending" && card.action === "selection") {
+        const selected = (
+          await this.db.query(
+            "SELECT configuration,creator_id FROM selection_preview WHERE id=$1 AND draft_id=$2",
+            [card.payload.previewId, card.payload.draftId],
+          )
+        ).rows[0];
+        const latest = selected
+          ? (
+              await this.db.query(
+                "SELECT configuration FROM selection_preview WHERE draft_id=$1 AND creator_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+                [card.payload.draftId, selected.creator_id],
+              )
+            ).rows[0]
+          : null;
+        if (
+          !selected ||
+          !latest ||
+          canonicalJson(selected.configuration) !==
+            canonicalJson(latest.configuration)
+        )
+          card.status = "expired";
+      }
+    }
     const receipts = [];
     const keys = new Set<string>();
     for (const card of cards) {
@@ -1383,7 +1543,10 @@ export class ExecutionStore {
             ...receipt,
             executionTurnId: card.turn_id,
             isCurrent:
-              currentRuns.has(card.payload?.runId) &&
+              (card.action === "adopt"
+                ? currentRuns.has(card.payload?.runId)
+                : card.turn_id ===
+                  (task?.suspended_turn_id ?? task?.turn_id)) &&
               card.requirements_revision === current.requirements_revision,
           });
         }
@@ -1422,10 +1585,16 @@ export class ExecutionStore {
           ? "saved"
           : cards.some(
                 (c) =>
-                  c.action === "adopt" &&
+                  [
+                    "adopt",
+                    "publish",
+                    "selection",
+                    "remove_record",
+                    "discard_draft",
+                  ].includes(c.action) &&
                   c.status === "pending" &&
                   new Date(c.expires_at).getTime() > this.now() &&
-                  currentRuns.has(c.payload?.runId) &&
+                  (c.action !== "adopt" || currentRuns.has(c.payload?.runId)) &&
                   c.requirements_revision === current.requirements_revision,
               )
             ? "confirmation"

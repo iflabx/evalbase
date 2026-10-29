@@ -38,7 +38,7 @@ BEGIN
  WHERE session_id=sid;
  DELETE FROM assistant_runtime_message WHERE session_id=sid;
  UPDATE assistant_runtime_event SET detail=jsonb_build_object('code',why) WHERE session_id=sid;
- UPDATE assistant_runtime_operation SET payload='{}' WHERE session_id=sid;
+ UPDATE assistant_runtime_operation SET payload='{}',receipt=CASE WHEN kind='draft_mutation' THEN jsonb_build_object('completed',receipt->'completed','draftId',receipt->'draftId','recordId',receipt->'recordId') ELSE receipt END WHERE session_id=sid;
  UPDATE assistant_runtime_confirmation SET payload='{}',
   status=CASE WHEN status IN('pending','executing') THEN 'expired' ELSE status END WHERE session_id=sid;
  INSERT INTO processing_cleanup(project_id,object_ref) SELECT s.project_id,a.object_ref FROM assistant_runtime_attachment a JOIN assistant_runtime_session s ON s.id=a.session_id WHERE a.session_id=sid AND a.object_ref<>'' ON CONFLICT DO NOTHING;
@@ -85,6 +85,9 @@ BEGIN
    PERFORM register_runtime_source(NEW.id,d->'source');
   END LOOP;
  ELSIF TG_TABLE_NAME='assistant_runtime_operation' THEN
+  IF NEW.payload->>'draftId' IS NOT NULL THEN PERFORM register_runtime_source(NEW.session_id,jsonb_build_object('kind','draft','id',NEW.payload->>'draftId')); END IF;
+  IF NEW.receipt->>'draftId' IS NOT NULL THEN PERFORM register_runtime_source(NEW.session_id,jsonb_build_object('kind','draft','id',NEW.receipt->>'draftId')); END IF;
+  IF NEW.receipt->>'versionId' IS NOT NULL THEN PERFORM register_runtime_source(NEW.session_id,jsonb_build_object('kind','version','id',NEW.receipt->>'versionId')); END IF;
   IF NEW.run_id IS NOT NULL THEN INSERT INTO assistant_runtime_reference VALUES(NEW.session_id,'run',NEW.run_id) ON CONFLICT DO NOTHING; END IF;
  END IF;
  RETURN NEW;
@@ -94,7 +97,7 @@ CREATE TRIGGER runtime_source_references AFTER INSERT ON assistant_runtime_event
 DROP TRIGGER IF EXISTS runtime_requirement_references ON assistant_runtime_session;
 CREATE TRIGGER runtime_requirement_references AFTER INSERT OR UPDATE OF requirements ON assistant_runtime_session FOR EACH ROW EXECUTE FUNCTION record_runtime_references();
 DROP TRIGGER IF EXISTS runtime_operation_references ON assistant_runtime_operation;
-CREATE TRIGGER runtime_operation_references AFTER INSERT OR UPDATE OF run_id ON assistant_runtime_operation FOR EACH ROW EXECUTE FUNCTION record_runtime_references();
+CREATE TRIGGER runtime_operation_references AFTER INSERT OR UPDATE OF run_id,receipt ON assistant_runtime_operation FOR EACH ROW EXECUTE FUNCTION record_runtime_references();
 -- Register existing content dependencies without changing old messages or budgets.
 SELECT register_runtime_source(session_id,detail->'source') FROM assistant_runtime_event WHERE kind='source_read';
 SELECT register_runtime_source(s.id,d->'source') FROM assistant_runtime_session s CROSS JOIN LATERAL jsonb_array_elements(s.requirements->'deliveries') d;

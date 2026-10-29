@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { SelectionHistory } from "@/components/selection-history";
 import { toast } from "sonner";
-import { zipSync } from "fflate";
+import { downloadVersionBundle } from "@/services/version-download";
 
 import { Button } from "@/components/ui/button";
 import { useProjectAccess } from "@/hooks/use-project-access";
@@ -75,28 +75,7 @@ function TestSetDetailPage() {
     if (downloading) return;
     setDownloading(true);
     try {
-      const files = await Promise.all(
-        (["data.csv", "provenance.csv"] as const).map(async (file) => {
-          const response = await request<Response>(
-            soloVersionDownloadUrl(projectId, testSetId, version.id, file),
-            undefined,
-            "response",
-          );
-          return [file, new Uint8Array(await response.arrayBuffer())] as const;
-        }),
-      );
-      // Store both documents in one download; level 0 avoids compressing large CSVs on the UI thread.
-      const archive = zipSync(Object.fromEntries(files), { level: 0 });
-      const url = URL.createObjectURL(
-        new Blob([archive.buffer as ArrayBuffer], { type: "application/zip" }),
-      );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `evalbase-${version.label}-data-and-provenance.zip`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadVersionBundle(projectId, testSetId, version);
     } catch (error) {
       toast.error("下载失败", {
         description: error instanceof Error ? error.message : "请重试",

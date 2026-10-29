@@ -56,6 +56,13 @@ export type Snapshot = {
     grantId?: string;
     addedRequests?: number;
     addedActiveMs?: number;
+    versionId?: string;
+    testSetId?: string;
+    label?: string;
+    recordCount?: number;
+    action?: string;
+    added?: number;
+    deleted?: boolean;
     acceptanceId?: string;
     draftId?: string;
     assetId?: string;
@@ -74,7 +81,13 @@ export type Snapshot = {
 };
 export type NativeAction = {
   id: string;
-  kind: "upload" | "mapping" | "navigation";
+  kind: "upload" | "mapping" | "navigation" | "processing" | "version_download";
+  draftId?: string;
+  recordIds?: string[];
+  sourceRevision?: string;
+  testSetId?: string;
+  versionId?: string;
+  format?: "csv" | "bundle";
   assetId?: string;
   collectionId?: string;
   name?: string;
@@ -143,6 +156,10 @@ export function errorText(error: unknown) {
       {
         source_revision_conflict: "来源数据或字段映射已变化。输入已保留，请返回来源重新选择。",
         snapshot_revision_conflict: "会话已在其他页面更新。输入已保留，请重试读取。",
+        draft_conflict: "草稿已发生并发修改，输入已保留。请打开草稿核对后选择如何处理。",
+        draft_field_conflict: "这个字段已被修改，输入已保留。请核对双方内容后再决定。",
+        draft_revision_conflict: "草稿已有新修改，请核对最新内容后重新确认。",
+        selection_preview_expired: "选取条件已改变，请使用最新预览。",
         conversation_revision_conflict: "会话已在其他页面更新。输入已保留，请核对后重新提交。",
         submission_conflict: "这次提交与已接收内容不一致。输入已保留，请核对。",
         conversation_busy: "任务仍在进行，请先停止或等待完成。",
