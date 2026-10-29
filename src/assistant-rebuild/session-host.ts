@@ -486,7 +486,14 @@ export class FormalSessionHost {
       const recoveryInput = async () => {
         const facts = await this.execution.projection(scope, sessionId);
         const task = await this.execution.guard(proof);
-        if (task.suspended) return null;
+        if (task.suspended) {
+          // A model's final text is not a control receipt. Reuse the guarded
+          // command if it omitted an explicitly authorized continuation.
+          feedback.assertResolved();
+          if (explicitResumeRequest(input.text) && !task.resume_suspended)
+            await this.execution.requestResume(proof);
+          return null;
+        }
         const ownResults = facts.results.filter(
           (r) =>
             r.isCurrent &&
@@ -622,8 +629,30 @@ export class FormalSessionHost {
       const selectionMessage = selected
         ? `所选记录已加入草稿，服务端已确认。新增 ${selected.receipt.added} 条，跳过 ${selected.receipt.skipped} 条。`
         : undefined;
+      const task = await this.execution.guard(proof);
+      let controlMessage: string | undefined;
+      if (task.suspended) {
+        const current = await this.store.get(scope, sessionId);
+        const names = current.requirements.deliveries
+          .filter((d: any) => d.status === "active")
+          .map((d: any) => d.saveTarget?.name ?? d.name)
+          .filter(Boolean)
+          .join("、");
+        const saved = finalFacts.receipts.some(
+          (r) => r.isCurrent && r.acceptanceId,
+        );
+        const processed = finalFacts.results.some(
+          (r) => r.isCurrent && r.status === "succeeded",
+        );
+        controlMessage = task.resume_suspended
+          ? processed && !saved
+            ? "已安排原任务继续；保存仍需你确认，请等待新的确认卡。"
+            : "已安排原任务继续。"
+          : `${saved ? "已有保存回执。" : processed ? "处理已完成，尚未保存。" : "尚未完成保存。"}原任务保持暂停。${names ? `当前保存目标：${names}。` : ""}需要继续时发送“继续”或点击继续按钮，旧确认卡不可用。`;
+      }
       const last = result.messages.at(-1);
       const text =
+        controlMessage ??
         publicationMessage ??
         selectionMessage ??
         (typeof last?.content === "string"

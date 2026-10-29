@@ -1,4 +1,9 @@
-import { explicitResumeRequest } from "./control-intent.js";
+import { BusinessError } from "../operations/errors.js";
+import {
+  explicitResumeRequest,
+  resumeIntent,
+  requestedSaveName,
+} from "./control-intent.js";
 import { draftOperations } from "../drafts/operations.js";
 import { applySelectionPreview } from "../selection/store.js";
 import { withOperationScope } from "../operations/commit.js";
@@ -421,7 +426,7 @@ export class ExecutionStore {
             error: "interrupted_outcome_unknown",
           });
         await c.query(
-          "UPDATE assistant_runtime_execution SET turn_id=$2,status='paused',reason='user_paused',lease_until=NULL WHERE session_id=$1",
+          "UPDATE assistant_runtime_execution SET turn_id=$2,status='paused',reason='user_paused',lease_until=NULL,resume_suspended=false,resume_requested=false WHERE session_id=$1",
           [sessionId, t.id],
         );
         await c.query(
@@ -629,7 +634,31 @@ export class ExecutionStore {
     const blocked = await this.blocked(proof.sessionId);
     if (blocked) throw new SessionError(blocked);
     return this.transaction(proof, proof.sessionId, async (c, s) => {
-      const task = await this.guard(proof, c, true);
+      const task = await this.processingGuard(proof, c, true);
+      const input = await this.sessions.guard(proof, true, c, true);
+      const intent = resumeIntent(input.text);
+      if (intent === "none")
+        throw new SessionError("resume_authorization_required", 409);
+      const targetName = requestedSaveName(input.text);
+      const active = s.requirements.deliveries.filter(
+        (d: any) => d.status === "active",
+      );
+      if (
+        (intent === "amend-and-continue" && !targetName) ||
+        (targetName &&
+          (active.length !== 1 || active[0].saveTarget?.name !== targetName))
+      )
+        throw new BusinessError(
+          409,
+          "requirements_amendment_pending",
+          "本次指定的保存名称尚未生效，任务保持暂停，未按旧目标继续",
+        );
+      await this.assertActivityAvailable(c, task);
+      if (
+        task.requests >= task.request_limit ||
+        Number(task.active_ms) >= Number(task.active_limit_ms)
+      )
+        throw new SessionError("task_budget_exhausted");
       if (
         !task.suspended ||
         task.suspended.requirementsRevision !== s.requirements_revision
@@ -640,11 +669,14 @@ export class ExecutionStore {
         "UPDATE assistant_runtime_execution SET resume_suspended=true WHERE session_id=$1",
         [proof.sessionId],
       );
-      return {
+      const receipt = {
         queued: true,
         turnId: task.suspended.turnId,
         requirementsRevision: s.requirements_revision,
       };
+      if (!task.resume_suspended)
+        await this.sessions.event(proof, "resume_queued", receipt, c);
+      return receipt;
     });
   }
   async observe(proof: TurnProof, kind: string, detail: any) {

@@ -4,6 +4,8 @@ import { explicitResumeRequest } from "../../src/assistant-rebuild/control-inten
 describe("continuation authorization", () => {
   it.each([
     "继续",
+    "请现在继续，并让我确认保存“客服整理版补验”。",
+    "先把保存名称改为“客服整理版”，然后继续。",
     "继续保存已经完成的结果。",
     "继续，完成后保存成“客服整理版”。",
     "请继续执行原任务",
@@ -12,6 +14,12 @@ describe("continuation authorization", () => {
   });
   it.each([
     "现在做到哪了？",
+    "继续处理“另一份.csv”",
+    "继续处理“前3条”",
+    "继续保存“另一个草稿”。",
+    "继续处理前3条",
+    "继续执行之前先让我确认。",
+    "继续保存，先给我解释一下。",
     "只改名，先不要继续",
     "继续是什么意思",
     "继续执行是什么意思",
