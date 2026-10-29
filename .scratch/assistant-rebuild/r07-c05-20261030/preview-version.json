@@ -1,0 +1,24 @@
+{
+  "sha": "c6ee50f17aa302eaec031e823ca069860db57eda",
+  "port": 4240,
+  "database": "evalbase_r04_20261028",
+  "bucket": "evalbase-r04-20261028",
+  "checks": [
+    {
+      "path": "/health",
+      "status": 200,
+      "sha": "c6ee50f17aa302eaec031e823ca069860db57eda"
+    },
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "sha": "c6ee50f17aa302eaec031e823ca069860db57eda"
+    },
+    {
+      "path": "/",
+      "status": 200
+    }
+  ],
+  "owner4217Changed": false,
+  "externalRequests": 0
+}
