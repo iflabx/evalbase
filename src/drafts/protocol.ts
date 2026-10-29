@@ -1,3 +1,4 @@
+import { selectionProblems } from "../selection/index.js";
 import { z } from "zod";
 export const identity = z.string().min(1).max(250);
 export const pageSchema = z
@@ -55,4 +56,23 @@ export const selectionSchema = z
     value: z.number().optional(),
     seed: z.string().max(200).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    for (const problem of selectionProblems(value)) {
+      if (value.method === "all" && ["/mode", "/value"].includes(problem.path))
+        ctx.addIssue({
+          code: "unrecognized_keys",
+          keys: [problem.path.slice(1)],
+          message: problem.message,
+        });
+      else
+        ctx.addIssue({
+          code: "custom",
+          path: problem.path
+            .split("/")
+            .filter(Boolean)
+            .map((p) => (/^\d+$/.test(p) ? Number(p) : p)),
+          message: problem.message,
+        });
+    }
+  });

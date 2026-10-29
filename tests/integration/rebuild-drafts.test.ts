@@ -1327,4 +1327,51 @@ describe("REBUILD-06 draft/selection/version public flows", () => {
     ).toHaveLength(1);
     await host.store.finish(proof, "仅准备确认，未发布");
   });
+  it("R06 C04 SDK repairs incompatible all/count options before creating a fixed preview", async () => {
+    const d = await newDraft(),
+      sid = await fresh(),
+      before = requests.length,
+      args = {
+        draftId: d.id,
+        assetIds: [assetId],
+        method: "all",
+        conditions: [],
+      };
+    const state = await run(sid, "前两条建草稿，我先选记录", [
+      call("preview_selection", { ...args, mode: "count", value: 2 }),
+      call("preview_selection", args),
+    ]);
+    expect(state.execution.status).toBe("completed");
+    expect(
+      (
+        await db.query(
+          "SELECT id,candidate_ids,configuration FROM selection_preview WHERE draft_id=$1",
+          [d.id],
+        )
+      ).rows,
+    ).toHaveLength(1);
+    const preview = (
+      await db.query(
+        "SELECT candidate_ids,configuration FROM selection_preview WHERE draft_id=$1",
+        [d.id],
+      )
+    ).rows[0];
+    expect(preview.candidate_ids).toHaveLength(3);
+    expect(preview.configuration).not.toHaveProperty("mode");
+    expect(preview.configuration).not.toHaveProperty("value");
+    const feedback = (
+      await db.query(
+        "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 AND kind IN('parameter_feedback','correction_rejected') ORDER BY id",
+        [sid],
+      )
+    ).rows;
+    expect(feedback.some((e: any) => e.kind === "parameter_feedback")).toBe(
+      true,
+    );
+    expect(feedback.some((e: any) => e.kind === "correction_rejected")).toBe(
+      false,
+    );
+    expect(requests.length - before).toBeLessThanOrEqual(3);
+    expect((await api("GET", draftUrl(d.id))).json().records).toHaveLength(0);
+  });
 });

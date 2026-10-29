@@ -365,7 +365,7 @@ export function draftTools(
             description:
               "在真实草稿中冻结选中文件的筛选/随机预览。用户说前N条时预览全部后按实际ordinal选定selectedIds，不能随机替代。最多5文件，AND条件，比例向下取整；翻页读取同一previewId不重抽。重抽须重新创建并使旧确认失效。",
             readOnly: false,
-            schema: draftId.merge(selectionSchema),
+            schema: selectionSchema.safeExtend({ draftId: identity }),
             run: (a: any) =>
               direct("preview_selection", a, async (scope, op) => {
                 if (op.receipt) return op.receipt;
