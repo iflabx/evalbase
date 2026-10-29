@@ -1,0 +1,28 @@
+{
+  "codeSHA": "b7092a5df60e79d536c6ad440f6a5f00b5bda567",
+  "patchedCodeSHA": "b7092a5df60e79d536c6ad440f6a5f00b5bda567",
+  "runtime": "deepagents-v4",
+  "source": {
+    "id": "asset_6dd4189f9bba43879ea415a11fd07538",
+    "file_name": "C04-source.jsonl",
+    "sha256": "e328a9aa60db1e47c39dddaf047fd22176292c9a8308b63578411130e74b76d8",
+    "size_bytes": "297"
+  },
+  "sourceUnchanged": true,
+  "modelConfigurationUnchanged": true,
+  "modelConfigurationSnapshotHash": "bc1940f04fec76c1666621966806bb4d09d261830c4448cea93f65696d505c8d",
+  "dependencyLockHash": "4a68edc8844dbf1dc15b4e1265eb72932f56596a8cb243cbdae4a596aee33c40",
+  "draftToolDefinitionHash": "b408c7066aa52a851fe1f7e633b8494b53b68639cfbe6701ee1d1ea7df134d35",
+  "domainSchemaHash": "b6201b956ef221df624f9cf5717d7df9ee651711d4b2d948283490cc563abe42",
+  "activity": {
+    "id": "r06-c04-retest-20261029",
+    "request_limit": 14,
+    "requests": 14,
+    "max_ms": "1200000",
+    "started_at": "2026-10-29T12:01:44.625Z",
+    "closed_at": "2026-10-29T12:10:12.743Z",
+    "row_limit": 0,
+    "rows_used": 0
+  },
+  "sessionId": "assistant_4fc99642f89c4c7085ad25d3c065b5e6"
+}

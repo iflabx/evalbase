@@ -28,7 +28,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-03 持久执行、确认、恢复与分层预算](issues/03-durable-execution-confirmations-and-budget.md) | 1 | REBUILD-01、REBUILD-02 | completed | targeted-pass | 原范围 `bb10a16`；追加 `cfa0120` / [原记录](r03-verification.md)、[追加验证](r03-followup-20261028/verification.md) |
 | [REBUILD-04 正式助手工作区、流式消息与受控动作桥](issues/04-assistant-workspace-and-action-bridge.md) | 1 | REBUILD-02、REBUILD-03 | completed | targeted-pass | `3fd1a5f` / [验证记录](r04-verification.md#r04-identity-round7)；C01业务闭环通过，C02沿用第四轮；自动标题观察已修复 |
 | [REBUILD-05 项目资料、上传映射与页面范围交接](issues/05-materials-upload-and-input-scope.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04 | completed | targeted-pass | [验证记录](r05-verification.md)、[Owner收口](r05-owner-acceptance-20261028.md)；CSV页面补验获豁免 |
-| [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | in-progress | partial-pass | `3db4fdd`、补修`b7092a5` / [验证记录](r06-verification.md)；C04首轮失败已封存，补验待授权 |
+| [REBUILD-06 草稿编辑、固定选取、发布与版本读取](issues/06-draft-selection-publication-and-versions.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-08 | in-progress | partial-pass | `3db4fdd`、补修`b7092a5` / [验证记录](r06-verification.md)；C04授权补验纠错/选取/修改通过，发布仅口头承诺，R06-6未闭合 |
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | not-started | not-run | — |
 | [REBUILD-08 历史兼容、任务恢复与数据生命周期](issues/08-history-compatibility-and-data-lifecycle.md) | 2 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04 | completed | targeted-pass | `47bf8d0` / [验证记录](r08-verification.md) |
 | [REBUILD-09 账号成员、模型设置与回收站操作](issues/09-accounts-settings-and-recycle-bin.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-06、REBUILD-08 | not-started | not-run | — |
@@ -219,3 +219,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 - 2026-10-28：REBUILD-08 完成并通过定向验证，实现 `47bf8d0`；旧历史、独立新授权承接及生命周期清理证据见[验证记录](r08-verification.md)。不改变旧预算、数据、既有验收结论或环境；06/07/09 的领域能力仍按各票依赖推进。
 
 - 2026-10-29：REBUILD-06主实现与选取语义补修已完成定向验证/针对性复审并更新隔离4240；实际C04首轮4请求/0处理/0生成，`selection_invalid`失败保留，旧活动封存不重开。修复后补验待另行授权，06维持in-progress/partial-pass；07/09/10未启动、4217与旧预算不变，详见[唯一记录](r06-verification.md)。
+
+- 2026-10-29：按Owner新授权执行C04有界补验，14次请求/0处理/0生成，用时8分28.118秒；选取参数自动纠正成功，草稿选取/修改和刷新核对通过，发布轮次及一次普通继续均未调用工具，无发布卡/新版本。06仍in-progress/partial-pass，活动已封存、旧数据/预算未变，详见[补验记录](r06-verification.md#r06-c04-retest)。未修改业务代码或启动07/09/10。

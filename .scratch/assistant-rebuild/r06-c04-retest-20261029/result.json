@@ -1,0 +1,43 @@
+{
+  "codeSHA": "b7092a5df60e79d536c6ad440f6a5f00b5bda567",
+  "activity": {
+    "id": "r06-c04-retest-20261029",
+    "request_limit": 14,
+    "requests": 14,
+    "max_ms": "1200000",
+    "started_at": "2026-10-29T12:01:44.625Z",
+    "closed_at": "2026-10-29T12:10:12.743Z",
+    "row_limit": 0,
+    "rows_used": 0
+  },
+  "actualRequests": 14,
+  "transportErrors": [],
+  "correctionRequests": 1,
+  "modelProcessingRows": 0,
+  "generatedRows": 0,
+  "businessResult": "failed",
+  "safetyResult": "passed",
+  "savedDraftId": "collabdraft_6c2f1f770ee0bde0612db78fa7ba1b66497fc7a321f47e526541fd23a1e0144b",
+  "savedDraftName": "C04补验客服问法",
+  "savedRows": 2,
+  "protectedFieldsUnchanged": true,
+  "sourceUnchanged": true,
+  "oldRowsUnchanged": true,
+  "publicationOperations": 0,
+  "publicationCards": 0,
+  "newPublishedVersion": null,
+  "publishTurns": [
+    {
+      "id": "turn_1c8fd04a11204912a23d1acf16de4338",
+      "status": "succeeded",
+      "prompt": "就按现在这两条发布。",
+      "tool_calls": 0
+    },
+    {
+      "id": "turn_58041f8aeeab4cae8ec50636b33eba15",
+      "status": "succeeded",
+      "prompt": "我没看到发布确认卡，请继续。",
+      "tool_calls": 0
+    }
+  ]
+}
