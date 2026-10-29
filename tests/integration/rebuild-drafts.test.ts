@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { unzipSync, strFromU8 } from "fflate";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import * as draftModule from "../../src/drafts/operations.js";
 import { draftTools } from "../../src/assistant-rebuild/draft-tools.js";
@@ -1374,4 +1376,117 @@ describe("REBUILD-06 draft/selection/version public flows", () => {
     expect(requests.length - before).toBeLessThanOrEqual(3);
     expect((await api("GET", draftUrl(d.id))).json().records).toHaveLength(0);
   });
+  it("R06 SDK draft/source/history and version detail branches use their actual public contracts", async () => {
+    const d = await newDraft(),
+      row = (
+        await api("POST", draftUrl(d.id) + "/records", {
+          source: { assetId, ordinal: 1 },
+        })
+      ).json().record;
+    const formal = await newDraft();
+    await api("POST", draftUrl(formal.id) + "/records", {
+      source: { assetId, ordinal: 2 },
+    });
+    const pub = (
+        await api("POST", draftUrl(formal.id) + "/publish", { revision: 1 })
+      ).json(),
+      version = { testSetId: pub.testSet.id, versionId: pub.version.id },
+      sid = await fresh();
+    const state = await run(sid, "查看当前草稿和来源历史，再看看正式版本", [
+      call("read_draft", { draftId: d.id, recordId: row.id }),
+      call("list_draft_source_files", {}),
+      call("read_selection_history", { draftId: d.id }),
+      call("open_draft", { draftId: d.id }),
+      call("read_version", version),
+      call("read_version_records", { ...version, ordinal: 1 }),
+      call("read_version_provenance", { ...version, selectionHistory: true }),
+    ]);
+    expect(state.execution.status).toBe("completed");
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM assistant_runtime_event WHERE session_id=$1 AND kind='tool_error'",
+          [sid],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    expect(
+      state.workspace.nativeActions.some((a: any) =>
+        a.href?.endsWith("/drafts/" + d.id),
+      ),
+    ).toBe(true);
+    expect(
+      (await api("GET", draftUrl(d.id))).json().records[0].questionRevision,
+    ).toBe(0);
+  });
+  it("R06 real page flushes focused input before publishing and downloads the same confirmed CSV and provenance bundle", async () => {
+    const d = await newDraft();
+    await api("POST", draftUrl(d.id) + "/records", {
+      source: { assetId, ordinal: 1 },
+    });
+    const { browser, page } = await browserPage();
+    try {
+      await page.goto(
+        origin + `/projects/${projectId}/test-sets/drafts/${d.id}`,
+      );
+      await page
+        .getByRole("cell", { name: "问题1", exact: false })
+        .first()
+        .click();
+      await page.locator("#draft-question").fill("发布前尚在焦点里的问题");
+      await page.getByRole("button", { name: "创建 v1", exact: true }).click();
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT published_version_id FROM collaborative_draft WHERE id=$1",
+                [d.id],
+              )
+            ).rows[0].published_version_id,
+        )
+        .toBeTruthy();
+      const saved = (
+        await db.query(
+          "SELECT test_set_id,published_version_id FROM collaborative_draft WHERE id=$1",
+          [d.id],
+        )
+      ).rows[0];
+      await browserExpect(
+        page.getByRole("button", { name: "下载", exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "下载", exact: true }).click();
+      const csvEvent = page.waitForEvent("download");
+      await page
+        .getByRole("menuitem", { name: "下载 CSV", exact: true })
+        .click();
+      const csv = await csvEvent;
+      expect(await readFile((await csv.path())!, "utf8")).toContain(
+        "发布前尚在焦点里的问题",
+      );
+      await page.getByRole("button", { name: "下载", exact: true }).click();
+      const zipEvent = page.waitForEvent("download");
+      await page
+        .getByRole("menuitem", { name: "下载数据与溯源", exact: true })
+        .click();
+      const zip = unzipSync(await readFile((await (await zipEvent).path())!));
+      expect(strFromU8(zip["data.csv"]!)).toContain("发布前尚在焦点里的问题");
+      expect(strFromU8(zip["provenance.csv"]!)).toContain("r02-source.jsonl");
+      await page.reload();
+      await browserExpect(
+        page.getByRole("button", { name: "下载", exact: true }),
+      ).toBeVisible();
+      expect(page.url()).toContain(saved.test_set_id);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM test_set_version WHERE test_set_id=$1",
+            [saved.test_set_id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    } finally {
+      await browser.close();
+    }
+  }, 60000);
 });
