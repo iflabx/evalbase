@@ -11,6 +11,8 @@ Blocked by: 无未决范围问题；各票执行依赖见下表
 
 ## 1. 合同与范围
 
+2026-10-30 补修方案：保存目标修改漏执行及跨轮恢复的审查后合同，统一见[待完成修改与恢复方案](result-workspace-20261029/verification.md#amendment-completion-plan)。当前仅完成方案补强，尚未实施/复测；不变更既有票据通过证据、旧活动预算或部署状态。
+
 产品以[PRD §7.14](../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)和[CONTEXT](../../CONTEXT.md)为准；技术以[重建架构](../../docs/architecture/assistant-rebuild.md)及[ADR 0015](../../docs/adr/0015-assistant-rebuild-boundaries.md)为准。完整范围、已可复用内容、G01～G12 缺口、85 项主责任和旧机制退出见[范围核对](../../docs/assistant-rebuild-scope-and-batches.md)，具体操作合同见[能力清单](../../docs/assistant-rebuild-capabilities.md)，不在本 Spec 复制一份产品定义。
 
 采用 Deep Agents TypeScript + LangGraph + LangChain 模型/工具适配；保留现有业务服务、Worker、账号/授权、PostgreSQL/MinIO。独立验证是研发起点，不是正式全功能实现。对[收口审查](../../docs/research/assistant-rebuild-adoption-review-20261027.md)保留事项逐项交付，不追认原同版本整轮验证通过，不保证模型永不出错或已优于旧助手。
