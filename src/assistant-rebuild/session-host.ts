@@ -650,11 +650,32 @@ export class FormalSessionHost {
             : "已安排原任务继续。"
           : `${saved ? "已有保存回执。" : processed ? "处理已完成，尚未保存。" : "尚未完成保存。"}原任务保持暂停。${names ? `当前保存目标：${names}。` : ""}需要继续时发送“继续”或点击继续按钮，旧确认卡不可用。`;
       }
+      const savedReceipts = finalFacts.receipts.filter(
+        (r) => r.isCurrent && r.acceptanceId,
+      );
+      const savedQuery =
+        /^(?:(?:请问|请|刚才|刚刚|现在|当前|已经|已|的|我|帮我|告诉我|一下|这个|那|保存|草稿|结果|叫|什么|名字|名称|有|共|多少|几|条|记录|数据|了|吗|是|和|及|，|,|。|？|\?|\s))*$/u.test(
+          input.text,
+        ) &&
+        /(?:保存|草稿)/u.test(input.text) &&
+        /(?:名字|名称|多少|几条)/u.test(input.text);
+      const savedMessage =
+        savedReceipts.length &&
+        (savedQuery || savedReceipts.some((r) => r.executionTurnId === turnId))
+          ? savedReceipts
+              .map((r) =>
+                r.draftName
+                  ? `已保存到草稿「${r.draftName}」，本次保存 ${r.adopted} 条；草稿当前共 ${r.draftRecordCount} 条。`
+                  : `处理结果已有保存回执，本次保存 ${r.adopted} 条；目标草稿当前不可用。`,
+              )
+              .join("\n")
+          : undefined;
       const last = result.messages.at(-1);
       const text =
         controlMessage ??
         publicationMessage ??
         selectionMessage ??
+        savedMessage ??
         (typeof last?.content === "string"
           ? last.content
           : JSON.stringify(last?.content ?? ""));

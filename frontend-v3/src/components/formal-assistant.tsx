@@ -1,3 +1,4 @@
+import { getSharedDraft } from "@/services/drafts";
 import { useQueryClient } from "@tanstack/react-query";
 import { downloadVersionBundle } from "@/services/version-download";
 import { soloVersionDownloadUrl } from "@/services/workspace";
@@ -386,7 +387,7 @@ export function FormalAssistant({
       setTabs((old) =>
         old.map((t) =>
           t.kind === "draft"
-            ? { ...t, name: s.receipts.find((r) => r.draftId === t.id)?.fileName ?? t.name }
+            ? { ...t, name: s.receipts.find((r) => r.draftId === t.id)?.draftName ?? t.name }
             : t,
         ),
       );
@@ -601,10 +602,53 @@ export function FormalAssistant({
     setWorkOpen(true);
     if (narrow) setListOpen(false);
   };
+  const previewRequests = useRef(new Map<string, number>());
+  const beginPreview = (tab: WorkspaceTab) => {
+    const token = (previewRequests.current.get(tab.id) ?? 0) + 1;
+    previewRequests.current.set(tab.id, token);
+    showTab({ ...tab, loading: true });
+    return token;
+  };
+  const finishPreview = (id: string, token: number, value: Partial<WorkspaceTab>) => {
+    if (previewRequests.current.get(id) !== token) return;
+    setTabs((old) => old.map((t) => (t.id === id ? { ...t, ...value, loading: false } : t)));
+  };
+  const draftPreview = async (id: string, offset = 0, name = "测试集草稿") => {
+    const epoch = historyEpoch.current,
+      selected = sessionId;
+    if (!selected) return;
+    const token = beginPreview({
+      id,
+      kind: "draft",
+      name,
+      offset,
+      href: `/projects/${projectId}/test-sets/drafts/${id}`,
+    });
+    try {
+      const data = await getSharedDraft(projectId, id, { limit: 20, offset });
+      if (activeContent(selected, epoch))
+        finishPreview(id, token, {
+          name: data.draft.name,
+          ...(data.draft.suspended ? { error: "草稿来源当前不可用，请打开完整草稿核对。" } : {}),
+          status: data.draft.status,
+          total: data.total,
+          offset,
+          rows: data.records.map((r) => ({ id: r.id, result: r })),
+        });
+    } catch (e) {
+      if (activeContent(selected, epoch)) finishPreview(id, token, { error: errorText(e) });
+    }
+  };
   const document = async (id: string, offset = 0) => {
     const contentEpoch = historyEpoch.current;
     if (!sessionId) return;
     const selected = sessionId;
+    const token = beginPreview({
+      id,
+      kind: "document",
+      name: snapshot?.workspace.attachments.find((a) => a.id === id)?.name ?? "背景文档",
+      offset,
+    });
     try {
       const d = await api<{
         id: string;
@@ -624,7 +668,7 @@ export function FormalAssistant({
           offset,
       );
       if (activeContent(selected, contentEpoch))
-        showTab({
+        finishPreview(id, token, {
           id: d.id,
           name: d.name,
           kind: "document",
@@ -637,7 +681,7 @@ export function FormalAssistant({
           },
         });
     } catch (e) {
-      if (activeContent(selected, contentEpoch)) setError(errorText(e));
+      if (activeContent(selected, contentEpoch)) finishPreview(id, token, { error: errorText(e) });
     }
   };
   const upload = async (files: FileList | null) => {
@@ -718,24 +762,34 @@ export function FormalAssistant({
       JSON.stringify({ draft: text, pending: null, attachments: [] }),
     );
   }, [snapshot, pending, draftKey]);
-  const previewResult = async (runId: string) => {
+  const previewResult = async (runId: string, offset = 0) => {
     const contentEpoch = historyEpoch.current;
     if (!sessionId) return;
     const selected = sessionId;
+    const token = beginPreview({
+      id: runId,
+      kind: "result",
+      name: "处理结果",
+      offset,
+      href: "/projects/" + projectId + "/processing?run=" + runId,
+    });
     try {
       const data = await api<{ records: NonNullable<WorkspaceTab["rows"]>; total: number }>(
-        endpoint(projectId, selected) + "/results/" + encodeURIComponent(runId),
+        endpoint(projectId, selected) +
+          "/results/" +
+          encodeURIComponent(runId) +
+          "?limit=20&offset=" +
+          offset,
       );
       if (activeContent(selected, contentEpoch))
-        showTab({
-          id: runId,
-          kind: "result",
-          name: "处理结果 · " + data.total + " 条",
+        finishPreview(runId, token, {
+          total: data.total,
+          offset,
           rows: data.records,
-          href: "/projects/" + projectId + "/processing?run=" + runId,
         });
     } catch (e) {
-      if (activeContent(selected, contentEpoch)) setError(errorText(e));
+      if (activeContent(selected, contentEpoch))
+        finishPreview(runId, token, { error: errorText(e) });
     }
   };
   const offerBudget = async () => {
@@ -934,10 +988,33 @@ export function FormalAssistant({
   const tab = tabs.find((t) => t.id === active) ?? tabs.at(-1);
   const workspace = (
     <section className="formal-workspace">
-      <div className="flex min-h-12 items-center gap-1 overflow-x-auto border-b px-2">
+      <div
+        role="tablist"
+        aria-label="工作区内容"
+        className="flex min-h-12 items-center gap-1 overflow-x-auto border-b px-2"
+      >
         {tabs.map((t) => (
           <div key={t.id} className={"formal-tab " + (t.id === tab?.id ? "selected" : "")}>
-            <button onClick={() => setActive(t.id)} className="max-w-44 truncate">
+            <button
+              role="tab"
+              tabIndex={t.id === tab?.id ? 0 : -1}
+              aria-selected={t.id === tab?.id}
+              onClick={() => setActive(t.id)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  const i = tabs.findIndex((a) => a.id === t.id);
+                  const next = (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+                  setActive(tabs[next]!.id);
+                  e.currentTarget
+                    .closest('[role="tablist"]')
+                    ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                    [next]?.focus();
+                }
+              }}
+              className="max-w-44 truncate"
+              title={t.name}
+            >
               {t.name}
             </button>
             <button
@@ -965,12 +1042,55 @@ export function FormalAssistant({
       <div className="min-h-0 flex-1 overflow-auto p-5">
         {tab ? (
           <>
-            <h2 className="mb-4 break-words font-semibold">{tab.name}</h2>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="break-words font-semibold">{tab.name}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {tab.kind === "draft"
+                    ? tab.status === "published"
+                      ? "已发布草稿"
+                      : "测试集草稿 · 只读预览"
+                    : tab.kind === "result"
+                      ? "处理结果 · 只读预览"
+                      : "背景文档 · 提取文本"}
+                  {tab.total !== undefined ? ` · 共 ${tab.total} 条` : ""}
+                </p>
+              </div>
+              {tab.href && !tab.error && (
+                <a className="shrink-0 text-sm text-primary hover:underline" href={tab.href}>
+                  {tab.kind === "draft" ? "打开完整草稿" : "打开处理页面"}
+                </a>
+              )}
+            </div>
+            {tab.loading && (
+              <p role="status" className="py-8 text-sm text-muted-foreground">
+                正在读取内容…
+              </p>
+            )}
+            {tab.error && (
+              <div role="alert" className="rounded-md border p-4 text-sm">
+                <p>{tab.error}</p>
+                <Button
+                  className="mt-3"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    void (tab.kind === "draft"
+                      ? draftPreview(tab.id, tab.offset, tab.name)
+                      : tab.kind === "result"
+                        ? previewResult(tab.id, tab.offset)
+                        : document(tab.id, tab.offset))
+                  }
+                >
+                  重试读取
+                </Button>
+              </div>
+            )}
             {tab.content && <AssistantMarkdown text={tab.content} />}
             {tab.document && (
               <div className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  背景文档 · 片段 {tab.document.offset + 1}–
+                  背景文档 · 片段 {tab.document.fragments.length ? tab.document.offset + 1 : 0}–
                   {tab.document.offset + tab.document.fragments.length} / {tab.document.total}
                 </p>
                 {tab.document.fragments.map((fragment, index) => (
@@ -1015,42 +1135,101 @@ export function FormalAssistant({
                 </div>
               </div>
             )}
-            {tab.rows && (
-              <div className="overflow-x-auto">
+            {!tab.error && tab.rows && (
+              <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
+                      <th className="p-2">序号</th>
                       <th className="p-2">问题</th>
                       <th className="p-2">期望输出</th>
                       <th className="p-2">Metadata</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {tab.rows.map((row) => (
+                    {tab.rows.map((row, rowIndex) => (
                       <tr key={row.id} className="border-b align-top">
-                        <td className="max-w-96 break-words p-2">{row.result.question}</td>
-                        <td className="break-words p-2">{row.result.expectedOutput}</td>
+                        <td className="p-2 text-muted-foreground">
+                          {(tab.offset ?? 0) + rowIndex + 1}
+                        </td>
+                        <td className="min-w-40 max-w-96 break-words p-2">
+                          <details>
+                            <summary className="cursor-pointer line-clamp-3">
+                              {row.result.question || "未填写问题"}
+                            </summary>
+                            <p className="mt-2 whitespace-pre-wrap">{row.result.question}</p>
+                          </details>
+                        </td>
+                        <td className="min-w-28 break-words p-2">
+                          <details>
+                            <summary className="cursor-pointer line-clamp-3">
+                              {row.result.expectedOutput || "—"}
+                            </summary>
+                            <p className="mt-2 whitespace-pre-wrap">{row.result.expectedOutput}</p>
+                          </details>
+                        </td>
                         <td className="p-2">
-                          <dl>
-                            {row.result.metadata.map((m, i) => (
-                              <div key={i} className="mb-1 rounded border px-2 py-1">
-                                <dt className="inline text-muted-foreground">{m.key}：</dt>
-                                <dd className="inline break-words">{m.value}</dd>
-                              </div>
-                            ))}
-                          </dl>
+                          <details>
+                            <summary className="cursor-pointer whitespace-nowrap text-muted-foreground">
+                              {row.result.metadata.length
+                                ? `查看 ${row.result.metadata.length} 项`
+                                : "无 Metadata"}
+                            </summary>
+                            <dl className="mt-2">
+                              {row.result.metadata.map((m, i) => (
+                                <div key={i} className="mb-1 rounded border px-2 py-1">
+                                  <dt className="inline text-muted-foreground">{m.key}：</dt>
+                                  <dd className="inline break-words">{m.value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </details>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}{" "}
-            {tab.href && (
-              <a className="text-primary hover:underline" href={tab.href}>
-                打开{tab.kind === "draft" ? "草稿" : "处理结果"}
-                <ChevronRight className="inline size-4" />
-              </a>
+            )}
+            {!tab.error && tab.rows && !tab.rows.length && (
+              <p className="py-8 text-center text-sm text-muted-foreground">暂无记录</p>
+            )}
+            {!tab.error && tab.rows && tab.total !== undefined && (
+              <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>
+                  {tab.total
+                    ? `第 ${(tab.offset ?? 0) + 1}–${(tab.offset ?? 0) + tab.rows.length} 条 / 共 ${tab.total} 条`
+                    : "共 0 条"}
+                </span>
+                {tab.total > 20 && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!tab.offset}
+                      onClick={() =>
+                        void (tab.kind === "draft"
+                          ? draftPreview(tab.id, Math.max(0, (tab.offset ?? 0) - 20), tab.name)
+                          : previewResult(tab.id, Math.max(0, (tab.offset ?? 0) - 20)))
+                      }
+                    >
+                      上一页
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={(tab.offset ?? 0) + tab.rows.length >= tab.total}
+                      onClick={() =>
+                        void (tab.kind === "draft"
+                          ? draftPreview(tab.id, (tab.offset ?? 0) + 20, tab.name)
+                          : previewResult(tab.id, (tab.offset ?? 0) + 20))
+                      }
+                    >
+                      下一页
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
           </>
         ) : (
@@ -1074,7 +1253,18 @@ export function FormalAssistant({
                 className="w-full justify-start"
                 onClick={() => void previewResult(r.run_id)}
               >
-                查看处理结果
+                处理结果 · {r.output_count} 条 ·{" "}
+                {(
+                  {
+                    succeeded: "已完成",
+                    failed: "失败",
+                    cancelled: "已取消",
+                    running: "处理中",
+                    pending: "等待中",
+                    retrying: "等待重试",
+                    cancelling: "正在取消",
+                  } as Record<string, string>
+                )[r.status] ?? "状态待核对"}
               </Button>
             ))}
           </div>
@@ -1539,7 +1729,13 @@ export function FormalAssistant({
                                   key={r.acceptanceId}
                                   className="mt-4 rounded-xl border bg-card p-4"
                                 >
-                                  <h2 className="font-semibold">已保存 · {r.fileName}</h2>
+                                  <h2 className="font-semibold">
+                                    已保存 ·{" "}
+                                    {r.draftName ??
+                                      (r.draftStatus === "unavailable"
+                                        ? "目标草稿当前不可用"
+                                        : "已保存的草稿")}
+                                  </h2>
                                   <p className="my-2 text-sm text-muted-foreground">
                                     {r.adopted} 条 · 服务端已确认
                                     {r.isCurrent ? "" : " · 历史保存记录"}
@@ -1549,16 +1745,11 @@ export function FormalAssistant({
                                       variant="outline"
                                       size="sm"
                                       onClick={() =>
-                                        showTab({
-                                          id: r.draftId!,
-                                          kind: "draft",
-                                          name: r.fileName ?? "测试集草稿",
-                                          href:
-                                            "/projects/" +
-                                            projectId +
-                                            "/test-sets/drafts/" +
-                                            r.draftId,
-                                        })
+                                        void draftPreview(
+                                          r.draftId!,
+                                          0,
+                                          r.draftName ?? "测试集草稿",
+                                        )
                                       }
                                     >
                                       查看草稿

@@ -16,7 +16,13 @@ export async function sessionModelFacts(
   const facts = {
     sessionId: session.id,
     requirementsRevision: session.requirements_revision,
-    requirements: session.requirements,
+    requirements: {
+      ...session.requirements,
+      objective: undefined,
+      initialGoal: session.requirements.objective,
+      initialGoalRole:
+        "历史需求叙述，名称、数量、范围与保存状态以当前交付和业务回执为准。",
+    },
     inputContext: input.context ?? null,
     draftContext: await (async () => {
       const ref = (

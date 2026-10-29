@@ -1600,11 +1600,29 @@ export class ExecutionStore {
       }
     }
     const receipts = [];
+    // Enrich immutable operation receipts for presentation without rewriting history.
+    const resolvedReceipts = await Promise.all(
+      cards.map((c) =>
+        c.operation_id
+          ? this.receipt(scope, sessionId, c.operation_id)
+          : Promise.resolve(c.receipt),
+      ),
+    );
+    const draftIds = [
+      ...new Set(resolvedReceipts.map((r) => r?.draftId).filter(Boolean)),
+    ];
+    const drafts = draftIds.length
+      ? (
+          await this.db.query(
+            "SELECT d.id,d.name,d.status,(SELECT count(*)::int FROM collaborative_draft_record r WHERE r.draft_id=d.id AND NOT r.deleted) AS record_count FROM collaborative_draft d LEFT JOIN test_set ts ON ts.id=d.test_set_id LEFT JOIN test_set_version pv ON pv.id=d.parent_version_id LEFT JOIN test_set_version pub ON pub.id=d.published_version_id WHERE d.project_id=$1 AND d.id=ANY($2::text[]) AND d.status IN ('editing','published') AND (ts.id IS NULL OR ts.status='available') AND (pv.id IS NULL OR pv.status='published') AND (d.status<>'published' OR pub.status='published')",
+            [scope.projectId, draftIds],
+          )
+        ).rows
+      : [];
+
     const keys = new Set<string>();
-    for (const card of cards) {
-      const receipt = card.operation_id
-        ? await this.receipt(scope, sessionId, card.operation_id)
-        : card.receipt;
+    for (const [index, card] of cards.entries()) {
+      const receipt = resolvedReceipts[index];
       if (receipt) {
         card.status = "committed";
         card.receipt = receipt;
@@ -1613,8 +1631,20 @@ export class ExecutionStore {
         );
         if (!keys.has(key)) {
           keys.add(key);
+          const draft = drafts.find((d) => d.id === receipt.draftId);
           receipts.push({
             ...receipt,
+            ...(receipt.draftId
+              ? {
+                  savedDraftName:
+                    card.payload?.input?.target?.name ??
+                    card.payload?.draftName ??
+                    null,
+                  draftName: draft?.name ?? null,
+                  draftStatus: draft?.status ?? "unavailable",
+                  draftRecordCount: draft ? Number(draft.record_count) : null,
+                }
+              : {}),
             executionTurnId: card.turn_id,
             isCurrent:
               (card.action === "adopt"

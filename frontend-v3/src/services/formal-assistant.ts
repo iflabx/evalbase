@@ -67,6 +67,10 @@ export type Snapshot = {
     draftId?: string;
     assetId?: string;
     fileName?: string;
+    draftName?: string | null;
+    savedDraftName?: string | null;
+    draftStatus?: string;
+    draftRecordCount?: number | null;
     adopted?: number;
     isCurrent: boolean;
   }[];
@@ -128,6 +132,11 @@ export type WorkspaceTab = {
   kind: "document" | "result" | "draft";
   name: string;
   content?: string;
+  loading?: boolean;
+  error?: string;
+  offset?: number;
+  total?: number;
+  status?: string;
   document?: {
     fragments: { text: string; page?: number; startLine?: number; endLine?: number }[];
     offset: number;
@@ -147,7 +156,9 @@ export type WorkspaceTab = {
   }[];
 };
 export function openTab(tabs: WorkspaceTab[], tab: WorkspaceTab) {
-  return [...tabs.filter((t) => t.id !== tab.id), tab];
+  return tabs.some((t) => t.id === tab.id)
+    ? tabs.map((t) => (t.id === tab.id ? tab : t))
+    : [...tabs, tab];
 }
 export function errorText(error: unknown) {
   const code = (error as { message?: string })?.message;

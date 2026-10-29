@@ -2443,7 +2443,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           })
         ).statusCode,
       ).toBe(409);
-      outputs = [{ role: "assistant", content: "已保存客服整理版。" }];
+      outputs = [{ role: "assistant", content: "已保存旧名称。" }];
       const responses = await Promise.all([
         api("POST", route(id) + "/confirmations/" + card.id, { accept: true }),
         api("POST", route(id) + "/confirmations/" + card.id, { accept: true }),
@@ -2451,11 +2451,15 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       expect(responses.every((r) => r.statusCode === 200)).toBe(true);
       await until(async () => (await state(id))?.status === "completed");
       const confirmed = await host.present(scope(), id);
-      outputs = [
-        call("read_task_progress", {}),
-        { role: "assistant", content: "已保存客服整理版。" },
-      ];
-      const progress = await submit(id, "现在进度怎样？");
+      expect(confirmed.messages.at(-1).content).toContain("客服整理版");
+      expect(
+        confirmed.receipts.find((r: any) => r.acceptanceId).draftName,
+      ).toBe("客服整理版");
+      outputs = [{ role: "assistant", content: "草稿名是旧名称，共3条。" }];
+      const progress = await submit(
+        id,
+        "刚才保存的草稿叫什么名字，有多少条记录？",
+      );
       expect(progress.statusCode).toBe(202);
       await until(
         async () =>
@@ -2467,6 +2471,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           ).rows[0]?.status === "succeeded",
       );
       const queried = await host.present(scope(), id);
+      expect(queried.messages.at(-1).content).toContain("客服整理版");
+      expect(queried.messages.at(-1).content).not.toContain("旧名称");
       expect(queried.confirmations).toHaveLength(
         confirmed.confirmations.length,
       );
@@ -5288,4 +5294,110 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await browser.close();
     }
   });
+  it("RESULT WORKSPACE real saved draft preview, local retry and paged result API", async () => {
+    const { id, p, card } = await adoptionCard();
+    const approved = await api(
+      "POST",
+      route(id) + "/confirmations/" + card.id,
+      { accept: true },
+    );
+    expect(approved.statusCode, approved.body).toBe(200);
+    const receipt = approved.json().receipt;
+    const draftId = receipt.draftId;
+    const before = (await host.present(scope(), id)).receipts.find(
+      (r: any) => r.acceptanceId,
+    );
+    expect(before.draftName).toBe(card.payload.input.target.name);
+    await db.query(
+      "UPDATE collaborative_draft SET name='预览新名称' WHERE id=$1",
+      [draftId],
+    );
+    const view = await host.present(scope(), id);
+    expect(view.receipts.find((r: any) => r.acceptanceId)).toMatchObject({
+      draftName: "预览新名称",
+      savedDraftName: card.payload.input.target.name,
+      draftRecordCount: 3,
+    });
+    const page2 = await api(
+      "GET",
+      route(id) + "/results/" + p.runId + "?limit=1&offset=2",
+    );
+    expect(page2.statusCode, page2.body).toBe(200);
+    expect(page2.json().records).toHaveLength(1);
+    expect(page2.json().total).toBe(3);
+    expect(
+      (await api("GET", route(id) + "/results/" + p.runId + "?offset=-1"))
+        .statusCode,
+    ).toBe(422);
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      extraHTTPHeaders: { origin },
+      viewport: { width: 1000, height: 900 },
+    });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      {
+        name: cookie[0]!,
+        value: cookie.slice(1).join("="),
+        url: await webAddress(),
+      },
+    ]);
+    try {
+      const page = await context.newPage();
+      let fail = true;
+      await page.route(
+        "**/collaborative-drafts/" + draftId + "?*",
+        async (r) => {
+          if (fail) {
+            fail = false;
+            await r.fulfill({
+              status: 503,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "unavailable" }),
+            });
+          } else await r.continue();
+        },
+      );
+      await page.goto(
+        (await webAddress()) + "/projects/" + projectId + "/assistant/" + id,
+      );
+      await page.getByRole("button", { name: "查看草稿", exact: true }).click();
+      await browserExpect(
+        page.getByRole("button", { name: "重试读取", exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "重试读取", exact: true }).click();
+      await browserExpect(
+        page.getByRole("heading", { name: "预览新名称", exact: true }),
+      ).toBeVisible();
+      await browserExpect(page.getByRole("table")).toBeVisible();
+      await browserExpect(
+        page.getByText("第 1–3 条 / 共 3 条", { exact: true }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByRole("link", { name: "打开完整草稿", exact: true }),
+      ).toHaveAttribute(
+        "href",
+        `/projects/${projectId}/test-sets/drafts/${draftId}`,
+      );
+      await page
+        .getByRole("button", { name: "收起工作区", exact: true })
+        .click();
+      await page.getByRole("button", { name: "查看草稿", exact: true }).click();
+      await browserExpect(
+        page.getByRole("tab", { name: "预览新名称", exact: true }),
+      ).toHaveCount(1);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+    await db.query(
+      "UPDATE collaborative_draft SET status='discarded' WHERE id=$1",
+      [draftId],
+    );
+    expect(
+      (await host.present(scope(), id)).receipts.find(
+        (r: any) => r.acceptanceId,
+      ),
+    ).toMatchObject({ draftName: null, draftStatus: "unavailable" });
+  }, 60000);
 });

@@ -373,7 +373,10 @@ export function registerAssistantRuntime({
       await publish();
     },
   );
-  app.get<{ Params: Params & { runId: string } }>(
+  app.get<{
+    Params: Params & { runId: string };
+    Querystring: { offset?: string; limit?: string };
+  }>(
     base + "/:sessionId/results/:runId",
     { preHandler: authenticate },
     (req, reply) =>
@@ -403,7 +406,10 @@ export function registerAssistantRuntime({
           artifacts,
           scope,
           req.params.runId,
-          { limit: "100" },
+          {
+            limit: req.query.limit ?? "20",
+            offset: req.query.offset ?? "0",
+          },
         );
         if (isLegacyHistory(req.params.sessionId))
           await history.resultAllowed(
