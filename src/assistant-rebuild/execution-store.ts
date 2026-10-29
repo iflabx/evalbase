@@ -1,3 +1,8 @@
+import { compatibleProcessingOperations } from "./processing-context.js";
+import {
+  assertSaveTargetResolved,
+  saveTargetAmendment,
+} from "./save-target-amendment.js";
 import { BusinessError } from "../operations/errors.js";
 import {
   explicitResumeRequest,
@@ -221,6 +226,7 @@ export class ExecutionStore {
   }
   async processingGuard(proof: TurnProof, db: Query = this.db, lock = false) {
     const task = await this.guard(proof, db, lock);
+    await assertSaveTargetResolved(db, proof.sessionId);
     if (
       task.feedback?.kind === "requirements" ||
       task.suspended?.feedback?.kind === "requirements"
@@ -476,47 +482,7 @@ export class ExecutionStore {
   /** Resolve the same delivery by processing dependencies, never by the current chat turn.
    * Immutable requirements events also support operations written before this resolver. */
   async processingOperations(session: any, db: Query = this.db) {
-    const rows = (
-      await db.query(
-        "SELECT o.*,j.status AS job_status,e.detail->'receipt'->'requirements' AS original_requirements FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id LEFT JOIN LATERAL (SELECT detail FROM assistant_runtime_event WHERE session_id=o.session_id AND kind='requirements_saved' AND (detail->'receipt'->>'revision')::int=o.requirements_revision ORDER BY id LIMIT 1) e ON true WHERE o.session_id=$1 AND o.kind='processing' ORDER BY o.requirements_revision DESC,o.id",
-        [session.id],
-      )
-    ).rows;
-    const fingerprint = (requirements: any, delivery: any) => {
-      const processing = { ...delivery };
-      delete processing.name;
-      delete processing.saveTarget;
-      return canonicalJson({
-        objective: requirements.objective ?? "",
-        processing,
-      });
-    };
-    const selected = new Set<string>();
-    return rows.filter((op) => {
-      const delivery = session.requirements.deliveries.find(
-        (d: any) =>
-          d.status === "active" &&
-          op.operation_key.startsWith("processing:" + d.id + ":"),
-      );
-      if (!delivery)
-        return (
-          session.requirements_revision === 0 &&
-          session.requirements.deliveries.length === 0 &&
-          op.requirements_revision === 0
-        );
-      const original = op.original_requirements?.deliveries?.find(
-        (d: any) => d.id === delivery.id,
-      );
-      if (
-        !original ||
-        fingerprint(op.original_requirements, original) !==
-          fingerprint(session.requirements, delivery) ||
-        selected.has(delivery.id)
-      )
-        return false;
-      selected.add(delivery.id);
-      return true;
-    });
+    return compatibleProcessingOperations(db, session);
   }
 
   async processingForExecution(proof: TurnProof, session: any) {
@@ -571,6 +537,7 @@ export class ExecutionStore {
     const blocked = await this.blocked(sessionId);
     if (blocked) throw new SessionError(blocked);
     return this.transaction(scope, sessionId, async (c, s) => {
+      await assertSaveTargetResolved(c, sessionId);
       const task = (
         await c.query(
           "SELECT * FROM assistant_runtime_execution WHERE session_id=$1 FOR UPDATE",
@@ -1079,6 +1046,7 @@ export class ExecutionStore {
   async prepare(proof: TurnProof, operation: any) {
     return this.transaction(proof, proof.sessionId, async (c, s) => {
       await this.guard(proof, c, true);
+      await assertSaveTargetResolved(c, proof.sessionId);
       const op = (
         await c.query(
           "SELECT * FROM assistant_runtime_operation WHERE id=$1 AND session_id=$2",
@@ -1217,6 +1185,8 @@ export class ExecutionStore {
         card.requirements_revision !== s.requirements_revision
       )
         throw new SessionError("confirmation_expired");
+      if (card.action !== "budget")
+        await assertSaveTargetResolved(c, sessionId);
       if (card.action === "budget") {
         const task = (
           await c.query(
@@ -1551,6 +1521,8 @@ export class ExecutionStore {
           [sessionId],
         )
       ).rows[0] ?? null;
+    const pendingSaveTarget = await saveTargetAmendment(this.db, sessionId);
+    if (task && pendingSaveTarget) task.amendment_pending = true;
     const current = await this.sessions.get(scope, sessionId);
     const currentRuns = new Set(
       (await this.processingOperations(current)).map((o) => o.run_id),
@@ -1670,6 +1642,14 @@ export class ExecutionStore {
     ).rows.map((r) => ({ ...r, isCurrent: currentRuns.has(r.run_id) }));
     return {
       execution: task,
+      pendingSaveTarget: pendingSaveTarget
+        ? {
+            name: pendingSaveTarget.name,
+            deliveryId: pendingSaveTarget.deliveryId,
+            message:
+              "保存名称尚未修改，任务保持暂停。可完成或明确撤销这项改名要求。",
+          }
+        : null,
       canResumeCompleted: await this.completedRecovery(
         this.db,
         scope,

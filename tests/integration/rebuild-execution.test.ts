@@ -2356,6 +2356,90 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     expect((await effects()).drafts).toBe(before.drafts);
   });
 
+  it("AMENDMENT CONTRACT failed omission survives query and host restart until explicit cancellation", async () => {
+    const { id, plan } = await reviewCreate();
+    const started = await run(id, "清洗并等待确认", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(started.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    const ready = await host.runPending(scope(), id, started.execution.turn_id);
+    const card = ready.confirmations.find((c: any) => c.status === "pending");
+    await host.stop(scope(), id);
+    await expect(
+      run(id, "只把保存名称改成“未生效名称”，先不要继续。", [
+        { role: "assistant", content: "只答应，不调用。" },
+        { role: "assistant", content: "仍未调用。" },
+      ]),
+    ).rejects.toMatchObject({ code: "requirements_amendment_pending" });
+    expect((await host.present(scope(), id)).execution.status).toBe("paused");
+    const pending = async () =>
+      (
+        await db.query(
+          "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='save_target_amendment' ORDER BY id DESC LIMIT 1",
+          [id],
+        )
+      ).rows[0].detail;
+    expect((await pending()).status).toBe("pending");
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(409);
+    await run(id, "现在处理到哪了？", [
+      call("read_task_progress", {}),
+      { role: "assistant", content: "仍暂停" },
+    ]);
+    const other = new FormalSessionHost(db, config);
+    try {
+      await expect(other.execution.resume(scope(), id)).rejects.toMatchObject({
+        code: "requirements_amendment_pending",
+      });
+    } finally {
+      await other.close();
+    }
+    await expect(
+      run(id, "继续。", [call("continue_task", {})]),
+    ).rejects.toBeDefined();
+    expect((await pending()).status).toBe("pending");
+    expect(
+      (
+        await db.query(
+          "SELECT count(*) FROM assistant_runtime_event WHERE session_id=$1 AND kind='save_target_recovery'",
+          [id],
+        )
+      ).rows[0].count,
+    ).toBe("1");
+    await run(id, "撤销刚才的改名要求。", [
+      { role: "assistant", content: "保持暂停" },
+    ]);
+    expect((await pending()).status).toBe("cancelled");
+    expect((await host.present(scope(), id)).execution.status).toBe("paused");
+  });
+
+  it("AMENDMENT CONTRACT denial and quoted queries never create a write obligation", async () => {
+    const { id, plan } = await reviewCreate();
+    await run(id, "先保存要求", [plan]);
+    for (const text of [
+      "不要把保存名称改成X。",
+      "是不是已保存为X？",
+      "解释一下‘保存名称改成X’是什么意思？",
+    ]) {
+      await run(id, text, [{ role: "assistant", content: "仅说明" }]);
+    }
+    expect(
+      (
+        await db.query(
+          "SELECT count(*) FROM assistant_runtime_event WHERE session_id=$1 AND kind='save_target_amendment'",
+          [id],
+        )
+      ).rows[0].count,
+    ).toBe("0");
+  });
   it("SAVE RECOVERY public dispatcher SDK performs stop rename continue and unique save", async () => {
     const state = async (id: string) =>
       (
@@ -2411,6 +2495,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       expect((await state(id))?.status).toBe("paused");
       const saved = await host.store.get(scope(), id);
       outputs = [
+        { role: "assistant", content: "我会修改名称，保持暂停。" },
         call("update_requirements", {
           expectedRevision: saved.requirements_revision,
           changes: {
@@ -2425,12 +2510,34 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
             ],
           },
         }),
-        call("continue_task", {}),
-        call("prepare_adoption", {}),
+        { role: "assistant", content: "名称已修改，保持暂停。" },
       ];
       expect(
-        (await submit(id, "继续，完成后保存成客服整理版。")).statusCode,
+        (await submit(id, "只把保存名称改成“客服整理版”，先不要继续。"))
+          .statusCode,
       ).toBe(202);
+      await until(
+        async () =>
+          (await host.store.get(scope(), id)).requirements_revision ===
+            saved.requirements_revision + 1 &&
+          (await state(id))?.status === "paused",
+      );
+      expect(
+        (
+          (await host.store.get(scope(), id)).requirements.deliveries[0]
+            .saveTarget as any
+        ).name,
+      ).toBe("客服整理版");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) FROM assistant_runtime_event WHERE session_id=$1 AND kind='save_target_recovery'",
+            [id],
+          )
+        ).rows[0].count,
+      ).toBe("1");
+      outputs = [call("continue_task", {}), call("prepare_adoption", {})];
+      expect((await submit(id, "继续。")).statusCode).toBe(202);
       await until(async () => (await state(id))?.status === "confirmation");
       const next = await host.present(scope(), id),
         card = next.confirmations.find((c: any) => c.status === "pending");
@@ -2495,6 +2602,35 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           (r: any) => r.acceptanceId,
         ),
       ).toHaveLength(1);
+      const latest = await host.store.get(scope(), id);
+      outputs = [
+        call("update_requirements", {
+          expectedRevision: latest.requirements_revision,
+          changes: {
+            deliveries: [
+              {
+                deliveryId: latest.requirements.deliveries[0].id,
+                patch: { name: "仅改变展示名称" },
+              },
+            ],
+          },
+        }),
+        { role: "assistant", content: "已更新展示名" },
+      ];
+      const label = await submit(id, "只修改任务的展示名称，保留保存目标");
+      await until(
+        async () =>
+          (await host.store.get(scope(), id)).requirements_revision ===
+            latest.requirements_revision + 1 &&
+          (await host.store.get(scope(), id)).status === "idle",
+      );
+      expect(label.statusCode).toBe(202);
+      const renameSaved = await submit(
+        id,
+        "只把保存名称改成“不能重复另存”，先不要继续。",
+      );
+      expect(renameSaved.statusCode).toBe(409);
+      expect(renameSaved.json().error.code).toBe("result_already_saved");
     } finally {
       await restarted.close();
     }

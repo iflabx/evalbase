@@ -1,3 +1,4 @@
+import { saveTargetAmendment } from "./save-target-amendment.js";
 import { publicationCompletion } from "./publication-completion.js";
 import { draftTools } from "./draft-tools.js";
 import { createSessionModel, type SessionModelHooks } from "./session-model.js";
@@ -397,9 +398,10 @@ export class FormalSessionHost {
         hooks: options.hooks,
         correctionOf: () => correctionOf,
       });
+      let requiredAmendmentTool: string | undefined;
       const feedback = sessionFeedback({
         schemas: registry.schemas,
-        requiredTool: () => requiredPublicationTool,
+        requiredTool: () => requiredAmendmentTool ?? requiredPublicationTool,
         executionControl: async () => {
           const task = await this.execution.guard(proof);
           return {
@@ -407,6 +409,7 @@ export class FormalSessionHost {
             resumeAuthorized: explicitResumeRequest(input.text),
             resumeQueued: !!task.resume_suspended,
             amendmentPending:
+              !!(await saveTargetAmendment(this.db, sessionId)) ||
               task.feedback?.kind === "requirements" ||
               task.suspended?.feedback?.kind === "requirements",
           };
@@ -486,6 +489,43 @@ export class FormalSessionHost {
       const recoveryInput = async () => {
         const facts = await this.execution.projection(scope, sessionId);
         const task = await this.execution.guard(proof);
+        const amendment = await saveTargetAmendment(this.db, sessionId);
+        if (amendment && amendment.turnId === turnId) {
+          feedback.assertResolved();
+          if (
+            (await this.store.get(scope, sessionId)).requirements_revision !==
+            amendment.baseRevision
+          )
+            throw new BusinessError(
+              409,
+              "requirements_revision_conflict",
+              "改名所依据的要求已经变化，任务保持暂停。请核对后重新提出修改。",
+            );
+          const attempted = (
+            await this.db.query(
+              "SELECT 1 FROM assistant_runtime_event WHERE session_id=$1 AND kind='save_target_recovery' AND detail->>'amendmentId'=$2 LIMIT 1",
+              [sessionId, String(amendment.eventId)],
+            )
+          ).rowCount;
+          if (attempted)
+            throw new BusinessError(
+              409,
+              "requirements_amendment_pending",
+              "保存名称尚未修改，任务保持暂停。",
+            );
+          await this.store.event(proof, "save_target_recovery", {
+            amendmentId: String(amendment.eventId),
+          });
+          requiredAmendmentTool = "update_requirements";
+          return {
+            messages: [
+              new HumanMessage(
+                `系统完成核对：用户要求的保存名称尚未提交。仅调用update_requirements，expectedRevision使用原要求修订${amendment.baseRevision}，只修改交付${amendment.deliveryId}的saveTarget为newDraft、name为${JSON.stringify(amendment.name)}；其他有效字段保持。此次修改不提供新的继续授权。`,
+              ),
+            ],
+          };
+        }
+        requiredAmendmentTool = undefined;
         if (task.suspended) {
           // A model's final text is not a control receipt. Reuse the guarded
           // command if it omitted an explicitly authorized continuation.
@@ -644,11 +684,13 @@ export class FormalSessionHost {
         const processed = finalFacts.results.some(
           (r) => r.isCurrent && r.status === "succeeded",
         );
-        controlMessage = task.resume_suspended
-          ? processed && !saved
-            ? "已安排原任务继续；保存仍需你确认，请等待新的确认卡。"
-            : "已安排原任务继续。"
-          : `${saved ? "已有保存回执。" : processed ? "处理已完成，尚未保存。" : "尚未完成保存。"}原任务保持暂停。${names ? `当前保存目标：${names}。` : ""}需要继续时发送“继续”或点击继续按钮，旧确认卡不可用。`;
+        controlMessage = finalFacts.pendingSaveTarget
+          ? `保存名称尚未修改为「${finalFacts.pendingSaveTarget.name}」，原任务保持暂停。请完成或明确撤销这项改名要求后继续。`
+          : task.resume_suspended
+            ? processed && !saved
+              ? "已安排原任务继续；保存仍需你确认，请等待新的确认卡。"
+              : "已安排原任务继续。"
+            : `${saved ? "已有保存回执。" : processed ? "处理已完成，尚未保存。" : "尚未完成保存。"}原任务保持暂停。${names ? `当前保存目标：${names}。` : ""}需要继续时发送“继续”或点击继续按钮，旧确认卡不可用。`;
       }
       const savedReceipts = finalFacts.receipts.filter(
         (r) => r.isCurrent && r.acceptanceId,

@@ -1,3 +1,7 @@
+import {
+  recordSaveTargetAmendment,
+  completeSaveTargetAmendment,
+} from "./save-target-amendment.js";
 import { mergeToolCorrection } from "./tool-arguments.js";
 import { restoreSuspended } from "./suspension.js";
 import { randomUUID } from "node:crypto";
@@ -338,6 +342,7 @@ export class SessionStore {
           revision,
         ],
       );
+      await recordSaveTargetAmendment(client, session, turnId, payload.text);
       await client.query(
         "INSERT INTO assistant_runtime_message(session_id,turn_id,role,content) VALUES($1,$2,'user',$3)",
         [id, turnId, payload.text],
@@ -760,6 +765,13 @@ export class SessionStore {
       const current = await this.get(proof, proof.sessionId, client);
       if (current.requirements_revision !== request.expectedRevision)
         throw new SessionError("requirements_revision_conflict");
+      await completeSaveTargetAmendment(
+        client,
+        proof.sessionId,
+        proof.turnId,
+        next,
+        request.expectedRevision,
+      );
       for (const value of next.deliveries) {
         const priorTarget = before.requirements.deliveries.find(
           (d) => d.id === value.id,
