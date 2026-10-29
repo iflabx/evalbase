@@ -11,7 +11,7 @@ Blocked by: 无未决范围问题；各票执行依赖见下表
 
 ## 1. 合同与范围
 
-2026-10-30 补修方案：保存目标修改漏执行及跨轮恢复的审查后合同，统一见[待完成修改与恢复方案](result-workspace-20261029/verification.md#amendment-completion-plan)。主修复与追加补修已完成定向验证；新有界 CU 业务闭环完成但出现强制工具未清导致的 no_progress，已补修并回归，未改签该次为无报错通过；见[实现与验收记录](amendment-completion-20261030/verification.md)。旧活动、预算与通过证据保持。
+2026-10-30 补修方案：保存目标修改漏执行及跨轮恢复的审查后合同，统一见[待完成修改与恢复方案](result-workspace-20261029/verification.md#amendment-completion-plan)。主修复与追加补修已完成定向验证；新有界 CU 业务闭环完成但出现强制工具未清导致的 no_progress，已补修并回归，未改签该次为无报错通过；见[实现与验收记录](amendment-completion-20261030/verification.md)。旧活动、预算与通过证据保持。 其后Owner另行授权的独立补验已通过，未出现no_progress，见[补修后新有界CU](amendment-retest-20261030/verification.md)；前轮失败记录保持原结论。
 
 产品以[PRD §7.14](../../docs/PRD-data-selection-and-assistant.md#assistant-rebuild-product)和[CONTEXT](../../CONTEXT.md)为准；技术以[重建架构](../../docs/architecture/assistant-rebuild.md)及[ADR 0015](../../docs/adr/0015-assistant-rebuild-boundaries.md)为准。完整范围、已可复用内容、G01～G12 缺口、85 项主责任和旧机制退出见[范围核对](../../docs/assistant-rebuild-scope-and-batches.md)，具体操作合同见[能力清单](../../docs/assistant-rebuild-capabilities.md)，不在本 Spec 复制一份产品定义。
 

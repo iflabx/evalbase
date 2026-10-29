@@ -37,3 +37,5 @@
 追加补修已通过原 20 项组合及独立最终 SDK 断言、类型与 lint 检查。后续隔离预览更新使用补修提交，部署身份见 preview-version.json。本次实模发生在追加补修之前；没有另开活动或重置旧预算，因此不宣称追加补修已取得新一轮无报错实模证明。停止发生于等待确认阶段，不冒充 Worker 在途暂停。
 
 证据同目录：red.log、final2.log、forced-tool-red2.log、forced-tool-green.log、forced-tool-final.log、types-last.log、lint-last.log、C04-ledger.json、business-result.json、inspect.json、preservation.json、preview-version.json。本地截图 workspace-cu.png。
+
+后续独立验证：Owner另开授权活动在6be6ded完成同场景CU，未出现no_progress，见[新活动验收](../amendment-retest-20261030/verification.md)。本活动原有警告及预算保持，不据后续结果改签。
