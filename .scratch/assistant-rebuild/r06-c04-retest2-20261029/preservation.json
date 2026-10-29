@@ -1,0 +1,97 @@
+[
+  {
+    "table": "assistant_runtime_session",
+    "oldRows": 22,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_turn",
+    "oldRows": 40,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_message",
+    "oldRows": 76,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_event",
+    "oldRows": 721,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_execution",
+    "oldRows": 20,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_request",
+    "oldRows": 130,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_grant",
+    "oldRows": 20,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_activity",
+    "oldRows": 20,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_operation",
+    "oldRows": 18,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_confirmation",
+    "oldRows": 8,
+    "unchanged": true
+  },
+  {
+    "table": "assistant_runtime_attachment",
+    "oldRows": 3,
+    "unchanged": true
+  },
+  {
+    "table": "collaborative_draft",
+    "oldRows": 7,
+    "unchanged": true
+  },
+  {
+    "table": "collaborative_draft_record",
+    "oldRows": 17,
+    "unchanged": true
+  },
+  {
+    "table": "processing_run",
+    "oldRows": 6,
+    "unchanged": true
+  },
+  {
+    "table": "processing_batch",
+    "oldRows": 6,
+    "unchanged": true
+  },
+  {
+    "table": "processing_acceptance",
+    "oldRows": 5,
+    "unchanged": true
+  },
+  {
+    "table": "model_connection",
+    "oldRows": 9,
+    "unchanged": true
+  },
+  {
+    "table": "test_set_version",
+    "oldRows": 1,
+    "unchanged": true
+  },
+  {
+    "table": "data_asset",
+    "oldRows": 12,
+    "unchanged": true
+  }
+]

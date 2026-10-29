@@ -1,0 +1,16 @@
+     ✓ R06 real page flushes focused input before publishing and downloads the same confirmed CSV and provenance bundle  2361ms
+
+ Test Files  1 passed (1)
+      Tests  27 passed (27)
+   Start at  12:45:32
+   Duration  31.70s (transform 2.22s, setup 38ms, import 4.29s, tests 27.04s, environment 0ms)
+
+
+     ✓ R06 SDK creates a real draft once and updates only the requested field  906ms
+
+ Test Files  1 passed (1)
+      Tests  98 passed (98)
+   Start at  12:48:40
+   Duration  54.76s (transform 2.23s, setup 32ms, import 3.98s, tests 50.53s, environment 0ms)
+
+server/frontend typecheck passed; frontend formal build passed; diff check passed

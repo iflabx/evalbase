@@ -1,8 +1,8 @@
 # REBUILD-06 草稿编辑、固定选取、发布与版本读取
 
-Status: in-progress
-Implementation: in-progress
-Validation: partial-pass
+Status: ready-for-agent
+Implementation: completed
+Validation: targeted-pass
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md)
 
 - 批次：2；对应原范围建议：R06。
@@ -42,7 +42,7 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - [x] **R06-3** 选取在搜索/翻页后保持固定 ID；参数改变使旧确认失效；超过 5 文件或容量拒绝，部分选择不扩大。
 - [x] **R06-4** 草稿创建、采用、发布分别覆盖成功后响应/检查点丢失；重试同一回执只写一次，不以已排队或模型总结冒充发布。
 - [x] **R06-5** 来源、名称、版本、下载文件和保存链接对应同一真实对象；草稿处理上下文保留原草稿目标，正式版本及原件不变。
-- [ ] **R06-6** 完成 C04：普通提示基于当前资料建立两条草稿、修改其中一条并按固定确认发布/下载，刷新核对字段与唯一版本。只使用新合成对象。
+- [x] **R06-6** 完成 C04：普通提示基于当前资料建立两条草稿、修改其中一条并按固定确认发布/下载，刷新核对字段与唯一版本。只使用新合成对象。
 
 ### 追加架构验收（2026-10-28，待核对闭合）
 
@@ -75,3 +75,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-29：完成主实现 `3db4fdd` 与C04补修 `b7092a5`，受控回归及双轴审阅见[唯一验证记录](../r06-verification.md)。隔离4240已更新；旧数据/预算保留，4217未动。C04首轮4请求/0处理/0生成因选取语义参数失败封存；修复后真实CU尚待另行授权，R06-6不勾选，整票保持in-progress/partial-pass。
 
 - 2026-10-29（授权补验）：Owner批准14请求/0处理生成/20分钟的新C04；代码b7092a5实际14请求、一次参数纠正，选取与字段修改通过，发布及普通继续均只有文字、0发布工具调用，发布/下载未完成。活动已封存，旧数据/预算原值保持；R06-6仍未闭合，详见[唯一记录补验节](../r06-verification.md#r06-c04-retest)。本轮未修改业务代码。
+
+- 2026-10-29：发布动作完成核验与状态补修`52ba6f0`已完成125项受控回归及类型/构建核对；Owner批准的新14请求/20分钟活动完整通过C04，含唯一v1、CSV及溯源下载和刷新。Implementation completed/Validation targeted-pass，旧失败/预算保留；[最新证据](../r06-verification.md#r06-c04-retest2)。

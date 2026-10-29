@@ -1,0 +1,147 @@
+{
+  "draft": {
+    "id": "collabdraft_ebc30fe98cdb20854fe48ebd2e24b8e60fcb5bc3a92446baaa2cdc7565b4ed2f",
+    "name": "C04再验客服问法",
+    "purpose": "从 C04-source.jsonl 前2条选取记录，供用户先选记录。",
+    "status": "published",
+    "revision": "3",
+    "published_version_id": "version_56cbeddc12e745d0a45dbf57304515ee",
+    "test_set_id": "testset_9f4a99a55350401289174143f752cf15"
+  },
+  "rows": [
+    {
+      "id": "draftrow_83363a291c844be8b43b6fbc2e4e36df",
+      "position": "1",
+      "question": "明天还能预约服务吗？",
+      "expected_output": "提供预约入口",
+      "metadata": [
+        {
+          "key": "category",
+          "value": "预约"
+        }
+      ],
+      "source": {
+        "assetId": "asset_6dd4189f9bba43879ea415a11fd07538",
+        "ordinal": 1
+      },
+      "question_revision": "1",
+      "expected_output_revision": "0",
+      "metadata_revision": "0"
+    },
+    {
+      "id": "draftrow_87cf2f7524274d20b703147a935e8141",
+      "position": "2",
+      "question": "预约时间能往后改一天吗？",
+      "expected_output": "说明改期流程",
+      "metadata": [
+        {
+          "key": "category",
+          "value": "改期"
+        }
+      ],
+      "source": {
+        "assetId": "asset_6dd4189f9bba43879ea415a11fd07538",
+        "ordinal": 2
+      },
+      "question_revision": "0",
+      "expected_output_revision": "0",
+      "metadata_revision": "0"
+    }
+  ],
+  "publicationOperations": 1,
+  "publicationCards": 1,
+  "turns": [
+    {
+      "id": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "status": "succeeded",
+      "prompt": "用 C04-source.jsonl 的前2条建个“C04再验客服问法”草稿，我先选记录。",
+      "tool_calls": 7
+    },
+    {
+      "id": "turn_ae16272d65ae46889baebbca33f84527",
+      "status": "succeeded",
+      "prompt": "把第一条问题改成“明天还能预约服务吗？”，期望输出和 Metadata 保持不变。",
+      "tool_calls": 3
+    },
+    {
+      "id": "turn_ae0c8242c88442a0b75550d50549146c",
+      "status": "succeeded",
+      "prompt": "就按现在这两条发布。",
+      "tool_calls": 2
+    }
+  ],
+  "visibleTools": [
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_6a6517a3898249df9951cd0f7eb13c72",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae16272d65ae46889baebbca33f84527",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae16272d65ae46889baebbca33f84527",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae16272d65ae46889baebbca33f84527",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae16272d65ae46889baebbca33f84527",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae0c8242c88442a0b75550d50549146c",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae0c8242c88442a0b75550d50549146c",
+      "toolCount": 47,
+      "publishAvailable": true
+    },
+    {
+      "turnId": "turn_ae0c8242c88442a0b75550d50549146c",
+      "toolCount": 47,
+      "publishAvailable": true
+    }
+  ],
+  "protectedFieldsUnchanged": true,
+  "newPublishedVersion": "version_56cbeddc12e745d0a45dbf57304515ee"
+}

@@ -1,0 +1,3 @@
+question,expected_output,metadata
+明天还能预约服务吗？,提供预约入口,category：预约
+预约时间能往后改一天吗？,说明改期流程,category：改期
