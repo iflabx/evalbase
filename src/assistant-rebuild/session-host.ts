@@ -374,10 +374,17 @@ export class FormalSessionHost {
         )
       ).rows[0]?.feedback;
       correctionOf = persisted?.id ?? null;
+      let requiredAmendmentTool: string | undefined;
       const observe = async (kind: string, detail: unknown) => {
         if (kind === "parameter_feedback" || kind === "requirements_feedback")
           correctionOf = (detail as { originalCallId: string }).originalCallId;
         if (kind === "tool_result") correctionOf = null;
+        if (
+          kind === "tool_result" &&
+          requiredAmendmentTool &&
+          !(await saveTargetAmendment(this.db, sessionId))
+        )
+          requiredAmendmentTool = undefined;
         await this.store.event(proof, kind, detail);
         if (kind === "tool_call")
           toolArgs.set((detail as any).id, (detail as any).args);
@@ -398,7 +405,6 @@ export class FormalSessionHost {
         hooks: options.hooks,
         correctionOf: () => correctionOf,
       });
-      let requiredAmendmentTool: string | undefined;
       const feedback = sessionFeedback({
         schemas: registry.schemas,
         requiredTool: () => requiredAmendmentTool ?? requiredPublicationTool,

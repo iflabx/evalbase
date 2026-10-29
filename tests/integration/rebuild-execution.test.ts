@@ -2441,6 +2441,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     ).toBe("0");
   });
   it("SAVE RECOVERY public dispatcher SDK performs stop rename continue and unique save", async () => {
+    let forcedAfterAmendment = false;
     const state = async (id: string) =>
       (
         await db.query(
@@ -2510,7 +2511,12 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
             ],
           },
         }),
-        { role: "assistant", content: "名称已修改，保持暂停。" },
+        (body: any) => {
+          forcedAfterAmendment = JSON.stringify(
+            body.tool_choice ?? null,
+          ).includes("update_requirements");
+          return { role: "assistant", content: "名称已修改，保持暂停。" };
+        },
       ];
       expect(
         (await submit(id, "只把保存名称改成“客服整理版”，先不要继续。"))
@@ -2528,6 +2534,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
             .saveTarget as any
         ).name,
       ).toBe("客服整理版");
+      expect(forcedAfterAmendment).toBe(false);
       expect(
         (
           await db.query(
