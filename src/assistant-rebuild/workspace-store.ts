@@ -266,6 +266,7 @@ export class WorkspaceStore {
               "navigate_project",
               "open_draft",
               "open_draft_processing",
+              "read_processing_task",
               "download_version",
             ].includes(e.detail?.name),
         )

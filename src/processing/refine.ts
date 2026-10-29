@@ -27,6 +27,7 @@ import {
 } from "./presentation.js";
 import {
   getProcessingRun,
+  assertProcessingBackgroundAvailable,
   processingRunSummary,
   processingAccess,
   readProcessingRun,
@@ -171,16 +172,11 @@ export async function createRefinementRun(
     }
     const located = await getProcessingRun(client, scope, parentId);
     await guardProcessingTask(client, scope);
-    if (
-      located.background_document_ids.length &&
-      (
-        await client.query(
-          "SELECT id FROM assistant_background_document WHERE id=ANY($1::text[]) FOR SHARE",
-          [located.background_document_ids],
-        )
-      ).rowCount !== located.background_document_ids.length
-    )
-      throw new ProcessingError(409, "processing_source_unavailable");
+    await assertProcessingBackgroundAvailable(
+      client,
+      scope,
+      located.background_document_ids,
+    );
     const parent = await getProcessingRun(client, scope, parentId, true);
     const inheritedInput = await readFrozenInput(artifacts, parent);
     const plan = scope.taskRound?.generation ?? inheritedInput.generation;
@@ -378,9 +374,12 @@ export async function createRefinementRun(
       const inheritedPolicy =
         scope.taskRound?.kind === "complete" ||
         (mode === "refine" && !generatesRecords(options.operation));
-      const policy = inheritedPolicy
-        ? input.background?.contentReviewPolicy
-        : "evidence-v1";
+      const policy =
+        operationOrigin(scope) === "runtime"
+          ? (background?.contentReviewPolicy ?? "manual-v1")
+          : inheritedPolicy
+            ? input.background?.contentReviewPolicy
+            : "evidence-v1";
       if (policy)
         background = {
           requirements: [],

@@ -26,7 +26,6 @@ import {
   MoreHorizontal,
   FileText,
   ArrowDown,
-  ChevronRight,
   FileUp,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -100,6 +99,14 @@ const toolNames: Record<string, string> = {
   navigate_project: "打开项目页面",
   create_requirements: "新增交付要求",
   update_requirements: "修改交付要求",
+  list_processing_tasks: "查找处理任务",
+  read_processing_task: "核对处理结果",
+  read_processing_history: "查看处理轮次",
+  preview_processing_round: "核对本轮输入",
+  submit_processing_round: "继续处理",
+  deduplicate_processing_task: "整理重复结果",
+  control_processing_run: "控制处理任务",
+  prepare_processing_task_save: "准备保存确认",
   submit_processing: "提交处理",
   wait_processing: "等待处理",
   prepare_adoption: "准备保存确认",
@@ -271,7 +278,7 @@ export function FormalAssistant({
         else if (BigInt(first) < BigInt(gap.before)) gap.before = first;
         else throw new Error("历史分页未推进，请重试加载。");
       }
-    } catch (e) {
+    } catch {
       if (activeSession(selected) && historyEpoch.current === epoch && !controller.signal.aborted)
         setHistoryFailed(true);
     } finally {
@@ -507,7 +514,7 @@ export function FormalAssistant({
       }
       openSession(data.session.id, true);
       void refreshList();
-    } catch (e) {
+    } catch {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(busyToken);
@@ -800,7 +807,7 @@ export function FormalAssistant({
       await api(endpoint(projectId, selected) + "/budget-offer", json("POST", {}));
       const updated = await api<Snapshot>(endpoint(projectId, selected));
       if (activeSession(selected)) setSnapshot(updated);
-    } catch (e) {
+    } catch {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(token);
@@ -814,7 +821,7 @@ export function FormalAssistant({
       await api(endpoint(projectId, selected) + "/confirmations/" + id, json("POST", { accept }));
       const updated = await api<Snapshot>(endpoint(projectId, selected));
       if (activeSession(selected)) setSnapshot(updated);
-    } catch (e) {
+    } catch {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(busyToken);
@@ -831,7 +838,7 @@ export function FormalAssistant({
         setConflict(false);
         saveDraft(draftRef.current, null);
       }
-    } catch (e) {
+    } catch {
       if (activeSession(selected)) setError(errorText(e));
     }
   };
@@ -892,7 +899,7 @@ export function FormalAssistant({
         setRename(false);
         refreshList();
       }
-    } catch (e) {
+    } catch {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(busyToken);
@@ -1006,10 +1013,10 @@ export function FormalAssistant({
                   const i = tabs.findIndex((a) => a.id === t.id);
                   const next = (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
                   setActive(tabs[next]!.id);
-                  e.currentTarget
+                  const buttons = e.currentTarget
                     .closest('[role="tablist"]')
-                    ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-                    [next]?.focus();
+                    ?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+                  buttons?.[next]?.focus();
                 }
               }}
               className="max-w-44 truncate"
@@ -1511,6 +1518,40 @@ export function FormalAssistant({
                                 ))}
                               </div>
                             </details>
+                            {snapshot.results
+                              .filter(
+                                (r) =>
+                                  r.isCurrent !== false &&
+                                  r.isLatest !== false &&
+                                  !snapshot.confirmations.some(
+                                    (c) =>
+                                      c.action === "adopt" &&
+                                      ["pending", "committed"].includes(c.status) &&
+                                      c.payload["runId"] === r.run_id,
+                                  ),
+                              )
+                              .map((r) => (
+                                <div key={r.run_id} className="mt-4 rounded-xl border bg-card p-4">
+                                  <h2 className="font-semibold">本轮结果 · {r.output_count} 条</h2>
+                                  <p className="my-2 text-sm text-muted-foreground">
+                                    {r.status === "succeeded"
+                                      ? "处理已完成，尚未保存"
+                                      : r.status === "failed"
+                                        ? "本轮未完成，已有结果保留"
+                                        : r.status === "cancelled"
+                                          ? "处理已停止"
+                                          : "处理中"}
+                                  </p>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!r.output_count}
+                                    onClick={() => void previewResult(r.run_id)}
+                                  >
+                                    查看处理结果
+                                  </Button>
+                                </div>
+                              ))}
                             {snapshot.execution?.reason && (
                               <p className="mt-3 text-sm text-muted-foreground">
                                 {reasonNames[snapshot.execution.reason] ??
@@ -1687,7 +1728,11 @@ export function FormalAssistant({
                                   <p className="my-3 text-sm text-muted-foreground">
                                     {String(
                                       (c.payload["input"] as { target?: { name?: string } })?.target
-                                        ?.name ?? "测试集草稿",
+                                        ?.name ??
+                                        ((c.payload["input"] as { target?: { kind?: string } })
+                                          ?.target?.kind === "asset"
+                                          ? "原始数据"
+                                          : "测试集草稿"),
                                     )}{" "}
                                     · 仅保存当前确认卡中的结果。
                                   </p>
@@ -1732,6 +1777,7 @@ export function FormalAssistant({
                                   <h2 className="font-semibold">
                                     已保存 ·{" "}
                                     {r.draftName ??
+                                      (r.assetId ? (r.fileName ?? "原始数据") : undefined) ??
                                       (r.draftStatus === "unavailable"
                                         ? "目标草稿当前不可用"
                                         : "已保存的草稿")}

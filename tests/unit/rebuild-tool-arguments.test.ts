@@ -92,3 +92,38 @@ describe("formal argument representation boundary", () => {
     ).toBe("protected_arguments_changed");
   });
 });
+
+it("keeps discriminator branch defaults confined to the selected save target", () => {
+  const schema = z.object({
+    target: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("newDraft"),
+          name: z.string(),
+          purpose: z.string().default(""),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("draft"),
+          id: z.string(),
+          expectedRevision: z.number().int(),
+        })
+        .strict(),
+      z.object({ kind: z.literal("asset") }).strict(),
+    ]),
+  });
+  for (const target of [
+    { kind: "draft", id: "draft1", expectedRevision: 2 },
+    { kind: "asset" },
+  ]) {
+    const normalized = normalizeToolArguments(schema, { target });
+    expect(normalized.args).toEqual({ target });
+    expect(schema.safeParse(normalized.args).success).toBe(true);
+  }
+  expect(
+    normalizeToolArguments(schema, {
+      target: { kind: "newDraft", name: "new" },
+    }).args,
+  ).toEqual({ target: { kind: "newDraft", name: "new", purpose: "" } });
+});

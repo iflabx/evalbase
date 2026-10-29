@@ -39,16 +39,14 @@ describe("shared current execution readiness", () => {
       );
     },
   );
-  it("keeps genuine multi-delivery planning but rejects unsupported execution", () => {
+  it("allows complete multi-delivery execution while keeping planning non-executable", () => {
     const r = req();
     r.deliveries.push({ ...r.deliveries[0]!, id: "d2" });
     r.mode = "plan";
     expect(executionReadiness(r).ready).toBe(false);
     expect(r.deliveries).toHaveLength(2);
     r.mode = "execute";
-    expect(executionReadiness(r).issues[0]?.code).toBe(
-      "single_delivery_required",
-    );
+    expect(executionReadiness(r).ready).toBe(true);
   });
   it("blocks uncommitted amendments without changing the requirement revision", () => {
     const r = req(),

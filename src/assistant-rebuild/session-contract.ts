@@ -198,7 +198,7 @@ export function validateDeliveryResults(
 ) {
   validateProcessingRequirements(
     { targetCount: delivery.count, classifications: delivery.classifications },
-    { ...options, allowedFields: [] },
+    { ...options, operation: "clean", allowedFields: [] },
     records,
     [],
     true,
@@ -397,10 +397,10 @@ export function executionReadiness(
       code: "requirements_amendment_pending",
       message: "本次修改尚未完整生效",
     });
-  if (active.length !== 1)
+  if (!active.length)
     issues.push({
-      code: "single_delivery_required",
-      message: "当前执行能力要求一份活动交付",
+      code: "active_delivery_required",
+      message: "需要至少一份活动交付",
     });
   for (const d of active) {
     const missing = (field: string, message: string) =>
@@ -410,17 +410,33 @@ export function executionReadiness(
         field,
         message,
       });
-    if (!["clean", "rewrite"].includes(d.operation ?? ""))
-      missing("operation", "需要明确清洗或改写操作");
-    if (!d.source?.recordIds?.length) missing("source", "需要固定实际输入记录");
-    if (d.count === undefined || d.count !== d.source?.recordIds?.length)
-      missing("count", "数量须与固定输入范围一致");
+    if (
+      !["clean", "rewrite", "augment", "generate"].includes(d.operation ?? "")
+    )
+      missing("operation", "需要明确处理操作");
+    if (d.operation !== "generate" && !d.source?.recordIds?.length)
+      missing("source", "需要固定实际输入记录");
+    if (d.operation === "generate" && d.source)
+      missing("source", "从背景生成不使用原始记录");
+    if (
+      d.count === undefined ||
+      (d.operation !== "generate" &&
+        d.operation !== "augment" &&
+        d.count !== d.source?.recordIds?.length)
+    )
+      missing("count", "需要明确数量，一对一处理须与固定输入范围一致");
+    if (
+      ["generate", "augment", "rewrite"].includes(d.operation ?? "") &&
+      !d.instructions?.trim()
+    )
+      missing("instructions", "需要明确生成或改写要求");
+    if (d.operation === "generate" && d.allowedFields?.length !== 3)
+      missing("allowedFields", "从零生成需要生成问题、期望输出和Metadata");
     if (!d.allowedFields?.length)
       missing("allowedFields", "需要明确允许修改的字段");
     if (d.allowedFields?.includes("metadata") && d.metadataKeys?.length === 0)
       missing("metadataKeys", "未指定允许修改的Metadata字段");
-    if (d.saveTarget?.kind !== "newDraft")
-      missing("saveTarget", "当前保存能力需要新草稿目标");
+    if (!d.saveTarget) missing("saveTarget", "需要明确保存目标");
     if (
       d.instructions?.trim() &&
       d.instructionsContext !== instructionContext(d)
@@ -441,6 +457,7 @@ export function executionReadiness(
 export function assertExecutionReady(
   requirements: SessionRequirements,
   pending = false,
+  deliveryId?: string,
 ) {
   const readiness = executionReadiness(requirements, pending);
   if (!readiness.ready)
@@ -451,11 +468,11 @@ export function assertExecutionReady(
         "当前仅保存方案，未授权执行",
     );
   return requirements.deliveries.find(
-    (d) => d.status === "active",
+    (d) => d.status === "active" && (!deliveryId || d.id === deliveryId),
   )! as Delivery & {
     source: Source & { recordIds: string[] };
     count: number;
-    operation: "clean" | "rewrite";
+    operation: "clean" | "rewrite" | "augment" | "generate";
     allowedFields: NonNullable<Delivery["allowedFields"]>;
     saveTarget: { kind: "newDraft"; name: string; purpose?: string };
   };

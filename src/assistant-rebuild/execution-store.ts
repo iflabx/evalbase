@@ -1,3 +1,5 @@
+import { explicitProcessingRoundRequest } from "./control-intent.js";
+import { acceptTask } from "../processing/tasks.js";
 import { compatibleProcessingOperations } from "./processing-context.js";
 import {
   assertSaveTargetResolved,
@@ -485,10 +487,71 @@ export class ExecutionStore {
     return compatibleProcessingOperations(db, session);
   }
 
+  async pendingDeliveries(scope: SessionScope, session: any) {
+    const ops = await this.processingOperations(session),
+      pending = [];
+    for (const delivery of session.requirements.deliveries.filter(
+      (d: any) => d.status === "active",
+    )) {
+      const op = ops.find((o: any) =>
+        o.operation_key.startsWith("processing:" + delivery.id + ":"),
+      );
+      let saved = false;
+      if (op)
+        for (const a of (
+          await this.db.query(
+            "SELECT id FROM assistant_runtime_operation WHERE session_id=$1 AND kind='adopt' AND run_id=$2",
+            [session.id, op.run_id],
+          )
+        ).rows)
+          if (await this.receipt(scope, session.id, a.id)) saved = true;
+      if (!saved)
+        pending.push({
+          deliveryId: delivery.id,
+          runId: op?.run_id,
+          status: op?.job_status,
+        });
+    }
+    return pending;
+  }
+  async beginProcessingRound(proof: TurnProof, taskId: string) {
+    return this.transaction(proof, proof.sessionId, async (c) => {
+      const current = await this.guard(proof, c, true),
+        input = await this.sessions.guard(proof, true, c, true);
+      if (!explicitProcessingRoundRequest(input.text))
+        throw new SessionError("processing_round_authorization_required");
+      const task = (
+        await c.query(
+          "SELECT t.id,j.status FROM processing_task t JOIN processing_run r ON r.id=t.latest_run_id JOIN job j ON j.id=r.job_id WHERE t.id=$1 AND t.project_id=$2 FOR SHARE OF t",
+          [taskId, proof.projectId],
+        )
+      ).rows[0];
+      if (!task || !["succeeded", "failed", "cancelled"].includes(task.status))
+        throw new SessionError("processing_still_running");
+      await assertSaveTargetResolved(c, proof.sessionId);
+      await c.query(
+        "UPDATE assistant_runtime_confirmation SET status='expired' WHERE session_id=$1 AND action='adopt' AND status='pending'",
+        [proof.sessionId],
+      );
+      if (current.suspended)
+        await c.query(
+          "UPDATE assistant_runtime_execution SET suspended=NULL,resume_suspended=false,resume_requested=false WHERE session_id=$1",
+          [proof.sessionId],
+        );
+    });
+  }
   async processingForExecution(proof: TurnProof, session: any) {
     const task = await this.processingGuard(proof);
     if (task.suspended) throw new SessionError("task_paused");
-    const op = (await this.processingOperations(session))[0];
+    const candidates = await this.processingOperations(session);
+    const op =
+      candidates.find(
+        (r: any) =>
+          r.turn_id === proof.turnId &&
+          !["succeeded", "cancelled"].includes(r.job_status),
+      ) ??
+      candidates.find((r: any) => r.turn_id === proof.turnId) ??
+      candidates[0];
     if (!op) throw new SessionError("processing_not_submitted", 422);
     const input = await this.sessions.guard(proof);
     if (
@@ -500,6 +563,12 @@ export class ExecutionStore {
     return op;
   }
   async processingCompatible(session: any, op: any, db: Query = this.db) {
+    const bound = session.requirements.deliveries.find(
+      (d: any) =>
+        op.operation_key.startsWith("processing:" + d.id + ":") ||
+        op.payload?.deliveryId === d.id,
+    );
+    if (bound?.status === "cancelled") return false;
     return (
       session.requirements_revision === op.requirements_revision ||
       (op.kind === "processing" &&
@@ -808,8 +877,13 @@ export class ExecutionStore {
       return created;
     });
   }
-  async admitRows(proof: TurnProof, operationId: string, rows: number) {
-    return this.transaction(proof, proof.sessionId, async (c) => {
+  async admitRows(
+    proof: TurnProof,
+    operationId: string,
+    rows: number,
+    db?: Query,
+  ) {
+    const admit = async (c: Query) => {
       const task = await this.guard(proof, c, true);
       const op = (
         await c.query(
@@ -841,7 +915,8 @@ export class ExecutionStore {
         "UPDATE assistant_runtime_operation SET rows_admitted=true WHERE id=$1",
         [operationId],
       );
-    });
+    };
+    return db ? admit(db) : this.transaction(proof, proof.sessionId, admit);
   }
   async receipt(
     scope: SessionScope,
@@ -934,7 +1009,15 @@ export class ExecutionStore {
           const s = await this.sessions.get(fixed, fixed.sessionId, db);
           if (!(await this.processingCompatible(s, op, db)))
             throw new SessionError("requirements_revision_conflict");
-          if (action && action !== "cancel" && op.kind !== "processing") {
+          if (
+            action &&
+            action !== "cancel" &&
+            ![
+              "processing",
+              "processing_control",
+              "processing_mutation",
+            ].includes(op.kind)
+          ) {
             const c = (
               await db.query(
                 "SELECT * FROM assistant_runtime_confirmation WHERE id=$1 AND operation_id=$2 AND session_id=$3 AND actor_id=$4 AND status='executing' AND expires_at>$5 AND requirements_revision=$6 FOR SHARE",
@@ -958,6 +1041,17 @@ export class ExecutionStore {
         },
         link: async (db, runId) => {
           await this.guard(fixed, db, true);
+          const run = (
+            await db.query(
+              "SELECT options,input_count FROM processing_run WHERE id=$1 AND project_id=$2",
+              [runId, fixed.projectId],
+            )
+          ).rows[0];
+          if (
+            run?.options.operation === "clean" &&
+            !run.options.instructions.trim()
+          )
+            await this.admitRows(fixed, op.id, Number(run.input_count), db);
           const changed = await db.query(
             "UPDATE assistant_runtime_operation SET run_id=$2 WHERE id=$1 AND session_id=$3 AND (run_id IS NULL OR run_id=$2) RETURNING id",
             [op.id, runId, fixed.sessionId],
@@ -970,18 +1064,43 @@ export class ExecutionStore {
           const session = await this.sessions.get(fixed, fixed.sessionId, db);
           if (!(await this.processingCompatible(session, op, db)))
             throw new SessionError("requirements_revision_conflict");
-          const active = session.requirements.deliveries.filter(
-            (d) => d.status === "active",
+          const delivery = session.requirements.deliveries.find(
+            (d) =>
+              d.status === "active" &&
+              op.operation_key.startsWith("processing:" + d.id + ":"),
           );
-          if (active.length > 1)
-            throw new SessionError("single_delivery_required", 422);
-          const delivery = active[0];
+          if (
+            !delivery &&
+            !op.payload.taskId &&
+            session.requirements.deliveries.length
+          )
+            throw new SessionError("delivery_not_found", 404);
           if (delivery) {
             assertInstructionsCurrent(delivery);
             if (
-              delivery.count !== request.records.length ||
-              canonicalJson(delivery.source) !==
-                canonicalJson(request.source) ||
+              delivery.operation !== request.options.operation ||
+              (["clean", "rewrite"].includes(delivery.operation!)
+                ? delivery.count !== request.records.length
+                : delivery.count !== request.options.outputCount) ||
+              (delivery.operation === "generate"
+                ? request.source.kind !== "background"
+                : canonicalJson(
+                    delivery.source
+                      ? {
+                          ...delivery.source,
+                          recordIds: [
+                            ...(delivery.source.recordIds ?? []),
+                          ].sort(),
+                          ...(delivery.source.kind === "assets"
+                            ? { assetIds: [...delivery.source.assetIds].sort() }
+                            : {}),
+                        }
+                      : null,
+                  ) !==
+                  canonicalJson({
+                    ...request.source,
+                    recordIds: [...request.source.recordIds].sort(),
+                  })) ||
               canonicalJson(delivery.allowedFields) !==
                 canonicalJson(request.options.allowedFields) ||
               (delivery.instructions ?? "") !== request.options.instructions ||
@@ -1032,11 +1151,29 @@ export class ExecutionStore {
                   }),
                 }
               : {}),
-            documents: [],
+            documents: (
+              await db.query(
+                "SELECT id,name,object_ref,extracted FROM assistant_runtime_attachment WHERE session_id=$1 AND removed_at IS NULL ORDER BY created_at,id",
+                [fixed.sessionId],
+              )
+            ).rows.map((row: any) => ({
+              id: row.id,
+              fileName: row.name,
+              sha256: row.object_ref.split("/").at(-1),
+              extractorVersion: row.extracted.extractorVersion,
+              fragments: row.extracted.fragments,
+            })),
           };
         },
         results: async (db, runIds) => {
-          if (!op.run_id || runIds.some((r) => r !== op.run_id))
+          if (op.payload.taskId) {
+            const valid = await db.query(
+              "SELECT id FROM processing_run WHERE project_id=$1 AND task_id=$2 AND id=ANY($3::text[])",
+              [fixed.projectId, op.payload.taskId, runIds],
+            );
+            if (valid.rowCount !== new Set(runIds).size)
+              throw new SessionError("processing_result_scope_changed");
+          } else if (!op.run_id || runIds.some((r) => r !== op.run_id))
             throw new SessionError("processing_result_scope_changed");
           await this.guard(fixed, db, true);
         },
@@ -1279,14 +1416,23 @@ export class ExecutionStore {
     heartbeat.unref();
     try {
       if (op.kind === "adopt") {
-        const result = await acceptProcessingResults(
-          this.db,
-          artifacts,
-          this.operationScope(proof, op, card.id),
-          op.payload.runId,
-          op.id,
-          op.payload.input,
-        );
+        const result = op.payload.taskId
+          ? await acceptTask(
+              this.db,
+              artifacts,
+              this.operationScope(proof, op, card.id),
+              op.payload.taskId,
+              op.id,
+              op.payload.input,
+            )
+          : await acceptProcessingResults(
+              this.db,
+              artifacts,
+              this.operationScope(proof, op, card.id),
+              op.payload.runId,
+              op.id,
+              op.payload.input,
+            );
         receipt = result.receipt;
       } else {
         const scope = this.operationScope(proof, op, card.id),
@@ -1636,10 +1782,14 @@ export class ExecutionStore {
     }
     const results = (
       await this.db.query(
-        "SELECT DISTINCT ON (r.id) o.id,o.run_id,o.turn_id,o.requirements_revision,j.status,(SELECT coalesce(sum(b.output_count),0)::int FROM processing_batch b WHERE b.run_id=r.id) AS output_count FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.kind='processing' ORDER BY r.id,o.id",
+        "SELECT DISTINCT ON (r.id) o.id,o.run_id,o.turn_id,o.requirements_revision,r.round_number,r.id=t.latest_run_id AS is_latest,j.status,(SELECT coalesce(sum(b.output_count),0)::int FROM processing_batch b WHERE b.run_id=r.id) AS output_count FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id JOIN processing_task t ON t.id=r.task_id WHERE o.session_id=$1 AND o.kind='processing' ORDER BY r.id,o.id",
         [sessionId],
       )
-    ).rows.map((r) => ({ ...r, isCurrent: currentRuns.has(r.run_id) }));
+    ).rows.map((r) => ({
+      ...r,
+      isLatest: r.is_latest,
+      isCurrent: currentRuns.has(r.run_id),
+    }));
     return {
       execution: task,
       pendingSaveTarget: pendingSaveTarget
@@ -1691,11 +1841,11 @@ export class ExecutionStore {
     runId: string,
     requestId: string,
     hash: string,
-    cost?: { rows: number },
+    cost?: { rows: number; generated?: number },
   ) {
     const op = (
       await this.db.query(
-        "SELECT o.*,s.project_id,s.actor_id FROM assistant_runtime_operation o JOIN assistant_runtime_session s ON s.id=o.session_id WHERE o.run_id=$1 AND o.kind='processing'",
+        "SELECT o.*,s.project_id,s.actor_id FROM assistant_runtime_operation o JOIN assistant_runtime_session s ON s.id=o.session_id JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE o.run_id=$1 AND o.kind='processing' ORDER BY (e.turn_id=o.turn_id) DESC LIMIT 1",
         [runId],
       )
     ).rows[0];
@@ -1725,6 +1875,9 @@ export class ExecutionStore {
         if (!cost || !Number.isSafeInteger(cost.rows) || cost.rows < 0)
           throw new SessionError("worker_cost_missing");
         const inputCount = cost.rows;
+        const generated = cost.generated ?? 0;
+        if (!Number.isSafeInteger(generated) || generated < 0)
+          throw new SessionError("worker_cost_missing");
         let admittedMs = this.policy.requestMs;
         if (task.activity_id) {
           const cap = (
@@ -1739,6 +1892,8 @@ export class ExecutionStore {
             cap.requests >= cap.request_limit ||
             (cap.row_limit !== null &&
               cap.rows_used + inputCount > cap.row_limit) ||
+            (cap.generated_limit !== null &&
+              cap.generated_used + generated > cap.generated_limit) ||
             (cap.started_at &&
               this.now() - new Date(cap.started_at).getTime() >=
                 Number(cap.max_ms))
@@ -1752,8 +1907,8 @@ export class ExecutionStore {
                 : 0),
           );
           await c.query(
-            "UPDATE assistant_runtime_activity SET requests=requests+1,rows_used=rows_used+$3,started_at=coalesce(started_at,$2) WHERE id=$1",
-            [cap.id, new Date(this.now()), inputCount],
+            "UPDATE assistant_runtime_activity SET requests=requests+1,rows_used=rows_used+$3,generated_used=generated_used+$4,started_at=coalesce(started_at,$2) WHERE id=$1",
+            [cap.id, new Date(this.now()), inputCount, generated],
           );
         }
         await c.query(

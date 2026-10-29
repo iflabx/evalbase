@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { explicitResumeRequest } from "../../src/assistant-rebuild/control-intent.js";
+import {
+  explicitResumeRequest,
+  explicitProcessingRoundRequest,
+} from "../../src/assistant-rebuild/control-intent.js";
 
 describe("continuation authorization", () => {
   it.each([
@@ -34,4 +37,25 @@ describe("continuation authorization", () => {
   ])("does not infer authority from %s", (text) => {
     expect(explicitResumeRequest(text)).toBe(false);
   });
+});
+
+describe("processing round authorization", () => {
+  it.each([
+    "扩充2条，先不执行",
+    "先不执行，重跑原输入只做方案",
+    "只是看看扩充结果",
+    "不要执行扩充",
+    "先不重跑",
+    "能否继续处理？",
+    "查询改写结果",
+  ])("keeps query or negative request paused: %s", (text) =>
+    expect(explicitProcessingRoundRequest(text)).toBe(false),
+  );
+  it.each([
+    "只继续处理选中的一条，其他保留",
+    "从第一份草稿选一条，再扩充2条，其余不动",
+    "只补齐未完成的两条，已完成的不要重跑",
+  ])("authorizes only the explicit new round: %s", (text) =>
+    expect(explicitProcessingRoundRequest(text)).toBe(true),
+  );
 });

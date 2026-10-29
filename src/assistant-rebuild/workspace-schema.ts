@@ -2,6 +2,8 @@ export const workspaceSchema = `
 ALTER TABLE assistant_runtime_session ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT '';
 ALTER TABLE assistant_runtime_activity ADD COLUMN IF NOT EXISTS row_limit integer;
 ALTER TABLE assistant_runtime_activity ADD COLUMN IF NOT EXISTS rows_used integer NOT NULL DEFAULT 0;
+ALTER TABLE assistant_runtime_activity ADD COLUMN IF NOT EXISTS generated_limit integer;
+ALTER TABLE assistant_runtime_activity ADD COLUMN IF NOT EXISTS generated_used integer NOT NULL DEFAULT 0;
 ALTER TABLE assistant_runtime_operation ADD COLUMN IF NOT EXISTS rows_admitted boolean NOT NULL DEFAULT false;
 ALTER TABLE assistant_runtime_execution ADD COLUMN IF NOT EXISTS suspended jsonb;
 ALTER TABLE assistant_runtime_execution ADD COLUMN IF NOT EXISTS resume_suspended boolean NOT NULL DEFAULT false;

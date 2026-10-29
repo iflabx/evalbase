@@ -72,3 +72,22 @@ export function requestedSaveName(text: string): string | undefined {
 export function explicitResumeRequest(text: string): boolean {
   return resumeIntent(text) !== "none";
 }
+
+/** A new processing round can supersede a paused save only when the user
+ * explicitly asks for processing. Read-only questions never clear suspension. */
+export function explicitProcessingRoundRequest(text: string): boolean {
+  if (
+    /[?？]|先不|暂不|不执行|不要执行|只做方案|只要方案|先给方案|只(?:是)?(?:看|查|问)|看看|查看|查询|解释|能否|是否|怎么|如何|吗/u.test(
+      text,
+    )
+  )
+    return false;
+  return text
+    .split(/[，,。；;\n]/u)
+    .some(
+      (clause) =>
+        /(?:继续处理|重新处理|再处理|再清洗|再改写|扩充|扩写|补齐|重跑|重试|新一轮)/u.test(
+          clause,
+        ) && !/(?:先不|暂不|不要|不执行|别)/u.test(clause),
+    );
+}

@@ -1,3 +1,8 @@
+import {
+  guardOperationCommit,
+  readOperationReceipt,
+  writeOperationReceipt,
+} from "../operations/commit.js";
 import { generatesRecords } from "./protocol.js";
 import {
   isGenerationRecipe,
@@ -710,6 +715,21 @@ export async function createProcessingTaskRound(
   if (mode === "saved") {
     const saved = prior ? null : await savedInput(db, artifacts, scope, task);
     const run = prior ? await getProcessingRun(db, scope, prior.id) : null;
+    let source = saved?.source ?? run!.source;
+    if (saved && body.resultIds !== undefined) {
+      const selected = body.resultIds;
+      if (
+        !Array.isArray(selected) ||
+        !selected.length ||
+        selected.length > 10000 ||
+        selected.some((id) => typeof id !== "string") ||
+        new Set(selected).size !== selected.length
+      )
+        throw new ProcessingError(422, "processing_result_invalid");
+      if (selected.some((id) => !saved.source.recordIds.includes(id)))
+        throw new ProcessingError(422, "processing_result_invalid");
+      source = { ...saved.source, recordIds: selected };
+    }
     return createProcessingRun(
       db,
       artifacts,
@@ -724,7 +744,7 @@ export async function createProcessingTaskRound(
         },
       },
       key,
-      { source: saved?.source ?? run!.source, options },
+      { source, options },
     );
   } else if (prior) {
     const run = await getProcessingRun(db, scope, prior.id);
@@ -993,6 +1013,14 @@ export async function deduplicateTask(
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    if (body.action) {
+      const replay = await readOperationReceipt(client, scope);
+      if (replay) {
+        await client.query("COMMIT");
+        return replay;
+      }
+      await guardOperationCommit(client, scope);
+    }
     if (body.action === "restore" || body.action === "exclude") {
       if (!Number.isSafeInteger(body.expectedRevision))
         throw new ProcessingError(422, "processing_scope_invalid");
@@ -1015,11 +1043,13 @@ export async function deduplicateTask(
         "UPDATE processing_task SET current_refs=$2,excluded_refs='[]',revision=revision+1 WHERE id=$1",
         [task.id, JSON.stringify(restored)],
       );
-      await client.query("COMMIT");
-      return {
+      const receipt = {
         restored: true,
         restoredIds: task.excluded_refs.map((ref) => ref.key),
       };
+      await writeOperationReceipt(client, scope, receipt);
+      await client.query("COMMIT");
+      return receipt;
     }
     const ids = idsOf(body.resultIds),
       current = await currentRows(db, artifacts, scope, task),
@@ -1062,8 +1092,7 @@ export async function deduplicateTask(
       );
     } else if (body.action !== undefined)
       throw new ProcessingError(422, "processing_scope_invalid");
-    await client.query("COMMIT");
-    return {
+    const receipt = {
       ...plan,
       checkedIds: ids,
       inspected: ids.length,
@@ -1076,6 +1105,9 @@ export async function deduplicateTask(
         )
         .map((r) => r.originalId),
     };
+    if (body.action) await writeOperationReceipt(client, scope, receipt);
+    await client.query("COMMIT");
+    return receipt;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

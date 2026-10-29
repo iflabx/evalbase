@@ -15,7 +15,7 @@ export async function compatibleProcessingOperations(
     delete processing.name;
     delete processing.saveTarget;
     return canonicalJson({
-      objective: requirements.objective ?? "",
+      objective: requirements.objective,
       processing,
     });
   };
@@ -26,6 +26,11 @@ export async function compatibleProcessingOperations(
         d.status === "active" &&
         op.operation_key.startsWith("processing:" + d.id + ":"),
     );
+    if (
+      op.payload.taskId &&
+      session.requirements_revision === op.requirements_revision
+    )
+      return true;
     if (!delivery)
       return (
         session.requirements_revision === 0 &&

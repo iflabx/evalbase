@@ -74,7 +74,15 @@ export type Snapshot = {
     adopted?: number;
     isCurrent: boolean;
   }[];
-  results: { id: string; run_id: string; status: string; output_count: number }[];
+  results: {
+    id: string;
+    run_id: string;
+    status: string;
+    output_count: number;
+    isCurrent?: boolean;
+    isLatest?: boolean;
+    round_number?: number;
+  }[];
   workspace: {
     nativeActions?: NativeAction[];
     cursor: string;

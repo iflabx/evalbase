@@ -799,7 +799,11 @@ export async function runProcessing(
             const extra = await processingCost.run(
               {
                 rows: Math.max(remaining.length, missing),
-                generated: run.options.operation === "generate" ? missing : 0,
+                generated: ["generate", "augment"].includes(
+                  run.options.operation,
+                )
+                  ? missing
+                  : 0,
               },
               () =>
                 generateText({
@@ -1413,6 +1417,9 @@ export async function runProcessing(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      // Match requirement cancellation's session -> job order. A late response
+      // must not hold the job lock while waiting for its source session.
+      await processingSourceAvailable(client, job.project_id, run.source, true);
       await fence(client, job, true);
       // The run lock also serializes permanent-deletion cleanup with batch completion.
       const current = await client.query(
@@ -1422,7 +1429,6 @@ export async function runProcessing(
       if (!current.rows[0]?.input_ref)
         throw new ProcessingError(404, "processing_not_found");
       await processingAccess(client, scope, true);
-      await processingSourceAvailable(client, job.project_id, run.source, true);
       if (body)
         stored = await artifacts.storeProcessing(
           body,

@@ -3,6 +3,8 @@ import { canonicalJson } from "../package/contract.js";
 import { deliveryPatchSchema } from "./session-contract.js";
 type Shape = {
   type?: string;
+  const?: unknown;
+  enum?: unknown[];
   properties?: Record<string, Shape>;
   items?: Shape;
   oneOf?: Shape[];
@@ -95,7 +97,7 @@ export function normalizeToolArguments(
             if (
               !has("object") ||
               !text.startsWith("{") ||
-              !/[}\]\"]$/.test(text)
+              !/[}\]"]$/.test(text)
             )
               throw Error("incomplete_structure");
             decoded = JSON.parse(text + "}");
@@ -183,9 +185,21 @@ export function normalizeToolArguments(
           paths.push([...path, "patch"]);
         }
       }
+      // A discriminator selects its own branch. Defaults from another target
+      // must never be injected into a valid object (for example newDraft.purpose into draft).
+      const objectChoices = choices.filter((s) =>
+        Object.entries(s.properties ?? {}).every(([key, field]) => {
+          const actual = (value as Record<string, unknown>)[key];
+          return (
+            actual === undefined ||
+            ((!Object.hasOwn(field, "const") || equal(field.const, actual)) &&
+              (!field.enum || field.enum.some((v) => equal(v, actual))))
+          );
+        }),
+      );
       const properties = Object.assign(
         {},
-        ...choices.map((s) => s.properties ?? {}),
+        ...objectChoices.map((s) => s.properties ?? {}),
       ) as Record<string, Shape>;
       const keys = new Set([
         ...Object.keys(value as object),
@@ -197,7 +211,7 @@ export function normalizeToolArguments(
       ]);
       let result = Object.fromEntries(
         [...keys].map((key) => {
-          const fields = choices.flatMap((s) =>
+          const fields = objectChoices.flatMap((s) =>
             s.properties?.[key] ? [s.properties[key]!] : [],
           );
           const v = (value as Record<string, unknown>)[key];

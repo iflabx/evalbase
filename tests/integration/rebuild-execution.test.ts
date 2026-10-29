@@ -45,6 +45,9 @@ let app: AgentBenchApp,
   assetId: string,
   provider: Server;
 let outputs: any[] = [];
+let r07DuplicateQuestions = false;
+let r07WorkerLimits: number[] = [];
+let r07RefundAsset: string | undefined;
 const omitUsage = false;
 const requests: any[] = [];
 const route = (id?: string) =>
@@ -291,7 +294,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         const worker = body.messages?.some(
           (m: any) =>
             typeof m.content === "string" &&
-            m.content.includes("You transform test data"),
+            (m.content.includes("You transform test data") ||
+              m.content.startsWith("Generate test data from")),
         );
         const summary = !body.tools?.length;
         let message = summary
@@ -305,19 +309,54 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
             });
         if (worker) {
           const data = JSON.parse(body.messages.at(-1).content);
-          if (!Array.isArray(data.records))
-            throw Error("controlled_worker_records_missing");
-          message = {
-            role: "assistant",
-            content: JSON.stringify({
-              records: data.records.map((r: any) => ({
-                sourceId: r.id,
-                question: r.question.trim() + "（自然问法）",
-                expectedOutput: r.expectedOutput,
-                metadata: r.metadata,
-              })),
-            }),
-          };
+          if (data.operation === "generate") {
+            const rule = data.background?.classifications?.[0],
+              value = rule?.allowedValues?.[0] ?? "咨询";
+            message = {
+              role: "assistant",
+              content: JSON.stringify({
+                records: Array.from({ length: data.outputCount }, (_, i) => ({
+                  question: `请问${value}服务中第${i + 1}种情况应如何处理？`,
+                  expectedOutput: "应核实需求并说明可用的办理步骤。",
+                  metadata:
+                    rule?.field === "metadata"
+                      ? [{ key: rule.key, value }]
+                      : [],
+                })),
+              }),
+            };
+          } else {
+            if (!Array.isArray(data.records))
+              throw Error("controlled_worker_records_missing");
+            message = {
+              role: "assistant",
+              content: JSON.stringify({
+                records: (data.operation === "augment"
+                  ? Array.from({ length: data.outputCount }, (_, i) => ({
+                      ...data.records[i % data.records.length],
+                      question:
+                        data.records[i % data.records.length].question +
+                        " 衍生情景" +
+                        i,
+                    }))
+                  : data.records
+                ).map((r: any) => ({
+                  sourceId: r.id,
+                  question: r07DuplicateQuestions
+                    ? "请问办理咨询需要哪些材料？"
+                    : r.question.trim() + "（自然问法）",
+                  expectedOutput: r.expectedOutput,
+                  metadata: r.metadata,
+                })),
+              }),
+            };
+          }
+        }
+        if (worker && r07WorkerLimits.length) {
+          const n = r07WorkerLimits.shift()!;
+          const result = JSON.parse(message.content);
+          result.records = result.records.slice(0, n);
+          message.content = JSON.stringify(result);
         }
         if (typeof message === "function") message = await message(body);
         if (message.httpStatus) {
@@ -2440,6 +2479,1174 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       ).rows[0].count,
     ).toBe("0");
   });
+  it("R07 PUBLIC SDK background three plans cancel one execute 3+2 and save uniquely", async () => {
+    const until = async (check: () => Promise<boolean>) => {
+      for (let i = 0; i < 500; i++) {
+        if (await check()) return;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      console.log(
+        "R07_LAST_EVENTS",
+        JSON.stringify(
+          (
+            await db.query(
+              "SELECT kind,detail FROM assistant_runtime_event ORDER BY id DESC LIMIT 14",
+            )
+          ).rows,
+        ),
+      );
+      throw Error("R07_wait_timeout");
+    };
+    await db.query(
+      "UPDATE assistant_runtime_turn SET status='paused',runner_token=NULL WHERE status IN('pending','running')",
+    );
+    const id = await fresh();
+    expect(
+      (
+        await api("POST", route(id) + "/attachments", {
+          fileName: "预约分类.md",
+          contentBase64: Buffer.from(
+            "# 预约说明\n咨询：询问办理条件与时间。\n预约：希望确定办理时段。",
+          ).toString("base64"),
+        })
+      ).statusCode,
+    ).toBe(200);
+    const patch = (name: string, count: number, category: string) => ({
+      name,
+      operation: "generate",
+      count,
+      source: null,
+      allowedFields: ["question", "expectedOutput", "metadata"],
+      instructions:
+        "依据附件生成语义完整的自然用户问题，期望输出描述应有行为。分类写入Metadata。",
+      classifications: [
+        {
+          field: "metadata",
+          key: "category",
+          allowedValues: [category],
+          requiredValues: [category],
+          quotas: [{ value: category, count }],
+        },
+      ],
+      saveTarget: { kind: "newDraft", name },
+    });
+    outputs = [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          mode: "plan",
+          objective: "按照预约说明分类制作测试数据",
+          deliveries: [
+            { patch: patch("咨询练习", 2, "咨询") },
+            { patch: patch("预约练习", 2, "预约") },
+            { patch: patch("混合练习", 2, "混合") },
+          ],
+        },
+      }),
+      { role: "assistant", content: "方案已保存，尚未执行。" },
+    ];
+    const dispatcher = await buildApp(config, {
+      disableLegacyTestBootstrap: true,
+    });
+    const executionState = async () =>
+      (
+        await db.query(
+          "SELECT status FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0]?.status;
+    try {
+      await dispatcher.ready();
+      expect(
+        (
+          await submit(
+            id,
+            "先规划咨询和预约各2条，再规划一份混合练习2条，先不执行。",
+          )
+        ).statusCode,
+      ).toBe(202);
+      await until(
+        async () =>
+          (await host.store.get(scope(), id)).requirements.deliveries.length ===
+            3 && (await host.store.get(scope(), id)).status === "idle",
+      );
+      expect((await host.present(scope(), id)).results).toHaveLength(0);
+      const first = await host.store.get(scope(), id),
+        [a, b, c] = first.requirements.deliveries;
+      outputs = [
+        call("update_requirements", {
+          expectedRevision: first.requirements_revision,
+          changes: {
+            mode: "execute",
+            deliveries: [
+              {
+                deliveryId: a.id,
+                patch: {
+                  count: 3,
+                  instructions: a.instructions,
+                  classifications: [
+                    {
+                      field: "metadata",
+                      key: "category",
+                      allowedValues: ["咨询"],
+                      requiredValues: ["咨询"],
+                      quotas: [{ value: "咨询", count: 3 }],
+                    },
+                  ],
+                },
+              },
+              { deliveryId: c.id, patch: { status: "cancelled" } },
+            ],
+          },
+        }),
+        call("submit_processing", { deliveryId: a.id }),
+        call("prepare_adoption", { deliveryId: a.id }, "z_prepare_first"),
+      ];
+      expect(
+        (
+          await submit(
+            id,
+            "混合练习不要了，咨询练习改成3条，预约2条不变，现在执行。",
+          )
+        ).statusCode,
+      ).toBe(202);
+      await until(async () => (await executionState()) === "waiting").catch(
+        async (e) => {
+          console.log(
+            "R07_DIAGNOSTIC",
+            JSON.stringify(
+              (
+                await db.query(
+                  "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 AND kind IN('tool_error','requirements_feedback','parameter_feedback','execution_paused') ORDER BY id",
+                  [id],
+                )
+              ).rows,
+            ),
+          );
+          throw e;
+        },
+      );
+
+      let state = await host.present(scope(), id);
+      const runA = state.results[0].run_id;
+      await completeRun(runA);
+      await until(async () => (await executionState()) === "confirmation");
+      state = await host.present(scope(), id);
+      const cardA = state.confirmations.find(
+        (x: any) => x.status === "pending",
+      );
+      expect(cardA.payload.input.target.name).toBe("咨询练习");
+      outputs = [
+        call("submit_processing", { deliveryId: b.id }),
+        call("prepare_adoption", { deliveryId: b.id }, "a_prepare_second"),
+      ];
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + cardA.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(200);
+      await until(async () => (await executionState()) === "waiting");
+      state = await host.present(scope(), id);
+      const runB = state.results.find((r: any) => r.run_id !== runA).run_id;
+      await completeRun(runB);
+      await until(async () => (await executionState()) === "confirmation");
+      state = await host.present(scope(), id);
+      const cardB = state.confirmations.find(
+        (x: any) => x.status === "pending",
+      );
+      expect(cardB.payload.input.target.name).toBe("预约练习");
+      outputs = [
+        { role: "assistant", content: "两份已保存，取消项没有执行。" },
+      ];
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + cardB.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(200);
+      await until(async () => (await executionState()) === "completed");
+      state = await host.present(scope(), id);
+      expect(state.results).toHaveLength(2);
+      expect(state.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(2);
+      const cancelled = (
+        await host.store.get(scope(), id)
+      ).requirements.deliveries.find((d) => d.id === c.id);
+      expect(cancelled?.status).toBe("cancelled");
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM assistant_runtime_operation WHERE session_id=$1 AND operation_key LIKE $2",
+            [id, "processing:" + c.id + ":%"],
+          )
+        ).rowCount,
+      ).toBe(0);
+      const drafts = state.receipts
+        .filter((r: any) => r.acceptanceId)
+        .map((r: any) => r.draftId);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) n FROM collaborative_draft_record WHERE draft_id=ANY($1::text[]) AND deleted=false",
+            [drafts],
+          )
+        ).rows[0].n,
+      ).toBe("5");
+      const readback = await host.present(scope(), id);
+      expect(
+        readback.session.requirements.deliveries.find((d: any) => d.id === c.id)
+          ?.status,
+      ).toBe("cancelled");
+      const firstReceipt = state.receipts.find(
+        (r: any) => r.acceptanceId && r.draftName === "咨询练习",
+      );
+      const taskId = (
+        await db.query("SELECT task_id FROM processing_run WHERE id=$1", [runA])
+      ).rows[0].task_id;
+      const { readProcessingTask, previewTaskInput } =
+        await import("../../src/processing/tasks.js");
+      let task = await readProcessingTask(db, artifacts, scope(), taskId, {
+        limit: "100",
+      });
+      const input = await previewTaskInput(db, artifacts, scope(), taskId, {
+        mode: "saved",
+        limit: 100,
+      });
+      outputs = [
+        call("submit_processing_round", {
+          taskId,
+          expectedRevision: task.task.revision,
+          mode: "saved",
+          resultIds: [input.records[0].id],
+          options: {
+            operation: "augment",
+            instructions:
+              "围绕咨询需求生成不同场景的完整问题，保留原标签和Metadata。",
+            allowedFields: ["question"],
+            outputCount: 2,
+          },
+        }),
+      ];
+      expect(
+        (await submit(id, "从第一份保存结果中选第一条，再扩充2条，其余不动。"))
+          .statusCode,
+      ).toBe(202);
+      await until(async () => (await executionState()) === "waiting");
+      const extended = await host.present(scope(), id),
+        runC = extended.results.find(
+          (r: any) => ![runA, runB].includes(r.run_id),
+        ).run_id;
+      expect(
+        (
+          await db.query(
+            "SELECT input_count,task_id FROM processing_run WHERE id=$1",
+            [runC],
+          )
+        ).rows[0],
+      ).toMatchObject({ input_count: 1, task_id: taskId });
+      await completeRun(runC);
+      await until(
+        async () => (await host.store.get(scope(), id)).status === "idle",
+      );
+      task = await readProcessingTask(db, artifacts, scope(), taskId, {
+        limit: "100",
+      });
+      const draft = (
+        await db.query("SELECT revision FROM collaborative_draft WHERE id=$1", [
+          firstReceipt.draftId,
+        ])
+      ).rows[0];
+      outputs = [
+        call("prepare_processing_task_save", {
+          taskId,
+          expectedRevision: task.task.revision,
+          resultIds: task.unsavedIds,
+          target: {
+            kind: "draft",
+            id: firstReceipt.draftId,
+            expectedRevision: Number(draft.revision),
+          },
+        }),
+      ];
+      expect(
+        (await submit(id, "把这2条新增结果保存回第一份草稿，先让我确认。"))
+          .statusCode,
+      ).toBe(202);
+      await until(async () => (await executionState()) === "confirmation");
+      const save = (await host.present(scope(), id)).confirmations.find(
+        (card: any) => card.status === "pending",
+      );
+      outputs = [{ role: "assistant", content: "新增2条已经保存回原草稿。" }];
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + save.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(200);
+      await until(async () => (await executionState()) === "completed");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) n FROM collaborative_draft_record WHERE draft_id=$1 AND deleted=false",
+            [firstReceipt.draftId],
+          )
+        ).rows[0].n,
+      ).toBe("5");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) n FROM collaborative_draft WHERE id=ANY($1::text[])",
+            [drafts],
+          )
+        ).rows[0].n,
+      ).toBe("2");
+    } finally {
+      await dispatcher.close();
+    }
+  }, 120000);
+
+  it("R07 task tools use real same-task rounds, save targets and frozen revisions", async () => {
+    const { id, plan } = await reviewCreate();
+    const started = await run(id, "清洗固定三条", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(started.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    await host.runPending(scope(), id, started.execution.turn_id);
+    const taskId = (
+      await db.query("SELECT task_id FROM processing_run WHERE id=$1", [
+        started.results[0].run_id,
+      ])
+    ).rows[0].task_id;
+    const { readProcessingTask } =
+      await import("../../src/processing/tasks.js");
+    let task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    const selected = [task.records[0].id];
+    await host.stop(scope(), id);
+    const next = await run(id, "只继续处理选中的一条，其他保留", [
+      call("submit_processing_round", {
+        taskId,
+        expectedRevision: task.task.revision,
+        mode: "continue",
+        resultIds: selected,
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      }),
+    ]);
+    expect(
+      next.results.length,
+      JSON.stringify({
+        state: next,
+        events: (
+          await db.query(
+            "SELECT kind,detail FROM assistant_runtime_event WHERE session_id=$1 ORDER BY id",
+            [id],
+          )
+        ).rows,
+      }),
+    ).toBeGreaterThan(1);
+    const child = next.results.find(
+      (r: any) => r.run_id !== started.results[0].run_id,
+    ).run_id;
+    await completeRun(child);
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "本轮完成" }];
+    await host.runPending(scope(), id, next.execution.turn_id);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.task.roundCount).toBe(2);
+    expect(task.total).toBe(3);
+    const ready = await run(id, "把当前三条保存为轮次结果，先让我确认", [
+      call("prepare_processing_task_save", {
+        taskId,
+        expectedRevision: task.task.revision,
+        resultIds: task.records.map((r) => r.id),
+        target: { kind: "newDraft", name: "轮次结果", purpose: "" },
+      }),
+    ]);
+    const card = ready.confirmations.find((c: any) => c.status === "pending");
+    expect(card.payload.taskId).toBe(taskId);
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(200);
+    outputs = [{ role: "assistant", content: "已保存" }];
+    await host.runPending(scope(), id, ready.execution.turn_id);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.task.canContinueSaved).toBe(true);
+    const savedRound = await run(id, "从已保存的草稿范围再处理一次", [
+      call("submit_processing_round", {
+        taskId,
+        expectedRevision: task.task.revision,
+        mode: "saved",
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      }),
+    ]);
+    const runId = savedRound.results.find(
+      (r: any) => ![child, started.results[0].run_id].includes(r.run_id),
+    ).run_id;
+    expect(
+      (
+        await db.query(
+          "SELECT task_id,source FROM processing_run WHERE id=$1",
+          [runId],
+        )
+      ).rows[0],
+    ).toMatchObject({ task_id: taskId, source: { kind: "draft" } });
+    await host.stop(scope(), id);
+  }, 120000);
+  it("R07 SDK background round modes, deduplication, paused-query fence, replay and asset save", async () => {
+    const id = await fresh();
+    expect(
+      (
+        await api("POST", route(id) + "/attachments", {
+          fileName: "咨询说明.md",
+          contentBase64:
+            Buffer.from("咨询：请说明办理条件和所需材料。").toString("base64"),
+        })
+      ).statusCode,
+    ).toBe(200);
+    const started = await run(
+      id,
+      "依据文档生成三条咨询测试，执行后让我审核。",
+      [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: {
+            mode: "execute",
+            deliveries: [
+              {
+                patch: {
+                  name: "咨询",
+                  operation: "generate",
+                  source: null,
+                  count: 3,
+                  instructions:
+                    "生成语义完整且不同的咨询用户问题，期望输出描述应有行为。",
+                  allowedFields: ["question", "expectedOutput", "metadata"],
+                  saveTarget: { kind: "newDraft", name: "咨询" },
+                },
+              },
+            ],
+          },
+        }),
+        call("submit_processing", {}),
+      ],
+    );
+    const first = started.results[0].run_id;
+    await completeRun(first);
+    await host.stop(scope(), id);
+    const taskId = (
+      await db.query("SELECT task_id FROM processing_run WHERE id=$1", [first])
+    ).rows[0].task_id;
+    const { readProcessingTask } =
+      await import("../../src/processing/tasks.js");
+    let task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    const options = {
+      operation: "rewrite",
+      instructions: "保留原意，改为完整自然的问句。",
+      allowedFields: ["question"],
+    };
+    let round = await run(id, "对这三条继续处理，改写问题，其余字段保留。", [
+      call("submit_processing_round", {
+        taskId,
+        expectedRevision: task.task.revision,
+        mode: "continue",
+        resultIds: task.records.map((r) => r.id),
+        options,
+      }),
+    ]);
+    let child = round.results.find((r: any) => r.run_id !== first).run_id;
+    const frozen = JSON.parse(
+      (
+        await artifacts.readBytes(
+          (
+            await db.query("SELECT input_ref FROM processing_run WHERE id=$1", [
+              child,
+            ])
+          ).rows[0].input_ref,
+          1000000,
+        )
+      ).toString(),
+    );
+    expect(frozen.background.contentReviewPolicy).toBe("manual-v1");
+    const workerBefore = (
+      await db.query(
+        "SELECT count(*) n FROM assistant_runtime_request WHERE session_id=$1 AND purpose='worker'",
+        [id],
+      )
+    ).rows[0].n;
+    try {
+      r07DuplicateQuestions = true;
+      await completeRun(child);
+    } finally {
+      r07DuplicateQuestions = false;
+    }
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "请审核本轮结果。" }];
+    await host.runPending(scope(), id, round.execution.turn_id);
+    expect(
+      Number(
+        (
+          await db.query(
+            "SELECT count(*) n FROM assistant_runtime_request WHERE session_id=$1 AND purpose='worker'",
+            [id],
+          )
+        ).rows[0].n,
+      ) - Number(workerBefore),
+    ).toBe(1);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    await run(id, "查看任务、历史和重复组，先不要修改。", [
+      call("list_processing_tasks", { limit: 1, offset: 0 }),
+      call("read_processing_task", { taskId, limit: 2, offset: 0 }),
+      call("read_processing_history", { taskId, limit: 5, offset: 0 }),
+      call("deduplicate_processing_task", {
+        taskId,
+        resultIds: task.records.map((r) => r.id),
+      }),
+    ]);
+    expect(
+      (await host.present(scope(), id)).workspace.nativeActions.some(
+        (a: any) => a.kind === "navigation" && a.href.includes(child),
+      ),
+    ).toBe(true);
+    const originalCount = task.total;
+    await run(id, "排除重复候选，保留一份。", [
+      call("deduplicate_processing_task", {
+        taskId,
+        resultIds: task.records.map((r) => r.id),
+        action: "exclude",
+        expectedRevision: task.task.revision,
+      }),
+    ]);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.total).toBe(1);
+    await run(id, "恢复刚才排除的候选。", [
+      call("deduplicate_processing_task", {
+        taskId,
+        action: "restore",
+        expectedRevision: task.task.revision,
+      }),
+    ]);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.total).toBe(originalCount);
+    round = await run(id, "沿上一轮完整冻结输入重跑改写。", [
+      call("submit_processing_round", {
+        taskId,
+        expectedRevision: task.task.revision,
+        mode: "rerun",
+        options,
+      }),
+    ]);
+    child = round.results.find(
+      (r: any) =>
+        ![first, ...started.results.map((r: any) => r.run_id)].includes(
+          r.run_id,
+        ) && r.turn_id === round.execution.turn_id,
+    ).run_id;
+    await completeRun(child);
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "已完成，未保存。" }];
+    await host.runPending(scope(), id, round.execution.turn_id);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.total).toBe(3);
+    const prior = round.results.map((r: any) => r.run_id),
+      body = {
+        taskId,
+        expectedRevision: task.task.revision,
+        mode: "continue",
+        resultIds: [task.records[0].id],
+        options,
+      };
+    round = await run(id, "只继续处理第一条，改写问题，其余保留。", [
+      call("submit_processing_round", body),
+    ]);
+    const last = round.results.find(
+      (r: any) => !prior.includes(r.run_id),
+    ).run_id;
+    await host.stop(scope(), id);
+    const countBefore = (await effects()).runs;
+    for (const text of [
+      "只是看看扩充结果",
+      "扩充2条，先不执行",
+      "先不执行，重跑原输入只做方案",
+    ]) {
+      await run(id, text, [
+        call("submit_processing_round", body),
+        { role: "assistant", content: "原任务保持暂停，未执行。" },
+      ]);
+      expect((await effects()).runs).toBe(countBefore);
+      expect((await jobState(id)).status).toBe("paused");
+    }
+    expect((await effects()).runs).toBe(countBefore);
+    expect((await jobState(id)).status).toBe("paused");
+    expect(
+      (await api("POST", route(id) + "/control", { action: "continue" }))
+        .statusCode,
+    ).toBe(200);
+    outputs = [];
+    await host.runPending(scope(), id, round.execution.turn_id);
+    expect(
+      (await jobState(id)).status,
+      JSON.stringify({
+        state: await jobState(id),
+        events: (
+          await db.query(
+            "SELECT turn_id,kind,detail FROM assistant_runtime_event WHERE session_id=$1 AND kind IN('tool_call','tool_error','execution_error','state_feedback','execution_paused','execution_resumed') ORDER BY id DESC LIMIT 20",
+            [id],
+          )
+        ).rows,
+        operations: (
+          await db.query(
+            "SELECT o.turn_id,o.run_id,o.payload,j.status FROM assistant_runtime_operation o LEFT JOIN processing_run r ON r.id=o.run_id LEFT JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.kind='processing'",
+            [id],
+          )
+        ).rows,
+      }),
+    ).toBe("waiting");
+    expect((await effects()).runs).toBe(countBefore);
+    await completeRun(last);
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "所选一条完成，其他记录保持。" }];
+    await host.runPending(scope(), id, round.execution.turn_id);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.total).toBe(3);
+    const save = await run(id, "将第一条另存为原始数据文件，先让我确认。", [
+      call("prepare_processing_task_save", {
+        taskId,
+        expectedRevision: task.task.revision,
+        resultIds: [task.records[0].id],
+        target: { kind: "asset" },
+      }),
+    ]);
+    const card = save.confirmations.find((c: any) => c.status === "pending");
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(200);
+    outputs = [{ role: "assistant", content: "已另存原始数据。" }];
+    const done = await host.runPending(scope(), id, save.execution.turn_id);
+    const receipt = done.receipts.find((r: any) => r.acceptanceId && r.assetId);
+    expect(receipt).toMatchObject({ adopted: 1 });
+    expect(receipt.fileName).toBeTruthy();
+  }, 120000);
+
+  it("R07 activity separately caps generated slots and atomically counts deterministic rounds", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    const cap = "r07-cap-" + randomUUID();
+    await db.query(
+      "INSERT INTO assistant_runtime_activity(id,request_limit,row_limit,generated_limit,max_ms) VALUES($1,10,10,1,300000)",
+      [cap],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+      [id, cap],
+    );
+    await expect(
+      host.execution.reserveWorker(p.runId, "request-" + randomUUID(), "hash", {
+        rows: 2,
+        generated: 2,
+      }),
+    ).rejects.toMatchObject({ code: "activity_budget_exhausted" });
+    expect(
+      (
+        await db.query(
+          "SELECT requests,rows_used,generated_used FROM assistant_runtime_activity WHERE id=$1",
+          [cap],
+        )
+      ).rows[0],
+    ).toEqual({ requests: 0, rows_used: 0, generated_used: 0 });
+    await host.execution.reserveWorker(
+      p.runId,
+      "request-" + randomUUID(),
+      "hash",
+      { rows: 2, generated: 1 },
+    );
+    expect(
+      (
+        await db.query(
+          "SELECT requests,rows_used,generated_used FROM assistant_runtime_activity WHERE id=$1",
+          [cap],
+        )
+      ).rows[0],
+    ).toEqual({ requests: 1, rows_used: 2, generated_used: 1 });
+    await host.stop(scope(), id);
+    const fixed = await host.store.freezeSource(scope(), {
+      kind: "assets",
+      assetIds: [assetId],
+    });
+    const plain = await createProcessingRun(
+      db,
+      artifacts,
+      scope(),
+      "manual-" + randomUUID(),
+      {
+        source: fixed.source,
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    );
+    await completeRun(plain.run.id);
+    const taskId = (
+      await db.query("SELECT task_id FROM processing_run WHERE id=$1", [
+        plain.run.id,
+      ])
+    ).rows[0].task_id;
+    const { readProcessingTask } =
+      await import("../../src/processing/tasks.js");
+    const task = await readProcessingTask(db, artifacts, scope(), taskId, {
+        limit: "100",
+      }),
+      sid = await fresh();
+    await run(sid, "查看处理任务", [call("read_processing_task", { taskId })]);
+    await db.query(
+      "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+      [sid, cap],
+    );
+    const next = await run(sid, "只继续处理选中的一条，清洗问题。", [
+      call("submit_processing_round", {
+        taskId,
+        expectedRevision: task.task.revision,
+        mode: "continue",
+        resultIds: [task.records[0].id],
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      }),
+    ]);
+    expect(next.results).toHaveLength(1);
+    expect(
+      (
+        await db.query(
+          "SELECT rows_used,generated_used FROM assistant_runtime_activity WHERE id=$1",
+          [cap],
+        )
+      ).rows[0],
+    ).toEqual({ rows_used: 3, generated_used: 1 });
+    await host.stop(scope(), sid);
+  }, 120000);
+
+  it("R07 SDK completes only missing rewrites without another semantic review", async () => {
+    const { id, plan } = await reviewCreate();
+    const p = JSON.parse(plan.tool_calls[0].function.arguments);
+    p.changes.deliveries[0].patch.operation = "rewrite";
+    p.changes.deliveries[0].patch.instructions =
+      "保留原意，改写为自然完整问法。";
+    const start = await run(id, "改写这三条问题，完成后给我检查。", [
+        call("create_requirements", p),
+        call("submit_processing", {}),
+      ]),
+      rid = start.results[0].run_id;
+    try {
+      r07WorkerLimits = [1, 0, 0];
+      await expect(completeRun(rid)).rejects.toThrow("processing_batch_failed");
+      await db.query(
+        "UPDATE job SET status='failed',error_code='processing_batch_failed',lease_owner=NULL,lease_expires_at=NULL WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+        [rid],
+      );
+    } finally {
+      r07WorkerLimits = [];
+    }
+    await host.stop(scope(), id);
+    const taskId = (
+      await db.query("SELECT task_id FROM processing_run WHERE id=$1", [rid])
+    ).rows[0].task_id;
+    const { readProcessingTask } =
+      await import("../../src/processing/tasks.js");
+    let task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.unprocessedIds).toHaveLength(2);
+    const successful = task.records.find((r: any) => !r.unprocessed)!;
+    const next = await run(id, "只补齐未完成的两条，已完成的不要重跑。", [
+      call("submit_processing_round", {
+        taskId,
+        mode: "complete",
+        expectedRevision: task.task.revision,
+      }),
+    ]);
+    const child = next.results.find((r: any) => r.run_id !== rid).run_id;
+    expect(
+      (
+        await db.query("SELECT input_count FROM processing_run WHERE id=$1", [
+          child,
+        ])
+      ).rows[0].input_count,
+    ).toBe(2);
+    await completeRun(child);
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "缺少部分已完成，请审核。" }];
+    await host.runPending(scope(), id, next.execution.turn_id);
+    task = await readProcessingTask(db, artifacts, scope(), taskId, {
+      limit: "100",
+    });
+    expect(task.total).toBe(3);
+    expect(task.unprocessedIds).toHaveLength(0);
+    expect(task.records.find((r) => r.id === successful.id)).toMatchObject({
+      result: successful.result,
+      runId: (successful as any).runId,
+    });
+  }, 120000);
+  it.each(["reduced scope", "only refund", "exclude refund"])(
+    "R07 SDK %s freezes the changed real range before execute and cannot continue a plan",
+    async (mode) => {
+      if (!r07RefundAsset) {
+        const collectionId = (
+          await api("GET", "/api/projects/" + projectId + "/collections")
+        ).json().collections[0].id;
+        const uploaded = await app.inject({
+          method: "POST",
+          url: "/api/projects/" + projectId + "/pending-uploads",
+          headers: {
+            origin,
+            ...identities.get("admin"),
+            "content-type": "application/octet-stream",
+            "x-file-name": "refund-scope.jsonl",
+          },
+          payload:
+            [
+              { question: "  我想申请退款  ", answer: "核对退款条件" },
+              { question: "  退款多久能到账  ", answer: "说明到账时间" },
+              { question: "  查询快递进度  ", answer: "提供物流查询" },
+              { question: "  如何修改地址  ", answer: "说明修改地址步骤" },
+            ]
+              .map((r) => JSON.stringify(r))
+              .join("\n") + "\n",
+        });
+        expect(uploaded.statusCode).toBe(201);
+        const imported = await api(
+            "POST",
+            "/api/projects/" + projectId + "/pending-upload-batches/confirm",
+            {
+              collectionId,
+              pendingUploadIds: [uploaded.json().pendingUpload.id],
+              mode: "raw",
+            },
+          ),
+          aid = imported.json().assets[0].id;
+        const mapping = (
+          await api(
+            "GET",
+            "/api/projects/" + projectId + "/assets/" + aid + "/mapping",
+          )
+        ).json();
+        expect(
+          (
+            await api(
+              "PUT",
+              "/api/projects/" + projectId + "/assets/" + aid + "/mapping",
+              {
+                parsedViewId: mapping.parsedViewId,
+                expectedRevision: 0,
+                mapping: {
+                  question: "/question",
+                  expectedOutput: "/answer",
+                  metadata: [],
+                },
+              },
+            )
+          ).statusCode,
+        ).toBe(200);
+        r07RefundAsset = aid;
+      }
+      const fixed = await host.store.freezeSource(scope(), {
+          kind: "assets",
+          assetIds: [r07RefundAsset!],
+        }),
+        sid = await fresh();
+      const preview = (await import("../../src/processing/store.js"))
+        .previewProcessingInput;
+      const records = (
+        await preview(
+          db,
+          scope(),
+          { source: fixed.source, limit: 100 },
+          "write",
+          true,
+        )
+      ).records;
+      const selected =
+        mode === "reduced scope"
+          ? records.slice(0, 1)
+          : records.filter(
+              (r) => r.question.includes("退款") === (mode === "only refund"),
+            );
+      let state = await run(sid, "先给四条数据的清洗方案，不执行。", [
+        call("create_requirements", {
+          expectedRevision: 0,
+          changes: {
+            mode: "plan",
+            deliveries: [
+              {
+                patch: {
+                  operation: "clean",
+                  count: 4,
+                  source: fixed.source,
+                  allowedFields: ["question"],
+                  instructions: "",
+                  saveTarget: { kind: "newDraft", name: "范围验收" + mode },
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+      const did = state.session.requirements.deliveries[0].id,
+        before = (await effects()).runs;
+      await run(
+        sid,
+        mode === "reduced scope"
+          ? "缩小为第一条，先不执行。"
+          : mode === "only refund"
+            ? "只保留退款类，先不执行。"
+            : "排除退款类，先不执行。",
+        [
+          call("update_requirements", {
+            expectedRevision: 1,
+            changes: {
+              mode: "plan",
+              deliveries: [
+                {
+                  deliveryId: did,
+                  patch: {
+                    source: {
+                      ...fixed.source,
+                      recordIds: selected.map((r) => r.id),
+                    },
+                    count: selected.length,
+                  },
+                },
+              ],
+            },
+          }),
+          call("submit_processing", {}),
+          { role: "assistant", content: "当前范围已保存为方案，尚未执行。" },
+        ],
+      ).catch((e) => expect(e.code).toBe("execution_not_authorized"));
+      expect((await effects()).runs).toBe(before);
+      await run(sid, "继续", [
+        call("submit_processing", {}),
+        { role: "assistant", content: "仍是方案，需要明确执行。" },
+      ]).catch((e) => expect(e.code).toBe("execution_not_authorized"));
+      expect((await effects()).runs).toBe(before);
+      state = await run(sid, "现在按刚才确定的范围执行清洗，完成后让我确认。", [
+        call("update_requirements", {
+          expectedRevision: 2,
+          changes: { mode: "execute" },
+        }),
+        call("submit_processing", {}),
+      ]);
+      const rid = state.results[0].run_id,
+        record = (
+          await db.query(
+            "SELECT input_ref,input_count FROM processing_run WHERE id=$1",
+            [rid],
+          )
+        ).rows[0];
+      expect(record.input_count).toBe(selected.length);
+      const input = JSON.parse(
+        (await artifacts.readBytes(record.input_ref, 1000000)).toString(),
+      );
+      expect(input.records.map((r: any) => r.id).sort()).toEqual(
+        selected.map((r) => r.id).sort(),
+      );
+      await completeRun(rid);
+      await host.execution.wake();
+      outputs = [call("prepare_adoption", {})];
+      state = await host.runPending(scope(), sid, state.execution.turn_id);
+      const card = state.confirmations.find((c: any) => c.status === "pending");
+      expect(
+        (
+          await api("POST", route(sid) + "/confirmations/" + card.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(200);
+      outputs = [{ role: "assistant", content: "授权范围已保存。" }];
+      state = await host.runPending(scope(), sid, state.execution.turn_id);
+      expect(state.receipts.find((r: any) => r.acceptanceId)?.adopted).toBe(
+        selected.length,
+      );
+    },
+    120000,
+  );
+
+  it("R07 SDK retries the original failed run once, replays queued retry, and cancels an owned run", async () => {
+    const fixed = await host.store.freezeSource(scope(), {
+      kind: "assets",
+      assetIds: [assetId],
+    });
+    const created = await createProcessingRun(
+        db,
+        artifacts,
+        scope(),
+        "retry-fixture-" + randomUUID(),
+        {
+          source: fixed.source,
+          options: {
+            operation: "rewrite",
+            instructions: "保留原意，自然改写问题。",
+            allowedFields: ["question"],
+          },
+        },
+      ),
+      rid = created.run.id;
+    // Fault before the first batch: the real Worker may exhaust a claim without producing output.
+    await db.query(
+      "UPDATE job SET status='failed',error_code='infrastructure_unavailable' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+      [rid],
+    );
+    const sid = await fresh();
+    let next = await run(sid, "只重试这个任务的失败部分，保留已完成部分。", [
+      call("control_processing_run", { runId: rid, action: "retry" }),
+    ]);
+    expect(next.execution.status).toBe("waiting");
+    expect(next.results.map((r: any) => r.run_id)).toEqual([rid]);
+    await host.stop(scope(), sid);
+    expect(
+      (await api("POST", route(sid) + "/control", { action: "continue" }))
+        .statusCode,
+    ).toBe(200);
+    outputs = [];
+    next = await host.runPending(scope(), sid, next.execution.turn_id);
+    expect(next.execution.status).toBe("waiting");
+    await completeRun(rid);
+    await host.execution.wake();
+    outputs = [{ role: "assistant", content: "原任务失败部分已处理。" }];
+    await host.runPending(scope(), sid, next.execution.turn_id);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*) n FROM processing_run WHERE task_id=(SELECT task_id FROM processing_run WHERE id=$1)",
+          [rid],
+        )
+      ).rows[0].n,
+    ).toBe("1");
+    const cancelled = await createProcessingRun(
+      db,
+      artifacts,
+      scope(),
+      "cancel-fixture-" + randomUUID(),
+      {
+        source: fixed.source,
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    );
+    await run(sid, "取消刚才那项尚未执行的处理。", [
+      call("control_processing_run", {
+        runId: cancelled.run.id,
+        action: "cancel",
+      }),
+    ]);
+    expect(
+      (
+        await db.query(
+          "SELECT status FROM job WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+          [cancelled.run.id],
+        )
+      ).rows[0].status,
+    ).toBe("cancel_requested");
+    expect(
+      (
+        await db.query(
+          "SELECT count(*) n FROM processing_batch WHERE run_id=$1",
+          [cancelled.run.id],
+        )
+      ).rows[0].n,
+    ).toBe("0");
+  }, 120000);
+  it("R07 SDK delivery cancellation fences its queued job and creates no confirmation", async () => {
+    const { id, plan } = await reviewCreate();
+    const p = JSON.parse(plan.tool_calls[0].function.arguments),
+      other = structuredClone(p.changes.deliveries[0]);
+    other.patch.saveTarget.name = "保留交付";
+    p.changes.deliveries.push(other);
+    let state = await run(id, "处理两份资料，逐份让我确认。", [
+      call("create_requirements", p),
+      call("submit_processing", {}),
+    ]);
+    const first = state.session.requirements.deliveries[0].id,
+      rid = state.results[0].run_id;
+    await host.stop(scope(), id);
+    state = await run(id, "第一份不要了，保留第二份，暂不继续执行。", [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          deliveries: [{ deliveryId: first, patch: { status: "cancelled" } }],
+        },
+      }),
+      { role: "assistant", content: "第一份已取消，剩余交付暂不执行。" },
+    ]);
+    expect(
+      state.session.requirements.deliveries.find((d: any) => d.id === first)
+        ?.status,
+    ).toBe("cancelled");
+    expect(
+      (
+        await db.query(
+          "SELECT status FROM job WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+          [rid],
+        )
+      ).rows[0].status,
+    ).toBe("cancel_requested");
+    expect(
+      state.confirmations.filter((c: any) => c.status === "pending"),
+    ).toHaveLength(0);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*) n FROM processing_batch WHERE run_id=$1",
+          [rid],
+        )
+      ).rows[0].n,
+    ).toBe("0");
+  }, 120000);
+
   it("SAVE RECOVERY public dispatcher SDK performs stop rename continue and unique save", async () => {
     let forcedAfterAmendment = false;
     const state = async (id: string) =>
@@ -3495,7 +4702,15 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       call("update_requirements", {
         expectedRevision: 2,
         changes: {
-          deliveries: [{ deliveryId, patch: { operation: "rewrite" } }],
+          deliveries: [
+            {
+              deliveryId,
+              patch: {
+                operation: "rewrite",
+                instructions: "保留原意改写为自然用户问法。",
+              },
+            },
+          ],
         },
       }),
     ]);
@@ -5297,7 +6512,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     const browser = await chromium.launch({ headless: true }),
       context = await browser.newContext({
         extraHTTPHeaders: { origin },
-        viewport: { width: 1440, height: 900 },
+        viewport: { width: 1920, height: 1080 },
       });
     const cookie = identities.get("admin")!.cookie!.split("=");
     await context.addCookies([
@@ -5322,7 +6537,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         hold,
       );
       await page.route(
-        "**/assistant-runtime/sessions/" + id + "/results/" + p.runId,
+        "**/assistant-runtime/sessions/" + id + "/results/" + p.runId + "?*",
         hold,
       );
       await page.goto(address + "/projects/" + projectId + "/assistant/" + id);

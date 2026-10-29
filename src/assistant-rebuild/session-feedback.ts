@@ -79,6 +79,7 @@ export function sessionFeedback(options: {
     resumeQueued: boolean;
     amendmentPending?: boolean;
     resumeAuthorized?: boolean;
+    roundAuthorized?: boolean;
   }>;
   initialStateRepairs?: number;
   requiredTool?: () => string | undefined;
@@ -90,6 +91,10 @@ export function sessionFeedback(options: {
   let stateRepairs = options.initialStateRepairs ?? 0;
   const executionTools = new Set([
     "submit_processing",
+    "submit_processing_round",
+    "prepare_processing_task_save",
+    "control_processing_run",
+    "deduplicate_processing_task",
     "prepare_adoption",
     "wait_processing",
     "wait_confirmation",
@@ -100,6 +105,7 @@ export function sessionFeedback(options: {
       resumeQueued: false,
       amendmentPending: false,
       resumeAuthorized: false,
+      roundAuthorized: false,
     };
   const stateFeedback = async (id: string, name: string) => {
     if (stateRepairs >= 1)
@@ -289,7 +295,11 @@ export function sessionFeedback(options: {
           options.schemas.has(String(t.name)) &&
           !(
             executionState.paused &&
-            (executionTools.has(String(t.name)) ||
+            ((executionTools.has(String(t.name)) &&
+              !(
+                t.name === "submit_processing_round" &&
+                executionState.roundAuthorized
+              )) ||
               (t.name === "continue_task" && !executionState.resumeAuthorized))
           ) &&
           (!pending || t.name === pending.name),
@@ -492,7 +502,10 @@ export function sessionFeedback(options: {
       const state = await control();
       if (
         state.paused &&
-        (executionTools.has(call.name) ||
+        ((executionTools.has(call.name) &&
+          !(
+            call.name === "submit_processing_round" && state.roundAuthorized
+          )) ||
           (call.name === "continue_task" && !state.resumeAuthorized))
       ) {
         if (state.amendmentPending)

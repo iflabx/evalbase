@@ -884,6 +884,14 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       "update_requirements",
       "read_attachment",
       "submit_processing",
+      "list_processing_tasks",
+      "read_processing_task",
+      "read_processing_history",
+      "preview_processing_round",
+      "submit_processing_round",
+      "deduplicate_processing_task",
+      "control_processing_run",
+      "prepare_processing_task_save",
       "prepare_adoption",
       "wait_processing",
       "wait_confirmation",
@@ -2518,7 +2526,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
       [],
     );
   });
-  it("retains explicit additional planning and rejects unsupported executable additions atomically", async () => {
+  it("retains additional planning and rejects incomplete multi-delivery execution atomically", async () => {
     const id = await fresh();
     let state = await run(id, "规划第一份", [
       call("create_requirements", {
@@ -2550,7 +2558,7 @@ describe("REBUILD-02 formal session and Deep Agents host", () => {
           changes: { mode: "execute" },
         }),
       ]),
-    ).rejects.toMatchObject({ code: "single_delivery_required" });
+    ).rejects.toMatchObject({ code: "execution_requirements_incomplete" });
     const after = await host.store.get(scope(), id);
     expect(after.requirements.mode).toBe("plan");
     expect(after.requirements_revision).toBe(2);

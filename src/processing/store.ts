@@ -308,6 +308,16 @@ export async function processingSourceRows(
         )
       ).rows
     : [];
+  if (sessions.length)
+    background.push(
+      ...(
+        await db.query(
+          "SELECT s.id FROM assistant_runtime_session s WHERE s.project_id=$1 AND s.id=ANY($2::text[]) AND s.deleted_at IS NULL AND s.invalidated_at IS NULL AND EXISTS(SELECT 1 FROM assistant_runtime_attachment d WHERE d.session_id=s.id AND d.removed_at IS NULL)" +
+            (lock ? " FOR SHARE OF s" : ""),
+          [projectId, sessions],
+        )
+      ).rows,
+    );
   if (
     process.env.REBUILD_VALIDATION_ENABLED === "true" &&
     sessions.some((id) => id.startsWith("rebuild_"))
@@ -1151,6 +1161,17 @@ export async function processingCandidateOrigins(
   }
   return origins;
 }
+/** Shared transactional cancellation used by explicit run controls and delivery cancellation. */
+export async function requestProcessingCancellation(
+  db: Pick<Database, "query">,
+  projectId: string,
+  runIds: string[],
+) {
+  return db.query(
+    "UPDATE job SET status='cancel_requested',updated_at=now() WHERE project_id=$1 AND id IN(SELECT job_id FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[])) AND status IN('queued','running','retry_wait')",
+    [projectId, runIds],
+  );
+}
 export async function controlProcessingRun(
   db: Database,
   scope: ProcessingScope,
@@ -1179,10 +1200,7 @@ export async function controlProcessingRun(
       action === "cancel" ? "cancel" : undefined,
     );
     if (action === "cancel")
-      await client.query(
-        "UPDATE job SET status='cancel_requested',updated_at=now() WHERE id=$1 AND status IN('queued','running','retry_wait')",
-        [run.job_id],
-      );
+      await requestProcessingCancellation(client, scope.projectId, [run.id]);
     else {
       if (!["failed", "cancelled", "succeeded"].includes(run.status))
         throw new ProcessingError(409, "processing_still_running");
@@ -1239,7 +1257,10 @@ export async function previewProcessingInput(
   )
     throw new ProcessingError(422, "processing_scope_invalid");
   const fixedIds = input.source.recordIds;
-  const source = parseSource({ ...input.source, recordIds: fixedIds ?? ["preview"] });
+  const source = parseSource({
+    ...input.source,
+    recordIds: fixedIds ?? ["preview"],
+  });
   const requiredCapability = source.kind === "draft" ? "write" : capability;
   await processingAccess(db, scope, false, requiredCapability);
   const offset = Number(input.offset ?? 0),
@@ -1293,9 +1314,10 @@ export async function previewProcessingInput(
       throw new ProcessingError(422, "processing_capacity_exceeded");
     const sourceIds = [...allIds];
     if (fixedIds !== undefined) {
-      if (source.recordIds.some((id) => !allIds.includes(id))) throw new ProcessingError(409,"processing_scope_changed");
+      if (source.recordIds.some((id) => !allIds.includes(id)))
+        throw new ProcessingError(409, "processing_scope_changed");
       const fixed = new Set(source.recordIds);
-      allIds = allIds.filter(id => fixed.has(id));
+      allIds = allIds.filter((id) => fixed.has(id));
     }
     if (selectedIds.some((id) => !allIds.includes(id)))
       throw new ProcessingError(409, "processing_scope_changed");
@@ -1387,4 +1409,33 @@ export async function previewProcessingInput(
   } finally {
     client.release();
   }
+}
+
+/** Historical runs can reference documents from any supported runtime. */
+export async function assertProcessingBackgroundAvailable(
+  db: Pick<Database, "query">,
+  scope: ProcessingScope,
+  ids: string[],
+) {
+  if (!ids.length) return;
+  const legacy = await db.query(
+    "SELECT d.id FROM assistant_background_document d WHERE d.id=ANY($1::text[]) AND d.project_id=$2 AND d.actor_id=$3 FOR SHARE",
+    [ids, scope.projectId, scope.actorId],
+  );
+  const runtime = await db.query(
+    "SELECT d.id FROM assistant_runtime_attachment d JOIN assistant_runtime_session s ON s.id=d.session_id WHERE d.id=ANY($1::text[]) AND s.project_id=$2 AND s.actor_id=$3 AND s.deleted_at IS NULL AND s.invalidated_at IS NULL AND d.removed_at IS NULL FOR SHARE OF d,s",
+    [ids, scope.projectId, scope.actorId],
+  );
+  const available = new Set(
+    [...legacy.rows, ...runtime.rows].map((row) => row.id),
+  );
+  if (process.env.REBUILD_VALIDATION_ENABLED === "true") {
+    const validation = await db.query(
+      "SELECT d.id FROM rebuild_document d JOIN rebuild_session s ON s.id=d.session_id WHERE d.id=ANY($1::text[]) AND s.project_id=$2 AND s.actor_id=$3 FOR SHARE OF d,s",
+      [ids, scope.projectId, scope.actorId],
+    );
+    validation.rows.forEach((row) => available.add(row.id));
+  }
+  if (ids.some((id) => !available.has(id)))
+    throw new ProcessingError(409, "processing_source_unavailable");
 }

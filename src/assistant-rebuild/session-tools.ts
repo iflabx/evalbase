@@ -197,7 +197,7 @@ export function sessionTools(
             name: "create_requirements",
             readOnly: false,
             description:
-              "明确新增交付，只在用户要新建时使用；不用于改数量、改名、另存或修改现有交付。新ID由服务端生成，不填写deliveryId。changes.deliveries:[{patch:{name,operation,count,source,allowedFields,instructions,saveTarget}}]。只规划用mode:plan，可记录待补充项；mode:execute必须完整且符合当前单份清洗/改写能力。instructions只写加工规则，不重复范围/总数/保存目标。",
+              "明确新增交付，只在用户要新建时使用；不用于改数量、改名、另存或修改现有交付。新ID由服务端生成，不填写deliveryId。changes.deliveries:[{patch:{name,operation,count,source,allowedFields,instructions,saveTarget}}]。只规划用mode:plan，可记录待补充项；mode:execute须所有活动交付完整，支持清洗/改写/扩充和上传背景从零生成；generate用source:null、allowedFields三字段、count为新增数。instructions只写加工规则，不重复范围/总数/保存目标。",
             schema: requirementCreationSchema,
             run: async (args: Record<string, unknown>) =>
               store.change(proof, args, "create"),

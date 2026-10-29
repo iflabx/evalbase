@@ -1,3 +1,4 @@
+import { requestProcessingCancellation } from "../processing/store.js";
 import {
   recordSaveTargetAmendment,
   completeSaveTargetAmendment,
@@ -838,6 +839,27 @@ export class SessionStore {
         await client.query(
           "UPDATE assistant_runtime_execution SET no_progress=0,seen='[]',progress_revision=$2,progress_version=progress_version+1,suspended=CASE WHEN suspended IS NULL OR coalesce(suspended->>'reason','')<>'user_paused' THEN NULL ELSE suspended || jsonb_build_object('requirementsRevision',$2::int,'progressRevision',$2::int,'noProgress',0,'seen','[]'::jsonb,'feedback',NULL) END,resume_suspended=false WHERE session_id=$1",
           [proof.sessionId, revision],
+        );
+      }
+      const cancelled = next.deliveries
+        .filter(
+          (d) =>
+            d.status === "cancelled" &&
+            before.requirements.deliveries.find((old) => old.id === d.id)
+              ?.status === "active",
+        )
+        .map((d) => d.id);
+      if (cancelled.length) {
+        const runs = (
+          await client.query(
+            "SELECT run_id FROM assistant_runtime_operation WHERE session_id=$1 AND kind='processing' AND run_id IS NOT NULL AND split_part(operation_key,':',2)=ANY($2::text[])",
+            [proof.sessionId, cancelled],
+          )
+        ).rows;
+        await requestProcessingCancellation(
+          client,
+          proof.projectId,
+          runs.map((r) => r.run_id),
         );
       }
       await this.event(
