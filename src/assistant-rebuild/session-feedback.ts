@@ -18,16 +18,7 @@ import {
   normalizeToolArguments,
   mergeToolCorrection,
 } from "./tool-arguments.js";
-/** Conservative text authorization; ambiguous language can use the explicit Continue control. */
-export function explicitResumeRequest(text: string): boolean {
-  const value = text.trim().replace(/[。！.!\s]+$/u, "");
-  return (
-    /^(?:(?:好的|好|可以)[，,\s]*)?(?:请(?:你)?|麻烦(?:你)?)?(?:现在)?(?:继续|接着|恢复)(?:(?:执行|处理|完成|做))?(?:(?:原来|刚才|之前|当前|这个|上次|原)(?:的)?)?(?:任务|工作|处理)?(?:吧|一下)?$/u.test(
-      value,
-    ) ||
-    /^(?:please )?(?:continue|resume)(?: (?:the )?(?:task|work))?$/i.test(value)
-  );
-}
+export { explicitResumeRequest } from "./control-intent.js";
 export type FailedCall = {
   id: string;
   name: string;
@@ -62,8 +53,8 @@ const bindRecordedTargets = (
       if (!target) continue;
       item.deliveryId ??= target.deliveryId;
       if (target.patch) {
-        const { instructions: _inheritedInstructions, ...inheritedFields } =
-          target.patch;
+        const inheritedFields = { ...target.patch };
+        delete inheritedFields.instructions;
         item.patch = { ...inheritedFields, ...item.patch };
       }
     }

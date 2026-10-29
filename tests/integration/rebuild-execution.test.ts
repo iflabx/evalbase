@@ -1641,7 +1641,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       }),
     ]);
     expect(amended.session.requirements.deliveries[0].count).toBe(51);
-    expect(amended.execution.status).toBe("completed");
+    // Changing a plan does not revoke an explicit user stop.
+    expect(amended.execution.status).toBe("paused");
   });
   it("starts the public durable dispatcher on application startup for already accepted work", async () => {
     // A completed save remains authoritative if its optional model explanation later fails.
@@ -1978,6 +1979,310 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         )
       ).rows[0].n,
     ).toBe(0);
+  });
+
+  it.each(["continue", "rename-only"])(
+    "SAVE RECOVERY stopped result survives target amendment %s",
+    async (mode) => {
+      const { id, plan } = await reviewCreate();
+      const before = await effects();
+      const start = await run(id, "清洗后保存", [
+        plan,
+        call("submit_processing", {}),
+      ]);
+      const runId = start.results[0].run_id;
+      await completeRun(runId);
+      await host.execution.wake();
+      outputs = [call("prepare_adoption", {})];
+      const ready = await host.runPending(scope(), id, start.execution.turn_id);
+      const oldCard = ready.confirmations.find(
+        (c: any) => c.status === "pending",
+      );
+      expect(oldCard).toBeTruthy();
+      await host.stop(scope(), id);
+      await run(id, "现在做到哪了？", [
+        call("read_task_progress", {}),
+        { role: "assistant", content: "已处理，尚未保存。" },
+      ]);
+      const saved = await host.store.get(scope(), id);
+      const changed = await run(
+        id,
+        mode === "continue"
+          ? "继续，完成后保存成客服整理版。"
+          : "只改名为客服整理版，先不要继续。",
+        [
+          call("update_requirements", {
+            expectedRevision: saved.requirements_revision,
+            changes: {
+              deliveries: [
+                {
+                  deliveryId: saved.requirements.deliveries[0].id,
+                  patch: {
+                    name: "客服整理版",
+                    saveTarget: { kind: "newDraft", name: "客服整理版" },
+                  },
+                },
+              ],
+            },
+          }),
+          ...(mode === "continue"
+            ? [call("continue_task", {})]
+            : [{ role: "assistant", content: "已修改名称，保持暂停。" }]),
+        ],
+      );
+      expect(
+        changed.results.find((r: any) => r.run_id === runId)?.isCurrent,
+      ).toBe(true);
+      if (mode === "rename-only") {
+        expect(changed.execution.status).toBe("paused");
+        expect(
+          changed.confirmations.filter((c: any) => c.status === "pending"),
+        ).toHaveLength(0);
+        expect(
+          (await api("POST", route(id) + "/control", { action: "continue" }))
+            .statusCode,
+        ).toBe(200);
+      }
+      outputs = [call("prepare_adoption", {})];
+      const resumed = await host.runPending(
+        scope(),
+        id,
+        start.execution.turn_id,
+      );
+      const card = resumed.confirmations.find(
+        (c: any) => c.status === "pending",
+      );
+      expect(card?.payload.input.target.name).toBe("客服整理版");
+      expect(card.id).not.toBe(oldCard.id);
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + oldCard.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(409);
+      const approved = await api(
+        "POST",
+        route(id) + "/confirmations/" + card.id,
+        { accept: true },
+      );
+      expect(approved.statusCode, approved.body).toBe(200);
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + card.id, {
+            accept: true,
+          })
+        ).json().replayed,
+      ).toBe(true);
+      outputs = [{ role: "assistant", content: "已保存客服整理版。" }];
+      await host.runPending(scope(), id, start.execution.turn_id);
+      const final = await host.present(scope(), id);
+      expect(final.results).toHaveLength(1);
+      expect(final.receipts.filter((r: any) => r.acceptanceId)).toHaveLength(1);
+      const after = await effects();
+      expect(after.runs - before.runs).toBe(1);
+      expect(after.drafts - before.drafts).toBe(1);
+    },
+  );
+
+  it("SAVE RECOVERY rejects reuse after processing changes", async () => {
+    const before = await effects();
+    const { id, plan } = await reviewCreate();
+    const start = await run(id, "清洗后保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(start.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    await host.runPending(scope(), id, start.execution.turn_id);
+    await host.stop(scope(), id);
+    const saved = await host.store.get(scope(), id);
+    const changed = await run(id, "先改成改写，暂不继续", [
+      call("update_requirements", {
+        expectedRevision: saved.requirements_revision,
+        changes: {
+          deliveries: [
+            {
+              deliveryId: saved.requirements.deliveries[0].id,
+              patch: { operation: "rewrite", instructions: "改成自然问法" },
+            },
+          ],
+        },
+      }),
+      { role: "assistant", content: "已修改，保持暂停。" },
+    ]);
+    expect(changed.results[0].isCurrent).toBe(false);
+    expect(changed.execution.status).toBe("paused");
+    expect(
+      changed.confirmations.filter((c: any) => c.status === "pending"),
+    ).toHaveLength(0);
+    expect((await effects()).drafts).toBe(before.drafts);
+  });
+
+  it("SAVE RECOVERY public dispatcher SDK performs stop rename continue and unique save", async () => {
+    const state = async (id: string) =>
+      (
+        await db.query(
+          "SELECT status FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0];
+    await db.query(
+      "UPDATE assistant_runtime_turn SET status='paused',runner_token=NULL WHERE status IN('pending','running')",
+    );
+    const { id, plan } = await reviewCreate();
+    const before = await effects();
+    outputs = [
+      plan,
+      call("submit_processing", {}),
+      call("prepare_adoption", {}),
+    ];
+    const restarted = await buildApp(config, {
+      disableLegacyTestBootstrap: true,
+    });
+    try {
+      await restarted.ready();
+      expect(
+        (await submit(id, "清洗这三条，完成后让我确认保存")).statusCode,
+      ).toBe(202);
+      await until(async () => (await state(id))?.status === "waiting");
+      const first = await host.present(scope(), id),
+        runId = first.results[0].run_id;
+      await completeRun(runId);
+      await until(async () => (await state(id))?.status === "confirmation");
+      const ready = await host.present(scope(), id),
+        oldCard = ready.confirmations.find((c: any) => c.status === "pending");
+      expect(
+        (await api("POST", route(id) + "/control", { action: "stop" }))
+          .statusCode,
+      ).toBe(200);
+      outputs = [
+        call("read_task_progress", {}),
+        { role: "assistant", content: "已处理，尚未保存，保持暂停。" },
+      ];
+      const query = await submit(id, "现在做到哪了？有没有保存？");
+      expect(query.statusCode).toBe(202);
+      await until(
+        async () =>
+          (
+            await db.query(
+              "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+              [query.json().turnId],
+            )
+          ).rows[0]?.status === "succeeded",
+      );
+      expect((await state(id))?.status).toBe("paused");
+      const saved = await host.store.get(scope(), id);
+      outputs = [
+        call("update_requirements", {
+          expectedRevision: saved.requirements_revision,
+          changes: {
+            deliveries: [
+              {
+                deliveryId: saved.requirements.deliveries[0].id,
+                patch: {
+                  name: "客服整理版",
+                  saveTarget: { kind: "newDraft", name: "客服整理版" },
+                },
+              },
+            ],
+          },
+        }),
+        call("continue_task", {}),
+        call("prepare_adoption", {}),
+      ];
+      expect(
+        (await submit(id, "继续，完成后保存成客服整理版。")).statusCode,
+      ).toBe(202);
+      await until(async () => (await state(id))?.status === "confirmation");
+      const next = await host.present(scope(), id),
+        card = next.confirmations.find((c: any) => c.status === "pending");
+      expect(card.payload.input.target.name).toBe("客服整理版");
+      expect(next.results[0].run_id).toBe(runId);
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + oldCard.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(409);
+      outputs = [{ role: "assistant", content: "已保存客服整理版。" }];
+      const responses = await Promise.all([
+        api("POST", route(id) + "/confirmations/" + card.id, { accept: true }),
+        api("POST", route(id) + "/confirmations/" + card.id, { accept: true }),
+      ]);
+      expect(responses.every((r) => r.statusCode === 200)).toBe(true);
+      await until(async () => (await state(id))?.status === "completed");
+      const confirmed = await host.present(scope(), id);
+      outputs = [
+        call("read_task_progress", {}),
+        { role: "assistant", content: "已保存客服整理版。" },
+      ];
+      const progress = await submit(id, "现在进度怎样？");
+      expect(progress.statusCode).toBe(202);
+      await until(
+        async () =>
+          (
+            await db.query(
+              "SELECT status FROM assistant_runtime_turn WHERE id=$1",
+              [progress.json().turnId],
+            )
+          ).rows[0]?.status === "succeeded",
+      );
+      const queried = await host.present(scope(), id);
+      expect(queried.confirmations).toHaveLength(
+        confirmed.confirmations.length,
+      );
+      expect(
+        queried.confirmations.filter((c: any) => c.status === "pending"),
+      ).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT resume_requested FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].resume_requested,
+      ).toBe(false);
+      const after = await effects();
+      expect(after.runs - before.runs).toBe(1);
+      expect(after.drafts - before.drafts).toBe(1);
+      expect(
+        (await host.present(scope(), id)).receipts.filter(
+          (r: any) => r.acceptanceId,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await restarted.close();
+    }
+  });
+
+  it.each([
+    "继续，只查询进度，暂不执行处理",
+    "继续，先只改保存名称，暂不处理。",
+  ])("SAVE RECOVERY rejects misleading model resume for %s", async (text) => {
+    const { id, plan } = await reviewCreate();
+    const start = await run(id, "清洗后保存", [
+      plan,
+      call("submit_processing", {}),
+    ]);
+    await completeRun(start.results[0].run_id);
+    await host.execution.wake();
+    outputs = [call("prepare_adoption", {})];
+    await host.runPending(scope(), id, start.execution.turn_id);
+    await host.stop(scope(), id);
+    const before = await effects();
+    const result = await run(id, text, [
+      call("continue_task", {}),
+      { role: "assistant", content: "任务仍暂停。" },
+    ]);
+    expect(result.execution.status).toBe("paused");
+    expect(
+      result.confirmations.filter((c: any) => c.status === "pending"),
+    ).toHaveLength(0);
+    expect(result.results).toHaveLength(1);
+    expect(await effects()).toEqual(before);
   });
 
   it("R04 ordinary progress queries preserve the suspended turn and ordinary continue queues the same work", async () => {

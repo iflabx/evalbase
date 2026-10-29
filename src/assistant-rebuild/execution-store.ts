@@ -1,3 +1,4 @@
+import { explicitResumeRequest } from "./control-intent.js";
 import { draftOperations } from "../drafts/operations.js";
 import { applySelectionPreview } from "../selection/store.js";
 import { withOperationScope } from "../operations/commit.js";
@@ -185,7 +186,7 @@ export class ExecutionStore {
         [turnId, token],
       );
       await c.query(
-        "UPDATE assistant_runtime_execution SET feedback=CASE WHEN turn_id=$2 THEN feedback ELSE NULL END,turn_id=$2,status='running',reason=NULL,lease_until=$3,updated_at=now() WHERE session_id=$1",
+        "UPDATE assistant_runtime_execution SET feedback=CASE WHEN turn_id=$2 THEN feedback ELSE NULL END,resume_requested=CASE WHEN turn_id=$2 THEN resume_requested ELSE false END,turn_id=$2,status='running',reason=NULL,lease_until=$3,updated_at=now() WHERE session_id=$1",
         [sessionId, turnId, new Date(this.now() + this.policy.leaseMs)],
       );
       await c.query(
@@ -467,6 +468,76 @@ export class ExecutionStore {
     return null;
   }
 
+  /** Resolve the same delivery by processing dependencies, never by the current chat turn.
+   * Immutable requirements events also support operations written before this resolver. */
+  async processingOperations(session: any, db: Query = this.db) {
+    const rows = (
+      await db.query(
+        "SELECT o.*,j.status AS job_status,e.detail->'receipt'->'requirements' AS original_requirements FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id LEFT JOIN LATERAL (SELECT detail FROM assistant_runtime_event WHERE session_id=o.session_id AND kind='requirements_saved' AND (detail->'receipt'->>'revision')::int=o.requirements_revision ORDER BY id LIMIT 1) e ON true WHERE o.session_id=$1 AND o.kind='processing' ORDER BY o.requirements_revision DESC,o.id",
+        [session.id],
+      )
+    ).rows;
+    const fingerprint = (requirements: any, delivery: any) => {
+      const processing = { ...delivery };
+      delete processing.name;
+      delete processing.saveTarget;
+      return canonicalJson({
+        objective: requirements.objective ?? "",
+        processing,
+      });
+    };
+    const selected = new Set<string>();
+    return rows.filter((op) => {
+      const delivery = session.requirements.deliveries.find(
+        (d: any) =>
+          d.status === "active" &&
+          op.operation_key.startsWith("processing:" + d.id + ":"),
+      );
+      if (!delivery)
+        return (
+          session.requirements_revision === 0 &&
+          session.requirements.deliveries.length === 0 &&
+          op.requirements_revision === 0
+        );
+      const original = op.original_requirements?.deliveries?.find(
+        (d: any) => d.id === delivery.id,
+      );
+      if (
+        !original ||
+        fingerprint(op.original_requirements, original) !==
+          fingerprint(session.requirements, delivery) ||
+        selected.has(delivery.id)
+      )
+        return false;
+      selected.add(delivery.id);
+      return true;
+    });
+  }
+
+  async processingForExecution(proof: TurnProof, session: any) {
+    const task = await this.processingGuard(proof);
+    if (task.suspended) throw new SessionError("task_paused");
+    const op = (await this.processingOperations(session))[0];
+    if (!op) throw new SessionError("processing_not_submitted", 422);
+    const input = await this.sessions.guard(proof);
+    if (
+      op.turn_id !== proof.turnId &&
+      !task.resume_requested &&
+      !explicitResumeRequest(input.text)
+    )
+      throw new SessionError("processing_resume_required", 409);
+    return op;
+  }
+  async processingCompatible(session: any, op: any, db: Query = this.db) {
+    return (
+      session.requirements_revision === op.requirements_revision ||
+      (op.kind === "processing" &&
+        (await this.processingOperations(session, db)).some(
+          (r) => r.id === op.id,
+        ))
+    );
+  }
+
   async completedRecovery(
     db: Query,
     scope: SessionScope,
@@ -474,27 +545,8 @@ export class ExecutionStore {
     task: any,
   ) {
     if (task?.status !== "completed") return false;
-    const deliveries = session.requirements?.deliveries ?? [];
-    const active = new Set(
-      deliveries
-        .filter((d: any) => d.status === "active")
-        .map(
-          (d: any) =>
-            "processing:" + d.id + ":" + session.requirements_revision,
-        ),
-    );
-    const rows = (
-      await db.query(
-        "SELECT o.*,j.status AS job_status FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.turn_id=$2 AND o.requirements_revision=$3 AND o.kind='processing'",
-        [session.id, task.turn_id, session.requirements_revision],
-      )
-    ).rows;
+    const rows = await this.processingOperations(session, db);
     for (const op of rows) {
-      if (
-        !active.has(op.operation_key) &&
-        !(session.requirements_revision === 0 && !deliveries.length)
-      )
-        continue;
       if (["failed", "cancelled"].includes(op.job_status)) continue;
       const saves = (
         await db.query(
@@ -703,6 +755,16 @@ export class ExecutionStore {
           [proof.sessionId, key],
         )
       ).rows[0];
+      const equivalent =
+        !prior && kind === "adopt"
+          ? (
+              await c.query(
+                "SELECT * FROM assistant_runtime_operation WHERE session_id=$1 AND kind='adopt' AND requirements_revision=$2 AND request_hash=$3 ORDER BY id LIMIT 1",
+                [proof.sessionId, s.requirements_revision, hash],
+              )
+            ).rows[0]
+          : null;
+      if (equivalent) return equivalent;
       if (prior) {
         if (prior.kind !== kind || prior.request_hash !== hash)
           throw new SessionError("operation_payload_conflict");
@@ -871,7 +933,7 @@ export class ExecutionStore {
           if (action === "cancel") await this.guard(fixed, db, true);
           else await this.processingGuard(fixed, db, true);
           const s = await this.sessions.get(fixed, fixed.sessionId, db);
-          if (s.requirements_revision !== op.requirements_revision)
+          if (!(await this.processingCompatible(s, op, db)))
             throw new SessionError("requirements_revision_conflict");
           if (action && action !== "cancel" && op.kind !== "processing") {
             const c = (
@@ -907,7 +969,7 @@ export class ExecutionStore {
         background: async (db, request) => {
           await this.processingGuard(fixed, db);
           const session = await this.sessions.get(fixed, fixed.sessionId, db);
-          if (session.requirements_revision !== op.requirements_revision)
+          if (!(await this.processingCompatible(session, op, db)))
             throw new SessionError("requirements_revision_conflict");
           const active = session.requirements.deliveries.filter(
             (d) => d.status === "active",
@@ -1412,7 +1474,7 @@ export class ExecutionStore {
           if (t.status !== "waiting") return;
           const refs = (
             await c.query(
-              "SELECT o.requirements_revision,j.status FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.turn_id=$2",
+              "SELECT o.id,o.requirements_revision,j.status FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id WHERE o.session_id=$1 AND o.turn_id=$2 AND o.kind='processing'",
               [w.session_id, t.turn_id],
             )
           ).rows;
@@ -1423,11 +1485,10 @@ export class ExecutionStore {
             )
           )
             return;
-          if (
-            refs.some(
-              (r) => r.requirements_revision !== s.requirements_revision,
-            )
-          ) {
+          const compatible = new Set(
+            (await this.processingOperations(s, c)).map((o) => o.id),
+          );
+          if (refs.some((r) => !compatible.has(r.id))) {
             await c.query(
               "UPDATE assistant_runtime_execution SET status='paused',reason='requirements_revision_conflict' WHERE session_id=$1",
               [w.session_id],
@@ -1459,27 +1520,8 @@ export class ExecutionStore {
         )
       ).rows[0] ?? null;
     const current = await this.sessions.get(scope, sessionId);
-    const activeKeys = new Set(
-      current.requirements.deliveries
-        .filter((d) => d.status === "active")
-        .map((d) => "processing:" + d.id + ":" + current.requirements_revision),
-    );
     const currentRuns = new Set(
-      (
-        await this.db.query(
-          "SELECT run_id,operation_key,turn_id,requirements_revision FROM assistant_runtime_operation WHERE session_id=$1 AND kind='processing'",
-          [sessionId],
-        )
-      ).rows
-        .filter(
-          (o) =>
-            activeKeys.has(o.operation_key) ||
-            (current.requirements_revision === 0 &&
-              activeKeys.size === 0 &&
-              o.requirements_revision === 0 &&
-              o.turn_id === (task?.suspended_turn_id ?? task?.turn_id)),
-        )
-        .map((o) => o.run_id),
+      (await this.processingOperations(current)).map((o) => o.run_id),
     );
     const cards = (
       await this.db.query(
@@ -1635,7 +1677,7 @@ export class ExecutionStore {
           !["running", "waiting"].includes(task.status) ||
           task.suspended ||
           task.turn_id !== op.turn_id ||
-          s.requirements_revision !== op.requirements_revision
+          !(await this.processingCompatible(s, op, c))
         )
           throw new SessionError("runtime_interrupted");
         if (!cost || !Number.isSafeInteger(cost.rows) || cost.rows < 0)

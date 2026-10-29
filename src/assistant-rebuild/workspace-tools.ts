@@ -66,6 +66,12 @@ export function workspaceTools(
             "执行已经保存的单份清洗或改写方案，无参数。必须mode:execute，固定source.recordIds与count一致，allowedFields明确，saveTarget:newDraft。会创建真实后台作业，并由服务端自动等待；禁止重复提交。",
           run: async () => {
             const { session, d } = await current();
+            const existing = (await execution.processingOperations(session))[0];
+            if (existing) {
+              await execution.processingForExecution(proof, session);
+              await waits.processing();
+              return { runId: existing.run_id, reused: true };
+            }
             const payload = {
               source: d.source,
               options: {
@@ -108,13 +114,7 @@ export function workspaceTools(
             "为本次已完成的处理结果准备固定的保存确认卡，无参数。不会保存或代用户确认；服务端自动等待用户确认。保存目标从当前已保存要求取得。",
           run: async () => {
             const { session, d } = await current();
-            const op = (
-              await store.db.query(
-                "SELECT * FROM assistant_runtime_operation WHERE session_id=$1 AND turn_id=$2 AND requirements_revision=$3 AND kind='processing' AND run_id IS NOT NULL ORDER BY id LIMIT 1",
-                [proof.sessionId, proof.turnId, session.requirements_revision],
-              )
-            ).rows[0];
-            if (!op) throw new SessionError("processing_not_submitted", 422);
+            const op = await execution.processingForExecution(proof, session);
             const data = await readProcessingRun(
               store.db,
               artifacts,
@@ -139,7 +139,7 @@ export function workspaceTools(
             );
             const adoption = await execution.operation(
               proof,
-              "adopt:" + op.id,
+              "adopt:" + op.id + ":" + session.requirements_revision,
               "adopt",
               {
                 runId: op.run_id,

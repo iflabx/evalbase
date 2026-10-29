@@ -496,7 +496,7 @@ export class SessionStore {
         [proof.sessionId, proof.turnId, content],
       );
       await client.query(
-        "UPDATE assistant_runtime_execution SET status=$3,reason=$4,lease_until=NULL WHERE session_id=$1 AND turn_id=$2",
+        "UPDATE assistant_runtime_execution SET status=$3,reason=$4,lease_until=NULL,resume_requested=false WHERE session_id=$1 AND turn_id=$2",
         [
           proof.sessionId,
           proof.turnId,
@@ -824,7 +824,7 @@ export class SessionStore {
           [proof.sessionId, revision],
         );
         await client.query(
-          "UPDATE assistant_runtime_execution SET no_progress=0,seen='[]',progress_revision=$2,progress_version=progress_version+1,suspended=NULL,resume_suspended=false WHERE session_id=$1",
+          "UPDATE assistant_runtime_execution SET no_progress=0,seen='[]',progress_revision=$2,progress_version=progress_version+1,suspended=CASE WHEN suspended IS NULL OR coalesce(suspended->>'reason','')<>'user_paused' THEN NULL ELSE suspended || jsonb_build_object('requirementsRevision',$2::int,'progressRevision',$2::int,'noProgress',0,'seen','[]'::jsonb,'feedback',NULL) END,resume_suspended=false WHERE session_id=$1",
           [proof.sessionId, revision],
         );
       }
