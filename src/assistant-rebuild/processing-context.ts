@@ -6,7 +6,7 @@ export async function compatibleProcessingOperations(
 ) {
   const rows = (
     await db.query(
-      "SELECT o.*,j.status AS job_status,e.detail->'receipt'->'requirements' AS original_requirements FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id LEFT JOIN LATERAL (SELECT detail FROM assistant_runtime_event WHERE session_id=o.session_id AND kind='requirements_saved' AND (detail->'receipt'->>'revision')::int=o.requirements_revision ORDER BY id LIMIT 1) e ON true WHERE o.session_id=$1 AND o.kind='processing' ORDER BY o.requirements_revision DESC,o.id",
+      "SELECT o.*,j.status AS job_status,e.detail->'receipt'->'requirements' AS original_requirements,(SELECT count(DISTINCT result_id) FROM processing_acceptance a CROSS JOIN LATERAL jsonb_array_elements_text(a.result_ids) result_id WHERE a.run_id=r.id)>=coalesce((r.options->>'outputCount')::int,r.input_count) AS fully_saved FROM assistant_runtime_operation o JOIN processing_run r ON r.id=o.run_id JOIN job j ON j.id=r.job_id LEFT JOIN LATERAL (SELECT detail FROM assistant_runtime_event WHERE session_id=o.session_id AND kind='requirements_saved' AND (detail->'receipt'->>'revision')::int=o.requirements_revision ORDER BY id LIMIT 1) e ON true WHERE o.session_id=$1 AND o.kind='processing' ORDER BY o.requirements_revision DESC,o.id",
       [session.id],
     )
   ).rows;
@@ -15,7 +15,6 @@ export async function compatibleProcessingOperations(
     delete processing.name;
     delete processing.saveTarget;
     return canonicalJson({
-      objective: requirements.objective,
       processing,
     });
   };
@@ -28,6 +27,7 @@ export async function compatibleProcessingOperations(
     );
     if (
       op.payload.taskId &&
+      !op.operation_key.startsWith("processing:") &&
       session.requirements_revision === op.requirements_revision
     )
       return true;
@@ -42,6 +42,9 @@ export async function compatibleProcessingOperations(
     );
     if (
       !original ||
+      (!op.fully_saved &&
+        op.original_requirements.objective !==
+          session.requirements.objective) ||
       fingerprint(op.original_requirements, original) !==
         fingerprint(session.requirements, delivery) ||
       selected.has(delivery.id)

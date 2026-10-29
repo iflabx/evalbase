@@ -474,6 +474,6 @@ export function assertExecutionReady(
     count: number;
     operation: "clean" | "rewrite" | "augment" | "generate";
     allowedFields: NonNullable<Delivery["allowedFields"]>;
-    saveTarget: { kind: "newDraft"; name: string; purpose?: string };
+    saveTarget: NonNullable<Delivery["saveTarget"]>;
   };
 }

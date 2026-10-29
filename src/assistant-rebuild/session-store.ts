@@ -811,7 +811,11 @@ export class SessionStore {
                 [value.source.id],
               )
             ).rows[0];
-            if (row?.revision !== value.sourceSnapshot.revision)
+            if (
+              !row ||
+              !Number.isSafeInteger(value.sourceSnapshot.revision) ||
+              String(row.revision) !== String(value.sourceSnapshot.revision)
+            )
               throw new SessionError("source_revision_conflict");
           }
         }

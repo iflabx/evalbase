@@ -2705,29 +2705,44 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       const taskId = (
         await db.query("SELECT task_id FROM processing_run WHERE id=$1", [runA])
       ).rows[0].task_id;
-      const { readProcessingTask, previewTaskInput } =
+      const { previewTaskInput } =
         await import("../../src/processing/tasks.js");
-      let task = await readProcessingTask(db, artifacts, scope(), taskId, {
-        limit: "100",
-      });
       const input = await previewTaskInput(db, artifacts, scope(), taskId, {
         mode: "saved",
         limit: 100,
       });
       outputs = [
-        call("submit_processing_round", {
-          taskId,
-          expectedRevision: task.task.revision,
-          mode: "saved",
-          resultIds: [input.records[0].id],
-          options: {
-            operation: "augment",
-            instructions:
-              "围绕咨询需求生成不同场景的完整问题，保留原标签和Metadata。",
-            allowedFields: ["question"],
-            outputCount: 2,
+        call("read_draft", {
+          draftId: firstReceipt.draftId,
+          limit: 5,
+          offset: 0,
+        }),
+        call("create_requirements", {
+          expectedRevision: 2,
+          changes: {
+            mode: "execute",
+            objective: "基于咨询第一条再扩充2条保存回原草稿",
+            deliveries: [
+              {
+                patch: {
+                  name: "咨询扩充",
+                  operation: "augment",
+                  count: 2,
+                  source: {
+                    kind: "draft",
+                    id: firstReceipt.draftId,
+                    recordIds: [input.records[0].id],
+                  },
+                  saveTarget: { kind: "draft", id: firstReceipt.draftId },
+                  instructions:
+                    "围绕咨询需求生成不同场景的完整问题，保留原标签和Metadata。",
+                  allowedFields: ["question"],
+                },
+              },
+            ],
           },
         }),
+        call("submit_processing", {}),
       ];
       expect(
         (await submit(id, "从第一份保存结果中选第一条，再扩充2条，其余不动。"))
@@ -2746,34 +2761,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           )
         ).rows[0],
       ).toMatchObject({ input_count: 1, task_id: taskId });
+      outputs = [call("prepare_adoption", {})];
       await completeRun(runC);
-      await until(
-        async () => (await host.store.get(scope(), id)).status === "idle",
-      );
-      task = await readProcessingTask(db, artifacts, scope(), taskId, {
-        limit: "100",
-      });
-      const draft = (
-        await db.query("SELECT revision FROM collaborative_draft WHERE id=$1", [
-          firstReceipt.draftId,
-        ])
-      ).rows[0];
-      outputs = [
-        call("prepare_processing_task_save", {
-          taskId,
-          expectedRevision: task.task.revision,
-          resultIds: task.unsavedIds,
-          target: {
-            kind: "draft",
-            id: firstReceipt.draftId,
-            expectedRevision: Number(draft.revision),
-          },
-        }),
-      ];
-      expect(
-        (await submit(id, "把这2条新增结果保存回第一份草稿，先让我确认。"))
-          .statusCode,
-      ).toBe(202);
       await until(async () => (await executionState()) === "confirmation");
       const save = (await host.present(scope(), id)).confirmations.find(
         (card: any) => card.status === "pending",

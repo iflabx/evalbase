@@ -1,4 +1,9 @@
 import {
+  createProcessingTaskRound,
+  previewTaskInput,
+  readProcessingTask,
+} from "../processing/tasks.js";
+import {
   assertExecutionReady,
   validateDeliveryResults,
 } from "./session-contract.js";
@@ -107,7 +112,57 @@ export function workspaceTools(
                     recordIds: [],
                   }
                 : d.source;
+            // A saved artifact returning to the same draft stays in its proven
+            // task, even when the model expresses the follow-up as a delivery.
+            let savedRound:
+              | { taskId: string; expectedRevision: number }
+              | undefined;
+            if (
+              source?.kind === "draft" &&
+              d.saveTarget.kind === "draft" &&
+              d.saveTarget.id === source.id
+            ) {
+              const candidates = (
+                await store.db.query(
+                  "SELECT DISTINCT r.task_id FROM processing_acceptance a JOIN processing_run r ON r.id=a.run_id JOIN assistant_runtime_operation o ON o.id=a.idempotency_key WHERE o.session_id=$1 AND o.kind='adopt' AND a.draft_id=$2",
+                  [proof.sessionId, source.id],
+                )
+              ).rows;
+              const matches = [];
+              let unavailable = false;
+              for (const candidate of candidates) {
+                try {
+                  const preview = await previewTaskInput(
+                    store.db,
+                    artifacts,
+                    proof,
+                    candidate.task_id,
+                    { mode: "saved", limit: 1 },
+                  );
+                  if (
+                    source.recordIds.every((id) => preview.allIds.includes(id))
+                  )
+                    matches.push({
+                      taskId: candidate.task_id,
+                      expectedRevision: Number(preview.sourceRevision),
+                    });
+                } catch (error) {
+                  if (
+                    (error as { code?: string }).code !==
+                    "processing_saved_range_unavailable"
+                  )
+                    throw error;
+                  unavailable = true;
+                }
+              }
+              if (matches.length > 1 || (!matches.length && unavailable))
+                throw new SessionError("processing_saved_range_unavailable");
+              savedRound = matches[0];
+              if (savedRound)
+                await execution.beginProcessingRound(proof, savedRound.taskId);
+            }
             const payload = {
+              ...(savedRound ?? {}),
               source,
               options: {
                 operation: d.operation,
@@ -127,13 +182,28 @@ export function workspaceTools(
               "processing",
               payload,
             );
-            const result = await createProcessingRun(
-              store.db,
-              artifacts,
-              execution.operationScope(proof, op),
-              op.id,
-              payload,
-            );
+            const processingScope = execution.operationScope(proof, op);
+            const result = savedRound
+              ? await createProcessingTaskRound(
+                  store.db,
+                  artifacts,
+                  processingScope,
+                  savedRound.taskId,
+                  op.id,
+                  {
+                    expectedRevision: savedRound.expectedRevision,
+                    mode: "saved",
+                    resultIds: source.recordIds,
+                    options: payload.options,
+                  },
+                )
+              : await createProcessingRun(
+                  store.db,
+                  artifacts,
+                  processingScope,
+                  op.id,
+                  payload,
+                );
             await waits.processing();
             return result;
           },
@@ -227,14 +297,38 @@ export function workspaceTools(
                   ? d.sourceSnapshot?.revision
                   : Number(draft.revision);
             }
+            let input: any = {
+              resultIds: data.records.map((r) => r.id),
+              target,
+            };
+            if (op.payload.taskId) {
+              const task = await readProcessingTask(
+                store.db,
+                artifacts,
+                proof,
+                op.payload.taskId,
+                { limit: "1" },
+              );
+              if (
+                task.run.id !== op.run_id ||
+                task.unsavedIds.length !== d.count
+              )
+                throw new SessionError("processing_task_changed");
+              input = {
+                resultIds: task.unsavedIds,
+                target,
+                expectedRevision: task.task.revision,
+              };
+            }
             const adoption = await execution.operation(
               proof,
               "adopt:" + op.id + ":" + session.requirements_revision,
               "adopt",
               {
+                ...(op.payload.taskId ? { taskId: op.payload.taskId } : {}),
                 runId: op.run_id,
                 deliveryId: d.id,
-                input: { resultIds: data.records.map((r) => r.id), target },
+                input,
               },
             );
             if (call)

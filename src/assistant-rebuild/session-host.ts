@@ -620,7 +620,7 @@ export class FormalSessionHost {
         if (
           (
             await this.db.query(
-              "SELECT 1 FROM assistant_runtime_operation WHERE session_id=$1 AND turn_id=$2 AND kind='processing' AND payload ? 'taskId' LIMIT 1",
+              "SELECT 1 FROM assistant_runtime_operation WHERE session_id=$1 AND turn_id=$2 AND kind='processing' AND payload ? 'taskId' AND operation_key NOT LIKE 'processing:%' LIMIT 1",
               [sessionId, turnId],
             )
           ).rowCount
