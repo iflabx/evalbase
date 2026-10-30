@@ -80,3 +80,6 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-30补修：按Owner授权修复C07/C08共同恢复与控制入口，定向回归和针对性复审完成；新有界活动单列，详见[补修记录](../r10-retest-20261030/verification.md)。原失败及旧预算保留，CU尚未完成。
 
 - 2026-10-30补验结果：C07自然过期恢复及唯一保存通过；C08普通暂停/查询/继续/唯一保存通过，但实际Worker暂停窗口仍错过，保持partial，不勾选R10-3。新活动26HTTP/7行次/0生成均封存；完整首错、辅助及旧数据差异见[补修记录](../r10-retest-20261030/verification.md)。
+
+
+2026-10-30 C08 行次边界补修：已有成果恢复不受新增处理行额度总门禁拦截；真实SDK定向及继续/唯一保存补验通过，保留暂停阶段限定。见[补修证据](../r10-row-recovery-20261030/verification.md)。
