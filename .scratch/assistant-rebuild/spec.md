@@ -9,6 +9,9 @@ Blocked by: 无未决范围问题；各票执行依赖见下表
 - Owner 已确认完整范围，并要求创建正式票据；2026-10-27 按审查补强消息提交防重、无进展判定和取消交付验收。创建时仅修改票据/Spec；后续已授权实施进度与验证以本页进度表和对应记录为准，不据此扩大模型/CU预算或部署授权。
 - 正式编号为 **REBUILD-01～REBUILD-10**，分别对应范围文档 R01～R10；`RB01～RB15` 仍是验收条款编号，历史 OPT 票及其状态不改变。
 
+
+当前总状态（2026-10-30）：01～09沿用已验结论；10的功能实现与规定分层验收已闭合，C07通过、C08分阶段累计通过。总Spec与10仍保留in-progress/partial，仅因发布前依赖安全收口待办；不是仍未实现或未运行C07/C08。当前唯一汇总见[最终收口审查](r10-closeout-20261030/review.md)，其中保留CSV豁免、实际暂停阶段、辅助、历史数据变化及预算边界。未经明确授权不合并、推送或正式切换。
+
 ## 1. 合同与范围
 
 2026-10-30 补修方案：保存目标修改漏执行及跨轮恢复的审查后合同，统一见[待完成修改与恢复方案](result-workspace-20261029/verification.md#amendment-completion-plan)。主修复与追加补修已完成定向验证；新有界 CU 业务闭环完成但出现强制工具未清导致的 no_progress，已补修并回归，未改签该次为无报错通过；见[实现与验收记录](amendment-completion-20261030/verification.md)。旧活动、预算与通过证据保持。 其后Owner另行授权的独立补验已通过，未出现no_progress，见[补修后新有界CU](amendment-retest-20261030/verification.md)；前轮失败记录保持原结论。
@@ -34,7 +37,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | completed | targeted-pass（C05分阶段累计通过，历史限制见记录） | [实施与验收记录](r07-verification/verification.md) |
 | [REBUILD-08 历史兼容、任务恢复与数据生命周期](issues/08-history-compatibility-and-data-lifecycle.md) | 2 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04 | completed | targeted-pass | `47bf8d0` / [验证记录](r08-verification.md) |
 | [REBUILD-09 账号成员、模型设置与回收站操作](issues/09-accounts-settings-and-recycle-bin.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-06、REBUILD-08 | completed | targeted-pass | `1c01134` / [实施与C06记录](r09-verification/verification.md) |
-| [REBUILD-10 全范围验收、旧运行时退出与受控切换](issues/10-integrated-acceptance-and-runtime-cutover.md) | 3 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06、REBUILD-07、REBUILD-08、REBUILD-09 | in-progress | not-run | [实施与验收](r10-verification/verification.md) |
+| [REBUILD-10 全范围验收、旧运行时退出与受控切换](issues/10-integrated-acceptance-and-runtime-cutover.md) | 3 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06、REBUILD-07、REBUILD-08、REBUILD-09 | in-progress | partial（功能targeted-pass；安全收口待办） | 应用 `f484d68` / [最终收口审查](r10-closeout-20261030/review.md) |
 
 依赖顺序：REBUILD-01 → 02 → 03 → 04；第二批 05 与 08 可先行，之后 06，再完成 07 与 09；全部前置完成后进入 10。编号不是要求 05→06→07→08 的死序列；依赖图无环。
 
@@ -166,6 +169,8 @@ C05 的取消必须由上述普通提示经真实 Computer Use 链路完成。�
 
 C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最多15秒延迟，真实 Provider 响应先记录，再延迟交付；不得改参数、结果或授权。报告明确“真实模型＋人工停止窗口”；未捕获在途不能算通过，不反复生成撞时序。C07 的合成长历史及摘要阈值也明确记录，不声称自然长对话压力验证。
 
+历史例外记录：C08执行窗口补验按Owner批准的改进方法，单独有界活动中采用最多45秒交付等待、实际15.616秒即因暂停释放；Provider此前已返回。随后仅用另批0新增处理活动补继续和唯一保存。这是已执行记录的明确限定，不变更本节未来默认15秒窗口或初始批次额度，详见[最终汇总](r10-closeout-20261030/review.md#c07c08-最终结果与预算)。
+
 普通业务澄清和必要确认允许；每项最多一次普通继续用于观察错误恢复，计划内暂停后的继续不消耗额外重跑资格。达到无进展/纠错/服务限制或需技术救援时保留首错并停止，不换模型、加内部参数或用后端补数据救场。未知写入只查原回执。修复后重测使用另行授权的新有界记录，不能重置本活动或借用旧余额。
 
 原适配 L02 的环境干预、C1/C2 的样本/时序缺口保持原判定。正式接入以新版本的真实 SDK 受控错误和 C02/C08 无环境救援闭环提供替代证据，并注明不是原同版本整轮门槛重验。是否更稳定需要另外同条件对照，不是本批交付前提。
@@ -226,7 +231,7 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 
 - 2026-10-29：REBUILD-06发布完成核验补修后，125项定向回归及新有界C04（14请求/0处理生成）通过，隔离4240已更新。旧失败/旧预算不变，07/09/10未启动；详见[最新唯一证据](r06-verification.md#r06-c04-retest2)。
 
-### REBUILD-10 本轮状态（2026-10-30）
+### REBUILD-10 首次实施及历次补验（2026-10-30历史记录）
 
 应用1a4d7b5已更新隔离4240；退出/屏障/人工回退定向实现通过，C07/C08未闭合，R10仍in-progress。新活动总19HTTP/7行次/0生成后封存，旧数据和预算逐行不变。R04普通暂停输入及过期确认展示/恢复缺口与本次操作窗口限制见[唯一验收记录](r10-verification/verification.md#c07c08-实际执行与未通过原因2026-10-30)，不改签旧C01～C06或CSV豁免。未授权合并、推送或正式切换。
 
@@ -234,3 +239,5 @@ C02/C08 若自然执行太快，允许在隔离工具交付边界配置一次最
 
 
 2026-10-30 C08 恢复/唯一保存补验已关闭剩余缺口，原活动预算封存，未重跑处理；暂停阶段及跨活动证据限定见[记录](r10-row-recovery-20261030/verification.md)。
+
+- 2026-10-30最终收口：统一10的进度和AC；功能targeted-pass、发布安全pending，总状态仍in-progress/partial。补评两个锁文件、实际Node内置Undici与unpdf内置引擎，风险及最小整改/验证见[最终审查](r10-closeout-20261030/review.md)。没有改业务代码、依赖锁、旧预算或验收数据，没有新增模型/CU活动或部署。
