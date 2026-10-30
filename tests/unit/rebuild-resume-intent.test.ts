@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  pureControlAction,
   explicitResumeRequest,
   explicitProcessingRoundRequest,
 } from "../../src/assistant-rebuild/control-intent.js";
@@ -58,4 +59,19 @@ describe("processing round authorization", () => {
   ])("authorizes only the explicit new round: %s", (text) =>
     expect(explicitProcessingRoundRequest(text)).toBe(true),
   );
+});
+
+describe("composer priority controls", () => {
+  it.each(["先停一下", "请暂停", "停止任务", "暂停一下"])("stops %s", (text) =>
+    expect(pureControlAction(text)).toBe("stop"),
+  );
+  it.each([
+    "不要暂停",
+    "暂停是什么意思",
+    "“先停一下”",
+    "先停一下，然后改名",
+    "如果暂停呢？",
+  ])("does not stop %s", (text) => expect(pureControlAction(text)).toBeNull());
+  it("continues remaining work", () =>
+    expect(pureControlAction("接着把剩下的做完")).toBe("continue"));
 });

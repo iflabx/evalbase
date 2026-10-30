@@ -5602,7 +5602,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     30000,
   );
 
-  it.each(["missing", "expired"])(
+  it.each(["missing", "expired", "expired-wait"])(
     "POSTFIX recover successful orphan %s confirmation to unique save",
     async (kind) => {
       const { id, plan } = await reviewCreate();
@@ -5613,8 +5613,8 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await completeRun(start.results[0].run_id);
       await host.execution.wake();
       let oldCard: any;
-      if (kind === "expired") {
-        outputs = [call("prepare_adoption", {})];
+      if (kind !== "missing") {
+        outputs = [call("prepare_adoption", {}), call("wait_confirmation", {})];
         const ready = await host.runPending(
           scope(),
           id,
@@ -5626,15 +5626,22 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           [oldCard.id],
         );
       }
-      await db.query(
-        "UPDATE assistant_runtime_turn SET status='succeeded',runner_token=NULL WHERE id=$1",
-        [start.execution.turn_id],
-      );
-      await db.query(
-        "UPDATE assistant_runtime_execution SET status='completed' WHERE session_id=$1",
-        [id],
-      );
-      expect((await host.present(scope(), id)).canResumeCompleted).toBe(true);
+      if (kind !== "expired-wait") {
+        await db.query(
+          "UPDATE assistant_runtime_turn SET status='succeeded',runner_token=NULL WHERE id=$1",
+          [start.execution.turn_id],
+        );
+        await db.query(
+          "UPDATE assistant_runtime_execution SET status='completed' WHERE session_id=$1",
+          [id],
+        );
+      }
+      const recovery = await host.present(scope(), id);
+      expect(
+        kind === "expired-wait"
+          ? recovery.canRenewConfirmation
+          : recovery.canResumeCompleted,
+      ).toBe(true);
       const before = await jobState(id);
       expect(
         (await api("POST", route(id) + "/control", { action: "continue" }))
@@ -5681,6 +5688,141 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       expect(final.results[0].run_id).toBe(start.results[0].run_id);
       expect((await jobState(id)).request_limit).toBe(before.request_limit);
     },
+  );
+
+  it("R10 PAGE real SDK in-flight pause survives a delayed message ACK", async () => {
+    const id = await fresh(),
+      address = await webAddress();
+    const browser = await chromium.launch({ headless: true }),
+      context = await browser.newContext({ extraHTTPHeaders: { origin } });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+    ]);
+    let releaseAck!: () => void,
+      releaseModel!: () => void,
+      accepted: any,
+      entered = false;
+    const ack = new Promise<void>((r) => (releaseAck = r));
+    const model = new Promise<void>((r) => (releaseModel = r));
+    outputs = [
+      async () => {
+        entered = true;
+        await model;
+        return { role: "assistant", content: "迟到响应" };
+      },
+    ];
+    let running: Promise<any> | undefined;
+    try {
+      const page = await context.newPage();
+      await page.route("**" + route(id) + "/messages", async (r) => {
+        const response = await r.fetch();
+        accepted = await response.json();
+        await ack;
+        await r.fulfill({ response });
+      });
+      await page.goto(address + "/projects/" + projectId + "/assistant/" + id);
+      const composer = page.getByPlaceholder("描述你想处理的数据和要求…");
+      await composer.fill("查看项目情况");
+      await page.getByRole("button", { name: "发送", exact: true }).click();
+      await until(async () => !!accepted);
+      running = host.runPending(scope(), id, accepted.turnId);
+      await until(async () => entered);
+      await composer.fill("先停一下");
+      await page.getByRole("button", { name: "发送", exact: true }).click();
+      await browserExpect
+        .poll(async () => (await jobState(id)).status)
+        .toBe("paused");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_turn WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      await composer.fill("下一条输入保留");
+      releaseModel();
+      await running;
+      releaseAck();
+      await browserExpect(composer).toHaveValue("下一条输入保留");
+    } finally {
+      releaseAck?.();
+      releaseModel?.();
+      await running?.catch(() => {});
+      await context.close();
+      await browser.close();
+    }
+  }, 30000);
+
+  it.each(["expiry", "pause"])(
+    "R10 PAGE composer and confirmation recovery %s",
+    async (kind) => {
+      const { id, p, card } = await adoptionCard();
+      const before = await jobState(id);
+      if (kind === "expiry")
+        await db.query(
+          "UPDATE assistant_runtime_confirmation SET expires_at=now()-interval '1 minute' WHERE id=$1",
+          [card.id],
+        );
+      const address = await webAddress(),
+        browser = await chromium.launch({ headless: true });
+      const context = await browser.newContext({
+        extraHTTPHeaders: { origin },
+      });
+      const cookie = identities.get("admin")!.cookie!.split("=");
+      await context.addCookies([
+        { name: cookie[0]!, value: cookie.slice(1).join("="), url: address },
+      ]);
+      try {
+        const page = await context.newPage();
+        await page.goto(
+          address + "/projects/" + projectId + "/assistant/" + id,
+        );
+        if (kind === "expiry") {
+          await browserExpect(
+            page.getByText("确认已过期，处理结果已保留", { exact: true }),
+          ).toBeVisible();
+          await page
+            .getByRole("button", { name: "重新核对保存", exact: true })
+            .click();
+        } else {
+          const composer = page.getByPlaceholder("描述你想处理的数据和要求…");
+          await composer.fill("不要暂停");
+          await browserExpect(
+            page.getByRole("button", { name: "发送", exact: true }),
+          ).toBeDisabled();
+          await composer.fill("先停一下");
+          await page.getByRole("button", { name: "发送", exact: true }).click();
+          await browserExpect
+            .poll(async () => (await jobState(id)).status)
+            .toBe("paused");
+          await page
+            .getByRole("button", { name: "查看进度", exact: true })
+            .click();
+          expect((await jobState(id)).status).toBe("paused");
+          await page.keyboard.press("Escape");
+          await composer.fill("接着把剩下的做完");
+          await page.getByRole("button", { name: "发送", exact: true }).click();
+        }
+        await browserExpect
+          .poll(async () => (await jobState(id)).status)
+          .toBe("pending");
+        outputs = [call("wait_confirmation", {})];
+        const ready = await host.runPending(scope(), id, p.proof.turnId);
+        expect(
+          ready.confirmations.some(
+            (c: any) => c.id !== card.id && c.status === "pending",
+          ),
+        ).toBe(true);
+        expect((await jobState(id)).request_limit).toBe(before.request_limit);
+        expect(ready.results).toHaveLength(1);
+      } finally {
+        await context.close();
+        await browser.close();
+      }
+    },
+    30000,
   );
 
   it("POSTFIX new read-only turn cannot adopt previous orphan results", async () => {

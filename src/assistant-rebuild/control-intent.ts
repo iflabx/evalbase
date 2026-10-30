@@ -28,6 +28,7 @@ export function resumeIntent(
   const pure =
     "(?:(?:执行|处理|完成|做)?(?:(?:原来|刚才|之前|当前|这个|上次|原)的?)?(?:任务|工作|处理)?|保存(?:已经|已)?(?:处理)?(?:完成)?的?(?:结果|内容|数据)?|[，,、 ]*(?:并|然后|再)?(?:让|请)我确认保存)(?:吧|一下)?";
   if (
+    /^(?:请)?(?:接着|继续)把剩下的(?:做完|完成)[。！!\s]*$/u.test(control) ||
     new RegExp("^" + prefix + verb + pure + "$", "u").test(control) ||
     /^(?:please )?(?:continue|resume)(?: (?:the )?(?:task|work))?$/i.test(
       control,
@@ -90,4 +91,15 @@ export function explicitProcessingRoundRequest(text: string): boolean {
           clause,
         ) && !/(?:先不|暂不|不要|不执行|别)/u.test(clause),
     );
+}
+
+/** Whole-command controls only; quoted, negative and compound business text stays ordinary input. */
+export function pureControlAction(text: string): "stop" | "continue" | null {
+  if (
+    /^(?:请(?:你)?|麻烦(?:你)?)?(?:先)?(?:停一下|暂停|停止)(?:任务|一下|吧)?[。！!\s]*$/u.test(
+      text.trim(),
+    )
+  )
+    return "stop";
+  return resumeIntent(text) === "continue" ? "continue" : null;
 }

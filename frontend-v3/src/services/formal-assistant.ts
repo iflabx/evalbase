@@ -19,6 +19,7 @@ export type Snapshot = {
   currentRuntime?: string;
   canWrite?: boolean;
   canResumeCompleted?: boolean;
+  canRenewConfirmation?: boolean;
   session: {
     id: string;
     runtime_version?: string;

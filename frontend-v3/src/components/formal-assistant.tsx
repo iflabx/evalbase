@@ -1,3 +1,4 @@
+import { pureControlAction } from "../../../src/assistant-rebuild/control-intent";
 import { AssistantManagementBridge } from "./assistant-management-bridge";
 import { getSharedDraft } from "@/services/drafts";
 import { useQueryClient } from "@tanstack/react-query";
@@ -574,10 +575,33 @@ export function FormalAssistant({
       if (activeSession(selected)) endBusy(busyToken);
     }
   };
+  const requestedControl = pureControlAction(draft);
+  const composerControl =
+    !readOnlyHistory &&
+    canWrite &&
+    (requestedControl === "stop" ||
+      (!pending &&
+        !attachmentIds.length &&
+        requestedControl === "continue" &&
+        (snapshot?.execution?.status === "paused" ||
+          snapshot?.canRenewConfirmation ||
+          snapshot?.canResumeCompleted)))
+      ? requestedControl
+      : null;
   const send = async () => {
     const contentEpoch = historyEpoch.current;
     if (readOnlyHistory) {
       setError("旧会话只读保留，请新建会话继续；原成果与预算不变。");
+      return;
+    }
+    if (sessionId && snapshot && composerControl) {
+      const submittedText = draft;
+      if (await action(composerControl)) {
+        if (draftRef.current === submittedText && activeContent(sessionId, contentEpoch)) {
+          setDraft("");
+          saveDraft("");
+        }
+      }
       return;
     }
     if (
@@ -642,7 +666,7 @@ export function FormalAssistant({
   };
   const action = async (action: "stop" | "continue") => {
     const contentEpoch = historyEpoch.current;
-    if (!sessionId) return;
+    if (!sessionId || readOnlyHistory || !canWrite) return false;
     const selected = sessionId;
     const busyToken = beginBusy();
     try {
@@ -650,9 +674,14 @@ export function FormalAssistant({
         endpoint(projectId, selected) + "/control",
         json("POST", { action }),
       );
-      if (activeContent(selected, contentEpoch)) setSnapshot(s);
+      if (activeContent(selected, contentEpoch)) {
+        setSnapshot(s);
+        setError("");
+      }
+      return true;
     } catch (e) {
       if (activeContent(selected, contentEpoch)) setError(errorText(e));
+      return false;
     } finally {
       if (activeContent(selected, contentEpoch)) endBusy(busyToken);
     }
@@ -1352,7 +1381,9 @@ export function FormalAssistant({
         </h1>
         <span className="truncate text-xs text-muted-foreground" role="status">
           {snapshot
-            ? (statusNames[snapshot.execution?.status ?? snapshot.session.status] ?? "请核对状态")
+            ? snapshot.canRenewConfirmation
+              ? "确认已过期"
+              : (statusNames[snapshot.execution?.status ?? snapshot.session.status] ?? "请核对状态")
             : sessionId
               ? "正在读取"
               : ""}
@@ -1362,6 +1393,11 @@ export function FormalAssistant({
             <Button variant="ghost" size="sm" onClick={() => setProgressOpen(true)}>
               查看进度
             </Button>
+          )}
+          {snapshot?.canRenewConfirmation && (
+            <span className="self-center text-sm text-muted-foreground">
+              确认已过期，处理结果已保留
+            </span>
           )}
           {inFlight && (
             <Button
@@ -1374,14 +1410,20 @@ export function FormalAssistant({
               停止
             </Button>
           )}
-          {(snapshot?.execution?.status === "paused" || snapshot?.canResumeCompleted) && (
+          {(snapshot?.execution?.status === "paused" ||
+            snapshot?.canResumeCompleted ||
+            snapshot?.canRenewConfirmation) && (
             <Button
               variant="outline"
               size="sm"
               disabled={readOnlyHistory || busy || !canWrite}
               onClick={() => void action("continue")}
             >
-              {snapshot?.canResumeCompleted ? "继续完成保存" : "继续"}
+              {snapshot?.canRenewConfirmation
+                ? "重新核对保存"
+                : snapshot?.canResumeCompleted
+                  ? "继续完成保存"
+                  : "继续"}
             </Button>
           )}
           <DropdownMenu>
@@ -2156,19 +2198,16 @@ export function FormalAssistant({
                       )}
                       <Button
                         className="ml-auto"
-                        aria-label={pending ? "重试原提交" : "发送"}
+                        aria-label={composerControl ? "发送" : pending ? "重试原提交" : "发送"}
                         disabled={
                           readOnlyHistory ||
-                          busy ||
                           !draft.trim() ||
-                          selectionMissing ||
-                          inFlight ||
-                          conflict
+                          ((busy || selectionMissing || inFlight || conflict) && !composerControl)
                         }
                         onClick={() => void send()}
                       >
                         <Send className="size-4" />
-                        {pending ? "重试提交" : "发送"}
+                        {composerControl ? "发送" : pending ? "重试提交" : "发送"}
                       </Button>
                     </div>
                   </div>
@@ -2282,7 +2321,11 @@ export function FormalAssistant({
           <DialogHeader>
             <DialogTitle>当前进度</DialogTitle>
           </DialogHeader>
-          <p>{statusNames[snapshot?.execution?.status ?? "idle"] ?? "请核对状态"}</p>
+          <p>
+            {snapshot?.canRenewConfirmation
+              ? "确认已过期"
+              : (statusNames[snapshot?.execution?.status ?? "idle"] ?? "请核对状态")}
+          </p>
           <p className="text-sm text-muted-foreground">
             {snapshot?.execution?.status === "paused"
               ? "当前任务保持暂停，查看进度不会自动继续。"

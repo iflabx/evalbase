@@ -76,3 +76,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-30：Owner授权分阶段实施、隔离预览及新有界C07/C08；基线bde2017。能力/证据与运行时退出集中见[本票记录](../r10-verification/verification.md)，原CSV豁免和C05分阶段证据保留；旧数据/预算不重置。
 
 - 2026-10-30实施收口：应用1a4d7b5已更新4240，回归/类型/构建与针对性复审证据见[本票记录](../r10-verification/verification.md)。C07/C08分别因过期确认恢复桥、暂停输入桥及实际操作窗口未覆盖而未通过，19HTTP/7行次/0生成、活动已封存；R10-3/A1不勾选，维持in-progress。旧29表逐行不变，未合并/推送/切换正式。领域缺口退回R04，不用R10预算重跑成功处理。
+
+- 2026-10-30补修：按Owner授权修复C07/C08共同恢复与控制入口，定向回归和针对性复审完成；新有界活动单列，详见[补修记录](../r10-retest-20261030/verification.md)。原失败及旧预算保留，CU尚未完成。

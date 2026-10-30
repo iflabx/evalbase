@@ -651,6 +651,39 @@ export class ExecutionStore {
     );
   }
 
+  async expiredConfirmationRecovery(
+    db: Query,
+    scope: SessionScope,
+    session: any,
+    task: any,
+  ) {
+    if (task?.status !== "confirmation") return false;
+    const cards = (
+      await db.query(
+        "SELECT * FROM assistant_runtime_confirmation WHERE session_id=$1 AND requirements_revision=$2 AND action='adopt' ORDER BY expires_at DESC",
+        [session.id, session.requirements_revision],
+      )
+    ).rows;
+    const operations = await this.processingOperations(session, db);
+    for (const op of operations) {
+      if (op.job_status !== "succeeded" || op.turn_id !== task.turn_id)
+        continue;
+      const card = cards.find((c: any) => c.payload?.runId === op.run_id);
+      if (
+        card &&
+        (await this.receipt(scope, session.id, card.operation_id, db))
+      )
+        continue;
+      if (
+        card &&
+        (card.status === "expired" ||
+          (card.status === "pending" &&
+            new Date(card.expires_at).getTime() <= this.now()))
+      )
+        return true;
+    }
+    return false;
+  }
   async completedRecovery(
     db: Query,
     scope: SessionScope,
@@ -704,7 +737,10 @@ export class ExecutionStore {
         await this.sessions.access(scope, true, c);
         const unresolved = await this.completedRecovery(c, scope, s, task);
         if (!unresolved) throw new SessionError("task_not_paused");
-      } else if (!task || !["paused", "failed"].includes(task.status))
+      } else if (
+        !(await this.expiredConfirmationRecovery(c, scope, s, task)) &&
+        (!task || !["paused", "failed"].includes(task.status))
+      )
         throw new SessionError("task_not_paused");
       await this.assertActivityAvailable(c, task);
       if (
@@ -727,7 +763,7 @@ export class ExecutionStore {
       )
         throw new SessionError("conversation_busy");
       await c.query(
-        "UPDATE assistant_runtime_turn SET status='pending',runner_token=NULL,error_code=NULL,finished_at=NULL WHERE id=$1 AND status IN('paused','failed','succeeded')",
+        "UPDATE assistant_runtime_turn SET status='pending',runner_token=NULL,error_code=NULL,finished_at=NULL WHERE id=$1 AND status IN('paused','failed','succeeded','confirmation')",
         [task.turn_id],
       );
       await c.query(
@@ -1914,6 +1950,12 @@ export class ExecutionStore {
               "保存名称尚未修改，任务保持暂停。可完成或明确撤销这项改名要求。",
           }
         : null,
+      canRenewConfirmation: await this.expiredConfirmationRecovery(
+        this.db,
+        scope,
+        current,
+        task,
+      ),
       canResumeCompleted: await this.completedRecovery(
         this.db,
         scope,
