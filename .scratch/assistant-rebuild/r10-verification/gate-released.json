@@ -1,0 +1,14 @@
+{
+  "sessionId": "assistant_30a91db1cf7f4cea9528f9002c21316f",
+  "runId": "processing_a98d73e308034f11a8293ad2540544c8",
+  "ordinal": 0,
+  "requestId": "worker_request_459adb90-a7ce-4635-ae31-f762577dad22",
+  "responseAt": "2026-10-30T05:47:16.646Z",
+  "enteredAt": "2026-10-30T05:47:16.652Z",
+  "maxDelayMs": 15000,
+  "heldMs": 15025,
+  "releasedAt": "2026-10-30T05:47:31.679Z",
+  "reason": "15_second_timeout",
+  "pause": null,
+  "businessWrites": 0
+}

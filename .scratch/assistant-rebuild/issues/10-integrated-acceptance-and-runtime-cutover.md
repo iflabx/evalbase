@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Implementation: in-progress
-Validation: not-run
+Validation: partial
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-06](06-draft-selection-publication-and-versions.md), [REBUILD-07](07-processing-rounds-and-multiple-deliveries.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md), [REBUILD-09](09-accounts-settings-and-recycle-bin.md)
 
 - 批次：3；对应原范围建议：R10。
@@ -74,3 +74,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。
 
 - 2026-10-30：Owner授权分阶段实施、隔离预览及新有界C07/C08；基线bde2017。能力/证据与运行时退出集中见[本票记录](../r10-verification/verification.md)，原CSV豁免和C05分阶段证据保留；旧数据/预算不重置。
+
+- 2026-10-30实施收口：应用1a4d7b5已更新4240，回归/类型/构建与针对性复审证据见[本票记录](../r10-verification/verification.md)。C07/C08分别因过期确认恢复桥、暂停输入桥及实际操作窗口未覆盖而未通过，19HTTP/7行次/0生成、活动已封存；R10-3/A1不勾选，维持in-progress。旧29表逐行不变，未合并/推送/切换正式。领域缺口退回R04，不用R10预算重跑成功处理。

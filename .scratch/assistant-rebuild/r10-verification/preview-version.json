@@ -1,0 +1,46 @@
+{
+  "sha": "1a4d7b5435e169fd0e31290199ddf3fcfba0de50",
+  "port": 4240,
+  "database": "evalbase_r04_20261028",
+  "bucket": "evalbase-r04-20261028",
+  "checks": [
+    {
+      "path": "/health",
+      "status": 200
+    },
+    {
+      "path": "/health/ready",
+      "status": 200
+    },
+    {
+      "path": "/",
+      "status": 200
+    }
+  ],
+  "services": [
+    {
+      "service": "web",
+      "pid": 3189720,
+      "sha": "1a4d7b5435e169fd0e31290199ddf3fcfba0de50",
+      "taskGroup": null,
+      "cwd": "/home/bistu/EvalBase/.worktrees/assistant-rebuild"
+    },
+    {
+      "service": "ordinary",
+      "pid": 3189752,
+      "sha": "1a4d7b5435e169fd0e31290199ddf3fcfba0de50",
+      "taskGroup": "ordinary",
+      "cwd": "/home/bistu/EvalBase/.worktrees/assistant-rebuild"
+    },
+    {
+      "service": "model",
+      "pid": 3189793,
+      "sha": "1a4d7b5435e169fd0e31290199ddf3fcfba0de50",
+      "taskGroup": "model",
+      "cwd": "/home/bistu/EvalBase/.worktrees/assistant-rebuild"
+    }
+  ],
+  "additiveSchema": "assistant_runtime_mode",
+  "owner4217Changed": false,
+  "externalRequests": 0
+}
