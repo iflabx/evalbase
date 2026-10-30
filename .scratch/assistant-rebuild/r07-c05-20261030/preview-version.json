@@ -1,5 +1,5 @@
 {
-  "sha": "c6ee50f17aa302eaec031e823ca069860db57eda",
+  "sha": "26b88c143669ffc7d42b4947a27149280bd82164",
   "port": 4240,
   "database": "evalbase_r04_20261028",
   "bucket": "evalbase-r04-20261028",
@@ -7,12 +7,12 @@
     {
       "path": "/health",
       "status": 200,
-      "sha": "c6ee50f17aa302eaec031e823ca069860db57eda"
+      "sha": "26b88c143669ffc7d42b4947a27149280bd82164"
     },
     {
       "path": "/health/ready",
       "status": 200,
-      "sha": "c6ee50f17aa302eaec031e823ca069860db57eda"
+      "sha": "26b88c143669ffc7d42b4947a27149280bd82164"
     },
     {
       "path": "/",

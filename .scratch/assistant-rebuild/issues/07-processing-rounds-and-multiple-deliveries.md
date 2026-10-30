@@ -1,8 +1,8 @@
 # REBUILD-07 处理轮次、背景生成与多交付
 
 Status: ready-for-agent
-Implementation: in-progress
-Validation: partial
+Implementation: completed
+Validation: targeted-pass
 Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-06](06-draft-selection-publication-and-versions.md)
 
 - 批次：2；对应原范围建议：R07。
@@ -39,15 +39,15 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 
 - [x] **R07-1** W01～W16 全部模式逐项接线；继续所选、重跑原输入、失败重试、补缺和已保存继续在正确 task/run/round 内执行，历史只读，未选保持。
 - [x] **R07-2** 清洗/改写一对一与扩充新增语义正确，受保护字段保持；重复组排除/恢复不删原件，跨批数量按净有效结果报告。
-- [ ] **R07-3** 普通提示两份交付、2＋2 改为 3＋2、取消第二份、改名另存：身份/要求/分类/数量/保存目标一致；同名歧义才澄清，不索要内部 ID。
+- [x] **R07-3** 普通提示两份交付、2＋2 改为 3＋2、取消第二份、改名另存：身份/要求/分类/数量/保存目标一致；同名歧义才澄清，不索要内部 ID。
 - [x] **R07-4** 后台等待、局部失败和模型超时保留已完成成果；只能在当前授权内处理未完成范围，无限补缺、换任务清账或重复生成不得发生。
 - [x] **R07-5** 保存回原草稿及各另存目标经真实事务验证，未知结果恢复不重复追加；名称、对象、来源与链接一致。
-- [ ] **R07-6** 完成[Spec C05](../spec.md#verification)：普通提示先规划两份分类交付及一份混合练习，随后取消混合练习并将剩余两份改为3＋2，再执行并分别确认保存；后续扩充2条保存回原草稿。取消项无作业/生成/保存/可执行确认，刷新后不复活，剩余交付继续正常。取消的真实 Computer Use 证据是 RB13 必需项，受控 SDK 不能替代。
+- [x] **R07-6** 完成[Spec C05](../spec.md#verification)：普通提示先规划两份分类交付及一份混合练习，随后取消混合练习并将剩余两份改为3＋2，再执行并分别确认保存；后续扩充2条保存回原草稿。取消项无作业/生成/保存/可执行确认，刷新后不复活，剩余交付继续正常。取消的真实 Computer Use 证据是 RB13 必需项，受控 SDK 不能替代。
 
 - [x] **R07-7** 将旧 reduced scope、only refund、exclude refund 三个失败场景分别覆盖：缩小为一条、仅退款类、排除退款类时，原全部记录授权不可继续沿用。能确定新范围则冻结真实记录后执行，不能确定则澄清；明确“先不执行”或范围未解决期间作业/成果/保存回执均不得增加，普通“继续”也不能绕过。
 - [x] **R07-8** 承接 R02-9、R05-7/8 的固定要求和来源，实际清洗提交成功且仅处理授权记录；受保护字段不变，不出现错误的 processing_scope_invalid。结合本票轮次回归验证修改、澄清、继续及最终保存，不能只用要求层 Helper 通过代替闭环。
 
-### 追加架构验收（2026-10-28，待核对闭合）
+### 追加架构验收（2026-10-28）
 
 - [x] **R07-A1** 普通消息经自动派发、真实SDK和受控Worker完整提交/等待/恢复/确认保存；同轮修改3＋2、缩小范围、取消或改名另存后，下一次模型输入和提交均指向当前交付，旧数量/处理说明/确认不能参与执行；重复终态通知和保存后响应丢失不重复处理或保存，等待不调用助手模型轮询。
 
@@ -83,3 +83,5 @@ Blocked by: [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](0
 - 2026-10-30：三阶段代码及定向回归完成，4240更新到c6ee50f；C05前两阶段通过，后续扩充首次暴露修订号类型比较问题，已修复并补真实SDK组合回归。原25分钟活动已封存，17次请求/5处理行次/5生成槽位；补修页面复测未完成，R07-6保持未勾选，Implementation in-progress、Validation partial。完整证据与文案观察见[实施与验收记录](../r07-verification/verification.md)。旧数据与预算不变，未重跑通过项、未合并或推送。
 
 - R07-3补充状态：结构化数量、要求与生成保存3＋2已验证；用途自由文案仍残留初始“2条”，因此该项不整项勾选关闭，详见实施记录的内容观察。
+
+- 2026-10-30收口：26b88c1完成用途冲突有限纠错，真实SDK组合与11项边界回归、静态检查和针对性复审通过；独立C05补验8次请求/2行次/2生成槽位，原会话最终5＋2、混合取消、唯一保存，旧活动17/5/5不变。当前Implementation completed、Validation targeted-pass；历史失败及历史用途不回填限制保留，详见[收口记录](../r07-verification/verification.md#2026-10-30-补修与验收收口)。
