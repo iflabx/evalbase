@@ -26,6 +26,7 @@ import {
   instructionContext,
   instructionRuleContext,
   instructionScopeConflict,
+  purposeQuantityConflict,
   deliveryExecution,
   InstructionRefreshError,
   emptyRequirements,
@@ -698,6 +699,23 @@ export class SessionStore {
         if (conflict) conflicts.push(conflict);
       } else {
         value.instructionsContext = instructionContext(value);
+      }
+      const purposeConflict = purposeQuantityConflict(value);
+      if (purposeConflict) {
+        refreshPaths.push([
+          "changes",
+          "deliveries",
+          String(changeIndex),
+          "patch",
+          "saveTarget",
+          "purpose",
+        ]);
+        refreshContexts.push({
+          deliveryId: value.id,
+          before: prior ? deliveryExecution(prior).summary : "新交付",
+          after: deliveryExecution(value).summary,
+        });
+        conflicts.push(purposeConflict);
       }
       validateDelivery(value);
       const index = next.deliveries.findIndex((d) => d.id === value.id);

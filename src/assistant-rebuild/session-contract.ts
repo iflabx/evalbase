@@ -275,6 +275,29 @@ export function instructionScopeConflict(
         );
   }
 }
+// Only unambiguous whole-delivery quantity clauses are compared. Examples,
+// per-category counts and other numeric descriptions retain their own meaning.
+export function purposeQuantityConflict(
+  delivery: Delivery,
+): string | undefined {
+  if (
+    delivery.status === "cancelled" ||
+    delivery.count === undefined ||
+    delivery.saveTarget?.kind !== "newDraft"
+  )
+    return;
+  for (const clause of (delivery.saveTarget.purpose ?? "").split(
+    /[，,；;\n]/,
+  )) {
+    const match = clause
+      .trim()
+      .match(
+        /^(?:共|总共|生成|保存)?\s*(\d+)\s*条(?:测试数据|数据|测试记录|记录|测试题|题目)?[。.!！]?$/,
+      );
+    if (match && Number(match[1]) !== delivery.count)
+      return `保存用途中的「${clause}」与当前交付数量${delivery.count}条冲突；仅更新用途中的数量表述，保留用途含义、目标名称、交付身份及其他要求。`;
+  }
+}
 export function instructionContext(delivery: Delivery) {
   return sha256(
     canonicalJson({

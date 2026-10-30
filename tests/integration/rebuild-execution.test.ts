@@ -2528,7 +2528,11 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           quotas: [{ value: category, count }],
         },
       ],
-      saveTarget: { kind: "newDraft", name },
+      saveTarget: {
+        kind: "newDraft",
+        name,
+        purpose: `预约服务测试数据，${count}条。`,
+      },
     });
     outputs = [
       call("create_requirements", {
@@ -2602,6 +2606,12 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         call("submit_processing", { deliveryId: a.id }),
         call("prepare_adoption", { deliveryId: a.id }, "z_prepare_first"),
       ];
+      const repaired = JSON.parse(outputs[0].tool_calls[0].function.arguments);
+      repaired.changes.deliveries[0].patch.saveTarget = {
+        ...a.saveTarget,
+        purpose: "预约服务测试数据，3条。",
+      };
+      outputs.splice(1, 0, call("update_requirements", repaired));
       expect(
         (
           await submit(
@@ -2675,6 +2685,11 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         await host.store.get(scope(), id)
       ).requirements.deliveries.find((d) => d.id === c.id);
       expect(cancelled?.status).toBe("cancelled");
+      expect(
+        (await host.store.get(scope(), id)).requirements.deliveries.find(
+          (d) => d.id === a.id,
+        )?.saveTarget,
+      ).toMatchObject({ purpose: "预约服务测试数据，3条。" });
       expect(
         (
           await db.query(
