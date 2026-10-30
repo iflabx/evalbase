@@ -112,7 +112,7 @@ import { registerAccounts } from "./modules/accounts.js";
 import { registerDrafts } from "./modules/drafts.js";
 import { registerSelection } from "./modules/selection.js";
 import { registerModelConnection } from "./modules/model-connection.js";
-import { registerAssistant } from "./modules/assistant.js";
+
 import { registerProcessing } from "./modules/processing.js";
 import { registerMaterialMapping } from "./modules/material-mapping.js";
 import { registerVersions } from "./modules/versions.js";
@@ -444,7 +444,7 @@ export async function buildApp(
     authenticate,
     writeAllowed,
   });
-  const publishDraft = registerDrafts({
+  registerDrafts({
     db,
     artifacts,
     now,
@@ -1111,27 +1111,27 @@ export async function buildApp(
     authenticate,
     writeAllowed,
     dispatch: !dependencies.disableAssistantRuntimeDispatch,
+    summaryTokens: dependencies.assistantRuntimeSummaryTokens,
   });
-  if (process.env.REBUILD_VALIDATION_ENABLED === "true") {
-    const { registerRebuild } = await import("./modules/assistant-rebuild.js");
-    await registerRebuild({
-      db,
-      app,
-      artifacts,
-      config,
-      authenticate,
-      writeAllowed,
-    });
-  } else
-    registerAssistant({
-      publishDraft,
-      db,
-      app,
-      artifacts,
-      config,
-      authenticate,
-      writeAllowed,
-    });
+  // Legacy history is served by HistoryStore through assistant-runtime, never by the retired executor.
+  app.all(
+    "/api/projects/:projectId/assistant/*",
+    { preHandler: authenticate },
+    (_req, reply) =>
+      reply.code(410).send({ error: { code: "assistant_runtime_retired" } }),
+  );
+  app.all(
+    "/api/projects/:projectId/assistant-validation",
+    { preHandler: authenticate },
+    (_req, reply) =>
+      reply.code(410).send({ error: { code: "assistant_runtime_retired" } }),
+  );
+  app.all(
+    "/api/projects/:projectId/assistant-validation/*",
+    { preHandler: authenticate },
+    (_req, reply) =>
+      reply.code(410).send({ error: { code: "assistant_runtime_retired" } }),
+  );
   if (config.allowTestIdentity)
     app.post<{ Params: { projectId: string }; Body: Readable }>(
       "/api/projects/:projectId/assets",

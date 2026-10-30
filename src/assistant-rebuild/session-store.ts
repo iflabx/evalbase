@@ -1,3 +1,4 @@
+import { guardAssistantMode } from "../operations/assistant-mode.js";
 import { requestProcessingCancellation } from "../processing/store.js";
 import {
   recordSaveTargetAmendment,
@@ -154,6 +155,7 @@ export class SessionStore {
     try {
       await client.query("BEGIN");
       await this.access(scope, false, client, true);
+      await guardAssistantMode(client);
       const id = opaque("assistant");
       await client.query(
         "INSERT INTO assistant_runtime_session(id,project_id,actor_id,runtime_version) VALUES($1,$2,$3,$4)",
@@ -277,6 +279,7 @@ export class SessionStore {
           replayed: true,
         };
       }
+      await guardAssistantMode(client);
       if (session.invalidated_at) throw new SessionError("context_deleted");
       if (session.runtime_version !== FORMAL_RUNTIME_VERSION)
         throw new BusinessError(
@@ -377,6 +380,7 @@ export class SessionStore {
     const client = await this.db.connect();
     try {
       await client.query("BEGIN");
+      await guardAssistantMode(client);
       await this.get(scope, id, client, true);
       const token = opaque("runner");
       const row = (
@@ -401,6 +405,7 @@ export class SessionStore {
     client: Query = this.db,
     lock = false,
   ) {
+    await guardAssistantMode(client);
     await this.access(proof, write, client, lock);
     const session = await this.get(proof, proof.sessionId, client, lock);
     if (session.runtime_version !== FORMAL_RUNTIME_VERSION)

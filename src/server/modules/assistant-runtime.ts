@@ -27,14 +27,16 @@ export function registerAssistantRuntime({
   writeAllowed,
   artifacts,
   dispatch = true,
+  summaryTokens,
 }: Pick<
   ServerContext,
   "app" | "db" | "config" | "authenticate" | "writeAllowed" | "artifacts"
-> & { dispatch?: boolean }) {
+> & { dispatch?: boolean; summaryTokens?: number }) {
   const host = new FormalSessionHost(db, config, { artifacts });
   const dispatcher = new SessionDispatcher(
     host.execution,
-    host.runPending.bind(host),
+    (scope, sessionId, turnId) =>
+      host.runPending(scope, sessionId, turnId, { summaryTokens }),
   );
   if (dispatch)
     app.addHook("onReady", async () => {

@@ -1,3 +1,4 @@
+import { guardAssistantMode } from "./assistant-mode.js";
 import { BusinessError } from "./errors.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Database } from "../db/pool.js";
@@ -124,6 +125,9 @@ export async function guardOperationCommit(
   action?: CommitAction,
 ) {
   const context = caller(scope);
+  if (context?.origin === "legacy")
+    throw new OperationCommitError("assistant_runtime_retired", 410);
+  if (context) await guardAssistantMode(db);
   await db.query("SELECT id FROM app_user WHERE id=$1 FOR SHARE", [
     scope.actorId,
   ]);
@@ -137,7 +141,11 @@ export async function guardOperationCommit(
       db,
       scope.projectId,
       scope.actorId,
-      action === "account" ? "read" : action === "management" ? "manage" : "write",
+      action === "account"
+        ? "read"
+        : action === "management"
+          ? "manage"
+          : "write",
     ))
   )
     throw new OperationCommitError("project_not_found", 404);

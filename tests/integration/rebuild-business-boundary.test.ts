@@ -173,25 +173,19 @@ describe("REBUILD-01 shared business commit boundary", () => {
   });
   it("preserves existing operation receipts and parameter conflicts across callers", async () => {
     const runtime = await runtimeScope();
-    const session = await api(
-      "POST",
-      "/api/projects/" + projectId + "/assistant/sessions",
-      {},
-      "editor",
-    );
-    expect(session.statusCode, session.body).toBe(201);
-    const id = session.json().sessionId;
-    const revision = (
-      await db.query(
-        "SELECT task_revision FROM assistant_session WHERE id=$1",
-        [id],
-      )
-    ).rows[0].task_revision;
     const actualLegacy = legacyOperationScope({
       ...baseScope(),
-      assistantGuard: { sessionId: id, revision },
+      assistantGuard: { sessionId: "retired-fixture", revision: 0 },
     });
-    for (const scope of [baseScope(), runtime, actualLegacy]) {
+    await expect(
+      createSharedDraft(
+        db,
+        actualLegacy,
+        { name: "旧执行不得写入" },
+        randomUUID(),
+      ),
+    ).rejects.toMatchObject({ code: "assistant_runtime_retired" });
+    for (const scope of [baseScope(), runtime]) {
       const key = randomUUID(),
         body = { name: "同一业务操作" };
       const first = await createSharedDraft(db, scope, body, key);

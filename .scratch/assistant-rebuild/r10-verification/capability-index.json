@@ -1,0 +1,512 @@
+[
+  {
+    "id": "P01",
+    "entry": "list_projects",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "P02",
+    "entry": "create_project",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "P03",
+    "entry": "read_project_access",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "P04",
+    "entry": "navigate_project + 项目壳导航",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "P05",
+    "entry": "input-scope + 原生勾选/flush",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M01",
+    "entry": "list_collections",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M02",
+    "entry": "create_collection",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M03",
+    "entry": "list_material_files",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M04",
+    "entry": "read_material_raw",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M05",
+    "entry": "read_material_records / read_material_record + 原生行高",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M06",
+    "entry": "open_material_upload + ConfirmedUploadDialog",
+    "evidence": "r05-verification.md",
+    "limit": "API/共享服务证据；原生CSV页面补验由Owner豁免"
+  },
+  {
+    "id": "M07",
+    "entry": "原生映射预览（文件不交模型）",
+    "evidence": "r05-verification.md",
+    "limit": "API/共享服务证据；原生CSV页面补验由Owner豁免"
+  },
+  {
+    "id": "M08",
+    "entry": "原生上传固定确认（映射或只存原件）",
+    "evidence": "r05-verification.md",
+    "limit": "API/共享服务证据；原生CSV页面补验由Owner豁免"
+  },
+  {
+    "id": "M09",
+    "entry": "原生取消未确认上传",
+    "evidence": "r05-verification.md",
+    "limit": "API/共享服务证据；原生CSV页面补验由Owner豁免"
+  },
+  {
+    "id": "M10",
+    "entry": "open_material_mapping + MaterialPreparation",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M11",
+    "entry": "move_material_file",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "M12",
+    "entry": "原文件页处理入口/范围交接",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D01",
+    "entry": "list_test_sets",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D02",
+    "entry": "create_draft",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D03",
+    "entry": "create_draft(parentVersionId) / open_draft",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D04",
+    "entry": "read_draft / open_draft",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D05",
+    "entry": "update_draft + 原生离焦队列",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D06",
+    "entry": "add_draft_record",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D07",
+    "entry": "update_draft_record",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D08",
+    "entry": "request_remove_record + 固定确认",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D09",
+    "entry": "draft_conflict + open_draft原生冲突处理",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D10",
+    "entry": "原生flush/失败保留输入",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D11",
+    "entry": "request_discard_draft + 固定确认",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D12",
+    "entry": "request_publish + 固定确认",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "D13",
+    "entry": "open_draft_processing",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "S01",
+    "entry": "list_draft_source_files + 原生文件选择",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "S02",
+    "entry": "preview_selection",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "S03",
+    "entry": "read_selection_preview + 原生排除/补选/恢复/重抽",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "S04",
+    "entry": "request_selection_apply + 固定确认",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "S05",
+    "entry": "read_selection_history",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V01",
+    "entry": "read_version + 版本图",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V02",
+    "entry": "read_version_records",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V03",
+    "entry": "read_version_provenance",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V04",
+    "entry": "download_version + 原生下载",
+    "evidence": "r06-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V05",
+    "entry": "request_trash_test_set",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V06",
+    "entry": "request_trash_version_branch",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V07",
+    "entry": "open_recycle_destructive_action + 原生输入版本号",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V08",
+    "entry": "list_recycle_bin / request_restore_test_set",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "V09",
+    "entry": "open_recycle_destructive_action + 原生输入名称",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W01",
+    "entry": "list_processing_tasks + 原生列表刷新",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W02",
+    "entry": "preview_processing_round + 原生条件/真实结果ID",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W03",
+    "entry": "create_requirements / update_requirements / submit_processing",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W04",
+    "entry": "read_task_progress / read_processing_task",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W05",
+    "entry": "read_processing_task + 原生结果/来源详情",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W06",
+    "entry": "read_processing_task返回真实allIds + 原生勾选",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W07",
+    "entry": "deduplicate_processing_task",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W08",
+    "entry": "preview_processing_round / submit_processing_round(continue)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W09",
+    "entry": "submit_processing_round(rerun)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W10",
+    "entry": "read_processing_history",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W11",
+    "entry": "control_processing_run(cancel/retry)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W12",
+    "entry": "submit_processing_round(complete)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W13",
+    "entry": "prepare_adoption / prepare_processing_task_save(原草稿)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W14",
+    "entry": "prepare_processing_task_save(新草稿/已有草稿/原始数据)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W15",
+    "entry": "相同确认重放真实receipt",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "W16",
+    "entry": "submit_processing_round(saved)",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A01",
+    "entry": "正式sessions分页/消息/SSE与原生会话列表",
+    "evidence": "r04-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A02",
+    "entry": "正式PATCH会话（手动title优先）",
+    "evidence": "r04-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A03",
+    "entry": "正式DELETE会话 + HistoryStore清理",
+    "evidence": "r08-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A04",
+    "entry": "原生背景上传 + list_attachments/read_attachment",
+    "evidence": "r05-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A05",
+    "entry": "正式DELETE附件 + 依赖清理",
+    "evidence": "r08-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A06",
+    "entry": "create_requirements/update_requirements + 领域工具",
+    "evidence": "r03-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A07",
+    "entry": "generate处理合同 / 多交付稳定身份",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A08",
+    "entry": "read_processing_task/preview_processing_round + submit_processing_round局部处理 / deduplicate_processing_task / 真实结果ID采用；分类配额保留在classifications",
+    "evidence": "r07-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A09",
+    "entry": "原生固定确认/拒绝，模型无approve",
+    "evidence": "r04-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A10",
+    "entry": "高优先停止 / read_task_progress / continue_task / 失败部分重试",
+    "evidence": "r04-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A11",
+    "entry": "HistoryStore历史读取/handoff；同运行时continue，不转换旧检查点",
+    "evidence": "r08-verification.md",
+    "limit": "同运行时原任务恢复；跨运行时仅显式新预算handoff，旧检查点只读"
+  },
+  {
+    "id": "A12",
+    "entry": "原账本投影 + 服务端offer/用户确认追加",
+    "evidence": "r03-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "A13",
+    "entry": "持久事件/真实回执 + 动态工作区",
+    "evidence": "r04-verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U01",
+    "entry": "原生AccountGate初始化/注册/登录（非模型工具）",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U02",
+    "entry": "read_my_profile / update_my_profile",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U03",
+    "entry": "open_sign_out + 原生登出",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U04",
+    "entry": "list_my_invitations / accept_my_invitation",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U05",
+    "entry": "list_project_members",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U06",
+    "entry": "list_project_invitations / request_project_invitation",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U07",
+    "entry": "request_revoke_invitation",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U08",
+    "entry": "request_member_role",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U09",
+    "entry": "request_remove_member",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U10",
+    "entry": "read_available_model",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U11",
+    "entry": "read_model_settings / open_model_settings + 原生密钥与固定保存确认",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  },
+  {
+    "id": "U12",
+    "entry": "test_saved_model_connection（已保存修订/真实尝试计量）",
+    "evidence": "r09-verification/verification.md",
+    "limit": "源码接线＋原责任票分层证据，非逐编号CU"
+  }
+]

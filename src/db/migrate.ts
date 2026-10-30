@@ -1,3 +1,4 @@
+import { assistantModeSchema } from "../operations/assistant-mode.js";
 import { lifecycleSchema } from "../assistant-rebuild/lifecycle-schema.js";
 import { workspaceSchema } from "../assistant-rebuild/workspace-schema.js";
 import { executionSchema } from "../assistant-rebuild/execution-schema.js";
@@ -1629,6 +1630,7 @@ export async function migrate(
     await client.query("BEGIN");
     await client.query(migrationSql);
     await client.query(assistantSessionSchema);
+    await client.query(assistantModeSchema);
     await client.query(
       "INSERT INTO schema_migration(id) VALUES('assistant-runtime-session-v1') ON CONFLICT DO NOTHING",
     );

@@ -116,6 +116,8 @@ export function createSessionTransport(
         await options.hooks?.afterResponse?.(outcome);
       };
       try {
+        await options.execution.guard(proof);
+        ctl.signal.throwIfAborted();
         const response = await (options.fetch ?? modelFetch)(url, {
           ...init,
           signal: AbortSignal.any([

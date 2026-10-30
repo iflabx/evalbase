@@ -1,3 +1,7 @@
+import {
+  assistantEnabled,
+  guardAssistantMode,
+} from "../operations/assistant-mode.js";
 import { accountOperations } from "../management/accounts.js";
 import { recycleOperations } from "../management/recycle.js";
 import { managementSnapshot } from "../management/snapshot.js";
@@ -119,6 +123,7 @@ export class ExecutionStore {
       );
   }
   async pending() {
+    if (!(await assistantEnabled(this.db))) return [];
     return (
       await this.db.query<{
         id: string;
@@ -134,6 +139,7 @@ export class ExecutionStore {
   async claim(scope: SessionScope, sessionId: string, turnId: string) {
     await this.sessions.get(scope, sessionId);
     return this.transaction(scope, sessionId, async (c, s) => {
+      await guardAssistantMode(c);
       await this.ensure(c, scope, sessionId);
       const task = (
         await c.query(
@@ -344,7 +350,30 @@ export class ExecutionStore {
       this.policy.requestMs,
       Math.max(0, this.now() - new Date(row.started_at).getTime()),
     );
-    if (!row.ended_at) {
+    const provisional = [
+      "interrupted_outcome_unknown",
+      "request_outcome_unknown",
+    ];
+    const refine =
+      !!row.ended_at &&
+      provisional.includes(row.error_code) &&
+      !provisional.includes(result.error ?? "");
+    if (!row.ended_at || refine) {
+      if (refine)
+        await c.query(
+          "INSERT INTO assistant_runtime_event(session_id,turn_id,kind,operation_key,detail) VALUES($1,$2,'request_outcome_reconciled',$3,$4) ON CONFLICT DO NOTHING",
+          [
+            row.session_id,
+            row.turn_id,
+            "request-outcome:" + requestId,
+            JSON.stringify({
+              requestId,
+              priorEndedAt: row.ended_at,
+              priorError: row.error_code,
+              priorElapsedMs: Number(row.elapsed_ms),
+            }),
+          ],
+        );
       await c.query(
         "UPDATE assistant_runtime_request SET ended_at=$2,status=$3,usage=$4,error_code=$5,elapsed_ms=$6 WHERE id=$1",
         [
@@ -360,7 +389,10 @@ export class ExecutionStore {
         row.purpose === "worker"
           ? "UPDATE assistant_runtime_execution SET worker_ms=worker_ms+$2 WHERE session_id=$1"
           : "UPDATE assistant_runtime_execution SET active_ms=active_ms+$2 WHERE session_id=$1",
-        [row.session_id, elapsed],
+        [
+          row.session_id,
+          Math.max(0, elapsed - (row.ended_at ? Number(row.elapsed_ms) : 0)),
+        ],
       );
     }
   }
@@ -398,58 +430,96 @@ export class ExecutionStore {
       );
     });
   }
-  async stopped(scope: SessionScope, sessionId: string) {
-    await this.transaction(scope, sessionId, async (c) => {
-      await this.ensure(c, scope, sessionId);
-      const t = (
+  async stopped(
+    scope: SessionScope,
+    sessionId: string,
+    reason = "user_paused",
+  ) {
+    await this.transaction(scope, sessionId, (c) =>
+      this.pause(c, scope, sessionId, reason),
+    );
+  }
+  /** Operator-only retirement of execution envelopes, including revoked owners/older contracts. No checkpoint interpretation. */
+  async quiesce(sessionId: string) {
+    const c = await this.db.connect();
+    try {
+      await c.query("BEGIN");
+      const s = (
         await c.query(
-          "SELECT * FROM assistant_runtime_turn WHERE session_id=$1 AND status IN('pending','running','waiting','confirmation') ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+          "SELECT project_id,actor_id FROM assistant_runtime_session WHERE id=$1 FOR UPDATE",
           [sessionId],
         )
       ).rows[0];
-      if (t) {
-        await this.sessions.event(
-          {
-            ...scope,
-            sessionId,
-            turnId: t.id,
-            token: t.runner_token ?? "control",
-          },
-          "execution_paused",
-          { reason: "user_paused", previousStatus: t.status, at: this.now() },
-          c,
-        );
-        await c.query(
-          "UPDATE assistant_runtime_turn SET status='paused',runner_token=NULL,error_code='user_paused' WHERE id=$1",
-          [t.id],
-        );
-        const pending = (
-          await c.query(
-            "SELECT id FROM assistant_runtime_request WHERE turn_id=$1 AND ended_at IS NULL",
-            [t.id],
-          )
-        ).rows;
-        for (const r of pending)
-          await this.finishRequest(c, r.id, {
-            id: r.id,
-            status: null,
-            usage: null,
-            error: "interrupted_outcome_unknown",
-          });
-        await c.query(
-          "UPDATE assistant_runtime_execution SET turn_id=$2,status='paused',reason='user_paused',lease_until=NULL,resume_suspended=false,resume_requested=false WHERE session_id=$1",
-          [sessionId, t.id],
-        );
-        await c.query(
-          "UPDATE assistant_runtime_session SET status='paused' WHERE id=$1",
-          [sessionId],
-        );
-      }
+      if (!s) throw new SessionError("conversation_not_found", 404);
+      await this.pause(
+        c,
+        { projectId: s.project_id, actorId: s.actor_id },
+        sessionId,
+        "runtime_disabled",
+      );
+      await c.query("COMMIT");
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  private async pause(
+    c: Query,
+    scope: SessionScope,
+    sessionId: string,
+    reason: string,
+  ) {
+    await this.ensure(c, scope, sessionId);
+    const t = (
       await c.query(
-        "UPDATE assistant_runtime_confirmation SET status='expired' WHERE session_id=$1 AND status='pending'",
+        "SELECT * FROM assistant_runtime_turn WHERE session_id=$1 AND status IN('pending','running','waiting','confirmation') ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+        [sessionId],
+      )
+    ).rows[0];
+    if (t) {
+      await this.sessions.event(
+        {
+          ...scope,
+          sessionId,
+          turnId: t.id,
+          token: t.runner_token ?? "control",
+        },
+        "execution_paused",
+        { reason, previousStatus: t.status, at: this.now() },
+        c,
+      );
+      await c.query(
+        "UPDATE assistant_runtime_turn SET status='paused',runner_token=NULL,error_code=$2 WHERE id=$1",
+        [t.id, reason],
+      );
+      const pending = (
+        await c.query(
+          "SELECT id FROM assistant_runtime_request WHERE turn_id=$1 AND ended_at IS NULL",
+          [t.id],
+        )
+      ).rows;
+      for (const r of pending)
+        await this.finishRequest(c, r.id, {
+          id: r.id,
+          status: null,
+          usage: null,
+          error: "interrupted_outcome_unknown",
+        });
+      await c.query(
+        "UPDATE assistant_runtime_execution SET turn_id=$2,status='paused',reason=$3,lease_until=NULL,resume_suspended=false,resume_requested=false WHERE session_id=$1",
+        [sessionId, t.id, reason],
+      );
+      await c.query(
+        "UPDATE assistant_runtime_session SET status='paused' WHERE id=$1",
         [sessionId],
       );
-    });
+    }
+    await c.query(
+      "UPDATE assistant_runtime_confirmation SET status='expired' WHERE session_id=$1 AND status='pending'",
+      [sessionId],
+    );
   }
 
   async blocked(sessionId: string) {
@@ -605,10 +675,12 @@ export class ExecutionStore {
     return false;
   }
   async resume(scope: SessionScope, sessionId: string) {
+    await guardAssistantMode(this.db);
     await this.sessions.get(scope, sessionId);
     const blocked = await this.blocked(sessionId);
     if (blocked) throw new SessionError(blocked);
     return this.transaction(scope, sessionId, async (c, s) => {
+      await guardAssistantMode(c);
       await assertSaveTargetResolved(c, sessionId);
       const task = (
         await c.query(
@@ -1321,6 +1393,7 @@ export class ExecutionStore {
         ? await this.receipt(scope, sessionId, card.operation_id, c)
         : card.receipt;
       if (prior) return { receipt: prior, replayed: true };
+      await guardAssistantMode(c);
       if (
         !["pending", "executing"].includes(card.status) ||
         new Date(card.expires_at).getTime() <= this.now() ||
@@ -1641,6 +1714,7 @@ export class ExecutionStore {
   }
 
   async wake() {
+    if (!(await assistantEnabled(this.db))) return;
     // Reconcile durable business terminal states. No model polling and no event-sequence progress heuristic.
     const waiting = (
       await this.db.query(
@@ -1885,7 +1959,7 @@ export class ExecutionStore {
   ) {
     const op = (
       await this.db.query(
-        "SELECT o.*,s.project_id,s.actor_id FROM assistant_runtime_operation o JOIN assistant_runtime_session s ON s.id=o.session_id JOIN assistant_runtime_execution e ON e.session_id=s.id WHERE o.run_id=$1 AND o.kind='processing' ORDER BY (e.turn_id=o.turn_id) DESC LIMIT 1",
+        "SELECT o.*,s.project_id,s.actor_id FROM assistant_runtime_operation o JOIN assistant_runtime_session s ON s.id=o.session_id JOIN assistant_runtime_execution e ON e.session_id=s.id JOIN processing_run owned_run ON owned_run.id=o.run_id JOIN job owned_job ON owned_job.id=owned_run.job_id WHERE o.run_id=$1 AND o.kind='processing' AND owned_job.payload->>'executionOrigin' IS DISTINCT FROM 'manual' ORDER BY (e.turn_id=o.turn_id) DESC LIMIT 1",
         [runId],
       )
     ).rows[0];
@@ -1894,6 +1968,7 @@ export class ExecutionStore {
       { projectId: op.project_id, actorId: op.actor_id },
       op.session_id,
       async (c, s) => {
+        await guardAssistantMode(c);
         await this.sessions.access(
           { projectId: op.project_id, actorId: op.actor_id },
           true,

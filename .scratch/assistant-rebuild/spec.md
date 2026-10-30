@@ -34,7 +34,7 @@ Status 表示票已描述清楚，不等于获得实施/部署授权；Implement
 | [REBUILD-07 处理轮次、背景生成与多交付](issues/07-processing-rounds-and-multiple-deliveries.md) | 2 | REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06 | completed | targeted-pass（C05分阶段累计通过，历史限制见记录） | [实施与验收记录](r07-verification/verification.md) |
 | [REBUILD-08 历史兼容、任务恢复与数据生命周期](issues/08-history-compatibility-and-data-lifecycle.md) | 2 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04 | completed | targeted-pass | `47bf8d0` / [验证记录](r08-verification.md) |
 | [REBUILD-09 账号成员、模型设置与回收站操作](issues/09-accounts-settings-and-recycle-bin.md) | 2 | REBUILD-01、REBUILD-03、REBUILD-04、REBUILD-06、REBUILD-08 | completed | targeted-pass | `1c01134` / [实施与C06记录](r09-verification/verification.md) |
-| [REBUILD-10 全范围验收、旧运行时退出与受控切换](issues/10-integrated-acceptance-and-runtime-cutover.md) | 3 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06、REBUILD-07、REBUILD-08、REBUILD-09 | not-started | not-run | — |
+| [REBUILD-10 全范围验收、旧运行时退出与受控切换](issues/10-integrated-acceptance-and-runtime-cutover.md) | 3 | REBUILD-01、REBUILD-02、REBUILD-03、REBUILD-04、REBUILD-05、REBUILD-06、REBUILD-07、REBUILD-08、REBUILD-09 | in-progress | not-run | [实施与验收](r10-verification/verification.md) |
 
 依赖顺序：REBUILD-01 → 02 → 03 → 04；第二批 05 与 08 可先行，之后 06，再完成 07 与 09；全部前置完成后进入 10。编号不是要求 05→06→07→08 的死序列；依赖图无环。
 

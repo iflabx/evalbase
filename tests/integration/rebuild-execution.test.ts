@@ -1,3 +1,6 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { changeAssistantMode } from "../../src/assistant-rebuild/cutover.js";
 import { processingCost } from "../../src/assistant-rebuild/budget.js";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { sendFormalCompletion } from "../support/formal-completion.js";
@@ -165,6 +168,17 @@ async function effects() {
   ).rows[0];
 }
 
+async function isolateDispatcher(sessionId: string) {
+  if (!databaseName.startsWith("formal_execution_"))
+    throw Error("test_database_required");
+  const rows = (
+    await db.query(
+      "SELECT DISTINCT session_id FROM assistant_runtime_turn WHERE session_id<>$1 AND status IN('pending','running','waiting','confirmation')",
+      [sessionId],
+    )
+  ).rows;
+  for (const row of rows) await host.execution.quiesce(row.session_id);
+}
 describe("REBUILD-03 formal session and Deep Agents host", () => {
   beforeAll(async () => {
     const root = createPool(base.databaseUrl);
@@ -579,7 +593,15 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
             [a.json().turnId],
           )
         ).rows[0].error_code,
-      ).toContain("unknown");
+      ).toBeNull();
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_event WHERE turn_id=$1 AND kind='request_outcome_reconciled'",
+            [a.json().turnId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
     } finally {
       await short.close();
     }
@@ -1198,7 +1220,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     ).toBe(true);
     await host.execution.yield(p.proof, "paused", "test_completed_worker");
   });
-  it("reclaims an expired owner, preserves its unknown sent request, and fences its late response", async () => {
+  it("reclaims an expired owner, retains unknown history and actual outcome, and fences its late response", async () => {
     const id = await fresh(),
       a = await submit(id, "查看项目");
     let entered = false,
@@ -1238,7 +1260,15 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
             [a.json().turnId],
           )
         ).rows[0].error_code,
-      ).toBe("request_outcome_unknown");
+      ).toBeNull();
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_event WHERE turn_id=$1 AND kind='request_outcome_reconciled'",
+            [a.json().turnId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
     } finally {
       release?.();
       await other.close();
@@ -2549,6 +2579,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       }),
       { role: "assistant", content: "方案已保存，尚未执行。" },
     ];
+    await isolateDispatcher(id);
     const dispatcher = await buildApp(config, {
       disableLegacyTestBootstrap: true,
     });
@@ -6795,6 +6826,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       call("request_project_invitation", { email, role: "viewer" }),
       { role: "assistant", content: "邀请已完成。" },
     ];
+    await isolateDispatcher(id);
     const dispatcher = await buildApp(config, {
       disableLegacyTestBootstrap: true,
     });
@@ -7585,4 +7617,642 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       ).rows[0].role,
     ).toBe("editor");
   });
+  it("R10 public server retires legacy execution endpoints without creating old sessions", async () => {
+    const before = Number(
+      (await db.query("SELECT count(*) FROM assistant_session")).rows[0].count,
+    );
+    const response = await api(
+      "POST",
+      "/api/projects/" + projectId + "/assistant/sessions",
+      {},
+    );
+    expect(response.statusCode, response.body).toBe(410);
+    expect(response.json().error.code).toBe("assistant_runtime_retired");
+    expect(
+      Number(
+        (await db.query("SELECT count(*) FROM assistant_session")).rows[0]
+          .count,
+      ),
+    ).toBe(before);
+  });
+  it("R10 cutover fences confirmation and stale token, preserves budgets and read-only legacy history, and never resumes on enable", async () => {
+    const id = await fresh();
+    const state = await run(id, "把编辑成员改成查看，等我确认", [
+      call("request_member_role", {
+        userId: actors.get("editor"),
+        role: "viewer",
+      }),
+    ]);
+    const card = state.confirmations.find((x: any) => x.status === "pending");
+    expect(card).toBeTruthy();
+    const oldId = "conversation_" + randomUUID(),
+      oldTurn = "old_" + randomUUID();
+    const budget = { requests: 7, used: 3, closed: true };
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id,task,title) VALUES($1,$2,$3,$4,'切换旧历史')",
+      [
+        oldId,
+        projectId,
+        actors.get("admin"),
+        JSON.stringify({ executionBudget: budget }),
+      ],
+    );
+    await db.query(
+      "INSERT INTO assistant_turn(id,session_id,operation_key,request_hash,user_text,status,expires_at,execution_token) VALUES($1,$2,$1,$1,'合成旧历史','running',now()+interval '1 hour','old-token')",
+      [oldTurn, oldId],
+    );
+    const before = (
+      await db.query(
+        "SELECT requests,request_limit,active_ms,active_limit_ms FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0];
+    try {
+      const switched = await changeAssistantMode(db, "manual");
+      expect(switched.pausedSessions).toContain(id);
+      expect((await api("POST", route(), {})).statusCode).toBe(409);
+      const confirmation = await api(
+        "POST",
+        route(id) + "/confirmations/" + card.id,
+        { accept: true },
+      );
+      expect(confirmation.statusCode).toBe(409);
+      expect(
+        (await api("POST", route(id) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(409);
+      expect((await api("GET", route(id))).statusCode).toBe(200);
+      expect((await api("GET", route("legacy:" + oldId))).statusCode).toBe(200);
+      expect(
+        (
+          await db.query(
+            "SELECT execution_token,status FROM assistant_turn WHERE id=$1",
+            [oldTurn],
+          )
+        ).rows[0],
+      ).toEqual({ execution_token: null, status: "interrupted" });
+      expect(
+        (
+          await db.query("SELECT task FROM assistant_session WHERE id=$1", [
+            oldId,
+          ])
+        ).rows[0].task.executionBudget,
+      ).toEqual(budget);
+      expect(
+        (
+          await db.query(
+            "SELECT role FROM project_member WHERE project_id=$1 AND user_id=$2",
+            [projectId, actors.get("editor")],
+          )
+        ).rows[0].role,
+      ).toBe("editor");
+      expect(
+        (
+          await db.query(
+            "SELECT requests,request_limit,active_ms,active_limit_ms FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0],
+      ).toEqual(before);
+      await changeAssistantMode(db, "rebuild");
+      expect(
+        (await host.execution.pending()).some((x) => x.session_id === id),
+      ).toBe(false);
+      expect((await host.present(scope(), id)).execution.status).toBe("paused");
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + card.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect((await api("POST", route(), {})).statusCode).toBe(200);
+    } finally {
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 manual fallback keeps public manual draft writes and immutable receipts available", async () => {
+    const id = await fresh();
+    await run(id, "建立合成草稿", [
+      call("create_draft", { name: "切换保留草稿" }),
+    ]);
+    const op = (
+      await db.query(
+        "SELECT receipt FROM assistant_runtime_operation WHERE session_id=$1 AND receipt IS NOT NULL",
+        [id],
+      )
+    ).rows[0];
+    expect(op).toBeTruthy();
+    try {
+      await changeAssistantMode(db, "manual");
+      const result = await api(
+        "POST",
+        "/api/projects/" + projectId + "/collaborative-drafts",
+        { name: "人工回退草稿" },
+      );
+      expect(result.statusCode, result.body).toBe(201);
+      const visible = await api("GET", route(id));
+      expect(visible.statusCode).toBe(200);
+      expect(
+        (
+          await db.query(
+            "SELECT receipt FROM assistant_runtime_operation WHERE session_id=$1 AND receipt IS NOT NULL",
+            [id],
+          )
+        ).rows[0],
+      ).toEqual(op);
+      expect(
+        (
+          await api(
+            "GET",
+            "/api/projects/" +
+              projectId +
+              "/collaborative-drafts/" +
+              result.json().draft.id,
+          )
+        ).statusCode,
+      ).toBe(200);
+    } finally {
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 real SDK in-flight response is settled before disabling, late write is fenced and enable does not replay", async () => {
+    const id = await fresh();
+    const before = await effects();
+    let entered!: () => void, release!: () => void;
+    const reached = new Promise<void>((r) => {
+        entered = r;
+      }),
+      gate = new Promise<void>((r) => {
+        release = r;
+      });
+    outputs = [call("create_draft", { name: "不得迟到的新草稿" })];
+    const accepted = await submit(id, "建立一份草稿");
+    const work = host.runPending(scope(), id, accepted.json().turnId, {
+      hooks: {
+        afterResponse: async () => {
+          entered();
+          await gate;
+        },
+      },
+    });
+    try {
+      await reached;
+      expect(
+        (
+          await db.query(
+            "SELECT status,ended_at FROM assistant_runtime_request WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].status,
+      ).toBe(200);
+      await changeAssistantMode(db, "manual");
+      release();
+      await work;
+      expect(await effects()).toEqual(before);
+      expect((await host.present(scope(), id)).execution.status).toBe("paused");
+      await changeAssistantMode(db, "rebuild");
+      expect(
+        (await host.execution.pending()).some((x) => x.session_id === id),
+      ).toBe(false);
+      expect(
+        (
+          await db.query(
+            "SELECT requests FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].requests,
+      ).toBe(1);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) FROM assistant_runtime_operation WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].count,
+      ).toBe("0");
+    } finally {
+      release();
+      await work.catch(() => undefined);
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 PUBLIC SDK summary then amendment uses current source and target through automatic dispatch and unique save", async () => {
+    const id = await fresh();
+    const fixed = await host.store.freezeSource(scope(), {
+      kind: "assets",
+      assetIds: [assetId],
+    });
+    const source = {
+      ...fixed.source,
+      recordIds: fixed.source.recordIds.slice(0, 2),
+    };
+    await run(id, "先给前两条的清洗方案，不执行", [
+      call("create_requirements", {
+        expectedRevision: 0,
+        changes: {
+          objective: "只整理前两条首尾空白，保留其他字段",
+          mode: "plan",
+          deliveries: [
+            {
+              name: "旧名称",
+              operation: "clean",
+              source,
+              count: 2,
+              allowedFields: ["question"],
+              instructions: "",
+              saveTarget: { kind: "newDraft", name: "旧名称" },
+            },
+          ],
+        },
+      }),
+    ]);
+    const delivery = (await host.store.get(scope(), id)).requirements
+      .deliveries[0];
+    for (let n = 0; n < 8; n++) {
+      const turn = "synthetic_history_" + randomUUID();
+      await db.query(
+        "INSERT INTO assistant_runtime_turn(id,session_id,submission_id,request_hash,payload,accepted_revision,status) VALUES($1,$2,$1,$1,'{}',1,'succeeded')",
+        [turn, id],
+      );
+      await db.query(
+        "INSERT INTO assistant_runtime_message(session_id,turn_id,role,content) VALUES($1,$2,$3,$4)",
+        [
+          id,
+          turn,
+          n % 2 ? "assistant" : "user",
+          "【合成长历史，仅用于摘要，不是执行授权】".repeat(140),
+        ],
+      );
+    }
+    const until = async (check: () => Promise<boolean>) => {
+      for (let n = 0; n < 800; n++) {
+        try {
+          if (await check()) return;
+        } catch (e) {
+          if ((e as any).code !== "snapshot_revision_conflict") throw e;
+        }
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      throw Error("R10_public_timeout");
+    };
+    await isolateDispatcher(id);
+    const dispatcher = await buildApp(config, {
+      disableLegacyTestBootstrap: true,
+      assistantRuntimeSummaryTokens: 1000,
+    });
+    outputs = [
+      call("update_requirements", {
+        expectedRevision: 1,
+        changes: {
+          mode: "execute",
+          deliveries: [
+            {
+              deliveryId: delivery.id,
+              patch: {
+                name: "摘要后整理版",
+                saveTarget: { kind: "newDraft", name: "摘要后整理版" },
+              },
+            },
+          ],
+        },
+      }),
+      call("submit_processing", {}),
+      call("wait_processing", {}),
+    ];
+    try {
+      await dispatcher.ready();
+      expect(
+        (await submit(id, "改名为摘要后整理版，现在执行。")).statusCode,
+      ).toBe(202);
+      await until(
+        async () =>
+          (await host.present(scope(), id)).execution.status === "waiting",
+      );
+      const waiting = await host.present(scope(), id);
+      expect(
+        waiting.session.requirements.deliveries[0].source?.recordIds,
+      ).toEqual(source.recordIds);
+      outputs = [call("prepare_adoption", {}), call("wait_confirmation", {})];
+      await completeRun(waiting.results[0].run_id);
+      await until(async () =>
+        (await host.present(scope(), id)).confirmations.some(
+          (c: any) => c.status === "pending",
+        ),
+      );
+      const card = (await host.present(scope(), id)).confirmations.find(
+        (c: any) => c.status === "pending",
+      );
+      const saved = await api("POST", route(id) + "/confirmations/" + card.id, {
+        accept: true,
+      });
+      expect(saved.statusCode, saved.body).toBe(200);
+      expect(saved.json().receipt.adopted).toBe(2);
+      const replay = await api(
+        "POST",
+        route(id) + "/confirmations/" + card.id,
+        { accept: true },
+      );
+      expect(replay.json().receipt).toEqual(saved.json().receipt);
+      expect(replay.json().replayed).toBe(true);
+      const result = await api(
+        "GET",
+        "/api/projects/" +
+          projectId +
+          "/collaborative-drafts/" +
+          saved.json().receipt.draftId,
+      );
+      expect(result.json().draft.name).toBe("摘要后整理版");
+      const ledger = (
+        await db.query(
+          "SELECT purpose,status FROM assistant_runtime_request WHERE session_id=$1",
+          [id],
+        )
+      ).rows;
+      expect(ledger.some((r) => r.purpose === "summary")).toBe(true);
+      expect(ledger.every((r) => r.status === 200)).toBe(true);
+      expect(
+        (
+          await db.query(
+            "SELECT requests FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].requests,
+      ).toBe(ledger.length);
+    } finally {
+      await dispatcher.close();
+    }
+  }, 60000);
+  it("R10 cutover pauses a publicly accepted turn before its first execution record exists", async () => {
+    const id = await fresh();
+    expect((await submit(id, "建立一份尚未执行的草稿")).statusCode).toBe(202);
+    expect(
+      (
+        await db.query(
+          "SELECT session_id FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rowCount,
+    ).toBe(0);
+    try {
+      const result = await changeAssistantMode(db, "manual");
+      expect(result.pausedSessions).toContain(id);
+      await changeAssistantMode(db, "rebuild");
+      expect(
+        (await host.execution.pending()).some((x) => x.session_id === id),
+      ).toBe(false);
+      expect((await api("GET", route(id))).json().execution.status).toBe(
+        "paused",
+      );
+    } finally {
+      await host.execution.stopped(scope(), id);
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 operator retirement can quiesce a revoked owner without regranting access", async () => {
+    const id = await fresh("editor");
+    expect((await submit(id, "只查询项目", {}, "editor")).statusCode).toBe(202);
+    await db.query(
+      "DELETE FROM project_member WHERE project_id=$1 AND user_id=$2",
+      [projectId, actors.get("editor")],
+    );
+    try {
+      expect((await changeAssistantMode(db, "manual")).mode).toBe("manual");
+      await changeAssistantMode(db, "rebuild");
+      expect(
+        (await host.execution.pending()).some((x) => x.session_id === id),
+      ).toBe(false);
+      expect(
+        (await api("GET", route(id), undefined, "editor")).statusCode,
+      ).toBe(404);
+    } finally {
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'editor') ON CONFLICT DO NOTHING",
+        [projectId, actors.get("editor")],
+      );
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 cutover leaves a manual continuation with legacy task provenance runnable", async () => {
+    const old = "conversation_" + randomUUID();
+    await db.query(
+      "INSERT INTO assistant_session(id,project_id,actor_id) VALUES($1,$2,$3)",
+      [old, projectId, actors.get("admin")],
+    );
+    const source = (
+      await host.store.freezeSource(scope(), {
+        kind: "assets",
+        assetIds: [assetId],
+      })
+    ).source;
+    const created = await createProcessingRun(
+      db,
+      new ArtifactRepository(config.minio),
+      scope(),
+      randomUUID(),
+      {
+        source,
+        options: {
+          operation: "clean",
+          instructions: "",
+          allowedFields: ["question"],
+        },
+      },
+    );
+    const run = (
+      await db.query("SELECT task_id,job_id FROM processing_run WHERE id=$1", [
+        created.run.id,
+      ])
+    ).rows[0];
+    await db.query(
+      "UPDATE processing_task SET assistant_session_id=$2 WHERE id=$1",
+      [run.task_id, old],
+    );
+    try {
+      const result = await changeAssistantMode(db, "manual");
+      expect(result.unsettledJobs).toBe(0);
+      expect(
+        (await db.query("SELECT status FROM job WHERE id=$1", [run.job_id]))
+          .rows[0].status,
+      ).toBe("queued");
+      expect((await changeAssistantMode(db, "rebuild")).mode).toBe("rebuild");
+    } finally {
+      await db.query("UPDATE job SET status='cancelled' WHERE id=$1", [
+        run.job_id,
+      ]);
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 real network in-flight cutover refines unknown outcome exactly once without refunding requests", async () => {
+    const id = await fresh();
+    let entered!: () => void, release!: () => void;
+    const reached = new Promise<void>((r) => {
+        entered = r;
+      }),
+      gate = new Promise<void>((r) => {
+        release = r;
+      });
+    outputs = [
+      async () => {
+        entered();
+        await gate;
+        return call("create_draft", { name: "迟到不可创建" });
+      },
+    ];
+    const accepted = await submit(id, "建立草稿");
+    const work = host.runPending(scope(), id, accepted.json().turnId);
+    try {
+      await reached;
+      await changeAssistantMode(db, "manual");
+      const provisional = (
+        await db.query(
+          "SELECT * FROM assistant_runtime_request WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0];
+      expect(provisional.error_code).toBe("interrupted_outcome_unknown");
+      await new Promise((r) => setTimeout(r, 40));
+      release();
+      await work;
+      const actual = (
+        await db.query("SELECT * FROM assistant_runtime_request WHERE id=$1", [
+          provisional.id,
+        ])
+      ).rows[0];
+      expect(actual.status).toBe(200);
+      expect(actual.usage).toEqual({
+        prompt_tokens: 3,
+        completion_tokens: 3,
+        total_tokens: 6,
+      });
+      expect(Number(actual.elapsed_ms)).toBeGreaterThan(
+        Number(provisional.elapsed_ms),
+      );
+      const ledger = (
+        await db.query(
+          "SELECT requests,active_ms FROM assistant_runtime_execution WHERE session_id=$1",
+          [id],
+        )
+      ).rows[0];
+      expect(ledger.requests).toBe(1);
+      expect(Number(ledger.active_ms)).toBe(Number(actual.elapsed_ms));
+      await host.execution.outcome({
+        id: actual.id,
+        status: 200,
+        usage: actual.usage,
+        error: null,
+      });
+      expect(
+        (
+          await db.query(
+            "SELECT requests,active_ms FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0],
+      ).toEqual(ledger);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*) FROM assistant_runtime_operation WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0].count,
+      ).toBe("0");
+    } finally {
+      release();
+      await work.catch(() => undefined);
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 public manual retry of an assistant run transfers current execution ownership without resetting old budgets", async () => {
+    const id = await fresh(),
+      p = await processing(id, "rewrite");
+    await host.execution.stopped(scope(), id);
+    await db.query(
+      "UPDATE job SET status='failed',error_code='processing_batch_failed',lease_owner=NULL,lease_expires_at=NULL WHERE id=(SELECT job_id FROM processing_run WHERE id=$1)",
+      [p.runId],
+    );
+    const before = (
+      await db.query(
+        "SELECT requests,request_limit FROM assistant_runtime_execution WHERE session_id=$1",
+        [id],
+      )
+    ).rows[0];
+    const result = await api(
+      "POST",
+      "/api/projects/" + projectId + "/processing-runs/" + p.runId + "/retry",
+    );
+    expect(result.statusCode, result.body).toBe(200);
+    try {
+      expect(
+        await host.execution.reserveWorker(
+          p.runId,
+          "manual_no_assistant_charge",
+          "hash",
+          { rows: 3 },
+        ),
+      ).toBe(false);
+      expect((await changeAssistantMode(db, "manual")).unsettledJobs).toBe(0);
+      expect(
+        (
+          await db.query(
+            "SELECT j.status FROM processing_run r JOIN job j ON j.id=r.job_id WHERE r.id=$1",
+            [p.runId],
+          )
+        ).rows[0].status,
+      ).toBe("queued");
+      await completeRun(p.runId);
+      expect(
+        (
+          await db.query(
+            "SELECT requests,request_limit FROM assistant_runtime_execution WHERE session_id=$1",
+            [id],
+          )
+        ).rows[0],
+      ).toEqual(before);
+    } finally {
+      await db.query(
+        "UPDATE job SET status='cancelled' WHERE id=(SELECT job_id FROM processing_run WHERE id=$1) AND status<>'succeeded'",
+        [p.runId],
+      );
+      await changeAssistantMode(db, "rebuild");
+    }
+  });
+  it("R10 operator CLI manual fallback survives additive migration and reenables only explicit new work", async () => {
+    if (!databaseName.startsWith("formal_execution_"))
+      throw Error("isolated_test_database_required");
+    const cli = async (mode: string) =>
+      JSON.parse(
+        (
+          await promisify(execFile)(
+            process.execPath,
+            [
+              "node_modules/tsx/dist/cli.mjs",
+              "src/scripts/assistant-mode.ts",
+              mode,
+            ],
+            { env: { ...process.env, DATABASE_URL: databaseUrl } },
+          )
+        ).stdout,
+      );
+    try {
+      expect((await cli("manual")).mode).toBe("manual");
+      await migrate(databaseUrl);
+      expect((await cli("status")).mode).toBe("manual");
+      expect((await api("POST", route(), {})).statusCode).toBe(409);
+      expect((await cli("rebuild")).mode).toBe("rebuild");
+      expect((await api("POST", route(), {})).statusCode).toBe(200);
+      expect(
+        (
+          await api(
+            "POST",
+            "/api/projects/" + projectId + "/assistant-validation",
+            {},
+          )
+        ).statusCode,
+      ).toBe(410);
+    } finally {
+      await changeAssistantMode(db, "rebuild");
+    }
+  }, 60000);
 });

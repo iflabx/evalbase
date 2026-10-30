@@ -1,3 +1,4 @@
+import { guardAssistantMode } from "../operations/assistant-mode.js";
 import { managementTools } from "./management-tools.js";
 import { explicitProcessingRoundRequest } from "./control-intent.js";
 import { processingTools } from "./processing-tools.js";
@@ -82,6 +83,7 @@ export class FormalSessionHost {
       const client = await this.db.connect();
       try {
         await client.query("BEGIN");
+        await guardAssistantMode(client);
         const row = (
           await client.query(
             "SELECT t.id FROM assistant_runtime_turn t JOIN assistant_runtime_execution e ON e.session_id=t.session_id AND e.turn_id=t.id WHERE t.id=$1 AND t.session_id=$2 AND t.runner_token=$3 AND t.status='running' AND e.status='running' AND e.lease_until>now() FOR SHARE OF t,e",
@@ -812,6 +814,7 @@ export class FormalSessionHost {
           : (sessionModel?.failure() ?? "runtime_request_failed");
       if (
         code === "runtime_interrupted" ||
+        code === "assistant_runtime_disabled" ||
         code === "checkpoint_execution_required"
       ) {
         const owns = await this.execution.guard(proof).then(

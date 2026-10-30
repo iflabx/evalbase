@@ -185,6 +185,8 @@ export function errorText(error: unknown) {
   return (
     (
       {
+        assistant_runtime_disabled: "项目助手暂时停用，已有成果和人工页面仍可查看使用。",
+        assistant_runtime_retired: "旧助手已停止执行，请在项目助手中查看历史或新建会话。",
         source_revision_conflict: "来源数据或字段映射已变化。输入已保留，请返回来源重新选择。",
         snapshot_revision_conflict: "会话已在其他页面更新。输入已保留，请重试读取。",
         draft_conflict: "草稿已发生并发修改，输入已保留。请打开草稿核对后选择如何处理。",

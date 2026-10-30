@@ -698,7 +698,13 @@ export async function createProcessingRun(
     await client.query(
       `INSERT INTO job(id,project_id,actor_id,kind,payload,status,idempotency_key,correlation_id)
       VALUES($1,$2,$3,'process_data',$4,'queued',$5,$1)`,
-      [jobId, scope.projectId, scope.actorId, { runId }, `processing:${runId}`],
+      [
+        jobId,
+        scope.projectId,
+        scope.actorId,
+        { runId, executionOrigin: operationOrigin(scope) },
+        `processing:${runId}`,
+      ],
     );
     await client.query(
       `INSERT INTO processing_run(id,project_id,actor_id,job_id,idempotency_key,request_hash,source,options,input_ref,input_hash,input_count,model_revision,target_draft_id,execution_config,background_document_ids)
@@ -1207,8 +1213,8 @@ export async function controlProcessingRun(
       if (!(await processingRecovery(client, run)).canRetry)
         throw new ProcessingError(409, "processing_retry_unavailable");
       await client.query(
-        "UPDATE job SET status='queued',stage='queued',attempt=0,next_run_at=now(),error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1",
-        [run.job_id],
+        "UPDATE job SET status='queued',stage='queued',attempt=0,next_run_at=now(),error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=now(),payload=payload||jsonb_build_object('executionOrigin',$2::text) WHERE id=$1",
+        [run.job_id, operationOrigin(scope)],
       );
     }
     const updated = (

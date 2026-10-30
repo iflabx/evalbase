@@ -1,3 +1,4 @@
+import { guardAssistantMode } from "../operations/assistant-mode.js";
 import { hasProjectCapability } from "../security/project-access.js";
 import { processingSourceAvailable } from "../processing/store.js";
 import { workspaceQuery } from "./workspace-store.js";
@@ -336,6 +337,7 @@ export class HistoryStore {
     const c = await this.sessions.db.connect();
     try {
       await c.query("BEGIN");
+      await guardAssistantMode(c);
       await this.sessions.access(scope, true, c, true);
       const source = isLegacyHistory(id)
         ? await this.legacy(scope, id, c, true)

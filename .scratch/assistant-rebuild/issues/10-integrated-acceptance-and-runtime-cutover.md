@@ -1,7 +1,7 @@
 # REBUILD-10 全范围验收、旧运行时退出与受控切换
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 Validation: not-run
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-02](02-deepagents-session-and-tool-host.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-05](05-materials-upload-and-input-scope.md), [REBUILD-06](06-draft-selection-publication-and-versions.md), [REBUILD-07](07-processing-rounds-and-multiple-deliveries.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md), [REBUILD-09](09-accounts-settings-and-recycle-bin.md)
 
@@ -46,7 +46,7 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 
 ### 追加架构验收（2026-10-28，待核对闭合）
 
-- [ ] **R10-A1** 02/03追加AC及05～09新增领域链证据均有效；能从公开消息关联自动派发、真实SDK、业务结果/回执和页面，摘要/恢复也无旧事实回灌。无未关闭原生CSV映射证据缺口、无第二套预算/派发/纠错引擎；发现基础缺失退回责任票，不用C07/C08预算补做前票。
+- [ ] **R10-A1** 02/03追加AC及05～09新增领域链证据均有效；能从公开消息关联自动派发、真实SDK、业务结果/回执和页面，摘要/恢复也无旧事实回灌。原生CSV映射补验按Owner豁免记录，不能改签为实测通过、无第二套预算/派发/纠错引擎；发现基础缺失退回责任票，不用C07/C08预算补做前票。
 
 ## 定向验证
 
@@ -72,3 +72,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-27：按审查补强消息防重、无进展及取消页面证据的收口条件，依据 Spec §3.1/§3.2 与 C05；依赖、实施/验证状态和实际预算保持，未开始业务开发或验收。
 
 - 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。
+
+- 2026-10-30：Owner授权分阶段实施、隔离预览及新有界C07/C08；基线bde2017。能力/证据与运行时退出集中见[本票记录](../r10-verification/verification.md)，原CSV豁免和C05分阶段证据保留；旧数据/预算不重置。

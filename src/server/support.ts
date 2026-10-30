@@ -26,6 +26,8 @@ export interface AppDependencies {
   disableLegacyTestBootstrap?: boolean;
   /** Controlled executor tests only; normal server startup dispatches accepted formal turns. */
   disableAssistantRuntimeDispatch?: boolean;
+  /** Controlled validation only; does not create a public setting or grant. */
+  assistantRuntimeSummaryTokens?: number;
 }
 
 export interface AuthenticatedRequest extends FastifyRequest {
