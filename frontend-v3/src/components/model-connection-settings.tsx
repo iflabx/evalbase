@@ -1,3 +1,4 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,16 @@ const errors: Record<string, string> = {
   model_encryption_unavailable: "服务器尚未配置可用的模型加密密钥，请联系部署管理员。",
   administrator_required: "只有管理员可以配置模型连接。",
 };
-export function ModelConnectionSettings() {
+export type PreparedModelConfiguration = {
+  name?: string;
+  endpoint?: string;
+  model?: string;
+  enabled?: boolean;
+};
+export function ModelConnectionSettings({
+  prepared,
+}: { prepared?: PreparedModelConfiguration | undefined } = {}) {
+  const [preparedInput, setPreparedInput] = useState(prepared);
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ["model-connection-settings"],
@@ -64,9 +74,11 @@ export function ModelConnectionSettings() {
       <ConnectionForm
         key={query.data.connection?.revision ?? 0}
         settings={query.data}
+        prepared={preparedInput}
         onResult={(data, message) => {
           client.setQueryData(["model-connection-settings"], data);
           setNotice(message);
+          setPreparedInput(undefined);
         }}
         onReload={() => void query.refetch()}
       />
@@ -75,25 +87,29 @@ export function ModelConnectionSettings() {
 }
 function ConnectionForm({
   settings,
+  prepared,
   onResult,
   onReload,
 }: {
   settings: Settings;
+  prepared?: PreparedModelConfiguration | undefined;
   onResult: (value: Settings, notice: string) => void;
   onReload: () => void;
 }) {
   const connection = settings.connection;
-  const [name, setName] = useState(connection?.name ?? "");
-  const [endpoint, setEndpoint] = useState(connection?.endpoint ?? "");
+  const initial = { ...connection, ...prepared };
+  const [confirming, setConfirming] = useState(false);
+  const [name, setName] = useState(initial.name ?? "");
+  const [endpoint, setEndpoint] = useState(initial.endpoint ?? "");
   const [modelChoice, setModelChoice] = useState(
-    presetModels.includes(connection?.model ?? "") ? connection!.model : "custom",
+    presetModels.includes(initial.model ?? "") ? initial.model! : "custom",
   );
   const [customModel, setCustomModel] = useState(
-    presetModels.includes(connection?.model ?? "") ? "" : (connection?.model ?? ""),
+    presetModels.includes(initial.model ?? "") ? "" : (initial.model ?? ""),
   );
   const model = modelChoice === "custom" ? customModel : modelChoice;
   const [apiKey, setApiKey] = useState("");
-  const [enabled, setEnabled] = useState(connection?.enabled ?? true);
+  const [enabled, setEnabled] = useState(initial.enabled ?? true);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
   const [error, setError] = useState("");
   const dirty =
@@ -139,7 +155,7 @@ function ConnectionForm({
   }
   function save(event: FormEvent) {
     event.preventDefault();
-    void run("save");
+    setConfirming(true);
   }
   return (
     <section className="member-card profile-card">
@@ -147,6 +163,33 @@ function ConnectionForm({
         <h2>兼容模型服务</h2>
         <p>供项目助手与数据处理使用。更新连接后，请重新测试。</p>
       </div>
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认保存模型连接</DialogTitle>
+          </DialogHeader>
+          <dl className="space-y-2 text-sm">
+            <div>连接：{name}</div>
+            <div className="break-all">服务地址：{endpoint}</div>
+            <div>模型：{model}</div>
+            <div>状态：{enabled ? "启用" : "停用"}</div>
+            <div>基于修订：{connection?.revision ?? 0}</div>
+          </dl>
+          <p className="text-sm text-muted-foreground">保存后供项目助手与数据处理的新请求使用。</p>
+          <Button
+            disabled={!!busy}
+            onClick={() => {
+              setConfirming(false);
+              void run("save");
+            }}
+          >
+            确认保存
+          </Button>
+          <Button variant="outline" onClick={() => setConfirming(false)}>
+            取消
+          </Button>
+        </DialogContent>
+      </Dialog>
       <form className="profile-form" onSubmit={save}>
         {!settings.encryptionReady && (
           <p role="alert" className="text-sm text-destructive">

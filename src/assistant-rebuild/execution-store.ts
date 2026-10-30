@@ -1,3 +1,6 @@
+import { accountOperations } from "../management/accounts.js";
+import { recycleOperations } from "../management/recycle.js";
+import { managementSnapshot } from "../management/snapshot.js";
 import { explicitProcessingRoundRequest } from "./control-intent.js";
 import { acceptTask } from "../processing/tasks.js";
 import { compatibleProcessingOperations } from "./processing-context.js";
@@ -1004,7 +1007,8 @@ export class ExecutionStore {
         origin: "runtime",
         sessionId: proof.sessionId,
         guard: async (db, action) => {
-          if (action === "cancel") await this.guard(fixed, db, true);
+          if (action === "cancel" || action === "account")
+            await this.guard(fixed, db, true);
           else await this.processingGuard(fixed, db, true);
           const s = await this.sessions.get(fixed, fixed.sessionId, db);
           if (!(await this.processingCompatible(s, op, db)))
@@ -1012,6 +1016,7 @@ export class ExecutionStore {
           if (
             action &&
             action !== "cancel" &&
+            !(action === "account" && op.kind === "account_mutation") &&
             ![
               "processing",
               "processing_control",
@@ -1248,7 +1253,7 @@ export class ExecutionStore {
       !cap ||
       cap.closed_at ||
       cap.requests >= cap.request_limit ||
-      (cap.row_limit !== null && cap.rows_used >= cap.row_limit) ||
+      (Number(cap.row_limit) > 0 && cap.rows_used >= cap.row_limit) ||
       (cap.started_at &&
         this.now() - new Date(cap.started_at).getTime() >= Number(cap.max_ms))
     )
@@ -1368,6 +1373,7 @@ export class ExecutionStore {
       if (
         ![
           "adopt",
+          "management",
           "publish",
           "selection",
           "remove_record",
@@ -1381,6 +1387,8 @@ export class ExecutionStore {
           [sessionId],
         )
       ).rows[0];
+      if (card.action === "management")
+        await this.assertActivityAvailable(c, task);
       if (task.status !== "confirmation")
         throw new SessionError("confirmation_expired");
       const op = (
@@ -1415,7 +1423,39 @@ export class ExecutionStore {
     );
     heartbeat.unref();
     try {
-      if (op.kind === "adopt") {
+      if (op.kind === "management") {
+        const scoped = this.operationScope(proof, op, card.id);
+        const check = async (c: any) => {
+          const current = await managementSnapshot(
+            c,
+            scoped,
+            op.payload.command,
+            op.payload.input,
+            true,
+          );
+          if (current.hash !== op.payload.snapshot)
+            throw new SessionError("management_target_changed");
+        };
+        const a = accountOperations(this.db, () => new Date(), check),
+          r = recycleOperations(this.db, check);
+        const service: any = ["trashSet", "trashBranch", "restore"].includes(
+          op.payload.command,
+        )
+          ? r
+          : a;
+        const allowed = [
+          "invite",
+          "revokeInvitation",
+          "changeRole",
+          "removeMember",
+          "trashSet",
+          "trashBranch",
+          "restore",
+        ];
+        if (!allowed.includes(op.payload.command))
+          throw new SessionError("management_command_invalid", 422);
+        receipt = await service[op.payload.command](scoped, op.payload.input);
+      } else if (op.kind === "adopt") {
         const result = op.payload.taskId
           ? await acceptTask(
               this.db,

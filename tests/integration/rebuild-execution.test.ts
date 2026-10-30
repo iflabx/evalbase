@@ -6762,4 +6762,827 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       ),
     ).toMatchObject({ draftName: null, draftStatus: "unavailable" });
   }, 60000);
+  it("R09 PUBLIC SDK invitation confirmation shared service and unique receipt", async () => {
+    const until = async (check: () => Promise<boolean>) => {
+      for (let i = 0; i < 500; i++) {
+        if (await check()) return;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      throw Error("R09_wait_timeout");
+    };
+    const email = "r09-" + randomUUID() + "@example.test";
+    expect(
+      (
+        await api("POST", "/api/accounts", {
+          email,
+          password: "SyntheticR09Pass123",
+          confirmPassword: "SyntheticR09Pass123",
+        })
+      ).statusCode,
+    ).toBe(201);
+    const id = await fresh();
+    const activity = "r09-zero-" + randomUUID();
+    await host.execution.ensure(db, scope(), id);
+    await db.query(
+      "INSERT INTO assistant_runtime_activity(id,request_limit,row_limit,generated_limit,max_ms) VALUES($1,16,0,0,1500000)",
+      [activity],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+      [id, activity],
+    );
+    outputs = [
+      call("request_project_invitation", { email, role: "viewer" }),
+      { role: "assistant", content: "邀请已完成。" },
+    ];
+    const dispatcher = await buildApp(config, {
+      disableLegacyTestBootstrap: true,
+    });
+    try {
+      await dispatcher.ready();
+      expect(
+        (
+          await submit(
+            id,
+            "邀请这个测试账号加入当前项目，只给查看权限：" + email,
+          )
+        ).statusCode,
+      ).toBe(202);
+      await until(async () =>
+        (await host.present(scope(), id)).confirmations.some(
+          (c: any) => c.action === "management" && c.status === "pending",
+        ),
+      );
+      expect(
+        (
+          await db.query("SELECT id FROM project_invitation WHERE email=$1", [
+            email,
+          ])
+        ).rowCount,
+      ).toBe(0);
+      const card = (await host.present(scope(), id)).confirmations.find(
+        (c: any) => c.action === "management" && c.status === "pending",
+      )!;
+      expect(card.payload.summary.newRole).toBe("viewer");
+      expect(card.payload.summary.email).toBe(email);
+      const url = route(id) + "/confirmations/" + card.id;
+      expect(
+        (await api("POST", url, { accept: true }, "viewer")).statusCode,
+      ).toBeGreaterThanOrEqual(400);
+      const confirmed = await api("POST", url, { accept: true });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      const replay = await api("POST", url, { accept: true });
+      expect(replay.statusCode, replay.body).toBe(200);
+      await until(
+        async () =>
+          (await host.present(scope(), id)).execution?.status === "completed",
+      );
+      expect(
+        (
+          await db.query("SELECT role FROM project_invitation WHERE email=$1", [
+            email,
+          ])
+        ).rows,
+      ).toEqual([{ role: "viewer" }]);
+      const op = (
+        await db.query(
+          "SELECT receipt FROM assistant_runtime_operation WHERE session_id=$1 AND kind='management'",
+          [id],
+        )
+      ).rows;
+      expect(op).toHaveLength(1);
+      expect(op[0].receipt.invitation.email).toBe(email);
+      const wire = JSON.stringify(requests);
+      expect(wire).not.toContain("SyntheticR09Pass123");
+    } finally {
+      await dispatcher.close();
+    }
+  });
+
+  it("R09 SDK rejects native approval fields and profile cannot change another identity", async () => {
+    const id = await fresh();
+    await run(id, "把我的显示名称改为R09本人", [
+      call("update_my_profile", {
+        displayName: "R09本人",
+        actorId: actors.get("viewer"),
+      }),
+      call("update_my_profile", { displayName: "R09本人" }),
+      { role: "assistant", content: "已修改。" },
+    ]);
+    expect(
+      (
+        await db.query("SELECT display_name FROM app_user WHERE id=$1", [
+          actors.get("admin"),
+        ])
+      ).rows[0].display_name,
+    ).toBe("R09本人");
+    expect(
+      (
+        await db.query("SELECT display_name FROM app_user WHERE id=$1", [
+          actors.get("viewer"),
+        ])
+      ).rows[0].display_name,
+    ).toBe("viewer");
+    const errors = (
+      await db.query(
+        "SELECT kind FROM assistant_runtime_event WHERE session_id=$1 AND kind='parameter_feedback'",
+        [id],
+      )
+    ).rows;
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("R09 PUBLIC SDK recycle restore replays one receipt and denies viewer", async () => {
+    const until = async (check: () => Promise<boolean>) => {
+      for (let i = 0; i < 500; i++) {
+        if (await check()) return;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      console.log(
+        "R09_RECYCLE_DIAGNOSTIC",
+        JSON.stringify(
+          (
+            await db.query(
+              "SELECT kind,detail FROM assistant_runtime_event WHERE kind IN('tool_error','parameter_feedback','requirements_feedback','execution_paused') ORDER BY id DESC LIMIT 4",
+            )
+          ).rows,
+        ),
+      );
+      throw Error("R09_recycle_timeout");
+    };
+    const set = "set_" + randomUUID();
+    await db.query(
+      "INSERT INTO test_set(id,project_id,name,purpose,owner_id) VALUES($1,$2,'R09回收验收','合成对象',$3)",
+      [set, projectId, actors.get("admin")],
+    );
+    const id = await fresh(),
+      dispatcher = await buildApp(config, { disableLegacyTestBootstrap: true });
+    try {
+      await dispatcher.ready();
+      outputs = [
+        call("request_trash_test_set", { testSetId: set }),
+        { role: "assistant", content: "已移入回收站。" },
+      ];
+      expect((await submit(id, "把R09回收验收移入回收站")).statusCode).toBe(
+        202,
+      );
+      await until(async () =>
+        (await host.present(scope(), id)).confirmations.some(
+          (c: any) => c.status === "pending" && c.action === "management",
+        ),
+      );
+      let card = (await host.present(scope(), id)).confirmations.find(
+        (c: any) => c.status === "pending" && c.action === "management",
+      )!;
+      expect(
+        (await db.query("SELECT status FROM test_set WHERE id=$1", [set]))
+          .rows[0].status,
+      ).toBe("available");
+      expect(
+        (
+          await api("POST", route(id) + "/confirmations/" + card.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBe(200);
+      await until(
+        async () =>
+          (await host.present(scope(), id)).execution?.status === "completed",
+      );
+      const entry = (
+        await db.query(
+          "SELECT id FROM test_set_trash_entry WHERE test_set_id=$1 AND status='trashed'",
+          [set],
+        )
+      ).rows[0];
+      expect(
+        (
+          await api(
+            "GET",
+            "/api/projects/" + projectId + "/solo-test-set-trash",
+            undefined,
+            "viewer",
+          )
+        ).statusCode,
+      ).toBe(404);
+      outputs = [
+        call("request_restore_test_set", { entryId: entry.id }),
+        { role: "assistant", content: "已恢复。" },
+      ];
+      expect((await submit(id, "恢复刚才那个测试集")).statusCode).toBe(202);
+      await until(async () =>
+        (await host.present(scope(), id)).confirmations.some(
+          (c: any) => c.status === "pending" && c.action === "management",
+        ),
+      );
+      card = (await host.present(scope(), id)).confirmations.find(
+        (c: any) => c.status === "pending" && c.action === "management",
+      )!;
+      const url = route(id) + "/confirmations/" + card.id;
+      expect((await api("POST", url, { accept: true })).statusCode).toBe(200);
+      expect((await api("POST", url, { accept: true })).statusCode).toBe(200);
+      await until(
+        async () =>
+          (await host.present(scope(), id)).execution?.status === "completed",
+      );
+      expect(
+        (await db.query("SELECT status FROM test_set WHERE id=$1", [set]))
+          .rows[0].status,
+      ).toBe("available");
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM assistant_runtime_operation WHERE session_id=$1 AND kind='management' AND receipt IS NOT NULL",
+            [id],
+          )
+        ).rows,
+      ).toHaveLength(2);
+    } finally {
+      await dispatcher.close();
+    }
+  });
+
+  it("R09 SDK role confirmation rejects changed target and does not auto-upgrade revision", async () => {
+    const id = await fresh(),
+      userId = actors.get("editor");
+    const state = await run(id, "把编辑成员改为查看", [
+      call("request_member_role", { userId, role: "viewer" }),
+    ]);
+    const card = state.confirmations.find(
+      (c: any) => c.action === "management" && c.status === "pending",
+    )!;
+    expect(card).toBeTruthy();
+    await db.query(
+      "UPDATE project_member SET role='viewer' WHERE project_id=$1 AND user_id=$2",
+      [projectId, userId],
+    );
+    try {
+      const result = await api(
+        "POST",
+        route(id) + "/confirmations/" + card.id,
+        { accept: true },
+      );
+      expect(result.statusCode).toBe(409);
+      expect(result.json().error.code).toBe("management_target_changed");
+      expect(
+        (
+          await db.query(
+            "SELECT receipt FROM assistant_runtime_operation WHERE id=$1",
+            [
+              (
+                await db.query(
+                  "SELECT operation_id FROM assistant_runtime_confirmation WHERE id=$1",
+                  [card.id],
+                )
+              ).rows[0].operation_id,
+            ],
+          )
+        ).rows[0].receipt,
+      ).toBeNull();
+    } finally {
+      await db.query(
+        "UPDATE project_member SET role='editor' WHERE project_id=$1 AND user_id=$2",
+        [projectId, userId],
+      );
+    }
+  });
+
+  it("R09 SDK saved model test counts one HTTP and refuses stale revision without a request", async () => {
+    const revision = (await api("GET", "/api/settings/model-connection")).json()
+      .connection.revision;
+    const id = await fresh();
+    const state = await run(id, "测试当前已保存的模型连接", [
+      call("test_saved_model_connection", { revision }),
+      { role: "assistant", content: "连接测试已完成。" },
+    ]);
+    const ledger = (
+      await db.query(
+        "SELECT purpose,status FROM assistant_runtime_request WHERE session_id=$1 ORDER BY started_at",
+        [id],
+      )
+    ).rows;
+    expect(ledger.filter((r) => r.purpose === "connection_test")).toEqual([
+      { purpose: "connection_test", status: 200 },
+    ]);
+    expect(state.execution?.status).toBe("completed");
+    const testId = await fresh();
+    await expect(
+      run(testId, "只测试已保存的旧修订", [
+        call("test_saved_model_connection", { revision: revision + 100 }),
+        { role: "assistant", content: "修订已变化，请核对。" },
+      ]),
+    ).rejects.toThrow("model_connection_conflict");
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM assistant_runtime_request WHERE session_id=$1 AND purpose='connection_test'",
+          [testId],
+        )
+      ).rows,
+    ).toHaveLength(0);
+  });
+
+  it("R09 SDK native model configuration never accepts key or approval through tool arguments", async () => {
+    const id = await fresh();
+    const state = await run(id, "准备一个模型配置，由我在表单输入密钥", [
+      call("open_model_settings", {
+        name: "合成模型",
+        endpoint: "http://127.0.0.1:18099/v1",
+        model: "controlled-model",
+        enabled: false,
+      }),
+      { role: "assistant", content: "请在原生表单输入密钥并确认。" },
+    ]);
+    const action = state.workspace.nativeActions.find(
+      (a: any) => a.kind === "model_settings",
+    );
+    expect(action?.configuration?.model).toBe("controlled-model");
+    const declared = requests
+      .at(-1)
+      ?.tools?.find((t: any) => t.function.name === "open_model_settings");
+    expect(Object.keys(declared.function.parameters.properties)).not.toContain(
+      "apiKey",
+    );
+    expect(Object.keys(declared.function.parameters.properties)).not.toContain(
+      "approve",
+    );
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM assistant_runtime_operation WHERE session_id=$1",
+          [id],
+        )
+      ).rows,
+    ).toHaveLength(0);
+  });
+  it("R09 PAGE native model secret fixed confirmation and conflict retain input", async () => {
+    const saved = (await api("GET", "/api/settings/model-connection")).json()
+      .connection;
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      extraHTTPHeaders: { origin },
+      viewport: { width: 1280, height: 900 },
+    });
+    const cookie = identities.get("admin")!.cookie!.split("=");
+    await context.addCookies([
+      {
+        name: cookie[0]!,
+        value: cookie.slice(1).join("="),
+        url: await webAddress(),
+      },
+    ]);
+    const secret = "NativeSyntheticR09Credential";
+    try {
+      const page = await context.newPage();
+      await page.goto(
+        (await webAddress()) +
+          "/settings?project=" +
+          projectId +
+          "&section=models",
+      );
+      await page.getByLabel("连接名称", { exact: true }).fill("R09原生配置");
+      const key = page.locator("#model-connection-key");
+      await key.fill(secret);
+      await browserExpect(key).toHaveAttribute("type", "password");
+      await page.getByRole("button", { name: "保存连接", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await browserExpect(
+        dialog.getByRole("heading", { name: "确认保存模型连接" }),
+      ).toBeVisible();
+      expect(await dialog.innerText()).not.toContain(secret);
+      expect(
+        (await api("GET", "/api/settings/model-connection")).json().connection
+          .revision,
+      ).toBe(saved.revision);
+      await dialog
+        .getByRole("button", { name: "确认保存", exact: true })
+        .click();
+      await browserExpect(
+        page.getByText("模型连接已保存。", { exact: true }),
+      ).toBeVisible();
+      await browserExpect(key).toHaveValue("");
+      const next = (await api("GET", "/api/settings/model-connection")).json()
+        .connection;
+      expect(next.name).toBe("R09原生配置");
+      expect(next.revision).toBe(saved.revision + 1);
+      await page.getByLabel("连接名称", { exact: true }).fill("R09冲突保留");
+      await api("PUT", "/api/settings/model-connection", {
+        revision: next.revision,
+        name: "并发修改",
+        endpoint: next.endpoint,
+        model: next.model,
+        enabled: next.enabled,
+      });
+      await page.getByRole("button", { name: "保存连接", exact: true }).click();
+      await dialog
+        .getByRole("button", { name: "确认保存", exact: true })
+        .click();
+      await browserExpect(
+        page.getByText(
+          "连接已被更新。你的输入仍在，请重新载入当前配置后再保存。",
+        ),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByLabel("连接名称", { exact: true }),
+      ).toHaveValue("R09冲突保留");
+      const viewer = await browser.newContext({ extraHTTPHeaders: { origin } }),
+        vCookie = identities.get("viewer")!.cookie!.split("=");
+      await viewer.addCookies([
+        {
+          name: vCookie[0]!,
+          value: vCookie.slice(1).join("="),
+          url: await webAddress(),
+        },
+      ]);
+      const vp = await viewer.newPage();
+      await vp.goto(
+        (await webAddress()) +
+          "/settings?project=" +
+          projectId +
+          "&section=models",
+      );
+      await browserExpect(vp.locator("#model-connection-key")).toHaveCount(0);
+      expect(JSON.stringify(requests)).not.toContain(secret);
+      await viewer.close();
+    } finally {
+      await context.close();
+      await browser.close();
+      const latest = (await api("GET", "/api/settings/model-connection")).json()
+        .connection;
+      await api("PUT", "/api/settings/model-connection", {
+        revision: latest.revision,
+        name: saved.name,
+        endpoint: saved.endpoint,
+        model: saved.model,
+        enabled: saved.enabled,
+        apiKey: "controlled-key",
+      });
+    }
+  }, 60000);
+
+  it("R09 SDK remove member freezes only real fields and commits uniquely", async () => {
+    const id = await fresh(),
+      userId = actors.get("editor");
+    try {
+      const state = await run(id, "移除这位项目编辑成员", [
+        call("request_remove_member", { userId }),
+        { role: "assistant", content: "已移除成员。" },
+      ]);
+      const card = state.confirmations.find(
+        (c: any) => c.status === "pending" && c.action === "management",
+      )!;
+      expect(card).toBeTruthy();
+      expect(card.payload.summary.oldRole).toBe("editor");
+      expect(card.payload.summary).not.toHaveProperty("newRole");
+      const url = route(id) + "/confirmations/" + card.id;
+      expect((await api("POST", url, { accept: true })).statusCode).toBe(200);
+      expect((await api("POST", url, { accept: true })).statusCode).toBe(200);
+      expect(
+        (
+          await db.query(
+            "SELECT role FROM project_member WHERE project_id=$1 AND user_id=$2",
+            [projectId, userId],
+          )
+        ).rows,
+      ).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT receipt FROM assistant_runtime_operation WHERE session_id=$1 AND kind='management'",
+            [id],
+          )
+        ).rows,
+      ).toEqual([{ receipt: { done: true } }]);
+      await host.runPending(scope(), id, state.execution.turn_id);
+    } finally {
+      await db.query(
+        "INSERT INTO project_member(project_id,user_id,role) VALUES($1,$2,'editor') ON CONFLICT(project_id,user_id) DO UPDATE SET role='editor'",
+        [projectId, userId],
+      );
+    }
+  });
+
+  it("R09 native invitation repeat reflects changed role and removed membership without regrant", async () => {
+    const email = "r09-repeat-" + randomUUID() + "@example.test",
+      password = "SyntheticR09Repeat123";
+    await api("POST", "/api/accounts", {
+      email,
+      password,
+      confirmPassword: password,
+    });
+    const login = await api("POST", "/api/session", { email, password });
+    identities.set("r09target", {
+      cookie: login.cookies[0].name + "=" + login.cookies[0].value,
+      "x-csrf-token": login.json().csrfToken,
+    });
+    const invitation = (
+      await api("POST", "/api/projects/" + projectId + "/invitations", {
+        email,
+        role: "viewer",
+      })
+    ).json().invitation;
+    const accept = "/api/me/invitations/" + invitation.id + "/accept";
+    expect((await api("POST", accept, {}, "viewer")).statusCode).toBe(404);
+    expect((await api("POST", accept, {}, "r09target")).json().role).toBe(
+      "viewer",
+    );
+    const uid = (
+      await db.query("SELECT id FROM app_user WHERE email=$1", [email])
+    ).rows[0].id;
+    await api("PATCH", "/api/projects/" + projectId + "/members/" + uid, {
+      role: "editor",
+    });
+    expect((await api("POST", accept, {}, "r09target")).json().role).toBe(
+      "editor",
+    );
+    await api("DELETE", "/api/projects/" + projectId + "/members/" + uid);
+    expect((await api("POST", accept, {}, "r09target")).statusCode).toBe(409);
+    expect(
+      (
+        await db.query(
+          "SELECT role FROM project_member WHERE project_id=$1 AND user_id=$2",
+          [projectId, uid],
+        )
+      ).rows,
+    ).toHaveLength(0);
+  });
+
+  it("R09 SDK invalid endpoint enters bounded correction and preserves prepared fields", async () => {
+    const id = await fresh();
+    const state = await run(id, "准备合成模型地址，由我输入密钥", [
+      call("open_model_settings", {
+        name: "地址纠错",
+        endpoint: "not-an-url",
+        model: "controlled-model",
+        enabled: false,
+      }),
+      call("open_model_settings", {
+        name: "地址纠错",
+        endpoint: "http://127.0.0.1:18099/v1",
+        model: "controlled-model",
+        enabled: false,
+      }),
+      { role: "assistant", content: "请在原生表单核对。" },
+    ]);
+    expect(
+      state.workspace.nativeActions.find(
+        (a: any) => a.kind === "model_settings",
+      )?.configuration,
+    ).toEqual({
+      name: "地址纠错",
+      endpoint: "http://127.0.0.1:18099/v1",
+      model: "controlled-model",
+      enabled: false,
+    });
+    expect(
+      (
+        await db.query(
+          "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='parameter_feedback'",
+          [id],
+        )
+      ).rows.length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("R09 SDK expired and revoked management confirmations fail closed", async () => {
+    const id = await fresh(),
+      userId = actors.get("editor");
+    const state = await run(id, "把编辑成员改为查看", [
+      call("request_member_role", { userId, role: "viewer" }),
+    ]);
+    const card = state.confirmations.find(
+      (c: any) => c.action === "management" && c.status === "pending",
+    )!;
+    await db.query(
+      "UPDATE assistant_runtime_confirmation SET expires_at=now()-interval '1 minute' WHERE id=$1",
+      [card.id],
+    );
+    expect(
+      (
+        await api("POST", route(id) + "/confirmations/" + card.id, {
+          accept: true,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await db.query(
+          "SELECT role FROM project_member WHERE project_id=$1 AND user_id=$2",
+          [projectId, userId],
+        )
+      ).rows[0].role,
+    ).toBe("editor");
+    const id2 = await fresh();
+    const s2 = await run(id2, "把编辑成员改为查看", [
+      call("request_member_role", { userId, role: "viewer" }),
+    ]);
+    const c2 = s2.confirmations.find(
+      (c: any) => c.action === "management" && c.status === "pending",
+    )!;
+    await db.query("UPDATE app_user SET role='user' WHERE id=$1", [
+      actors.get("admin"),
+    ]);
+    try {
+      expect(
+        (
+          await api("POST", route(id2) + "/confirmations/" + c2.id, {
+            accept: true,
+          })
+        ).statusCode,
+      ).toBeGreaterThanOrEqual(400);
+      expect(
+        (
+          await db.query(
+            "SELECT role FROM project_member WHERE project_id=$1 AND user_id=$2",
+            [projectId, userId],
+          )
+        ).rows[0].role,
+      ).toBe("editor");
+    } finally {
+      await db.query("UPDATE app_user SET role='admin' WHERE id=$1", [
+        actors.get("admin"),
+      ]);
+    }
+  });
+
+  it("R09 native form correction cannot change other valid prepared fields", async () => {
+    const id = await fresh();
+    await expect(
+      run(id, "准备模型连接，我会输入密钥", [
+        call("open_model_settings", {
+          name: "原名称",
+          endpoint: "bad-url",
+          model: "controlled-model",
+          enabled: false,
+        }),
+        call("open_model_settings", {
+          name: "别的名称",
+          endpoint: "http://127.0.0.1:18099/v1",
+          model: "controlled-model",
+          enabled: false,
+        }),
+      ]),
+    ).rejects.toThrow("correction_intent_changed");
+    expect(
+      (await host.present(scope(), id)).workspace.nativeActions,
+    ).toHaveLength(0);
+  });
+
+  it("R09 SDK revokes one fixed invitation and replays the receipt", async () => {
+    const email = "r09-revoke-" + randomUUID() + "@example.test";
+    await api("POST", "/api/accounts", {
+      email,
+      password: "SyntheticR09Revoke123",
+      confirmPassword: "SyntheticR09Revoke123",
+    });
+    const invitation = (
+      await api("POST", "/api/projects/" + projectId + "/invitations", {
+        email,
+        role: "viewer",
+      })
+    ).json().invitation;
+    const id = await fresh();
+    const s = await run(id, "撤销这位测试账号的邀请", [
+      call("request_revoke_invitation", { invitationId: invitation.id }),
+      { role: "assistant", content: "已撤销。" },
+    ]);
+    const c = s.confirmations.find(
+      (c: any) => c.status === "pending" && c.action === "management",
+    )!;
+    expect(c.payload.summary.email).toBe(email);
+    const url = route(id) + "/confirmations/" + c.id;
+    expect((await api("POST", url, { accept: true })).statusCode).toBe(200);
+    expect((await api("POST", url, { accept: true })).statusCode).toBe(200);
+    expect(
+      (
+        await db.query("SELECT status FROM project_invitation WHERE id=$1", [
+          invitation.id,
+        ])
+      ).rows[0].status,
+    ).toBe("revoked");
+    await host.runPending(scope(), id, s.execution.turn_id);
+  });
+
+  it("R09 branch impact excludes unrelated draft changes and restore identifies exact branch", async () => {
+    const { createSharedDraft } = await import("../../src/drafts/create.js"),
+      { draftOperations } = await import("../../src/drafts/operations.js"),
+      { recycleOperations } = await import("../../src/management/recycle.js"),
+      { managementSnapshot } = await import("../../src/management/snapshot.js");
+    const domain = draftOperations(db, new ArtifactRepository(config.minio));
+    const create = async (args: any) => {
+      const d = (
+        await createSharedDraft(db, scope(), args, "r09-branch-" + randomUUID())
+      ).draft;
+      return d.id;
+    };
+    const publish = async (draftId: string) =>
+      domain.publishDraft(
+        { ...scope(), draftId },
+        {
+          revision: (await domain.read({ ...scope(), draftId })).draft.revision,
+        },
+      );
+    const root = await create({
+      name: "R09分支影响" + randomUUID(),
+      purpose: "合成版本",
+    });
+    await domain.addRecord(
+      { ...scope(), draftId: root },
+      { question: "预约需要什么？", expectedOutput: "说明材料", metadata: [] },
+    );
+    const v1 = await publish(root),
+      leftDraft = await create({
+        testSetId: v1.testSet.id,
+        parentVersionId: v1.version.id,
+      });
+    const left = await publish(leftDraft);
+    const rightDraft = await create({
+      testSetId: v1.testSet.id,
+      parentVersionId: v1.version.id,
+    });
+    const right = await publish(rightDraft);
+    const affected = await create({
+        testSetId: v1.testSet.id,
+        parentVersionId: left.version.id,
+      }),
+      unrelated = await create({
+        testSetId: v1.testSet.id,
+        parentVersionId: right.version.id,
+      });
+    const input = {
+      testSetId: v1.testSet.id,
+      versionId: left.version.id,
+      body: { includeDescendants: false },
+    };
+    const before = await managementSnapshot(db, scope(), "trashBranch", input);
+    expect(before.summary.draftCount).toBe(1);
+    expect(before.summary.versionCount).toBe(1);
+    await domain.update(
+      { ...scope(), draftId: unrelated },
+      { field: "purpose", value: "无关分支修改", expectedFieldRevision: 0 },
+    );
+    expect(
+      (await managementSnapshot(db, scope(), "trashBranch", input)).hash,
+    ).toBe(before.hash);
+    await domain.update(
+      { ...scope(), draftId: affected },
+      { field: "purpose", value: "相关分支修改", expectedFieldRevision: 0 },
+    );
+    expect(
+      (await managementSnapshot(db, scope(), "trashBranch", input)).hash,
+    ).not.toBe(before.hash);
+    const recycle = recycleOperations(db),
+      a = await recycle.trashBranch(scope(), input),
+      b = await recycle.trashBranch(scope(), {
+        testSetId: v1.testSet.id,
+        versionId: right.version.id,
+        body: { includeDescendants: false },
+      });
+    const sa = await managementSnapshot(db, scope(), "restore", {
+        entryId: a.entry.id,
+        body: {},
+      }),
+      sb = await managementSnapshot(db, scope(), "restore", {
+        entryId: b.entry.id,
+        body: {},
+      });
+    expect(sa.summary.entryType).toBe("版本分支");
+    expect(sa.summary.versionCount).toBe(1);
+    expect(sa.summary.rootVersion).toBe(left.version.label);
+    expect(sb.summary.rootVersion).toBe(right.version.label);
+    expect(sa.summary.rootVersion).not.toBe(sb.summary.rootVersion);
+  });
+
+  it("R09 SDK sealed activity cannot confirm a pending management write", async () => {
+    const id = await fresh(),
+      userId = actors.get("editor");
+    const state = await run(id, "把编辑成员改为查看", [
+      call("request_member_role", { userId, role: "viewer" }),
+    ]);
+    const card = state.confirmations.find(
+      (c: any) => c.action === "management" && c.status === "pending",
+    )!;
+    const activity = "r09-sealed-" + randomUUID();
+    await db.query(
+      "INSERT INTO assistant_runtime_activity(id,request_limit,row_limit,generated_limit,max_ms,closed_at) VALUES($1,16,0,0,1500000,now())",
+      [activity],
+    );
+    await db.query(
+      "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+      [id, activity],
+    );
+    const result = await api("POST", route(id) + "/confirmations/" + card.id, {
+      accept: true,
+    });
+    expect(result.statusCode).toBe(409);
+    expect(result.json().error.code).toBe("activity_budget_exhausted");
+    expect(
+      (
+        await db.query(
+          "SELECT role FROM project_member WHERE project_id=$1 AND user_id=$2",
+          [projectId, userId],
+        )
+      ).rows[0].role,
+    ).toBe("editor");
+  });
 });

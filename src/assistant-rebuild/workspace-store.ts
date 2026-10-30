@@ -261,6 +261,9 @@ export class WorkspaceStore {
           (e) =>
             e.kind === "tool_result" &&
             [
+              "open_model_settings",
+              "open_sign_out",
+              "open_recycle_destructive_action",
               "open_material_upload",
               "open_material_mapping",
               "navigate_project",
@@ -283,6 +286,9 @@ export class WorkspaceStore {
           if (
             !action ||
             ![
+              "model_settings",
+              "sign_out",
+              "recycle_management",
               "upload",
               "mapping",
               "navigation",
@@ -303,6 +309,28 @@ export class WorkspaceStore {
             {
               id: String(e.id),
               kind: action.kind,
+              ...(action.kind === "model_settings" && action.configuration
+                ? {
+                    configuration: Object.fromEntries(
+                      Object.entries(action.configuration).filter(
+                        ([k, v]) =>
+                          ["name", "endpoint", "model", "enabled"].includes(
+                            k,
+                          ) && ["string", "boolean"].includes(typeof v),
+                      ),
+                    ),
+                  }
+                : {}),
+              ...(action.operation === "permanent_delete" ||
+              action.operation === "tombstone"
+                ? { operation: action.operation }
+                : {}),
+              ...(typeof action.entryId === "string"
+                ? { entryId: action.entryId }
+                : {}),
+              ...(typeof action.confirmationName === "string"
+                ? { confirmationName: action.confirmationName }
+                : {}),
               ...(typeof action.draftId === "string"
                 ? { draftId: action.draftId }
                 : {}),

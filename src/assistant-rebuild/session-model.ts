@@ -10,7 +10,7 @@ export type ModelAttempt = {
   id: string;
   sessionId: string;
   turnId: string;
-  purpose: "assistant" | "correction" | "summary";
+  purpose: "assistant" | "correction" | "summary" | "connection_test";
   correctionOf: string | null;
   requestHash: string;
 };
@@ -35,7 +35,34 @@ export function createSessionModel(options: {
   hooks?: SessionModelHooks;
   correctionOf: () => string | null;
 }) {
-  const { connection, proof } = options;
+  const { connection } = options;
+  const transport = createSessionTransport(options);
+  const model = () =>
+    new ChatOpenAI({
+      model: connection.model,
+      apiKey: connection.apiKey,
+      temperature: 0,
+      maxTokens: 8192,
+      maxRetries: 0,
+      streaming: true,
+      modelKwargs: { parallel_tool_calls: false },
+      configuration: { baseURL: connection.baseURL, fetch: transport.fetch },
+    });
+
+  return {
+    model: model(),
+    callModel: <T>(call: () => Promise<T> | T) => transport.callModel(call),
+    failure: transport.failure,
+  };
+}
+
+export function createSessionTransport(
+  options: Omit<Parameters<typeof createSessionModel>[0], "connection"> & {
+    fetch?: typeof fetch;
+    purpose?: ModelAttempt["purpose"];
+  },
+) {
+  const { proof } = options;
   const { sessionId, turnId } = proof;
   const ctl = { signal: options.signal };
   const modelContext = new AsyncLocalStorage<"assistant">();
@@ -54,11 +81,12 @@ export function createSessionModel(options: {
         sessionId,
         turnId,
         purpose:
-          modelContext.getStore() === "assistant"
+          options.purpose ??
+          (modelContext.getStore() === "assistant"
             ? correctionOf
               ? "correction"
               : "assistant"
-            : "summary",
+            : "summary"),
         correctionOf:
           modelContext.getStore() === "assistant" ? correctionOf : null,
         requestHash: sha256(String(init?.body ?? "")),
@@ -88,7 +116,7 @@ export function createSessionModel(options: {
         await options.hooks?.afterResponse?.(outcome);
       };
       try {
-        const response = await modelFetch(url, {
+        const response = await (options.fetch ?? modelFetch)(url, {
           ...init,
           signal: AbortSignal.any([
             ctl.signal,
@@ -144,20 +172,9 @@ export function createSessionModel(options: {
           await finishStream(outcome.usage, outcome.error);
       }
     };
-  const model = () =>
-    new ChatOpenAI({
-      model: connection.model,
-      apiKey: connection.apiKey,
-      temperature: 0,
-      maxTokens: 8192,
-      maxRetries: 0,
-      streaming: true,
-      modelKwargs: { parallel_tool_calls: false },
-      configuration: { baseURL: connection.baseURL, fetch: fetchFor() },
-    });
 
   return {
-    model: model(),
+    fetch: fetchFor(),
     callModel: <T>(call: () => Promise<T> | T) =>
       modelContext.run("assistant", call),
     failure: () => requestFailure,

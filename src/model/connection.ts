@@ -309,13 +309,25 @@ export async function testModelConnection(
   db: Database,
   config: Config,
   input: unknown,
+  transport?: {
+    decorateFetch: (request: typeof fetch) => typeof fetch;
+    requestScope: { projectId: string; sessionId?: string; turnId?: string };
+  },
 ) {
   if (!isPlainObject(input) || !Number.isSafeInteger(input.revision))
     throw new ModelConnectionError(422, "model_connection_invalid");
   const current = await readConnection(db);
   if (!current || current.revision !== input.revision)
     throw new ModelConnectionError(409, "model_connection_conflict");
-  const { model } = await configuredModel(db, config, current.revision, true);
+  const { model } = await configuredModel(
+    db,
+    config,
+    current.revision,
+    true,
+    undefined,
+    transport?.decorateFetch,
+    transport?.requestScope,
+  );
   let ok = false;
   try {
     const result = await generateText({

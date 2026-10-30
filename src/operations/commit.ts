@@ -34,6 +34,8 @@ export type BackgroundRequest = {
   parentRunId?: string;
 };
 export type CommitAction =
+  | "account"
+  | "management"
   | "processing"
   | "selection"
   | "publish"
@@ -130,7 +132,13 @@ export async function guardOperationCommit(
     [scope.projectId, scope.actorId],
   );
   if (
-    !(await hasProjectCapability(db, scope.projectId, scope.actorId, "write"))
+    !(action === "account" && !scope.projectId) &&
+    !(await hasProjectCapability(
+      db,
+      scope.projectId,
+      scope.actorId,
+      action === "account" ? "read" : action === "management" ? "manage" : "write",
+    ))
   )
     throw new OperationCommitError("project_not_found", 404);
   await context?.guard(db, action);

@@ -1,3 +1,5 @@
+import { accountOperations } from "../../management/accounts.js";
+import { BusinessError } from "../../operations/errors.js";
 import { randomBytes } from "node:crypto";
 import { type FastifyReply, type FastifyRequest } from "fastify";
 import { hashPassword, verifyPassword } from "../../security/password.js";
@@ -39,6 +41,7 @@ export function registerAccounts(
     writeAllowed,
     enforceDeletionLock,
   } = context;
+  const management = accountOperations(db, now);
   app.get("/api/installation", async () => {
     const state = await db.query(
       `SELECT EXISTS(SELECT 1 FROM installation_state) AS initialized,
@@ -300,27 +303,28 @@ export function registerAccounts(
     },
   );
 
-  app.get("/api/session", { preHandler: authenticate }, async (request) => {
-    const actor = (request as AuthenticatedRequest).actor;
-    return { csrfToken: actor.csrfToken, actor: publicSessionActor(actor) };
-  });
+  app.get(
+    "/api/session",
+    { preHandler: authenticate },
+    async (request) => {
+      const actor = (request as AuthenticatedRequest).actor;
+      return { csrfToken: actor.csrfToken, actor: publicSessionActor(actor) };
+    },
+  );
 
-  app.get("/api/me", { preHandler: authenticate }, async (request) => {
+  app.get("/api/me", { preHandler: authenticate }, async (request, reply) => {
     const actor = (request as AuthenticatedRequest).actor;
-    const result = await db.query(
-      "SELECT id, email, display_name, avatar_color, role FROM app_user WHERE id = $1",
-      [actor.id],
-    );
-    const user = result.rows[0];
-    return {
-      account: {
-        id: user.id,
-        email: user.email,
-        displayName: user.display_name ?? user.username,
-        avatarColor: user.avatar_color,
-        role: user.role,
-      },
-    };
+    try {
+      const result = await management.profile(
+        { actorId: actor.id, projectId: "" },
+        { ...{} },
+      );
+      return reply.code(200).send(result);
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return reply.code(e.status).send({ error: { code: e.code } });
+      throw e;
+    }
   });
 
   app.patch<{ Body: unknown }>(
@@ -330,48 +334,17 @@ export function registerAccounts(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        !Object.keys(body).length ||
-        Object.keys(body).some(
-          (key) => !["displayName", "avatarColor"].includes(key),
-        ) ||
-        (body.displayName !== undefined &&
-          (typeof body.displayName !== "string" ||
-            body.displayName.trim().length < 1 ||
-            body.displayName.trim().length > 30)) ||
-        (body.avatarColor !== undefined &&
-          (typeof body.avatarColor !== "string" ||
-            !/^#[0-9a-fA-F]{6}$/u.test(body.avatarColor)))
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "profile_payload_invalid" } });
-      const result = await db.query(
-        `UPDATE app_user
-       SET display_name = coalesce($2, display_name),
-           avatar_color = coalesce($3, avatar_color)
-       WHERE id = $1
-       RETURNING id, email, display_name, avatar_color, role`,
-        [
-          actor.id,
-          typeof body.displayName === "string" ? body.displayName.trim() : null,
-          typeof body.avatarColor === "string"
-            ? body.avatarColor.toLowerCase()
-            : null,
-        ],
-      );
-      const user = result.rows[0];
-      return {
-        account: {
-          id: user.id,
-          email: user.email,
-          displayName: user.display_name,
-          avatarColor: user.avatar_color,
-          role: user.role,
-        },
-      };
+      try {
+        const result = await management.updateProfile(
+          { actorId: actor.id, projectId: "" },
+          { ...{}, body: request.body },
+        );
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
@@ -380,33 +353,17 @@ export function registerAccounts(
     { preHandler: authenticate },
     async (request, reply) => {
       const actor = (request as AuthenticatedRequest).actor;
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "read",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const result = await db.query(
-        `SELECT u.id, u.email, u.display_name, u.avatar_color,
-                CASE WHEN u.role = 'admin' THEN 'admin' ELSE pm.role END AS role
-         FROM app_user u
-         LEFT JOIN project_member pm ON pm.user_id = u.id AND pm.project_id = $1
-         WHERE u.role = 'admin' OR pm.role IN ('editor', 'viewer')
-         ORDER BY CASE WHEN u.role = 'admin' THEN 0 ELSE 1 END, u.display_name, u.id`,
-        [request.params.projectId],
-      );
-      return {
-        members: result.rows.map((row) => ({
-          id: row.id,
-          email: row.email,
-          displayName: row.display_name,
-          avatarColor: row.avatar_color,
-          role: row.role,
-        })),
-      };
+      try {
+        const result = await management.members(
+          { actorId: actor.id, projectId: request.params.projectId },
+          { ...request.params },
+        );
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
@@ -415,34 +372,17 @@ export function registerAccounts(
     { preHandler: authenticate },
     async (request, reply) => {
       const actor = (request as AuthenticatedRequest).actor;
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "manage",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const result = await db.query(
-        `SELECT id, email, role, status, expires_at, created_at
-         FROM project_invitation WHERE project_id = $1
-         ORDER BY created_at DESC, id DESC LIMIT 100`,
-        [request.params.projectId],
-      );
-      return {
-        invitations: result.rows.map((row) => ({
-          id: row.id,
-          email: row.email,
-          role: row.role,
-          status:
-            row.status === "pending" && new Date(row.expires_at) <= now()
-              ? "expired"
-              : row.status,
-          expiresAt: row.expires_at,
-          createdAt: row.created_at,
-        })),
-      };
+      try {
+        const result = await management.invitations(
+          { actorId: actor.id, projectId: request.params.projectId },
+          { ...request.params },
+        );
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
@@ -453,85 +393,16 @@ export function registerAccounts(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "manage",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        Object.keys(body).some((key) => !["email", "role"].includes(key)) ||
-        typeof body.email !== "string" ||
-        !["editor", "viewer"].includes(String(body.role))
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "invitation_payload_invalid" } });
-      const email = body.email.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email))
-        return reply
-          .code(422)
-          .send({ error: { code: "invitation_payload_invalid" } });
-      const target = await db.query(
-        "SELECT id FROM app_user WHERE lower(email) = $1 AND role = 'user'",
-        [email],
-      );
-      if (!target.rowCount)
-        return reply
-          .code(422)
-          .send({ error: { code: "account_not_registered" } });
-      const targetId = String(target.rows[0].id);
-      const client = await db.connect();
       try {
-        await client.query("BEGIN");
-        await client.query(
-          `UPDATE project_invitation SET status = 'expired'
-           WHERE project_id = $1 AND target_user_id = $2 AND status = 'pending'
-             AND expires_at <= now()`,
-          [request.params.projectId, targetId],
+        const result = await management.invite(
+          { actorId: actor.id, projectId: request.params.projectId },
+          { ...request.params, body: request.body },
         );
-        const member = await client.query(
-          "SELECT 1 FROM project_member WHERE project_id = $1 AND user_id = $2",
-          [request.params.projectId, targetId],
-        );
-        if (member.rowCount) {
-          await client.query("ROLLBACK");
-          return reply
-            .code(409)
-            .send({ error: { code: "already_project_member" } });
-        }
-        const id = opaqueId("invitation");
-        const result = await client.query(
-          `INSERT INTO project_invitation
-             (id, project_id, target_user_id, email, role, invited_by, status, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6, 'pending', now() + interval '7 days')
-           RETURNING id, email, role, expires_at`,
-          [id, request.params.projectId, targetId, email, body.role, actor.id],
-        );
-        await client.query("COMMIT");
-        const row = result.rows[0];
-        return reply.code(201).send({
-          invitation: {
-            id: row.id,
-            email: row.email,
-            role: row.role,
-            expiresAt: row.expires_at,
-          },
-        });
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        if ((error as { code?: string }).code === "23505")
-          return reply
-            .code(409)
-            .send({ error: { code: "invitation_pending" } });
-        throw error;
-      } finally {
-        client.release();
+        return reply.code(201).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
       }
     },
   );
@@ -543,49 +414,36 @@ export function registerAccounts(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "manage",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const result = await db.query(
-        `UPDATE project_invitation SET status = 'revoked'
-         WHERE id = $1 AND project_id = $2 AND status = 'pending' RETURNING id`,
-        [request.params.invitationId, request.params.projectId],
-      );
-      if (!result.rowCount)
-        return reply
-          .code(404)
-          .send({ error: { code: "invitation_not_found" } });
-      return reply.code(204).send();
+      try {
+        await management.revokeInvitation(
+          { actorId: actor.id, projectId: request.params.projectId },
+          { ...request.params, body: request.body },
+        );
+        return reply.code(204).send(undefined);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
   app.get(
     "/api/me/invitations",
     { preHandler: authenticate },
-    async (request) => {
+    async (request, reply) => {
       const actor = (request as AuthenticatedRequest).actor;
-      const result = await db.query(
-        `SELECT i.id, i.project_id, p.name AS project_name, i.role, i.expires_at
-       FROM project_invitation i JOIN project p ON p.id = i.project_id
-       WHERE i.target_user_id = $1 AND i.status = 'pending' AND i.expires_at > now()
-       ORDER BY i.created_at DESC`,
-        [actor.id],
-      );
-      return {
-        invitations: result.rows.map((row) => ({
-          id: row.id,
-          projectId: row.project_id,
-          projectName: row.project_name,
-          role: row.role,
-          expiresAt: row.expires_at,
-        })),
-      };
+      try {
+        const result = await management.myInvitations(
+          { actorId: actor.id, projectId: "" },
+          { ...{} },
+        );
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
@@ -596,57 +454,16 @@ export function registerAccounts(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      const client = await db.connect();
       try {
-        await client.query("BEGIN");
-        const result = await client.query(
-          `SELECT id, project_id, target_user_id, role, status, expires_at
-           FROM project_invitation WHERE id = $1 FOR UPDATE`,
-          [request.params.invitationId],
+        const result = await management.acceptInvitation(
+          { actorId: actor.id, projectId: "" },
+          { ...request.params, body: request.body },
         );
-        const invitation = result.rows[0];
-        if (!invitation || invitation.target_user_id !== actor.id) {
-          await client.query("ROLLBACK");
-          return reply
-            .code(404)
-            .send({ error: { code: "invitation_not_found" } });
-        }
-        if (invitation.status === "accepted") {
-          await client.query("COMMIT");
-          return { projectId: invitation.project_id, role: invitation.role };
-        }
-        if (
-          invitation.status !== "pending" ||
-          new Date(invitation.expires_at) <= now()
-        ) {
-          await client.query("ROLLBACK");
-          return reply
-            .code(409)
-            .send({ error: { code: "invitation_inactive" } });
-        }
-        await client.query(
-          `INSERT INTO project_member (project_id, user_id, role)
-           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-          [invitation.project_id, actor.id, invitation.role],
-        );
-        await client.query(
-          "UPDATE project_invitation SET status = 'accepted', accepted_at = now() WHERE id = $1",
-          [invitation.id],
-        );
-        const membership = await client.query(
-          "SELECT role FROM project_member WHERE project_id = $1 AND user_id = $2",
-          [invitation.project_id, actor.id],
-        );
-        await client.query("COMMIT");
-        return {
-          projectId: invitation.project_id,
-          role: membership.rows[0].role,
-        };
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
       }
     },
   );
@@ -658,33 +475,17 @@ export function registerAccounts(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "manage",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        Object.keys(body).length !== 1 ||
-        !["editor", "viewer"].includes(String(body.role))
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "member_payload_invalid" } });
-      const result = await db.query(
-        `UPDATE project_member SET role = $3
-         WHERE project_id = $1 AND user_id = $2 AND role IN ('editor', 'viewer')
-         RETURNING role`,
-        [request.params.projectId, request.params.userId, body.role],
-      );
-      if (!result.rowCount)
-        return reply.code(404).send({ error: { code: "member_not_found" } });
-      return { userId: request.params.userId, role: result.rows[0].role };
+      try {
+        const result = await management.changeRole(
+          { actorId: actor.id, projectId: request.params.projectId },
+          { ...request.params, body: request.body },
+        );
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
@@ -695,23 +496,17 @@ export function registerAccounts(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "manage",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const result = await db.query(
-        `DELETE FROM project_member WHERE project_id = $1 AND user_id = $2
-         AND role IN ('editor', 'viewer') RETURNING user_id`,
-        [request.params.projectId, request.params.userId],
-      );
-      if (!result.rowCount)
-        return reply.code(404).send({ error: { code: "member_not_found" } });
-      return reply.code(204).send();
+      try {
+        await management.removeMember(
+          { actorId: actor.id, projectId: request.params.projectId },
+          { ...request.params, body: request.body },
+        );
+        return reply.code(204).send(undefined);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 

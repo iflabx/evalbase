@@ -71,6 +71,7 @@ type Issue = {
 export function sessionFeedback(options: {
   schemas: Map<string, z.ZodType>;
   readOnlyTools?: Set<string>;
+  nativeInputFields?: Map<string, Set<string>>;
   initialPending?: FailedCall;
   savePending?: (p: FailedCall | undefined) => Promise<void>;
   facts: () => Promise<unknown>;
@@ -131,12 +132,17 @@ export function sessionFeedback(options: {
     });
   };
   const maxCorrections = 2;
-  const schemaHash = (name: string) =>
-    sha256(
+  const schemaHash = (name: string) => {
+    const schema = z.toJSONSchema(options.schemas.get(name)!, { io: "input" });
+    const fields = options.nativeInputFields?.get(name);
+    return sha256(
       canonicalJson(
-        z.toJSONSchema(options.schemas.get(name)!, { io: "input" }),
+        fields?.size
+          ? { schema, nativeInputFields: [...fields].sort() }
+          : schema,
       ),
     );
+  };
   const normalize = (name: string, args: unknown, preserveMissing = false) => {
     const result = normalizeToolArguments(
       options.schemas.get(name)!,
@@ -186,12 +192,23 @@ export function sessionFeedback(options: {
         ? (i.keys ?? []).map((key) => [...i.path.map(String), key])
         : [i.path.map(String)],
     );
-  const removable = (issues: Issue[]) =>
-    issues.flatMap((i) =>
+  const removable = (issues: Issue[], name: string) => {
+    // Only native form preparation may repair a schema-invalid field value.
+    // It performs no business write or provider request; the user still reviews
+    // the final native form. Authority/range fields in other tools stay frozen.
+    const nativeFields = options.readOnlyTools?.has(name)
+      ? options.nativeInputFields?.get(name)
+      : undefined;
+    return issues.flatMap((i) =>
       i.code === "unrecognized_keys"
         ? (i.keys ?? []).map((key) => [...i.path.map(String), key])
-        : [],
+        : nativeFields instanceof Set &&
+            i.path.length === 1 &&
+            nativeFields.has(String(i.path[0]))
+          ? [i.path.map(String)]
+          : [],
     );
+  };
   const unique = (paths: string[][]) => [
     ...new Map(paths.map((p) => [JSON.stringify(p), p])).values(),
   ];
@@ -238,7 +255,7 @@ export function sessionFeedback(options: {
       attempts: (pending?.attempts ?? 0) + 1,
       removablePaths: unique([
         ...(pending?.removablePaths ?? []),
-        ...removable(issues),
+        ...removable(issues, name),
       ]),
       version: 2,
       schemaHash: schemaHash(name),
@@ -450,7 +467,9 @@ export function sessionFeedback(options: {
           workingArgs: working,
           removablePaths:
             pending?.removablePaths ??
-            (parsed && !parsed.success ? removable(parsed.error.issues) : []),
+            (parsed && !parsed.success
+              ? removable(parsed.error.issues, first.name)
+              : []),
           paths:
             pending?.paths ??
             (parsed && !parsed.success ? issuePaths(parsed.error.issues) : []),

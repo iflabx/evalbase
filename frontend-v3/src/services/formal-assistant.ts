@@ -93,7 +93,19 @@ export type Snapshot = {
 };
 export type NativeAction = {
   id: string;
-  kind: "upload" | "mapping" | "navigation" | "processing" | "version_download";
+  kind:
+    | "upload"
+    | "mapping"
+    | "navigation"
+    | "processing"
+    | "version_download"
+    | "model_settings"
+    | "sign_out"
+    | "recycle_management";
+  operation?: "permanent_delete" | "tombstone";
+  entryId?: string;
+  confirmationName?: string;
+  configuration?: { name?: string; endpoint?: string; model?: string; enabled?: boolean };
   draftId?: string;
   recordIds?: string[];
   sourceRevision?: string;

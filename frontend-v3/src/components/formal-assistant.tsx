@@ -1,3 +1,4 @@
+import { AssistantManagementBridge } from "./assistant-management-bridge";
 import { getSharedDraft } from "@/services/drafts";
 import { useQueryClient } from "@tanstack/react-query";
 import { downloadVersionBundle } from "@/services/version-download";
@@ -111,7 +112,60 @@ const toolNames: Record<string, string> = {
   wait_processing: "等待处理",
   prepare_adoption: "准备保存确认",
   wait_confirmation: "等待确认",
+  read_my_profile: "读取本人资料",
+  update_my_profile: "修改本人资料",
+  list_my_invitations: "查看本人邀请",
+  accept_my_invitation: "接受本人邀请",
+  list_project_members: "查看项目成员",
+  list_project_invitations: "查看项目邀请",
+  request_project_invitation: "准备邀请确认",
+  request_revoke_invitation: "准备撤销邀请",
+  request_member_role: "准备角色调整",
+  request_remove_member: "准备移除成员",
+  read_available_model: "查看可用模型",
+  read_model_settings: "查看模型连接",
+  open_model_settings: "打开模型设置",
+  test_saved_model_connection: "测试已保存模型",
+  open_sign_out: "打开登出确认",
+  list_recycle_bin: "查看回收站",
+  request_trash_test_set: "准备回收确认",
+  request_trash_version_branch: "准备版本分支回收",
+  request_restore_test_set: "准备恢复确认",
+  open_recycle_destructive_action: "打开删除内容确认",
 };
+const managementTitles: Record<string, string> = {
+  invite: "邀请成员",
+  revokeInvitation: "撤销邀请",
+  changeRole: "调整成员角色",
+  removeMember: "移除成员",
+  trashSet: "移入回收站",
+  trashBranch: "回收版本分支",
+  restore: "恢复回收站条目",
+};
+function managementSummary(payload: Record<string, unknown>) {
+  const summary = (payload["summary"] ?? {}) as Record<string, unknown>;
+  const labels: Record<string, string> = {
+    projectName: "项目",
+    targetName: "对象",
+    email: "账号",
+    oldRole: "原角色",
+    newRole: "新角色",
+    role: "角色",
+    version: "版本",
+    versionCount: "版本数",
+    draftCount: "受影响草稿",
+    entryType: "条目类型",
+    rootVersion: "根版本",
+    impact: "影响",
+  };
+  return Object.entries(labels)
+    .filter(([k]) => summary[k] !== undefined && summary[k] !== null)
+    .map(([k, label]) => {
+      const v = summary[k];
+      return `${label}：${v === "viewer" ? "查看" : v === "editor" ? "编辑" : String(v)}`;
+    })
+    .join(" · ");
+}
 const statusNames: Record<string, string> = {
   idle: "就绪",
   busy: "正在处理",
@@ -514,7 +568,7 @@ export function FormalAssistant({
       }
       openSession(data.session.id, true);
       void refreshList();
-    } catch {
+    } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(busyToken);
@@ -807,7 +861,7 @@ export function FormalAssistant({
       await api(endpoint(projectId, selected) + "/budget-offer", json("POST", {}));
       const updated = await api<Snapshot>(endpoint(projectId, selected));
       if (activeSession(selected)) setSnapshot(updated);
-    } catch {
+    } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(token);
@@ -821,7 +875,7 @@ export function FormalAssistant({
       await api(endpoint(projectId, selected) + "/confirmations/" + id, json("POST", { accept }));
       const updated = await api<Snapshot>(endpoint(projectId, selected));
       if (activeSession(selected)) setSnapshot(updated);
-    } catch {
+    } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(busyToken);
@@ -838,7 +892,7 @@ export function FormalAssistant({
         setConflict(false);
         saveDraft(draftRef.current, null);
       }
-    } catch {
+    } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
     }
   };
@@ -899,7 +953,7 @@ export function FormalAssistant({
         setRename(false);
         refreshList();
       }
-    } catch {
+    } catch (e) {
       if (activeSession(selected)) setError(errorText(e));
     } finally {
       if (activeSession(selected)) endBusy(busyToken);
@@ -1626,6 +1680,7 @@ export function FormalAssistant({
                               .filter(
                                 (c) =>
                                   [
+                                    "management",
                                     "publish",
                                     "selection",
                                     "remove_record",
@@ -1640,28 +1695,38 @@ export function FormalAssistant({
                                   className="mt-4 rounded-md border bg-background p-4"
                                 >
                                   <h2 className="font-semibold">
-                                    {c.action === "publish"
-                                      ? "确认发布草稿"
-                                      : c.action === "selection"
-                                        ? "确认加入所选记录"
-                                        : c.action === "remove_record"
-                                          ? "确认移除记录"
-                                          : "确认删除未发布草稿"}
+                                    {c.action === "management"
+                                      ? `确认${managementTitles[String(c.payload["command"])] ?? "项目管理操作"}`
+                                      : c.action === "publish"
+                                        ? "确认发布草稿"
+                                        : c.action === "selection"
+                                          ? "确认加入所选记录"
+                                          : c.action === "remove_record"
+                                            ? "确认移除记录"
+                                            : "确认删除未发布草稿"}
                                   </h2>
                                   <p className="my-2 text-sm text-muted-foreground">
-                                    {String(c.payload["draftName"] ?? "测试集草稿")} ·{" "}
-                                    {Number(c.payload["recordCount"] ?? 0)} 条 · 修订{" "}
-                                    {Number(c.payload["revision"])}
+                                    {c.action === "management" ? (
+                                      managementSummary(c.payload)
+                                    ) : (
+                                      <>
+                                        {String(c.payload["draftName"] ?? "测试集草稿")} ·{" "}
+                                        {Number(c.payload["recordCount"] ?? 0)} 条 · 修订{" "}
+                                        {Number(c.payload["revision"])}
+                                      </>
+                                    )}
                                   </p>
                                   <Button
                                     disabled={readOnlyHistory || busy}
                                     onClick={() => void confirm(c.id, true)}
                                   >
-                                    {c.action === "publish"
-                                      ? "确认发布"
-                                      : c.action === "selection"
-                                        ? "确认加入"
-                                        : "确认删除"}
+                                    {c.action === "management"
+                                      ? "确认执行"
+                                      : c.action === "publish"
+                                        ? "确认发布"
+                                        : c.action === "selection"
+                                          ? "确认加入"
+                                          : "确认删除"}
                                   </Button>
                                   <Button
                                     className="ml-2"
@@ -1671,6 +1736,24 @@ export function FormalAssistant({
                                   >
                                     取消
                                   </Button>
+                                </div>
+                              ))}
+                            {snapshot.confirmations
+                              .filter((c) => c.action === "management" && c.status === "committed")
+                              .map((c) => (
+                                <div
+                                  key={c.id}
+                                  className="mt-4 rounded-md border bg-background p-4"
+                                >
+                                  <h2 className="font-semibold">
+                                    已完成 ·{" "}
+                                    {managementTitles[String(c.payload["command"])] ??
+                                      "项目管理操作"}
+                                  </h2>
+                                  <p className="my-2 text-sm text-muted-foreground">
+                                    {managementSummary(c.payload)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">服务端已确认</p>
                                 </div>
                               ))}
                             {snapshot.receipts
@@ -2166,6 +2249,12 @@ export function FormalAssistant({
           </Button>
         </DialogContent>
       </Dialog>
+      <AssistantManagementBridge
+        key={materialAction?.id ?? "closed"}
+        projectId={projectId}
+        action={materialAction}
+        onClose={() => setMaterialAction(null)}
+      />
       <AssistantMaterialBridge
         projectId={projectId}
         canWrite={canWrite && !readOnlyHistory}

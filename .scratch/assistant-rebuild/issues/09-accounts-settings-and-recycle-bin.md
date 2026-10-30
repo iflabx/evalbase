@@ -1,7 +1,7 @@
 # REBUILD-09 账号成员、模型设置与回收站操作
 
 Status: ready-for-agent
-Implementation: not-started
+Implementation: in-progress
 Validation: not-run
 Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD-03](03-durable-execution-confirmations-and-budget.md), [REBUILD-04](04-assistant-workspace-and-action-bridge.md), [REBUILD-06](06-draft-selection-publication-and-versions.md), [REBUILD-08](08-history-compatibility-and-data-lifecycle.md)
 
@@ -70,3 +70,5 @@ Blocked by: [REBUILD-01](01-business-contracts-and-commit-boundary.md), [REBUILD
 - 2026-10-27：Owner 要求依据完整重建范围创建票据。创建本票，尚未实施；当前未运行模型/CU、未新建预算、未更改环境和业务数据。
 
 - 2026-10-28：按批准的架构调整补强本票责任、追加AC和验证入口，详见[总Spec](../spec.md#runtime-responsibilities)。原实施/验证状态保持，新增AC未执行。依赖边、真实模型/CU上限及旧预算不变；本次只改文档，无业务代码、部署或测试活动。
+
+- 2026-10-30：Owner授权本票实施、定向验证和有界C06；基线aef06a3，复用codex/assistant-rebuild与4240。现有验收数据及活动保持，原生密钥不进模型；详细验证统一记录r09-verification。

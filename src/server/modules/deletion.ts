@@ -1,3 +1,5 @@
+import { recycleOperations } from "../../management/recycle.js";
+import { BusinessError } from "../../operations/errors.js";
 import { cleanupProcessingObjects } from "../../processing/cleanup.js";
 import type { PoolClient } from "pg";
 import { canonicalJson, sha256 } from "../../package/contract.js";
@@ -6,7 +8,6 @@ import { createCheckpoint } from "../../version/checkpoint.js";
 import type { ServerContext } from "../context.js";
 import {
   AuthenticatedRequest,
-  opaqueId,
   isPlainObject,
   projectResponse,
 } from "../support.js";
@@ -18,32 +19,11 @@ export function registerDeletion(
   >,
 ) {
   const { db, artifacts, app, authenticate, writeAllowed } = context;
+  const management = recycleOperations(db);
   const storedStringArray = (value: unknown) =>
     Array.isArray(value) && value.every((id) => typeof id === "string")
       ? value
       : [];
-
-  async function versionBranch(
-    client: PoolClient,
-    testSetId: string,
-    rootVersionId: string,
-  ) {
-    const result = await client.query(
-      `WITH RECURSIVE branch AS (
-         SELECT id, parent_version_id, status
-           FROM test_set_version
-          WHERE id = $2 AND test_set_id = $1
-         UNION ALL
-         SELECT child.id, child.parent_version_id, child.status
-           FROM test_set_version child
-           JOIN branch parent ON child.parent_version_id = parent.id
-          WHERE child.test_set_id = $1
-       )
-       SELECT id, parent_version_id, status FROM branch`,
-      [testSetId, rootVersionId],
-    );
-    return result.rows;
-  }
 
   async function protectDeletionBoundaries(
     client: PoolClient,
@@ -439,20 +419,6 @@ export function registerDeletion(
     );
   }
 
-  function trashEntryResponse(row: Record<string, unknown>) {
-    return {
-      id: String(row.id),
-      type: row.type,
-      testSetId: row.test_set_id,
-      testSetName: row.test_set_name,
-      rootVersionId: row.root_version_id,
-      rootVersionLabel: row.root_version_label,
-      versionCount: Number(row.version_count),
-      trashedAt: new Date(row.trashed_at as string).toISOString(),
-      pendingCleanup: row.status === "purging",
-    };
-  }
-
   async function canManageProject(projectId: string, actorId: string) {
     return await hasProjectCapability(db, projectId, actorId, "manage");
   }
@@ -467,62 +433,16 @@ export function registerDeletion(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canManageProject(request.params.projectId, actor.id)))
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      if (!isPlainObject(request.body) || Object.keys(request.body).length)
-        return reply
-          .code(422)
-          .send({ error: { code: "trash_payload_invalid" } });
-      const client = await db.connect();
       try {
-        await client.query("BEGIN");
-        const testSet = await client.query(
-          `SELECT id FROM test_set
-            WHERE id = $1 AND project_id = $2 AND status = 'available' FOR UPDATE`,
-          [request.params.testSetId, request.params.projectId],
+        const result = await management.trashSet(
+          { projectId: request.params.projectId, actorId: actor.id },
+          { ...request.params, body: request.body, query: {} },
         );
-        if (!testSet.rowCount) {
-          await client.query("COMMIT");
-          return reply
-            .code(404)
-            .send({ error: { code: "test_set_not_found" } });
-        }
-        const versions = await client.query(
-          `SELECT id FROM test_set_version
-            WHERE test_set_id = $1 AND status IN ('published', 'tombstoned', 'trashed')`,
-          [request.params.testSetId],
-        );
-        const entryId = opaqueId("trash");
-        await client.query(
-          "UPDATE test_set SET status = 'trashed' WHERE id = $1",
-          [request.params.testSetId],
-        );
-        await client.query(
-          `UPDATE test_set_trash_entry
-              SET status = 'restored', updated_at = now()
-            WHERE test_set_id = $1 AND type = 'version_branch' AND status = 'trashed'`,
-          [request.params.testSetId],
-        );
-        await client.query(
-          `INSERT INTO test_set_trash_entry
-             (id, project_id, test_set_id, type, version_ids, status)
-           VALUES ($1, $2, $3, 'test_set', $4::jsonb, 'trashed')`,
-          [
-            entryId,
-            request.params.projectId,
-            request.params.testSetId,
-            JSON.stringify(versions.rows.map((row) => row.id)),
-          ],
-        );
-        await client.query("COMMIT");
-        return reply
-          .code(201)
-          .send({ entry: { id: entryId, type: "test_set" } });
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
+        return reply.code(201).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
       }
     },
   );
@@ -537,83 +457,16 @@ export function registerDeletion(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canManageProject(request.params.projectId, actor.id)))
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      if (
-        !isPlainObject(request.body) ||
-        Object.keys(request.body).some((key) => key !== "includeDescendants") ||
-        (request.body.includeDescendants !== undefined &&
-          typeof request.body.includeDescendants !== "boolean")
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "trash_payload_invalid" } });
-      const client = await db.connect();
       try {
-        await client.query("BEGIN");
-        const testSet = await client.query(
-          `SELECT id FROM test_set
-            WHERE id = $1 AND project_id = $2 AND status = 'available' FOR UPDATE`,
-          [request.params.testSetId, request.params.projectId],
+        const result = await management.trashBranch(
+          { projectId: request.params.projectId, actorId: actor.id },
+          { ...request.params, body: request.body, query: {} },
         );
-        if (!testSet.rowCount) {
-          await client.query("COMMIT");
-          return reply
-            .code(404)
-            .send({ error: { code: "test_set_not_found" } });
-        }
-        const branch = await versionBranch(
-          client,
-          request.params.testSetId,
-          request.params.versionId,
-        );
-        if (!branch.length || branch[0].status !== "published") {
-          await client.query("COMMIT");
-          return reply.code(404).send({ error: { code: "version_not_found" } });
-        }
-        if (branch.some((row) => row.status !== "published")) {
-          await client.query("COMMIT");
-          return reply
-            .code(409)
-            .send({ error: { code: "version_branch_unavailable" } });
-        }
-        if (branch.length > 1 && request.body.includeDescendants !== true) {
-          await client.query("COMMIT");
-          return reply
-            .code(422)
-            .send({ error: { code: "version_branch_required" } });
-        }
-        const entryId = opaqueId("trash");
-        const versionIds = branch.map((row) => String(row.id));
-        await client.query(
-          "UPDATE test_set_version SET status = 'trashed' WHERE id = ANY($1::text[])",
-          [versionIds],
-        );
-        await client.query(
-          `INSERT INTO test_set_trash_entry
-             (id, project_id, test_set_id, type, root_version_id, version_ids, status)
-           VALUES ($1, $2, $3, 'version_branch', $4, $5::jsonb, 'trashed')`,
-          [
-            entryId,
-            request.params.projectId,
-            request.params.testSetId,
-            request.params.versionId,
-            JSON.stringify(versionIds),
-          ],
-        );
-        await client.query("COMMIT");
-        return reply.code(201).send({
-          entry: {
-            id: entryId,
-            type: "version_branch",
-            rootVersionId: request.params.versionId,
-          },
-        });
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
+        return reply.code(201).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
       }
     },
   );
@@ -626,50 +479,17 @@ export function registerDeletion(
     { preHandler: authenticate },
     async (request, reply) => {
       const actor = (request as AuthenticatedRequest).actor;
-      const limit = Number(request.query.limit ?? 10);
-      const offset = Number(request.query.offset ?? 0);
-      if (
-        Object.keys(request.query).some(
-          (key) => !["limit", "offset"].includes(key),
-        ) ||
-        !Number.isInteger(limit) ||
-        limit < 1 ||
-        limit > 100 ||
-        !Number.isInteger(offset) ||
-        offset < 0
-      )
-        return reply
-          .code(422)
-          .send({ error: { code: "query_parameter_invalid" } });
-      if (
-        !(await hasProjectCapability(
-          db,
-          request.params.projectId,
-          actor.id,
-          "manage",
-        ))
-      )
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      const entries = await db.query(
-        `SELECT e.id, e.type, e.test_set_id, e.root_version_id, e.status, e.trashed_at,
-                ts.name AS test_set_name, root.version_label AS root_version_label,
-                jsonb_array_length(e.version_ids) AS version_count
-           FROM test_set_trash_entry e
-           JOIN test_set ts ON ts.id = e.test_set_id
-           LEFT JOIN test_set_version root ON root.id = e.root_version_id
-          WHERE e.project_id = $1 AND e.status IN ('trashed', 'purging')
-          ORDER BY e.trashed_at DESC, e.id DESC LIMIT $2 OFFSET $3`,
-        [request.params.projectId, limit, offset],
-      );
-      const total = await db.query(
-        `SELECT count(*)::integer AS total FROM test_set_trash_entry
-          WHERE project_id = $1 AND status IN ('trashed', 'purging')`,
-        [request.params.projectId],
-      );
-      return {
-        entries: entries.rows.map(trashEntryResponse),
-        pagination: { total: Number(total.rows[0]?.total ?? 0), limit, offset },
-      };
+      try {
+        const result = await management.trash(
+          { projectId: request.params.projectId, actorId: actor.id },
+          { ...request.params, body: {}, query: request.query },
+        );
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
+      }
     },
   );
 
@@ -683,63 +503,16 @@ export function registerDeletion(
       const actor = (request as AuthenticatedRequest).actor;
       if (!writeAllowed(request, actor))
         return reply.code(403).send({ error: { code: "csrf_rejected" } });
-      if (!(await canManageProject(request.params.projectId, actor.id)))
-        return reply.code(404).send({ error: { code: "project_not_found" } });
-      if (!isPlainObject(request.body) || Object.keys(request.body).length)
-        return reply
-          .code(422)
-          .send({ error: { code: "restore_payload_invalid" } });
-      const client = await db.connect();
       try {
-        await client.query("BEGIN");
-        const entryIdentity = await client.query(
-          `SELECT test_set_id FROM test_set_trash_entry
-            WHERE id=$1 AND project_id=$2 AND status='trashed'`,
-          [request.params.entryId, request.params.projectId],
+        const result = await management.restore(
+          { projectId: request.params.projectId, actorId: actor.id },
+          { ...request.params, body: request.body, query: {} },
         );
-        if (!entryIdentity.rowCount) {
-          await client.query("COMMIT");
-          return reply
-            .code(404)
-            .send({ error: { code: "trash_entry_not_found" } });
-        }
-        await client.query("SELECT id FROM test_set WHERE id=$1 FOR UPDATE", [
-          entryIdentity.rows[0].test_set_id,
-        ]);
-        const entry = await client.query(
-          `SELECT * FROM test_set_trash_entry
-            WHERE id = $1 AND project_id = $2 AND status = 'trashed' FOR UPDATE`,
-          [request.params.entryId, request.params.projectId],
-        );
-        if (!entry.rowCount) {
-          await client.query("COMMIT");
-          return reply
-            .code(404)
-            .send({ error: { code: "trash_entry_not_found" } });
-        }
-        const row = entry.rows[0];
-        const versionIds = storedStringArray(row.version_ids);
-        if (row.type === "test_set") {
-          await client.query(
-            "UPDATE test_set SET status = 'available' WHERE id = $1 AND status = 'trashed'",
-            [row.test_set_id],
-          );
-        }
-        await client.query(
-          "UPDATE test_set_version SET status = 'published' WHERE id = ANY($1::text[]) AND status = 'trashed'",
-          [versionIds],
-        );
-        await client.query(
-          "UPDATE test_set_trash_entry SET status = 'restored', updated_at = now() WHERE id = $1",
-          [row.id],
-        );
-        await client.query("COMMIT");
-        return { restored: true };
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof BusinessError)
+          return reply.code(e.status).send({ error: { code: e.code } });
+        throw e;
       }
     },
   );
