@@ -5602,7 +5602,13 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
     30000,
   );
 
-  it.each(["missing", "expired", "expired-wait"])(
+  it.each([
+    "missing",
+    "expired",
+    "expired-wait",
+    "expired-wait-row-cap",
+    "paused-row-cap",
+  ])(
     "POSTFIX recover successful orphan %s confirmation to unique save",
     async (kind) => {
       const { id, plan } = await reviewCreate();
@@ -5610,10 +5616,40 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
         plan,
         call("submit_processing", {}),
       ]);
+      const capped = kind.endsWith("row-cap");
+      const activity = "recovery-row-cap-" + randomUUID();
+      if (capped) {
+        await db.query(
+          "INSERT INTO assistant_runtime_activity(id,request_limit,row_limit,rows_used,generated_limit,max_ms) VALUES($1,30,3,3,0,300000)",
+          [activity],
+        );
+        await db.query(
+          "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+          [id, activity],
+        );
+      }
+      if (capped) {
+        await expect(
+          host.execution.reserveWorker(
+            start.results[0].run_id,
+            "overflow-" + randomUUID(),
+            "hash",
+            { rows: 1, generated: 0 },
+          ),
+        ).rejects.toMatchObject({ code: "activity_budget_exhausted" });
+        expect(
+          (
+            await db.query(
+              "SELECT requests,rows_used FROM assistant_runtime_activity WHERE id=$1",
+              [activity],
+            )
+          ).rows[0],
+        ).toEqual({ requests: 0, rows_used: 3 });
+      }
       await completeRun(start.results[0].run_id);
       await host.execution.wake();
       let oldCard: any;
-      if (kind !== "missing") {
+      if (kind !== "missing" && kind !== "paused-row-cap") {
         outputs = [call("prepare_adoption", {}), call("wait_confirmation", {})];
         const ready = await host.runPending(
           scope(),
@@ -5626,7 +5662,7 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           [oldCard.id],
         );
       }
-      if (kind !== "expired-wait") {
+      if (!kind.startsWith("expired-wait") && kind !== "paused-row-cap") {
         await db.query(
           "UPDATE assistant_runtime_turn SET status='succeeded',runner_token=NULL WHERE id=$1",
           [start.execution.turn_id],
@@ -5636,11 +5672,27 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
           [id],
         );
       }
+      if (kind === "paused-row-cap")
+        expect(
+          (await api("POST", route(id) + "/control", { action: "stop" }))
+            .statusCode,
+        ).toBe(200);
+      if (capped)
+        expect(
+          (
+            await db.query(
+              "SELECT rows_used FROM assistant_runtime_activity WHERE id=$1",
+              [activity],
+            )
+          ).rows[0].rows_used,
+        ).toBe(3);
       const recovery = await host.present(scope(), id);
       expect(
-        kind === "expired-wait"
+        kind.startsWith("expired-wait")
           ? recovery.canRenewConfirmation
-          : recovery.canResumeCompleted,
+          : kind === "paused-row-cap"
+            ? recovery.execution.status === "paused"
+            : recovery.canResumeCompleted,
       ).toBe(true);
       const before = await jobState(id);
       expect(
@@ -5687,6 +5739,46 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       expect(final.results).toHaveLength(1);
       expect(final.results[0].run_id).toBe(start.results[0].run_id);
       expect((await jobState(id)).request_limit).toBe(before.request_limit);
+      if (capped)
+        expect(
+          (
+            await db.query(
+              "SELECT rows_used FROM assistant_runtime_activity WHERE id=$1",
+              [activity],
+            )
+          ).rows[0].rows_used,
+        ).toBe(3);
+    },
+  );
+
+  it.each(["closed", "requests", "time"])(
+    "R10 recovery still rejects activity %s boundary",
+    async (kind) => {
+      const { id } = await adoptionCard();
+      expect(
+        (await api("POST", route(id) + "/control", { action: "stop" }))
+          .statusCode,
+      ).toBe(200);
+      const activity = "recovery-boundary-" + randomUUID();
+      await db.query(
+        "INSERT INTO assistant_runtime_activity(id,request_limit,requests,row_limit,rows_used,max_ms,started_at,closed_at) VALUES($1,10,$2,3,3,300000,$3,$4)",
+        [
+          activity,
+          kind === "requests" ? 10 : 0,
+          new Date(Date.now() - (kind === "time" ? 600000 : 0)),
+          kind === "closed" ? new Date() : null,
+        ],
+      );
+      await db.query(
+        "UPDATE assistant_runtime_execution SET activity_id=$2 WHERE session_id=$1",
+        [id, activity],
+      );
+      const response = await api("POST", route(id) + "/control", {
+        action: "continue",
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe("activity_budget_exhausted");
+      expect((await jobState(id)).status).toBe("paused");
     },
   );
 

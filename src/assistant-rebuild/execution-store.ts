@@ -1349,6 +1349,7 @@ export class ExecutionStore {
       ).rows[0];
     });
   }
+  // Row/generation costs are admitted by admitRows/reserveWorker, not by control or recovery.
   async assertActivityAvailable(db: Query, task: any) {
     if (!task?.activity_id) return;
     const cap = (
@@ -1361,7 +1362,6 @@ export class ExecutionStore {
       !cap ||
       cap.closed_at ||
       cap.requests >= cap.request_limit ||
-      (Number(cap.row_limit) > 0 && cap.rows_used >= cap.row_limit) ||
       (cap.started_at &&
         this.now() - new Date(cap.started_at).getTime() >= Number(cap.max_ms))
     )
