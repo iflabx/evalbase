@@ -7,7 +7,7 @@
 - 产品约束：[PRD §6.1](../PRD-evalbase-v1.md#61-存储与一致性)、[CONTEXT](../../CONTEXT.md)
 - 现行技术合同：[Architecture](../architecture/phase1a-architecture.md)、ADR [0002](../adr/0002-postgres-minio-persistence-roles.md)、[0003](../adr/0003-atomic-publication-and-version-allocation.md)、[0005](../adr/0005-deterministic-artifacts-and-offline-validation.md)、[0007](../adr/0007-test-case-identity-and-revisions.md)、[0008](../adr/0008-controlled-deletion-propagation.md)、[0010](../adr/0010-structured-metadata-entries.md)、[0011](../adr/0011-incremental-test-set-version-storage.md)
 
-本文保留设计推导和实施建议，不表示增量存储已经实现。正式 schema、manifest、Checkpoint 阈值和删除依赖切断以 ADR-0011 为准；[Implementation Spec](../../.scratch/phase1a-test-data-management/spec.md)、[Test Plan §H](../test-plan-phase1a.md#h-增量版本存储-tickets-3338) 与 Tickets 33–38 已同步。当前不调整生产状态、容量或用户可见功能。
+本文保留设计推导和实施建议，不表示增量存储已经实现。正式 schema、manifest、Checkpoint 阈值和删除依赖切断以 ADR-0011 为准；Implementation Spec（内部记录，不随公开源码分发）、[Test Plan §H](../test-plan-phase1a.md#h-增量版本存储-tickets-3338) 与 Tickets 33–38 已同步。当前不调整生产状态、容量或用户可见功能。
 
 ## 1. 问题、目标和范围
 
@@ -166,4 +166,4 @@ Worker 基于不可变版本生成成员指针，完成数量、顺序、内容�
 
 研究、技术方案、PRD 最小非功能约束、隔离 Spike、ADR-0011 及 Spec/Test Plan 同步已完成。Tickets 33–38 已创建且均未开始，尚未编写正式迁移代码。
 
-实施顺序为 Ticket 33 迁移、34 统一读取、35 稀疏发布、36 Checkpoint、37 删除依赖切断与缓存、38 派生版本增量提交协议切换（UI 零变化）。Ticket 38 只做现有编辑页的内部请求适配，不改变冻结原型的页面、控件、文案或用户流程。下一步由 Owner 单独授权 [Ticket 33](../../.scratch/phase1a-test-data-management/issues/33-incremental-schema-and-legacy-compatibility.md)。
+实施顺序为 Ticket 33 迁移、34 统一读取、35 稀疏发布、36 Checkpoint、37 删除依赖切断与缓存、38 派生版本增量提交协议切换（UI 零变化）。Ticket 38 只做现有编辑页的内部请求适配，不改变冻结原型的页面、控件、文案或用户流程。下一步由 Owner 单独授权 Ticket 33（内部记录，不随公开源码分发）。

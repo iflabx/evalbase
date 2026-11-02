@@ -50,3 +50,5 @@ Branch, acceptance, merge, push, and release handling follow the [development wo
 ## License
 
 By contributing, you agree that your contributions are licensed under [Apache-2.0](LICENSE).
+
+Before publishing, run `npm run security:check` and `npm run docs:check`. Internal tickets and acceptance evidence under `.scratch/` stay local; do not force-add them. Public issues must use redacted reproductions or synthetic fixtures.

@@ -2,7 +2,7 @@
 
 - 日期：2026-09-27
 - 状态：调研建议，待 Owner 选择；不修改现有产品合同，不代表已实现。
-- 项目基线：服务器 `/home/bistu/EvalBase`，`codex/prototype-login-multiuser`，`4681499`。
+- 项目基线：服务器 `<project-root>`，`codex/prototype-login-multiuser`，`4681499`。
 - 本次范围：研究创建/派生编辑体验、资料规模和版本可变性；不修改原型、应用代码或部署。
 
 ## 1. 建议结论

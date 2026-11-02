@@ -26,3 +26,9 @@ The maintainer will assess the report, determine whether it affects the supporte
 ## Scope
 
 EvalBase source code, checked-in Docker Compose configuration, and supported application dependencies are in scope. Do not test systems, accounts, datasets, or infrastructure that you do not own or lack explicit permission to test.
+
+## Public files and deployment credentials
+
+Keep raw acceptance records, conversations, internal hosts and backup locations in private storage. `.scratch/` and local configuration are excluded from Git and Docker build contexts. Run `npm run security:check` before publishing; this rule check does not replace secret scanning or review.
+
+Supply deployment credentials explicitly. Test identities are disabled in production. If an old default password was used by a reachable service, rotate it with the service account and dependent configuration together. Revoke exposed real tokens first; deleting current files does not remove old commits, tags, forks or existing clones.

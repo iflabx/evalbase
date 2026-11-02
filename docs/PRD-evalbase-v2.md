@@ -14,7 +14,7 @@
 
 v1 PRD 保留为已交付合同。v2 通过本文件声明新增和替代的行为；未受影响的 v1 功能按 §2 继承，不复制另一套定义。v2 批准后，新增/变更能力以本 PRD 为产品合同，CONTEXT 定义词汇；架构、ADR、测试计划及未来 Ticket 不得扩大产品范围。
 
-[冻结原型记录](prototypes/phase1a-login-multiuser-vnext-freeze.md)与[差异审计](reviews/login-multiuser-vnext-delta-audit.md)提供依据。冻结原型用于页面、组件顺序、状态和交互对照；Owner 决策覆盖原型中的项目负责人角色、草稿串线、重复发布及 Metadata 空值阻断。正式 UI 仍使用“期望输出”，并按 frontend-v1 donor 的字体、颜色、布局、图标和组件样式实现。
+[冻结原型记录](prototypes/phase1a-login-multiuser-vnext-freeze.md)与差异审计（内部记录，不随公开源码分发）提供依据。冻结原型用于页面、组件顺序、状态和交互对照；Owner 决策覆盖原型中的项目负责人角色、草稿串线、重复发布及 Metadata 空值阻断。正式 UI 仍使用“期望输出”，并按 frontend-v1 donor 的字体、颜色、布局、图标和组件样式实现。
 
 本文件中已明确的规则用于形成可评审的完整方案。§11 单列补足原型空白的草案默认值；它们随 PRD 一起评审，不写成已经实现或已经单独获批。原型的 Mock 账号、浏览器存储、客户端权限和 BroadcastChannel 不作为正式实现。
 
@@ -190,7 +190,7 @@ v2 增加登录、账号注册、管理员、成员邀请、账号设置、在�
 
 ## 10. 与后续工作的关系
 
-实施拆分与进度见 [v2 Implementation Spec](../.scratch/evalbase-v2/spec.md)：4 张功能 Ticket、3 个 checkpoint 批次。创建 Ticket 不等于开始实现或验收通过；不复用旧 Ticket 的完成状态宣称 v2 功能已完成。
+实施拆分与进度见 v2 Implementation Spec（内部记录，不随公开源码分发）：4 张功能 Ticket、3 个 checkpoint 批次。创建 Ticket 不等于开始实现或验收通过；不复用旧 Ticket 的完成状态宣称 v2 功能已完成。
 
 ## 11. 本草案补足的默认规则
 

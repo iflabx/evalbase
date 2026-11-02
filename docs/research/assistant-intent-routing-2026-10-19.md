@@ -116,9 +116,9 @@
 
 ## 7. 与当前整改的关系
 
-[OPT-39](../../.scratch/assistant-optimization/issues/39-delivery-review-scope-and-continuation.md) 负责交付归属、自动续步和收尾；意图入口应复用它的状态与回执边界，避免两个地方分别推断当前交付和授权。若按顺序开发，可先完成其确定性修复，再收口入口；这不是本研究新增的硬依赖。
+OPT-39（内部记录，不随公开源码分发） 负责交付归属、自动续步和收尾；意图入口应复用它的状态与回执边界，避免两个地方分别推断当前交付和授权。若按顺序开发，可先完成其确定性修复，再收口入口；这不是本研究新增的硬依赖。
 
-[OPT-40](../../.scratch/assistant-optimization/issues/40-generation-boundaries-and-question-dedup.md) 仍负责生成分类边界与问题去重，[OPT-41](../../.scratch/assistant-optimization/issues/41-content-review-evidence-and-budget.md) 仍负责审核证据与预算。[OPT-31](../../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md) 的既有质量验收保持。增加意图识别不会自动修复语义误标、模型漏检或保证永不报错。
+OPT-40（内部记录，不随公开源码分发） 仍负责生成分类边界与问题去重，OPT-41（内部记录，不随公开源码分发） 仍负责审核证据与预算。OPT-31（内部记录，不随公开源码分发） 的既有质量验收保持。增加意图识别不会自动修复语义误标、模型漏检或保证永不报错。
 
 ## 8. 可复用代码与证据版本
 

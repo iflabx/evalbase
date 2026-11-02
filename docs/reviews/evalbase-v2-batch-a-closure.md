@@ -1,7 +1,7 @@
 # EvalBase v2 批次 A：固定代码闭环复审
 
 - 复审代码 HEAD：`f129936`；基线：`9a3b5b3`；范围：V2-01、V2-02。
-- 权威合同：[PRD](../PRD-evalbase-v2.md)、[CONTEXT](../../CONTEXT.md)、[架构](../architecture/evalbase-v2-architecture.md)、[ADR 0012](../adr/0012-v2-account-and-project-authorization.md)、[实施 Spec](../../.scratch/evalbase-v2/spec.md)。
+- 权威合同：[PRD](../PRD-evalbase-v2.md)、[CONTEXT](../../CONTEXT.md)、[架构](../architecture/evalbase-v2-architecture.md)、[ADR 0012](../adr/0012-v2-account-and-project-authorization.md)、实施 Spec（内部记录，不随公开源码分发）。
 - 变更面：身份表迁移、安装初始化与旧 Owner 绑定、会话和项目权限、邀请及成员、前端认证和设置页；不涉及草稿实时协作或正式部署。
 
 ## Standards

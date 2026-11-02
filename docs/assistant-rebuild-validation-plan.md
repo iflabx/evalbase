@@ -1,7 +1,7 @@
 # Deep Agents TypeScript + LangGraph：可执行适配验证方案
 
 - 日期：2026-10-27（补强真实模型纠错与重复验证门槛）。
-- 状态：原轮和两轮定向补验均已封存；2026-10-27 收口决定正式采用该技术栈用于后续重建，原 §8.2 严格整轮门槛不改签为全通过。决策边界见[收口审查](research/assistant-rebuild-adoption-review-20261027.md)，首轮结果仍见[原报告](research/assistant-rebuild-validation-20261027.md)。
+- 状态：原轮和两轮定向补验均已封存；2026-10-27 收口决定正式采用该技术栈用于后续重建，原 §8.2 严格整轮门槛不改签为全通过。决策边界见收口审查（内部记录，不随公开源码分发），首轮结果仍见原报告（内部记录，不随公开源码分发）。
 - 工作分支：codex/assistant-rebuild；本次补强基线：8a2b7c0，继承业务基线：0b296e67。
 - 产品依据：[PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product)。
 - 技术依据：[重建边界](architecture/assistant-rebuild.md)、[ADR 0015](adr/0015-assistant-rebuild-boundaries.md)。
@@ -52,7 +52,7 @@
 
 ### 2.3 锁版本与开跑条件
 
-执行前填写[运行清单模板](../.scratch/assistant-rebuild/validation/manifest.template.json)。空值表示尚未执行，不能用猜测版本填充。没有填写版本与隔离目标时不得启动真实模型阶段。
+执行前填写运行清单模板（内部记录，不随公开源码分发）。空值表示尚未执行，不能用猜测版本填充。没有填写版本与隔离目标时不得启动真实模型阶段。
 
 1. 固定实际代码提交、Node 24.x精确版本、deepagents、langchain、core、LangGraph、模型适配包、持久检查点包的精确版本及lockfile摘要。按实际npm peer依赖选择兼容已发布版本；不得使用浮动 latest 或中途静默升级。
 2. 核对所选TypeScript包的实际API和许可证；官网示例仅作导航，不照搬可能属于Python或不同版本的参数。
@@ -66,9 +66,9 @@
 
 准备好的文件仅为合成测试材料，不含用户数据：
 
-- [验收资料.jsonl](../.scratch/assistant-rebuild/validation/materials/验收资料.jsonl)：6条图书馆相关问题，前5条有首尾空白或重复问号，第6条用于检查范围是否被扩大。
-- [预约服务说明.md](../.scratch/assistant-rebuild/validation/materials/预约服务说明.md)：虚构业务背景，两个类别和8个不同场景；用于非GB背景、从零生成和跨批观察。
-- [expected.json](../.scratch/assistant-rebuild/validation/materials/expected.json)：原记录、确定性清洗结果、Metadata顺序、选取范围与生成场景核对依据。不能发送给模型充当正确答案。
+- 验收资料.jsonl（内部记录，不随公开源码分发）：6条图书馆相关问题，前5条有首尾空白或重复问号，第6条用于检查范围是否被扩大。
+- 预约服务说明.md（内部记录，不随公开源码分发）：虚构业务背景，两个类别和8个不同场景；用于非GB背景、从零生成和跨批观察。
+- expected.json（内部记录，不随公开源码分发）：原记录、确定性清洗结果、Metadata顺序、选取范围与生成场景核对依据。不能发送给模型充当正确答案。
 
 通过正式上传/映射路径导入JSONL；映射question为问题、expectedOutput为期望输出，fixtureId、channel、note按此顺序映射成同名Metadata。空note值保留。材料准备完成后记录asset ID、记录ID、文件SHA256和来源行号；不要仅依赖当前列表排序推断“前5条”。
 
@@ -288,13 +288,13 @@ F01的纠正响应由夹具预先给出，只能证明参数传输与执行链�
 
 ### 8.4 2026-10-27 收口后的技术采用决定
 
-Owner 授权完成适配收口并更新正式采用结论；[ADR 0015](adr/0015-assistant-rebuild-boundaries.md)现确定 Deep Agents TypeScript + LangGraph 为正式重建目标栈。依据是首轮真实 SDK/业务证据以及后续受影响缺口的关闭证据，详细对应关系、剩余风险和接入条件仅在[收口审查](research/assistant-rebuild-adoption-review-20261027.md)维护。
+Owner 授权完成适配收口并更新正式采用结论；[ADR 0015](adr/0015-assistant-rebuild-boundaries.md)现确定 Deep Agents TypeScript + LangGraph 为正式重建目标栈。依据是首轮真实 SDK/业务证据以及后续受影响缺口的关闭证据，详细对应关系、剩余风险和接入条件仅在收口审查（内部记录，不随公开源码分发）维护。
 
 §8.2 原规则保持：L02 的环境干预、原七项的首错和未覆盖，以及不同版本/数量的定向补验不得合并为同版本整轮通过。本决定是范围明确的研发选型，不改变旧 campaign、manifest 或通过率，不授予全功能切换资格。其余能力、应用级长会话和上线验收仍需后续证据；本次不创建 tickets、不补跑、不新增预算。
 
 ## 9. 执行清单与本次交付状态
 
-以下清单保留首次执行状态，后续修复和当前采用决策由 §8.4 索引，不把历史清单改签为全部通过。首次状态和证据见[原报告](research/assistant-rebuild-validation-20261027.md)：
+以下清单保留首次执行状态，后续修复和当前采用决策由 §8.4 索引，不把历史清单改签为全部通过。首次状态和证据见原报告（内部记录，不随公开源码分发）：
 
 - [x] 接受明确的适配实现与本次验证范围，记录授权引用。
 - [x] 锁定版本、隔离资源、无敏感材料与参数；填写manifest并保留环境修复记录。
@@ -320,7 +320,7 @@ Owner 授权完成适配收口并更新正式采用结论；[ADR 0015](adr/0015-
 
 ### 2026-10-27 三项缺口修复复验
 
-Owner 另行授权的暂停恢复、来源链接与重复回执修复及有限额复测见[追加报告](research/assistant-rebuild-repair-validation-20261027.md)。原 campaign 与原结论冻结保留；新活动已在 30 请求/20 行次/4 生成/45 分钟上限内关闭，不据此自动扩大正式重建或重跑通过项。
+Owner 另行授权的暂停恢复、来源链接与重复回执修复及有限额复测见追加报告（内部记录，不随公开源码分发）。原 campaign 与原结论冻结保留；新活动已在 30 请求/20 行次/4 生成/45 分钟上限内关闭，不据此自动扩大正式重建或重跑通过项。
 
 
-Owner另行授权的进度查询与保存确认措辞修复及有限额复测见[状态查询追加报告](research/assistant-rebuild-status-validation-20261027.md)。新活动在24请求/8行次/0生成/25分钟上限内关闭；旧数据、预算和原判定保留，不据此扩大重建范围。
+Owner另行授权的进度查询与保存确认措辞修复及有限额复测见状态查询追加报告（内部记录，不随公开源码分发）。新活动在24请求/8行次/0生成/25分钟上限内关闭；旧数据、预算和原判定保留，不据此扩大重建范围。

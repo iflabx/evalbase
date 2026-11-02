@@ -2,13 +2,13 @@
 
 - 核对日期：2026-10-26。
 - 代码基线：`0b296e67a751e26379719d156381c2c36283c969`。
-- 重建工作树：`/home/bistu/EvalBase/.worktrees/assistant-rebuild`；分支：`codex/assistant-rebuild`。
+- 重建工作树：`<project-root>`；分支：`codex/assistant-rebuild`。
 - 范围：正式 frontend-v3 可执行的人工操作、对应业务接口、权限和确认要求、旧助手覆盖缺口。不是仅按旧工具反推需求，也不把历史 API 当作现有页面功能。
 - 性质：代码能力盘点，不表示缺口已实现。后续产品边界见[PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product)，职责、退出与兼容见[重建架构](architecture/assistant-rebuild.md)；下表仍描述页首基线的实现事实。
 - 用户目标：助手能够在当前用户权限内，操作项目中人工能够操作的行为。文件选择、凭据输入、固定确认和下载可通过页面协作完成；不意味着模型可绕过权限或代用户批准。
 - 本次只检查代码和文档，不运行模型、不修改业务代码、不部署、不修改验收数据和旧预算、不重跑旧测试。
 
-完整重建的范围分类、85 项能力到批次的映射及建议票据见[范围核对与拆分建议](assistant-rebuild-scope-and-batches.md)。范围索引不改变下表原始盘点事实；正式 REBUILD-01～10 及进度见[实施 Spec](../.scratch/assistant-rebuild/spec.md)。
+完整重建的范围分类、85 项能力到批次的映射及建议票据见[范围核对与拆分建议](assistant-rebuild-scope-and-batches.md)。范围索引不改变下表原始盘点事实；正式 REBUILD-01～10 及进度见实施 Spec（内部记录，不随公开源码分发）。
 
 ## 1. 阅读方式
 

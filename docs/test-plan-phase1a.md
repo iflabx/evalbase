@@ -212,7 +212,7 @@ Phase 1A 完成还需要 Tickets 27、29、30、31、32 的固定 HEAD 主闭环
 
 ## H. 增量版本存储 Tickets 33–38
 
-本节验证 [ADR-0011](./adr/0011-incremental-test-set-version-storage.md) 与 [Spec](../.scratch/phase1a-test-data-management/spec.md#incremental-version-storage-implementation-contract) 的内部优化。Tickets 20–32 的已验收状态保持；33–38 的实施与分批验收结果见 [进度记录](./agents/phase1a-progress.md)。用户界面 oracle 仍为冻结 v5.3。
+本节验证 [ADR-0011](./adr/0011-incremental-test-set-version-storage.md) 与 Spec（内部记录，不随公开源码分发） 的内部优化。Tickets 20–32 的已验收状态保持；33–38 的实施与分批验收结果见 [进度记录](./agents/phase1a-progress.md)。用户界面 oracle 仍为冻结 v5.3。
 
 ### H.1 分工与必要证据
 

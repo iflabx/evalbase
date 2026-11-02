@@ -12,7 +12,7 @@
 
 ## 2. 审查范围与证据边界
 
-- 服务器工作树：`/home/bistu/EvalBase/.worktrees/agent-data-processing`，分支 `codex/assistant-optimization`，HEAD `f261a79437247349fd8f3e25b49819229ee5741e`。核对了关键源文件与本地镜像的 SHA-256。
+- 服务器工作树：`<project-root>`，分支 `codex/assistant-optimization`，HEAD `f261a79437247349fd8f3e25b49819229ee5741e`。核对了关键源文件与本地镜像的 SHA-256。
 - 阅读当前助手、模型适配、处理恢复代码，相关 PRD、架构、ADR 与现有测试。对照 [当前架构](../architecture/data-selection-and-assistant.md)、[PRD](../PRD-data-selection-and-assistant.md)、[运行时 ADR](../adr/0014-project-agent-and-processing-runtime.md)。
 - 从 4217 Web 配置确认应用数据库 `agent_owner` 及所属 PostgreSQL 网络；SQL 使用只读事务、5 秒查询超时。未执行模型请求，未改用户会话、候选、草稿或服务。
 - 读取到 14 个历史会话、107 个回合、82 个处理运行、784 个批次。助手回合最新记录为 2026-10-08 UTC；因此这些历史错误**不能用作当前 HEAD 的失败率，也不能证明历史缺陷仍未修复**。

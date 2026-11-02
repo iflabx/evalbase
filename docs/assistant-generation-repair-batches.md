@@ -1,12 +1,12 @@
 # 项目助手执行与生成修复：三个批次
 
-2026-10-18 后续安排：当前实际进度以 [OPT 台账](../.scratch/assistant-optimization/spec.md) 为准，OPT-31 已实施部分能力但完整验收未通过，仍为 in-progress。基于运行时对照，新批次 [OPT-34–37](assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改) 承接文档依据、交付规划、执行恢复和接入；仅完成文档。下文按日期保留原三批方案，不将旧“尚未开发”条目作为最新状态；本次不重跑或代签原八类内容验收。
+2026-10-18 后续安排：当前实际进度以 OPT 台账（内部记录，不随公开源码分发） 为准，OPT-31 已实施部分能力但完整验收未通过，仍为 in-progress。基于运行时对照，新批次 [OPT-34–37](assistant-remediation-plan.md#8-2026-10-18-业务编排收敛整改) 承接文档依据、交付规划、执行恢复和接入；仅完成文档。下文按日期保留原三批方案，不将旧“尚未开发”条目作为最新状态；本次不重跑或代签原八类内容验收。
 
-2026-10-15。方案创建时 Owner 授权整理修复方案和 Tickets，六张均未开始开发；后续 OPT-26、OPT-27 已分别获单张开发授权并完成，最新执行状态见 [台账](../.scratch/assistant-optimization/spec.md)。产品入口见 [PRD §7.7](PRD-data-selection-and-assistant.md#77-执行与生成修复2026-10-15待实施)。本方案细化既有助手合同，并明确补入“依据背景文档从零生成”；不把这项新增能力写成现有功能。
+2026-10-15。方案创建时 Owner 授权整理修复方案和 Tickets，六张均未开始开发；后续 OPT-26、OPT-27 已分别获单张开发授权并完成，最新执行状态见 台账（内部记录，不随公开源码分发）。产品入口见 [PRD §7.7](PRD-data-selection-and-assistant.md#77-执行与生成修复2026-10-15待实施)。本方案细化既有助手合同，并明确补入“依据背景文档从零生成”；不把这项新增能力写成现有功能。
 
 ## 1. 实测依据与问题边界
 
-审查对象为会话 `conversation_2b0353f882b24924ad23ac3819570dd2`：上传 GB 文档，先制定方案，再依次创建 A.1 八个小类的测试集，每类 50 条，不使用现有原始数据。4217 应用基线为 `cedde4dfd6ef255179d7c77bca535fc79ff64355`；文档基线 HEAD `6237109ac2c0c5968a83c7cbc9764cafc26982ca`，两者应用代码一致。PDF 读取成功；截至审查仅有第一类 50 条未采用候选，其余七类未开始，不能记为已交付 8 个测试集。
+审查对象为会话 `conversation_example`：上传 GB 文档，先制定方案，再依次创建 A.1 八个小类的测试集，每类 50 条，不使用现有原始数据。4217 应用基线为 `cedde4dfd6ef255179d7c77bca535fc79ff64355`；文档基线 HEAD `6237109ac2c0c5968a83c7cbc9764cafc26982ca`，两者应用代码一致。PDF 读取成功；截至审查仅有第一类 50 条未采用候选，其余七类未开始，不能记为已交付 8 个测试集。
 
 | 现象 | 已核实原因及限制 | 修复归属 |
 | --- | --- | --- |
@@ -23,14 +23,14 @@
 
 | 批次 | Ticket | 交付范围 | 硬依赖 |
 | --- | --- | --- | --- |
-| 第一批：执行正确、反馈可懂 | [OPT-26](../.scratch/assistant-optimization/issues/26-tool-contract-and-error-feedback.md) | 统一计划与工具参数，内部纠错和用户反馈分开 | 现有 OPT-20–25 实现 |
-| 第一批 | [OPT-27](../.scratch/assistant-optimization/issues/27-intent-and-plan-continuation.md) | 最新用户意图优先，暂停、规划和续做一致 | 现有实现；可独立于 OPT-26/28 修复 |
-| 第一批 | [OPT-28](../.scratch/assistant-optimization/issues/28-result-scope-and-goal-count.md) | 当前成果范围统一，目标与补齐请求数量分开 | 现有实现；可独立于 OPT-26/27 修复 |
-| 第二批：补齐真实能力 | [OPT-29](../.scratch/assistant-optimization/issues/29-document-grounded-generation.md) | 文档驱动从零生成、能力预检、八类逐项交付 | OPT-26、OPT-27、OPT-28 |
-| 第三批：产出质量与完整验收 | [OPT-30](../.scratch/assistant-optimization/issues/30-generation-diversity-and-recovery.md) | 场景分配、多样性、重复反馈与有界补齐 | OPT-29 |
-| 第三批（更新） | [OPT-31](../.scratch/assistant-optimization/issues/31-rewrite-effectiveness-and-quality.md) | 改写有效性、内容一致性与有限修复、最终同会话闭环 | OPT-28、OPT-30、OPT-32、OPT-33 |
-| 后续前置补修 | [OPT-32](../.scratch/assistant-optimization/issues/32-tool-argument-repair.md) | 工具参数调用前纠错及真实模型恢复验证 | 现有实现 |
-| 后续前置补修 | [OPT-33](../.scratch/assistant-optimization/issues/33-document-classification-and-short-plan.md) | 文档分类引用与短提示规划 | OPT-32 |
+| 第一批：执行正确、反馈可懂 | OPT-26（内部记录，不随公开源码分发） | 统一计划与工具参数，内部纠错和用户反馈分开 | 现有 OPT-20–25 实现 |
+| 第一批 | OPT-27（内部记录，不随公开源码分发） | 最新用户意图优先，暂停、规划和续做一致 | 现有实现；可独立于 OPT-26/28 修复 |
+| 第一批 | OPT-28（内部记录，不随公开源码分发） | 当前成果范围统一，目标与补齐请求数量分开 | 现有实现；可独立于 OPT-26/27 修复 |
+| 第二批：补齐真实能力 | OPT-29（内部记录，不随公开源码分发） | 文档驱动从零生成、能力预检、八类逐项交付 | OPT-26、OPT-27、OPT-28 |
+| 第三批：产出质量与完整验收 | OPT-30（内部记录，不随公开源码分发） | 场景分配、多样性、重复反馈与有界补齐 | OPT-29 |
+| 第三批（更新） | OPT-31（内部记录，不随公开源码分发） | 改写有效性、内容一致性与有限修复、最终同会话闭环 | OPT-28、OPT-30、OPT-32、OPT-33 |
+| 后续前置补修 | OPT-32（内部记录，不随公开源码分发） | 工具参数调用前纠错及真实模型恢复验证 | 现有实现 |
+| 后续前置补修 | OPT-33（内部记录，不随公开源码分发） | 文档分类引用与短提示规划 | OPT-32 |
 
 原六张按编号推进；新增补修后，剩余顺序改为 OPT-32 → OPT-33 → OPT-31。第一批三张不存在人为串行依赖。后续批次依赖前批相关自动验证通过，不要求逐张重复人工确认。获得某一批开发授权后可在该批内连续推进；本次文档授权不等于开发、部署或合并授权。
 
@@ -73,7 +73,7 @@ GB 分类仅为这次验收数据，产品仍支持通用测试集；不内置�
 
 ## 6. 实施状态
 
-方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 [OPT-26 证据](../.scratch/assistant-optimization/opt26-verification.md)、[OPT-27 证据](../.scratch/assistant-optimization/opt27-verification.md) 和 [OPT-28 证据](../.scratch/assistant-optimization/opt28-verification.md)，Owner 验收 pending。OPT-29 已完成依据文档从零生成与预检，真实 5 条和恢复后 50 条及限制见 [OPT-29 证据](../.scratch/assistant-optimization/opt29-verification.md)，Owner pending。OPT-30 已完成数量/场景及共享预算实现，真实内容和 GB 规划仍有未通过项，见 [OPT-30 证据](../.scratch/assistant-optimization/opt30-verification.md)。OPT-32 与 OPT-33 已按后续单张授权完成，实现和定向验证分别见 [OPT-32 证据](../.scratch/assistant-optimization/opt32-verification.md) 与 [OPT-33 证据](../.scratch/assistant-optimization/opt33-verification.md)，Owner pending；OPT-31 尚未开发；各张最新状态以台账为准，不将部分实施记为三批全部完成。
+方案创建时六张 Ticket 均为 `Status: ready-for-agent`、`Implementation: not-started`。后续 OPT-26、OPT-27、OPT-28 已完成实现、定向验证与同一 4217 更新，分别见 OPT-26 证据（内部记录，不随公开源码分发）、OPT-27 证据（内部记录，不随公开源码分发） 和 OPT-28 证据（内部记录，不随公开源码分发），Owner 验收 pending。OPT-29 已完成依据文档从零生成与预检，真实 5 条和恢复后 50 条及限制见 OPT-29 证据（内部记录，不随公开源码分发），Owner pending。OPT-30 已完成数量/场景及共享预算实现，真实内容和 GB 规划仍有未通过项，见 OPT-30 证据（内部记录，不随公开源码分发）。OPT-32 与 OPT-33 已按后续单张授权完成，实现和定向验证分别见 OPT-32 证据（内部记录，不随公开源码分发） 与 OPT-33 证据（内部记录，不随公开源码分发），Owner pending；OPT-31 尚未开发；各张最新状态以台账为准，不将部分实施记为三批全部完成。
 
 ## 7. 后续补修与 OPT-31 调整
 

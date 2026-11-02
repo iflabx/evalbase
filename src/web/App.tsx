@@ -2817,7 +2817,6 @@ export function App() {
             <Input
               name="password"
               type="password"
-              defaultValue="owner-test-password"
               autoComplete="current-password"
             />
           </label>

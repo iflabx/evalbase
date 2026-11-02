@@ -26,7 +26,7 @@ Processing produces candidates first. Saving results and publishing versions use
 
 ## Getting started
 
-See the [setup guide](docs/getting-started.md) for a local installation, first-administrator setup, model-worker configuration, and development commands. It also explains the difference between the legacy defaults in `compose.yaml` and the settings required for accounts and model processing.
+See the [setup guide](docs/getting-started.md) for a local installation, first-administrator setup, model-worker configuration, and development commands. The default Compose configuration requires explicit credentials and disables test identities.
 
 An empty account-enabled installation opens administrator setup on first access. Existing installations use their existing accounts; upgrading a legacy single-owner instance follows the [account migration runbook](docs/runbooks/v2-account-upgrade.md).
 
@@ -51,17 +51,17 @@ The assistant uses AI SDK with an OpenAI-compatible provider. The application pe
 | `src/`         | API, security, selection, processing, assistant, storage, and worker modules.                   |
 | `tests/`       | Unit, integration, and browser tests.                                                           |
 | `docs/`        | [Documentation index](docs/README.md), product contracts, architecture, runbooks, and research. |
-| `.scratch/`    | Feature specifications, tickets, and development evidence; review before publishing.            |
+| `.scratch/`    | Local-only specifications, tickets, and acceptance evidence; excluded from public source.            |
 | `frontend-v1/` | Frozen visual/component reference. `frontend-v2/` and `src/web/` retain historical source.      |
 
 ## Status and validation
 
 This overview describes the code in the checked-out revision. Accounts, collaboration, data processing, and the project assistant are implemented; assistant reliability work and acceptance records continue to evolve. The latest targeted checks do not establish that every prompt, model, or long-running task will succeed.
 
-Use repository tags and Releases to identify published versions. Feature implementation and acceptance are tracked in the [v2 ledger](.scratch/evalbase-v2/spec.md), [data-processing ledger](.scratch/agent-data-processing/spec.md), and [assistant ledger](.scratch/assistant-optimization/spec.md). The [Phase 1A ledger](docs/agents/phase1a-progress.md) records the earlier single-owner baseline.
+Use repository tags and Releases to identify published versions. Detailed feature and acceptance ledgers are private local records. Public product contracts and setup instructions are indexed in the [documentation](docs/README.md). The [Phase 1A ledger](docs/agents/phase1a-progress.md) records the earlier single-owner baseline.
 
 ## Contributing and security
 
-See [Contributing](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [Security Policy](SECURITY.md). Keep model keys, session cookies, deployment secrets, and private datasets out of commits. Review historical evidence under `.scratch/` before sharing a fork.
+See [Contributing](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [Security Policy](SECURITY.md). Keep model keys, session cookies, deployment secrets, and private datasets out of commits. Run `npm run security:check` before publishing. Raw acceptance evidence stays in private storage.
 
 Licensed under [Apache-2.0](LICENSE).

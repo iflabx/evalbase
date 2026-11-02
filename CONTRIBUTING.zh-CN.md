@@ -50,3 +50,5 @@ npm --prefix frontend-v3 ci
 ## 许可证
 
 提交贡献即表示同意以 [Apache-2.0](LICENSE) 许可证授权你的贡献。
+
+公开提交前运行 `npm run security:check` 和 `npm run docs:check`。`.scratch/` 中的内部 tickets 与验收材料仅本地保留，不得强制加入 Git；公开问题使用脱敏复现或合成测试夹具。

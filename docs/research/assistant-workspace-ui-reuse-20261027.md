@@ -3,7 +3,7 @@
 - 核查日期：2026-10-27。
 - 范围：用户截图中的 ChatGPT 桌面 Codex 工作区，包括会话侧栏、消息与执行过程、输入框、右侧工作区。
 - 代码基线：EvalBase `codex/assistant-rebuild`，`24b5c48`；实际前端为 `frontend-v3/`。本地 AgentBench_v2 文档仓库不作为当前业务实现的依据。
-- 性质：研究证据与建议，不修改产品合同，不代表组件已经编译、联调或完成视觉验收。与[重建架构](../architecture/assistant-rebuild.md)、[适配验证收口](./assistant-rebuild-adoption-review-20261027.md)配套阅读。
+- 性质：研究证据与建议，不修改产品合同，不代表组件已经编译、联调或完成视觉验收。与[重建架构](../architecture/assistant-rebuild.md)、适配验证收口（内部记录，不随公开源码分发）配套阅读。
 
 ## 1. 结论
 

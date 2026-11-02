@@ -23,13 +23,13 @@
 | 选取、模型连接、数据处理和项目助手 | [处理与助手 PRD](PRD-data-selection-and-assistant.md) | [处理与助手架构](architecture/data-selection-and-assistant.md) |
 | 业务术语                           | [领域词汇](../CONTEXT.md)                             | [架构决策目录](adr/)                                           |
 
-项目助手相关的机制整理与已发现缺口见[机制整理方案](assistant-mechanism-consolidation-2026-10-22.md)和[全面审查](assistant-full-review-2026-10-23.md)。这些设计或审查文件本身不代表全部整改已实施、验收或发布。
+项目助手相关的机制整理与已发现缺口见[机制整理方案](assistant-mechanism-consolidation-2026-10-22.md)和全面审查（内部记录，不随公开源码分发）。这些设计或审查文件本身不代表全部整改已实施、验收或发布。
 
 ## 实现与验证记录
 
-- [v2 实施台账](../.scratch/evalbase-v2/spec.md)：账号、协作和共享草稿。
-- [数据处理实施台账](../.scratch/agent-data-processing/spec.md)：筛选、模型配置和数据处理基础。
-- [助手实施台账](../.scratch/assistant-optimization/spec.md)：助手及后续体验、稳定性整改。
+- v2 实施台账（内部记录，不随公开源码分发）：账号、协作和共享草稿。
+- 数据处理实施台账（内部记录，不随公开源码分发）：筛选、模型配置和数据处理基础。
+- 助手实施台账（内部记录，不随公开源码分发）：助手及后续体验、稳定性整改。
 - [v2 测试计划](test-plan-evalbase-v2.md)、[处理与助手测试计划](test-plan-data-selection-and-assistant.md)：验收合同；实际结果以相应固定版本记录为准。
 
 部分台账同时保留早期失败、旧状态和后续修复，应结合日期及对应证据阅读。文档中的“实现”“定向通过”“人工验收”“发布”分别记录，不相互替代。

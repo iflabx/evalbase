@@ -1,3 +1,4 @@
+import { configEnv } from "../support/config-env.js";
 import { expect, it } from "vitest";
 import { loadConfig, workerIdleDelayMs } from "../../src/config.js";
 
@@ -10,6 +11,7 @@ it("bounds idle polling to one second and returns to the initial delay after wor
 it("keeps orphan grace beyond retry, lease and maximum idle polling windows", () => {
   expect(() =>
     loadConfig({
+      ...configEnv,
       JOB_MAX_ATTEMPTS: "1",
       JOB_LEASE_DURATION_MS: "1000",
       JOB_HEARTBEAT_INTERVAL_MS: "1000",

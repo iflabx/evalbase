@@ -15,6 +15,12 @@ const input = JSON.parse(stdin) as {
   admin: { email: string; password: string };
   editor: { email: string; password: string };
 };
+const fixturePath = process.env.REBUILD_VALIDATION_SOURCE;
+if (!fixturePath)
+  throw Error("Set REBUILD_VALIDATION_SOURCE to a synthetic JSONL fixture");
+const bytes = await readFile(fixturePath);
+if (!bytes.length) throw Error("Validation fixture must not be empty");
+const config = loadConfig();
 const endpoint = process.argv[2] ?? "http://web:3000",
   origin = "http://127.0.0.1:4226";
 async function request(
@@ -128,9 +134,6 @@ const collections = (
     admin,
   )
 ).data.collections;
-const bytes = await readFile(
-  ".scratch/assistant-rebuild/validation/materials/验收资料.jsonl",
-);
 const uploaded = await fetch(
   endpoint + "/api/projects/" + project.id + "/pending-uploads",
   {
@@ -178,7 +181,7 @@ if (!before.mappingReady)
     },
     admin,
   );
-const db = createPool(loadConfig().databaseUrl);
+const db = createPool(config.databaseUrl);
 try {
   const c = input.connection;
   const existing = (

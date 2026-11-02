@@ -2,7 +2,7 @@
 
 - 日期：2026-10-04。
 - 性质：基于当前实现的研究建议；尚不是 PRD、ADR、Ticket 或实现承诺。
-- 实现基线：服务器 `/home/bistu/EvalBase`，`codex/prototype-data-selection`，`50e1687`；main 为 `9f8d7f4`。本机根目录的旧文档快照不作为当前实现证据。
+- 实现基线：服务器 `<project-root>`，`codex/prototype-data-selection`，`50e1687`；main 为 `9f8d7f4`。本机根目录的旧文档快照不作为当前实现证据。
 - 需求：连接已有模型，处理原始数据，扩充测试集，通过自然语言操作项目；预计最多约 10 人使用。
 - 与前文关系：保留 [03:04 基线调研报告](model-assisted-data-processing-and-project-assistant-2026-10-04.md)。本文单独回答“用什么框架、怎样开发与运行”，不恢复此前撤销的两次修改。
 

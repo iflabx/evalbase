@@ -29,8 +29,8 @@
 
 ## 纠偏 Ticket
 
-1. [Ticket 31](../../.scratch/phase1a-test-data-management/issues/31-v53-upload-drag-mapping-parity.md)：上传字段拖拽映射与预览 UI 对齐。它不改变上传数据模型、解析器、待确认上传或确认事务。
-2. [Ticket 32](../../.scratch/phase1a-test-data-management/issues/32-v53-test-set-trash-and-typed-deletion-parity.md)：测试集回收入口、回收站分组、精确输入确认及整套恢复语义。它不增加新服务、回收状态、治理页或数据集原始文件删除。
+1. Ticket 31（内部记录，不随公开源码分发）：上传字段拖拽映射与预览 UI 对齐。它不改变上传数据模型、解析器、待确认上传或确认事务。
+2. Ticket 32（内部记录，不随公开源码分发）：测试集回收入口、回收站分组、精确输入确认及整套恢复语义。它不增加新服务、回收状态、治理页或数据集原始文件删除。
 
 每张 Ticket 都须在开始前写 Ticket-local v5.3 UI 对照表，并在 Owner checkpoint 对照冻结 HTML。未经 Project Owner 对该 Ticket 的单独授权，不得开始实现。
 

@@ -4,11 +4,11 @@ services:
   postgres:
     image: public.ecr.aws/docker/library/postgres@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
     environment:
-      POSTGRES_DB: evalbase_phase1a
-      POSTGRES_USER: evalbase_phase1a
-      POSTGRES_PASSWORD: synthetic-nonproduction-only
+      POSTGRES_DB: ${POSTGRES_DB:-evalbase_phase1a}
+      POSTGRES_USER: ${POSTGRES_USER:-evalbase_phase1a}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U evalbase_phase1a -d evalbase_phase1a"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -20,8 +20,8 @@ services:
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ["server", "/data"]
     environment:
-      MINIO_ROOT_USER: evalbase-phase1a
-      MINIO_ROOT_PASSWORD: synthetic-nonproduction-only
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 2s
@@ -35,19 +35,19 @@ services:
     build: .
     command: ["sh", "-c", "npm run db:migrate && npm run start:web"]
     environment: &app-environment
-      DATABASE_URL: postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_phase1a
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"
-      MINIO_ACCESS_KEY: evalbase-phase1a
-      MINIO_SECRET_KEY: synthetic-nonproduction-only
-      MINIO_BUCKET: evalbase-phase1a
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-evalbase-phase1a}
       APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
       GIT_SHA: ${GIT_SHA:-unknown}
-      NODE_ENV: development
-      SOLO_OWNER_MODE: "true"
-      OWNER_PASSWORD: owner-test-password
+      MODEL_ENCRYPTION_KEY: ${MODEL_ENCRYPTION_KEY:-}
+      NODE_ENV: production
+      SOLO_OWNER_MODE: "false"
       JOB_CLAIM_DELAY_MS: ${JOB_CLAIM_DELAY_MS:-250}
-      ALLOW_TEST_IDENTITY: "true"
+      ALLOW_TEST_IDENTITY: "false"
       HOST: 0.0.0.0
       PORT: "3000"
     depends_on:
@@ -97,7 +97,11 @@ services:
       context: .
       target: build
     command: ["npm", "run", "test:integration"]
-    environment: *app-environment
+    environment:
+      <<: *app-environment
+      NODE_ENV: test
+      SOLO_OWNER_MODE: "false"
+      ALLOW_TEST_IDENTITY: "true"
     depends_on:
       postgres:
         condition: service_healthy

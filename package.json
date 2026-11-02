@@ -27,7 +27,8 @@
     "dev:web": "tsx src/server/main.ts",
     "dev:worker": "tsx src/worker/main.ts",
     "db:migrate:dev": "tsx src/db/migrate.ts",
-    "db:bind-legacy-admin:dev": "tsx src/security/bind-legacy-administrator.ts"
+    "db:bind-legacy-admin:dev": "tsx src/security/bind-legacy-administrator.ts",
+    "security:check": "node scripts/check-public-repository.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.62",

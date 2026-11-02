@@ -22,10 +22,10 @@
 
 ## 浏览器访问
 
-服务器现有 HTTP 服务在 `127.0.0.1:4216` 提供此目录。电脑建立 SSH 隧道：
+若通过服务器查看，可在服务器回环地址提供此目录，并按自己的端口和账号建立 SSH 隧道。以下仅为示例：
 
 ```sh
-ssh -N -L 4216:127.0.0.1:4216 bistu@121.194.33.35
+ssh -N -L 4216:127.0.0.1:4216 user@server.example.invalid
 ```
 
 访问：`http://127.0.0.1:4216/THROWAWAY-data-selection-vnext.html?screen=sets&project=p1`。

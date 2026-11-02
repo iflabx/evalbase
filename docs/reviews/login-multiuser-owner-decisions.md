@@ -2,7 +2,7 @@
 
 日期：2026-09-28。状态：下列四项已由 Project Owner 明确确认，作为下一轮合同修订和 Ticket 的输入。
 
-基于[冻结原型](../prototypes/phase1a-login-multiuser-vnext-freeze.md)与[差异审计](login-multiuser-vnext-delta-audit.md)。本记录优先于原型中与这四项相冲突的演示行为；原型标签继续保存原始设计证据。现行单人 PRD 的整体升级仍需后续同步，不能据此将多人功能视为已经实现。
+基于[冻结原型](../prototypes/phase1a-login-multiuser-vnext-freeze.md)与差异审计（内部记录，不随公开源码分发）。本记录优先于原型中与这四项相冲突的演示行为；原型标签继续保存原始设计证据。现行单人 PRD 的整体升级仍需后续同步，不能据此将多人功能视为已经实现。
 
 ## D1. 管理员与项目角色
 

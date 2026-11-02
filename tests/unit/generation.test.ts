@@ -26,6 +26,7 @@ describe("OPT30 frozen generation allocation", () => {
     const row = {
       id: "root",
       options: { outputCount: 50 },
+      execution_config: { timeoutScope: "batch" },
       used: 14,
       started: new Date(),
       blocked: false,

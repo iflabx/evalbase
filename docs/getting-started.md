@@ -15,7 +15,11 @@ cd evalbase
 
 ## 配置选择
 
-仓库默认 `compose.yaml` 保留 Phase 1A 的合成测试凭据、`SOLO_OWNER_MODE=true` 和普通 Worker。它没有配置模型 Worker，也不会仅因创建 `.env` 就覆盖写死在 YAML 中的测试凭据。
+默认 `compose.yaml` 不包含可登录的固定密码，测试身份默认关闭。缺少数据库或对象存储凭据时，Compose 在启动前报错；应用也不会回退到测试密码。它仍只有普通 Worker，模型处理需要下面的模型 Worker 配置。
+
+先复制 `.env.example` 为本实例私有的 `.env`。分别用 `openssl rand -hex 32` 生成数据库密码和 MinIO 密钥，填写 `POSTGRES_PASSWORD`、`MINIO_SECRET_KEY`；将 `DATABASE_URL` 填为 `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<POSTGRES_DB>`，使用同一组数据库配置。示例中的尖括号是占位符。随机十六进制密码可直接用于 URL；使用其他字符时须正确 URL 编码。`MINIO_ACCESS_KEY` 是对象存储账号名。
+
+Linux 上执行 `chmod 600 .env`，本地覆盖文件 `compose.local.yaml` 也不提交 Git。已有实例保留当前凭据及数据卷；修改环境变量不会自动更改 PostgreSQL 内部已有账号密码，不能在升级时随意生成新密码。首个管理员在浏览器中设置密码，没有默认管理员测试密码。
 
 下面是**全新、隔离的本地开发实例**的补充配置。已有部署应继续使用自己的配置、项目名和数据卷；旧单人实例先阅读[账号升级说明](runbooks/v2-account-upgrade.md)。生产部署以 [生产配置模板](../compose.production.example.yaml)为起点，配置真实凭据和访问地址；该模板仍需补充模型 Worker 及共享加密密钥，不能将本地示例直接作为生产配置。
 

@@ -71,4 +71,4 @@
 
 本 Spike 没有测量峰值内存、冷热缓存、重复运行分布、真实 100 MB 内容、完整 hash/核对的 O(N) 扫描、真实分页/筛选/CSV 延迟，也没有验证幂等重试、Worker 停止或深度上限、正式 API、浏览器、下载缓存、失败恢复、来源或墓碑删除生命周期。`writeChanges` 为逐条 INSERT，正式实现应在确认公共协议后再评估批量写入，不能把本次实现当作最终写入路径。
 
-本结果已由 [ADR-0011](../adr/0011-incremental-test-set-version-storage.md) 接受并固定 schema、manifest、Checkpoint 阈值与删除依赖切断策略。[Spec](../../.scratch/phase1a-test-data-management/spec.md) 与 [Test Plan §H](../test-plan-phase1a.md#h-增量版本存储-tickets-3338) 已同步，Tickets 33–38 已创建且均未开始。只有相应 Tickets 完成迁移与全生命周期验证后，才允许正式版本写入 Delta。
+本结果已由 [ADR-0011](../adr/0011-incremental-test-set-version-storage.md) 接受并固定 schema、manifest、Checkpoint 阈值与删除依赖切断策略。Spec（内部记录，不随公开源码分发） 与 [Test Plan §H](../test-plan-phase1a.md#h-增量版本存储-tickets-3338) 已同步，Tickets 33–38 已创建且均未开始。只有相应 Tickets 完成迁移与全生命周期验证后，才允许正式版本写入 Delta。

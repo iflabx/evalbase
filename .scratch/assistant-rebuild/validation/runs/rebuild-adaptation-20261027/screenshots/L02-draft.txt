@@ -1,3 +1,0 @@
-Browser tab: 33, Title: "EvalBase · 测试数据管理", URL: "http://127.0.0.1:4226/projects/project_325ac65e0e574e008f4fb46dc9bc3c85/test-sets/drafts/collabdraft_040a1f1d998a4efe809086ad8a0ad02e".
-There has been no change in the accessibility tree.
-The focused UI element is 48 row

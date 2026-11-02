@@ -14,10 +14,10 @@ const adminEmail =
   process.env.ARCHITECTURE_ADMIN_EMAIL ?? "admin@architecture.test";
 const editorEmail =
   process.env.ARCHITECTURE_EDITOR_EMAIL ?? "editor@architecture.test";
-const adminPassword =
-  process.env.ARCHITECTURE_ADMIN_PASSWORD ?? "ArchitectureAdmin123!";
-const editorPassword =
-  process.env.ARCHITECTURE_EDITOR_PASSWORD ?? "ArchitectureEditor123!";
+const adminPassword = process.env.ARCHITECTURE_ADMIN_PASSWORD;
+const editorPassword = process.env.ARCHITECTURE_EDITOR_PASSWORD;
+assert(adminPassword?.trim(), "Set ARCHITECTURE_ADMIN_PASSWORD");
+assert(editorPassword?.trim(), "Set ARCHITECTURE_EDITOR_PASSWORD");
 async function request(method, path, session = {}, body, extra = {}) {
   const headers = { origin, ...session, ...extra };
   if (body !== undefined && !headers["content-type"])

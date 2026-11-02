@@ -1,6 +1,6 @@
 # Issue tracker: Local Markdown
 
-Issues and specs for this repo live as Markdown files in `.scratch/`.
+Internal issues, specs and acceptance evidence live locally in ignored `.scratch/` and are not distributed in the public repository. Public contributions use a sanitized GitHub issue or the approved request plus product contracts. Preserve private records locally; do not force-add them.
 
 ## Conventions
 

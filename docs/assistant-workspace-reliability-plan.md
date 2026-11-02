@@ -5,7 +5,7 @@
 - 审查基线：`f261a79437247349fd8f3e25b49819229ee5741e`，`codex/assistant-optimization`；正式实现目录为 `frontend-v3/`。
 - 产品权威：[助手 PRD §7](PRD-data-selection-and-assistant.md#7-ai-04-项目助手)；本方案是 §7.6 引用的细化合同。术语、权限、三字段和确认行为继承 [CONTEXT](../CONTEXT.md)、PRD 及 [ADR 0014](adr/0014-project-agent-and-processing-runtime.md)。
 - 依据：[代码与可靠性调研](research/assistant-runtime-reliability-2026-10-14.md)、[独立工作台调研](research/assistant-workspace-design-2026-10-14.md)。调研建议中只有本文明确纳入的内容进入本批次；研究不等于实现证据。
-- 实施进度唯一入口：[OPT 台账](../.scratch/assistant-optimization/spec.md)。OPT-20–25 分别记录开发和验证，不改签旧 Ticket 的人工验收。
+- 实施进度唯一入口：OPT 台账（内部记录，不随公开源码分发）。OPT-20–25 分别记录开发和验证，不改签旧 Ticket 的人工验收。
 
 ## 1. 目标与复杂度边界
 
@@ -236,12 +236,12 @@ OPT-20 先记录修复前基线，不以必须全部通过阻止开始修复。�
 
 | Ticket | 可独立验收的结果 | 依赖 | 范围规模 |
 | --- | --- | --- | --- |
-| [OPT-20](../.scratch/assistant-optimization/issues/20-assistant-diagnostics-and-baseline.md) | 失败原因可区分，固定短请求基线可复跑 | 现有实现 | 小到中 |
-| [OPT-21](../.scratch/assistant-optimization/issues/21-assistant-bounded-recovery.md) | 暂时故障有限恢复，未知写入不重放 | OPT-20 | 中 |
-| [OPT-22](../.scratch/assistant-optimization/issues/22-assistant-tool-and-plan-contract.md) | 简化模型工具使用，要求重排不无意义重置步骤 | OPT-20/21 | 中 |
-| [OPT-23](../.scratch/assistant-optimization/issues/23-assistant-context-and-background-refs.md) | 长会话和背景规则可可靠续用 | OPT-22 | 中 |
-| [OPT-24](../.scratch/assistant-optimization/issues/24-assistant-independent-workspace.md) | 独立页面承接全部现有助手能力 | OPT-20；推荐在 OPT-23 后实施 | 中 |
-| [OPT-25](../.scratch/assistant-optimization/issues/25-assistant-task-results-and-delivery.md) | 整任务结果审核、局部调整和确认交付闭环 | OPT-21/22/23/24 | 中 |
+| OPT-20（内部记录，不随公开源码分发） | 失败原因可区分，固定短请求基线可复跑 | 现有实现 | 小到中 |
+| OPT-21（内部记录，不随公开源码分发） | 暂时故障有限恢复，未知写入不重放 | OPT-20 | 中 |
+| OPT-22（内部记录，不随公开源码分发） | 简化模型工具使用，要求重排不无意义重置步骤 | OPT-20/21 | 中 |
+| OPT-23（内部记录，不随公开源码分发） | 长会话和背景规则可可靠续用 | OPT-22 | 中 |
+| OPT-24（内部记录，不随公开源码分发） | 独立页面承接全部现有助手能力 | OPT-20；推荐在 OPT-23 后实施 | 中 |
+| OPT-25（内部记录，不随公开源码分发） | 整任务结果审核、局部调整和确认交付闭环 | OPT-21/22/23/24 | 中 |
 
 推荐串行 OPT-20 → 21 → 22 → 23 → 24 → 25。只授权某一张就执行该张；授权整个批次后按依赖继续，不逐张重复询问开工。每张包含必要的前后端适配及直接回归，不再拆成测试、API、样式三套平行工单。
 

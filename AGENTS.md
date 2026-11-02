@@ -8,10 +8,16 @@ EvalBase contains the product definitions and application implementation. `front
 
 - Use the current feature's approved PRD and Implementation Spec for behavior; use `CONTEXT.md` for domain meaning. Latest explicit Owner decisions override earlier project rules within their stated scope. Preserve applicable security and data constraints; ask only when a material conflict remains unresolved by those decisions and the documented scope.
 - For Phase 1A inherited behavior, use `docs/PRD-evalbase-v1.md`, `docs/architecture/phase1a-architecture.md` and relevant `docs/adr/` decisions. Commit `92cb8a5` / `prototype/solo-workflow-v5.3` governs that iteration, not later approved features.
-- For v2 work, use [v2 Implementation Spec](.scratch/evalbase-v2/spec.md) to locate the v2 PRD, frozen prototype, batch dependencies and progress. For later feature tracks, use the current Ticket's governing Spec, such as `.scratch/agent-data-processing/spec.md` or `.scratch/assistant-optimization/spec.md` when present in the working checkout. Later approved contracts override only the behavior they change; inherited behavior keeps its existing contract.
+- For v2 work, use v2 Implementation Spec（内部记录，不随公开源码分发） to locate the v2 PRD, frozen prototype, batch dependencies and progress. For later feature tracks, use the current Ticket's governing Spec, such as `.scratch/agent-data-processing/spec.md` or `.scratch/assistant-optimization/spec.md` when present in the working checkout. Later approved contracts override only the behavior they change; inherited behavior keeps its existing contract.
 - Read the current Ticket in full. Read only affected sections of its Spec, PRD, glossary, architecture, test plan and relevant ADRs; follow references that constrain this change. Reuse already-read unchanged context. Historical audits and decision records are evidence to consult when needed, not a mandatory reading chain.
 - For workflow only, this guide replaces older generic full-reading, per-Ticket branch/confirmation and duplicate-check requirements in Specs or Skills. Product AC, explicit execution holds and risk-specific safety checks remain binding.
 - For frontend work, consult the applicable prototype and [frontend reuse guidance](docs/architecture/phase1a-frontend-reuse.md). Research documents are evidence, not product commitments; verify external claims when changing them.
+
+## Public repository boundary
+
+- Public source includes product contracts, architecture, setup instructions and synthetic test fixtures. Keep private tickets, acceptance transcripts, screenshots, budgets and deployment records in ignored `.scratch/` or private storage; do not force-add them.
+- In a public checkout, use the PRD, architecture and the approved issue/request as the implementation contract. Private local Specs apply when supplied; their absence is not a reason to invent completion evidence or require a private environment.
+- Run `npm run security:check` and `npm run docs:check` before publishing. Reports must redact credentials, real session/project identifiers, internal hosts, user directories and backup locations. Removing a file from the current tree does not erase Git history.
 
 ## Current implementation state
 

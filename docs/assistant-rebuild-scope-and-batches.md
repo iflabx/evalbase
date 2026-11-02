@@ -1,7 +1,7 @@
 # 项目助手重建范围核对与票据拆分建议
 
 - 日期：2026-10-27；核对分支：`codex/assistant-rebuild`；代码及原型基线：`5911ead`。
-- 本文是范围与实施顺序索引，不是新的产品合同或实施完成证明。正式票据已按 Owner 后续指令创建，见[实施 Spec](../.scratch/assistant-rebuild/spec.md)；原建议 R01～R10 对应 REBUILD-01～10，均尚未开发。本次只整理文档，不运行模型、Computer Use 或业务测试，不更新环境，不修改业务代码、数据及旧预算。
+- 本文是范围与实施顺序索引，不是新的产品合同或实施完成证明。正式票据已按 Owner 后续指令创建，见实施 Spec（内部记录，不随公开源码分发）；原建议 R01～R10 对应 REBUILD-01～10，均尚未开发。本次只整理文档，不运行模型、Computer Use 或业务测试，不更新环境，不修改业务代码、数据及旧预算。
 - 结论：重建包含**运行时、共享业务工具、页面动作桥、正式助手工作区、历史兼容及受控切换**。不能用几张前端票代表全部重建，也不能把框架适配完成等同于 85 项能力已经接通。
 
 ## 1. 依据、优先关系与证据版本
@@ -11,8 +11,8 @@
 | [PRD §7.14](PRD-data-selection-and-assistant.md#assistant-rebuild-product)、[领域语言](../CONTEXT.md) | 覆盖当前人工能力及助手专属能力；权限、必要确认、不可变数据、预算和历史保留边界不变 | 产品和术语权威，不由研究或原型扩大 |
 | [85 项能力清单](assistant-rebuild-capabilities.md) | 8 个能力组；页面、业务操作、控制入口与原生输入不能混为一个工具 | 本文 §4 映射全部编号，不重复抄录接口合同 |
 | [重建架构](architecture/assistant-rebuild.md)、[ADR 0015](adr/0015-assistant-rebuild-boundaries.md) | 从当前 main 独立重建；采用 Deep Agents TypeScript + LangGraph；保留业务，不包裹旧执行器 | 职责、解耦、确认、预算、兼容与切换权威 |
-| [首轮验证](research/assistant-rebuild-validation-20261027.md)、[修复复测](research/assistant-rebuild-repair-validation-20261027.md)、[状态复测](research/assistant-rebuild-status-validation-20261027.md) | 真实模型及业务小闭环有证据；首次失败、未覆盖时序和环境干预均保留 | 区分各次版本、样本和限制，不重新签署旧结果 |
-| [采用收口审查](research/assistant-rebuild-adoption-review-20261027.md) | 正式采用技术路线；总体重建未完成；原同版本整轮门槛未追认通过 | §5 是剩余接入条件的来源，本文分配责任 |
+| 首轮验证（内部记录，不随公开源码分发）、修复复测（内部记录，不随公开源码分发）、状态复测（内部记录，不随公开源码分发） | 真实模型及业务小闭环有证据；首次失败、未覆盖时序和环境干预均保留 | 区分各次版本、样本和限制，不重新签署旧结果 |
+| 采用收口审查（内部记录，不随公开源码分发） | 正式采用技术路线；总体重建未完成；原同版本整轮门槛未追认通过 | §5 是剩余接入条件的来源，本文分配责任 |
 | [UI 复用调研](research/assistant-workspace-ui-reuse-20261027.md)、[原型决策记录](prototypes/assistant-desktop-ui-prototype-20261027.md) | 保留项目导航，助手内部会话/消息/按内容打开的工作区；frontend-v1 视觉 | 原型的后续 Owner 决策优先于早期截图建议；研究推荐不等于依赖已接入 |
 | [重建验收 RB01～RB15](test-plan-data-selection-and-assistant.md#assistant-rebuild-acceptance) | 工具覆盖、真实 SDK、恢复、数据清理和切换均须有证据 | 验收权威；本次只分配，不执行 |
 
@@ -31,7 +31,7 @@
 | 后续批次：本次重建的必交范围 | R05～R09 补齐全部领域、原生动作桥、历史及生命周期；R10 收口、切换演练与另行授权的切换 | 这是完整重建的后续批次，**不是可无声删去的愿望清单**；全部接通前不能声称已覆盖 85 项 |
 | 需要退出 | 旧对话执行器、强制计划编译、多层纠错和旧续步/状态推断；临时验证页面及 campaign 对正式入口的绑定 | 分阶段替代，见 §5；保留历史读取、成果、业务 Worker、原账本及必要清理 |
 
-这里“本轮必做”是对下一轮正式开发的建议范围，不表示本次已获得实施或真实模型费用授权。正式票的分批验收上限已记录在[Spec](../.scratch/assistant-rebuild/spec.md#verification)，尚未执行，不能套用旧 campaign 剩余额度。
+这里“本轮必做”是对下一轮正式开发的建议范围，不表示本次已获得实施或真实模型费用授权。正式票的分批验收上限已记录在Spec（内部记录，不随公开源码分发），尚未执行，不能套用旧 campaign 剩余额度。
 
 不将下列研究内容默认为已实现：assistant-ui、真实 token 流、公开推理文本展示、任意多交付、应用级长会话摘要后写入、全工具参数一致性、全权限/删除链及生产切换。
 
@@ -54,7 +54,7 @@
 | G11 / P1 | 原 L02 有 Worker 配置介入；原 C1/C2 的同措辞/数量/时序证据仍不完整；没有与旧助手作同条件稳定率比较 | R10 在新授权活动中补与正式实现相关的缺口，不重签原结论、不重跑旧成功生成。不把“采用框架”宣传成已证明全面更稳定 |
 | G12 / P1 | 原型中的模型切换、附件、保存和导出均为示例；依赖兼容、供应方公开推理支持及许可证接入未落地 | R04 做组件适配门槛，R09 使用真实模型配置权限。原型不能偷偷引入普通用户可任意换模型/端点的能力；只保留实际已支持控件 |
 
-代码抽查证据：[宿主要求和工具](../src/assistant-rebuild/host.ts)、[验证入口](../src/server/modules/assistant-rebuild.ts)、[运行提交保护](../src/operations/runtime-guard.ts)、[旧 fence 转接](../src/assistant/fence.ts)、[处理提交](../src/processing/store.ts)、[候选改写](../src/processing/refine.ts)、[业务审核规则](../src/processing/review.ts)、[回收站入口](../src/server/modules/deletion.ts)。本次未改这些文件。其余风险与证明限制见[收口审查 §5](research/assistant-rebuild-adoption-review-20261027.md#5-保留事项与正式接入条件)。
+代码抽查证据：[宿主要求和工具](../src/assistant-rebuild/host.ts)、[验证入口](../src/server/modules/assistant-rebuild.ts)、[运行提交保护](../src/operations/runtime-guard.ts)、[旧 fence 转接](../src/assistant/fence.ts)、[处理提交](../src/processing/store.ts)、[候选改写](../src/processing/refine.ts)、[业务审核规则](../src/processing/review.ts)、[回收站入口](../src/server/modules/deletion.ts)。本次未改这些文件。其余风险与证明限制见收口审查 §5（内部记录，不随公开源码分发）。
 
 ### 已确认的前端决定必须一起落实
 
@@ -121,7 +121,7 @@
 
 ## 6. 三批十张票的拆分与落票
 
-R01～R10 是本文范围编号，现已对应创建 **REBUILD-01～REBUILD-10**。独立文件、依赖、实施/验证状态和验收上限统一见[实施 Spec](../.scratch/assistant-rebuild/spec.md)，遵循[本地 issue tracker](agents/issue-tracker.md)。下表保留拆分依据，不另维护第二份进度，也不改写旧 OPT 的完成状态。
+R01～R10 是本文范围编号，现已对应创建 **REBUILD-01～REBUILD-10**。独立文件、依赖、实施/验证状态和验收上限统一见实施 Spec（内部记录，不随公开源码分发），遵循[本地 issue tracker](agents/issue-tracker.md)。下表保留拆分依据，不另维护第二份进度，也不改写旧 OPT 的完成状态。
 
 ### 第一批：形成正式运行基础及可用页面（R01～R04）
 
@@ -172,4 +172,4 @@ R10 不是把所有问题拖到最后再测试。各票完成自己的真实入�
 
 本次核对了能力清单、架构/ADR、三轮验证及采用审查、UI 复用研究和最新原型决定，并抽查验证宿主、提交保护及回收站权限实现。85 项编号已全部映射，RB01～RB15 均有建议责任票；未将历史失败、未知能力或静态示例改记为已完成。
 
-2026-10-27 后续：按 Owner 指令已创建[重建 Spec 和十张独立 Ticket](../.scratch/assistant-rebuild/spec.md)。全部尚未开始开发/验证，沿用当前重建分支；实施从 REBUILD-01 开始。未更改旧 OPT 状态、业务实现、旧数据或预算。
+2026-10-27 后续：按 Owner 指令已创建重建 Spec 和十张独立 Ticket（内部记录，不随公开源码分发）。全部尚未开始开发/验证，沿用当前重建分支；实施从 REBUILD-01 开始。未更改旧 OPT 状态、业务实现、旧数据或预算。

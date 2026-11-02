@@ -1,1 +1,0 @@
-{"model":"qwen-new","results":[{"name":"simple","passed":true,"tool":"read_records"},{"name":"nested","passed":true,"tool":"preview_source"},{"name":"streamed","passed":true,"tool":"preview_source"},{"name":"json","passed":true}],"requiredProtocolPassed":true}

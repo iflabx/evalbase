@@ -55,11 +55,13 @@ async function waitFor(check, description) {
 }
 
 async function login() {
+  if (!process.env.OWNER_PASSWORD)
+    throw new Error("Set OWNER_PASSWORD for this isolated test account");
   const response = await request("/api/session", {
     method: "POST",
     body: {
       username: "owner",
-      password: process.env.OWNER_PASSWORD ?? "owner-test-password",
+      password: process.env.OWNER_PASSWORD,
     },
   });
   const setCookie = response.headers.get("set-cookie") ?? "";

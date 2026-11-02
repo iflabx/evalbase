@@ -2,7 +2,7 @@
 
 本文件维护 EvalBase 的唯一领域词汇。已交付 v1 使用单人工作流；v2 新增账号和共享草稿，范围见 [v2 PRD 草案](docs/PRD-evalbase-v2.md)。v1 界面依据 `prototype/solo-workflow-v5.3`；v2 依据冻结的登录协作原型及已确认 Owner 决策。标为 v2 的词条不表示功能已经实现。
 
-2026-10-04 新一轮筛选选取、模型处理与自然语言助手范围见 [本轮 PRD](docs/PRD-data-selection-and-assistant.md)。以下新增词条为实施合同，实现状态以 [台账](.scratch/agent-data-processing/spec.md) 为准。
+2026-10-04 新一轮筛选选取、模型处理与自然语言助手范围见 [本轮 PRD](docs/PRD-data-selection-and-assistant.md)。以下新增词条为实施合同，实现状态以 台账（内部记录，不随公开源码分发） 为准。
 
 ## 工作边界
 
@@ -239,7 +239,7 @@ _Avoid_：配额满足即内容合格、人工改完等同模型一次成功
 
 ## 长会话与续接词汇（OPT-48～49 待开发）
 
-含义对应[PRD §7.12](docs/PRD-data-selection-and-assistant.md#long-task-product)；当前实现状态以[助手台账](.scratch/assistant-optimization/spec.md)为准。
+含义对应[PRD §7.12](docs/PRD-data-selection-and-assistant.md#long-task-product)；当前实现状态以助手台账（内部记录，不随公开源码分发）为准。
 
 **助手会话（Assistant Conversation）**：
 当前用户在一个项目中的交流与背景材料容器，可按顺序承载多个业务目标。会话本身不是一次目标的执行额度。

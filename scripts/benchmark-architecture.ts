@@ -10,6 +10,8 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 import type { AgentBenchApp } from "../src/server/app.js";
 
+const adminPassword = "B!" + randomUUID() + "a1";
+const editorPassword = "B!" + randomUUID() + "e1";
 const variant = process.env.EVALBASE_BENCH_VARIANT ?? "optimized";
 assert(["baseline", "optimized"].includes(variant));
 const repetitions = Number(process.env.EVALBASE_BENCH_RUNS ?? 3);
@@ -282,8 +284,8 @@ try {
     {
       email: "admin@performance.test",
       displayName: "管理员",
-      password: "BenchAdmin123!",
-      confirmPassword: "BenchAdmin123!",
+      password: adminPassword,
+      confirmPassword: adminPassword,
     },
     201,
   );
@@ -293,13 +295,13 @@ try {
     { origin },
     {
       email: "editor@performance.test",
-      password: "BenchEditor123!",
-      confirmPassword: "BenchEditor123!",
+      password: editorPassword,
+      confirmPassword: editorPassword,
     },
     201,
   );
-  const admin = await login("admin@performance.test", "BenchAdmin123!");
-  const editor = await login("editor@performance.test", "BenchEditor123!");
+  const admin = await login("admin@performance.test", adminPassword);
+  const editor = await login("editor@performance.test", editorPassword);
   const project = (
     await request(
       "POST",
@@ -325,7 +327,7 @@ try {
     Array.from({ length: 10 }, (_, index) =>
       login(
         index % 2 ? "editor@performance.test" : "admin@performance.test",
-        index % 2 ? "BenchEditor123!" : "BenchAdmin123!",
+        index % 2 ? editorPassword : adminPassword,
       ),
     ),
   );

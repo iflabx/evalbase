@@ -139,32 +139,44 @@ export function loadConfig(env = process.env): Config {
     contextWindow > 2097152
   )
     throw new RangeError("Invalid assistant context window");
+  const required = (name: string): string => {
+    const value = env[name];
+    if (!value?.trim())
+      throw new Error(`Missing required configuration: ${name}`);
+    return value;
+  };
+  const nonProduction =
+    env.NODE_ENV === "development" || env.NODE_ENV === "test";
+  if (env.ALLOW_TEST_IDENTITY === "true" && !nonProduction)
+    throw new Error("Test identities require NODE_ENV=development or test");
+  const soloOwnerMode = nonProduction && env.SOLO_OWNER_MODE === "true";
+  const allowTestIdentity = nonProduction && env.ALLOW_TEST_IDENTITY === "true";
+  if (soloOwnerMode || allowTestIdentity) required("OWNER_PASSWORD");
+  if (allowTestIdentity) {
+    required("EDITOR_PASSWORD");
+    required("VIEWER_PASSWORD");
+  }
   return {
     modelEncryptionKey: env.MODEL_ENCRYPTION_KEY ?? "",
     assistantContextWindowTokens: Number(
       env.ASSISTANT_CONTEXT_WINDOW_TOKENS ?? 131072,
     ),
     runtimeMetricsEnabled: env.RUNTIME_METRICS_ENABLED !== "false",
-    databaseUrl:
-      env.DATABASE_URL ??
-      "postgresql://evalbase_phase1a:synthetic-nonproduction-only@postgres:5432/evalbase_phase1a",
+    databaseUrl: required("DATABASE_URL"),
     minio: {
       endPoint: env.MINIO_ENDPOINT ?? "minio",
       port: Number(env.MINIO_PORT ?? 9000),
-      accessKey: env.MINIO_ACCESS_KEY ?? "evalbase-phase1a",
-      secretKey: env.MINIO_SECRET_KEY ?? "synthetic-nonproduction-only",
+      accessKey: required("MINIO_ACCESS_KEY"),
+      secretKey: required("MINIO_SECRET_KEY"),
       bucket: env.MINIO_BUCKET ?? "evalbase-phase1a",
     },
     appOrigin: env.APP_ORIGIN ?? "http://127.0.0.1:3000",
     gitSha: env.GIT_SHA ?? "unknown",
-    soloOwnerMode:
-      typeof env.NODE_ENV === "string" &&
-      env.NODE_ENV !== "production" &&
-      env.SOLO_OWNER_MODE === "true",
-    ownerPassword: env.OWNER_PASSWORD ?? "owner-test-password",
-    editorPassword: env.EDITOR_PASSWORD ?? "editor-test-password",
-    viewerPassword: env.VIEWER_PASSWORD ?? "viewer-test-password",
-    allowTestIdentity: env.ALLOW_TEST_IDENTITY === "true",
+    soloOwnerMode,
+    ownerPassword: env.OWNER_PASSWORD ?? "",
+    editorPassword: env.EDITOR_PASSWORD ?? "",
+    viewerPassword: env.VIEWER_PASSWORD ?? "",
+    allowTestIdentity,
     host: env.HOST ?? "127.0.0.1",
     port: Number(env.PORT ?? 3000),
     workerHealthHost: env.WORKER_HEALTH_HOST ?? "127.0.0.1",

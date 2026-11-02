@@ -1,5 +1,0 @@
-
-> evalbase@0.2.0 docs:check
-> node scripts/check-docs.mjs
-
-docs:check passed: 38 Ticket lifecycle rows, commit references, Gate state, and stale-status phrases

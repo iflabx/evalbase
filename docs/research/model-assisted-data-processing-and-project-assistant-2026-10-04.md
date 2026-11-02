@@ -2,7 +2,7 @@
 
 - 日期：2026-10-04。
 - 性质：研究结论与下一版产品建议，尚未修改原型、PRD、正式应用或部署。
-- 项目依据：服务器 `/home/bistu/EvalBase`，研究起点 `codex/prototype-data-selection` / `87092a5`；本地 main 为 `9f8d7f4`。本机 `D:/AgentBench_v2` 根目录是较旧的文档快照，不作为当前实现依据。
+- 项目依据：服务器 `<project-root>`，研究起点 `codex/prototype-data-selection` / `87092a5`；本地 main 为 `9f8d7f4`。本机 `<project-root>` 根目录是较旧的文档快照，不作为当前实现依据。
 - 需求：连接已有模型；按测试数据类型扩充测试集；清洗、转换和改写外部原始资料；用自然语言调用项目操作。
 - 规模背景：此前预计最多 10 人同时使用。它不等于模型允许同时执行 10 个批处理任务。
 
@@ -40,7 +40,7 @@
 | 存在旧 `transformation` 清单校验代码和 `agent_rewrite` 等内部类型；公开 `transformation-runs` 路由已退役 | 它们不是现成可用的模型功能；后续只能评估可复用的内部校验，不直接恢复旧公开接口 |
 | 当前数据选取原型已移除模型抽样，只保留全部选取、随机抽取及筛选 | 本研究是模型处理/扩充能力，不代表恢复已删除的模型抽样策略 |
 
-依据：[当前领域词汇](../../CONTEXT.md)、[v1 PRD FR-03/04](../PRD-evalbase-v1.md)、[v2 PRD](../PRD-evalbase-v2.md)、[v2 架构](../architecture/evalbase-v2-architecture.md)、[上传模块](../../src/server/modules/uploads.ts)、[解析器](../../src/parser/index.ts)、[Worker](../../src/worker/main.ts)、[旧处理清单](../../src/transformation/index.ts)、[公开路由退役判断](../../src/server/app.ts)。部分设计文档页首仍保留 Draft 描述，完成情况交叉核对了 [v2 实施台账](../../.scratch/evalbase-v2/spec.md)，未单靠旧状态标题判断实现情况。
+依据：[当前领域词汇](../../CONTEXT.md)、[v1 PRD FR-03/04](../PRD-evalbase-v1.md)、[v2 PRD](../PRD-evalbase-v2.md)、[v2 架构](../architecture/evalbase-v2-architecture.md)、[上传模块](../../src/server/modules/uploads.ts)、[解析器](../../src/parser/index.ts)、[Worker](../../src/worker/main.ts)、[旧处理清单](../../src/transformation/index.ts)、[公开路由退役判断](../../src/server/app.ts)。部分设计文档页首仍保留 Draft 描述，完成情况交叉核对了 v2 实施台账（内部记录，不随公开源码分发），未单靠旧状态标题判断实现情况。
 
 ## 3. 模型接入：已有服务可作为第一个接入对象
 

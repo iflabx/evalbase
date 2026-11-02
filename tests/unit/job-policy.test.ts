@@ -1,10 +1,11 @@
+import { configEnv } from "../support/config-env.js";
 import { describe, expect, it } from "vitest";
 
 import { jobRetrySchedule, loadConfig } from "../../src/config.js";
 
 describe("Ticket 09 job policy configuration", () => {
   it("freezes bounded defaults and an orphan grace longer than retry and lease windows", () => {
-    const config = loadConfig({});
+    const config = loadConfig({ ...configEnv });
     expect(config).toMatchObject({
       jobMaxAttempts: 3,
       jobClaimDelayMs: 250,
@@ -27,28 +28,29 @@ describe("Ticket 09 job policy configuration", () => {
   });
 
   it("rejects a non-finite backoff multiplier", () => {
-    expect(() => loadConfig({ JOB_BACKOFF_MULTIPLIER: "NaN" })).toThrow(
-      RangeError,
-    );
+    expect(() =>
+      loadConfig({ ...configEnv, JOB_BACKOFF_MULTIPLIER: "NaN" }),
+    ).toThrow(RangeError);
   });
 
   it("rejects invalid Worker health and consistency scan settings", () => {
-    expect(() => loadConfig({ WORKER_HEALTH_PORT: "not-a-port" })).toThrow(
-      RangeError,
-    );
-    expect(() => loadConfig({ WORKER_HEALTH_PORT: "65536" })).toThrow(
-      RangeError,
-    );
-    expect(() => loadConfig({ CONSISTENCY_SCAN_CADENCE_MS: "0" })).toThrow(
-      RangeError,
-    );
-    expect(() => loadConfig({ CONSISTENCY_SCAN_CADENCE_MS: "NaN" })).toThrow(
-      RangeError,
-    );
+    expect(() =>
+      loadConfig({ ...configEnv, WORKER_HEALTH_PORT: "not-a-port" }),
+    ).toThrow(RangeError);
+    expect(() =>
+      loadConfig({ ...configEnv, WORKER_HEALTH_PORT: "65536" }),
+    ).toThrow(RangeError);
+    expect(() =>
+      loadConfig({ ...configEnv, CONSISTENCY_SCAN_CADENCE_MS: "0" }),
+    ).toThrow(RangeError);
+    expect(() =>
+      loadConfig({ ...configEnv, CONSISTENCY_SCAN_CADENCE_MS: "NaN" }),
+    ).toThrow(RangeError);
   });
 
   it("uses a controlled Clock for the bounded retry schedule", () => {
     const config = loadConfig({
+      ...configEnv,
       JOB_MAX_ATTEMPTS: "5",
       JOB_INITIAL_BACKOFF_MS: "100",
       JOB_BACKOFF_MULTIPLIER: "3",

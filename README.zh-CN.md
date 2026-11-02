@@ -28,7 +28,7 @@ EvalBase 是面向团队的测试数据管理应用，把原始资料整理、�
 
 ## 启动与配置
 
-[启动说明](docs/getting-started.md)包含本地安装、首个管理员初始化、模型 Worker 配置和开发命令，也说明默认 `compose.yaml` 的旧版测试设置与当前账号、模型处理配置的区别。
+[启动说明](docs/getting-started.md)包含本地安装、首个管理员初始化、模型 Worker 配置和开发命令，默认配置要求显式凭据并关闭测试身份。
 
 开启账号模式的空实例，首次访问会进入管理员初始化。已有实例使用原账号登录；旧单人实例升级时，先按[账号升级说明](docs/runbooks/v2-account-upgrade.md)绑定管理员。
 
@@ -53,17 +53,17 @@ EvalBase 是面向团队的测试数据管理应用，把原始资料整理、�
 | `src/`         | API、权限、选取、处理、助手、存储和 Worker。                    |
 | `tests/`       | 单元、集成与浏览器测试。                                        |
 | `docs/`        | [文档导航](docs/README.md)、产品合同、架构、运行说明和调研。    |
-| `.scratch/`    | 功能规格、tickets 与开发证据，公开前需检查其中内容。            |
+| `.scratch/`    | 功能规格、tickets 与开发证据，仅本地保存，不随公开源码分发。            |
 | `frontend-v1/` | 冻结的视觉与组件参考；`frontend-v2/`、`src/web/` 保留历史源码。 |
 
 ## 当前状态
 
 本页对应当前检出代码。账号协作、数据处理和项目助手已实现，助手稳定性与验收记录仍在持续完善；定向验证通过不代表所有提示词、模型和复杂长任务都已验证成功。
 
-正式发布以仓库 Tag、Release 为准。功能实现及验收状态分别见 [v2 台账](.scratch/evalbase-v2/spec.md)、[数据处理台账](.scratch/agent-data-processing/spec.md)、[助手台账](.scratch/assistant-optimization/spec.md)；早期单人基线保留在 [Phase 1A 台账](docs/agents/phase1a-progress.md)。
+正式发布以仓库 Tag、Release 为准。详细开发验收台账仅本地保存；公开产品合同和启动说明见[文档导航](docs/README.md)，早期单人基线保留在 [Phase 1A 台账](docs/agents/phase1a-progress.md)。
 
 ## 贡献与安全
 
-参见[贡献指南](CONTRIBUTING.zh-CN.md)、[行为准则](CODE_OF_CONDUCT.zh-CN.md)和[安全报告方式](SECURITY.zh-CN.md)。不要提交模型密钥、会话 Cookie、部署凭据或私有数据集；公开 Fork 前检查 `.scratch/` 中的历史证据。
+参见[贡献指南](CONTRIBUTING.zh-CN.md)、[行为准则](CODE_OF_CONDUCT.zh-CN.md)和[安全报告方式](SECURITY.zh-CN.md)。不要提交模型密钥、会话 Cookie、部署凭据或私有数据集；提交前运行 `npm run security:check`，原始验收材料仅本地保存。
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。
