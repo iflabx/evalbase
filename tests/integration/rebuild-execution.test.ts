@@ -428,6 +428,273 @@ describe("REBUILD-03 formal session and Deep Agents host", () => {
       await root.end();
     }
   });
+
+  it.each([
+    "read_processing_task",
+    "read_processing_history",
+    "preview_processing_round",
+    "deduplicate_processing_task",
+    "list_processing_tasks",
+  ])(
+    "MERGE %s registers foreign task content before checkpointing and erases it on cleanup",
+    async (toolName) => {
+      const source = (
+        await host.store.freezeSource(scope(), {
+          kind: "assets",
+          assetIds: [assetId],
+        })
+      ).source;
+      const made = await createProcessingRun(
+        db,
+        artifacts,
+        scope(),
+        "merge-" + randomUUID(),
+        {
+          source,
+          options: {
+            operation: "clean",
+            instructions: "",
+            allowedFields: ["question"],
+          },
+        },
+      );
+      await completeRun(made.run.id);
+      const sid = await fresh(),
+        taskId = made.run.id;
+      const task = await import("../../src/processing/tasks.js").then((m) =>
+        m.readProcessingTask(db, artifacts, scope(), taskId),
+      );
+      const args =
+        toolName === "list_processing_tasks"
+          ? {}
+          : toolName === "preview_processing_round"
+            ? { taskId, mode: "rerun" }
+            : toolName === "deduplicate_processing_task"
+              ? { taskId, resultIds: task.allIds }
+              : { taskId };
+      const state: any = await run(sid, "只查看这个处理任务，不修改任何内容", [
+        call(toolName, args),
+      ]);
+      expect(state.execution.status).toBe("completed");
+      await db.query(
+        "DELETE FROM assistant_runtime_reference WHERE session_id=$1",
+        [sid],
+      );
+      await db.query(
+        (await import("../../src/assistant-rebuild/lifecycle-schema.js"))
+          .lifecycleSchema,
+      );
+      const refs = (
+        await db.query(
+          "SELECT kind,resource_id FROM assistant_runtime_reference WHERE session_id=$1",
+          [sid],
+        )
+      ).rows;
+      expect(refs).toContainEqual({ kind: "run", resource_id: made.run.id });
+      expect(refs).toContainEqual({ kind: "asset", resource_id: assetId });
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_operation WHERE session_id=$1",
+            [sid],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      const budget = (
+        await db.query(
+          "SELECT requests,worker_requests,active_ms FROM assistant_runtime_execution WHERE session_id=$1",
+          [sid],
+        )
+      ).rows[0];
+      await db.query("UPDATE processing_run SET input_ref=NULL WHERE id=$1", [
+        made.run.id,
+      ]);
+      const cleared: any = await host.present(scope(), sid);
+      expect(cleared.contentInvalidated).toBe(true);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_message WHERE session_id=$1",
+            [sid],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_session_checkpoints.checkpoints WHERE thread_id=$1",
+            [state.execution.turn_id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await db.query(
+            "SELECT requests,worker_requests,active_ms FROM assistant_runtime_execution WHERE session_id=$1",
+            [sid],
+          )
+        ).rows[0],
+      ).toEqual(budget);
+      expect(
+        (await api("POST", route(sid) + "/control", { action: "continue" }))
+          .statusCode,
+      ).toBe(409);
+    },
+  );
+
+  it("MERGE late request reconciliation and continue use the same lock order", async () => {
+    const sid = await fresh(),
+      proof = await seed(sid),
+      requestId = randomUUID();
+    await host.execution.reserve(proof, {
+      id: requestId,
+      purpose: "model",
+      requestHash: "merge-lock",
+      correctionOf: null,
+    } as any);
+    await host.execution.outcome({
+      id: requestId,
+      status: null,
+      error: "interrupted_outcome_unknown",
+      usage: null,
+    } as any);
+    const c = await db.connect();
+    let settled!: Promise<any>;
+    try {
+      await c.query("BEGIN");
+      await c.query(
+        "SELECT id FROM assistant_runtime_session WHERE id=$1 FOR UPDATE",
+        [sid],
+      );
+      settled = host.execution
+        .outcome({
+          id: requestId,
+          status: 200,
+          error: null,
+          usage: { total_tokens: 1 },
+        } as any)
+        .then(
+          () => ({ ok: true }),
+          (error) => ({ ok: false, code: error.code }),
+        );
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "SELECT count(*)::int n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%assistant_runtime_%'",
+              )
+            ).rows[0].n,
+          { timeout: 3000 },
+        )
+        .toBeGreaterThan(0);
+      await c.query(
+        "SELECT session_id FROM assistant_runtime_execution WHERE session_id=$1 FOR UPDATE",
+        [sid],
+      );
+      await c.query("COMMIT");
+      expect(await settled).toEqual({ ok: true });
+      expect(
+        (
+          await db.query(
+            "SELECT requests FROM assistant_runtime_execution WHERE session_id=$1",
+            [sid],
+          )
+        ).rows[0].requests,
+      ).toBe(1);
+    } finally {
+      await c.query("ROLLBACK");
+      c.release();
+      if (settled) await settled;
+      await host.stop(scope(), sid);
+    }
+  });
+
+  it("MERGE saved input preview links the actual saved draft including historical backfill", async () => {
+    const f = await adoptionCard();
+    const saved = await host.execution.approve(
+      scope(),
+      f.id,
+      f.card.id,
+      artifacts,
+    );
+    const sid = await fresh();
+    await run(sid, "只预览已保存的记录", [
+      call("preview_processing_round", { taskId: f.p.runId, mode: "saved" }),
+    ]);
+    const refs = async () =>
+      (
+        await db.query(
+          "SELECT kind,resource_id FROM assistant_runtime_reference WHERE session_id=$1",
+          [sid],
+        )
+      ).rows;
+    expect(await refs()).toContainEqual({
+      kind: "draft",
+      resource_id: saved.receipt.draftId,
+    });
+    // Simulate an old SDK result whose payload did not yet expose its source.
+    const event = (
+      await db.query(
+        "SELECT id,detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='tool_result' ORDER BY id DESC LIMIT 1",
+        [sid],
+      )
+    ).rows[0];
+    const result = event.detail.result;
+    const content = result.kwargs?.content ?? result.content;
+    const payload = typeof content === "string" ? JSON.parse(content) : result;
+    delete payload.source;
+    event.detail.result = payload;
+    await db.query("UPDATE assistant_runtime_event SET detail=$2 WHERE id=$1", [
+      event.id,
+      event.detail,
+    ]);
+    await db.query(
+      "DELETE FROM assistant_runtime_reference WHERE session_id=$1",
+      [sid],
+    );
+    await db.query(
+      (await import("../../src/assistant-rebuild/lifecycle-schema.js"))
+        .lifecycleSchema,
+    );
+    expect(await refs()).toContainEqual({
+      kind: "draft",
+      resource_id: saved.receipt.draftId,
+    });
+    const testSetId = "merge_set_" + randomUUID();
+    await db.query(
+      "INSERT INTO test_set(id,project_id,name,purpose,owner_id) VALUES($1,$2,'历史保存范围','合成回归',$3)",
+      [testSetId, projectId, actors.get("admin")],
+    );
+    await db.query(
+      "UPDATE collaborative_draft SET test_set_id=$2 WHERE id=$1",
+      [saved.receipt.draftId, testSetId],
+    );
+    await db.query("UPDATE test_set SET status='trashed' WHERE id=$1", [
+      testSetId,
+    ]);
+    await expect(host.present(scope(), sid)).rejects.toMatchObject({
+      code: "processing_source_unavailable",
+    });
+    await db.query("UPDATE test_set SET status='available' WHERE id=$1", [
+      testSetId,
+    ]);
+    expect((await host.present(scope(), sid)).contentInvalidated).toBe(false);
+    await db.query(
+      "UPDATE collaborative_draft SET status='discarded' WHERE id=$1",
+      [saved.receipt.draftId],
+    );
+    expect((await host.present(scope(), sid)).contentInvalidated).toBe(true);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM assistant_runtime_message WHERE session_id=$1",
+          [sid],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
   it("stops accepted work through the priority control endpoint", async () => {
     const id = await fresh();
     await submit(id, "整理方案");

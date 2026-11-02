@@ -335,6 +335,12 @@ export class ExecutionStore {
       )
     ).rows[0];
     if (!owner) return;
+    // Controls lock session before execution; the event trigger takes a session
+    // lock too. Late outcomes must follow that order, even after token expiry.
+    await c.query(
+      "SELECT id FROM assistant_runtime_session WHERE id=$1 FOR UPDATE",
+      [owner.session_id],
+    );
     await c.query(
       "SELECT session_id FROM assistant_runtime_execution WHERE session_id=$1 FOR UPDATE",
       [owner.session_id],

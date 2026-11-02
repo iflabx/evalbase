@@ -356,11 +356,36 @@ export function processingTools(
     schemas: new Map(defs.map((d) => [d.name, d.schema])),
     readOnly: new Set(defs.filter((d) => d.readOnly).map((d) => d.name)),
     tools: defs.map((d) =>
-      tool(d.run, {
-        name: d.name,
-        description: d.description,
-        schema: d.schema,
-      }),
+      tool(
+        async (args) => {
+          await store.guard(proof, !d.readOnly);
+          const reading =
+            d.readOnly ||
+            (d.name === "deduplicate_processing_task" && !(args as any).action);
+          if (!reading && (args as any).taskId)
+            await store.processingRead(proof, [(args as any).taskId]);
+          const result = await d.run(args);
+          if (reading) {
+            const tasks =
+              d.name === "list_processing_tasks"
+                ? (result.runs ?? []).map((row: any) => row.id)
+                : (args as any).taskId
+                  ? [(args as any).taskId]
+                  : [];
+            if (tasks.length) await store.processingRead(proof, tasks);
+            if (d.name === "preview_processing_round" && result.source)
+              await store.event(proof, "source_read", {
+                source: result.source,
+              });
+          }
+          return result;
+        },
+        {
+          name: d.name,
+          description: d.description,
+          schema: d.schema,
+        },
+      ),
     ),
   };
 }

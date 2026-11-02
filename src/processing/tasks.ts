@@ -629,12 +629,15 @@ export async function previewTaskInput(
     throw new ProcessingError(422, "processing_scope_invalid");
   const { task, latest } = await taskState(db, artifacts, scope, id);
   let rows: InputSnapshot["records"];
+  let source = latest.source;
   if (body.mode === "rerun") {
     const input = await frozen(artifacts, latest);
     rows = input.records;
-  } else if (body.mode === "saved")
-    rows = (await savedInput(db, artifacts, scope, task)).records;
-  else {
+  } else if (body.mode === "saved") {
+    const saved = await savedInput(db, artifacts, scope, task);
+    rows = saved.records;
+    source = saved.source;
+  } else {
     const selected = idsOf(body.resultIds);
     const current = await currentRows(db, artifacts, scope, task);
     if (selected.some((id) => !current.some((r) => r.id === id)))
@@ -649,6 +652,7 @@ export async function previewTaskInput(
   if (!Number.isSafeInteger(limit) || !Number.isSafeInteger(offset))
     throw new ProcessingError(422, "query_parameter_invalid");
   return {
+    source,
     records: matched.slice(offset, offset + limit),
     allIds: matched.map((r) => r.id),
     total: matched.length,

@@ -434,6 +434,106 @@ describe("REBUILD-06 draft/selection/version public flows", () => {
     },
   );
 
+  it.each([
+    "列出已发布测试集",
+    "这个草稿发布了吗",
+    "查看发布状态",
+    '把标题改成 "发布 notes"',
+  ])(
+    "MERGE factual publication query %s does not require publishing",
+    async (text) => {
+      const id = await fresh();
+      const state: any = await run(id, text, [
+        { role: "assistant", content: "当前没有已发布的版本。" },
+      ]);
+      expect(state.execution.status).toBe("completed");
+      expect(state.confirmations).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM assistant_runtime_event WHERE session_id=$1 AND kind='publication_recovery'",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    },
+  );
+
+  it("MERGE querying cancellation instructions preserves an existing publication obligation", async () => {
+    const id = await fresh();
+    const initial: any = await run(id, "请发布当前草稿", [
+      { role: "assistant", content: "请先选择草稿。" },
+    ]);
+    expect(initial.execution.status).toBe("paused");
+    const before = (
+      await db.query(
+        "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='publication_expected' ORDER BY id DESC LIMIT 1",
+        [id],
+      )
+    ).rows[0].detail;
+    await run(id, "查看取消发布的流程", [
+      { role: "assistant", content: "这是操作说明，不执行取消。" },
+    ]);
+    expect(
+      (
+        await db.query(
+          "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='publication_expected' ORDER BY id DESC LIMIT 1",
+          [id],
+        )
+      ).rows[0].detail,
+    ).toEqual(before);
+  });
+
+  it("MERGE same-turn edit then publish uses the fixed new revision and one receipt", async () => {
+    const d = await newDraft(),
+      id = await fresh();
+    await run(id, "查看草稿", [call("read_draft", { draftId: d.id })]);
+    const state: any = await run(id, "加一条问题，然后发布当前草稿", [
+      call("add_draft_record", {
+        draftId: d.id,
+        question: "新问题",
+        expectedOutput: "答案",
+        metadata: [],
+      }),
+      async () =>
+        call("request_publish", {
+          draftId: d.id,
+          revision: Number(
+            (
+              await db.query(
+                "SELECT revision FROM collaborative_draft WHERE id=$1",
+                [d.id],
+              )
+            ).rows[0].revision,
+          ),
+        }),
+    ]);
+    const card = state.confirmations.find(
+      (c: any) => c.action === "publish" && c.status === "pending",
+    );
+    expect(card).toBeTruthy();
+    const first = await api("POST", route(id) + "/confirmations/" + card.id, {
+      accept: true,
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const replay = await api("POST", route(id) + "/confirmations/" + card.id, {
+      accept: true,
+    });
+    expect(replay.json().receipt).toEqual(first.json().receipt);
+    outputs = [{ role: "assistant", content: "发布已完成。" }];
+    const done: any = await host.runPending(
+      scope(),
+      id,
+      state.execution.turn_id,
+    );
+    expect(done.execution.status).toBe("completed");
+    expect(
+      done.receipts.filter(
+        (r: any) => r.versionId === first.json().receipt.versionId,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("R06 automatic HTTP dispatch creates, edits and publishes a real two-record draft with one fixed confirmation", async () => {
     const id = await fresh(),
       name = "R06自动闭环" + randomUUID(),
@@ -1230,6 +1330,77 @@ describe("REBUILD-06 draft/selection/version public flows", () => {
       await browser.close();
     }
   }, 60000);
+  it.each([
+    ["version", "trashed"],
+    ["version", "archived"],
+    ["version", "degraded_by_deletion"],
+    ["testSet", "trashed"],
+  ])(
+    "MERGE backfill preserves recoverable %s %s history",
+    async (kind, status) => {
+      const d = await newDraft();
+      await api("POST", draftUrl(d.id) + "/records", {
+        source: { assetId, ordinal: 1 },
+      });
+      const published = await api("POST", draftUrl(d.id) + "/publish", {
+        revision: 1,
+      });
+      expect(published.statusCode, published.body).toBe(201);
+      const pub = published.json(),
+        sid = await fresh();
+      await run(sid, "查看这些正式版记录", [
+        call("read_version_records", {
+          testSetId: pub.testSet.id,
+          versionId: pub.version.id,
+        }),
+      ]);
+      const messages = async () =>
+        (
+          await db.query(
+            "SELECT role,content FROM assistant_runtime_message WHERE session_id=$1 ORDER BY id",
+            [sid],
+          )
+        ).rows;
+      const before = await messages();
+      expect(before.length).toBeGreaterThan(0);
+      const table = kind === "version" ? "test_set_version" : "test_set",
+        id = kind === "version" ? pub.version.id : pub.testSet.id;
+      await db.query("UPDATE " + table + " SET status=$2 WHERE id=$1", [
+        id,
+        status,
+      ]);
+      await db.query(
+        (await import("../../src/assistant-rebuild/lifecycle-schema.js"))
+          .lifecycleSchema,
+      );
+      expect(await messages()).toEqual(before);
+      expect(
+        (
+          await db.query(
+            "SELECT invalidated_at FROM assistant_runtime_session WHERE id=$1",
+            [sid],
+          )
+        ).rows[0].invalidated_at,
+      ).toBeNull();
+      if (status === "trashed")
+        await expect(host.present(scope(), sid)).rejects.toMatchObject({
+          code: "processing_source_unavailable",
+        });
+      await db.query("UPDATE " + table + " SET status=$2 WHERE id=$1", [
+        id,
+        kind === "version" ? "published" : "available",
+      ]);
+      expect((await host.present(scope(), sid)).contentInvalidated).toBe(false);
+      expect(await messages()).toEqual(before);
+      await db.query(
+        "UPDATE " + table + " SET status='permanently_deleted' WHERE id=$1",
+        [id],
+      );
+      expect((await host.present(scope(), sid)).contentInvalidated).toBe(true);
+      expect(await messages()).toEqual([]);
+    },
+  );
+
   it("R06 real SDK default lists and version pagination/provenance work and download registers lifecycle dependency", async () => {
     const d = await newDraft();
     await api("POST", draftUrl(d.id) + "/records", {

@@ -195,4 +195,73 @@ BEGIN
 END $body$;
 DROP TRIGGER IF EXISTS runtime_membership_lifecycle ON project_member;
 CREATE TRIGGER runtime_membership_lifecycle AFTER UPDATE OF role OR DELETE ON project_member FOR EACH ROW EXECUTE FUNCTION invalidate_runtime_membership();
+
+-- Backfill successful server-observed reads, paired with the accepted tool call.
+-- This adds dependencies to old checkpoints without re-executing anything.
+DO $body$
+DECLARE hit record; payload jsonb; task_ids text[]; linked record; record_ids text[]; found_count integer; linked_count integer;
+BEGIN
+ FOR hit IN
+  SELECT e.session_id,s.project_id,e.detail,c.detail->'args' args
+  FROM assistant_runtime_event e
+  JOIN assistant_runtime_session s ON s.id=e.session_id AND s.invalidated_at IS NULL
+  JOIN LATERAL (
+   SELECT detail FROM assistant_runtime_event c WHERE c.session_id=e.session_id AND c.turn_id=e.turn_id
+    AND c.kind='tool_call' AND c.id<e.id AND c.detail->>'id'=e.detail->>'id'
+    AND c.detail->>'name'=e.detail->>'name' ORDER BY c.id DESC LIMIT 1
+  ) c ON true
+  WHERE e.kind='tool_result' AND e.detail->>'name' IN(
+   'list_processing_tasks','read_processing_task','read_processing_history','preview_processing_round','deduplicate_processing_task')
+ LOOP
+  IF EXISTS(SELECT 1 FROM assistant_runtime_session WHERE id=hit.session_id AND invalidated_at IS NOT NULL) THEN CONTINUE; END IF;
+  payload=coalesce(hit.detail->'result'->'kwargs'->'content',hit.detail->'result'->'content',hit.detail->'result');
+  IF jsonb_typeof(payload)='string' THEN
+   BEGIN payload=(payload#>>'{}')::jsonb;
+   EXCEPTION WHEN invalid_text_representation THEN payload='{}'::jsonb; END;
+  END IF;
+  IF payload IS NULL OR jsonb_typeof(payload)<>'object' THEN
+   PERFORM purge_runtime_content(hit.session_id,'source_unverifiable'); CONTINUE;
+  END IF;
+  linked_count=0;
+  IF hit.detail->>'name'='list_processing_tasks' THEN
+   SELECT array_agg(v->>'id') INTO task_ids FROM jsonb_array_elements(coalesce(payload->'runs','[]'::jsonb)) v;
+  ELSE task_ids=ARRAY[hit.args->>'taskId']; END IF;
+  FOR linked IN SELECT r.* FROM processing_run r WHERE r.project_id=hit.project_id AND
+   (r.task_id=ANY(task_ids) OR r.task_id IN(SELECT task_id FROM processing_run WHERE project_id=hit.project_id AND id=ANY(task_ids)))
+  LOOP
+   linked_count=linked_count+1;
+   INSERT INTO assistant_runtime_reference VALUES(hit.session_id,'run',linked.id) ON CONFLICT DO NOTHING;
+   PERFORM register_runtime_source(hit.session_id,linked.source);
+   IF linked.input_ref IS NULL THEN PERFORM purge_runtime_content(hit.session_id,'source_deleted'); END IF;
+  END LOOP;
+  IF coalesce(cardinality(task_ids),0)>0 AND linked_count=0 THEN
+   PERFORM purge_runtime_content(hit.session_id,'source_deleted');
+  END IF;
+  IF hit.detail->>'name'='preview_processing_round' AND hit.args->>'mode'='saved' THEN
+   IF payload ? 'source' THEN PERFORM register_runtime_source(hit.session_id,payload->'source');
+   ELSE
+    SELECT array_agg(v->>'id') INTO record_ids FROM jsonb_array_elements(coalesce(payload->'records','[]'::jsonb)) v;
+    SELECT count(*) INTO found_count FROM collaborative_draft_record r JOIN collaborative_draft d ON d.id=r.draft_id
+     WHERE r.id=ANY(record_ids) AND d.project_id=hit.project_id AND NOT r.deleted;
+    IF found_count<>coalesce(cardinality(record_ids),0) THEN
+     PERFORM purge_runtime_content(hit.session_id,'source_deleted');
+    ELSE
+     INSERT INTO assistant_runtime_reference
+      SELECT DISTINCT hit.session_id,'draft',r.draft_id FROM collaborative_draft_record r JOIN collaborative_draft d ON d.id=r.draft_id
+       WHERE r.id=ANY(record_ids) AND d.project_id=hit.project_id ON CONFLICT DO NOTHING;
+    END IF;
+   END IF;
+  END IF;
+ END LOOP;
+ FOR hit IN SELECT DISTINCT s.id FROM assistant_runtime_session s
+  JOIN assistant_runtime_reference ref ON ref.session_id=s.id
+  WHERE s.invalidated_at IS NULL AND (
+   (ref.kind='asset' AND NOT EXISTS(SELECT 1 FROM data_asset a WHERE a.id=ref.resource_id AND a.project_id=s.project_id AND a.status<>'tombstoned')) OR
+   (ref.kind='draft' AND NOT EXISTS(SELECT 1 FROM collaborative_draft d WHERE d.id=ref.resource_id AND d.project_id=s.project_id AND d.status IN('editing','published')
+    AND NOT EXISTS(SELECT 1 FROM test_set t WHERE t.id=d.test_set_id AND t.status='permanently_deleted')
+    AND NOT EXISTS(SELECT 1 FROM test_set_version v WHERE v.id=d.published_version_id AND v.status IN('tombstoned','permanently_deleted')))) OR
+   (ref.kind='version' AND NOT EXISTS(SELECT 1 FROM test_set_version v JOIN test_set t ON t.id=v.test_set_id WHERE v.id=ref.resource_id AND t.project_id=s.project_id AND v.status NOT IN('tombstoned','permanently_deleted') AND t.status<>'permanently_deleted')) OR
+   (ref.kind='run' AND NOT EXISTS(SELECT 1 FROM processing_run r WHERE r.id=ref.resource_id AND r.project_id=s.project_id AND r.input_ref IS NOT NULL)))
+ LOOP PERFORM purge_runtime_content(hit.id,'source_deleted'); END LOOP;
+END $body$;
 `;

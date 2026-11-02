@@ -1,5 +1,8 @@
 import { guardAssistantMode } from "../operations/assistant-mode.js";
-import { requestProcessingCancellation } from "../processing/store.js";
+import {
+  getProcessingRun,
+  requestProcessingCancellation,
+} from "../processing/store.js";
 import {
   recordSaveTargetAmendment,
   completeSaveTargetAmendment,
@@ -118,21 +121,50 @@ export class SessionStore {
       ].includes(row.runtime_version)
     )
       throw new SessionError("runtime_version_not_supported");
-    // Deny cached history when a read source is no longer visible. Full lifecycle cleanup belongs to R08.
-    const refs = (
-      await client.query(
-        "SELECT DISTINCT detail->'source' AS source FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read' AND detail ? 'source'",
-        [id],
-      )
-    ).rows;
-    for (const ref of refs) {
-      if (ref.source.kind === "draft") await this.access(scope, true, client);
-      await processingSourceAvailable(
-        client,
-        scope.projectId,
-        ref.source,
-        lock,
-      );
+    // The reference table also includes historical processing reads; checking
+    // only source_read events would miss reconstructed saved-draft dependencies.
+    if (!row.invalidated_at) {
+      const refs = (
+        await client.query(
+          "SELECT kind,resource_id FROM assistant_runtime_reference WHERE session_id=$1",
+          [id],
+        )
+      ).rows;
+      const assets = refs
+        .filter((r) => r.kind === "asset")
+        .map((r) => r.resource_id);
+      if (assets.length)
+        await processingSourceAvailable(
+          client,
+          scope.projectId,
+          { kind: "assets", assetIds: assets, recordIds: [] },
+          lock,
+        );
+      for (const ref of refs) {
+        if (ref.kind === "draft" || ref.kind === "version") {
+          if (ref.kind === "draft") await this.access(scope, true, client);
+          await processingSourceAvailable(
+            client,
+            scope.projectId,
+            { kind: ref.kind, id: ref.resource_id, recordIds: [] },
+            lock,
+          );
+        } else if (ref.kind === "run")
+          await getProcessingRun(client, scope, ref.resource_id, lock);
+      }
+      const backgrounds = (
+        await client.query(
+          "SELECT DISTINCT detail->'source' source FROM assistant_runtime_event WHERE session_id=$1 AND kind='source_read' AND detail->'source'->>'kind'='background'",
+          [id],
+        )
+      ).rows;
+      for (const ref of backgrounds)
+        await processingSourceAvailable(
+          client,
+          scope.projectId,
+          ref.source,
+          lock,
+        );
     }
     return row as {
       id: string;
@@ -427,6 +459,38 @@ export class SessionStore {
       context?: Source;
       attachments?: string[];
     };
+  }
+  /** Atomically recheck copied task content and register every historical source. */
+  async processingRead(proof: TurnProof, taskIds: string[]) {
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      await this.guard(proof, false, client, true);
+      const runs = (
+        await client.query(
+          "SELECT id FROM processing_run WHERE project_id=$1 AND (task_id=ANY($2::text[]) OR task_id IN(SELECT task_id FROM processing_run WHERE project_id=$1 AND id=ANY($2::text[]))) ORDER BY id",
+          [proof.projectId, taskIds],
+        )
+      ).rows;
+      if (!runs.length) throw new SessionError("processing_not_found", 404);
+      for (const { id } of runs) {
+        const run = await getProcessingRun(client, proof, id, true);
+        await client.query(
+          "INSERT INTO assistant_runtime_reference(session_id,kind,resource_id) VALUES($1,'run',$2) ON CONFLICT DO NOTHING",
+          [proof.sessionId, id],
+        );
+        await client.query("SELECT register_runtime_source($1,$2::jsonb)", [
+          proof.sessionId,
+          JSON.stringify(run.source),
+        ]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
   async event(
     proof: TurnProof,

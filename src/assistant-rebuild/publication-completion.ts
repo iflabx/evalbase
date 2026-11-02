@@ -9,12 +9,19 @@ export async function publicationCompletion(
   text: string,
   context: any,
 ) {
-  const denied =
-    /(?:不要|不必|暂不|先不|别|取消|停止).{0,8}发布|(?:如何|怎么|能否|是否|可以吗|方案|流程|解释)/u.test(
-      text,
+  // This only repairs an explicit unfinished publication request. Read-only
+  // mentions must not create or cancel an execution obligation.
+  const actionText = text.replace(/[“][^”]*[”]|"[^"\n]*"|「[^」]*」/gu, "");
+  const cancelled = /(?:不要|不必|暂不|先不|别|取消|停止).{0,8}发布/u.test(
+    actionText,
+  );
+  const query =
+    /[?？]|(?:如何|怎么|能否|是否|可以吗|方案|流程|解释|了吗|过吗)|(?:查看|查询|列出|列举|看看).{0,30}发布|已发布/u.test(
+      actionText,
     );
-  const requested = !denied && /发布/u.test(text);
-  const continuing = !denied && /继续|resume|continue/i.test(text);
+  const denied = cancelled || query;
+  const requested = !denied && /发布/u.test(actionText);
+  const continuing = !denied && /继续|resume|continue/i.test(actionText);
   const prior = (
     await store.db.query(
       "SELECT detail FROM assistant_runtime_event WHERE session_id=$1 AND kind='publication_expected' ORDER BY id DESC LIMIT 1",
@@ -29,7 +36,8 @@ export async function publicationCompletion(
   ).rows[0]?.detail;
   let expected = own;
   if (denied) {
-    await store.event(proof, "publication_expected", { cancelled: true });
+    if (cancelled && !query)
+      await store.event(proof, "publication_expected", { cancelled: true });
     return {
       check: async (): Promise<{ message?: string; recover?: string }> => ({}),
     };
@@ -74,25 +82,31 @@ export async function publicationCompletion(
       if (!expected) return {};
       await execution.guard(proof);
       const facts = await execution.projection(proof, proof.sessionId);
-      if (!expected.draftId) {
-        const candidates = [
-          ...new Set(
-            facts.confirmations
-              .filter(
-                (c: any) =>
-                  c.action === "publish" && c.turn_id === proof.turnId,
-              )
-              .map((c: any) => c.payload?.draftId)
-              .filter(Boolean),
-          ),
-        ];
-        if (candidates.length === 1) {
-          const c: any = facts.confirmations.find(
-            (c: any) =>
-              c.action === "publish" && c.payload?.draftId === candidates[0],
-          );
+      const currentCards = facts.confirmations.filter(
+        (c: any) =>
+          c.action === "publish" &&
+          c.turn_id === proof.turnId &&
+          (!expected.draftId || c.payload?.draftId === expected.draftId),
+      );
+      const targets = [
+        ...new Set(
+          currentCards.map((c: any) => c.payload?.draftId).filter(Boolean),
+        ),
+      ];
+      if (targets.length === 1) {
+        // Fixed confirmation follows legitimate same-turn edits; the business
+        // transaction still rejects any later concurrent revision.
+        const c: any =
+          currentCards.find(
+            (c: any) => c.status === "committed" && c.receipt?.versionId,
+          ) ?? currentCards.find((c: any) => c.status === "pending");
+        if (
+          c &&
+          (expected.draftId !== c.payload.draftId ||
+            expected.revision !== Number(c.payload.revision))
+        ) {
           expected = {
-            draftId: candidates[0],
+            draftId: c.payload.draftId,
             revision: Number(c.payload.revision),
           };
           await store.event(proof, "publication_expected", expected);
@@ -124,8 +138,9 @@ export async function publicationCompletion(
           [expected.draftId, proof.projectId],
         )
       ).rows[0];
-      if (!current || Number(current.revision) !== expected.revision)
-        throw new SessionError("draft_revision_conflict", 409);
+      if (!current) throw new SessionError("draft_revision_conflict", 409);
+      // Reread before freezing a new card. The initial turn revision is not
+      // a publication fence; the card and commit transaction own that fence.
       if (attempts >= 2)
         throw new SessionError("publication_not_complete", 422);
       attempts++;
