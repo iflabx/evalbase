@@ -1,3 +1,4 @@
+import { RecordValue } from "@/components/record-value";
 import { useState, type DragEvent } from "react";
 import { Check, GripVertical, X } from "lucide-react";
 import {
@@ -105,9 +106,13 @@ export function FieldMappingEditor({
                   <span className="mono block truncate text-[13px] font-semibold">
                     {displayFieldPath(field.path)}
                   </span>
-                  <span className="mono mt-1 block truncate text-xs text-muted-foreground">
-                    样例：{sampleValue(field.sample)}
-                  </span>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    <RecordValue
+                      className="mono block truncate"
+                      prefix="样例："
+                      value={sampleValue(field.sample)}
+                    />
+                  </div>
                 </div>
                 <Select
                   disabled={pending}

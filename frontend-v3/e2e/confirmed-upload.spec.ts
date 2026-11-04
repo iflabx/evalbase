@@ -8,6 +8,7 @@ test("maps pending upload fields by drag and refreshes the preview", async ({ pa
     metadata: string[];
   }> = [];
   let confirmedPendingUploadIds: string[] = [];
+  const structured = JSON.stringify({ qa: "如何重置密码？", his: ["此前的消息"] });
   const pendingUpload = {
     id: "pending_mapping",
     fileName: "faq.csv",
@@ -15,7 +16,7 @@ test("maps pending upload fields by drag and refreshes the preview", async ({ pa
     size: 54,
     recordCount: 1,
     fields: [
-      { path: "/question", sample: "如何重置密码？" },
+      { path: "/question", sample: structured },
       { path: "/answer", sample: "在设置中重置。" },
       { path: "/category", sample: "账户" },
       { path: "/tag", sample: "帮助中心" },
@@ -92,8 +93,8 @@ test("maps pending upload fields by drag and refreshes the preview", async ({ pa
           ...pendingUpload,
           preview: [
             {
-              question: mapping.question === "/category" ? "账户" : "如何重置密码？",
-              expectedOutput: "在设置中重置。",
+              question: mapping.question === "/category" ? "账户" : structured,
+              expectedOutput: '["打开设置","选择重置"]',
               metadata: mapping.metadata.map((path) => ({ key: path.slice(1), value: "值" })),
             },
           ],
@@ -138,6 +139,23 @@ test("maps pending upload fields by drag and refreshes the preview", async ({ pa
       expectedOutput: "/answer",
       metadata: [],
     });
+  const source = page.getByRole("listitem", { name: /question.*样例/ });
+  await expect(source.getByRole("button", { name: /对象 · 2 个字段.*qa.*his/ })).toBeVisible();
+  const previewValue = page.getByRole("cell").getByRole("button", { name: /对象 · 2 个字段/ });
+  await previewValue.click();
+  const structure = page.getByRole("dialog", { name: "结构化值" });
+  await structure.getByText("数组 · 1 项", { exact: true }).click();
+  await expect(structure.getByText("此前的消息", { exact: true })).toBeVisible();
+  await structure.getByText("查看原始值", { exact: true }).click();
+  await expect(structure.locator("pre")).toHaveText(structured);
+  await page.keyboard.press("Escape");
+  await expect(previewValue).toBeFocused();
+  await page
+    .getByRole("cell")
+    .getByRole("button", { name: /数组 · 2 项/ })
+    .click();
+  await expect(structure.getByText("选择重置", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "取消 category 的映射" })).toHaveCount(0);
   await page
     .getByRole("listitem", { name: /category.*样例：账户/ })

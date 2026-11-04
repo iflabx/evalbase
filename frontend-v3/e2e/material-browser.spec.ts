@@ -1,3 +1,4 @@
+import { mockAccountRoute } from "./mock-account";
 import { expect, test } from "@playwright/test";
 
 test("browses material files and records without a side panel", async ({ page }) => {
@@ -14,40 +15,30 @@ test("browses material files and records without a side panel", async ({ page })
     uploadedAt: "2026-09-05T00:00:00.000Z",
     status: "可浏览",
   }));
+  const structured = '{"qa":"另一个问题","his":[{"speaker":"用户","text":"此前的消息"}]}';
   const records = files.map((file, index) => ({
     assetId: file.id,
     ordinal: 1,
     sourceFile: file.fileName,
-    question: index === 0 ? longQuestion : `问题 ${index + 1}`,
-    expectedOutput: index === 0 ? longExpectedOutput : `答案 ${index + 1}`,
+    question: index === 0 ? longQuestion : index === 1 ? structured : `问题 ${index + 1}`,
+    expectedOutput:
+      index === 0
+        ? longExpectedOutput
+        : index === 1
+          ? "[未闭合"
+          : index === 2
+            ? '{"result":"第三条期望输出","reference":9007199254740993}'
+            : `答案 ${index + 1}`,
     metadata: [
       { key: "标签", value: index === 0 ? "帮助中心" : `标签 ${index + 1}` },
-      { key: "分类", value: "常见问题" },
+      { key: "分类", value: index === 1 ? '["来源 A","来源 B"]' : "常见问题" },
       { key: "来源", value: "示例" },
     ],
   }));
   await page.route("**/api/**", async (route) => {
+    if (await mockAccountRoute(route)) return;
     const url = new URL(route.request().url());
     const method = route.request().method();
-    if (url.pathname === "/api/installation") {
-      await route.fulfill({ json: { needsAdministrator: false, needsMigration: false } });
-      return;
-    }
-    if (url.pathname === "/api/session") {
-      await route.fulfill({ json: { csrfToken: "csrf", actor: { id: "admin", role: "admin" } } });
-      return;
-    }
-    if (url.pathname === "/api/projects/project_browser/access") {
-      await route.fulfill({
-        json: {
-          access: {
-            role: "admin",
-            capabilities: { read: true, write: true, export: true, manage: true },
-          },
-        },
-      });
-      return;
-    }
     if (url.pathname === "/api/projects") {
       await route.fulfill({
         json: {
@@ -272,6 +263,41 @@ test("browses material files and records without a side panel", async ({ page })
   await page.getByRole("button", { name: "1", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "记录 1" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
+  const structuredOutput = page
+    .getByRole("row", { name: /faq-3\.csv/ })
+    .getByRole("button", { name: /对象 · 2 个字段.*result.*第三条期望输出/ });
+  await expect(structuredOutput).toBeVisible();
+  await page
+    .getByRole("row", { name: /faq-3\.csv/ })
+    .getByRole("button", { name: "1", exact: true })
+    .click();
+  const outputDialog = page.getByRole("dialog", { name: "记录 1" });
+  await outputDialog.getByRole("button", { name: /第三条期望输出/ }).click();
+  await expect(
+    page.getByRole("dialog", { name: "结构化值" }).getByText("9007199254740993", { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await outputDialog.getByRole("button", { name: "Close" }).click();
+  const structuredRow = page.getByRole("row", { name: /faq-2\.csv/ });
+  await expect(structuredRow.getByRole("button", { name: /对象 · 2 个字段.*qa/ })).toBeVisible();
+  await expect(structuredRow.getByRole("button", { name: /数组 · 2 项/ })).toBeVisible();
+  await expect(structuredRow.getByText("[未闭合", { exact: true })).toBeVisible();
+  await structuredRow.getByRole("button", { name: "1", exact: true }).click();
+  const recordDialog = page.getByRole("dialog", { name: "记录 1" });
+  await recordDialog.getByRole("button", { name: /对象 · 2 个字段/ }).click();
+  const structure = page.getByRole("dialog", { name: "结构化值" });
+  await structure.getByText("数组 · 1 项", { exact: true }).click();
+  await structure
+    .locator("summary")
+    .filter({ hasText: /^对象 · 2 个字段$/ })
+    .click();
+  await expect(structure.getByText("此前的消息", { exact: true })).toBeVisible();
+  await structure.getByText("查看原始值", { exact: true }).click();
+  await expect(structure.locator("pre")).toHaveText(structured);
+  await page.keyboard.press("Escape");
+  await expect(recordDialog).toBeVisible();
+  await recordDialog.getByRole("button", { name: "Close" }).click();
+
   await page.getByLabel("搜索记录").fill("标签 11");
   await expect(page.getByText("问题 11", { exact: true })).toBeVisible();
   await page.getByLabel("搜索记录").fill("");

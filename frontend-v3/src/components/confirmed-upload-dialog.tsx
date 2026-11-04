@@ -1,3 +1,4 @@
+import { RecordValue } from "@/components/record-value";
 import { FieldMappingEditor } from "@/components/field-mapping-editor";
 import { useEffect, useState } from "react";
 import { CloudUpload, FileText, Loader2, X } from "lucide-react";
@@ -365,10 +366,14 @@ export function ConfirmedUploadDialog({
                     <tbody>
                       {item.preview.map((row, index) => (
                         <tr key={index} className="border-t">
-                          <td className="px-3 py-2">{row.question}</td>
-                          <td className="px-3 py-2">{row.expectedOutput}</td>
                           <td className="px-3 py-2">
-                            <MetadataSummary entries={row.metadata} />
+                            <RecordValue value={row.question} empty="" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <RecordValue value={row.expectedOutput} empty="" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <MetadataSummary entries={row.metadata} structuredValues />
                           </td>
                         </tr>
                       ))}

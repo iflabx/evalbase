@@ -184,6 +184,21 @@
 .record-table-density-expanded .record-cell-content {
   -webkit-line-clamp: 6;
 }
+.record-table-density-compact .record-structured-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.record-table-density-compact .record-structured-label {
+  flex-shrink: 0;
+}
+.record-table-density-compact .record-structured-preview {
+  min-width: 0;
+  margin-top: 0;
+}
+.record-table-density-compact .record-structured-preview + .record-structured-preview {
+  display: none;
+}
 .metadata-cell {
   position: relative;
   min-width: 0;
@@ -210,6 +225,12 @@
   color: var(--foreground);
   font-size: 12px;
   line-height: 1.35;
+}
+.metadata-tag .record-structured-trigger {
+  width: auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 .metadata-tag-key {
   flex: 0 0 auto;
@@ -242,6 +263,9 @@
 }
 .record-table-density-compact .metadata-tag {
   max-width: 146px;
+}
+.record-table-density-compact .metadata-tag:has(.record-structured-trigger) {
+  max-width: 100%;
 }
 .record-table-density-standard .metadata-tag-value,
 .record-table-density-expanded .metadata-tag-value {

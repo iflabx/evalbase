@@ -1,3 +1,4 @@
+import { RecordValue } from "@/components/record-value";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -208,10 +209,14 @@ function PreparationForm({
                 <tbody>
                   {preview.map((row, i) => (
                     <tr key={i} className="border-t">
-                      <td className="px-3 py-2">{row.question}</td>
-                      <td className="px-3 py-2">{row.expectedOutput}</td>
                       <td className="px-3 py-2">
-                        <MetadataSummary entries={row.metadata} />
+                        <RecordValue value={row.question} empty="" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <RecordValue value={row.expectedOutput} empty="" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <MetadataSummary entries={row.metadata} structuredValues />
                       </td>
                     </tr>
                   ))}

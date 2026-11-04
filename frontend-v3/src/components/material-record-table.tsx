@@ -1,3 +1,4 @@
+import { RecordValue } from "@/components/record-value";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -96,13 +97,13 @@ export function MaterialRecordTable({
                     </td>
                   )}
                   <td className="px-4 py-2">
-                    <RecordCell value={record.question} />
+                    <RecordValue className="record-cell-content" value={record.question} />
                   </td>
                   <td className="px-4 py-2">
-                    <RecordCell value={record.expectedOutput} />
+                    <RecordValue className="record-cell-content" value={record.expectedOutput} />
                   </td>
                   <td className="px-4 py-2">
-                    <MetadataSummary entries={record.metadata} />
+                    <MetadataSummary entries={record.metadata} structuredValues />
                   </td>
                 </tr>
               ))}
@@ -121,7 +122,13 @@ export function MaterialRecordTable({
   );
 }
 
-export function MetadataSummary({ entries }: { entries: UnifiedRecord["metadata"] }) {
+export function MetadataSummary({
+  entries,
+  structuredValues = false,
+}: {
+  entries: UnifiedRecord["metadata"];
+  structuredValues?: boolean;
+}) {
   const { density } = useRecordDensity();
   const visible = entries.slice(0, 2);
   const hidden = entries.slice(2);
@@ -134,10 +141,19 @@ export function MetadataSummary({ entries }: { entries: UnifiedRecord["metadata"
           <span
             key={`${entry.key}-${index}`}
             className="metadata-tag"
-            title={`${entry.key}: ${entry.value}`}
+            title={structuredValues ? undefined : `${entry.key}: ${entry.value}`}
           >
             <span className="metadata-tag-key">{entry.key}：</span>
-            <span className="metadata-tag-value">{entry.value || "(空)"}</span>
+            {structuredValues ? (
+              <RecordValue
+                className="metadata-tag-value"
+                value={entry.value}
+                empty="(空)"
+                title={`${entry.key}: ${entry.value}`}
+              />
+            ) : (
+              <span className="metadata-tag-value">{entry.value || "(空)"}</span>
+            )}
           </span>
         ))}
         {hidden.length > 0 && (
@@ -153,7 +169,13 @@ export function MetadataSummary({ entries }: { entries: UnifiedRecord["metadata"
                 {entries.map((entry, index) => (
                   <div key={`${entry.key}-${index}`}>
                     <dt>{entry.key}</dt>
-                    <dd>{entry.value || "(空)"}</dd>
+                    <dd>
+                      {structuredValues ? (
+                        <RecordValue value={entry.value} empty="(空)" />
+                      ) : (
+                        entry.value || "(空)"
+                      )}
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -199,15 +221,19 @@ function RecordDetail({
           <div className="space-y-4 text-sm">
             <section>
               <h3 className="mb-1 font-medium">问题</h3>
-              <p className="whitespace-pre-wrap text-muted-foreground">
-                {record.question || "(空)"}
-              </p>
+              <RecordValue
+                className="whitespace-pre-wrap wrap-anywhere text-muted-foreground"
+                value={record.question}
+                empty="(空)"
+              />
             </section>
             <section>
               <h3 className="mb-1 font-medium">期望输出</h3>
-              <p className="whitespace-pre-wrap text-muted-foreground">
-                {record.expectedOutput || "(空)"}
-              </p>
+              <RecordValue
+                className="whitespace-pre-wrap wrap-anywhere text-muted-foreground"
+                value={record.expectedOutput}
+                empty="(空)"
+              />
             </section>
             <section>
               <h3 className="mb-2 font-medium">Metadata · {record.metadata.length} 项</h3>
@@ -232,7 +258,11 @@ function MetadataEntryLine({ entry }: { entry: UnifiedRecord["metadata"][number]
   return (
     <div className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-3 border-b pb-2 last:border-0">
       <span className="font-medium">{entry.key}</span>
-      <span className="whitespace-pre-wrap text-muted-foreground">{entry.value || "(空)"}</span>
+      <RecordValue
+        className="whitespace-pre-wrap wrap-anywhere text-muted-foreground"
+        value={entry.value}
+        empty="(空)"
+      />
     </div>
   );
 }
